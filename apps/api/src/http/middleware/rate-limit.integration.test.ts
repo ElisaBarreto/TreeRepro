@@ -56,7 +56,7 @@ describe('RFC-24 R4, R5 rate-limit middleware', () => {
     expect(keys[0]).toBe(keys[1]);
     expect(keys[2]).toBeNull();
     expect(keys[3]).toBeNull();
-    expect(JSON.stringify(keys)).not.toContain('ada');
+    expect(JSON.stringify(keys)).not.toContain('example.test');
     expect(JSON.stringify(keys)).not.toContain(ip);
   });
 
