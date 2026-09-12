@@ -126,20 +126,17 @@ Constraints:
 
 Review status of a record, computed in SQL by `dataset/summary.ts` and returned by the API: `withdrawn` if any `withdraw` annotation exists; else `disputed` if any actor's latest annotation is `dispute`; else `confirmed` if any actor's latest annotation is `confirm`; else `unreviewed`. Current accepted value for species×trait: the latest `accepted_values` row; `null` when none or when the latest is `cleared`.
 
-### Migrations (numbered after plan 04's `0007`; shift if plan 05 lands a migration first)
+### Migrations (numbered after plan 04's `0007`)
 
 | File | Content |
 |---|---|
-| `0008_pg_trgm.sql` | `create extension if not exists pg_trgm` (trusted extension; the migrator role has `CREATE` on the database) |
-| `0009_taxa.sql` | families, genera, species, species_names, indexes |
-| `0010_references.sql` | bibliographic_references |
-| `0011_dictionary.sql` | categories, traits, levels |
-| `0012_imports.sql` | import_batches, import_rejects |
-| `0013_trait_records.sql` | table, claim index, other indexes, immutability trigger, revokes |
-| `0014_curation.sql` | record_annotations, accepted_values, append-only triggers, match trigger, revokes |
-| `0015_permissions_dataset.sql` | insert `dataset.read`, `imports.read` |
+| `0008_permissions_dataset.sql` | insert `dataset.read`, `imports.read` (custom) |
+| `0009_pg_trgm.sql` | `create extension if not exists pg_trgm` (custom; trusted extension, the migrator role has `CREATE` on the database) |
+| `0010_dataset_catalogs.sql` | generated: families, genera, species, species_names, bibliographic_references, trait_categories, traits, trait_levels, indexes |
+| `0011_dataset_records.sql` | generated: import_batches, import_rejects, trait_records (claim key `nulls not distinct`, checks, indexes), record_annotations, accepted_values |
+| `0012_dataset_append_only.sql` | append-only triggers, accepted-record match trigger, revokes (custom) |
 
-Drizzle generates the table DDL; triggers, revokes and the extension are hand-written statements appended to the generated files, as the audit migrations do.
+Drizzle generates the table DDL; triggers, revokes and the extension are hand-written custom migrations, as the audit migrations are.
 
 ## 4. Seed and import (RFC-62, RFC-64)
 
@@ -189,11 +186,11 @@ Against the dev stack, after `seed:traits`: `import:records --file docs/exemplos
 
 ## 6. Representations
 
-`species` (list item): `{ id, canonicalName, nameSource, genus: { id, name } | null, family: { id, name } | null, matchedName?: string }` — `matchedName` present when an alternative name matched the query.
+`species` (list item): `{ id, canonicalName, nameSource, genus: { id, name } | null, family: { id, name } | null, matchedName: string | null }` — `matchedName` is the alternative name that matched when the canonical name did not.
 
 `species` (detail): list item plus `names: [{ name, source, gbifUsageKey }]`, `recordCount`, `traitCount`, `unresolvedTaxon: boolean`.
 
-`traitSummary`: `{ trait: { id, key, valueType, unit }, recordCount, harmonisationCounts: { harmonised, unknownLevel, multiValue, notNumeric, empty }, summary: { levels: [{ levelId, key, count }] } | { min, median, max, count }, accepted: { recordId, valueText, decidedAt } | null }`; grouped as `{ category: { key, label }, traits: [traitSummary] }[]`.
+`traitSummary`: `{ trait: { id, key, valueType, unit }, recordCount, harmonisationCounts: { harmonised, unknownLevel, multiValue, notNumeric, empty }, levels: [{ levelId, key, count }] | null, numeric: { min, median, max, count } | null, accepted: { recordId, valueText, decidedAt } | null }` (`levels` for categorical traits, `numeric` for quantitative ones); grouped as `{ category: { key, label }, traits: [traitSummary] }[]`.
 
 `record` (list item): `{ id, speciesId, trait: { id, key, valueType, unit }, valueText, level: { id, key } | null, numericValue, harmonisation, review, primaryReference: { id, citationKey } | null, secondaryReference, origin, createdAt, createdBy: { id, name } | null }`.
 
