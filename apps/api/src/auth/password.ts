@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { hash, verify } from '@node-rs/argon2';
 import type { Algorithm } from '@node-rs/argon2';
+import { hash, verify } from '@node-rs/argon2';
 import { AppError } from '../http/errors.ts';
 import type { PasswordBreachChecker } from './breach-check.ts';
 

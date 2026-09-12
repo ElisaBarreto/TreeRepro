@@ -55,14 +55,12 @@ describe('RFC-20 R1 users table', () => {
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
-            sp
-              .insert(users)
-              .values({
-                email: e,
-                emailHash: getPii().blindIndex(e),
-                name: 'Ada',
-                status: 'weird' as never,
-              }),
+            sp.insert(users).values({
+              email: e,
+              emailHash: getPii().blindIndex(e),
+              name: 'Ada',
+              status: 'weird' as never,
+            }),
           ),
         ),
       ).rejects.toMatchObject({ code: '23514' });
@@ -74,12 +72,10 @@ describe('RFC-20 R1 users table', () => {
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
-            sp
-              .insert(auditLog)
-              .values({
-                actorUserId: '019b4a2e-5f3c-7c8e-8d1a-2f3b4c5d6e7f',
-                action: 'auth.logout',
-              }),
+            sp.insert(auditLog).values({
+              actorUserId: '019b4a2e-5f3c-7c8e-8d1a-2f3b4c5d6e7f',
+              action: 'auth.logout',
+            }),
           ),
         ),
       ).rejects.toMatchObject({ code: '23503' });
