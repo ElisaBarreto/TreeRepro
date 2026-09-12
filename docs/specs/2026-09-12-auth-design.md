@@ -1,7 +1,7 @@
 # TreeRepro — Authentication Design (plan 02)
 
 **Date:** 2026-09-12
-**Status:** approved (design); implementation plan `docs/plans/2026-09-12-auth-02.md`
+**Status:** implemented (plan 02); implementation plan `docs/plans/2026-09-12-auth-02.md`
 **Scope:** users and invitations, passwords, login with optional TOTP, opaque sessions, password recovery and change, rate limiting, transactional email. Refines section 5 of the foundation design (`2026-09-12-foundation-design.md`) and closes issue #17. Authorization (roles, permissions, `requirePermission`) is plan 03; admin and self-service HTTP routes beyond sessions are plan 04; UI is plan 05.
 
 ## 1. Context
@@ -105,7 +105,7 @@ Ten codes per enablement, format `xxxxx-xxxxx` (base32 alphabet, 50 bits), shown
 | `auth/totp.ts` | secret generation, URI, verify with ±1 step, recovery codes |
 | `auth/rate-limit.ts` | sliding-window counter over sorted sets; returns `{ allowed, retryAfterSeconds }` |
 | `auth/users.ts` | `inviteUser`, `findByEmail` (blind index), `activate`, `setPassword`, status helpers |
-| `auth/service.ts` | orchestration: login, totp step, logout(-all), invite accept, forgot/reset/change, totp setup/confirm/disable; every path writes its audit entry |
+| `auth/flows/{invitation,login,session,password,totp}.ts` | orchestration: login, totp step, logout(-all), invite accept, forgot/reset/change, totp setup/confirm/disable; every path writes its audit entry |
 | `http/client-ip.ts` | last `X-Forwarded-For` entry, else `unknown` |
 | `http/middleware/session.ts` | `resolveSession` (global, attaches `session`/`user` when the cookie is valid) and `requireSession` (401 `AUTH_UNAUTHENTICATED`) |
 | `http/middleware/rate-limit.ts` | global limiter (per session, else per IP) and per-route limiters |
@@ -164,7 +164,7 @@ Client IP: Caddy runs without `trusted_proxies`, so it discards any incoming `X-
 
 ## 7. Rate limiting (RFC-24)
 
-Sliding window over a Redis sorted set per key (`ZADD` now, `ZREMRANGEBYSCORE` older than window, `ZCARD`, `PEXPIRE`), executed atomically in a `MULTI`. Every attempt counts, successful or not. Exceeding answers 429 `RATE_LIMITED` with `Retry-After` = seconds until the oldest entry in the window expires (minimum 1).
+Sliding window over a Redis sorted set per key (`ZADD` now, `ZREMRANGEBYSCORE` older than window, `ZCARD`, `PEXPIRE`), executed atomically by one Lua script. Every attempt counts, successful or not. Exceeding answers 429 `RATE_LIMITED` with `Retry-After` = seconds until the oldest entry in the window expires (minimum 1).
 
 | Scope | Key | Limit |
 |---|---|---|
@@ -185,6 +185,8 @@ The global limiter runs after `resolveSession` on every request; health endpoint
 ## 9. Contracts and error codes
 
 `packages/contracts/src/auth.ts` exports strict Zod schemas: `loginBodySchema`, `loginTotpBodySchema` (exactly one of `code` (6 digits) or `recoveryCode`), `inviteAcceptBodySchema`, `forgotPasswordBodySchema`, `resetPasswordBodySchema`, `changePasswordBodySchema`, `totpConfirmBodySchema`, `totpDisableBodySchema`, plus `passwordSchema` (string, 12–128 chars, no composition rules), `emailSchema` (`z.email()`, max 254) and the response types (`AuthUser`, `SessionSummary`).
+
+Password policy outcomes: `too_long` is a `VALIDATION_FAILED` (schema) outcome — `passwordSchema` caps the length at 128 — and the `AUTH_PASSWORD_WEAK` details carry the two human-readable messages of RFC-21 R2 (`too_short`, `breached`) as `{ path: "password", message }`.
 
 New codes in RFC-12 (mirrored in `ERROR_CODES`):
 

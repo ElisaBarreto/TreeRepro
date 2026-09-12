@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | auth |
 | Supersedes | — |
 
@@ -29,3 +29,4 @@ None.
 
 - 2026-09-12 — R5: recovery codes hashed with the keyed blind index (security review).
 - 2026-09-12 — created.
+- 2026-09-12 — accepted.
