@@ -6,7 +6,7 @@ import { requestId } from 'hono/request-id';
 import { describe, expect, it } from 'vitest';
 import { captureLogger } from '../../test/helpers/logger.ts';
 import type { AppEnv } from './env.ts';
-import { AppError, createErrorHandler, errorBody } from './errors.ts';
+import { AppError, createErrorHandler, errorBody, RateLimitedError } from './errors.ts';
 
 describe('RFC-11 R3-R4 AppError and errorBody', () => {
   it('derives the HTTP status from the code', () => {
@@ -48,6 +48,9 @@ describe('RFC-02 R9 error handler', () => {
     a.get('/boom', () => {
       throw new Error('secret internal detail');
     });
+    a.get('/limited', () => {
+      throw new RateLimitedError(17);
+    });
     a.get('/query-error', () => {
       // The real Drizzle class: query text and params as own properties and in
       // the two-line message ("Failed query: …\nparams: …"), driver error on `cause`.
@@ -61,6 +64,14 @@ describe('RFC-02 R9 error handler', () => {
     const res = await app().a.request('/app-error');
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ error: { code: 'RATE_LIMITED', message: 'Slow down' } });
+  });
+
+  it('RFC-24 R2 RateLimitedError answers 429 with Retry-After', async () => {
+    const { a } = app();
+    const res = await a.request('/limited');
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toBe('17');
+    expect((await res.json()).error.code).toBe('RATE_LIMITED');
   });
 
   it('maps HTTPException 413 and 400 to catalog codes', async () => {

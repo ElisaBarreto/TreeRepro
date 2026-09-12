@@ -25,6 +25,17 @@ export class AppError extends Error {
   }
 }
 
+/** @rfc RFC-24 R2 */
+export class RateLimitedError extends AppError {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('RATE_LIMITED', 'Too many requests; try again later');
+    this.name = 'RateLimitedError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 /** @rfc RFC-11 R3 */
 export function errorBody(
   code: ErrorCode,
@@ -76,6 +87,7 @@ export function createErrorHandler(logger: Logger): ErrorHandler<AppEnv> {
     // The request logger is bound by middleware (RFC-10 R12); the fallback
     // covers errors thrown before it ran.
     const log = c.get('logger') ?? logger.child({ requestId: c.get('requestId') });
+    if (err instanceof RateLimitedError) c.header('Retry-After', String(err.retryAfterSeconds));
     if (err instanceof AppError) {
       return c.json(errorBody(err.code, err.message, err.details), err.status);
     }
