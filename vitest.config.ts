@@ -16,6 +16,17 @@ export default defineConfig({
           exclude: ['**/node_modules/**', 'src/**/*.integration.test.ts'],
         },
       },
+      {
+        test: {
+          name: 'api:integration',
+          root: 'apps/api',
+          include: ['src/**/*.integration.test.ts'],
+          globalSetup: ['./test/global-setup.ts'],
+          setupFiles: ['./test/setup.ts'],
+          testTimeout: 30_000,
+          hookTimeout: 180_000,
+        },
+      },
     ],
   },
 });
