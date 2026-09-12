@@ -1,0 +1,131 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { z } from 'zod';
+import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
+
+const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
+  APP_ORIGIN: z.url(),
+  DB_HOST: z.string().min(1),
+  DB_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
+  DB_NAME: z.string().min(1),
+  DB_USER: z.string().min(1),
+  REDIS_HOST: z.string().min(1),
+  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
+  PII_CURRENT_KEY_VERSION: z
+    .string()
+    .regex(/^v\d+$/)
+    .default('v1'),
+  SECRETS_DIR: z.string().min(1).default('/run/secrets'),
+});
+
+export interface AppConfig {
+  nodeEnv: 'development' | 'test' | 'production';
+  port: number;
+  logLevel: LogLevel;
+  appOrigin: string;
+  db: { url: string };
+  redis: { url: string };
+  pii: { keyring: PiiKeyring; hmacKey: Buffer };
+  sessionSecret: Buffer;
+}
+
+/** @rfc RFC-10 R5 */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigError';
+  }
+}
+
+const HEX_32_BYTES = /^[0-9a-f]{64}$/;
+const KEY_FILE_RE = /^pii_encryption_key_(v\d+)$/;
+
+/** @rfc RFC-02 R6 */
+export function readSecret(secretsDir: string, name: string): string {
+  const path = join(secretsDir, name);
+  if (!existsSync(path)) throw new ConfigError(`missing secret "${name}" in ${secretsDir}`);
+  const value = readFileSync(path, 'utf8').trim();
+  if (value.length === 0) throw new ConfigError(`secret "${name}" is empty`);
+  return value;
+}
+
+function readHexSecret(secretsDir: string, name: string): Buffer {
+  const value = readSecret(secretsDir, name);
+  if (!HEX_32_BYTES.test(value))
+    throw new ConfigError(`secret "${name}" must be 64 hex characters`);
+  return Buffer.from(value, 'hex');
+}
+
+/** @rfc RFC-10 R5 */
+export function buildDbUrl(p: {
+  host: string;
+  port: number;
+  name: string;
+  user: string;
+  password: string;
+}): string {
+  return `postgres://${encodeURIComponent(p.user)}:${encodeURIComponent(p.password)}@${p.host}:${p.port}/${p.name}`;
+}
+
+/** @rfc RFC-10 R5 */
+export function buildRedisUrl(p: { host: string; port: number; password: string }): string {
+  return `redis://:${encodeURIComponent(p.password)}@${p.host}:${p.port}`;
+}
+
+/** @rfc RFC-40 R3 */
+function loadKeyring(secretsDir: string, current: string): PiiKeyring {
+  const keysHex: Record<string, string> = {};
+  const files = existsSync(secretsDir) ? readdirSync(secretsDir) : [];
+  for (const file of files) {
+    const match = KEY_FILE_RE.exec(file);
+    if (match?.[1]) keysHex[match[1]] = readHexSecret(secretsDir, file).toString('hex');
+  }
+  if (!(current in keysHex)) {
+    throw new ConfigError(`missing secret "pii_encryption_key_${current}" in ${secretsDir}`);
+  }
+  return keyringFromHex(current, keysHex);
+}
+
+/**
+ * @rfc RFC-10 R5
+ * @rfc RFC-02 R6
+ */
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const parsed = envSchema.safeParse(env);
+  if (!parsed.success) {
+    const fields = [...new Set(parsed.error.issues.map((i) => i.path.join('.')))].join(', ');
+    throw new ConfigError(`invalid environment: ${fields}`);
+  }
+  const e = parsed.data;
+  const dbPassword = readSecret(e.SECRETS_DIR, 'db_app_password');
+  const redisPassword = readSecret(e.SECRETS_DIR, 'redis_password');
+  const hmacKey = readHexSecret(e.SECRETS_DIR, 'pii_hmac_key');
+  const sessionSecret = readHexSecret(e.SECRETS_DIR, 'session_secret');
+  const keyring = loadKeyring(e.SECRETS_DIR, e.PII_CURRENT_KEY_VERSION);
+  return {
+    nodeEnv: e.NODE_ENV,
+    port: e.PORT,
+    logLevel: e.LOG_LEVEL,
+    appOrigin: e.APP_ORIGIN,
+    db: {
+      url: buildDbUrl({
+        host: e.DB_HOST,
+        port: e.DB_PORT,
+        name: e.DB_NAME,
+        user: e.DB_USER,
+        password: dbPassword,
+      }),
+    },
+    redis: {
+      url: buildRedisUrl({ host: e.REDIS_HOST, port: e.REDIS_PORT, password: redisPassword }),
+    },
+    pii: { keyring, hmacKey },
+    sessionSecret,
+  };
+}
