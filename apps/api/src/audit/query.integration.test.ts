@@ -2,8 +2,8 @@ import { auditLogEntrySchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { auditLog } from '../db/schema/audit-log.ts';
 import { AppError } from '../http/errors.ts';
-import { recordAudit } from './audit.ts';
 import { queryAudit } from './query.ts';
 
 describe('RFC-51 R1-R3 queryAudit', () => {
@@ -11,13 +11,29 @@ describe('RFC-51 R1-R3 queryAudit', () => {
 
   it('filters by actor, action and period; orders newest first; pages by cursor; decrypts ip and user agent', async () => {
     const { user } = await createUser(t.db);
+    const base = Date.now();
     const ids: string[] = [];
-    for (const [action, ip] of [
-      ['auth.login.success', '203.0.113.1'],
-      ['auth.logout', '203.0.113.2'],
-      ['auth.login.success', '203.0.113.3'],
+    // Explicit, well-separated `at` values keep the `from: at, to: at` window
+    // assertion below deterministic: three rows written back-to-back can
+    // otherwise share the same millisecond, so a window on one timestamp
+    // could match more than the intended row.
+    for (const [action, ip, secondsAgo] of [
+      ['auth.login.success', '203.0.113.1', 3],
+      ['auth.logout', '203.0.113.2', 2],
+      ['auth.login.success', '203.0.113.3', 1],
     ] as const) {
-      ids.push((await recordAudit(t.db, { actorUserId: user.id, action, ip, userAgent: 'ua' })).id);
+      const [row] = await t.db
+        .insert(auditLog)
+        .values({
+          actorUserId: user.id,
+          action,
+          ip,
+          userAgent: 'ua',
+          at: new Date(base - secondsAgo * 1000),
+        })
+        .returning({ id: auditLog.id });
+      if (!row) throw new Error('audit insert returned no row');
+      ids.push(row.id);
     }
     const all = await queryAudit(t.db, { actor: user.id, limit: 10 });
     expect(all.data.map((e) => e.id)).toEqual([...ids].reverse());
