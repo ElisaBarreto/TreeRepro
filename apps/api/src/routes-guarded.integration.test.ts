@@ -38,8 +38,9 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
           wrong.push(`${key}: self-service must carry requireSession only`);
         if (path.startsWith('/api/admin/'))
           wrong.push(`${key}: admin routes cannot be self-service`);
-      } else if (!kinds.has('permission')) {
-        wrong.push(`${key}: needs requirePermission`);
+      } else {
+        if (!kinds.has('permission')) wrong.push(`${key}: needs requirePermission`);
+        if (kinds.has('session')) wrong.push(`${key}: carries both guards`);
       }
     }
     expect(wrong).toEqual([]);
