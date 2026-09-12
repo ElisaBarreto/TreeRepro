@@ -17,6 +17,16 @@ RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/web bui
 FROM caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
 # Pull Alpine security fixes the caddy image has not rebuilt with yet.
 RUN apk upgrade --no-cache
+# Run Caddy as a dedicated user (RFC-02 R10). The upstream image already ships
+# /usr/bin/caddy with the cap_net_bind_service file capability, so the process
+# binds 80/443 without root as long as compose keeps NET_BIND_SERVICE in the
+# bounding set. /data and /config are pre-owned so a fresh named volume inherits
+# the ownership (docs/gotchas/docker.md); an existing root-owned volume needs
+# the one-off chown documented there.
+RUN addgroup -S -g 1000 caddy \
+    && adduser -S -u 1000 -G caddy -H -h /nonexistent -s /sbin/nologin caddy \
+    && chown -R caddy:caddy /data /config
 COPY infra/docker/Caddyfile.prod /etc/caddy/Caddyfile
 COPY --from=build /workspace/apps/web/dist /srv/web
 VOLUME ["/data", "/config"]
+USER caddy
