@@ -17,5 +17,5 @@
 
 ## Purging the audit log
 **Symptom:** `audit_log is append-only` when deleting.
-**Cause:** RFC-41 R2 trigger.
-**Fix:** Only the retention job may delete, inside a transaction, after `SET LOCAL treerepro.allow_audit_purge = 'on'`. `SET` without `LOCAL` is refused by the trigger design (the setting must not outlive the transaction).
+**Cause:** The RFC-41 R2 trigger lets a `DELETE` through only when `current_setting('treerepro.allow_audit_purge', true)` is `'on'`.
+**Fix:** Only the retention job (RFC-42, future) may delete, inside a transaction, after `SET LOCAL treerepro.allow_audit_purge = 'on'`. The flag is a convention, not a protection: PostgreSQL cannot tell `SET LOCAL` from a session-level `SET`, and `treerepro_app` holds `DELETE` on `audit_log`, so any code running as the app role could set it and purge. `SET LOCAL` matters because it keeps the flag transaction-scoped; a plain `SET` on a pooled connection would leak into later requests. Code review enforces this until RFC-42 moves purging into a `SECURITY DEFINER` function and revokes `DELETE` from the app role.

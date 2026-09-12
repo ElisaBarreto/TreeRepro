@@ -13,7 +13,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 ## Rules
 
 - **R1** Table `audit_log` columns: `id` uuid primary key default `uuidv7()`; `at` timestamptz not null default `now()`; `actor_user_id` uuid nullable (foreign key to `users` added by RFC-2x); `action` text not null; `target_type` text nullable; `target_id` text nullable; `ip` text nullable (encrypted); `user_agent` text nullable (encrypted); `metadata` jsonb not null default `{}`. Indexes: `(at desc)` and `(actor_user_id, at desc)`.
-- **R2** Append-only. A trigger rejects every `UPDATE` and `TRUNCATE`. It rejects `DELETE` unless the current transaction has executed `SET LOCAL treerepro.allow_audit_purge = 'on'`; only the retention job (RFC-42, future) sets it.
+- **R2** Append-only. A trigger rejects every `UPDATE` and `TRUNCATE`. It rejects `DELETE` unless the current transaction has set `treerepro.allow_audit_purge = 'on'` (the retention job, RFC-42, uses `SET LOCAL`); PostgreSQL does not distinguish a session-level `SET`, so the flag is a convention enforced by code review until RFC-42 moves purging into a `SECURITY DEFINER` function and revokes `DELETE` from `treerepro_app`.
 - **R3** Actions are dot-separated identifiers `<domain>.<event>` from the catalog below, mirrored exactly by `AUDIT_ACTIONS` in `apps/api/src/audit/actions.ts` (a test compares the two). New actions are added to this RFC first.
 - **R4** `ip` and `user_agent` are encrypted with RFC-40 before storage.
 - **R5** `recordAudit` runs inside the same database transaction as the action it records. If the audit write fails, the action is rolled back (fail closed).
@@ -58,3 +58,4 @@ None.
 
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
+- 2026-09-12 — R2: purge flag scope clarified.

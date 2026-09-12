@@ -14,5 +14,7 @@ server the same way and back them up outside the server.
 | `pii_hmac_key` | api | 64 hex characters (RFC-40 R5) |
 | `session_secret` | api | 64 hex characters |
 
-Key rotation: RFC-40 R7. Postgres role passwords are set only on the first initialization of the
-data volume (`docs/gotchas/postgres.md`).
+Key rotation: RFC-40 R7. A new key version file (`pii_encryption_key_v<N+1>`) must also be added
+to `compose.yml`, both under the top-level `secrets:` and in the `api` service's `secrets:` list,
+or `loadKeyring` never sees it. Postgres role passwords are set only on the first initialization
+of the data volume (`docs/gotchas/postgres.md`).

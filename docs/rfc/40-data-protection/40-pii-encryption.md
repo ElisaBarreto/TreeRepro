@@ -18,7 +18,7 @@ Personal data of system users (name, email, IP address, user agent) must be unre
 - **R4** Decrypting a malformed value, an unknown version, or a value whose authentication fails throws `PiiDecryptError`. No partial plaintext is ever returned.
 - **R5** Blind index for equality lookups: `HMAC-SHA256(pii_hmac_key, normalize(value))` as lowercase hex, where `normalize` = Unicode NFKC → trim → lowercase. The HMAC key is a separate 32-byte secret `pii_hmac_key`.
 - **R6** Keys never appear in logs, database rows, API responses or error messages.
-- **R7** Rotation: add `pii_encryption_key_v<N+1>`, set `PII_CURRENT_KEY_VERSION=v<N+1>`, restart; re-encrypt rows in batches (each row read via the keyring and written with the current key); remove the old secret only after `SELECT count(*) … WHERE col LIKE 'v<N>:%'` is zero for every PII column.
+- **R7** Rotation: add `pii_encryption_key_v<N+1>`, set `PII_CURRENT_KEY_VERSION=v<N+1>`, restart; re-encrypt rows in batches (each row read via the keyring and written with the current key); remove the old secret only after `SELECT count(*) … WHERE col LIKE 'v<N>:%'` is zero for every PII column. The new secret file must also be declared in Compose — under the top-level `secrets:` and in the `api` service's `secrets:` list — or the process never sees it.
 - **R8** The Drizzle column type `encryptedText` applies R2 on write and R4 on read, so business code never handles ciphertext.
 - **R9** The PII module is configured once at process start (`configurePii`). Using `getPii()` before configuration throws `PiiError`.
 - **R10** Random bytes come from `node:crypto` `randomBytes` (RFC-02 R13).
@@ -31,3 +31,4 @@ None.
 
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
+- 2026-09-12 — R7: Compose declaration of a new key version added.
