@@ -1,7 +1,7 @@
 # TreeRepro — Authorization Design (plan 03)
 
 **Date:** 2026-09-12
-**Status:** implemented (plan 03)
+**Status:** implemented (plan 03; cache carries a per-user generation after review)
 **Scope:** permission catalog, dynamic roles, role assignment with the anti-lockout rule, effective-permission resolution with a Redis cache, `requirePermission`, `permissions` in `GET /api/auth/me`, one admin route (`GET /api/admin/permissions`), the three-class route-guard meta-test, RFCs 30–32. Refines section 6 of the foundation design (`2026-09-12-foundation-design.md`) and closes issue #18. Role and user management over HTTP is plan 04; UI is plan 05.
 
 ## 1. Context
@@ -66,7 +66,7 @@ The migration inserts `admin` (`is_system = true`, description `Full access to e
 
 | Key | Value | TTL |
 |---|---|---|
-| `perms:<userId>` | JSON array of permission keys, sorted | 5 min |
+| `perms:<userId>` | JSON `{ gen, keys }` — sorted permission keys and the per-user generation they were computed under; `perms:gen:<userId>` is bumped on invalidation so a fill that raced an invalidation is discarded | 5 min |
 
 ## 4. Catalog
 
