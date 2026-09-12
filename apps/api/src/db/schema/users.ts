@@ -23,11 +23,10 @@ export const users = pgTable(
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
     suspendedAt: ts('suspended_at'),
-    deletedAt: ts('deleted_at'),
   },
   (t) => [
     uniqueIndex('users_email_hash_idx').on(t.emailHash),
-    check('users_status_check', sql`${t.status} in ('invited', 'active', 'suspended', 'deleted')`),
+    check('users_status_check', sql`${t.status} in ('invited', 'active', 'suspended')`),
   ],
 );
 

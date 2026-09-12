@@ -76,15 +76,13 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     expect(failure).toMatchObject({ actorUserId: null, metadata: { reason: 'unknown_email' } });
   });
 
-  it('treats invited and deleted users as invalid credentials with reason not_active', async () => {
+  it('treats invited users as invalid credentials with reason not_active', async () => {
     const invited = await createUser(t.db, { status: 'invited', password: null });
     expect((await login({ email: invited.email, password: DEFAULT_PASSWORD })).status).toBe(401);
     expect(await lastAudit(t, 'auth.login.failure')).toMatchObject({
       targetId: invited.user.id,
       metadata: { reason: 'not_active' },
     });
-    const deleted = await createUser(t.db, { status: 'deleted' });
-    expect((await login({ email: deleted.email, password: DEFAULT_PASSWORD })).status).toBe(401);
   });
 
   it('discloses suspension only with the correct password', async () => {

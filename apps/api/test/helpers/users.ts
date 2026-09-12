@@ -55,7 +55,6 @@ export async function createUser(
       totpSecret: options.totpSecret ?? null,
       totpEnabledAt: options.totpSecret ? now : null,
       suspendedAt: status === 'suspended' ? now : null,
-      deletedAt: status === 'deleted' ? now : null,
     })
     .returning();
   if (!user) throw new Error('createUser: insert returned no row');

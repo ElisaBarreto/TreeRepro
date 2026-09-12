@@ -67,6 +67,28 @@ describe('RFC-20 R1 users table', () => {
     });
   });
 
+  it('R2 rejects the retired status deleted and has no deleted_at column', async () => {
+    await withRollback(t.db, async (tx) => {
+      const e = email();
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(users).values({
+              email: e,
+              emailHash: getPii().blindIndex(e),
+              name: 'Ada',
+              status: 'deleted' as never,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+    });
+    const columns = await t.db.execute(
+      sql`select column_name from information_schema.columns where table_name = 'users'`,
+    );
+    expect(columns.map((c) => c.column_name)).not.toContain('deleted_at');
+  });
+
   it('R9 audit_log.actor_user_id must reference an existing user', async () => {
     await withRollback(t.db, async (tx) => {
       await expect(

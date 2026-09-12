@@ -36,6 +36,20 @@
       "when": 1789241965598,
       "tag": "0004_access_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789249619410,
+      "tag": "0005_users_no_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789249636961,
+      "tag": "0006_permissions_retire_delete",
+      "breakpoints": true
     }
   ]
 }
