@@ -70,7 +70,7 @@ export function resolveSession(deps: {
 export const requireSession: MiddlewareHandler<AppEnv> = markGuard(async (c, next) => {
   if (!c.get('user')) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
   await next();
-});
+}, 'session');
 
 /** For handlers behind `requireSession`. @rfc RFC-22 R8 */
 export function currentUser(c: Context<AppEnv>): UserRow {
