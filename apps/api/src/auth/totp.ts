@@ -1,5 +1,6 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Secret, TOTP } from 'otpauth';
+import { getPii } from '../security/pii.ts';
 
 /** @rfc RFC-23 R1 */
 export const TOTP_ISSUER = 'TreeRepro';
@@ -72,7 +73,10 @@ export function normalizeRecoveryCode(code: string): string {
   return code.toLowerCase().replaceAll(/[^a-z2-7]/g, '');
 }
 
-/** @rfc RFC-23 R5 */
+/**
+ * Keyed hash (RFC-40 R5 blind index) of the normalized code; needs the PII module configured.
+ * @rfc RFC-23 R5
+ */
 export function hashRecoveryCode(code: string): string {
-  return createHash('sha256').update(normalizeRecoveryCode(code), 'utf8').digest('hex');
+  return getPii().blindIndex(normalizeRecoveryCode(code));
 }

@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { TEST_HMAC_KEY, TEST_KEYRING } from '../../test/helpers/pii.ts';
+import { blindIndex, configurePii, resetPii } from '../security/pii.ts';
 import {
   generateRecoveryCodes,
   generateTotpCode,
@@ -45,6 +48,9 @@ describe('RFC-23 R4 verification window', () => {
 });
 
 describe('RFC-23 R5 recovery codes', () => {
+  beforeAll(() => configurePii(TEST_KEYRING, TEST_HMAC_KEY));
+  afterAll(() => resetPii());
+
   it('generates ten distinct xxxxx-xxxxx codes and hashes the normalized form', () => {
     const codes = generateRecoveryCodes();
     expect(codes).toHaveLength(10);
@@ -53,5 +59,9 @@ describe('RFC-23 R5 recovery codes', () => {
     expect(normalizeRecoveryCode(' AbCdE-fGhIj ')).toBe('abcdefghij');
     expect(hashRecoveryCode('abcde-fghij')).toBe(hashRecoveryCode('ABCDEFGHIJ'));
     expect(hashRecoveryCode('abcde-fghij')).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashRecoveryCode('abcde-fghij')).toBe(blindIndex(TEST_HMAC_KEY, 'abcdefghij'));
+    expect(hashRecoveryCode('abcde-fghij')).not.toBe(
+      createHash('sha256').update('abcdefghij').digest('hex'),
+    );
   });
 });
