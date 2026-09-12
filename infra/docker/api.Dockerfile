@@ -22,6 +22,11 @@ FROM manifests AS prod-deps
 RUN pnpm install --frozen-lockfile --prod --filter "@treerepro/api..."
 
 FROM node:24.21.0-alpine@sha256:be80f76cf40ec8e42b9bec49f60a55e0660f30af58d3e5a25530785b30ea67e2 AS runtime
+# Pull Alpine security fixes the node image has not rebuilt with yet, and drop
+# the bundled npm, corepack and yarn: the runtime only executes `node dist/server.js`.
+RUN apk upgrade --no-cache \
+ && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 ENV NODE_ENV=production
 WORKDIR /workspace
 COPY --from=prod-deps /workspace/node_modules ./node_modules

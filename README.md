@@ -30,6 +30,10 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `pnpm --filter @treerepro/api db:generate` — generate a migration from the Drizzle schema.
 - `pnpm seed:admin --email <email> --name <name>` — invite the first user (prints the invitation link; needs the dev stack or a reachable Postgres/Redis/SMTP). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:admin --email … --name …`. In production: `docker compose exec api node dist/cli/seed-admin.js --email … --name …`.
 
+## Security automation
+
+Every PR must pass `Verify`, `Images` (build + Trivy), `CodeQL`, `Dependency review`, `Gitleaks`, `Zizmor` and `Trivy config`; the `main` ruleset enforces it. All of them except `Dependency review` (PR-only) re-run weekly on `main`, Scorecard grades the repo weekly, and Dependabot proposes updates weekly after a 7-day release cooldown (`.github/dependabot.yml`); pnpm applies the same cooldown locally (`minimumReleaseAge` in `pnpm-workspace.yaml`). Actions are pinned by commit SHA. Report vulnerabilities per `SECURITY.md`. Details and admin-only settings: `docs/gotchas/github-security.md`.
+
 ## Non-negotiable rules
 
 1. **RFC first** (RFC-00). A business rule lives in `docs/rfc/<category>/NN-slug.md` as a numbered rule `**Rn**`. Change order: RFC → failing test → code. Every exported symbol in `apps/*/src` and `packages/*/src` has a JSDoc `@rfc RFC-NN Rx` tag.

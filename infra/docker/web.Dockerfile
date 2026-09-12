@@ -14,7 +14,9 @@ COPY packages/contracts packages/contracts
 COPY apps/web apps/web
 RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/web build
 
-FROM caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
+FROM caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+# Pull Alpine security fixes the caddy image has not rebuilt with yet.
+RUN apk upgrade --no-cache
 COPY infra/docker/Caddyfile.prod /etc/caddy/Caddyfile
 COPY --from=build /workspace/apps/web/dist /srv/web
 VOLUME ["/data", "/config"]
