@@ -24,6 +24,9 @@ export function createHibpChecker(options: HibpOptions = {}): PasswordBreachChec
   const timeoutMs = options.timeoutMs ?? HIBP_TIMEOUT_MS;
   return {
     async isBreached(password) {
+      // SHA-1 is the HIBP range protocol, not a password store: only the first
+      // five hex characters leave the process and nothing is persisted. The
+      // password hash at rest is argon2id (RFC-21 R1).
       const digest = createHash('sha1').update(password, 'utf8').digest('hex').toUpperCase();
       const prefix = digest.slice(0, 5);
       const suffix = digest.slice(5);
