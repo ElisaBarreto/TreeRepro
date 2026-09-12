@@ -1,12 +1,14 @@
 import { PERMISSION_KEYS } from '@treerepro/contracts';
-import { desc, eq, sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { and, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { describe, expect, inject, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
 import { withRollback } from '../../test/helpers/db.ts';
 import { adminRoleId, createRole as insertRole } from '../../test/helpers/roles.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { createDb, type DbExecutor } from '../db/client.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
+import { users } from '../db/schema/users.ts';
 import { AppError } from '../http/errors.ts';
 import { resolvePermissions } from './permissions.ts';
 import {
@@ -251,5 +253,53 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
       const nobody = await createUser(tx);
       expect(await code(assertNotLastAdmin(tx, nobody.user.id))).toBe('ok');
     });
+  });
+
+  it('two concurrent removals of admin from the last two admins cannot both succeed', async () => {
+    // Other test files may hold active admins of their own (they only ever add
+    // them), so the expectation depends on how many exist besides the two here.
+    const admin = await adminRoleId(t.db);
+    const a = await createUser(t.db, { roles: [admin] });
+    const b = await createUser(t.db, { roles: [admin] });
+    const pair = [a.user.id, b.user.id];
+    const activeAdmins = async (db: DbExecutor, exclude: string[]) =>
+      (
+        await db
+          .select({ userId: userRoles.userId })
+          .from(userRoles)
+          .innerJoin(users, eq(users.id, userRoles.userId))
+          .where(
+            and(
+              eq(userRoles.roleId, admin),
+              eq(users.status, 'active'),
+              exclude.length > 0 ? notInArray(userRoles.userId, exclude) : undefined,
+            ),
+          )
+      ).map((r) => r.userId);
+    const second = createDb(inject('databaseUrl'), { max: 3 });
+    try {
+      await second.db.execute(sql`select 1`); // connect now, so both calls start together
+      const othersBefore = (await activeAdmins(t.db, pair)).length;
+      const results = await Promise.allSettled([
+        setUserRoles(ctx(), { userId: a.user.id, roleIds: [], actorUserId: null }),
+        setUserRoles(
+          { ...ctx(), db: second.db },
+          { userId: b.user.id, roleIds: [], actorUserId: null },
+        ),
+      ]);
+      const othersAfter = (await activeAdmins(t.db, pair)).length;
+      const failures = results
+        .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map((r) => (r.reason instanceof AppError ? r.reason.code : String(r.reason)));
+      const remaining = (await activeAdmins(t.db, [])).filter((id) => pair.includes(id));
+      expect(failures.every((c) => c === 'ROLE_LAST_ADMIN')).toBe(true);
+      expect(failures.length).toBeLessThanOrEqual(1);
+      expect(remaining.length).toBe(failures.length);
+      if (othersBefore === 0 && othersAfter === 0) expect(failures).toEqual(['ROLE_LAST_ADMIN']);
+      if (othersBefore > 0) expect(failures).toEqual([]);
+    } finally {
+      await second.close();
+      await t.db.delete(userRoles).where(inArray(userRoles.userId, pair));
+    }
   });
 });

@@ -239,8 +239,15 @@ async function adminRole(db: DbExecutor): Promise<RoleRow | null> {
   return row ?? null;
 }
 
-/** Throws ROLE_LAST_ADMIN when `userId` is the only active holder of `admin`. @rfc RFC-31 R7 */
+/**
+ * Throws ROLE_LAST_ADMIN when `userId` is the only active holder of `admin`.
+ * Callers run inside a transaction (`setUserRoles` does; suspension and erasure
+ * will): the check takes a transaction-scoped advisory lock so concurrent
+ * removals serialize instead of both passing on the same snapshot.
+ * @rfc RFC-31 R7
+ */
 export async function assertNotLastAdmin(db: DbExecutor, userId: string): Promise<void> {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext('roles:admin-holders'))`);
   const admin = await adminRole(db);
   if (!admin) return;
   const holders = await db
