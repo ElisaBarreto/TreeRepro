@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
+import type { PermissionCache } from './access/permissions.ts';
 import type { PasswordBreachChecker } from './auth/breach-check.ts';
 import type { AuthContext } from './auth/context.ts';
 import type { MfaStore } from './auth/mfa.ts';
@@ -15,6 +16,7 @@ import { globalRateLimit } from './http/middleware/rate-limit.ts';
 import { resolveSession } from './http/middleware/session.ts';
 import { originCheck } from './http/origin-check.ts';
 import { requestLogger } from './http/request-logger.ts';
+import { adminRoutes } from './http/routes/admin.ts';
 import { authRoutes } from './http/routes/auth.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import { meRoutes } from './http/routes/me.ts';
@@ -31,6 +33,7 @@ export interface AppDeps {
   limiter: RateLimiter;
   mailer: Mailer;
   breachChecker: PasswordBreachChecker;
+  permissionCache: PermissionCache;
   /** Epoch ms; tests inject a controllable clock. */
   now?: () => number;
 }
@@ -53,6 +56,7 @@ export function createApp(deps: AppDeps) {
     limiter: deps.limiter,
     mailer: deps.mailer,
     breachChecker: deps.breachChecker,
+    permissionCache: deps.permissionCache,
     logger: deps.logger,
     appOrigin: deps.config.appOrigin,
     now: deps.now ?? Date.now,
@@ -76,6 +80,7 @@ export function createApp(deps: AppDeps) {
   app.route('/health', healthRoutes(deps.health));
   app.route('/auth', authRoutes(ctx));
   app.route('/me', meRoutes(ctx));
+  app.route('/admin', adminRoutes(ctx));
 
   app.notFound((c) => c.json(errorBody('NOT_FOUND', 'Route not found'), 404));
   app.onError(createErrorHandler(deps.logger));

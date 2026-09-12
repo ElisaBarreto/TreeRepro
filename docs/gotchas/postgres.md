@@ -15,6 +15,11 @@
 **Cause:** Built-in since 18.
 **Fix:** Every environment, including testcontainers (`postgres:18.6-alpine`), runs 18.
 
+## Expression unique index on `lower(name)`
+**Symptom:** Drizzle's query builder cannot express "find a role by name ignoring case", and `roles.name` alone is not unique.
+**Cause:** Uniqueness is enforced by the index `roles_name_lower_idx` on `lower(name)` (RFC-31 R1), not by a plain unique column.
+**Fix:** Insert and let the unique violation (`23505`) surface through `isUniqueViolation`; for lookups use `sql\`lower(${roles.name}) = ${name.toLowerCase()}\``.
+
 ## Purging the audit log
 **Symptom:** `audit_log is append-only` when deleting.
 **Cause:** The RFC-41 R2 trigger lets a `DELETE` through only when `current_setting('treerepro.allow_audit_purge', true)` is `'on'`.

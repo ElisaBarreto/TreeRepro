@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server';
+import { createPermissionCache } from './access/permissions.ts';
 import { createApp } from './app.ts';
 import { createHibpChecker } from './auth/breach-check.ts';
 import { createMfaStore } from './auth/mfa.ts';
@@ -29,6 +30,7 @@ const mfa = createMfaStore(redis, sessionSecret);
 const limiter = createRateLimiter(redis);
 const mailer = createMailer(createSmtpTransport(config.smtp), config.smtp.from);
 const breachChecker = createHibpChecker({ logger });
+const permissionCache = createPermissionCache(redis);
 
 const app = createApp({
   config,
@@ -40,6 +42,7 @@ const app = createApp({
   limiter,
   mailer,
   breachChecker,
+  permissionCache,
 });
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, (info) => {

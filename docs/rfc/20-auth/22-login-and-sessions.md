@@ -27,6 +27,7 @@ Sessions are opaque identifiers stored in Redis and carried by a cookie. There i
   | `POST /api/auth/password/change` | session |
   | `POST /api/auth/totp/setup`, `/confirm`, `/disable` | session |
   | `GET /api/me/sessions`, `DELETE /api/me/sessions/:id` | session |
+  | `GET /api/admin/permissions` | permission `roles.read` (RFC-30 R5) |
 
 - **R2** `POST /api/auth/login { email, password }`: look the user up by blind index; run the argon2 verification (RFC-21 R4); when it fails or the user is not `active`/`suspended`, answer 401 `AUTH_INVALID_CREDENTIALS` and audit `auth.login.failure` with `metadata.reason` in `unknown_email`, `wrong_password`, `not_active` (target `user` when the user exists). A `suspended` user whose password verified answers 403 `AUTH_ACCOUNT_SUSPENDED` (reason `suspended`): the status is disclosed only to someone holding the password.
 - **R3** A verified user with TOTP enabled receives `{ data: { status: "totp_required" } }` and the MFA cookie (RFC-23 R6); no session exists yet. Otherwise a session is created, the cookie set, `auth.login.success` audited, and the response is `{ data: { status: "ok", user } }` with `user` as in R10.
@@ -36,7 +37,7 @@ Sessions are opaque identifiers stored in Redis and carried by a cookie. There i
 - **R7** Every request resolves the session before routing: cookie → record → user row. When the record is missing or expired, or the user is not `active`, the session is deleted, the cookie cleared and the request continues unauthenticated. Otherwise `user` and `session` are available to handlers.
 - **R8** `requireSession` answers 401 `AUTH_UNAUTHENTICATED` when no session was resolved.
 - **R9** `POST /api/auth/logout` deletes the current session and clears the cookie (audit `auth.logout`). `POST /api/auth/logout-all` deletes every session of the user including the current one (audit `auth.logout_all`). Both answer `{ data: { status: "ok" } }`.
-- **R10** `GET /api/auth/me` answers `{ data: { user: { id, email, name, status, totpEnabled, createdAt }, permissions: [] } }`; `permissions` is filled by RFC-32.
+- **R10** `GET /api/auth/me` answers `{ data: { user: { id, email, name, status, totpEnabled, createdAt }, permissions } }`; `permissions` is the user's effective permissions, sorted (RFC-32 R6).
 - **R11** `GET /api/me/sessions` lists the user's sessions as `{ id, createdAt, lastSeenAt, ip, userAgent, current }` ordered by `lastSeenAt` descending. `DELETE /api/me/sessions/:id` revokes one of the user's own sessions (audit `auth.session.revoked`) and answers `{ data: { status: "ok" } }`; an id that is not one of the user's sessions answers 404 `NOT_FOUND`.
 - **R12** The client IP is the last entry of `X-Forwarded-For` (Caddy discards untrusted incoming values and appends the remote address); without the header it is `unknown`. It is used for the audit log and rate limiting only and never logged (RFC-02 R7).
 
@@ -48,3 +49,4 @@ None.
 
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
+- 2026-09-12 — R1: admin route; R10: permissions filled (RFC-32).

@@ -19,7 +19,7 @@ There is no public sign-up. An administrator (in this plan: the `seed:admin` com
 - **R5** Table `auth_tokens`: `id` uuid primary key; `user_id` uuid not null references `users`; `kind` text not null in (`invite`, `password_reset`); `token_hash` text not null unique; `expires_at` timestamptz not null; `consumed_at` timestamptz nullable; `created_at` timestamptz not null. A token is 32 random bytes (RFC-02 R13) sent base64url (43 characters) and stored only as its SHA-256 hex. Lifetimes: `invite` 72 hours, `password_reset` 1 hour. Issuing a token marks every unconsumed token of the same kind for the same user as consumed. A token is valid while `consumed_at` is null and `expires_at` is in the future; consumption is one `UPDATE … RETURNING` on `token_hash`, so a token can be redeemed once.
 - **R6** `POST /api/auth/invite/accept { token, password }`: the password policy (RFC-21 R2, R3) is checked before the token is consumed, so a rejected password does not spend the invitation. On success the token is consumed, the user becomes `active` with the new hash, a session is created (RFC-22 R4) and the audit entry `auth.invite.accepted` is written by the user as actor. A token that is unknown, expired, consumed, or whose user is no longer `invited` answers 400 `AUTH_TOKEN_INVALID`; the four cases are indistinguishable.
 - **R7** Re-inviting is allowed only while the user is `invited`; it issues a new token (invalidating the old one, R5) and re-sends the email. Any other status answers 409 `USER_EMAIL_TAKEN`.
-- **R8** `pnpm seed:admin --email <email> --name <name>` runs `inviteUser` with a null actor and prints the invitation link to stdout in addition to sending the email. Role assignment is added by RFC-3x.
+- **R8** `pnpm seed:admin --email <email> --name <name>` runs `inviteUser` with a null actor, assigns the `admin` role (RFC-31 R9) and prints the invitation link to stdout in addition to sending the email.
 - **R9** `audit_log.actor_user_id` references `users.id` (completes RFC-41 R1). Users are never hard-deleted, so the reference never blocks.
 
 ## Open questions
@@ -30,3 +30,4 @@ None.
 
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
+- 2026-09-12 — R8: seed assigns `admin` (RFC-31 R9).
