@@ -17,6 +17,7 @@ import { originCheck } from './http/origin-check.ts';
 import { requestLogger } from './http/request-logger.ts';
 import { authRoutes } from './http/routes/auth.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
+import { meRoutes } from './http/routes/me.ts';
 import type { Logger } from './logger.ts';
 import type { Mailer } from './mail/mailer.ts';
 
@@ -74,6 +75,7 @@ export function createApp(deps: AppDeps) {
 
   app.route('/health', healthRoutes(deps.health));
   app.route('/auth', authRoutes(ctx));
+  app.route('/me', meRoutes(ctx));
 
   app.notFound((c) => c.json(errorBody('NOT_FOUND', 'Route not found'), 404));
   app.onError(createErrorHandler(deps.logger));
