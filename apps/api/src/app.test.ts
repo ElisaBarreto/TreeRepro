@@ -96,6 +96,20 @@ describe('RFC-02 R4 body limit', () => {
   });
 });
 
+describe('RFC-02 R3 origin check is wired', () => {
+  it('rejects a mutation without Origin before any handler runs', async () => {
+    const { app } = build();
+    let handlerRan = false;
+    app.post('/mutate', (c) => {
+      handlerRan = true;
+      return c.json({ data: null });
+    });
+    const res = await app.request('/api/mutate', { method: 'POST' });
+    expect(res.status).toBe(403);
+    expect(handlerRan).toBe(false);
+  });
+});
+
 describe('RFC-02 R9 error handling is wired', () => {
   it('maps AppError and hides unexpected errors', async () => {
     const { app, lines } = build();
