@@ -24,3 +24,8 @@
 **Symptom:** `rejects.toThrow(/postgres message/)` fails even though PostgreSQL rejected the query.
 **Cause:** Drizzle 0.45 throws `DrizzleQueryError` ("Failed query …") and puts the underlying `PostgresError` on `.cause`.
 **Fix:** In tests use `unwrapDbError()` from `apps/api/test/helpers/db.ts`, which walks `.cause` to the root error. In application code inspect `error.cause` rather than matching on the top-level message.
+
+## `@node-rs/argon2` is a native module
+**Symptom:** `Cannot find module '@node-rs/argon2-<platform>'` after `pnpm install`, or a slow first test.
+**Cause:** The package ships prebuilt binaries as optional dependencies per platform (`darwin-arm64`, `linux-x64-musl`, …); pnpm installs only the one matching the host. The lockfile lists them all, so the Alpine image resolves `linux-x64-musl` (or `linux-arm64-musl`). No build script runs.
+**Fix:** Keep the lockfile committed; never add `--no-optional`. Each hash costs ~50 ms at the RFC-21 parameters — tests reuse one hash per password through `test/helpers/users.ts`.

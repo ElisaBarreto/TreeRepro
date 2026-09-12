@@ -33,7 +33,7 @@ services:
       - node-modules:/workspace/node_modules
     read_only: false
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
   web:
     image: treerepro-dev
@@ -52,7 +52,7 @@ services:
     image: axllent/mailpit:v1.31@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
     restart: unless-stopped
     ports:
-      - "8025:8025"
+      - "127.0.0.1:8025:8025"
     networks: [internal]
 
   postgres:
