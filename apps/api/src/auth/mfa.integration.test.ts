@@ -28,6 +28,7 @@ describe('RFC-23 R6 MFA challenge store', () => {
     const userId = uid();
     const { rawId, id } = await store.createChallenge(userId);
     expect(id).toBe(deriveKeyId(SECRET, rawId));
+    expect(store.challengeId(rawId)).toBe(id);
     expect(await store.getChallenge(rawId)).toEqual({ id, userId, attempts: 0 });
     const ttl = await redis.pttl(`mfa:${id}`);
     expect(ttl).toBeGreaterThan(MFA_CHALLENGE_TTL_MS - 5000);

@@ -21,6 +21,8 @@ export interface MfaChallenge {
 
 export interface MfaStore {
   createChallenge(userId: string): Promise<{ rawId: string; id: string }>;
+  /** HMAC form of a raw cookie value, whether or not a challenge exists (RFC-24 R3, R7). */
+  challengeId(rawId: string): string;
   getChallenge(rawId: string): Promise<MfaChallenge | null>;
   /** Increments attempts; deletes the challenge on the last allowed failure. */
   recordFailure(rawId: string): Promise<'retry' | 'expired'>;
@@ -55,6 +57,10 @@ export function createMfaStore(redis: Redis, secret: Buffer): MfaStore {
         .pexpire(challengeKey(id), MFA_CHALLENGE_TTL_MS)
         .exec();
       return { rawId, id };
+    },
+
+    challengeId(rawId) {
+      return deriveKeyId(secret, rawId);
     },
 
     async getChallenge(rawId) {

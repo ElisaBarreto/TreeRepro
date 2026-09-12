@@ -5,7 +5,7 @@ import { createUser, randomEmail } from '../../../test/helpers/users.ts';
 import { auditLog } from '../../db/schema/audit-log.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
 import { findUserByEmail, findUserById, UserEmailTakenError } from '../users.ts';
-import { acceptInvitation, InvitationMailError, inviteUser } from './invitation.ts';
+import { InvitationMailError, inviteUser } from './invitation.ts';
 
 const GOOD_PASSWORD = 'a perfectly fine passphrase';
 
@@ -115,9 +115,8 @@ describe('RFC-20 R6 POST /api/auth/invite/accept', () => {
     const cookie = cookieFrom(res, '__Host-session');
     expect(cookie).toMatch(/^__Host-session=[A-Za-z0-9_-]{43}$/);
     expect((await findUserById(t.db, user.id))?.passwordHash?.startsWith('$argon2id$')).toBe(true);
-    // Task 15
-    // const me = await call(t.app, 'GET', '/api/auth/me', { cookie: cookie ?? '' });
-    // expect(me.status).toBe(200);
+    const me = await call(t.app, 'GET', '/api/auth/me', { cookie: cookie ?? '' });
+    expect(me.status).toBe(200);
     const audit = await lastAudit(t, 'auth.invite.accepted');
     expect(audit).toMatchObject({ actorUserId: user.id, targetId: user.id, ip, userAgent: 'UA/9' });
     const again = await call(t.app, 'POST', '/api/auth/invite/accept', {
