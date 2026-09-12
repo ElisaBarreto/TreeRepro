@@ -1,6 +1,6 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router';
 
-/** @rfc RFC-10 R3 */
+/** @rfc RFC-13 R2 */
 export const Route = createRootRoute({
   component: () => <Outlet />,
 });

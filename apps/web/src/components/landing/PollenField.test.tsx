@@ -46,7 +46,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('RFC-10 R3 PollenField', () => {
+describe('RFC-13 R7 PollenField', () => {
   it('renders a decorative canvas that never takes the pointer', () => {
     const { container } = render(<PollenField count={10} emitterRef={createRef()} />);
     const canvas = container.querySelector('canvas');

@@ -60,14 +60,14 @@ const GUST_FORCE = 0.12;
 const MAX_VX = 0.18;
 const MAX_VY = 0.14;
 
-/** Fade in over the first 8% of a life, hold, fade out over the last 25%. @rfc RFC-10 R3 */
+/** Fade in over the first 8% of a life, hold, fade out over the last 25%. @rfc RFC-13 R7 */
 export function grainAlpha(age: number, life: number): number {
   const k = age / life;
   const env = k < 0.08 ? k / 0.08 : k > 0.75 ? (1 - k) / 0.25 : 1;
   return Math.max(0, Math.min(1, env));
 }
 
-/** @rfc RFC-10 R3 */
+/** @rfc RFC-13 R7 */
 export function createPollen(initial: PollenBounds, options: PollenOptions): Pollen {
   const random = options.random ?? Math.random;
   let bounds = initial;

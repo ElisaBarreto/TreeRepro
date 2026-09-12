@@ -12,7 +12,7 @@ const ME_QUERY_KEY = ['auth', 'me'] as const;
  * The landing page: the only public screen. Sign in on the right, the emblem
  * on the left, pollen in the air. A visitor with a live session sees who they
  * are signed in as until the workspace pages exist.
- * @rfc RFC-10 R3
+ * @rfc RFC-13 R2
  * @rfc RFC-22 R7
  */
 export function HomePage() {

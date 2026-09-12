@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { HomePage } from '../pages/HomePage.tsx';
 
-/** @rfc RFC-10 R3 */
+/** @rfc RFC-13 R2 */
 export const Route = createFileRoute('/')({
   component: HomePage,
 });

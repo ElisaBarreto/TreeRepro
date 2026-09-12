@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
 
-describe('RFC-10 R3 HomePage', () => {
+describe('RFC-13 R2 HomePage', () => {
   it('renders the product name', async () => {
     renderWithProviders(<HomePage />);
     expect(screen.getByRole('heading', { name: 'TreeRepro' })).toBeInTheDocument();

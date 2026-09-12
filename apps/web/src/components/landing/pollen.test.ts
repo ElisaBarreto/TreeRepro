@@ -17,7 +17,7 @@ function seeded(seed = 1) {
   };
 }
 
-describe('RFC-10 R3 pollen simulation', () => {
+describe('RFC-13 R7 pollen simulation', () => {
   it('spawns the requested number of grains, half from the canopy and half in the open air', () => {
     const pollen = createPollen(bounds, { count: 100, random: seeded() });
     expect(pollen.grains).toHaveLength(100);
