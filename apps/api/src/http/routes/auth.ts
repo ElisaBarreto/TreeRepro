@@ -1,8 +1,16 @@
-import { inviteAcceptBodySchema, loginBodySchema, loginTotpBodySchema } from '@treerepro/contracts';
+import {
+  changePasswordBodySchema,
+  forgotPasswordBodySchema,
+  inviteAcceptBodySchema,
+  loginBodySchema,
+  loginTotpBodySchema,
+  resetPasswordBodySchema,
+} from '@treerepro/contracts';
 import { Hono } from 'hono';
 import type { AuthContext } from '../../auth/context.ts';
 import { acceptInvitation } from '../../auth/flows/invitation.ts';
 import { auditLoginFailure, login, loginTotp } from '../../auth/flows/login.ts';
+import { changePassword, forgotPassword, resetPassword } from '../../auth/flows/password.ts';
 import { logout, logoutAll } from '../../auth/flows/session.ts';
 import { RATE_LIMITS } from '../../auth/rate-limit.ts';
 import { toAuthUser } from '../../auth/users.ts';
@@ -50,6 +58,10 @@ export function authRoutes(ctx: AuthContext) {
         return raw ? ctx.mfa.challengeId(raw) : ipKey(c);
       },
     },
+  ]);
+  const forgotLimit = rateLimit(ctx.limiter, [
+    { scope: 'forgot:email', rule: RATE_LIMITS.forgotEmailIp, key: emailIpKey },
+    { scope: 'forgot:ip', rule: RATE_LIMITS.forgotIp, key: ipKey },
   ]);
 
   return new Hono<AppEnv>()
@@ -107,5 +119,41 @@ export function authRoutes(ctx: AuthContext) {
     })
     .get('/me', requireSession, (c) =>
       c.json({ data: { user: toAuthUser(currentUser(c)), permissions: [] as string[] } }),
+    )
+    .post(
+      '/password/forgot',
+      forgotLimit,
+      validate('json', forgotPasswordBodySchema),
+      async (c) => {
+        await forgotPassword(ctx, {
+          ...c.req.valid('json'),
+          ip: clientIp(c),
+          userAgent: userAgent(c),
+        });
+        return c.json({ data: { status: 'sent' as const } });
+      },
+    )
+    .post('/password/reset', tokenLimit, validate('json', resetPasswordBodySchema), async (c) => {
+      await resetPassword(ctx, {
+        ...c.req.valid('json'),
+        ip: clientIp(c),
+        userAgent: userAgent(c),
+      });
+      return c.json({ data: { status: 'ok' as const } });
+    })
+    .post(
+      '/password/change',
+      requireSession,
+      validate('json', changePasswordBodySchema),
+      async (c) => {
+        await changePassword(ctx, {
+          user: currentUser(c),
+          session: currentSession(c),
+          ...c.req.valid('json'),
+          ip: clientIp(c),
+          userAgent: userAgent(c),
+        });
+        return c.json({ data: { status: 'ok' as const } });
+      },
     );
 }
