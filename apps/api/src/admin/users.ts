@@ -204,3 +204,29 @@ export async function resendInvite(
   });
   return withRoles(ctx.db, user);
 }
+
+/** The caller's own name; actor and target are the same user. @rfc RFC-50 R11 */
+export async function updateOwnName(
+  ctx: AuthContext,
+  input: RequestMeta & { user: UserRow; name: string },
+): Promise<User> {
+  const now = new Date(ctx.now());
+  return ctx.db.transaction(async (tx) => {
+    const current = await lockUser(tx, input.user.id);
+    const changed = await updateName(tx, { current, name: input.name, now });
+    if (changed) {
+      await recordAudit(tx, {
+        actorUserId: current.id,
+        action: 'users.updated',
+        targetType: 'user',
+        targetId: current.id,
+        ip: input.ip,
+        userAgent: input.userAgent,
+        metadata: { fields: ['name'] },
+      });
+    }
+    const row = await findUserById(tx, current.id);
+    if (!row) throw notFound();
+    return withRoles(tx, row);
+  });
+}

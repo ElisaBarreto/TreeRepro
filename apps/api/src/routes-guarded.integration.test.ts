@@ -135,8 +135,9 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       'POST /api/auth/password/change',
       'POST /api/auth/totp/confirm',
       'POST /api/auth/totp/disable',
-      // PATCH /api/me, POST /api/admin/roles and PATCH /api/admin/roles/:id
-      // join this list in Tasks 8-10, once those routes exist.
+      'PATCH /api/me',
+      // POST /api/admin/roles and PATCH /api/admin/roles/:id join this list
+      // in Task 8, once those routes exist.
       'POST /api/admin/users',
       'PATCH /api/admin/users/:id',
     ];
