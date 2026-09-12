@@ -8,7 +8,9 @@ export type LogLevel = (typeof LOG_LEVELS)[number];
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  // 0 is valid here (not for DB_PORT/REDIS_PORT): it asks the OS for an
+  // ephemeral port, used by the boot smoke test (Task 13).
+  PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
   APP_ORIGIN: z.url(),
   DB_HOST: z.string().min(1),
