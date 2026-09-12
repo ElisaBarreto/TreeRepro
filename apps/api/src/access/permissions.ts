@@ -10,14 +10,31 @@ import type { AccessContext } from './context.ts';
 /** @rfc RFC-32 R2 */
 export const PERMISSION_CACHE_TTL_MS = 5 * 60 * 1000;
 
+/** The generation counter outlives the entry so a slow fill still sees the bump. @rfc RFC-32 R3 */
+export const PERMISSION_GENERATION_TTL_MS = 10 * 60 * 1000;
+
 /** @rfc RFC-32 R2, R3 */
 export interface PermissionCache {
   get(userId: string): Promise<readonly PermissionKey[] | null>;
-  set(userId: string, keys: readonly PermissionKey[]): Promise<void>;
+  /** The user's current invalidation counter as a string; '0' when absent. */
+  generation(userId: string): Promise<string>;
+  /** Writes only while the counter still equals `generation`, so a fill that raced an invalidation is discarded. */
+  set(userId: string, keys: readonly PermissionKey[], generation: string): Promise<void>;
+  /** Deletes the entry and bumps the counter. */
   invalidate(userIds: readonly string[]): Promise<void>;
 }
 
 const cacheKey = (userId: string) => `perms:${userId}`;
+const generationKey = (userId: string) => `perms:gen:${userId}`;
+
+// KEYS[1] = generation counter, KEYS[2] = entry; ARGV = expected generation, value, ttl(ms).
+// Writes the entry only while the counter still equals the expected generation.
+const SET_IF_GENERATION_SCRIPT = `
+local gen = redis.call('GET', KEYS[1]) or '0'
+if gen ~= ARGV[1] then return 0 end
+redis.call('SET', KEYS[2], ARGV[2], 'PX', ARGV[3])
+return 1
+`;
 
 /** @rfc RFC-32 R2, R3 */
 export function createPermissionCache(redis: Redis): PermissionCache {
@@ -27,20 +44,34 @@ export function createPermissionCache(redis: Redis): PermissionCache {
       if (!raw) return null;
       try {
         const parsed: unknown = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return null;
-        return parsed.filter(
-          (k): k is PermissionKey => typeof k === 'string' && isPermissionKey(k),
-        );
+        if (typeof parsed !== 'object' || parsed === null || !('keys' in parsed)) return null;
+        const keys: unknown = parsed.keys;
+        if (!Array.isArray(keys)) return null;
+        return keys.filter((k): k is PermissionKey => typeof k === 'string' && isPermissionKey(k));
       } catch {
         return null;
       }
     },
-    async set(userId, keys) {
-      await redis.set(cacheKey(userId), JSON.stringify([...keys]), 'PX', PERMISSION_CACHE_TTL_MS);
+    async generation(userId) {
+      return (await redis.get(generationKey(userId))) ?? '0';
+    },
+    async set(userId, keys, generation) {
+      await redis.eval(
+        SET_IF_GENERATION_SCRIPT,
+        2,
+        generationKey(userId),
+        cacheKey(userId),
+        generation,
+        JSON.stringify({ gen: generation, keys: [...keys] }),
+        String(PERMISSION_CACHE_TTL_MS),
+      );
     },
     async invalidate(userIds) {
       if (userIds.length === 0) return;
-      await redis.del(...userIds.map(cacheKey));
+      const multi = redis.multi().del(...userIds.map(cacheKey));
+      for (const id of userIds)
+        multi.incr(generationKey(id)).pexpire(generationKey(id), PERMISSION_GENERATION_TTL_MS);
+      await multi.exec();
     },
   };
 }
@@ -80,7 +111,8 @@ export async function resolvePermissions(
 ): Promise<ReadonlySet<PermissionKey>> {
   const cached = await ctx.permissionCache.get(userId);
   if (cached) return new Set(cached);
+  const gen = await ctx.permissionCache.generation(userId);
   const keys = await effectivePermissions(ctx.db, userId);
-  await ctx.permissionCache.set(userId, keys);
+  await ctx.permissionCache.set(userId, keys, gen);
   return new Set(keys);
 }

@@ -7,6 +7,7 @@ import {
   createPermissionCache,
   effectivePermissions,
   PERMISSION_CACHE_TTL_MS,
+  PERMISSION_GENERATION_TTL_MS,
   resolvePermissions,
 } from './permissions.ts';
 
@@ -36,14 +37,34 @@ describe('RFC-32 R2, R3 permission cache', () => {
     const cache = createPermissionCache(t.redis);
     const userId = `u-${Math.random().toString(16).slice(2)}`;
     expect(await cache.get(userId)).toBeNull();
-    await cache.set(userId, ['users.read', 'audit.read']);
-    expect(await t.redis.get(`perms:${userId}`)).toBe('["users.read","audit.read"]');
+    await cache.set(userId, ['users.read', 'audit.read'], '0');
+    expect(JSON.parse((await t.redis.get(`perms:${userId}`)) ?? 'null')).toEqual({
+      gen: '0',
+      keys: ['users.read', 'audit.read'],
+    });
     expect(await t.redis.pttl(`perms:${userId}`)).toBeGreaterThan(PERMISSION_CACHE_TTL_MS - 5000);
     expect(await cache.get(userId)).toEqual(['users.read', 'audit.read']);
     await t.redis.set(`perms:${userId}`, 'not json');
     expect(await cache.get(userId)).toBeNull();
+    await t.redis.set(`perms:${userId}`, '["users.read"]');
+    expect(await cache.get(userId)).toBeNull();
     await cache.invalidate([userId, 'missing']);
     expect(await t.redis.exists(`perms:${userId}`)).toBe(0);
+  });
+
+  it('set with a stale generation writes nothing', async () => {
+    const cache = createPermissionCache(t.redis);
+    const userId = `u-${Math.random().toString(16).slice(2)}`;
+    expect(await cache.generation(userId)).toBe('0');
+    await cache.invalidate([userId]);
+    expect(await cache.generation(userId)).toBe('1');
+    expect(await t.redis.pttl(`perms:gen:${userId}`)).toBeGreaterThan(
+      PERMISSION_GENERATION_TTL_MS - 5000,
+    );
+    await cache.set(userId, ['users.read'], '0');
+    expect(await cache.get(userId)).toBeNull();
+    await cache.set(userId, ['users.read'], await cache.generation(userId));
+    expect(await cache.get(userId)).toEqual(['users.read']);
   });
 
   it('resolvePermissions serves the cache until invalidated', async () => {
