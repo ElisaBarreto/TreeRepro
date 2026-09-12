@@ -55,3 +55,13 @@ CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default 
 **Symptom:** `trivy image treerepro-web` locally lists HIGH findings in `usr/bin/caddy` (Go stdlib, x/net, grpc) but `Images` is green.
 **Cause:** The `web` scan uses `vuln-type: os`. Go-binary findings need a new upstream caddy build; even the newest `caddy:alpine` tag carries several until its next release.
 **Fix:** Nothing locally. Merge the Dependabot docker PR when a new caddy tag appears; check the binary's state with `trivy image --pkg-types library treerepro-web`.
+
+## Dependabot npm updates fail on every run
+**Symptom:** The `Dependabot Updates` run for `npm_and_yarn` ends with `Could not download the pnpm 12.4.1 binary: Could not reach https://registry.npmjs.org/@pnpm/exe.linux-x64/12.4.1: fetch failed`; no npm PRs appear. Docker and GitHub Actions updates work.
+**Cause:** pnpm 12's npm package is a launcher that downloads the native `@pnpm/exe` binary with a plain `fetch()`, ignoring Dependabot's proxy. Upstream bug: https://github.com/dependabot/dependabot-core/issues/16170 (open since 2026-09-03). Dependabot security updates for npm hit the same path.
+**Fix:** Nothing on our side. Until upstream ships the fix, `pnpm audit` in `Verify`, `Dependency review` and CodeQL still cover npm; run `pnpm outdated` by hand for version bumps. Re-check the issue when the weekly run keeps failing.
+
+## Dependabot proposes a major base-image bump
+**Symptom:** A PR like "bump node from 24.21.0-alpine to 26.8-alpine" shows up and its checks are green.
+**Cause:** Docker tags have no "engines" field; Dependabot cannot know Node 24 is the pinned runtime.
+**Fix:** `.github/dependabot.yml` ignores `version-update:semver-major` for the `docker` and `docker-compose` ecosystems. A major runtime bump is a deliberate PR that also updates README "Stack", `package.json` engines and `.node-version`. Close the Dependabot PR with `@dependabot ignore this major version` so it is not reopened.
