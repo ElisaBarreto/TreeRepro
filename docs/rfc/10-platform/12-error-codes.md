@@ -39,8 +39,14 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `AUTH_TOTP_ALREADY_ENABLED` | 409 | TOTP setup requested while enabled (RFC-23 R2). |
 | `AUTH_TOTP_NOT_ENABLED` | 409 | TOTP disable requested while off (RFC-23 R7). |
 | `USER_EMAIL_TAKEN` | 409 | Another account already uses this email (RFC-20 R3). |
+| `PERMISSION_DENIED` | 403 | Session user lacks the route's permission or the resource rule refused (RFC-32 R4). |
+| `PERMISSION_UNKNOWN` | 400 | A permission key is not in the catalog; `details` lists them (RFC-31 R3). |
+| `ROLE_NOT_FOUND` | 404 | Role id does not exist (RFC-31 R4, R6). |
+| `ROLE_NAME_TAKEN` | 409 | Another role has this name, case-insensitively (RFC-31 R3). |
+| `ROLE_IS_SYSTEM` | 409 | The `admin` system role cannot be changed or deleted (RFC-31 R2). |
+| `ROLE_LAST_ADMIN` | 409 | The change would leave no active administrator (RFC-31 R7). |
 
-Reserved prefixes for later RFCs: `PERMISSION_` (RFC-3x), `ROLE_` (RFC-5x).
+Reserved prefixes for later RFCs: `USER_` beyond `USER_EMAIL_TAKEN` (RFC-5x).
 
 ## Open questions
 
@@ -51,3 +57,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
 - 2026-09-12 — AUTH_* and USER_EMAIL_TAKEN added (RFC-20–23).
+- 2026-09-12 — PERMISSION_* and ROLE_* codes (RFC-31, RFC-32).

@@ -27,3 +27,6 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-22 | Login and sessions | accepted |
 | RFC-23 | TOTP second factor | accepted |
 | RFC-24 | Rate limiting | accepted |
+| RFC-30 | Permission catalog | draft |
+| RFC-31 | Roles | draft |
+| RFC-32 | Authorization enforcement | draft |
