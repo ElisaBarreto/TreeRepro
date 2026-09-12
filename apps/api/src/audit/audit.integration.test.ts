@@ -99,8 +99,8 @@ describe('RFC-41 recordAudit', () => {
     });
   });
 
-  it('R2 rejects DELETE without the purge flag and allows it with SET LOCAL', async () => {
-    await withRollback(t.db, async (tx) => {
+  it('R2 trigger rejects DELETE without the purge flag and allows it with SET LOCAL, for a role that holds the privilege', async () => {
+    await withRollback(su.db, async (tx) => {
       const { id } = await recordAudit(tx, { actorUserId: null, action: 'auth.logout' });
       await expect(
         unwrapDbError(tx.transaction((sp) => sp.delete(auditLog).where(eq(auditLog.id, id)))),
