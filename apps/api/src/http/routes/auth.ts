@@ -5,6 +5,8 @@ import {
   loginBodySchema,
   loginTotpBodySchema,
   resetPasswordBodySchema,
+  totpConfirmBodySchema,
+  totpDisableBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import type { AuthContext } from '../../auth/context.ts';
@@ -12,6 +14,7 @@ import { acceptInvitation } from '../../auth/flows/invitation.ts';
 import { auditLoginFailure, login, loginTotp } from '../../auth/flows/login.ts';
 import { changePassword, forgotPassword, resetPassword } from '../../auth/flows/password.ts';
 import { logout, logoutAll } from '../../auth/flows/session.ts';
+import { confirmTotpSetup, disableTotp, startTotpSetup } from '../../auth/flows/totp.ts';
 import { RATE_LIMITS } from '../../auth/rate-limit.ts';
 import { toAuthUser } from '../../auth/users.ts';
 import { clientIp, userAgent } from '../client-ip.ts';
@@ -155,5 +158,27 @@ export function authRoutes(ctx: AuthContext) {
         });
         return c.json({ data: { status: 'ok' as const } });
       },
-    );
+    )
+    .post('/totp/setup', requireSession, async (c) =>
+      c.json({ data: await startTotpSetup(ctx, currentUser(c)) }),
+    )
+    .post('/totp/confirm', requireSession, validate('json', totpConfirmBodySchema), async (c) =>
+      c.json({
+        data: await confirmTotpSetup(ctx, {
+          user: currentUser(c),
+          ...c.req.valid('json'),
+          ip: clientIp(c),
+          userAgent: userAgent(c),
+        }),
+      }),
+    )
+    .post('/totp/disable', requireSession, validate('json', totpDisableBodySchema), async (c) => {
+      await disableTotp(ctx, {
+        user: currentUser(c),
+        ...c.req.valid('json'),
+        ip: clientIp(c),
+        userAgent: userAgent(c),
+      });
+      return c.json({ data: { status: 'ok' as const } });
+    });
 }
