@@ -122,6 +122,16 @@ describe('RFC-31 R3, R4, R5 role services', () => {
     expect([...(await resolvePermissions(ctx(), a.user.id))]).toEqual(['audit.read']);
     expect([...(await resolvePermissions(ctx(), b.user.id))]).toEqual(['audit.read']);
     expect((await userIdsWithRole(t.db, role.id)).sort()).toEqual([a.user.id, b.user.id].sort());
+    await updateRole(ctx(), {
+      id: role.id,
+      name: `${role.name} renamed`,
+      permissions: ['audit.read', 'audit.read'],
+      actorUserId: null,
+    });
+    expect(await lastAudit(t, 'roles.updated')).toMatchObject({
+      targetId: role.id,
+      metadata: { changes: ['name'] },
+    });
     expect(
       await code(
         updateRole(ctx(), {

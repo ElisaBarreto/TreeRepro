@@ -167,7 +167,12 @@ export async function updateRole(
     if (name !== undefined && name !== current.name) changes.push('name');
     if (input.description !== undefined && input.description !== current.description)
       changes.push('description');
-    if (permissions !== undefined) changes.push('permissions');
+    if (permissions !== undefined) {
+      const stored = (await permissionsOf(tx, input.id)).sort();
+      const same =
+        stored.length === permissions.length && stored.every((key, i) => key === permissions[i]);
+      if (!same) changes.push('permissions');
+    }
     let updated: RoleRow | undefined;
     try {
       [updated] = await tx
