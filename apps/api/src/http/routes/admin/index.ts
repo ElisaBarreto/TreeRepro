@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
 import type { AppEnv } from '../../env.ts';
 import { requirePermission } from '../../middleware/require-permission.ts';
+import { adminRoleRoutes } from './roles.ts';
 import { adminUserRoutes } from './users.ts';
 
 /**
@@ -15,5 +16,6 @@ export function adminRoutes(ctx: AuthContext) {
     .get('/permissions', requirePermission(ctx, 'roles.read'), (c) =>
       c.json({ data: PERMISSION_KEYS.map((key) => ({ key, description: PERMISSIONS[key] })) }),
     )
-    .route('/users', adminUserRoutes(ctx));
+    .route('/users', adminUserRoutes(ctx))
+    .route('/roles', adminRoleRoutes(ctx));
 }

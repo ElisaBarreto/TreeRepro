@@ -135,10 +135,11 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       'POST /api/auth/password/change',
       'POST /api/auth/totp/confirm',
       'POST /api/auth/totp/disable',
-      // PATCH /api/me, POST /api/admin/roles and PATCH /api/admin/roles/:id
-      // join this list in Tasks 8-10, once those routes exist.
+      // PATCH /api/me joins this list in another task, once that route exists.
       'POST /api/admin/users',
       'PATCH /api/admin/users/:id',
+      'POST /api/admin/roles',
+      'PATCH /api/admin/roles/:id',
     ];
     for (const key of withBody) {
       const [method, path] = key.split(' ') as [string, string];
