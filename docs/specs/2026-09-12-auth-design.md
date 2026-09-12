@@ -30,10 +30,9 @@ Constraints inherited from the foundation: backend is the only authority; every 
 
 | Package | Version | Role |
 |---|---|---|
-| `@node-rs/argon2` | 2.2.1 | argon2id hashing (native, prebuilt for linux-x64/arm64 musl and glibc) |
+| `@node-rs/argon2` | 2.2.0 | argon2id hashing (native, prebuilt for linux-x64/arm64 musl and glibc); 2.2.1 was younger than the 7-day `minimumReleaseAge` guard on 2026-09-12 |
 | `otpauth` | 9.5.2 | TOTP (RFC 6238) and `otpauth://` URIs |
-| `nodemailer` | 10.0.7 | SMTP transport (10.0.8–10.0.9 were younger than the 24 h `minimumReleaseAge` policy on 2026-09-12) |
-| `@types/nodemailer` | 8.0.1 | types |
+| `nodemailer` | 10.0.0 | SMTP transport; ships its own types (no `@types/nodemailer`). 10.0.1–10.0.9 were younger than the 7-day `minimumReleaseAge` guard on 2026-09-12 |
 
 Everything else is already pinned (Hono 4.13.7, Drizzle 0.45.2, ioredis 6.0.0, Zod 4.6.2). Exact versions are re-verified when the plan is executed.
 
