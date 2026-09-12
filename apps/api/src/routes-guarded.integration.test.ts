@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../test/helpers/app.ts';
+import { adminRoleId } from '../test/helpers/roles.ts';
 import { loginAs } from '../test/helpers/session.ts';
 import { createUser } from '../test/helpers/users.ts';
-import { isGuard } from './http/guards.ts';
+import { guardKind } from './http/guards.ts';
 import { PUBLIC_ROUTES } from './http/public-routes.ts';
+import { SELF_SERVICE_ROUTES } from './http/self-service-routes.ts';
 
 interface RouteEntry {
   method: string;
@@ -21,21 +23,32 @@ function endpoints(routes: RouteEntry[]): Map<string, RouteEntry[]> {
   return map;
 }
 
-describe('RFC-02 R12 every route is guarded or public', () => {
+describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () => {
   const t = useTestApp();
 
-  it('fails on any endpoint that is neither behind a guard nor on the RFC-22 R1 allowlist', () => {
-    const unguarded: string[] = [];
+  it('public routes carry no guard, self-service routes requireSession, everything else requirePermission', () => {
+    const wrong: string[] = [];
     for (const [key, entries] of endpoints(t.app.routes as RouteEntry[])) {
-      if (PUBLIC_ROUTES.includes(key)) continue;
-      if (!entries.some((e) => isGuard(e.handler))) unguarded.push(key);
+      const kinds = new Set(entries.map((e) => guardKind(e.handler)).filter(Boolean));
+      const [, path] = key.split(' ') as [string, string];
+      if (PUBLIC_ROUTES.includes(key)) {
+        if (kinds.size > 0) wrong.push(`${key}: public but guarded`);
+      } else if (SELF_SERVICE_ROUTES.includes(key)) {
+        if (!kinds.has('session') || kinds.has('permission'))
+          wrong.push(`${key}: self-service must carry requireSession only`);
+        if (path.startsWith('/api/admin/'))
+          wrong.push(`${key}: admin routes cannot be self-service`);
+      } else if (!kinds.has('permission')) {
+        wrong.push(`${key}: needs requirePermission`);
+      }
     }
-    expect(unguarded).toEqual([]);
+    expect(wrong).toEqual([]);
   });
 
-  it('the allowlist names only routes that exist', () => {
+  it('the allowlists name only routes that exist and do not overlap', () => {
     const keys = [...endpoints(t.app.routes as RouteEntry[]).keys()];
-    for (const route of PUBLIC_ROUTES) expect(keys).toContain(route);
+    for (const route of [...PUBLIC_ROUTES, ...SELF_SERVICE_ROUTES]) expect(keys).toContain(route);
+    expect(PUBLIC_ROUTES.filter((r) => SELF_SERVICE_ROUTES.includes(r))).toEqual([]);
   });
 
   it('exposes exactly the routes RFC-22 R1 lists', () => {
@@ -110,6 +123,28 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       const res = await call(t.app, method, path, { body: { unexpected: true }, cookie });
       expect(res.status, key).toBe(400);
       expect((await res.json()).error.code, key).toBe('VALIDATION_FAILED');
+    }
+  });
+
+  it('every permission-guarded route answers 403 PERMISSION_DENIED for a session without roles and not 403 for an admin', async () => {
+    const nobody = await createUser(t.db);
+    const admin = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const plain = (await loginAs(t, nobody.user)).cookie;
+    const adminCookie = (await loginAs(t, admin.user)).cookie;
+    for (const key of endpoints(t.app.routes as RouteEntry[]).keys()) {
+      if (PUBLIC_ROUTES.includes(key) || SELF_SERVICE_ROUTES.includes(key)) continue;
+      const [method, path] = key.split(' ') as [string, string];
+      const denied = await call(t.app, method, concrete(path), {
+        body: method === 'GET' ? undefined : {},
+        cookie: plain,
+      });
+      expect(denied.status, key).toBe(403);
+      expect((await denied.json()).error.code, key).toBe('PERMISSION_DENIED');
+      const allowed = await call(t.app, method, concrete(path), {
+        body: method === 'GET' ? undefined : {},
+        cookie: adminCookie,
+      });
+      expect(allowed.status, key).not.toBe(403);
     }
   });
 
