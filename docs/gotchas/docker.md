@@ -26,3 +26,8 @@
 **Symptom:** `/api/health/ready` returned 200 through Caddy although `respond @ready 404` was written first.
 **Cause:** Caddy does not run directives in file order; it sorts them by its built-in directive order (`handle` runs before `respond`), so a later `handle` swallowed the request before the earlier `respond` could match.
 **Fix:** Both `infra/docker/Caddyfile.dev` and `infra/docker/Caddyfile.prod` wrap the directives in a `route { }` block, which disables the automatic sort and preserves the written order.
+
+## Redis password lives in a tmpfs config file
+**Symptom:** `ps` inside the container shows no password.
+**Cause:** `--requirepass` on argv is visible via `/proc`.
+**Fix:** the compose command writes `/tmp/redis.conf` on a tmpfs and `redis-cli` authenticates through `REDISCLI_AUTH`.

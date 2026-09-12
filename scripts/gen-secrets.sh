@@ -2,6 +2,7 @@
 # Generates development secrets in infra/secrets/ (RFC-02 R6). Never overwrites existing files.
 # Values are hex only, so they are safe inside SQL and URLs.
 set -eu
+umask 077
 dir="$(cd "$(dirname "$0")/.." && pwd)/infra/secrets"
 mkdir -p "$dir"
 

@@ -17,3 +17,4 @@ RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/web bui
 FROM caddy:2.9.1-alpine
 COPY infra/docker/Caddyfile.prod /etc/caddy/Caddyfile
 COPY --from=build /workspace/apps/web/dist /srv/web
+VOLUME ["/data", "/config"]
