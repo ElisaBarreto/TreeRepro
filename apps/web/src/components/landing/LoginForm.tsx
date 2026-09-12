@@ -107,7 +107,6 @@ export function LoginForm({ onSignedIn }: LoginFormProps) {
             id={ids.code}
             name="code"
             type="text"
-            inputMode="numeric"
             autoComplete="one-time-code"
             placeholder="123456"
             required
@@ -119,6 +118,7 @@ export function LoginForm({ onSignedIn }: LoginFormProps) {
           <SubmitButton pending={pending}>Verify</SubmitButton>
           <button
             type="button"
+            disabled={pending}
             onClick={() => {
               setStep('credentials');
               setError(null);
