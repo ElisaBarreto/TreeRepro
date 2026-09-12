@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { unwrapDbError, useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { TEST_KEYRING } from '../../test/helpers/pii.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
-import { decryptPii } from '../security/pii.ts';
+import { decryptPii, PiiDecryptError } from '../security/pii.ts';
 import { AuditActionError, AuditMetadataError, assertSafeMetadata, recordAudit } from './audit.ts';
 
 describe('RFC-41 recordAudit', () => {
@@ -36,11 +36,40 @@ describe('RFC-41 recordAudit', () => {
       const stored = raw[0] as { ip: string; user_agent: string };
       expect(stored.ip.startsWith('v1:')).toBe(true);
       expect(stored.ip).not.toContain('203.0.113.7');
-      expect(decryptPii(TEST_KEYRING, stored.ip)).toBe('203.0.113.7');
-      expect(decryptPii(TEST_KEYRING, stored.user_agent)).toBe('Mozilla/5.0');
+      expect(decryptPii(TEST_KEYRING, stored.ip, 'audit_log.ip')).toBe('203.0.113.7');
+      expect(decryptPii(TEST_KEYRING, stored.user_agent, 'audit_log.user_agent')).toBe(
+        'Mozilla/5.0',
+      );
       const [row] = await tx.select().from(auditLog).where(eq(auditLog.id, id));
       expect(row?.ip).toBe('203.0.113.7');
       expect(row?.userAgent).toBe('Mozilla/5.0');
+    });
+  });
+
+  it('RFC-40 R2, R8 a ciphertext copied into another column cannot be read (AAD binding)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const { id } = await recordAudit(tx, {
+        actorUserId: null,
+        action: 'auth.login.success',
+        ip: '203.0.113.7',
+      });
+      const [copy] = await tx.execute<{ id: string }>(
+        sql`insert into audit_log (action, user_agent) select action, ip from audit_log where id = ${id} returning id`,
+      );
+      await expect(
+        tx
+          .select()
+          .from(auditLog)
+          .where(eq(auditLog.id, copy?.id ?? '')),
+      ).rejects.toThrow(PiiDecryptError);
+    });
+  });
+
+  it('RFC-40 R11 equality on an encrypted column never matches; the blind index is the lookup', async () => {
+    await withRollback(t.db, async (tx) => {
+      await recordAudit(tx, { actorUserId: null, action: 'auth.login.success', ip: '203.0.113.7' });
+      const rows = await tx.select().from(auditLog).where(eq(auditLog.ip, '203.0.113.7'));
+      expect(rows).toHaveLength(0);
     });
   });
 
