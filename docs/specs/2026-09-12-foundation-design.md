@@ -71,12 +71,13 @@ treerepro/
 ├── docs/
 │   ├── rfc/                # source of truth (section 10)
 │   ├── gotchas/            # <area>.md
-│   └── superpowers/        # specs/, plans/
+│   ├── specs/              # design documents
+│   └── plans/              # implementation plans
 ├── .github/workflows/ci.yml
 ├── compose.yml             # base: postgres, redis, api, web, caddy, mailpit(dev)
 ├── compose.dev.yml         # override: hot reload, published ports, mailpit
 ├── compose.prod.yml        # override: TLS, secrets, no published DB/Redis ports
-├── CLAUDE.md
+├── README.md
 └── package.json            # pnpm workspaces
 ```
 
@@ -310,10 +311,10 @@ Red/green/refactor per RFC rule. No production code without a failing test first
 
 ### Documentation
 
-- `CLAUDE.md` — durable rules only: stack and versions, commands, where things live, policies (RFC, TDD, security, language). Short; points to RFCs and gotchas. Never a log.
+- `README.md` — project handbook: durable rules only (stack and versions, commands, where things live, policies: RFC, TDD, security, language). Short; points to RFCs and gotchas. Never a log. AI-assistant configuration files (`CLAUDE.md`, `.claude/`, `.superpowers/`) are local to each developer and gitignored; the repository must be self-sufficient without any agent.
 - `docs/gotchas/<area>.md` — concrete code/infra pitfalls; one entry = symptom, cause, fix.
-- `docs/superpowers/specs/` — design documents (this file).
-- `docs/superpowers/plans/` — implementation plans.
+- `docs/specs/` — design documents (this file).
+- `docs/plans/` — implementation plans.
 
 ### Git
 

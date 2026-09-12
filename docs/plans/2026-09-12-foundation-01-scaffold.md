@@ -1,6 +1,6 @@
 # Foundation 01 — Scaffold, Infrastructure and Process — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Execute task by task, in order; each task ends with passing checks and a commit. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A running, tested skeleton of TreeRepro: pnpm monorepo, Hono API with security baseline and health endpoints, PII encryption module, append-only audit log, React SPA placeholder, Docker Compose stack (Postgres 18, Redis 8, Caddy), CI workflow, RFC process with automated code-linkage enforcement.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node 24.21 LTS, pnpm 12.4, TypeScript 7.0, Hono 4.13, Zod 4.6, Drizzle ORM 0.45 + postgres.js 3.4, ioredis 6.0, pino 10.3, React 19.3, Vite 8.3, TanStack Router 1.170 / Query 5.102, Tailwind 4.3, Vitest 5.0, testcontainers 12.1, Biome 2.5, PostgreSQL 18.6, Redis 8.8, Caddy 2.9, Docker Compose v5.5.
 
-**Spec:** `docs/superpowers/specs/2026-09-12-foundation-design.md`
+**Spec:** `docs/specs/2026-09-12-foundation-design.md`
 
 This is plan 1 of 5. Later plans: 02 auth, 03 RBAC, 04 admin + self-service + GDPR, 05 frontend + E2E.
 
@@ -35,7 +35,7 @@ treerepro/
 ├── .github/workflows/ci.yml
 ├── .dockerignore  .env.example  .gitignore  .node-version  .npmrc
 ├── biome.json  package.json  pnpm-workspace.yaml  tsconfig.json  vitest.config.ts
-├── CLAUDE.md
+├── README.md
 ├── compose.yml  compose.dev.yml  compose.prod.yml
 ├── scripts/gen-secrets.sh
 ├── infra/
@@ -78,7 +78,8 @@ treerepro/
     ├── rfc/10-platform/10-architecture.md  11-api-conventions.md  12-error-codes.md
     ├── rfc/40-data-protection/40-pii-encryption.md  41-audit-log.md
     ├── gotchas/README.md  node.md  postgres.md  pnpm.md  docker.md
-    └── superpowers/specs/…  plans/…
+    ├── specs/…
+    └── plans/…
 ```
 
 Responsibilities:
@@ -280,21 +281,21 @@ git commit -m "chore: scaffold pnpm monorepo with biome, typescript 7 and vitest
 
 ---
 
-### Task 2: Process documentation — CLAUDE.md, RFC index, RFC-00/01/02/10, gotchas index
+### Task 2: Process documentation — README.md, RFC index, RFC-00/01/02/10, gotchas index
 
 **Files:**
-- Create: `CLAUDE.md`, `docs/rfc/README.md`, `docs/gotchas/README.md`
+- Create: `README.md`, `docs/rfc/README.md`, `docs/gotchas/README.md`
 - Create: `docs/rfc/00-process/00-rfc-process.md`, `docs/rfc/00-process/01-tdd-policy.md`, `docs/rfc/00-process/02-security-principles.md`, `docs/rfc/10-platform/10-architecture.md`
 
 **Interfaces:**
 - Produces: RFC IDs and rule numbers referenced by every later task's `@rfc` tags. The RFC format (rules as `- **Rn**` list items) is what `tools/rfc-lint` parses in Task 3.
 
-- [ ] **Step 1: CLAUDE.md**
+- [ ] **Step 1: README.md** (agent-agnostic project handbook; no AI-tool-specific files are committed to this repository)
 
 ```markdown
 # TreeRepro
 
-Scientific data-collection platform. Everything sits behind login. GDPR applies to user data.
+Scientific data-collection platform. Everything sits behind login. GDPR applies to user data. This file is the project handbook: durable rules and pointers only, never a log.
 
 ## Stack (exact versions pinned in package.json; rationale in RFC-10)
 
@@ -310,7 +311,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `infra/` — Dockerfiles, Caddyfiles, Postgres init, secrets (gitignored).
 - `docs/rfc/` — business rules, the source of truth.
 - `docs/gotchas/<area>.md` — concrete code/infra pitfalls.
-- `docs/superpowers/specs`, `docs/superpowers/plans` — design docs and implementation plans.
+- `docs/specs`, `docs/plans` — design docs and implementation plans.
 
 ## Commands
 
@@ -338,9 +339,9 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 |---|---|
 | Business rule (formula, state, contract, policy) | `docs/rfc/NN-*.md` |
 | Code/infra pitfall specific to this project | `docs/gotchas/<area>.md` |
-| Design decision | `docs/superpowers/specs/` |
-| Implementation plan | `docs/superpowers/plans/` |
-| Durable project rules | this file — never a log |
+| Design decision | `docs/specs/` |
+| Implementation plan | `docs/plans/` |
+| Durable project rules | this `README.md` — never a log |
 ```
 
 - [ ] **Step 2: RFC index**
@@ -500,7 +501,7 @@ None.
 
 ## Context
 
-Design: `docs/superpowers/specs/2026-09-12-foundation-design.md`. This RFC fixes the structural rules the code must follow.
+Design: `docs/specs/2026-09-12-foundation-design.md`. This RFC fixes the structural rules the code must follow.
 
 ## Rules
 
@@ -548,8 +549,8 @@ Run: `pnpm lint`
 Expected: zero errors (Biome formats Markdown? No — Biome ignores `.md`; this confirms nothing else broke).
 
 ```bash
-git add CLAUDE.md docs/
-git commit -m "docs: add CLAUDE.md, RFC process (RFC-00/01/02/10) and gotchas index"
+git add README.md docs/
+git commit -m "docs: add README handbook, RFC process (RFC-00/01/02/10) and gotchas index"
 ```
 
 ---
