@@ -15,6 +15,7 @@ What runs, where it is configured, and what only a repository admin can change.
 | Trivy config (Dockerfile / Compose misconfiguration) | `.github/workflows/security.yml` (`Trivy config`) | PR, push main, weekly |
 | OpenSSF Scorecard | `.github/workflows/scorecard.yml` | push main, weekly |
 | Dependabot version updates (npm, actions, docker, compose) | `.github/dependabot.yml` | weekly, 7-day cooldown |
+| Dependabot auto-merge (minor/patch, after every required check) | `.github/workflows/dependabot-auto-merge.yml` | Dependabot PR |
 | pnpm release-age guard | `pnpm-workspace.yaml` (`minimumReleaseAge`) | every `pnpm install` |
 | Vulnerability reporting policy | `SECURITY.md` | — |
 
@@ -38,6 +39,7 @@ The repository belongs to a personal account, so collaborators cannot be admins:
 - Secret scanning with push protection.
 - Private vulnerability reporting.
 - Automatically delete head branches after merge (Settings → General).
+- Allow auto-merge (Settings → General) — without it `Dependabot auto-merge` fails with `Pull request auto merge is not allowed for this repository` and Dependabot PRs wait for a manual merge. After the first auto-merged PR, confirm the `push` workflows (CI, CodeQL, Gitleaks, Scorecard) ran on `main` for the merge commit: GitHub performs the merge outside the workflow, so they should; if they did not, the workflow needs a GitHub App token instead of `GITHUB_TOKEN`.
 
 CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default setup": GitHub refuses SARIF from the workflow while default setup is active.
 
@@ -59,7 +61,7 @@ CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default 
 ## Dependabot npm updates fail on every run
 **Symptom:** The `Dependabot Updates` run for `npm_and_yarn` ends with `Could not download the pnpm 12.4.1 binary: Could not reach https://registry.npmjs.org/@pnpm/exe.linux-x64/12.4.1: fetch failed`; no npm PRs appear. Docker and GitHub Actions updates work.
 **Cause:** pnpm 12's npm package is a launcher that downloads the native `@pnpm/exe` binary with a plain `fetch()`, ignoring Dependabot's proxy. Upstream bug: https://github.com/dependabot/dependabot-core/issues/16170 (open since 2026-09-03). Dependabot security updates for npm hit the same path.
-**Fix:** Nothing on our side. Until upstream ships the fix, detection still works — `pnpm audit` in `Verify` and `Dependency review` flag vulnerable npm dependencies, CodeQL scans our own source — but nothing opens remediation PRs. Once a week run `pnpm outdated` and `pnpm audit` locally, bump what they list with `pnpm update` (exact pins, `minimumReleaseAge` applies) and open the PR by hand. Re-check the upstream issue when the weekly run keeps failing.
+**Fix:** Nothing on our side. Until upstream ships the fix, detection still works — `pnpm audit` in `Verify` and `Dependency review` flag vulnerable npm dependencies, CodeQL scans our own source — but nothing opens remediation PRs. Once a week run `pnpm outdated` and `pnpm audit` locally, bump what they list with `pnpm update` (exact pins, `minimumReleaseAge` applies) and open the PR by hand. Re-check the upstream issue when the weekly run keeps failing. The Docker, Compose and Actions PRs that do open are merged by `Dependabot auto-merge` once every required check is green (minor/patch only; a group carrying a major bump stays manual).
 
 ## Dependabot proposes a major base-image bump
 **Symptom:** A PR like "bump node from 24.21.0-alpine to 26.8-alpine" shows up and its checks are green.

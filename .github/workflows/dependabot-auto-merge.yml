@@ -1,0 +1,42 @@
+name: Dependabot auto-merge
+
+# Turns on GitHub auto-merge for Dependabot pull requests whose highest bump is
+# minor or patch (.github/dependabot.yml groups updates per ecosystem; only the
+# docker and compose groups exclude majors themselves). The merge itself happens
+# later, once every required check of the `main` ruleset is green. A group that
+# carries a major bump, or a pull request not opened by Dependabot, is left for
+# a human. Needs "Allow auto-merge" on the repository (scripts/github-admin.sh).
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    name: Dependabot auto-merge
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # enable auto-merge
+      pull-requests: write # read the Dependabot metadata, enable auto-merge
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # update-type is the highest level in a grouped PR, so a group that
+      # carries one major bump stays manual. A Dependabot rebase re-runs this
+      # job (`synchronize`); skip when auto-merge is already armed.
+      - if: >-
+          github.event.pull_request.auto_merge == null
+          && (steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          || steps.metadata.outputs.update-type == 'version-update:semver-patch')
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}

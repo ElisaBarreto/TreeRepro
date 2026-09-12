@@ -1,5 +1,4 @@
 import { verify } from '@node-rs/argon2';
-import { and, eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import {
   call,
@@ -10,7 +9,6 @@ import {
 } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { createUser, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
-import { auditLog } from '../../db/schema/audit-log.ts';
 import { generateTotpCode, generateTotpSecret } from '../totp.ts';
 
 vi.mock('@node-rs/argon2', { spy: true });
@@ -63,7 +61,6 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     const ip = randomIp();
     await login({ email: randomEmail(), password: 'x' }, { ip });
     expect(vi.mocked(verify).mock.calls.length).toBe(calls + 1);
-    // No actor and no target for an unknown email: scope by this call's own IP.
     const failure = await lastAudit(t.db, 'auth.login.failure', { ip });
     expect(failure).toMatchObject({ actorUserId: null, metadata: { reason: 'unknown_email' } });
   });
@@ -100,11 +97,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     expect(cookieFrom(res, '__Host-mfa')).toMatch(/^__Host-mfa=[A-Za-z0-9_-]{43}$/);
     expect(setCookieLine(res, '__Host-mfa')).toContain('HttpOnly');
     expect(cookieFrom(res, '__Host-session')).toBeNull();
-    const successes = await t.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.action, 'auth.login.success'), eq(auditLog.actorUserId, user.id)));
-    expect(successes).toHaveLength(0);
+    expect(await lastAudit(t.db, 'auth.login.success', { actorUserId: user.id })).toBeUndefined();
   });
 
   it('RFC-24 R3, R6 limits 5 attempts per email+IP and 20 per IP, auditing rate_limited', async () => {
@@ -115,7 +108,6 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     const limited = await login({ email, password: DEFAULT_PASSWORD }, { ip });
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
-    // No actor and no target for a rate-limited attempt: scope by this test's own IP.
     expect(await lastAudit(t.db, 'auth.login.failure', { ip })).toMatchObject({
       actorUserId: null,
       metadata: { reason: 'rate_limited' },

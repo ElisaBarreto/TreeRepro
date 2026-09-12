@@ -28,6 +28,7 @@ report() {
   echo "logged in as:                   $(gh api user --jq .login)"
   echo "admin:                          $(gh api "repos/$repo" --jq .permissions.admin)"
   echo "delete branch on merge:         $(gh api "repos/$repo" --jq .delete_branch_on_merge)"
+  echo "allow auto-merge:               $(gh api "repos/$repo" --jq .allow_auto_merge)"
   echo "secret scanning:                $(gh api "repos/$repo" --jq '.security_and_analysis.secret_scanning.status // "unknown"')"
   echo "push protection:                $(gh api "repos/$repo" --jq '.security_and_analysis.secret_scanning_push_protection.status // "unknown"')"
   echo "dependabot alerts (+ graph):    $(status_of "repos/$repo/vulnerability-alerts")"
@@ -121,6 +122,11 @@ gh api -X PUT "repos/$repo/private-vulnerability-reporting" >/dev/null && echo o
 
 step "delete head branches after merge"
 gh api -X PATCH "repos/$repo" -F delete_branch_on_merge=true >/dev/null && echo ok
+
+# Lets .github/workflows/dependabot-auto-merge.yml queue minor/patch Dependabot
+# PRs; the ruleset's required checks still gate the merge.
+step "allow auto-merge"
+gh api -X PATCH "repos/$repo" -F allow_auto_merge=true >/dev/null && echo ok
 
 step "ruleset 'main' from infra/github/ruleset-main.json"
 existing="$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "main") | .id')"

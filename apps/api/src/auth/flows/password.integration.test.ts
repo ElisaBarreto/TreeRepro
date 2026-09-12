@@ -103,7 +103,7 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
       (await call(t.app, 'POST', '/api/auth/login', { body: { email, password: NEW_PASSWORD } }))
         .status,
     ).toBe(200);
-    expect(await lastAudit(t.db, 'auth.password.reset', { targetId: user.id })).toMatchObject({
+    expect(await lastAudit(t.db, 'auth.password.reset', { actorUserId: user.id })).toMatchObject({
       actorUserId: user.id,
       targetId: user.id,
     });

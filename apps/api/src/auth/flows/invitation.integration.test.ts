@@ -107,7 +107,7 @@ describe('RFC-20 R6 POST /api/auth/invite/accept', () => {
     expect((await findUserById(t.db, user.id))?.passwordHash?.startsWith('$argon2id$')).toBe(true);
     const me = await call(t.app, 'GET', '/api/auth/me', { cookie: cookie ?? '' });
     expect(me.status).toBe(200);
-    const audit = await lastAudit(t.db, 'auth.invite.accepted', { targetId: user.id });
+    const audit = await lastAudit(t.db, 'auth.invite.accepted', { actorUserId: user.id });
     expect(audit).toMatchObject({ actorUserId: user.id, targetId: user.id, ip, userAgent: 'UA/9' });
     const again = await call(t.app, 'POST', '/api/auth/invite/accept', {
       body: { token, password: GOOD_PASSWORD },

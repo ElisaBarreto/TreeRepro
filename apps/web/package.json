@@ -11,19 +11,22 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@treerepro/contracts": "workspace:*",
+    "@fontsource-variable/manrope": "5.3.0",
+    "@fontsource-variable/sora": "5.3.0",
     "@tanstack/react-query": "5.102.8",
     "@tanstack/react-router": "1.170.35",
+    "@treerepro/contracts": "workspace:*",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "4.6.2"
   },
   "devDependencies": {
-    "@treerepro/config": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/router-plugin": "1.168.37",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@treerepro/config": "workspace:*",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.1",

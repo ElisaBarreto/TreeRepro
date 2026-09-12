@@ -11,3 +11,5 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 | Docker / Compose / Caddy | `docker.md` |
 | TypeScript | `typescript.md` |
 | GitHub Actions / security automation | `github-security.md` |
+| Web (React, Vite, Testing Library) | `web.md` |
+| Testing (Vitest, testcontainers) | `testing.md` |
