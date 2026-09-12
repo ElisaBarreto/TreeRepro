@@ -35,3 +35,6 @@ playwright-report/
 # AI-assistant local files (never committed; the repository is agent-independent)
 CLAUDE.md
 .claude/
+
+# git worktrees for parallel tasks
+.worktrees/
