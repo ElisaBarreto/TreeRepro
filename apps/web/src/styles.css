@@ -1,1 +1,51 @@
 @import "tailwindcss";
+@import "@fontsource-variable/sora";
+@import "@fontsource-variable/manrope";
+
+/*
+ * TreeRepro visual identity — docs/specs/2026-09-12-visual-identity.md.
+ * These tokens are the palette of the whole app; only the landing page adds motion.
+ */
+@theme {
+  --font-sans: "Manrope Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Sora Variable", "Segoe UI", system-ui, sans-serif;
+
+  /* canopy: greens, from the darkest ground to the lightest leaf */
+  --color-canopy-950: #071f1c;
+  --color-canopy-900: #061a18;
+  --color-canopy-800: #0d4c41;
+  --color-canopy-700: #0f5c4f;
+  --color-canopy-600: #1f8f7a;
+  --color-canopy-500: #3faa86;
+  --color-canopy-400: #5fbf8a;
+  --color-canopy-300: #7fd1a5;
+  --color-canopy-200: #b5ebc9;
+
+  /* pollen: the amber accent, used for actions and emphasis */
+  --color-pollen-600: #c98a2e;
+  --color-pollen-500: #e8a33d;
+  --color-pollen-400: #f2c14e;
+  --color-pollen-300: #ffd777;
+
+  /* bark: browns, for the emblem and warm neutrals */
+  --color-bark-700: #8a5426;
+  --color-bark-500: #c1863f;
+
+  /* mist: text on dark surfaces, from brightest to most muted */
+  --color-mist-50: #eef4f1;
+  --color-mist-100: #cfd8d3;
+  --color-mist-200: #b7c4bf;
+  --color-mist-300: #a9b8b2;
+  --color-mist-400: #8fa39c;
+  --color-mist-500: #6f817b;
+
+  /* ink: text on amber surfaces */
+  --color-ink: #1b1406;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}

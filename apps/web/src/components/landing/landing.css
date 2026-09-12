@@ -1,0 +1,195 @@
+/*
+ * Motion and effects of the landing page only (docs/specs/2026-09-12-visual-identity.md).
+ * Everything else in the app stays still; every animation here stops under
+ * prefers-reduced-motion.
+ */
+
+/* Call to action: amber pill whose gradient slides on hover, with a pollen glow. */
+.tr-cta {
+  transition:
+    transform 0.2s,
+    box-shadow 0.3s;
+}
+.tr-cta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    var(--color-pollen-500) 0%,
+    var(--color-pollen-400) 50%,
+    var(--color-pollen-500) 100%
+  );
+  background-size: 220% 100%;
+  background-position: 0 0;
+  transition: background-position 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tr-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--color-pollen-500) 55%, transparent);
+}
+.tr-cta:hover:not(:disabled)::before {
+  background-position: 100% 0;
+}
+.tr-cta:hover:not(:disabled) .tr-cta-arrow {
+  transform: translateX(4px);
+}
+.tr-cta:active:not(:disabled) {
+  transform: translateY(0);
+}
+.tr-cta:disabled::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  animation: tr-shimmer 1s linear infinite;
+}
+
+/* Card and form entrance. */
+.tr-rise {
+  animation: tr-rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.tr-rise-1 {
+  animation-delay: 0.15s;
+}
+.tr-rise-2 {
+  animation-delay: 0.25s;
+}
+.tr-rise-3 {
+  animation-delay: 0.35s;
+}
+
+/* Emblem stage: pulsing glow, three rings at different speeds, slow float, tilt toward the cursor. */
+.tr-stage {
+  transform-style: preserve-3d;
+  transition: transform 0.35s ease-out;
+}
+.tr-glow {
+  background: radial-gradient(
+    circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in srgb, var(--color-pollen-500) 55%, transparent) 0%,
+    color-mix(in srgb, var(--color-canopy-300) 18%, transparent) 38%,
+    transparent 70%
+  );
+  animation: tr-glow 2.6s ease-in-out infinite;
+}
+.tr-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  pointer-events: none;
+}
+.tr-ring-1 {
+  inset: 0;
+  border-top-color: var(--color-pollen-500);
+  border-right-color: var(--color-canopy-300);
+  animation: tr-spin 1.8s linear infinite;
+}
+.tr-ring-2 {
+  inset: 1.2rem;
+  border-bottom-color: var(--color-pollen-400);
+  border-left-color: var(--color-canopy-600);
+  animation: tr-spin 2.6s linear infinite reverse;
+}
+.tr-ring-3 {
+  inset: -1.1rem;
+  border-width: 1px;
+  border-top-color: rgb(255 255 255 / 0.35);
+  border-left-color: color-mix(in srgb, var(--color-pollen-500) 16%, transparent);
+  animation: tr-spin 4s linear infinite;
+}
+.tr-float {
+  animation: tr-float 6s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Seeds let go by the canopy. Each one sets --sway, --turn, --dur and --delay inline. */
+.tr-seed {
+  position: absolute;
+  width: 11px;
+  height: 6px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: linear-gradient(90deg, var(--color-pollen-400), var(--color-pollen-500));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-pollen-500) 16%, transparent);
+  animation: tr-seed var(--dur) linear infinite;
+  animation-delay: var(--delay);
+  pointer-events: none;
+}
+
+@keyframes tr-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes tr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tr-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+@keyframes tr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes tr-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+@keyframes tr-seed {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(var(--sway), 160px) rotate(var(--turn));
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tr-rise,
+  .tr-glow,
+  .tr-ring,
+  .tr-float,
+  .tr-seed,
+  .tr-cta:disabled::after {
+    animation: none;
+  }
+  .tr-stage,
+  .tr-cta,
+  .tr-cta::before,
+  .tr-cta-arrow {
+    transition: none;
+  }
+}
