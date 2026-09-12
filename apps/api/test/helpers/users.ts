@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { UserStatus } from '@treerepro/contracts';
 import { hashPassword } from '../../src/auth/password.ts';
 import type { DbExecutor } from '../../src/db/client.ts';
+import { userRoles } from '../../src/db/schema/user-roles.ts';
 import { type UserRow, users } from '../../src/db/schema/users.ts';
 import { getPii } from '../../src/security/pii.ts';
 
@@ -30,6 +31,8 @@ export interface CreateUserOptions {
   password?: string | null;
   /** Base32 secret; sets totp_enabled_at when given. */
   totpSecret?: string;
+  /** Role ids to grant. */
+  roles?: string[];
 }
 
 /** Inserts a user directly (the invitation flow has its own tests). */
@@ -56,5 +59,8 @@ export async function createUser(
     })
     .returning();
   if (!user) throw new Error('createUser: insert returned no row');
+  if (options.roles?.length) {
+    await db.insert(userRoles).values(options.roles.map((roleId) => ({ userId: user.id, roleId })));
+  }
   return { user, email, password: password ?? '' };
 }

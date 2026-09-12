@@ -17,6 +17,7 @@ function ctxOf(t: ReturnType<typeof useTestApp>) {
     limiter: t.limiter,
     mailer: t.mail.mailer,
     breachChecker: t.deps.breachChecker,
+    permissionCache: t.permissionCache,
     logger: t.deps.logger,
     appOrigin: 'http://localhost',
     now: () => t.clock.now,

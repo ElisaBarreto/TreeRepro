@@ -4,6 +4,7 @@
 // a mailbox. Exit codes: 0 sent, 1 invitation exists but the email failed (or
 // any other error), 2 usage.
 import { parseArgs } from 'node:util';
+import { createPermissionCache } from '../access/permissions.ts';
 import { createHibpChecker } from '../auth/breach-check.ts';
 import type { AuthContext } from '../auth/context.ts';
 import { InvitationMailError, inviteUser } from '../auth/flows/invitation.ts';
@@ -40,6 +41,7 @@ const ctx: AuthContext = {
   limiter: createRateLimiter(redis),
   mailer: createMailer(createSmtpTransport(config.smtp), config.smtp.from),
   breachChecker: createHibpChecker({ logger }),
+  permissionCache: createPermissionCache(redis),
   logger,
   appOrigin: config.appOrigin,
   now: Date.now,

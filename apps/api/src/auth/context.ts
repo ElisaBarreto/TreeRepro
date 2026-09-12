@@ -1,3 +1,4 @@
+import type { PermissionCache } from '../access/permissions.ts';
 import type { Db } from '../db/client.ts';
 import type { Logger } from '../logger.ts';
 import type { Mailer } from '../mail/mailer.ts';
@@ -14,6 +15,7 @@ export interface AuthContext {
   limiter: RateLimiter;
   mailer: Mailer;
   breachChecker: PasswordBreachChecker;
+  permissionCache: PermissionCache;
   logger: Logger;
   appOrigin: string;
   now: () => number;

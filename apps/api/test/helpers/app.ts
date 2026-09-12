@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, inject } from 'vitest';
+import { createPermissionCache, type PermissionCache } from '../../src/access/permissions.ts';
 import { type App, type AppDeps, createApp } from '../../src/app.ts';
 import { createMfaStore, type MfaStore } from '../../src/auth/mfa.ts';
 import { createRateLimiter, type RateLimiter } from '../../src/auth/rate-limit.ts';
@@ -20,6 +21,7 @@ export interface TestApp {
   readonly sessions: SessionStore;
   readonly mfa: MfaStore;
   readonly limiter: RateLimiter;
+  readonly permissionCache: PermissionCache;
   readonly mail: FakeMailer;
   /** Passwords the fake breach checker reports as breached. */
   readonly breached: Set<string>;
@@ -46,6 +48,7 @@ export function useTestApp(): TestApp {
     const sessions = createSessionStore(r, TEST_SESSION_SECRET, () => clock.now);
     const mfa = createMfaStore(r, TEST_SESSION_SECRET);
     const limiter = createRateLimiter(r, () => clock.now);
+    const permissionCache = createPermissionCache(r);
     const deps: AppDeps = {
       config: { appOrigin: TEST_ORIGIN },
       logger,
@@ -56,10 +59,11 @@ export function useTestApp(): TestApp {
       limiter,
       mailer: mail.mailer,
       breachChecker: { isBreached: async (p) => breached.has(p) },
+      permissionCache,
       now: () => clock.now,
       ...overrides,
     };
-    return { app: createApp(deps), deps, lines, sessions, mfa, limiter };
+    return { app: createApp(deps), deps, lines, sessions, mfa, limiter, permissionCache };
   }
 
   beforeAll(async () => {
@@ -75,6 +79,7 @@ export function useTestApp(): TestApp {
       sessions: built.sessions,
       mfa: built.mfa,
       limiter: built.limiter,
+      permissionCache: built.permissionCache,
       mail,
       breached,
       lines: built.lines,
@@ -110,6 +115,9 @@ export function useTestApp(): TestApp {
     },
     get limiter() {
       return get('limiter');
+    },
+    get permissionCache() {
+      return get('permissionCache');
     },
     get mail() {
       return get('mail');

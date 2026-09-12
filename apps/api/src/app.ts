@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
+import type { PermissionCache } from './access/permissions.ts';
 import type { PasswordBreachChecker } from './auth/breach-check.ts';
 import type { AuthContext } from './auth/context.ts';
 import type { MfaStore } from './auth/mfa.ts';
@@ -31,6 +32,7 @@ export interface AppDeps {
   limiter: RateLimiter;
   mailer: Mailer;
   breachChecker: PasswordBreachChecker;
+  permissionCache: PermissionCache;
   /** Epoch ms; tests inject a controllable clock. */
   now?: () => number;
 }
@@ -53,6 +55,7 @@ export function createApp(deps: AppDeps) {
     limiter: deps.limiter,
     mailer: deps.mailer,
     breachChecker: deps.breachChecker,
+    permissionCache: deps.permissionCache,
     logger: deps.logger,
     appOrigin: deps.config.appOrigin,
     now: deps.now ?? Date.now,
