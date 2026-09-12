@@ -1,5 +1,4 @@
 import { verify } from '@node-rs/argon2';
-import { and, desc, eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import {
   call,
@@ -8,22 +7,11 @@ import {
   setCookieLine,
   useTestApp,
 } from '../../../test/helpers/app.ts';
+import { lastAudit } from '../../../test/helpers/audit.ts';
 import { createUser, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
-import { auditLog } from '../../db/schema/audit-log.ts';
 import { generateTotpCode, generateTotpSecret } from '../totp.ts';
 
 vi.mock('@node-rs/argon2', { spy: true });
-
-// uuidv7 ids are time-ordered with sub-millisecond precision; `at` can tie.
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
-}
 
 describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   const t = useTestApp();
@@ -48,7 +36,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     expect(line).toContain('SameSite=Strict');
     expect(line).toContain('Path=/');
     expect(setCookieLine(res, '__Host-mfa')).toBe('');
-    const audit = await lastAudit(t, 'auth.login.success');
+    const audit = await lastAudit(t.db, 'auth.login.success', { actorUserId: user.id });
     expect(audit).toMatchObject({ actorUserId: user.id, ip, userAgent: 'UA/1' });
     const me = await call(t.app, 'GET', '/api/auth/me', {
       cookie: cookieFrom(res, '__Host-session') ?? '',
@@ -70,16 +58,19 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     expect(wrongBody.error.code).toBe('AUTH_INVALID_CREDENTIALS');
     expect(cookieFrom(wrong, '__Host-session')).toBeNull();
     const calls = vi.mocked(verify).mock.calls.length;
-    await login({ email: randomEmail(), password: 'x' });
+    const ip = randomIp();
+    await login({ email: randomEmail(), password: 'x' }, { ip });
     expect(vi.mocked(verify).mock.calls.length).toBe(calls + 1);
-    const failure = await lastAudit(t, 'auth.login.failure');
+    const failure = await lastAudit(t.db, 'auth.login.failure', { ip });
     expect(failure).toMatchObject({ actorUserId: null, metadata: { reason: 'unknown_email' } });
   });
 
   it('treats invited and deleted users as invalid credentials with reason not_active', async () => {
     const invited = await createUser(t.db, { status: 'invited', password: null });
     expect((await login({ email: invited.email, password: DEFAULT_PASSWORD })).status).toBe(401);
-    expect(await lastAudit(t, 'auth.login.failure')).toMatchObject({
+    expect(
+      await lastAudit(t.db, 'auth.login.failure', { targetId: invited.user.id }),
+    ).toMatchObject({
       targetId: invited.user.id,
       metadata: { reason: 'not_active' },
     });
@@ -92,7 +83,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     const right = await login({ email, password: DEFAULT_PASSWORD });
     expect(right.status).toBe(403);
     expect((await right.json()).error.code).toBe('AUTH_ACCOUNT_SUSPENDED');
-    expect(await lastAudit(t, 'auth.login.failure')).toMatchObject({
+    expect(await lastAudit(t.db, 'auth.login.failure', { targetId: user.id })).toMatchObject({
       targetId: user.id,
       metadata: { reason: 'suspended' },
     });
@@ -108,11 +99,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     expect(cookieFrom(res, '__Host-mfa')).toMatch(/^__Host-mfa=[A-Za-z0-9_-]{43}$/);
     expect(setCookieLine(res, '__Host-mfa')).toContain('HttpOnly');
     expect(cookieFrom(res, '__Host-session')).toBeNull();
-    const successes = await t.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.action, 'auth.login.success'), eq(auditLog.actorUserId, user.id)));
-    expect(successes).toHaveLength(0);
+    expect(await lastAudit(t.db, 'auth.login.success', { actorUserId: user.id })).toBeUndefined();
   });
 
   it('RFC-24 R3, R6 limits 5 attempts per email+IP and 20 per IP, auditing rate_limited', async () => {
@@ -123,7 +110,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     const limited = await login({ email, password: DEFAULT_PASSWORD }, { ip });
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
-    expect(await lastAudit(t, 'auth.login.failure')).toMatchObject({
+    expect(await lastAudit(t.db, 'auth.login.failure', { ip })).toMatchObject({
       actorUserId: null,
       metadata: { reason: 'rate_limited' },
     });
@@ -169,7 +156,9 @@ describe('RFC-23 R6 POST /api/auth/login/totp', () => {
     });
     expect(cookieFrom(res, '__Host-session')).not.toBeNull();
     expect(setCookieLine(res, '__Host-mfa')).toContain('Max-Age=0');
-    expect(await lastAudit(t, 'auth.login.success')).toMatchObject({ actorUserId: user.id });
+    expect(await lastAudit(t.db, 'auth.login.success', { actorUserId: user.id })).toMatchObject({
+      actorUserId: user.id,
+    });
     const again = await totp(mfaCookie, { code });
     expect(again.status).toBe(401);
     expect((await again.json()).error.code).toBe('AUTH_MFA_EXPIRED');
@@ -203,7 +192,9 @@ describe('RFC-23 R6 POST /api/auth/login/totp', () => {
     const { user, mfaCookie } = await challenge();
     const first = await totp(mfaCookie, { code: '000000' });
     expect((await first.json()).error.code).toBe('AUTH_TOTP_INVALID');
-    expect(await lastAudit(t, 'auth.login.totp_failure')).toMatchObject({ actorUserId: user.id });
+    expect(
+      await lastAudit(t.db, 'auth.login.totp_failure', { actorUserId: user.id }),
+    ).toMatchObject({ actorUserId: user.id });
     expect((await (await totp(mfaCookie, { code: '000000' })).json()).error.code).toBe(
       'AUTH_TOTP_INVALID',
     );

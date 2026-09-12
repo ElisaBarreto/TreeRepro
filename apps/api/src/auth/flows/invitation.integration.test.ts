@@ -1,8 +1,8 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, cookieFrom, randomIp, useTestApp } from '../../../test/helpers/app.ts';
+import { lastAudit } from '../../../test/helpers/audit.ts';
 import { createUser, randomEmail } from '../../../test/helpers/users.ts';
-import { auditLog } from '../../db/schema/audit-log.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
 import { findUserByEmail, findUserById, UserEmailTakenError } from '../users.ts';
 import { InvitationMailError, inviteUser } from './invitation.ts';
@@ -24,17 +24,6 @@ function ctxOf(t: ReturnType<typeof useTestApp>) {
   };
 }
 
-// uuidv7 ids are time-ordered with sub-millisecond precision; `at` can tie.
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
-}
-
 describe('RFC-20 R4 inviteUser', () => {
   const t = useTestApp();
 
@@ -53,7 +42,7 @@ describe('RFC-20 R4 inviteUser', () => {
     const mail = t.mail.sent[before];
     expect(mail?.to).toBe(email);
     expect(mail?.text).toContain(link);
-    const audit = await lastAudit(t, 'auth.invite.created');
+    const audit = await lastAudit(t.db, 'auth.invite.created', { targetId: user.id });
     expect(audit).toMatchObject({ actorUserId: null, targetType: 'user', targetId: user.id });
   });
 
@@ -118,7 +107,7 @@ describe('RFC-20 R6 POST /api/auth/invite/accept', () => {
     expect((await findUserById(t.db, user.id))?.passwordHash?.startsWith('$argon2id$')).toBe(true);
     const me = await call(t.app, 'GET', '/api/auth/me', { cookie: cookie ?? '' });
     expect(me.status).toBe(200);
-    const audit = await lastAudit(t, 'auth.invite.accepted');
+    const audit = await lastAudit(t.db, 'auth.invite.accepted', { actorUserId: user.id });
     expect(audit).toMatchObject({ actorUserId: user.id, targetId: user.id, ip, userAgent: 'UA/9' });
     const again = await call(t.app, 'POST', '/api/auth/invite/accept', {
       body: { token, password: GOOD_PASSWORD },
