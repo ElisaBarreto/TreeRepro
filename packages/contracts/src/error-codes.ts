@@ -27,6 +27,9 @@ export const ERROR_CODES = {
   ROLE_NAME_TAKEN: 409,
   ROLE_IS_SYSTEM: 409,
   ROLE_LAST_ADMIN: 409,
+  USER_NOT_FOUND: 404,
+  USER_INVALID_STATUS: 409,
+  MAIL_SEND_FAILED: 502,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

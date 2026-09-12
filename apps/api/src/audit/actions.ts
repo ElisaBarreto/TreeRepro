@@ -19,8 +19,6 @@ export const AUDIT_ACTIONS = [
   'users.roles_changed',
   'users.suspended',
   'users.reactivated',
-  'users.deleted',
-  'users.exported',
   'roles.created',
   'roles.updated',
   'roles.deleted',

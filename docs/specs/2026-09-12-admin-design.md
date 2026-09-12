@@ -21,7 +21,7 @@ Constraints inherited: backend is the only authority; every route belongs to exa
 | Erasure and export | Dropped. Users are never deleted or anonymized; `deleted` status and `deleted_at` are removed; `users.delete` is retired in the catalog; `users.deleted` and `users.exported` leave the audit action catalog. |
 | Offboarding | `POST /api/admin/users/:id/suspend`: status `suspended`, every session deleted, anti-lockout enforced. Reactivation restores `active`. |
 | Self-service profile | Only `PATCH /api/me { name }`. `GET /api/me` does not exist: `GET /api/auth/me` already returns the profile and permissions. |
-| Pagination | Keyset cursor on `(created_at desc, id desc)` for users and `(at desc, id desc)` for audit entries; opaque base64url token; malformed cursor answers 400 `VALIDATION_FAILED`. |
+| Pagination | Keyset cursor on `id` descending for users and audit entries (UUID v7 is time-ordered, so this is insertion order and immune to the microsecond precision of `created_at`/`at`); the cursor is the base64url of the last id; malformed cursor answers 400 `VALIDATION_FAILED`. |
 | Invitation mail failure | The user and token are committed (RFC-20 R4); the route answers 502 `MAIL_SEND_FAILED` so the administrator knows to re-send. |
 | Audit retention | `audit_log_purge()` is a `SECURITY DEFINER` function with the 2-year retention hard-coded; `treerepro_app` loses `DELETE` on `audit_log`. The API process calls the function at boot and every 24 hours. |
 | Audit entries | Returned with decrypted `ip` and `userAgent`; `audit.read` is the permission that grants seeing them. No join with the actor's name; the UI resolves names from the user list. |
@@ -58,11 +58,11 @@ Constraints inherited: backend is the only authority; every route belongs to exa
 
 | Module | Responsibility |
 |---|---|
-| `admin/users.ts` | `listUsers(db, { status?, cursor?, limit })`, `getUser(db, id)` (with roles), `updateUserName(ctx, { actor, id, name })`, `suspendUser(ctx, { actor, id })`, `reactivateUser(ctx, { actor, id })`, `resendInvite(ctx, { actor, id })`. Throws `UserNotFoundError`, `UserInvalidStatusError`; re-throws `InvitationMailError` and `LastAdminError`. |
+| `admin/users.ts` | `listUsers(db, { status?, cursor?, limit })`, `getUser(db, id)` (with roles), `updateUserName(ctx, { actor, id, name })`, `suspendUser(ctx, { actor, id })`, `reactivateUser(ctx, { actor, id })`, `resendInvite(ctx, { actor, id })`. Throws `AppError` (`USER_NOT_FOUND`, `USER_INVALID_STATUS`, `ROLE_LAST_ADMIN`); re-throws `InvitationMailError`. |
 | `admin/sessions.ts` | `listUserSessions(ctx, userId)`, `revokeUserSession(ctx, { actor, userId, sessionId })`, `revokeAllUserSessions(ctx, { actor, userId })`. Audit `sessions.revoked`. |
 | `audit/query.ts` | `queryAudit(db, { actor?, action?, from?, to?, cursor?, limit })` → `{ data, nextCursor }`. |
 | `audit/retention.ts` | `purgeAudit(db)` runs `SELECT audit_log_purge()`; `startRetentionTimer({ db, logger, intervalMs = 24h })` runs `purgeAudit` immediately and on an unref'd interval, logs the count, logs and swallows failures, returns `stop()`. Called only from `server.ts`. |
-| `http/cursor.ts` | `encodeCursor({ at, id })` / `decodeCursor(token)`; base64url of `<ISO at>|<uuid>`; `decodeCursor` throws `AppError('VALIDATION_FAILED')` with detail path `cursor`. |
+| `http/cursor.ts` | `encodeCursor(id)` / `decodeCursor(token)`; base64url of the uuid; `decodeCursor` throws `AppError('VALIDATION_FAILED')` with detail path `cursor`. |
 | `http/routes/admin/index.ts` | Mounts `users.ts`, `roles.ts`, `audit.ts` and keeps `GET /permissions`. |
 | `http/routes/admin/users.ts` | User and session routes (section 6). |
 | `http/routes/admin/roles.ts` | Role routes over `access/roles.ts` (section 6). |
@@ -109,7 +109,7 @@ Every `/api/admin/*` route carries exactly one `requirePermission`. Errors use R
 
 | Route | Permission | Behaviour |
 |---|---|---|
-| `GET /api/admin/users?status=&cursor=&limit=` | `users.read` | Keyset by `(created_at desc, id desc)`; optional `status` filter. |
+| `GET /api/admin/users?status=&cursor=&limit=` | `users.read` | Keyset by `id` descending; optional `status` filter. |
 | `POST /api/admin/users { email, name }` | `users.invite` | `inviteUser` (RFC-20 R4) with the actor; 201 with the user. Existing non-invited email: 409 `USER_EMAIL_TAKEN`. Mail failure: 502 `MAIL_SEND_FAILED`; user and token are kept. |
 | `GET /api/admin/users/:id` | `users.read` | 404 `USER_NOT_FOUND`. |
 | `PATCH /api/admin/users/:id { name?, roles? }` | `users.update` | One transaction. `name` → `users.updated` with `metadata.fields: ['name']`. `roles` (role ids) → `setUserRoles` (RFC-31: audit `users.roles_changed`, `ROLE_LAST_ADMIN`, `ROLE_NOT_FOUND`). Empty body: 400. |
@@ -134,7 +134,7 @@ Mutations answer `{ data: user }` (user routes) or `{ data: { status: 'ok' } }` 
 
 ### Audit (RFC-51)
 
-`GET /api/admin/audit?actor=&action=&from=&to=&cursor=&limit=` — `audit.read`. `action` must be a catalog key; `from > to` is a validation error. Keyset by `(at desc, id desc)`.
+`GET /api/admin/audit?actor=&action=&from=&to=&cursor=&limit=` — `audit.read`. `action` must be a catalog key; `from > to` is a validation error. Keyset by `id` descending.
 
 ### Self-service (RFC-50)
 
