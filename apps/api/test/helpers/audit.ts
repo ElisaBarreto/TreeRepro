@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import type { Db } from '../../src/db/client.ts';
 import { type AuditLogRow, auditLog } from '../../src/db/schema/audit-log.ts';
 
@@ -11,9 +11,9 @@ export interface AuditScope {
   ip?: string;
 }
 
-// Newest entries to scan when matching by IP: the column is encrypted at rest
-// (RFC-40), so the match happens after decryption, in memory.
-const IP_SCAN_LIMIT = 200;
+// Page size when matching by IP: the column is encrypted at rest (RFC-40), so
+// the match happens after decryption, in memory, newest page first.
+const IP_PAGE_SIZE = 200;
 
 /**
  * Newest audit entry for `action` written on behalf of THIS test.
@@ -42,11 +42,20 @@ export async function lastAudit(
   }
   if (scope.targetId !== undefined) conditions.push(eq(auditLog.targetId, scope.targetId));
 
-  const rows = await db
-    .select()
-    .from(auditLog)
-    .where(and(...conditions))
-    .orderBy(desc(auditLog.id))
-    .limit(scope.ip === undefined ? 1 : IP_SCAN_LIMIT);
-  return scope.ip === undefined ? rows[0] : rows.find((row) => row.ip === scope.ip);
+  const page = (before?: string) =>
+    db
+      .select()
+      .from(auditLog)
+      .where(and(...conditions, before === undefined ? undefined : lt(auditLog.id, before)))
+      .orderBy(desc(auditLog.id))
+      .limit(scope.ip === undefined ? 1 : IP_PAGE_SIZE);
+
+  if (scope.ip === undefined) return (await page())[0];
+  let before: string | undefined;
+  for (;;) {
+    const rows = await page(before);
+    const match = rows.find((row) => row.ip === scope.ip);
+    if (match || rows.length < IP_PAGE_SIZE) return match;
+    before = rows[rows.length - 1]?.id;
+  }
 }
