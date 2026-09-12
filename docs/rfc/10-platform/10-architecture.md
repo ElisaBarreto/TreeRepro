@@ -23,7 +23,7 @@ Design: `docs/specs/2026-09-12-foundation-design.md`. This RFC fixes the structu
 - **R9** Production processes: `caddy` (only public port; TLS; serves the SPA; proxies `/api/*`), `api`, `postgres`, `redis`, `migrate` (one-shot, before `api`), `backup` (daily encrypted `pg_dump`). Development adds `web` (Vite dev server), `mailpit`, and publishes Postgres/Redis ports for inspection.
 - **R10** Health endpoints: `GET /api/health` is public and answers exactly `{"ok":true}` (no envelope, no version, no dependency status). `GET /api/health/ready` checks PostgreSQL and Redis, answers `{"ok":true}` or 503 `SERVICE_UNAVAILABLE`, and is never proxied by Caddy (internal network only).
 - **R11** Node executes TypeScript source directly in development (`node --watch --conditions=development`) and compiled JavaScript (`tsc` output in `dist/`) in production. `packages/contracts` exposes source under the `development` export condition and `dist/` by default.
-- **R12** Every response carries an `X-Request-Id` header; the same ID is attached to every log line about that request.
+- **R12** Every response carries an `X-Request-Id` header; the same ID is attached to every log line about that request. Middleware binds a child logger carrying the ID to the request context (`c.get('logger')`); request handling code logs only through it, so the ID is present by construction rather than by discipline.
 
 ## Open questions
 
@@ -33,3 +33,4 @@ None.
 
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
+- 2026-09-12 — R12: per-request child logger bound to the context (issue #5).

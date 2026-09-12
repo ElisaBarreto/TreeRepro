@@ -73,7 +73,9 @@ export function sanitizeError(err: Error): {
  */
 export function createErrorHandler(logger: Logger): ErrorHandler<AppEnv> {
   return (err, c) => {
-    const requestId = c.get('requestId');
+    // The request logger is bound by middleware (RFC-10 R12); the fallback
+    // covers errors thrown before it ran.
+    const log = c.get('logger') ?? logger.child({ requestId: c.get('requestId') });
     if (err instanceof AppError) {
       return c.json(errorBody(err.code, err.message, err.details), err.status);
     }
@@ -84,10 +86,10 @@ export function createErrorHandler(logger: Logger): ErrorHandler<AppEnv> {
       if (err.status === 400 && err.message === MALFORMED_JSON_MESSAGE) {
         return c.json(errorBody('VALIDATION_INVALID_JSON', 'Request body is not valid JSON'), 400);
       }
-      logger.warn({ requestId, status: err.status }, 'unmapped http exception');
+      log.warn({ status: err.status }, 'unmapped http exception');
       return c.json(INTERNAL, 500);
     }
-    logger.error({ requestId, err: sanitizeError(err) }, 'unhandled error');
+    log.error({ err: sanitizeError(err) }, 'unhandled error');
     return c.json(INTERNAL, 500);
   };
 }

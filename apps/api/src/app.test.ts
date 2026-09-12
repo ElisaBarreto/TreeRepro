@@ -61,6 +61,30 @@ describe('RFC-10 R12 request id', () => {
     const echoed = await app.request('/api/health', { headers: { 'x-request-id': 'abc-123' } });
     expect(echoed.headers.get('x-request-id')).toBe('abc-123');
   });
+
+  it('binds a child logger carrying the request id to the context', async () => {
+    const { app, lines } = build();
+    app.get('/probe', (c) => {
+      c.get('logger').info({ step: 1 }, 'probe');
+      return c.json({ ok: true });
+    });
+    await app.request('/api/probe', { headers: { 'x-request-id': 'req-42' } });
+    expect(lines).toContainEqual(
+      expect.objectContaining({ msg: 'probe', step: 1, requestId: 'req-42' }),
+    );
+  });
+
+  it('logs an unhandled error through the request logger', async () => {
+    const { app, lines } = build();
+    app.get('/boom', () => {
+      throw new Error('kaboom');
+    });
+    const res = await app.request('/api/boom', { headers: { 'x-request-id': 'req-43' } });
+    expect(res.status).toBe(500);
+    expect(lines).toContainEqual(
+      expect.objectContaining({ msg: 'unhandled error', requestId: 'req-43' }),
+    );
+  });
 });
 
 describe('RFC-02 R5 security headers', () => {
