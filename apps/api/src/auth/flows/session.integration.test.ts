@@ -1,6 +1,8 @@
+import { PERMISSION_KEYS } from '@treerepro/contracts';
 import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, setCookieLine, useTestApp } from '../../../test/helpers/app.ts';
+import { adminRoleId, createRole } from '../../../test/helpers/roles.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import { auditLog } from '../../db/schema/audit-log.ts';
@@ -28,6 +30,18 @@ describe('RFC-22 R9, R10 logout, logout-all, me', () => {
     const anon = await call(t.app, 'GET', '/api/auth/me');
     expect(anon.status).toBe(401);
     expect((await anon.json()).error.code).toBe('AUTH_UNAUTHENTICATED');
+
+    const roleA = await createRole(t.db, { permissions: ['users.read'] });
+    const roleB = await createRole(t.db, { permissions: ['audit.read', 'users.read'] });
+    const withRoles = await createUser(t.db, { roles: [roleA.id, roleB.id] });
+    const rolesCookie = (await loginAs(t, withRoles.user)).cookie;
+    const rolesRes = await call(t.app, 'GET', '/api/auth/me', { cookie: rolesCookie });
+    expect((await rolesRes.json()).data.permissions).toEqual(['audit.read', 'users.read']);
+
+    const admin = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const adminCookie = (await loginAs(t, admin.user)).cookie;
+    const adminRes = await call(t.app, 'GET', '/api/auth/me', { cookie: adminCookie });
+    expect((await adminRes.json()).data.permissions).toEqual([...PERMISSION_KEYS].sort());
   });
 
   it('logout deletes the current session only and clears the cookie', async () => {

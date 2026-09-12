@@ -9,6 +9,7 @@ import {
   totpDisableBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
+import { resolvePermissions } from '../../access/permissions.ts';
 import type { AuthContext } from '../../auth/context.ts';
 import { acceptInvitation } from '../../auth/flows/invitation.ts';
 import { auditLoginFailure, login, loginTotp } from '../../auth/flows/login.ts';
@@ -36,6 +37,7 @@ import { validate } from '../validate.ts';
 /**
  * @rfc RFC-22 R1
  * @rfc RFC-20 R6
+ * @rfc RFC-32 R6
  */
 export function authRoutes(ctx: AuthContext) {
   const tokenLimit = rateLimit(ctx.limiter, [
@@ -120,9 +122,11 @@ export function authRoutes(ctx: AuthContext) {
       clearSessionCookie(c);
       return c.json({ data: { status: 'ok' as const } });
     })
-    .get('/me', requireSession, (c) =>
-      c.json({ data: { user: toAuthUser(currentUser(c)), permissions: [] as string[] } }),
-    )
+    .get('/me', requireSession, async (c) => {
+      const user = currentUser(c);
+      const permissions = [...(await resolvePermissions(ctx, user.id))].sort();
+      return c.json({ data: { user: toAuthUser(user), permissions } });
+    })
     .post(
       '/password/forgot',
       forgotLimit,

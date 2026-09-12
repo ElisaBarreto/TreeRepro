@@ -58,6 +58,7 @@ describe('RFC-02 R12 every route is guarded or public', () => {
         'POST /api/auth/totp/disable',
         'GET /api/me/sessions',
         'DELETE /api/me/sessions/:id',
+        'GET /api/admin/permissions',
       ].sort(),
     );
   });
