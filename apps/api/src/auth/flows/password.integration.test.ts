@@ -1,23 +1,12 @@
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, randomIp, useTestApp } from '../../../test/helpers/app.ts';
+import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
-import { auditLog } from '../../db/schema/audit-log.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
 
 const NEW_PASSWORD = 'another perfectly fine passphrase';
-
-// uuidv7 ids are time-ordered with sub-millisecond precision; `at` can tie.
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
-}
 
 describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
   const t = useTestApp();
@@ -40,7 +29,9 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
     const [token] = await t.db.select().from(authTokens).where(eq(authTokens.userId, user.id));
     expect(token?.kind).toBe('password_reset');
     expect(token?.expiresAt.getTime()).toBe(t.clock.now + 3600 * 1000);
-    expect(await lastAudit(t, 'auth.password.reset_requested')).toMatchObject({
+    expect(
+      await lastAudit(t.db, 'auth.password.reset_requested', { targetId: user.id }),
+    ).toMatchObject({
       actorUserId: null,
       targetId: user.id,
     });
@@ -112,7 +103,7 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
       (await call(t.app, 'POST', '/api/auth/login', { body: { email, password: NEW_PASSWORD } }))
         .status,
     ).toBe(200);
-    expect(await lastAudit(t, 'auth.password.reset')).toMatchObject({
+    expect(await lastAudit(t.db, 'auth.password.reset', { actorUserId: user.id })).toMatchObject({
       actorUserId: user.id,
       targetId: user.id,
     });
@@ -174,7 +165,9 @@ describe('RFC-21 R7 POST /api/auth/password/change', () => {
       (await call(t.app, 'POST', '/api/auth/login', { body: { email, password: NEW_PASSWORD } }))
         .status,
     ).toBe(200);
-    expect(await lastAudit(t, 'auth.password.changed')).toMatchObject({ actorUserId: user.id });
+    expect(await lastAudit(t.db, 'auth.password.changed', { actorUserId: user.id })).toMatchObject({
+      actorUserId: user.id,
+    });
   });
 
   it('is 401 without a session', async () => {
