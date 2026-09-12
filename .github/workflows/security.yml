@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   # Fails the PR when it introduces a dependency with a known high/critical
-  # vulnerability. Uses the GitHub Advisory Database via the dependency graph.
+  # vulnerability. Needs Dependency graph enabled in Settings → Code security.
   dependency-review:
     name: Dependency review
     if: github.event_name == 'pull_request'
@@ -90,6 +90,7 @@ jobs:
           scan-ref: .
           severity: HIGH,CRITICAL
           exit-code: "1"
+          limit-severities-for-sarif: true
           trivyignores: .trivyignore.yaml
           format: sarif
           output: trivy-config.sarif

@@ -62,15 +62,19 @@ jobs:
           file: infra/docker/web.Dockerfile
           load: true
           tags: treerepro-web:ci
-      # Vulnerability scan of the built images (OS packages + bundled node_modules).
-      # Fails on fixable HIGH/CRITICAL; SARIF goes to Code scanning either way.
+      # Vulnerability scans of the built images. Fail on fixable HIGH/CRITICAL;
+      # SARIF goes to Code scanning either way. api: OS packages + node_modules.
+      # web: OS packages only — CVEs compiled into the caddy Go binary can only
+      # be fixed by a new upstream image, which Dependabot proposes weekly.
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: treerepro-api:ci
+          vuln-type: os,library
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          limit-severities-for-sarif: true
           trivyignores: .trivyignore.yaml
           format: sarif
           output: trivy-api.sarif
@@ -84,9 +88,11 @@ jobs:
         with:
           scan-type: image
           image-ref: treerepro-web:ci
+          vuln-type: os
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          limit-severities-for-sarif: true
           trivyignores: .trivyignore.yaml
           format: sarif
           output: trivy-web.sarif
