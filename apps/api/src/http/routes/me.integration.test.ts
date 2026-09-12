@@ -1,4 +1,4 @@
-import { sessionSummarySchema } from '@treerepro/contracts';
+import { sessionSummarySchema, userSchema } from '@treerepro/contracts';
 import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../test/helpers/app.ts';
@@ -59,5 +59,45 @@ describe('RFC-22 R11 own sessions', () => {
     expect(
       (await call(t.app, 'DELETE', `/api/me/sessions/${id}`, { cookie, origin: null })).status,
     ).toBe(403);
+  });
+});
+
+describe('RFC-50 R11 PATCH /api/me', () => {
+  const t = useTestApp();
+
+  it('changes the caller name, audits with the caller as actor and target, and validates', async () => {
+    const { user } = await createUser(t.db, { name: 'Ada' });
+    const { cookie } = await loginAs(t, user);
+    const res = await call(t.app, 'PATCH', '/api/me', {
+      cookie,
+      body: { name: '  Ada Lovelace ' },
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data).toMatchObject({ id: user.id, name: 'Ada Lovelace', roles: [] });
+    expect(userSchema.safeParse(data).success).toBe(true);
+    const [audit] = await t.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, 'users.updated'))
+      .orderBy(desc(auditLog.id))
+      .limit(1);
+    expect(audit).toMatchObject({
+      actorUserId: user.id,
+      targetType: 'user',
+      targetId: user.id,
+      metadata: { fields: ['name'] },
+    });
+    const me = await call(t.app, 'GET', '/api/auth/me', { cookie });
+    expect((await me.json()).data.user.name).toBe('Ada Lovelace');
+    expect((await call(t.app, 'PATCH', '/api/me', { cookie, body: {} })).status).toBe(400);
+    expect((await call(t.app, 'PATCH', '/api/me', { cookie, body: { name: ' ' } })).status).toBe(
+      400,
+    );
+    expect(
+      (await call(t.app, 'PATCH', '/api/me', { cookie, body: { name: 'x', email: 'a@b.c' } }))
+        .status,
+    ).toBe(400);
+    expect((await call(t.app, 'PATCH', '/api/me', { body: { name: 'x' } })).status).toBe(401);
   });
 });
