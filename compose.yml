@@ -12,6 +12,11 @@ x-api-env: &api-env
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   PII_CURRENT_KEY_VERSION: ${PII_CURRENT_KEY_VERSION:-v1}
+  SMTP_HOST: ${SMTP_HOST:-mailpit}
+  SMTP_PORT: ${SMTP_PORT:-1025}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_FROM: ${SMTP_FROM:-TreeRepro <no-reply@localhost>}
+  SMTP_USER: ${SMTP_USER:-}
 
 services:
   postgres:
@@ -81,7 +86,7 @@ services:
     image: treerepro-api
     restart: unless-stopped
     environment: *api-env
-    secrets: [db_app_password, redis_password, pii_encryption_key_v1, pii_hmac_key, session_secret]
+    secrets: [db_app_password, redis_password, pii_encryption_key_v1, pii_hmac_key, session_secret, smtp_password]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -124,6 +129,8 @@ secrets:
     file: ./infra/secrets/pii_hmac_key
   session_secret:
     file: ./infra/secrets/session_secret
+  smtp_password:
+    file: ./infra/secrets/smtp_password
 
 volumes:
   postgres-data:

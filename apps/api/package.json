@@ -11,23 +11,27 @@
     "test": "vitest run --config ../../vitest.config.ts --project api:unit --project api:integration",
     "test:unit": "vitest run --config ../../vitest.config.ts --project api:unit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --conditions=development src/db/migrate.ts"
+    "db:migrate": "node --conditions=development src/db/migrate.ts",
+    "seed:admin": "node --conditions=development src/cli/seed-admin.ts"
   },
   "dependencies": {
-    "@treerepro/contracts": "workspace:*",
     "@hono/node-server": "2.1.1",
     "@hono/zod-validator": "0.9.1",
+    "@node-rs/argon2": "2.2.0",
+    "@treerepro/contracts": "workspace:*",
     "drizzle-orm": "0.45.2",
     "hono": "4.13.7",
     "ioredis": "6.0.0",
+    "nodemailer": "10.0.0",
+    "otpauth": "9.5.2",
     "pino": "10.3.1",
     "postgres": "3.4.9",
     "zod": "4.6.2"
   },
   "devDependencies": {
-    "@treerepro/config": "workspace:*",
     "@testcontainers/postgresql": "12.1.0",
     "@testcontainers/redis": "12.1.0",
+    "@treerepro/config": "workspace:*",
     "@types/node": "24.13.4",
     "drizzle-kit": "0.31.10",
     "testcontainers": "12.1.0",

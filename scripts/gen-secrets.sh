@@ -25,3 +25,5 @@ gen redis_password 24
 gen pii_encryption_key_v1 32
 gen pii_hmac_key 32
 gen session_secret 32
+
+[ -f "$dir/smtp_password" ] || { : > "$dir/smtp_password"; chmod 600 "$dir/smtp_password"; echo "create smtp_password (empty; fill in for authenticated SMTP)"; }

@@ -44,3 +44,13 @@
 **Symptom:** On a Linux host the `api`, `redis`, `backup` containers or the Postgres init script fail with `EACCES` (or `Permission denied`) reading `/run/secrets/*`, although the same stack works on Docker Desktop.
 **Cause:** Compose file secrets are bind mounts of the host files with their host owner and mode. `scripts/gen-secrets.sh` writes 0600 files owned by whoever ran it, while the services run as uid 1000 (`node`), 999 (`redis`) or 70 (`postgres`); Docker Desktop's file sharing masks ownership, a native Linux daemon does not.
 **Fix:** Before the first Linux deployment make the files readable by the container users, for example `chmod 0440` with a group those uids share (or 0444 if the host directory itself is locked down), or use the service-level secret `mode`/`uid`/`gid` fields if the installed Compose honours them for file secrets. Verify on the target host with `docker compose exec api cat /run/secrets/session_secret >/dev/null`.
+
+## Secure cookies work on http://localhost but not on a LAN address
+**Symptom:** Login answers 200 but the browser drops `__Host-session`; every next request is 401.
+**Cause:** `__Host-` cookies require `Secure`, and browsers accept `Secure` cookies only from secure contexts: `https://…` or `http://localhost`. `http://192.168.x.y` is not one.
+**Fix:** Open the dev stack through `http://localhost` (Caddy on :80) or serve TLS. Do not weaken the cookie (RFC-22 R5).
+
+## Never expose the API port directly
+**Symptom:** Per-IP rate limits can be dodged and audit IPs are wrong.
+**Cause:** The API trusts the last `X-Forwarded-For` entry (RFC-22 R12) because Caddy sanitizes it, so a client that reaches the API without Caddy chooses its own IP.
+**Fix:** Only Caddy publishes ports in production; in development the API port is bound to loopback (`127.0.0.1:3000:3000` in `compose.dev.yml`).

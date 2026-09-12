@@ -28,6 +28,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `pnpm build` — build contracts, api, web.
 - `docker compose up` — full dev stack. First time: `cp .env.example .env && ./scripts/gen-secrets.sh`.
 - `pnpm --filter @treerepro/api db:generate` — generate a migration from the Drizzle schema.
+- `pnpm seed:admin --email <email> --name <name>` — invite the first user (prints the invitation link; needs the dev stack or a reachable Postgres/Redis/SMTP). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:admin --email … --name …`. In production: `docker compose exec api node dist/cli/seed-admin.js --email … --name …`.
 
 ## Security automation
 
@@ -38,7 +39,7 @@ Every PR must pass `Verify`, `Images` (build + Trivy), `CodeQL`, `Dependency rev
 1. **RFC first** (RFC-00). A business rule lives in `docs/rfc/<category>/NN-slug.md` as a numbered rule `**Rn**`. Change order: RFC → failing test → code. Every exported symbol in `apps/*/src` and `packages/*/src` has a JSDoc `@rfc RFC-NN Rx` tag.
 2. **TDD** (RFC-01). No production code without a failing test first. No database mocks.
 3. **Never trust the frontend** (RFC-02). Validation, computation and authorization happen only in `apps/api`. Strict Zod schemas on every input.
-4. **Security from day one** (RFC-02, RFC-40). Secrets only from `/run/secrets`. PII encrypted at the application level. Logs redacted. Every route guarded.
+4. **Security from day one** (RFC-02, RFC-40). Secrets only from `/run/secrets`. PII encrypted at the application level. Logs redacted. Every route guarded: every non-public route sits behind `requireSession` (permissions from plan 03).
 5. **English everywhere.** Code, comments, docs, UI, commits.
 6. **Latest stable versions, pinned exact.** No legacy versions.
 

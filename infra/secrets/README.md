@@ -13,6 +13,7 @@ server the same way and back them up outside the server.
 | `pii_encryption_key_v1` | api | 64 hex characters (RFC-40 R3) |
 | `pii_hmac_key` | api | 64 hex characters (RFC-40 R5) |
 | `session_secret` | api | 64 hex characters |
+| `smtp_password` | api | SMTP password, read only when `SMTP_USER` is set; may be empty otherwise |
 
 Key rotation: RFC-40 R7. A new key version file (`pii_encryption_key_v<N+1>`) must also be added
 to `compose.yml`, both under the top-level `secrets:` and in the `api` service's `secrets:` list,
