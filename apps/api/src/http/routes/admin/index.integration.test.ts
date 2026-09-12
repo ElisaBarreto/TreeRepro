@@ -1,9 +1,9 @@
 import { PERMISSION_KEYS, PERMISSIONS, permissionEntrySchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
-import { call, useTestApp } from '../../../test/helpers/app.ts';
-import { adminRoleId, createRole } from '../../../test/helpers/roles.ts';
-import { loginAs } from '../../../test/helpers/session.ts';
-import { createUser } from '../../../test/helpers/users.ts';
+import { call, useTestApp } from '../../../../test/helpers/app.ts';
+import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
+import { loginAs } from '../../../../test/helpers/session.ts';
+import { createUser } from '../../../../test/helpers/users.ts';
 
 describe('RFC-30 R5 GET /api/admin/permissions', () => {
   const t = useTestApp();

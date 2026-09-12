@@ -101,6 +101,25 @@ export async function updateTotp(
     .where(eq(users.id, input.id));
 }
 
+/**
+ * Sets the trimmed name when it differs from `current.name` (an encrypted
+ * column cannot be compared in SQL, RFC-40 R11); returns whether a write
+ * happened so the caller audits only real changes.
+ * @rfc RFC-50 R5, R11
+ */
+export async function updateName(
+  db: DbExecutor,
+  input: { current: Pick<UserRow, 'id' | 'name'>; name: string; now?: Date },
+): Promise<boolean> {
+  const name = input.name.trim();
+  if (name === input.current.name) return false;
+  await db
+    .update(users)
+    .set({ name, updatedAt: input.now ?? new Date() })
+    .where(eq(users.id, input.current.id));
+  return true;
+}
+
 /** @rfc RFC-22 R10 */
 export function toAuthUser(user: UserRow): AuthUser {
   return {

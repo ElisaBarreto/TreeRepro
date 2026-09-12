@@ -1,11 +1,10 @@
 import { PERMISSION_KEYS } from '@treerepro/contracts';
-import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, setCookieLine, useTestApp } from '../../../test/helpers/app.ts';
+import { lastAudit } from '../../../test/helpers/audit.ts';
 import { adminRoleId, createRole } from '../../../test/helpers/roles.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
-import { auditLog } from '../../db/schema/audit-log.ts';
 
 describe('RFC-22 R9, R10 logout, logout-all, me', () => {
   const t = useTestApp();
@@ -54,12 +53,7 @@ describe('RFC-22 R9, R10 logout, logout-all, me', () => {
     expect(setCookieLine(res, '__Host-session')).toContain('Max-Age=0');
     expect((await call(t.app, 'GET', '/api/auth/me', { cookie: a.cookie })).status).toBe(401);
     expect((await call(t.app, 'GET', '/api/auth/me', { cookie: b.cookie })).status).toBe(200);
-    const [audit] = await t.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'auth.logout'))
-      .orderBy(desc(auditLog.id))
-      .limit(1);
+    const audit = await lastAudit(t.db, 'auth.logout', { actorUserId: user.id });
     expect(audit?.actorUserId).toBe(user.id);
   });
 
@@ -71,12 +65,7 @@ describe('RFC-22 R9, R10 logout, logout-all, me', () => {
     expect(res.status).toBe(200);
     expect((await call(t.app, 'GET', '/api/auth/me', { cookie: a.cookie })).status).toBe(401);
     expect((await call(t.app, 'GET', '/api/auth/me', { cookie: b.cookie })).status).toBe(401);
-    const [audit] = await t.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'auth.logout_all'))
-      .orderBy(desc(auditLog.id))
-      .limit(1);
+    const audit = await lastAudit(t.db, 'auth.logout_all', { actorUserId: user.id });
     expect(audit?.actorUserId).toBe(user.id);
   });
 

@@ -7,7 +7,7 @@ export const PERMISSIONS = {
   'users.invite': 'Invite users',
   'users.update': 'Edit user profiles and roles',
   'users.suspend': 'Suspend and reactivate users',
-  'users.delete': 'Erase users',
+  'users.delete': 'Erase users (retired)',
   'roles.read': 'List roles and the permission catalog',
   'roles.manage': 'Create, edit and delete roles',
   'sessions.read': "List any user's sessions",

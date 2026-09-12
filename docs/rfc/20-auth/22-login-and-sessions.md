@@ -27,7 +27,8 @@ Sessions are opaque identifiers stored in Redis and carried by a cookie. There i
   | `POST /api/auth/password/change` | session |
   | `POST /api/auth/totp/setup`, `/confirm`, `/disable` | session |
   | `GET /api/me/sessions`, `DELETE /api/me/sessions/:id` | session |
-  | `GET /api/admin/permissions` | permission `roles.read` (RFC-30 R5) |
+  | `PATCH /api/me` | session (RFC-50 R11) |
+  | `/api/admin/*` | permission (RFC-30 R5, RFC-50, RFC-51) |
 
 - **R2** `POST /api/auth/login { email, password }`: look the user up by blind index; run the argon2 verification (RFC-21 R4); when it fails or the user is not `active`/`suspended`, answer 401 `AUTH_INVALID_CREDENTIALS` and audit `auth.login.failure` with `metadata.reason` in `unknown_email`, `wrong_password`, `not_active` (target `user` when the user exists). A `suspended` user whose password verified answers 403 `AUTH_ACCOUNT_SUSPENDED` (reason `suspended`): the status is disclosed only to someone holding the password.
 - **R3** A verified user with TOTP enabled receives `{ data: { status: "totp_required" } }` and the MFA cookie (RFC-23 R6); no session exists yet. Otherwise a session is created, the cookie set, `auth.login.success` audited, and the response is `{ data: { status: "ok", user } }` with `user` as in R10.
@@ -50,3 +51,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
 - 2026-09-12 — R1: admin route; R10: permissions filled (RFC-32).
+- 2026-09-12 — R1: PATCH /api/me and the admin family (RFC-50, RFC-51).

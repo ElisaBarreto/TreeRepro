@@ -201,6 +201,8 @@ Append-only table `audit_log`: `id, at, actor_user_id, action, target_type, targ
 
 ### Data-subject rights (GDPR Art. 15–17)
 
+> Superseded by `2026-09-12-admin-design.md` section 1: users are never erased and there is no export.
+
 Available in `/admin` and, for the user's own data, in `/settings`.
 
 - **Export** (`GET /api/admin/users/:id/export` for admins; `GET /api/me/export` for the user's own data): JSON with profile, roles, sessions and audit entries where the user is the actor. Audited.
@@ -239,6 +241,8 @@ HTTP client `apps/web/src/api/client.ts`: `fetch` with `credentials: 'include'`;
 
 ### Admin API (every route behind `requirePermission`)
 
+> Superseded by `2026-09-12-admin-design.md` section 6.
+
 ```
 GET/POST           /api/admin/users
 GET/PATCH/DELETE   /api/admin/users/:id
@@ -252,6 +256,8 @@ GET                /api/admin/audit?actor=&action=&from=&to=&cursor=
 ```
 
 ### Self-service API (authenticated user, no extra permission)
+
+> Superseded by `2026-09-12-admin-design.md` section 6.
 
 ```
 GET/PATCH   /api/me                    # profile (name)

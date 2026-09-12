@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ERROR_CODES, type ErrorCode } from './error-codes.ts';
+import { type ListMeta, listMetaSchema } from './pagination.ts';
 
 const errorCodes = Object.keys(ERROR_CODES) as [ErrorCode, ...ErrorCode[]];
 
@@ -18,11 +19,6 @@ export const errorEnvelopeSchema = z.strictObject({
   }),
 });
 
-/** @rfc RFC-11 R2, R6 */
-export const listMetaSchema = z.strictObject({
-  nextCursor: z.string().nullable(),
-});
-
 /** @rfc RFC-11 R2 */
 export function dataEnvelopeSchema<T extends z.ZodType>(data: T) {
   return z.strictObject({ data, meta: listMetaSchema.optional() });
@@ -30,5 +26,4 @@ export function dataEnvelopeSchema<T extends z.ZodType>(data: T) {
 
 export type ErrorDetail = z.infer<typeof errorDetailSchema>;
 export type ErrorEnvelope = z.infer<typeof errorEnvelopeSchema>;
-export type ListMeta = z.infer<typeof listMetaSchema>;
 export type DataEnvelope<T> = { data: T; meta?: ListMeta };

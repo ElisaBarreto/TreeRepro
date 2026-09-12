@@ -72,7 +72,24 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'POST /api/auth/totp/disable',
         'GET /api/me/sessions',
         'DELETE /api/me/sessions/:id',
+        'PATCH /api/me',
         'GET /api/admin/permissions',
+        'GET /api/admin/users',
+        'POST /api/admin/users',
+        'GET /api/admin/users/:id',
+        'PATCH /api/admin/users/:id',
+        'POST /api/admin/users/:id/suspend',
+        'POST /api/admin/users/:id/reactivate',
+        'POST /api/admin/users/:id/resend-invite',
+        'GET /api/admin/users/:id/sessions',
+        'DELETE /api/admin/users/:id/sessions',
+        'DELETE /api/admin/users/:id/sessions/:sessionId',
+        'GET /api/admin/roles',
+        'POST /api/admin/roles',
+        'GET /api/admin/roles/:id',
+        'PATCH /api/admin/roles/:id',
+        'DELETE /api/admin/roles/:id',
+        'GET /api/admin/audit',
       ].sort(),
     );
   });
@@ -107,8 +124,8 @@ describe('RFC-01 R6 negative sweep over every route', () => {
   });
 
   it('every route with a body schema rejects an unknown field with 400 VALIDATION_FAILED', async () => {
-    const { user } = await createUser(t.db);
-    const { cookie } = await loginAs(t, user);
+    const admin = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const { cookie } = await loginAs(t, admin.user);
     const withBody = [
       'POST /api/auth/login',
       'POST /api/auth/login/totp',
@@ -118,10 +135,15 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       'POST /api/auth/password/change',
       'POST /api/auth/totp/confirm',
       'POST /api/auth/totp/disable',
+      'PATCH /api/me',
+      'POST /api/admin/users',
+      'PATCH /api/admin/users/:id',
+      'POST /api/admin/roles',
+      'PATCH /api/admin/roles/:id',
     ];
     for (const key of withBody) {
       const [method, path] = key.split(' ') as [string, string];
-      const res = await call(t.app, method, path, { body: { unexpected: true }, cookie });
+      const res = await call(t.app, method, concrete(path), { body: { unexpected: true }, cookie });
       expect(res.status, key).toBe(400);
       expect((await res.json()).error.code, key).toBe('VALIDATION_FAILED');
     }

@@ -19,8 +19,6 @@ export const AUDIT_ACTIONS = [
   'users.roles_changed',
   'users.suspended',
   'users.reactivated',
-  'users.deleted',
-  'users.exported',
   'roles.created',
   'roles.updated',
   'roles.deleted',
@@ -29,3 +27,10 @@ export const AUDIT_ACTIONS = [
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+const actionSet: ReadonlySet<string> = new Set(AUDIT_ACTIONS);
+
+/** @rfc RFC-41 R3 */
+export function isAuditAction(value: string): value is AuditAction {
+  return actionSet.has(value);
+}

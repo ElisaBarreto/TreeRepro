@@ -26,7 +26,7 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `users.invite` | Invite users |
 | `users.update` | Edit user profiles and roles |
 | `users.suspend` | Suspend and reactivate users |
-| `users.delete` | Erase users |
+| `users.delete` | Erase users (retired) |
 | `roles.read` | List roles and the permission catalog |
 | `roles.manage` | Create, edit and delete roles |
 | `sessions.read` | List any user's sessions |
@@ -42,3 +42,4 @@ None.
 
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
+- 2026-09-12 — users.delete retired: users are never erased (RFC-50 R12).

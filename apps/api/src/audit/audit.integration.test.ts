@@ -99,8 +99,8 @@ describe('RFC-41 recordAudit', () => {
     });
   });
 
-  it('R2 rejects DELETE without the purge flag and allows it with SET LOCAL', async () => {
-    await withRollback(t.db, async (tx) => {
+  it('R2 trigger rejects DELETE without the purge flag and allows it with SET LOCAL, for a role that holds the privilege', async () => {
+    await withRollback(su.db, async (tx) => {
       const { id } = await recordAudit(tx, { actorUserId: null, action: 'auth.logout' });
       await expect(
         unwrapDbError(tx.transaction((sp) => sp.delete(auditLog).where(eq(auditLog.id, id)))),
@@ -132,7 +132,15 @@ describe('RFC-41 recordAudit', () => {
 
   it('R7 rejects forbidden metadata keys at any depth before writing', async () => {
     await withRollback(t.db, async (tx) => {
-      const before = await tx.select({ n: sql<number>`count(*)::int` }).from(auditLog);
+      // Scoped to rows written by this transaction (`xmin`), not a global
+      // count: other integration test files commit their own audit_log rows
+      // concurrently, and a global count(*) would flake on that traffic.
+      const ownRows = () =>
+        tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(auditLog)
+          .where(sql`xmin::text::bigint = txid_current()`);
+      const before = await ownRows();
       await expect(
         recordAudit(tx, {
           actorUserId: null,
@@ -140,7 +148,7 @@ describe('RFC-41 recordAudit', () => {
           metadata: { changes: [{ field: 'x' }, { nested: { email: 'a@b' } }] },
         }),
       ).rejects.toThrow(AuditMetadataError);
-      const after = await tx.select({ n: sql<number>`count(*)::int` }).from(auditLog);
+      const after = await ownRows();
       expect(after[0]?.n).toBe(before[0]?.n);
     });
   });
