@@ -10,3 +10,4 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 | pnpm | `pnpm.md` |
 | Docker / Compose / Caddy | `docker.md` |
 | TypeScript | `typescript.md` |
+| GitHub Actions / security automation | `github-security.md` |
