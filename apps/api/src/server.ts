@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { createPermissionCache } from './access/permissions.ts';
 import { createApp } from './app.ts';
+import { purgeAudit, startRetentionTimer } from './audit/retention.ts';
 import { createHibpChecker } from './auth/breach-check.ts';
 import { createMfaStore } from './auth/mfa.ts';
 import { createRateLimiter } from './auth/rate-limit.ts';
@@ -49,8 +50,12 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' 
   logger.info({ port: info.port, env: config.nodeEnv }, 'api listening');
 });
 
+// RFC-42 R4: the API process owns the purge schedule; tests never start it.
+const retention = startRetentionTimer({ purge: () => purgeAudit(db), logger });
+
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'shutting down');
+  retention.stop();
   server.close(() => {
     Promise.allSettled([closeDb(), redis.quit()]).then(() => process.exit(0));
   });

@@ -46,7 +46,7 @@ describe('RFC-41 R9 treerepro_app privileges on audit_log', () => {
   const t = useTestDb();
   const su = useTestDb({ role: 'superuser' });
 
-  it('holds SELECT, INSERT and DELETE but neither UPDATE nor TRUNCATE', async () => {
+  it('holds SELECT and INSERT but neither UPDATE, DELETE nor TRUNCATE', async () => {
     const rows = await t.db.execute(sql`
       select privilege_type, has_table_privilege('treerepro_app', 'audit_log', privilege_type) as granted
       from unnest(array['SELECT', 'INSERT', 'DELETE', 'UPDATE', 'TRUNCATE']) as privilege_type
@@ -54,7 +54,7 @@ describe('RFC-41 R9 treerepro_app privileges on audit_log', () => {
     expect(Object.fromEntries(rows.map((r) => [r.privilege_type, r.granted]))).toEqual({
       SELECT: true,
       INSERT: true,
-      DELETE: true,
+      DELETE: false,
       UPDATE: false,
       TRUNCATE: false,
     });
