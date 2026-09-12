@@ -19,7 +19,7 @@ export async function forgotPassword(
   input: { email: string } & RequestMeta,
 ): Promise<void> {
   const user = await findUserByEmail(ctx.db, input.email);
-  if (!user || user.status !== 'active') return;
+  if (user?.status !== 'active') return;
   const now = new Date(ctx.now());
   const { raw, expiresAt } = await ctx.db.transaction(async (tx) => {
     const issued = await issueToken(tx, { userId: user.id, kind: 'password_reset', now });
@@ -59,7 +59,7 @@ export async function resetPassword(
   const userId = await ctx.db.transaction(async (tx) => {
     const consumed = await consumeToken(tx, { raw: input.token, kind: 'password_reset', now });
     const user = consumed ? await findUserById(tx, consumed.userId) : null;
-    if (!user || user.status !== 'active') {
+    if (user?.status !== 'active') {
       throw new AppError('AUTH_TOKEN_INVALID', 'Reset link is invalid or has expired');
     }
     await updatePasswordHash(tx, { id: user.id, passwordHash, now });
