@@ -59,7 +59,7 @@ CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default 
 ## Dependabot npm updates fail on every run
 **Symptom:** The `Dependabot Updates` run for `npm_and_yarn` ends with `Could not download the pnpm 12.4.1 binary: Could not reach https://registry.npmjs.org/@pnpm/exe.linux-x64/12.4.1: fetch failed`; no npm PRs appear. Docker and GitHub Actions updates work.
 **Cause:** pnpm 12's npm package is a launcher that downloads the native `@pnpm/exe` binary with a plain `fetch()`, ignoring Dependabot's proxy. Upstream bug: https://github.com/dependabot/dependabot-core/issues/16170 (open since 2026-09-03). Dependabot security updates for npm hit the same path.
-**Fix:** Nothing on our side. Until upstream ships the fix, `pnpm audit` in `Verify`, `Dependency review` and CodeQL still cover npm; run `pnpm outdated` by hand for version bumps. Re-check the issue when the weekly run keeps failing.
+**Fix:** Nothing on our side. Until upstream ships the fix, detection still works — `pnpm audit` in `Verify` and `Dependency review` flag vulnerable npm dependencies, CodeQL scans our own source — but nothing opens remediation PRs. Once a week run `pnpm outdated` and `pnpm audit` locally, bump what they list with `pnpm update` (exact pins, `minimumReleaseAge` applies) and open the PR by hand. Re-check the upstream issue when the weekly run keeps failing.
 
 ## Dependabot proposes a major base-image bump
 **Symptom:** A PR like "bump node from 24.21.0-alpine to 26.8-alpine" shows up and its checks are green.
