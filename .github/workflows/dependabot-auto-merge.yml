@@ -1,10 +1,11 @@
 name: Dependabot auto-merge
 
-# Turns on GitHub auto-merge for Dependabot pull requests that bump minor or
-# patch versions (every ecosystem in .github/dependabot.yml groups those). The
-# merge itself happens only once every required check of the `main` ruleset is
-# green; a major bump, or a pull request not opened by Dependabot, is left for a
-# human. Needs "Allow auto-merge" on the repository (scripts/github-admin.sh).
+# Turns on GitHub auto-merge for Dependabot pull requests whose highest bump is
+# minor or patch (.github/dependabot.yml groups updates per ecosystem; only the
+# docker and compose groups exclude majors themselves). The merge itself happens
+# later, once every required check of the `main` ruleset is green. A group that
+# carries a major bump, or a pull request not opened by Dependabot, is left for
+# a human. Needs "Allow auto-merge" on the repository (scripts/github-admin.sh).
 on:
   pull_request:
 
@@ -29,8 +30,12 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       # update-type is the highest level in a grouped PR, so a group that
-      # carries one major bump stays manual.
-      - if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+      # carries one major bump stays manual. A Dependabot rebase re-runs this
+      # job (`synchronize`); skip when auto-merge is already armed.
+      - if: >-
+          github.event.pull_request.auto_merge == null
+          && (steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          || steps.metadata.outputs.update-type == 'version-update:semver-patch')
         run: gh pr merge --auto --merge "$PR_URL"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

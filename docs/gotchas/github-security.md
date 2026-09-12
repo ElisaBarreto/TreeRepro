@@ -39,7 +39,7 @@ The repository belongs to a personal account, so collaborators cannot be admins:
 - Secret scanning with push protection.
 - Private vulnerability reporting.
 - Automatically delete head branches after merge (Settings → General).
-- Allow auto-merge (Settings → General) — without it `Dependabot auto-merge` fails with `Pull request auto merge is not allowed for this repository` and Dependabot PRs wait for a manual merge.
+- Allow auto-merge (Settings → General) — without it `Dependabot auto-merge` fails with `Pull request auto merge is not allowed for this repository` and Dependabot PRs wait for a manual merge. After the first auto-merged PR, confirm the `push` workflows (CI, CodeQL, Gitleaks, Scorecard) ran on `main` for the merge commit: GitHub performs the merge outside the workflow, so they should; if they did not, the workflow needs a GitHub App token instead of `GITHUB_TOKEN`.
 
 CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default setup": GitHub refuses SARIF from the workflow while default setup is active.
 
