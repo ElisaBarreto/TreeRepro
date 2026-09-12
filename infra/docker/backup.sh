@@ -1,6 +1,8 @@
 #!/bin/sh
 # Daily encrypted logical backup (design spec section 7; RFC-10 R9).
 set -eu
+# A failing pg_dump must fail the pipeline, not leave an empty "successful" .age file.
+set -o pipefail
 : "${BACKUP_AGE_RECIPIENT:?BACKUP_AGE_RECIPIENT is required}"
 PGPASSWORD="$(cat /run/secrets/db_migrator_password)"
 export PGPASSWORD

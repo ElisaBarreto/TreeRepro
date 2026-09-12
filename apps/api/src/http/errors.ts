@@ -58,8 +58,12 @@ export function sanitizeError(err: Error): {
     name: err.name,
     message: cause ? cause.message : err.message,
     code: typeof code === 'string' ? code : undefined,
-    // The first stack line repeats the raw message; only the frames are kept.
-    stack: err.stack?.split('\n').slice(1).join('\n'),
+    // The stack starts with the raw message (several lines for a query error:
+    // "Failed query: …\nparams: …"); only the frame lines are kept.
+    stack: err.stack
+      ?.split('\n')
+      .filter((line) => /^\s+at\s/.test(line))
+      .join('\n'),
   };
 }
 

@@ -1,4 +1,5 @@
 import { errorEnvelopeSchema } from '@treerepro/contracts';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { requestId } from 'hono/request-id';
@@ -48,17 +49,10 @@ describe('RFC-02 R9 error handler', () => {
       throw new Error('secret internal detail');
     });
     a.get('/query-error', () => {
-      // Shaped like Drizzle's DrizzleQueryError: query text and params as own
-      // properties and in the message, the driver error on `cause`.
-      const cause = Object.assign(new Error('duplicate key value'), { code: '23505' });
-      throw Object.assign(
-        new Error('Failed query: insert into users values ($1) params: secret-value', { cause }),
-        {
-          name: 'DrizzleQueryError',
-          query: 'insert into users values ($1)',
-          params: ['secret-value'],
-        },
-      );
+      // The real Drizzle class: query text and params as own properties and in
+      // the two-line message ("Failed query: …\nparams: …"), driver error on `cause`.
+      const cause = Object.assign(new Error('boom'), { code: '23505' });
+      throw new DrizzleQueryError('insert into users values ($1)', ['secret-value'], cause);
     });
     return { a, lines };
   }
@@ -117,16 +111,14 @@ describe('RFC-02 R9 error handler', () => {
     const res = await a.request('/query-error');
     expect(res.status).toBe(500);
     const logged = lines.find((l) => (l as { msg: string }).msg === 'unhandled error') as {
-      err: { name: string; message: string; code?: string; stack?: string };
+      err: { message: string; code?: string; stack?: string };
     };
-    expect(logged.err).toMatchObject({
-      name: 'DrizzleQueryError',
-      message: 'duplicate key value',
-      code: '23505',
-    });
-    // The stack keeps the frames but drops its first line (the raw message).
+    expect(logged.err).toMatchObject({ message: 'boom', code: '23505' });
+    // Only frame lines survive; the message lines (query and params) do not.
     expect(logged.err.stack).toMatch(/^\s+at /);
-    expect(JSON.stringify(logged)).not.toContain('secret-value');
-    expect(JSON.stringify(logged)).not.toContain('insert into users');
+    const line = JSON.stringify(logged);
+    expect(line).not.toContain('secret-value');
+    expect(line).not.toContain('params:');
+    expect(line).not.toContain('insert into users');
   });
 });
