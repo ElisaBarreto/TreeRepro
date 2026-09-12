@@ -1,12 +1,11 @@
 import { userSchema } from '@treerepro/contracts';
-import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
+import { lastAudit } from '../../test/helpers/audit.ts';
 import { adminRoleId, createRole } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { findUserByEmail } from '../auth/users.ts';
-import { auditLog } from '../db/schema/audit-log.ts';
 import { AppError } from '../http/errors.ts';
 import {
   getUser,
@@ -30,16 +29,6 @@ function ctxOf(t: ReturnType<typeof useTestApp>) {
     appOrigin: 'http://localhost',
     now: () => t.clock.now,
   };
-}
-
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
 }
 
 async function code(p: Promise<unknown>): Promise<string> {
@@ -117,7 +106,7 @@ describe('RFC-50 R5 updateUser', () => {
     });
     expect(updated.name).toBe('Ada L.');
     expect(updated.roles.map((r) => r.id)).toEqual([role.id]);
-    const nameAudit = await lastAudit(t, 'users.updated');
+    const nameAudit = await lastAudit(t.db, 'users.updated', { targetId: user.id });
     expect(nameAudit).toMatchObject({
       actorUserId: admin.id,
       targetId: user.id,
@@ -125,14 +114,14 @@ describe('RFC-50 R5 updateUser', () => {
       userAgent: 'admin-ua',
       metadata: { fields: ['name'] },
     });
-    expect(await lastAudit(t, 'users.roles_changed')).toMatchObject({
+    expect(await lastAudit(t.db, 'users.roles_changed', { targetId: user.id })).toMatchObject({
       targetId: user.id,
       metadata: { added: [role.id] },
     });
     // Same name again: no write, no new users.updated entry.
     const again = await updateUser(ctxOf(t), { ...meta(admin.id), id: user.id, name: 'Ada L.' });
     expect(again.name).toBe('Ada L.');
-    expect((await lastAudit(t, 'users.updated'))?.id).toBe(nameAudit?.id);
+    expect((await lastAudit(t.db, 'users.updated', { targetId: user.id }))?.id).toBe(nameAudit?.id);
   });
 
   it('answers USER_NOT_FOUND for an unknown id and ROLE_NOT_FOUND for an unknown role', async () => {
@@ -170,7 +159,7 @@ describe('RFC-50 R6, R7 suspendUser and reactivateUser', () => {
     expect(suspended.status).toBe('suspended');
     expect(suspended.suspendedAt).toEqual(expect.any(String));
     expect(await t.sessions.get(session.rawId)).toBeNull();
-    expect(await lastAudit(t, 'users.suspended')).toMatchObject({
+    expect(await lastAudit(t.db, 'users.suspended', { targetId: user.id })).toMatchObject({
       actorUserId: admin.id,
       targetId: user.id,
       ip: '203.0.113.9',
@@ -180,7 +169,7 @@ describe('RFC-50 R6, R7 suspendUser and reactivateUser', () => {
     );
     const active = await reactivateUser(ctxOf(t), { ...meta(admin.id), id: user.id });
     expect(active).toMatchObject({ status: 'active', suspendedAt: null });
-    expect(await lastAudit(t, 'users.reactivated')).toMatchObject({
+    expect(await lastAudit(t.db, 'users.reactivated', { targetId: user.id })).toMatchObject({
       actorUserId: admin.id,
       targetId: user.id,
     });
@@ -214,7 +203,7 @@ describe('RFC-50 R8 resendInvite', () => {
     expect(result.status).toBe('invited');
     expect(t.mail.sent).toHaveLength(sentBefore + 1);
     expect(t.mail.sent.at(-1)?.to).toBe(email);
-    expect(await lastAudit(t, 'auth.invite.created')).toMatchObject({
+    expect(await lastAudit(t.db, 'auth.invite.created', { targetId: user.id })).toMatchObject({
       actorUserId: admin.id,
       targetId: user.id,
     });

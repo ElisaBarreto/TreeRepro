@@ -1,22 +1,11 @@
 import { userSchema } from '@treerepro/contracts';
-import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
+import { lastAudit } from '../../../../test/helpers/audit.ts';
 import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser, randomEmail } from '../../../../test/helpers/users.ts';
 import { findUserByEmail } from '../../../auth/users.ts';
-import { auditLog } from '../../../db/schema/audit-log.ts';
-
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
-}
 
 async function adminCookie(t: ReturnType<typeof useTestApp>) {
   const { user } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
@@ -79,7 +68,7 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
     const { data } = await res.json();
     expect(data).toMatchObject({ email, name: 'Grace', status: 'invited', roles: [] });
     expect(t.mail.sent.at(-1)?.to).toBe(email);
-    expect(await lastAudit(t, 'auth.invite.created')).toMatchObject({
+    expect(await lastAudit(t.db, 'auth.invite.created', { targetId: data.id })).toMatchObject({
       actorUserId: admin.id,
       targetId: data.id,
     });
@@ -231,7 +220,7 @@ describe('RFC-50 R9 session administration over HTTP', () => {
     const all = await call(t.app, 'DELETE', `/api/admin/users/${user.id}/sessions`, { cookie });
     expect(all.status).toBe(200);
     expect((await call(t.app, 'GET', '/api/auth/me', { cookie: b.cookie })).status).toBe(401);
-    expect(await lastAudit(t, 'sessions.revoked')).toMatchObject({
+    expect(await lastAudit(t.db, 'sessions.revoked', { targetId: user.id })).toMatchObject({
       targetType: 'user',
       targetId: user.id,
       metadata: { count: 1 },

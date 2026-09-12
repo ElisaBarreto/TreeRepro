@@ -1,12 +1,12 @@
 import { PERMISSION_KEYS } from '@treerepro/contracts';
-import { and, desc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { describe, expect, inject, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
+import { lastAudit } from '../../test/helpers/audit.ts';
 import { withRollback } from '../../test/helpers/db.ts';
 import { adminRoleId, createRole as insertRole } from '../../test/helpers/roles.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { createDb, type DbExecutor } from '../db/client.ts';
-import { auditLog } from '../db/schema/audit-log.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { users } from '../db/schema/users.ts';
 import { AppError } from '../http/errors.ts';
@@ -23,16 +23,6 @@ import {
 } from './roles.ts';
 
 const uniq = () => `Role ${Math.random().toString(16).slice(2)}`;
-
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
-}
 
 async function code(p: Promise<unknown>): Promise<string> {
   try {
@@ -67,7 +57,7 @@ describe('RFC-31 R3, R4, R5 role services', () => {
       permissions: ['audit.read', 'users.read'],
     });
     expect(await getRole(t.db, role.id)).toEqual(role);
-    expect(await lastAudit(t, 'roles.created')).toMatchObject({
+    expect(await lastAudit(t.db, 'roles.created', { targetId: role.id })).toMatchObject({
       actorUserId: actor.id,
       targetType: 'role',
       targetId: role.id,
@@ -115,7 +105,7 @@ describe('RFC-31 R3, R4, R5 role services', () => {
     expect(updated.description).toBe('Edits');
     expect(updated.permissions).toEqual(['audit.read']);
     expect(updated.updatedAt >= role.updatedAt).toBe(true);
-    expect(await lastAudit(t, 'roles.updated')).toMatchObject({
+    expect(await lastAudit(t.db, 'roles.updated', { targetId: role.id })).toMatchObject({
       targetId: role.id,
       metadata: { changes: ['description', 'permissions'] },
     });
@@ -128,7 +118,7 @@ describe('RFC-31 R3, R4, R5 role services', () => {
       permissions: ['audit.read', 'audit.read'],
       actorUserId: null,
     });
-    expect(await lastAudit(t, 'roles.updated')).toMatchObject({
+    expect(await lastAudit(t.db, 'roles.updated', { targetId: role.id })).toMatchObject({
       targetId: role.id,
       metadata: { changes: ['name'] },
     });
@@ -165,7 +155,9 @@ describe('RFC-31 R3, R4, R5 role services', () => {
     await deleteRole(ctx(), { id: role.id, actorUserId: null });
     expect(await getRole(t.db, role.id)).toBeNull();
     expect([...(await resolvePermissions(ctx(), user.id))]).toEqual([]);
-    expect(await lastAudit(t, 'roles.deleted')).toMatchObject({ targetId: role.id });
+    expect(await lastAudit(t.db, 'roles.deleted', { targetId: role.id })).toMatchObject({
+      targetId: role.id,
+    });
     expect(await code(deleteRole(ctx(), { id: role.id, actorUserId: null }))).toBe(
       'ROLE_NOT_FOUND',
     );
@@ -204,7 +196,7 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
     });
     expect(result).toEqual({ added: [r2.id], removed: [r1.id] });
     expect([...(await resolvePermissions(ctx(), user.id))]).toEqual(['audit.read']);
-    expect(await lastAudit(t, 'users.roles_changed')).toMatchObject({
+    expect(await lastAudit(t.db, 'users.roles_changed', { targetId: user.id })).toMatchObject({
       targetType: 'user',
       targetId: user.id,
       metadata: { added: [r2.id], removed: [r1.id] },

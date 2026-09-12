@@ -1,23 +1,12 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, cookieFrom, useTestApp } from '../../../test/helpers/app.ts';
+import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser, DEFAULT_PASSWORD } from '../../../test/helpers/users.ts';
-import { auditLog } from '../../db/schema/audit-log.ts';
 import { totpRecoveryCodes } from '../../db/schema/totp-recovery-codes.ts';
 import { generateTotpCode } from '../totp.ts';
 import { findUserById } from '../users.ts';
-
-// uuidv7 ids are time-ordered with sub-millisecond precision; `at` can tie.
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
-}
 
 describe('RFC-23 R2, R3 TOTP enrolment', () => {
   const t = useTestApp();
@@ -79,7 +68,9 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
     expect(await t.mfa.getSetupSecret(user.id)).toBeNull();
     const raw = await t.db.execute(sql`select totp_secret from users where id = ${user.id}`);
     expect((raw[0] as { totp_secret: string }).totp_secret).not.toBe(secret);
-    expect(await lastAudit(t, 'auth.totp.enabled')).toMatchObject({ actorUserId: user.id });
+    expect(await lastAudit(t.db, 'auth.totp.enabled', { actorUserId: user.id })).toMatchObject({
+      actorUserId: user.id,
+    });
     const [count] = await t.db
       .select({ n: sql<number>`count(*)::int` })
       .from(totpRecoveryCodes)
@@ -102,7 +93,9 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
       body: { recoveryCode: recoveryCodes[0]?.toUpperCase() },
     });
     expect(ok.status).toBe(200);
-    expect(await lastAudit(t, 'auth.totp.recovery_used')).toMatchObject({ actorUserId: user.id });
+    expect(
+      await lastAudit(t.db, 'auth.totp.recovery_used', { actorUserId: user.id }),
+    ).toMatchObject({ actorUserId: user.id });
     const login2 = await call(t.app, 'POST', '/api/auth/login', {
       body: { email, password: DEFAULT_PASSWORD },
     });
@@ -142,7 +135,9 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
       .from(totpRecoveryCodes)
       .where(eq(totpRecoveryCodes.userId, user.id));
     expect(count?.n).toBe(0);
-    expect(await lastAudit(t, 'auth.totp.disabled')).toMatchObject({ actorUserId: user.id });
+    expect(await lastAudit(t.db, 'auth.totp.disabled', { actorUserId: user.id })).toMatchObject({
+      actorUserId: user.id,
+    });
     const off = await disable({ password: DEFAULT_PASSWORD, code: '000000' });
     expect(off.status).toBe(409);
     expect((await off.json()).error.code).toBe('AUTH_TOTP_NOT_ENABLED');

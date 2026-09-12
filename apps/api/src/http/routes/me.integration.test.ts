@@ -1,10 +1,9 @@
 import { sessionSummarySchema, userSchema } from '@treerepro/contracts';
-import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../test/helpers/app.ts';
+import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
-import { auditLog } from '../../db/schema/audit-log.ts';
 
 describe('RFC-22 R11 own sessions', () => {
   const t = useTestApp();
@@ -27,12 +26,7 @@ describe('RFC-22 R11 own sessions', () => {
     const del = await call(t.app, 'DELETE', `/api/me/sessions/${b.id}`, { cookie: a.cookie });
     expect(del.status).toBe(200);
     expect((await call(t.app, 'GET', '/api/auth/me', { cookie: b.cookie })).status).toBe(401);
-    const [audit] = await t.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'auth.session.revoked'))
-      .orderBy(desc(auditLog.id))
-      .limit(1);
+    const audit = await lastAudit(t.db, 'auth.session.revoked', { targetId: b.id });
     expect(audit).toMatchObject({ actorUserId: user.id, targetType: 'session', targetId: b.id });
   });
 
@@ -76,12 +70,7 @@ describe('RFC-50 R11 PATCH /api/me', () => {
     const { data } = await res.json();
     expect(data).toMatchObject({ id: user.id, name: 'Ada Lovelace', roles: [] });
     expect(userSchema.safeParse(data).success).toBe(true);
-    const [audit] = await t.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'users.updated'))
-      .orderBy(desc(auditLog.id))
-      .limit(1);
+    const audit = await lastAudit(t.db, 'users.updated', { targetId: user.id });
     expect(audit).toMatchObject({
       actorUserId: user.id,
       targetType: 'user',

@@ -1,10 +1,9 @@
 import { sessionSummarySchema } from '@treerepro/contracts';
-import { desc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
+import { lastAudit } from '../../test/helpers/audit.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
-import { auditLog } from '../db/schema/audit-log.ts';
 import { AppError } from '../http/errors.ts';
 import { listUserSessions, revokeAllUserSessions, revokeUserSession } from './sessions.ts';
 
@@ -21,16 +20,6 @@ function ctxOf(t: ReturnType<typeof useTestApp>) {
     appOrigin: 'http://localhost',
     now: () => t.clock.now,
   };
-}
-
-async function lastAudit(t: ReturnType<typeof useTestApp>, action: string) {
-  const [row] = await t.db
-    .select()
-    .from(auditLog)
-    .where(eq(auditLog.action, action))
-    .orderBy(desc(auditLog.id))
-    .limit(1);
-  return row;
 }
 
 const meta = (actorUserId: string) => ({ actorUserId, ip: '203.0.113.9', userAgent: 'admin-ua' });
@@ -54,7 +43,7 @@ describe('RFC-50 R9 session administration', () => {
       await revokeUserSession(ctxOf(t), { ...meta(admin.id), userId: user.id, sessionId: b.id }),
     ).toBe(true);
     expect(await t.sessions.get(b.rawId)).toBeNull();
-    expect(await lastAudit(t, 'sessions.revoked')).toMatchObject({
+    expect(await lastAudit(t.db, 'sessions.revoked', { targetId: b.id })).toMatchObject({
       actorUserId: admin.id,
       targetType: 'session',
       targetId: b.id,
@@ -79,7 +68,7 @@ describe('RFC-50 R9 session administration', () => {
     expect(await t.sessions.get(theirs.rawId)).not.toBeNull();
     expect(await revokeAllUserSessions(ctxOf(t), { ...meta(admin.id), userId: user.id })).toBe(1);
     expect(await t.sessions.get(a.rawId)).toBeNull();
-    expect(await lastAudit(t, 'sessions.revoked')).toMatchObject({
+    expect(await lastAudit(t.db, 'sessions.revoked', { targetId: user.id })).toMatchObject({
       targetType: 'user',
       targetId: user.id,
       metadata: { count: 1 },
