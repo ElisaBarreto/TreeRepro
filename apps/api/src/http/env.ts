@@ -1,4 +1,8 @@
 import type { RequestIdVariables } from 'hono/request-id';
+import type { SessionRecord } from '../auth/sessions.ts';
+import type { UserRow } from '../db/schema/users.ts';
 import type { Logger } from '../logger.ts';
 
-export type AppEnv = { Variables: RequestIdVariables & { logger: Logger } };
+export type AppEnv = {
+  Variables: RequestIdVariables & { logger: Logger; session?: SessionRecord; user?: UserRow };
+};

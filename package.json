@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "pnpm -r build",
-    "rfc:check": "pnpm --filter @treerepro/rfc-lint check"
+    "rfc:check": "pnpm --filter @treerepro/rfc-lint check",
+    "seed:admin": "pnpm --filter @treerepro/api seed:admin"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",

@@ -12,10 +12,10 @@ Security-relevant events must be recorded immutably: accountability under the GD
 
 ## Rules
 
-- **R1** Table `audit_log` columns: `id` uuid primary key default `uuidv7()`; `at` timestamptz not null default `now()`; `actor_user_id` uuid nullable (foreign key to `users` added by RFC-2x); `action` text not null; `target_type` text nullable; `target_id` text nullable; `ip` text nullable (encrypted); `user_agent` text nullable (encrypted); `metadata` jsonb not null default `{}`. Indexes: `(at desc)` and `(actor_user_id, at desc)`.
+- **R1** Table `audit_log` columns: `id` uuid primary key default `uuidv7()`; `at` timestamptz not null default `now()`; `actor_user_id` uuid nullable (foreign key to `users`, RFC-20 R9); `action` text not null; `target_type` text nullable; `target_id` text nullable; `ip` text nullable (encrypted); `user_agent` text nullable (encrypted); `metadata` jsonb not null default `{}`. Indexes: `(at desc)` and `(actor_user_id, at desc)`.
 - **R2** Append-only. A trigger rejects every `UPDATE` and `TRUNCATE`. It rejects `DELETE` unless the current transaction has set `treerepro.allow_audit_purge = 'on'` (the retention job, RFC-42, uses `SET LOCAL`); PostgreSQL does not distinguish a session-level `SET`, so the flag is a convention enforced by code review until RFC-42 moves purging into a `SECURITY DEFINER` function and revokes `DELETE` from `treerepro_app`.
 - **R3** Actions are dot-separated identifiers `<domain>.<event>` from the catalog below, mirrored exactly by `AUDIT_ACTIONS` in `apps/api/src/audit/actions.ts` (a test compares the two). New actions are added to this RFC first.
-- **R4** `ip` and `user_agent` are encrypted with RFC-40 before storage.
+- **R4** `ip` and `user_agent` are encrypted with RFC-40 before storage. `auth.login.failure` entries carry `metadata.reason` with one of `unknown_email`, `wrong_password`, `not_active`, `suspended`, `rate_limited` (RFC-22 R2, RFC-24 R6).
 - **R5** `recordAudit` runs inside the same database transaction as the action it records. If the audit write fails, the action is rolled back (fail closed).
 - **R6** Retention: entries older than 2 years are purged by the retention job (RFC-42, future). Until it exists nothing is purged.
 - **R7** `metadata` never contains personal data or secrets. `recordAudit` inspects every key at any depth before writing, normalized to lowercase with `_` and `-` removed, and rejects it when it contains `password`, `token`, `secret`, `email` or `useragent`; when it is `ip` or starts or ends with `ip` (`ipAddress`, `clientIp`); or when it is one of `name`, `username`, `firstname`, `lastname`, `fullname`, `displayname`. Values are not inspected: a key naming PII is rejected whatever it holds.
@@ -28,8 +28,10 @@ Security-relevant events must be recorded immutably: accountability under the GD
 |---|---|
 | `auth.login.success` | Password (and TOTP, if enabled) accepted; session created. |
 | `auth.login.failure` | Login attempt rejected (unknown email, wrong password or wrong TOTP). |
+| `auth.login.totp_failure` | Wrong TOTP or recovery code during the MFA step. |
 | `auth.logout` | Current session revoked by the user. |
 | `auth.logout_all` | All sessions of a user revoked. |
+| `auth.session.revoked` | One of the user's own sessions revoked by the user. |
 | `auth.invite.created` | Invitation issued (or re-issued) for a user. |
 | `auth.invite.accepted` | Invitation accepted; password set. |
 | `auth.password.reset_requested` | Password reset token issued. |
@@ -37,6 +39,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `auth.password.changed` | Password replaced by the authenticated user. |
 | `auth.totp.enabled` | TOTP second factor enabled. |
 | `auth.totp.disabled` | TOTP second factor disabled. |
+| `auth.totp.recovery_used` | A recovery code was consumed to complete login. |
 | `users.created` | User record created by an admin. |
 | `users.updated` | User profile fields changed. |
 | `users.roles_changed` | Roles assigned to or removed from a user. |
@@ -60,3 +63,4 @@ None.
 - 2026-09-12 — accepted.
 - 2026-09-12 — R2: purge flag scope clarified.
 - 2026-09-12 — R7: key normalization and contains-matching (issue #8).
+- 2026-09-12 — R1 FK, R4 reason metadata, three auth actions (RFC-20, RFC-22, RFC-23).

@@ -12,7 +12,7 @@ Personal data of system users (name, email, IP address, user agent) must be unre
 
 ## Rules
 
-- **R1** PII columns are stored encrypted; plaintext is never persisted. Columns: `users.name`, `users.email` (both defined with RFC-2x), `audit_log.ip`, `audit_log.user_agent` (RFC-41).
+- **R1** PII columns are stored encrypted; plaintext is never persisted. Columns: `users.name`, `users.email`, `users.totp_secret` (RFC-20), `audit_log.ip`, `audit_log.user_agent` (RFC-41). Redis records holding PII use the same mechanism: session `ip` and `userAgent` (AAD `session.ip`, `session.userAgent`, RFC-22 R4) and the provisional TOTP secret (AAD `totp_setup.secret`, RFC-23 R2).
 - **R2** Algorithm: AES-256-GCM with a fresh 12-byte random IV per encryption and a 16-byte authentication tag. Stored format: `v<version>:<iv>:<tag>:<ciphertext>`, each part base64url without padding. The additional authenticated data (AAD) is the qualified column name `<table>.<column>` in UTF-8; it is not stored. A ciphertext therefore decrypts only in the column it was written for: a value copied into another column or table fails R4.
 - **R3** Keys are 32 bytes. Each key version is a secret file `pii_encryption_key_v<N>` containing 64 lowercase hex characters. The keyring maps version label (`v1`, `v2`, …) to key; the version named by `PII_CURRENT_KEY_VERSION` (default `v1`) encrypts; every version in the keyring can decrypt.
 - **R4** Decrypting a malformed value, an unknown version, or a value whose authentication fails throws `PiiDecryptError`. No partial plaintext is ever returned.
@@ -34,3 +34,4 @@ None.
 - 2026-09-12 — accepted.
 - 2026-09-12 — R7: Compose declaration of a new key version added.
 - 2026-09-12 — R2, R8: ciphertexts bound to their column with AAD; R11: no querying on encrypted columns (issue #7).
+- 2026-09-12 — R1: users columns and Redis records (RFC-20, RFC-22, RFC-23).

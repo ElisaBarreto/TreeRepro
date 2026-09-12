@@ -29,8 +29,18 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `RATE_LIMITED` | 429 | Too many requests; `Retry-After` header is set. |
 | `INTERNAL_ERROR` | 500 | Unexpected failure; see logs by request id (RFC-02 R9). |
 | `SERVICE_UNAVAILABLE` | 503 | A dependency is down (RFC-10 R10). |
+| `AUTH_INVALID_CREDENTIALS` | 401 | Unknown email, wrong password, or account that cannot log in (RFC-21 R4, RFC-22 R2). |
+| `AUTH_UNAUTHENTICATED` | 401 | No valid session on a route that requires one (RFC-22 R8). |
+| `AUTH_TOTP_INVALID` | 401 | TOTP or recovery code rejected (RFC-23 R3, R6, R7). |
+| `AUTH_MFA_EXPIRED` | 401 | MFA challenge missing, expired or exhausted (RFC-23 R6). |
+| `AUTH_ACCOUNT_SUSPENDED` | 403 | Password verified but the account is suspended (RFC-22 R2). |
+| `AUTH_TOKEN_INVALID` | 400 | Invitation or reset token unknown, expired or consumed (RFC-20 R6, RFC-21 R6). |
+| `AUTH_PASSWORD_WEAK` | 400 | Password too short or breached; `details` names the reason (RFC-21 R2). |
+| `AUTH_TOTP_ALREADY_ENABLED` | 409 | TOTP setup requested while enabled (RFC-23 R2). |
+| `AUTH_TOTP_NOT_ENABLED` | 409 | TOTP disable requested while off (RFC-23 R7). |
+| `USER_EMAIL_TAKEN` | 409 | Another account already uses this email (RFC-20 R3). |
 
-Reserved prefixes for later RFCs: `AUTH_` (RFC-2x), `PERMISSION_` (RFC-3x), `USER_` and `ROLE_` (RFC-5x).
+Reserved prefixes for later RFCs: `PERMISSION_` (RFC-3x), `ROLE_` (RFC-5x).
 
 ## Open questions
 
@@ -40,3 +50,4 @@ None.
 
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
+- 2026-09-12 — AUTH_* and USER_EMAIL_TAKEN added (RFC-20–23).

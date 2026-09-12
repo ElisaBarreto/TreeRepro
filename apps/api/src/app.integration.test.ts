@@ -1,20 +1,14 @@
 import { errorEnvelopeSchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
-import { captureLogger } from '../test/helpers/logger.ts';
-import { type AppDeps, BODY_LIMIT_BYTES, createApp } from './app.ts';
+import { call, randomIp, useTestApp } from '../test/helpers/app.ts';
+import { type AppDeps, BODY_LIMIT_BYTES } from './app.ts';
 import { AppError } from './http/errors.ts';
 
 const ORIGIN = 'http://localhost';
+const t = useTestApp();
 
 function build(overrides: Partial<AppDeps> = {}) {
-  const { logger, lines } = captureLogger();
-  const deps: AppDeps = {
-    config: { appOrigin: ORIGIN },
-    logger,
-    health: { database: async () => true, redis: async () => true },
-    ...overrides,
-  };
-  return { app: createApp(deps), lines };
+  return t.build(overrides);
 }
 
 describe('RFC-10 R10 health', () => {
@@ -148,5 +142,16 @@ describe('RFC-02 R9 error handling is wired', () => {
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain('internal detail');
     expect(lines.some((l) => (l as { msg: string }).msg === 'unhandled error')).toBe(true);
+  });
+});
+
+describe('RFC-24 R4 global rate limit is wired', () => {
+  it('answers 429 after 100 anonymous requests from one IP within a minute', async () => {
+    const ip = randomIp();
+    for (let i = 0; i < 100; i++)
+      expect((await call(t.app, 'GET', '/api/does-not-exist', { ip })).status).toBe(404);
+    const res = await call(t.app, 'GET', '/api/does-not-exist', { ip });
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toMatch(/^\d+$/);
   });
 });

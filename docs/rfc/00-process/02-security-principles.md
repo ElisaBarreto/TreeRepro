@@ -23,7 +23,7 @@ TreeRepro holds personal data of its users and scientific data whose integrity m
 - **R9** Error responses never include stack traces, internal messages, SQL, or file paths. Unexpected errors answer 500 `INTERNAL_ERROR` with a fixed message; the details go to the log with the request ID.
 - **R10** Containers run as a non-root user with a read-only filesystem, all capabilities dropped and `no-new-privileges`. Single exception: the Caddy container runs as root to bind ports 80/443, with every capability dropped except `NET_BIND_SERVICE`. Only Caddy publishes a port in production.
 - **R11** Dependencies are pinned to exact versions; the lockfile is committed; `pnpm audit --audit-level high` runs in CI; Docker base images are pinned by tag and digest.
-- **R12** Every API route is protected by a permission guard (RFC-32, future) unless it appears on the explicit public allowlist: `GET /api/health`, `GET /api/health/ready`, and the authentication routes listed in RFC-22. A test enumerates registered routes and fails on any unguarded route.
+- **R12** Every API route is protected by a permission guard (RFC-32, future) unless it appears on the explicit public allowlist: the routes marked `public` in RFC-22 R1. Until RFC-32 exists, every non-public route is behind `requireSession` (RFC-22 R8). A test enumerates registered routes and fails on any unguarded route.
 - **R13** Cryptographic randomness comes only from `node:crypto` (`randomBytes`, `randomUUID`). `Math.random` is never used for anything security-relevant.
 
 ## Open questions
@@ -37,3 +37,4 @@ None.
 - 2026-09-12 — R10: Caddy root exception documented.
 - 2026-09-12 — R6: `Secret` wrapper for in-process secret values (issue #6).
 - 2026-09-12 — R7: IP-bearing proxy headers and `remoteAddress` redacted (issue #5).
+- 2026-09-12 — R12: allowlist delegated to RFC-22 R1; session guard until RFC-32.
