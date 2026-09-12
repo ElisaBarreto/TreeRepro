@@ -164,4 +164,43 @@ describe('RFC-41 R7 assertSafeMetadata', () => {
       'metadata key "items.0.password" is not allowed',
     );
   });
+
+  it('normalizes keys and matches variants, whatever the value', () => {
+    const rejected = [
+      'Email',
+      'emailAddress',
+      'user_email',
+      'e-mail',
+      'user_agent',
+      'UserAgent',
+      'ipAddress',
+      'client_ip',
+      'IP',
+      'passwordHash',
+      'old_password',
+      'accessToken',
+      'client-secret',
+      'Name',
+      'user_name',
+      'firstName',
+      'display-name',
+    ];
+    for (const key of rejected) {
+      expect(() => assertSafeMetadata({ [key]: true }), key).toThrow(AuditMetadataError);
+    }
+    // "ip" matches only as a whole word, prefix or suffix, so words that merely
+    // contain it stay usable.
+    const accepted = [
+      'description',
+      'recipient',
+      'roleName',
+      'fileName',
+      'hostname',
+      'id',
+      'count',
+    ];
+    for (const key of accepted) {
+      expect(() => assertSafeMetadata({ [key]: 'x' }), key).not.toThrow();
+    }
+  });
 });
