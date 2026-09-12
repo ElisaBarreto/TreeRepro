@@ -7,6 +7,7 @@ export default defineConfig({
     projects: [
       'packages/*',
       'tools/*',
+      'apps/web',
       {
         test: {
           name: 'api:unit',
