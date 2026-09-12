@@ -17,7 +17,7 @@ TreeRepro holds personal data of its users and scientific data whose integrity m
 - **R3** Every mutating request (POST, PUT, PATCH, DELETE) must carry an `Origin` header exactly equal to the configured `APP_ORIGIN`; otherwise the API answers 403 `SECURITY_INVALID_ORIGIN` before any handler runs. Safe methods (GET, HEAD, OPTIONS) are exempt.
 - **R4** Request bodies larger than 1 MiB are rejected with 413 `REQUEST_TOO_LARGE`.
 - **R5** Every API response carries: `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`. The SPA served by Caddy in production carries a strict CSP (`default-src 'self'`, no inline scripts), HSTS, and the same three headers. In development Caddy sets no CSP because Vite injects inline scripts.
-- **R6** Secrets are read only from files under `/run/secrets` (Docker secrets; `SECRETS_DIR` overrides the directory for tests). A missing or malformed secret aborts process start. Secrets are never logged, never placed in environment variables, never returned by any endpoint.
+- **R6** Secrets are read only from files under `/run/secrets` (Docker secrets; `SECRETS_DIR` overrides the directory for tests). A missing or malformed secret aborts process start. Secrets are never logged, never placed in environment variables, never returned by any endpoint. In the process every secret value (passwords, connection URLs that embed them, keys) is held in a `Secret` wrapper whose JSON, string and inspect forms are the literal `[secret]`; the value is read with `expose()` at the point of use and never stored elsewhere.
 - **R7** Application logs redact these keys at the top level and one level deep: `password`, `passwordHash`, `token`, `secret`, `email`, `ip`, `userAgent`; plus `req.headers.cookie`, `req.headers.authorization`, `res.headers.set-cookie`, `user.name`, `body.name`, `input.name`. Client IP addresses appear only in the audit log (RFC-41), never in application logs.
 - **R8** All identifiers exposed by the API are UUID v7 (`uuidv7()` in PostgreSQL 18). Sequential integers are never exposed.
 - **R9** Error responses never include stack traces, internal messages, SQL, or file paths. Unexpected errors answer 500 `INTERNAL_ERROR` with a fixed message; the details go to the log with the request ID.
@@ -35,3 +35,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
 - 2026-09-12 — R10: Caddy root exception documented.
+- 2026-09-12 — R6: `Secret` wrapper for in-process secret values (issue #6).

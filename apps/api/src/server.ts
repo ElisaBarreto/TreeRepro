@@ -9,10 +9,10 @@ import { configurePii } from './security/pii.ts';
 
 const config = loadConfig();
 const logger = createLogger({ level: config.logLevel });
-configurePii(config.pii.keyring, config.pii.hmacKey);
+configurePii(config.pii.keyring.expose(), config.pii.hmacKey.expose());
 
-const { db, close: closeDb } = createDb(config.db.url);
-const redis = createRedis(config.redis.url);
+const { db, close: closeDb } = createDb(config.db.url.expose());
+const redis = createRedis(config.redis.url.expose());
 // Without a listener ioredis prints "[ioredis] Unhandled error event" to
 // stderr, bypassing pino and its redaction (RFC-02 R7).
 redis.on('error', (err) => logger.error({ err }, 'redis error'));

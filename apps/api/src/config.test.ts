@@ -2,7 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { inspect } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
+import { captureLogger } from '../test/helpers/logger.ts';
 import {
   buildDbUrl,
   buildRedisUrl,
@@ -10,6 +12,7 @@ import {
   loadConfig,
   loadMigratorConfig,
   readSecret,
+  Secret,
 } from './config.ts';
 
 const hex = () => randomBytes(32).toString('hex');
@@ -53,11 +56,11 @@ describe('RFC-10 R5 loadConfig', () => {
     expect(config.port).toBe(3000);
     expect(config.logLevel).toBe('info');
     expect(config.appOrigin).toBe('http://localhost');
-    expect(config.db.url).toBe('postgres://treerepro_app:dbpw@postgres:5432/treerepro');
-    expect(config.redis.url).toBe('redis://:redispw@redis:6379');
-    expect(config.pii.keyring.current).toBe('v1');
-    expect(config.pii.hmacKey).toHaveLength(32);
-    expect(config.sessionSecret).toHaveLength(32);
+    expect(config.db.url.expose()).toBe('postgres://treerepro_app:dbpw@postgres:5432/treerepro');
+    expect(config.redis.url.expose()).toBe('redis://:redispw@redis:6379');
+    expect(config.pii.keyring.expose().current).toBe('v1');
+    expect(config.pii.hmacKey.expose()).toHaveLength(32);
+    expect(config.sessionSecret.expose()).toHaveLength(32);
   });
 
   it('rejects an invalid environment naming the field, not the value', () => {
@@ -97,7 +100,9 @@ describe('RFC-10 R5 loadMigratorConfig', () => {
       DB_MIGRATOR_USER: 'treerepro_migrator',
       SECRETS_DIR: secretsDir(ALL_SECRETS),
     });
-    expect(config.db.url).toBe('postgres://treerepro_migrator:migpw@postgres:5432/treerepro');
+    expect(config.db.url.expose()).toBe(
+      'postgres://treerepro_migrator:migpw@postgres:5432/treerepro',
+    );
   });
 
   it('rejects an invalid environment naming the field', () => {
@@ -146,14 +151,54 @@ describe('RFC-02 R6 secrets', () => {
   it('readSecret trims trailing newlines', () => {
     expect(readSecret(secretsDir({ x: 'value' }), 'x')).toBe('value');
   });
+
+  it('Secret hides its value from JSON, String and inspect and only expose() reads it', () => {
+    const s = new Secret('hunter2');
+    expect(s.expose()).toBe('hunter2');
+    expect(JSON.stringify({ s })).toBe('{"s":"[secret]"}');
+    expect(String(s)).toBe('[secret]');
+    expect(`${s}`).toBe('[secret]');
+    expect(inspect(s)).toBe('[secret]');
+    expect(Object.keys(s)).toEqual([]);
+  });
+
+  it('serializing the whole config leaks no secret material', () => {
+    const config = loadConfig(env());
+    const { logger, lines } = captureLogger();
+    logger.info({ config }, 'boot');
+    const serialized = [
+      JSON.stringify(config),
+      inspect(config, { depth: 10 }),
+      JSON.stringify(lines),
+    ];
+    const material = [
+      'dbpw',
+      'redispw',
+      ALL_SECRETS.pii_hmac_key,
+      ALL_SECRETS.session_secret,
+      ALL_SECRETS.pii_encryption_key_v1,
+      Buffer.from(ALL_SECRETS.pii_hmac_key, 'hex').toString('base64'),
+    ];
+    for (const text of serialized) {
+      for (const m of material) expect(text).not.toContain(m);
+      expect(text).not.toMatch(/"data":\[/);
+    }
+    expect(JSON.parse(JSON.stringify(config))).toMatchObject({
+      db: { url: '[secret]' },
+      redis: { url: '[secret]' },
+      pii: { keyring: '[secret]', hmacKey: '[secret]' },
+      sessionSecret: '[secret]',
+    });
+  });
 });
 
 describe('RFC-40 R3 keyring loading', () => {
   it('loads every pii_encryption_key_v* file and honours PII_CURRENT_KEY_VERSION', () => {
     const dir = secretsDir({ ...ALL_SECRETS, pii_encryption_key_v2: hex() });
     const config = loadConfig(env({ SECRETS_DIR: dir, PII_CURRENT_KEY_VERSION: 'v2' }));
-    expect(config.pii.keyring.current).toBe('v2');
-    expect([...config.pii.keyring.keys.keys()].sort()).toEqual(['v1', 'v2']);
+    const keyring = config.pii.keyring.expose();
+    expect(keyring.current).toBe('v2');
+    expect([...keyring.keys.keys()].sort()).toEqual(['v1', 'v2']);
   });
 
   it('fails when the current version file is missing', () => {

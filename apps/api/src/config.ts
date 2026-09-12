@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { inspect } from 'node:util';
 import { z } from 'zod';
 import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
 
@@ -44,19 +45,49 @@ const migratorEnvSchema = z.object({
   DB_MIGRATOR_USER: z.string().min(1),
 });
 
+/**
+ * Holds a secret value so that it cannot reach a log or a response by
+ * accident: JSON, string and inspect forms are the literal `[secret]`, the
+ * value lives in a private field, and only `expose()` returns it.
+ * @rfc RFC-02 R6
+ */
+export class Secret<T> {
+  readonly #value: T;
+
+  constructor(value: T) {
+    this.#value = value;
+  }
+
+  expose(): T {
+    return this.#value;
+  }
+
+  toJSON(): string {
+    return '[secret]';
+  }
+
+  toString(): string {
+    return '[secret]';
+  }
+
+  [inspect.custom](): string {
+    return '[secret]';
+  }
+}
+
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
   logLevel: LogLevel;
   appOrigin: string;
-  db: { url: string };
-  redis: { url: string };
-  pii: { keyring: PiiKeyring; hmacKey: Buffer };
-  sessionSecret: Buffer;
+  db: { url: Secret<string> };
+  redis: { url: Secret<string> };
+  pii: { keyring: Secret<PiiKeyring>; hmacKey: Secret<Buffer> };
+  sessionSecret: Secret<Buffer>;
 }
 
 export interface MigratorConfig {
-  db: { url: string };
+  db: { url: Secret<string> };
 }
 
 /** @rfc RFC-10 R5 */
@@ -142,19 +173,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     logLevel: e.LOG_LEVEL,
     appOrigin: e.APP_ORIGIN,
     db: {
-      url: buildDbUrl({
-        host: e.DB_HOST,
-        port: e.DB_PORT,
-        name: e.DB_NAME,
-        user: e.DB_USER,
-        password: dbPassword,
-      }),
+      url: new Secret(
+        buildDbUrl({
+          host: e.DB_HOST,
+          port: e.DB_PORT,
+          name: e.DB_NAME,
+          user: e.DB_USER,
+          password: dbPassword,
+        }),
+      ),
     },
     redis: {
-      url: buildRedisUrl({ host: e.REDIS_HOST, port: e.REDIS_PORT, password: redisPassword }),
+      url: new Secret(
+        buildRedisUrl({ host: e.REDIS_HOST, port: e.REDIS_PORT, password: redisPassword }),
+      ),
     },
-    pii: { keyring, hmacKey },
-    sessionSecret,
+    pii: { keyring: new Secret(keyring), hmacKey: new Secret(hmacKey) },
+    sessionSecret: new Secret(sessionSecret),
   };
 }
 
@@ -168,13 +203,15 @@ export function loadMigratorConfig(env: NodeJS.ProcessEnv = process.env): Migrat
   const e = parseEnv(migratorEnvSchema, env);
   return {
     db: {
-      url: buildDbUrl({
-        host: e.DB_HOST,
-        port: e.DB_PORT,
-        name: e.DB_NAME,
-        user: e.DB_MIGRATOR_USER,
-        password: readSecret(e.SECRETS_DIR, 'db_migrator_password'),
-      }),
+      url: new Secret(
+        buildDbUrl({
+          host: e.DB_HOST,
+          port: e.DB_PORT,
+          name: e.DB_NAME,
+          user: e.DB_MIGRATOR_USER,
+          password: readSecret(e.SECRETS_DIR, 'db_migrator_password'),
+        }),
+      ),
     },
   };
 }
