@@ -11,7 +11,8 @@
     "test": "vitest run --config ../../vitest.config.ts --project api:unit --project api:integration",
     "test:unit": "vitest run --config ../../vitest.config.ts --project api:unit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --conditions=development src/db/migrate.ts"
+    "db:migrate": "node --conditions=development src/db/migrate.ts",
+    "seed:admin": "node --conditions=development src/cli/seed-admin.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
