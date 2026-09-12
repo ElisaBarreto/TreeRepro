@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, gt, isNull } from 'drizzle-orm';
-import type { DbExecutor } from '../db/client.ts';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import type { DbExecutor, DbTransaction } from '../db/client.ts';
 import { type AuthTokenKind, authTokens } from '../db/schema/auth-tokens.ts';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -21,12 +21,17 @@ export function hashToken(raw: string): string {
   return createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
-/** @rfc RFC-20 R5 */
+/**
+ * Must run inside a transaction; takes a per-user, per-kind advisory lock so
+ * concurrent issuance cannot leave two unconsumed tokens.
+ * @rfc RFC-20 R5
+ */
 export async function issueToken(
-  db: DbExecutor,
+  db: DbTransaction,
   input: { userId: string; kind: AuthTokenKind; now?: Date },
 ): Promise<{ raw: string; expiresAt: Date }> {
   const now = input.now ?? new Date();
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${input.kind}:${input.userId}`}))`);
   await db
     .update(authTokens)
     .set({ consumedAt: now })

@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { describe, expect, inject, it } from 'vitest';
 import { useTestDb, withRollback } from '../../test/helpers/db.ts';
+import { createDb } from '../db/client.ts';
 import { authTokens } from '../db/schema/auth-tokens.ts';
 import { users } from '../db/schema/users.ts';
 import { getPii } from '../security/pii.ts';
@@ -58,5 +59,43 @@ describe('RFC-20 R5 issueToken / consumeToken', () => {
         userId,
       });
     });
+  });
+
+  it('RFC-20 R5 concurrent issuance leaves exactly one active token', async () => {
+    const email = `t-${Math.random().toString(16).slice(2)}@example.test`;
+    const [user] = await t.db
+      .insert(users)
+      .values({ email, emailHash: getPii().blindIndex(email), name: 'T' })
+      .returning({ id: users.id });
+    const userId = user?.id ?? '';
+    // One connection per transaction, so all three really run at the same time.
+    const pool = createDb(inject('databaseUrl'), { max: 3 });
+    try {
+      await Promise.all(
+        [1, 2, 3].map(() =>
+          pool.db.transaction((tx) => issueToken(tx, { userId, kind: 'invite' })),
+        ),
+      );
+      const [active] = await t.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(authTokens)
+        .where(
+          and(
+            eq(authTokens.userId, userId),
+            eq(authTokens.kind, 'invite'),
+            isNull(authTokens.consumedAt),
+          ),
+        );
+      const [total] = await t.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(authTokens)
+        .where(and(eq(authTokens.userId, userId), eq(authTokens.kind, 'invite')));
+      expect(active?.count).toBe(1);
+      expect(total?.count).toBe(3);
+    } finally {
+      await pool.close();
+      await t.db.delete(authTokens).where(eq(authTokens.userId, userId));
+      await t.db.delete(users).where(eq(users.id, userId));
+    }
   });
 });
