@@ -1,10 +1,13 @@
 // `pnpm seed:admin --email <email> --name <name>` — invites the first user
-// (RFC-20 R8). Runs `inviteUser` with a null actor and prints the invitation
-// link to stdout in addition to sending the email, so the flow works without
-// a mailbox. Exit codes: 0 sent, 1 invitation exists but the email failed (or
-// any other error), 2 usage.
+// and assigns the `admin` role (RFC-20 R8, RFC-31 R9). Runs `inviteUser`
+// with a null actor and prints the invitation link to stdout in addition to
+// sending the email, so the flow works without a mailbox; the role is
+// assigned whether or not the email send succeeds. Exit codes: 0 sent, 1
+// invitation exists but the email failed (or any other error), 2 usage.
 import { parseArgs } from 'node:util';
+import { eq } from 'drizzle-orm';
 import { createPermissionCache } from '../access/permissions.ts';
+import { setUserRoles } from '../access/roles.ts';
 import { createHibpChecker } from '../auth/breach-check.ts';
 import type { AuthContext } from '../auth/context.ts';
 import { InvitationMailError, inviteUser } from '../auth/flows/invitation.ts';
@@ -13,6 +16,7 @@ import { createRateLimiter } from '../auth/rate-limit.ts';
 import { createSessionStore } from '../auth/sessions.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
+import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
 import { createLogger } from '../logger.ts';
 import { createMailer, createSmtpTransport } from '../mail/mailer.ts';
 import { createRedis } from '../redis/client.ts';
@@ -47,15 +51,26 @@ const ctx: AuthContext = {
   now: Date.now,
 };
 
+async function assignAdmin(userId: string): Promise<void> {
+  const [admin] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.name, ADMIN_ROLE_NAME))
+    .limit(1);
+  if (!admin) throw new Error('admin role missing: run the migrations first');
+  await setUserRoles(ctx, { userId, roleIds: [admin.id], actorUserId: null });
+}
+
 let exitCode = 0;
 try {
-  const { link, expiresAt } = await inviteUser(ctx, {
+  const { user, link, expiresAt } = await inviteUser(ctx, {
     email: values.email,
     name: values.name,
     actorUserId: null,
   });
+  await assignAdmin(user.id);
   process.stdout.write(
-    `Invitation sent to ${values.email}.\nLink (expires ${expiresAt.toISOString()}): ${link}\n`,
+    `Invitation sent to ${values.email}.\nLink (expires ${expiresAt.toISOString()}): ${link}\nRole admin assigned.\n`,
   );
 } catch (err) {
   if (err instanceof InvitationMailError) {
@@ -65,6 +80,8 @@ try {
     process.stdout.write(
       `Hand this link to the user (expires ${err.expiresAt.toISOString()}): ${err.link}\n`,
     );
+    await assignAdmin(err.user.id);
+    process.stdout.write('Role admin assigned.\n');
     exitCode = 1;
   } else {
     process.stderr.write(`${(err as Error).message}\n`);

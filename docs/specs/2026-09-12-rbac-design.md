@@ -1,7 +1,7 @@
 # TreeRepro — Authorization Design (plan 03)
 
 **Date:** 2026-09-12
-**Status:** approved (design); implementation plan `docs/plans/2026-09-12-rbac-03.md`
+**Status:** implemented (plan 03)
 **Scope:** permission catalog, dynamic roles, role assignment with the anti-lockout rule, effective-permission resolution with a Redis cache, `requirePermission`, `permissions` in `GET /api/auth/me`, one admin route (`GET /api/admin/permissions`), the three-class route-guard meta-test, RFCs 30–32. Refines section 6 of the foundation design (`2026-09-12-foundation-design.md`) and closes issue #18. Role and user management over HTTP is plan 04; UI is plan 05.
 
 ## 1. Context
