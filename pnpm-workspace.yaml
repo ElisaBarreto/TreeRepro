@@ -13,7 +13,8 @@ allowBuilds:
 minimumReleaseAge: 10080
 # Versions already in the lockfile when the guard was introduced (2026-09-12).
 # Newest was published 2026-09-10T22:04Z, so every entry below is mature after
-# 2026-09-18: delete the whole list then. pnpm also prunes stale entries itself.
+# 2026-09-18: delete the whole list by hand then. pnpm never prunes by age; it
+# only drops an entry once the lockfile no longer resolves that exact version.
 minimumReleaseAgeExclude:
   - "@biomejs/biome@2.5.13"
   - "@biomejs/cli-darwin-arm64@2.5.13"
