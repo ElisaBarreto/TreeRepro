@@ -56,11 +56,11 @@ describe('RFC-22 R4, R6 session store', () => {
     expect(await redis.pttl(`session:${record.id}`)).toBeGreaterThan(SESSION_IDLE_TTL_MS - 5000);
   });
 
-  it('deletes a session past the absolute limit', async () => {
+  it('deletes a session at exactly the absolute limit', async () => {
     const store = createSessionStore(redis, SECRET, () => clock.now);
     const userId = uid();
     const { rawId, record } = await store.create({ userId, ip: '1.1.1.1', userAgent: 'x' });
-    clock.now += SESSION_ABSOLUTE_TTL_MS + 1;
+    clock.now += SESSION_ABSOLUTE_TTL_MS;
     expect(await store.get(rawId)).toBeNull();
     expect(await redis.exists(`session:${record.id}`)).toBe(0);
     expect(await redis.sismember(`user_sessions:${userId}`, record.id)).toBe(0);

@@ -109,7 +109,7 @@ export function createSessionStore(
       const record = parse(id, await redis.hgetall(sessionKey(id)));
       if (!record) return null;
       const t = now();
-      if (t - record.createdAt > SESSION_ABSOLUTE_TTL_MS) {
+      if (t - record.createdAt >= SESSION_ABSOLUTE_TTL_MS) {
         await drop(id, record.userId);
         return null;
       }
