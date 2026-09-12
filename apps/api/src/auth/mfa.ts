@@ -41,6 +41,15 @@ redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
 return 1
 `;
 
+// Existence check, increment and deletion in one step, so a challenge that
+// expires mid-call is never recreated without a TTL. Returns -1 when absent.
+const FAIL_SCRIPT = `
+if redis.call('EXISTS', KEYS[1]) == 0 then return -1 end
+local attempts = redis.call('HINCRBY', KEYS[1], 'attempts', 1)
+if attempts >= tonumber(ARGV[1]) then redis.call('DEL', KEYS[1]) end
+return attempts
+`;
+
 const challengeKey = (id: string) => `mfa:${id}`;
 const setupKey = (userId: string) => `totp_setup:${userId}`;
 const replayKey = (userId: string) => `totp_last:${userId}`;
@@ -71,14 +80,15 @@ export function createMfaStore(redis: Redis, secret: Buffer): MfaStore {
     },
 
     async recordFailure(rawId) {
-      const id = deriveKeyId(secret, rawId);
-      if ((await redis.exists(challengeKey(id))) === 0) return 'expired';
-      const attempts = await redis.hincrby(challengeKey(id), 'attempts', 1);
-      if (attempts >= MFA_MAX_ATTEMPTS) {
-        await redis.del(challengeKey(id));
-        return 'expired';
-      }
-      return 'retry';
+      const attempts = Number(
+        await redis.eval(
+          FAIL_SCRIPT,
+          1,
+          challengeKey(deriveKeyId(secret, rawId)),
+          String(MFA_MAX_ATTEMPTS),
+        ),
+      );
+      return attempts < 0 || attempts >= MFA_MAX_ATTEMPTS ? 'expired' : 'retry';
     },
 
     async deleteChallenge(rawId) {
