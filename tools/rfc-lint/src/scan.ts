@@ -13,20 +13,27 @@ export interface RfcRef {
   trailing: string;
 }
 
+const EXPORT_RE = /^export\s/;
 const EXEMPT_RE = /^export\s+(type|interface|declare|\{|\*)/;
 const NAMED_RE =
   /^export\s+(?:default\s+)?(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/;
 const DEFAULT_RE = /^export\s+default\b/;
+
+/**
+ * Name given to an export line that is neither exempt nor understood
+ * (`export abstract class`, `export enum`, `export const { a } = …`). It is
+ * still reported, so an unknown shape fails loud instead of slipping past.
+ */
+export const UNPARSED_EXPORT = '<unparsed export>';
 
 export function findExports(source: string): ExportSite[] {
   const lines = source.split('\n');
   const sites: ExportSite[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
-    if (EXEMPT_RE.test(line)) continue;
+    if (!EXPORT_RE.test(line) || EXEMPT_RE.test(line)) continue;
     const named = NAMED_RE.exec(line);
-    const name = named?.[1] ?? (DEFAULT_RE.test(line) ? 'default' : null);
-    if (name === null) continue;
+    const name = named?.[1] ?? (DEFAULT_RE.test(line) ? 'default' : UNPARSED_EXPORT);
     sites.push({ line: i + 1, name, doc: docAbove(lines, i) });
   }
   return sites;

@@ -37,6 +37,20 @@ describe('RFC-00 R4 findExports', () => {
     expect(findExports(src)).toEqual([]);
   });
 
+  it('reports export lines it cannot parse instead of skipping them', () => {
+    const src = [
+      '/** @rfc RFC-10 R1 */',
+      'export abstract class Base {}',
+      'export const { a, b } = pair;',
+      'export enum Color { Red }',
+    ].join('\n');
+    expect(findExports(src).map((s) => [s.name, s.line, s.doc !== null])).toEqual([
+      ['<unparsed export>', 2, true],
+      ['<unparsed export>', 3, false],
+      ['<unparsed export>', 4, false],
+    ]);
+  });
+
   it('does not accept a plain block comment as JSDoc', () => {
     const src = ['/* @rfc RFC-10 R1 */', 'export const a = 1;'].join('\n');
     expect(findExports(src)[0]?.doc).toBeNull();
