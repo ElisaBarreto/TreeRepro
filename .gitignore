@@ -28,3 +28,6 @@ playwright-report/
 
 # logs
 *.log
+
+# superpowers scratch (sdd ledgers, briefs, review packages)
+.superpowers/
