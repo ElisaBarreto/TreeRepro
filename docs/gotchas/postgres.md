@@ -24,3 +24,13 @@
 **Symptom:** `audit_log is append-only` when deleting.
 **Cause:** The RFC-41 R2 trigger lets a `DELETE` through only when `current_setting('treerepro.allow_audit_purge', true)` is `'on'`.
 **Fix:** Only the retention job (RFC-42, future) may delete, inside a transaction, after `SET LOCAL treerepro.allow_audit_purge = 'on'`. The flag is a convention, not a protection: PostgreSQL cannot tell `SET LOCAL` from a session-level `SET`, and `treerepro_app` holds `DELETE` on `audit_log`, so any code running as the app role could set it and purge. `SET LOCAL` matters because it keeps the flag transaction-scoped; a plain `SET` on a pooled connection would leak into later requests. Code review enforces this until RFC-42 moves purging into a `SECURITY DEFINER` function and revokes `DELETE` from the app role.
+
+## A `SECURITY DEFINER` function must pin `search_path`
+**Symptom:** A privileged function (`audit_log_purge`) resolves a table or operator name through the caller's schema, letting a lower-privileged role hijack it.
+**Cause:** `SECURITY DEFINER` runs as the owner but, by default, with the caller's `search_path`.
+**Fix:** Declare `SET search_path = public` on the function (migration 0007) and revoke `EXECUTE` from `PUBLIC` before granting it to the role that needs it. `retention.integration.test.ts` asserts both.
+
+## `REVOKE DELETE` is the guarantee; the trigger is the backup
+**Symptom:** Setting `treerepro.allow_audit_purge = 'on'` in a session still cannot delete from `audit_log`.
+**Cause:** Since migration 0007 the app role has no `DELETE` privilege; the trigger flag only matters inside `audit_log_purge()`, which runs as the table owner.
+**Fix:** Nothing to fix — call `select audit_log_purge()`; there is no other supported path (RFC-42 R5).

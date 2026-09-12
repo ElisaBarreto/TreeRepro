@@ -1,7 +1,7 @@
 # TreeRepro — Administration Design (plan 04)
 
 **Date:** 2026-09-12
-**Status:** approved (plan 04)
+**Status:** implemented (plan 04)
 **Scope:** user administration over HTTP (list, invite, update, suspend, reactivate, re-invite, sessions), role administration over HTTP, audit-log query, self-service profile update (`PATCH /api/me`), audit-log retention (RFC-42, issue #4), RFCs 42, 50, 51 and the amendments they force. Refines sections 7–8 of the foundation design (`2026-09-12-foundation-design.md`) and closes issues #19 and #4. UI is plan 05 (#20).
 
 ## 1. Context

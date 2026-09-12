@@ -8,7 +8,7 @@
 
 ## Context
 
-There is no public sign-up. An administrator (in this plan: the `seed:admin` command; from RFC-5x: the admin API) creates a user and the system emails an invitation. The invited person sets a password and becomes active. Personal fields are encrypted (RFC-40); the email is looked up only through its blind index.
+There is no public sign-up. An administrator (in this plan: the `seed:admin` command; from RFC-50: the admin API) creates a user and the system emails an invitation. The invited person sets a password and becomes active. Personal fields are encrypted (RFC-40); the email is looked up only through its blind index.
 
 ## Rules
 
