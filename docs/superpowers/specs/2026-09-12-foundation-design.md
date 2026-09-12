@@ -1,4 +1,4 @@
-# Elisa — Foundation Design
+# TreeRepro — Foundation Design
 
 **Date:** 2026-09-12
 **Status:** approved (design), pending implementation plan
@@ -6,7 +6,7 @@
 
 ## 1. Context
 
-Elisa is a scientific data-collection and organization system. Several scientists collaborate to organize data that will eventually back a research article. Everything sits behind a login; nothing is public. Access is controlled per page and per feature within a page. Administrators manage users, roles and permissions. The system must comply with the GDPR (EU). Personal data in the system is limited to the system's own users (name, email, IP, user agent); research data is not personal data.
+TreeRepro is a scientific data-collection and organization system. Several scientists collaborate to organize data that will eventually back a research article. Everything sits behind a login; nothing is public. Access is controlled per page and per feature within a page. Administrators manage users, roles and permissions. The system must comply with the GDPR (EU). Personal data in the system is limited to the system's own users (name, email, IP, user agent); research data is not personal data.
 
 Non-negotiable project policies:
 
@@ -28,7 +28,7 @@ Non-negotiable project policies:
 | Hosting | Own VPS, Docker Compose, Caddy with automatic TLS. |
 | Language | Everything in English. |
 | Source hosting | GitHub (repository not created yet; work locally until then). |
-| Project name | `elisa` (provisional). |
+| Project name | TreeRepro (identifiers: `treerepro`, package scope `@treerepro/`). |
 
 ## 3. Versions (verified 2026-09-12)
 
@@ -57,7 +57,7 @@ Exact versions are pinned in `package.json` (no `^`). Docker base images pin a d
 ## 4. Repository layout, tooling, Docker
 
 ```
-elisa/
+treerepro/
 ├── apps/
 │   ├── api/                # Hono 4 on Node 24. The only process that touches DB/Redis/secrets.
 │   └── web/                # Vite 8 + React 19 SPA. UI only.
@@ -84,7 +84,7 @@ elisa/
 
 **Docker Compose services:**
 
-- `postgres` — `postgres:18.6-alpine`, named volume, `scram-sha-256`, application user without superuser/`CREATEDB`, separate `elisa_migrator` user for migrations. No `pgcrypto`: encryption happens in the app; the key never reaches the database. `gen_random_uuid()` is built in.
+- `postgres` — `postgres:18.6-alpine`, named volume, `scram-sha-256`, application user without superuser/`CREATEDB`, separate `treerepro_migrator` user for migrations. No `pgcrypto`: encryption happens in the app; the key never reaches the database. `gen_random_uuid()` is built in.
 - `redis` — `redis:8.8-alpine`, `requirepass`, `maxmemory-policy noeviction` (sessions must not be evicted), AOF persistence.
 - `api` — multi-stage image, non-root user, `read_only: true`, `cap_drop: [ALL]`, `no-new-privileges`, `tmpfs /tmp`, healthcheck on `/health`.
 - `web` — static build served by Caddy; no Node in production.
@@ -272,7 +272,7 @@ Every route uses `zValidator` on body/query/params with schemas from `contracts`
 - **Errors:** global handler. Client receives `{ error: { code, message } }`; stack traces only in logs. 500 never leaks internals. Zod errors → 400 with per-field `details` (never echoing the received value).
 - **Secrets:** read from `/run/secrets/*` at boot; missing secret aborts startup. Environment validated with Zod in `apps/api/src/config.ts`, the only module reading `process.env`.
 - **Dependencies:** `pnpm audit` in CI; committed lockfile; exact versions; monthly manual update; Docker base images pinned by digest.
-- **Postgres:** app user without `CREATEDB`/`SUPERUSER`; migrations run as `elisa_migrator`. Queries only through Drizzle (parameterized); raw `sql` only via template tag.
+- **Postgres:** app user without `CREATEDB`/`SUPERUSER`; migrations run as `treerepro_migrator`. Queries only through Drizzle (parameterized); raw `sql` only via template tag.
 - **Health:** `GET /health` public → `{ ok: true }` only. `GET /health/ready` (internal network only) checks DB and Redis.
 - **Containers:** non-root, read-only filesystem, all capabilities dropped, `no-new-privileges`, `tmpfs /tmp`.
 - **CI (GitHub Actions):** lint, typecheck, unit, integration (Postgres + Redis services), e2e, audit. Failing checks block merge.
