@@ -48,13 +48,7 @@
 ## A deployment that ran the root-based `web` image has root-owned Caddy volumes
 **Symptom:** After updating `treerepro-web` on a host that already ran the image before issue #31, Caddy logs `permission denied` under `/data/caddy` or on `/config/caddy/autosave.json`, or asks Let's Encrypt for certificates it already held.
 **Cause:** A fresh named volume copies the image ownership (`caddy:caddy`), but `caddy-data` and `caddy-config` created by the root-based image hold root-owned `0600`/`0700` files: ACME account keys, certificates, `autosave.json`.
-**Fix:** One-off, with the service stopped:
-```sh
-docker compose stop caddy
-docker run --rm -v treerepro_caddy-data:/data -v treerepro_caddy-config:/config alpine chown -R 1000:1000 /data /config
-docker compose up -d caddy
-```
-`docker compose run --user root caddy chown …` does not work: the service drops every capability, including `CAP_CHOWN`.
+**Fix:** One-off: `docker compose stop caddy`, then `docker run --rm -v treerepro_caddy-data:/data -v treerepro_caddy-config:/config alpine chown -R 1000:1000 /data /config`, then `docker compose up -d caddy`. `docker compose run --user root caddy chown …` does not work: the service drops every capability, including `CAP_CHOWN`.
 
 ## Secret files must be readable by the container user on Linux
 **Symptom:** On a Linux host the `api`, `redis`, `backup` containers or the Postgres init script fail with `EACCES` (or `Permission denied`) reading `/run/secrets/*`, although the same stack works on Docker Desktop.
