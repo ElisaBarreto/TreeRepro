@@ -35,3 +35,14 @@ export async function withRollback<T>(db: Db, fn: (tx: DbTransaction) => Promise
   if (!completed) throw new Error('withRollback: callback did not complete');
   return result as T;
 }
+
+/** Rethrows the root cause of a rejected database promise. Drizzle wraps driver errors in DrizzleQueryError; the PostgresError is on `.cause`. */
+export async function unwrapDbError<T>(promise: Promise<T>): Promise<T> {
+  try {
+    return await promise;
+  } catch (error) {
+    let cause: unknown = error;
+    while (cause instanceof Error && cause.cause instanceof Error) cause = cause.cause;
+    throw cause;
+  }
+}

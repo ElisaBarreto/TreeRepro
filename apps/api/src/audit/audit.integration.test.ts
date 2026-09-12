@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { useTestDb, withRollback } from '../../test/helpers/db.ts';
+import { unwrapDbError, useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { TEST_KEYRING } from '../../test/helpers/pii.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { decryptPii } from '../security/pii.ts';
@@ -46,7 +46,11 @@ describe('RFC-41 recordAudit', () => {
     await withRollback(t.db, async (tx) => {
       const { id } = await recordAudit(tx, { actorUserId: null, action: 'auth.logout' });
       await expect(
-        tx.transaction((sp) => sp.update(auditLog).set({ action: 'x' }).where(eq(auditLog.id, id))),
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.update(auditLog).set({ action: 'x' }).where(eq(auditLog.id, id)),
+          ),
+        ),
       ).rejects.toThrow(/append-only/);
     });
   });
@@ -55,7 +59,7 @@ describe('RFC-41 recordAudit', () => {
     await withRollback(t.db, async (tx) => {
       const { id } = await recordAudit(tx, { actorUserId: null, action: 'auth.logout' });
       await expect(
-        tx.transaction((sp) => sp.delete(auditLog).where(eq(auditLog.id, id))),
+        unwrapDbError(tx.transaction((sp) => sp.delete(auditLog).where(eq(auditLog.id, id)))),
       ).rejects.toThrow(/append-only/);
       await tx.transaction(async (sp) => {
         await sp.execute(sql`set local treerepro.allow_audit_purge = 'on'`);
@@ -68,9 +72,9 @@ describe('RFC-41 recordAudit', () => {
 
   it('R2 rejects TRUNCATE', async () => {
     await withRollback(t.db, async (tx) => {
-      await expect(tx.transaction((sp) => sp.execute(sql`truncate audit_log`))).rejects.toThrow(
-        /append-only/,
-      );
+      await expect(
+        unwrapDbError(tx.transaction((sp) => sp.execute(sql`truncate audit_log`))),
+      ).rejects.toThrow(/append-only/);
     });
   });
 
