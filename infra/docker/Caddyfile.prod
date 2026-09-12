@@ -1,6 +1,18 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# Site level so `/api/*` responses carry them too (RFC-02 R5). The block is
+	# deferred (it contains a deletion), so these values replace the API's own
+	# overlapping headers (1-year HSTS wins over Hono's default).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+
 	route {
 		@ready path /api/health/ready
 		respond @ready 404
@@ -13,15 +25,8 @@
 			root * /srv/web
 			try_files {path} /index.html
 			file_server
-			header {
-				Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-				Strict-Transport-Security "max-age=31536000; includeSubDomains"
-				X-Content-Type-Options nosniff
-				X-Frame-Options DENY
-				Referrer-Policy strict-origin-when-cross-origin
-				Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-				-Server
-			}
+			# The SPA CSP; API responses keep Hono's `default-src 'none'` (RFC-02 R5).
+			header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 		}
 	}
 }

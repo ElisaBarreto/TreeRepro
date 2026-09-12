@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24.21.0-alpine AS base
+FROM node:24.21.0-alpine@sha256:be80f76cf40ec8e42b9bec49f60a55e0660f30af58d3e5a25530785b30ea67e2 AS base
 RUN npm install -g pnpm@12.4.1
 WORKDIR /workspace
 
@@ -21,7 +21,7 @@ RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/api bui
 FROM manifests AS prod-deps
 RUN pnpm install --frozen-lockfile --prod --filter "@treerepro/api..."
 
-FROM node:24.21.0-alpine AS runtime
+FROM node:24.21.0-alpine@sha256:be80f76cf40ec8e42b9bec49f60a55e0660f30af58d3e5a25530785b30ea67e2 AS runtime
 ENV NODE_ENV=production
 WORKDIR /workspace
 COPY --from=prod-deps /workspace/node_modules ./node_modules

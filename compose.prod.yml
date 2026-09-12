@@ -20,7 +20,7 @@ services:
       context: .
       dockerfile: infra/docker/backup.Dockerfile
     image: treerepro-backup
-    restart: unless-stopped
+    restart: on-failure
     environment:
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?set BACKUP_AGE_RECIPIENT in .env}
     secrets: [db_migrator_password]
