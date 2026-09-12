@@ -22,7 +22,7 @@ All actions are pinned to a commit SHA with the version in a trailing comment. D
 
 ## Ruleset on `main` (admin only)
 
-Source of truth: `infra/github/ruleset-main.json`, applied by `scripts/github-admin.sh` (creates or updates the ruleset named `main`); verify with `./scripts/github-admin.sh --check`. `integration_id` 15368 is the GitHub Actions app, so only Actions can satisfy a required check. Rules:
+Source of truth: `infra/github/ruleset-main.json`, applied by `scripts/github-admin.sh` (creates or updates the ruleset named `main`); `./scripts/github-admin.sh --check` compares the live ruleset with the file and reports `matches` or `DRIFT: …` (edits made in the GitHub UI show up here; re-run the script to restore the file's state). `integration_id` 15368 is the GitHub Actions app, so only Actions can satisfy a required check. Rules:
 
 - Pull request required; no direct pushes, no force-push, no branch deletion.
 - Required status checks (branch must be up to date with `main`): `Verify`, `Images`, `CodeQL (javascript-typescript)`, `CodeQL (actions)`, `Dependency review`, `Gitleaks`, `Zizmor`, `Trivy config`.

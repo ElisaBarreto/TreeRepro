@@ -34,6 +34,43 @@ report() {
   echo "dependabot security updates:    $(field_of "repos/$repo/automated-security-fixes" .enabled)"
   echo "private vulnerability report:   $(field_of "repos/$repo/private-vulnerability-reporting" .enabled)"
   echo "rulesets:                       $(gh api "repos/$repo/rulesets" --jq '[.[] | "\(.name) (\(.enforcement))"] | join(", ") | if . == "" then "none" else . end')"
+  echo "ruleset 'main' vs file:         $(ruleset_drift)"
+}
+
+# Compares the live ruleset named "main" with infra/github/ruleset-main.json:
+# target, enforcement, bypass actors, conditions, and every rule the file
+# declares (each parameter the file sets must match; GitHub may add defaults).
+ruleset_drift() {
+  id="$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "main") | .id' 2>/dev/null)"
+  [ -n "$id" ] || { echo "missing"; return; }
+  command -v python3 >/dev/null || { echo "unknown (python3 needed to compare)"; return; }
+  live="$(mktemp)"
+  gh api "repos/$repo/rulesets/$id" > "$live"
+  python3 - "$ruleset_file" "$live" <<'PY'
+import json, sys
+with open(sys.argv[1]) as f:
+    want = json.load(f)
+with open(sys.argv[2]) as f:
+    live = json.load(f)
+drift = []
+for key in ("target", "enforcement", "bypass_actors", "conditions"):
+    # GitHub returns null for an empty bypass list.
+    if (live.get(key) or []) != (want.get(key) or []):
+        drift.append(key)
+live_rules = {r["type"]: r.get("parameters", {}) for r in live.get("rules", [])}
+want_rules = {r["type"]: r.get("parameters", {}) for r in want.get("rules", [])}
+for rule_type, params in want_rules.items():
+    if rule_type not in live_rules:
+        drift.append(f"rule {rule_type} missing")
+        continue
+    for name, value in params.items():
+        if live_rules[rule_type].get(name) != value:
+            drift.append(f"rule {rule_type}.{name}")
+for rule_type in live_rules.keys() - want_rules.keys():
+    drift.append(f"extra rule {rule_type}")
+print("matches" if not drift else "DRIFT: " + ", ".join(drift))
+PY
+  rm -f "$live"
 }
 
 # A JSON field, or "unknown" when the endpoint answers with an error.
