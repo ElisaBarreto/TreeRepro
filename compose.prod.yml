@@ -1,0 +1,33 @@
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    image: treerepro-web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+
+  backup:
+    build:
+      context: .
+      dockerfile: infra/docker/backup.Dockerfile
+    image: treerepro-backup
+    restart: unless-stopped
+    environment:
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?set BACKUP_AGE_RECIPIENT in .env}
+    secrets: [db_migrator_password]
+    volumes:
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+volumes:
+  backups:

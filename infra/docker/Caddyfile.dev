@@ -1,0 +1,18 @@
+{
+	auto_https off
+}
+
+:80 {
+	route {
+		@ready path /api/health/ready
+		respond @ready 404
+
+		handle /api/* {
+			reverse_proxy api:3000
+		}
+
+		handle {
+			reverse_proxy web:5173
+		}
+	}
+}
