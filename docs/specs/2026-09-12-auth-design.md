@@ -1,7 +1,7 @@
 # TreeRepro — Authentication Design (plan 02)
 
 **Date:** 2026-09-12
-**Status:** approved (design), pending implementation plan
+**Status:** approved (design); implementation plan `docs/plans/2026-09-12-auth-02.md`
 **Scope:** users and invitations, passwords, login with optional TOTP, opaque sessions, password recovery and change, rate limiting, transactional email. Refines section 5 of the foundation design (`2026-09-12-foundation-design.md`) and closes issue #17. Authorization (roles, permissions, `requirePermission`) is plan 03; admin and self-service HTTP routes beyond sessions are plan 04; UI is plan 05.
 
 ## 1. Context
