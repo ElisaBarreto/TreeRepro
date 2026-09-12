@@ -15,4 +15,10 @@ describe('RFC-20 R3 database error classification', () => {
     expect(isUniqueViolation(new Error('plain'))).toBe(false);
     expect(isUniqueViolation('not an error')).toBe(false);
   });
+
+  it('walks past a wrapper whose code is not a SQLSTATE', () => {
+    const pg = Object.assign(new Error('pg'), { code: '23505' });
+    const outer = Object.assign(new Error('query failed', { cause: pg }), { code: 'ERR_QUERY' });
+    expect(isUniqueViolation(outer)).toBe(true);
+  });
 });
