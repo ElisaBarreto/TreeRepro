@@ -1,6 +1,8 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb, withRollback } from '../../test/helpers/db.ts';
+import { recordAudit } from '../audit/audit.ts';
+import { auditLog } from './schema/audit-log.ts';
 
 describe('RFC-10 R6-R7 database client and migrations', () => {
   const t = useTestDb();
@@ -36,10 +38,13 @@ describe('RFC-10 R6-R7 database client and migrations', () => {
   });
 
   it('RFC-01 R4 withRollback leaves no trace', async () => {
-    await withRollback(t.db, async (tx) => {
-      await tx.execute(sql`create table rollback_probe (x int)`);
+    const id = await withRollback(t.db, async (tx) => {
+      const { id } = await recordAudit(tx, { actorUserId: null, action: 'auth.logout' });
+      const inside = await tx.select().from(auditLog).where(eq(auditLog.id, id));
+      expect(inside).toHaveLength(1);
+      return id;
     });
-    const rows = await t.db.execute(sql`select to_regclass('public.rollback_probe') as name`);
-    expect(rows[0]?.name).toBeNull();
+    const after = await t.db.select().from(auditLog).where(eq(auditLog.id, id));
+    expect(after).toHaveLength(0);
   });
 });

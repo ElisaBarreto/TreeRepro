@@ -17,7 +17,12 @@ describe('RFC-10 R10 readiness checks', () => {
 
   it('report false or reject when Redis is disconnected', async () => {
     const redis = createRedis(inject('redisUrl'));
-    const checks = createHealthChecks(t.db, redis);
-    expect(await checks.redis().catch(() => false)).toBe(false);
+    try {
+      const checks = createHealthChecks(t.db, redis);
+      expect(await checks.redis().catch(() => false)).toBe(false);
+    } finally {
+      // ping() nudged the lazy client into connecting; drop it.
+      redis.disconnect();
+    }
   });
 });

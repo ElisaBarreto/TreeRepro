@@ -8,6 +8,8 @@ import { AuditActionError, AuditMetadataError, assertSafeMetadata, recordAudit }
 
 describe('RFC-41 recordAudit', () => {
   const t = useTestDb();
+  // Table owner-equivalent: holds every privilege, so only the trigger can stop it.
+  const su = useTestDb({ role: 'superuser' });
 
   it('R1, R8 inserts a row with a uuid v7 id, a timestamp and a null actor', async () => {
     await withRollback(t.db, async (tx) => {
@@ -42,8 +44,8 @@ describe('RFC-41 recordAudit', () => {
     });
   });
 
-  it('R2 rejects UPDATE', async () => {
-    await withRollback(t.db, async (tx) => {
+  it('R2 trigger rejects UPDATE for a role that holds the privilege', async () => {
+    await withRollback(su.db, async (tx) => {
       const { id } = await recordAudit(tx, { actorUserId: null, action: 'auth.logout' });
       await expect(
         unwrapDbError(
@@ -52,6 +54,19 @@ describe('RFC-41 recordAudit', () => {
           ),
         ),
       ).rejects.toThrow(/append-only/);
+    });
+  });
+
+  it('R9 the app role is refused UPDATE by privilege, before the trigger runs', async () => {
+    await withRollback(t.db, async (tx) => {
+      const { id } = await recordAudit(tx, { actorUserId: null, action: 'auth.logout' });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.update(auditLog).set({ action: 'x' }).where(eq(auditLog.id, id)),
+          ),
+        ),
+      ).rejects.toThrow('permission denied for table audit_log');
     });
   });
 
@@ -70,11 +85,19 @@ describe('RFC-41 recordAudit', () => {
     });
   });
 
-  it('R2 rejects TRUNCATE', async () => {
-    await withRollback(t.db, async (tx) => {
+  it('R2 trigger rejects TRUNCATE for a role that holds the privilege', async () => {
+    await withRollback(su.db, async (tx) => {
       await expect(
         unwrapDbError(tx.transaction((sp) => sp.execute(sql`truncate audit_log`))),
       ).rejects.toThrow(/append-only/);
+    });
+  });
+
+  it('R9 the app role is refused TRUNCATE by privilege, before the trigger runs', async () => {
+    await withRollback(t.db, async (tx) => {
+      await expect(
+        unwrapDbError(tx.transaction((sp) => sp.execute(sql`truncate audit_log`))),
+      ).rejects.toThrow('permission denied for table audit_log');
     });
   });
 

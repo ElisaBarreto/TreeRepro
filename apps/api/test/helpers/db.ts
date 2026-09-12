@@ -2,11 +2,22 @@ import { TransactionRollbackError } from 'drizzle-orm';
 import { afterAll, beforeAll, inject } from 'vitest';
 import { createDb, type Db, type DbTransaction } from '../../src/db/client.ts';
 
+export interface TestDbOptions {
+  /**
+   * `app` (default) is `treerepro_app`, the role the API runs as (RFC-10 R7).
+   * `superuser` is the container's superuser, for tests that must bypass or
+   * change what the app role is allowed to do.
+   */
+  role?: 'app' | 'superuser';
+}
+
 /** Opens a pool for the current test file and closes it afterwards. */
-export function useTestDb(): { readonly db: Db } {
+export function useTestDb(options: TestDbOptions = {}): { readonly db: Db } {
   let handle: ReturnType<typeof createDb> | undefined;
   beforeAll(() => {
-    handle = createDb(inject('databaseUrl'), { max: 2 });
+    const url =
+      options.role === 'superuser' ? inject('superuserDatabaseUrl') : inject('databaseUrl');
+    handle = createDb(url, { max: 2 });
   });
   afterAll(async () => {
     await handle?.close();
