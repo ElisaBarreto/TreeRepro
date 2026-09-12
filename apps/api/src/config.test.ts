@@ -258,6 +258,15 @@ describe('RFC-10 R5 SMTP settings', () => {
     ).toBeUndefined();
   });
 
+  it('treats a whitespace-only SMTP_USER as unset and does not read smtp_password', () => {
+    const { smtp_password: _omitted, ...withoutSmtpPassword } = ALL_SECRETS;
+    const config = loadConfig(
+      env({ SMTP_USER: '   ', SECRETS_DIR: secretsDir(withoutSmtpPassword) }),
+    );
+    expect(config.smtp.user).toBeUndefined();
+    expect(config.smtp.password).toBeUndefined();
+  });
+
   it('fails without SMTP_HOST or SMTP_FROM, naming the field', () => {
     expect(() => loadConfig(env({ SMTP_HOST: undefined }))).toThrow(/SMTP_HOST/);
   });

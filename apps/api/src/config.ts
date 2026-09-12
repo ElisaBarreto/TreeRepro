@@ -45,7 +45,10 @@ const envSchema = z.object({
   SMTP_USER: z
     .string()
     .optional()
-    .transform((v) => (v ? v : undefined)),
+    .transform((v) => {
+      const user = v?.trim();
+      return user || undefined;
+    }),
 });
 
 const migratorEnvSchema = z.object({
