@@ -25,3 +25,32 @@ export const permissionEntrySchema = z.strictObject({
 
 export type Role = z.infer<typeof roleSchema>;
 export type PermissionEntry = z.infer<typeof permissionEntrySchema>;
+
+/** Keys are validated against the catalog by the service (RFC-31 R3). */
+const permissionListSchema = z.array(z.string().min(1).max(64)).max(100);
+
+/** @rfc RFC-50 R10 */
+export const roleIdParamSchema = z.strictObject({ id: z.uuid() });
+
+/** @rfc RFC-50 R10 */
+export const createRoleBodySchema = z.strictObject({
+  name: roleNameSchema,
+  description: z.string().max(500).default(''),
+  permissions: permissionListSchema,
+});
+
+/** @rfc RFC-50 R10 */
+export const updateRoleBodySchema = z
+  .strictObject({
+    name: roleNameSchema.optional(),
+    description: z.string().max(500).optional(),
+    permissions: permissionListSchema.optional(),
+  })
+  .refine(
+    (body) =>
+      body.name !== undefined || body.description !== undefined || body.permissions !== undefined,
+    { message: 'At least one field is required' },
+  );
+
+export type CreateRoleBody = z.infer<typeof createRoleBodySchema>;
+export type UpdateRoleBody = z.infer<typeof updateRoleBodySchema>;
