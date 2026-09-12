@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24.21.0-alpine@sha256:be80f76cf40ec8e42b9bec49f60a55e0660f30af58d3e5a25530785b30ea67e2 AS base
+FROM node:26.8-alpine@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868 AS base
 RUN npm install -g pnpm@12.4.1
 WORKDIR /workspace
 
@@ -21,7 +21,7 @@ RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/api bui
 FROM manifests AS prod-deps
 RUN pnpm install --frozen-lockfile --prod --filter "@treerepro/api..."
 
-FROM node:24.21.0-alpine@sha256:be80f76cf40ec8e42b9bec49f60a55e0660f30af58d3e5a25530785b30ea67e2 AS runtime
+FROM node:26.8-alpine@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868 AS runtime
 # Pull Alpine security fixes the node image has not rebuilt with yet, and drop
 # the bundled npm, corepack and yarn: the runtime only executes `node dist/server.js`.
 RUN apk upgrade --no-cache \
