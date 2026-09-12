@@ -18,7 +18,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 - **R4** `ip` and `user_agent` are encrypted with RFC-40 before storage.
 - **R5** `recordAudit` runs inside the same database transaction as the action it records. If the audit write fails, the action is rolled back (fail closed).
 - **R6** Retention: entries older than 2 years are purged by the retention job (RFC-42, future). Until it exists nothing is purged.
-- **R7** `metadata` never contains personal data or secrets. `recordAudit` rejects the keys `password`, `passwordHash`, `token`, `secret`, `email`, `name`, `ip`, `userAgent` at any depth before writing.
+- **R7** `metadata` never contains personal data or secrets. `recordAudit` inspects every key at any depth before writing, normalized to lowercase with `_` and `-` removed, and rejects it when it contains `password`, `token`, `secret`, `email` or `useragent`; when it is `ip` or starts or ends with `ip` (`ipAddress`, `clientIp`); or when it is one of `name`, `username`, `firstname`, `lastname`, `fullname`, `displayname`. Values are not inspected: a key naming PII is rejected whatever it holds.
 - **R8** `actor_user_id` is null for events without an authenticated actor (for example a failed login for an unknown email).
 - **R9** The runtime role `treerepro_app` never holds `UPDATE` or `TRUNCATE` on `audit_log`: the migration that creates the trigger also revokes `UPDATE` from `treerepro_app` when that role exists. The trigger is the second line of defense.
 
@@ -59,3 +59,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
 - 2026-09-12 — R2: purge flag scope clarified.
+- 2026-09-12 — R7: key normalization and contains-matching (issue #8).

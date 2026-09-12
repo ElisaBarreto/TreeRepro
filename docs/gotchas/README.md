@@ -6,6 +6,7 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 |---|---|
 | Node runtime | `node.md` |
 | PostgreSQL | `postgres.md` |
+| Drizzle ORM | `drizzle.md` |
 | pnpm | `pnpm.md` |
 | Docker / Compose / Caddy | `docker.md` |
 | TypeScript | `typescript.md` |

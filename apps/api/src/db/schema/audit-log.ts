@@ -15,8 +15,8 @@ export const auditLog = pgTable(
     action: text('action').notNull(),
     targetType: text('target_type'),
     targetId: text('target_id'),
-    ip: encryptedText('ip'),
-    userAgent: encryptedText('user_agent'),
+    ip: encryptedText('audit_log', 'ip'),
+    userAgent: encryptedText('audit_log', 'user_agent'),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
   },
   (t) => [

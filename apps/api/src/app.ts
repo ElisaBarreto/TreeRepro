@@ -6,6 +6,7 @@ import type { AppConfig } from './config.ts';
 import type { AppEnv } from './http/env.ts';
 import { createErrorHandler, errorBody } from './http/errors.ts';
 import { originCheck } from './http/origin-check.ts';
+import { requestLogger } from './http/request-logger.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import type { Logger } from './logger.ts';
 
@@ -27,6 +28,7 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>().basePath('/api');
 
   app.use(requestId());
+  app.use(requestLogger(deps.logger));
   app.use(
     secureHeaders({
       contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },

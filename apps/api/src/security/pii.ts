@@ -8,8 +8,9 @@ export interface PiiKeyring {
 }
 
 export interface Pii {
-  encrypt(plaintext: string): string;
-  decrypt(stored: string): string;
+  /** `aad` is the qualified column name `<table>.<column>` (RFC-40 R2). */
+  encrypt(plaintext: string, aad: string): string;
+  decrypt(stored: string, aad: string): string;
   blindIndex(value: string): string;
 }
 
@@ -48,12 +49,18 @@ export function keyringFromHex(current: string, keysHex: Record<string, string>)
   return { current, keys };
 }
 
-/** @rfc RFC-40 R2, R10 */
-export function encryptPii(keyring: PiiKeyring, plaintext: string): string {
+/**
+ * `aad` binds the ciphertext to its column: the qualified name
+ * `<table>.<column>` is authenticated but not stored, so the value decrypts
+ * only where it was written.
+ * @rfc RFC-40 R2, R10
+ */
+export function encryptPii(keyring: PiiKeyring, plaintext: string, aad: string): string {
   const key = keyring.keys.get(keyring.current);
   if (!key) throw new PiiError('current key missing from keyring');
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: TAG_BYTES });
+  cipher.setAAD(Buffer.from(aad, 'utf8'));
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [
@@ -65,7 +72,7 @@ export function encryptPii(keyring: PiiKeyring, plaintext: string): string {
 }
 
 /** @rfc RFC-40 R2, R4 */
-export function decryptPii(keyring: PiiKeyring, stored: string): string {
+export function decryptPii(keyring: PiiKeyring, stored: string, aad: string): string {
   const parts = stored.split(':');
   if (parts.length !== 4) throw new PiiDecryptError();
   const [version, ivB64, tagB64, ctB64] = parts as [string, string, string, string];
@@ -76,6 +83,7 @@ export function decryptPii(keyring: PiiKeyring, stored: string): string {
   if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) throw new PiiDecryptError();
   try {
     const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_BYTES });
+    decipher.setAAD(Buffer.from(aad, 'utf8'));
     decipher.setAuthTag(tag);
     const plain = Buffer.concat([
       decipher.update(Buffer.from(ctB64, 'base64url')),
@@ -102,8 +110,8 @@ let configured: Pii | null = null;
 /** @rfc RFC-40 R9 */
 export function configurePii(keyring: PiiKeyring, hmacKey: Buffer): void {
   configured = {
-    encrypt: (plaintext) => encryptPii(keyring, plaintext),
-    decrypt: (stored) => decryptPii(keyring, stored),
+    encrypt: (plaintext, aad) => encryptPii(keyring, plaintext, aad),
+    decrypt: (stored, aad) => decryptPii(keyring, stored, aad),
     blindIndex: (value) => blindIndex(hmacKey, value),
   };
 }

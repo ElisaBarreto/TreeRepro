@@ -54,6 +54,28 @@ describe('RFC-02 R7 log redaction', () => {
     expect(line.res.headers).toEqual({ 'set-cookie': '[REDACTED]' });
   });
 
+  it('redacts the IP-bearing proxy headers and socket address of a logged request', () => {
+    const { logger, lines } = captureLogger();
+    logger.info({
+      req: {
+        ip: '203.0.113.7',
+        remoteAddress: '203.0.113.7',
+        headers: {
+          'x-forwarded-for': '203.0.113.7, 10.0.0.1',
+          'x-real-ip': '203.0.113.7',
+          forwarded: 'for=203.0.113.7',
+          host: 'treerepro.example',
+        },
+      },
+      remoteAddress: '203.0.113.7',
+    });
+    const text = JSON.stringify(lines[0]);
+    expect(text).not.toContain('203.0.113.7');
+    expect(text).not.toContain('10.0.0.1');
+    const line = lines[0] as { req: { headers: Record<string, string> } };
+    expect(line.req.headers.host).toBe('treerepro.example');
+  });
+
   it('honours the configured level and omits pid/hostname', () => {
     const { logger, lines } = captureLogger('warn');
     logger.info('dropped');

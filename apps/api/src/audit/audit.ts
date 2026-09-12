@@ -12,16 +12,23 @@ export interface AuditEntry {
   metadata?: Record<string, unknown>;
 }
 
-/** @rfc RFC-41 R7 */
-export const FORBIDDEN_METADATA_KEYS = [
+/** Rejected when the normalized key contains them. @rfc RFC-41 R7 */
+export const FORBIDDEN_METADATA_KEY_PARTS = [
   'password',
-  'passwordHash',
   'token',
   'secret',
   'email',
+  'useragent',
+] as const;
+
+/** Rejected when the normalized key equals one of them. @rfc RFC-41 R7 */
+export const FORBIDDEN_METADATA_KEYS = [
   'name',
-  'ip',
-  'userAgent',
+  'username',
+  'firstname',
+  'lastname',
+  'fullname',
+  'displayname',
 ] as const;
 
 /** @rfc RFC-41 R7 */
@@ -43,6 +50,14 @@ export class AuditActionError extends Error {
 const forbidden = new Set<string>(FORBIDDEN_METADATA_KEYS);
 
 /** @rfc RFC-41 R7 */
+export function isForbiddenMetadataKey(key: string): boolean {
+  const k = key.toLowerCase().replaceAll(/[_-]/g, '');
+  if (forbidden.has(k)) return true;
+  if (k === 'ip' || k.startsWith('ip') || k.endsWith('ip')) return true;
+  return FORBIDDEN_METADATA_KEY_PARTS.some((part) => k.includes(part));
+}
+
+/** @rfc RFC-41 R7 */
 export function assertSafeMetadata(value: unknown, path = ''): void {
   if (Array.isArray(value)) {
     for (const [i, item] of value.entries()) {
@@ -53,7 +68,7 @@ export function assertSafeMetadata(value: unknown, path = ''): void {
   if (value !== null && typeof value === 'object') {
     for (const [key, child] of Object.entries(value)) {
       const childPath = path ? `${path}.${key}` : key;
-      if (forbidden.has(key)) throw new AuditMetadataError(childPath);
+      if (isForbiddenMetadataKey(key)) throw new AuditMetadataError(childPath);
       assertSafeMetadata(child, childPath);
     }
   }
