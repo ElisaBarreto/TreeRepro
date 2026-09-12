@@ -29,6 +29,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `docker compose up` — full dev stack. First time: `cp .env.example .env && ./scripts/gen-secrets.sh`.
 - `pnpm --filter @treerepro/api db:generate` — generate a migration from the Drizzle schema.
 - `pnpm seed:admin --email <email> --name <name>` — invite the first user (prints the invitation link; needs the dev stack or a reachable Postgres/Redis/SMTP). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:admin --email … --name …`. In production: `docker compose exec api node dist/cli/seed-admin.js --email … --name …`.
+- `./scripts/github-admin.sh` — owner only: apply the GitHub security settings and the `main` ruleset (`--check` to inspect).
 
 ## Security automation
 

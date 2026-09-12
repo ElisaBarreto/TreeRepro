@@ -22,7 +22,7 @@ All actions are pinned to a commit SHA with the version in a trailing comment. D
 
 ## Ruleset on `main` (admin only)
 
-Source of truth: `infra/github/ruleset-main.json`. Apply with `gh api -X POST repos/ElisaBarreto/TreeRepro/rulesets --input infra/github/ruleset-main.json` (or `-X PUT .../rulesets/<id>` to update); verify with `gh api repos/ElisaBarreto/TreeRepro/rulesets`. `integration_id` 15368 is the GitHub Actions app, so only Actions can satisfy a required check. Rules:
+Source of truth: `infra/github/ruleset-main.json`, applied by `scripts/github-admin.sh` (creates or updates the ruleset named `main`); `./scripts/github-admin.sh --check` compares the live ruleset with the file and reports `matches` or `DRIFT: …` (edits made in the GitHub UI show up here; re-run the script to restore the file's state). `integration_id` 15368 is the GitHub Actions app, so only Actions can satisfy a required check. Rules:
 
 - Pull request required; no direct pushes, no force-push, no branch deletion.
 - Required status checks (branch must be up to date with `main`): `Verify`, `Images`, `CodeQL (javascript-typescript)`, `CodeQL (actions)`, `Dependency review`, `Gitleaks`, `Zizmor`, `Trivy config`.
@@ -31,7 +31,7 @@ Source of truth: `infra/github/ruleset-main.json`. Apply with `gh api -X POST re
 
 ## Settings only an admin can change
 
-Settings → Code security. Verify with `gh api repos/ElisaBarreto/TreeRepro --jq .security_and_analysis`. Expected on:
+The repository belongs to a personal account, so collaborators cannot be admins: only the owner can change these. `scripts/github-admin.sh`, run by the owner after `gh auth login`, applies everything below and the ruleset, idempotently; `--check` prints the live state without changing anything. Expected on:
 
 - Dependency graph — without it `Dependency review` fails with "Dependency review is not supported on this repository".
 - Dependabot alerts and Dependabot security updates (grouped).
