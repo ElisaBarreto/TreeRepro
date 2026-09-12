@@ -34,6 +34,9 @@ updates:
     commit-message:
       prefix: "chore(ci)"
 
+  # Base images: minor/patch and digest bumps only. A major (node 24 → 26,
+  # postgres 18 → 19) changes the runtime the code is pinned to (README
+  # "Stack", package.json engines, .node-version) and is a deliberate change.
   - package-ecosystem: docker
     directory: /infra/docker
     schedule:
@@ -43,6 +46,9 @@ updates:
       timezone: America/Sao_Paulo
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-images:
         patterns: ["*"]
@@ -58,6 +64,9 @@ updates:
       timezone: America/Sao_Paulo
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       compose-images:
         patterns: ["*"]
