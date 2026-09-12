@@ -1,0 +1,9 @@
+{
+  "name": "@treerepro/config",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "tsconfig.base.json",
+    "tsconfig.web.json"
+  ]
+}

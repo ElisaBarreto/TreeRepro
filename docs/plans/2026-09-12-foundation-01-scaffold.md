@@ -1,14 +1,14 @@
 # Foundation 01 — Scaffold, Infrastructure and Process — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Execute task by task, in order; each task ends with passing checks and a commit. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A running, tested skeleton of Elisa: pnpm monorepo, Hono API with security baseline and health endpoints, PII encryption module, append-only audit log, React SPA placeholder, Docker Compose stack (Postgres 18, Redis 8, Caddy), CI workflow, RFC process with automated code-linkage enforcement.
+**Goal:** A running, tested skeleton of TreeRepro: pnpm monorepo, Hono API with security baseline and health endpoints, PII encryption module, append-only audit log, React SPA placeholder, Docker Compose stack (Postgres 18, Redis 8, Caddy), CI workflow, RFC process with automated code-linkage enforcement.
 
 **Architecture:** Monorepo with a physical front/back boundary. `apps/api` (Hono on Node 24) is the only process that touches Postgres, Redis and secrets. `apps/web` (Vite + React SPA) only renders and calls `/api/*` on the same origin through Caddy. `packages/contracts` holds shared Zod schemas. `tools/rfc-lint` enforces that every exported symbol links to an RFC rule. Business rules live in `docs/rfc/`.
 
 **Tech Stack:** Node 24.21 LTS, pnpm 12.4, TypeScript 7.0, Hono 4.13, Zod 4.6, Drizzle ORM 0.45 + postgres.js 3.4, ioredis 6.0, pino 10.3, React 19.3, Vite 8.3, TanStack Router 1.170 / Query 5.102, Tailwind 4.3, Vitest 5.0, testcontainers 12.1, Biome 2.5, PostgreSQL 18.6, Redis 8.8, Caddy 2.9, Docker Compose v5.5.
 
-**Spec:** `docs/superpowers/specs/2026-09-12-foundation-design.md`
+**Spec:** `docs/specs/2026-09-12-foundation-design.md`
 
 This is plan 1 of 5. Later plans: 02 auth, 03 RBAC, 04 admin + self-service + GDPR, 05 frontend + E2E.
 
@@ -31,11 +31,11 @@ This is plan 1 of 5. Later plans: 02 auth, 03 RBAC, 04 admin + self-service + GD
 ## File structure (end state of this plan)
 
 ```
-elisa/
+treerepro/
 ├── .github/workflows/ci.yml
 ├── .dockerignore  .env.example  .gitignore  .node-version  .npmrc
 ├── biome.json  package.json  pnpm-workspace.yaml  tsconfig.json  vitest.config.ts
-├── CLAUDE.md
+├── README.md
 ├── compose.yml  compose.dev.yml  compose.prod.yml
 ├── scripts/gen-secrets.sh
 ├── infra/
@@ -78,7 +78,8 @@ elisa/
     ├── rfc/10-platform/10-architecture.md  11-api-conventions.md  12-error-codes.md
     ├── rfc/40-data-protection/40-pii-encryption.md  41-audit-log.md
     ├── gotchas/README.md  node.md  postgres.md  pnpm.md  docker.md
-    └── superpowers/specs/…  plans/…
+    ├── specs/…
+    └── plans/…
 ```
 
 Responsibilities:
@@ -102,13 +103,13 @@ Responsibilities:
 - Create: `packages/config/package.json`, `packages/config/tsconfig.base.json`, `packages/config/tsconfig.web.json`
 
 **Interfaces:**
-- Produces: `@elisa/config/tsconfig.base.json` (Node/library projects) and `@elisa/config/tsconfig.web.json` (browser projects). Root scripts `lint`, `typecheck`, `test`, `build`, `rfc:check`.
+- Produces: `@treerepro/config/tsconfig.base.json` (Node/library projects) and `@treerepro/config/tsconfig.web.json` (browser projects). Root scripts `lint`, `typecheck`, `test`, `build`, `rfc:check`.
 
 - [ ] **Step 1: Root package.json**
 
 ```json
 {
-  "name": "elisa",
+  "name": "treerepro",
   "private": true,
   "packageManager": "pnpm@12.4.1",
   "engines": {
@@ -121,7 +122,7 @@ Responsibilities:
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "pnpm -r build",
-    "rfc:check": "pnpm --filter @elisa/rfc-lint check"
+    "rfc:check": "pnpm --filter @treerepro/rfc-lint check"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
@@ -187,7 +188,7 @@ strict-peer-dependencies=false
 `packages/config/package.json`:
 ```json
 {
-  "name": "@elisa/config",
+  "name": "@treerepro/config",
   "version": "0.0.0",
   "private": true,
   "files": ["tsconfig.base.json", "tsconfig.web.json"]
@@ -280,21 +281,21 @@ git commit -m "chore: scaffold pnpm monorepo with biome, typescript 7 and vitest
 
 ---
 
-### Task 2: Process documentation — CLAUDE.md, RFC index, RFC-00/01/02/10, gotchas index
+### Task 2: Process documentation — README.md, RFC index, RFC-00/01/02/10, gotchas index
 
 **Files:**
-- Create: `CLAUDE.md`, `docs/rfc/README.md`, `docs/gotchas/README.md`
+- Create: `README.md`, `docs/rfc/README.md`, `docs/gotchas/README.md`
 - Create: `docs/rfc/00-process/00-rfc-process.md`, `docs/rfc/00-process/01-tdd-policy.md`, `docs/rfc/00-process/02-security-principles.md`, `docs/rfc/10-platform/10-architecture.md`
 
 **Interfaces:**
 - Produces: RFC IDs and rule numbers referenced by every later task's `@rfc` tags. The RFC format (rules as `- **Rn**` list items) is what `tools/rfc-lint` parses in Task 3.
 
-- [ ] **Step 1: CLAUDE.md**
+- [ ] **Step 1: README.md** (agent-agnostic project handbook; no AI-tool-specific files are committed to this repository)
 
 ```markdown
-# Elisa
+# TreeRepro
 
-Scientific data-collection platform. Everything sits behind login. GDPR applies to user data.
+Scientific data-collection platform. Everything sits behind login. GDPR applies to user data. This file is the project handbook: durable rules and pointers only, never a log.
 
 ## Stack (exact versions pinned in package.json; rationale in RFC-10)
 
@@ -310,7 +311,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `infra/` — Dockerfiles, Caddyfiles, Postgres init, secrets (gitignored).
 - `docs/rfc/` — business rules, the source of truth.
 - `docs/gotchas/<area>.md` — concrete code/infra pitfalls.
-- `docs/superpowers/specs`, `docs/superpowers/plans` — design docs and implementation plans.
+- `docs/specs`, `docs/plans` — design docs and implementation plans.
 
 ## Commands
 
@@ -321,7 +322,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `pnpm rfc:check` — verify every export links to an existing RFC rule.
 - `pnpm build` — build contracts, api, web.
 - `docker compose up` — full dev stack. First time: `cp .env.example .env && ./scripts/gen-secrets.sh`.
-- `pnpm --filter @elisa/api db:generate` — generate a migration from the Drizzle schema.
+- `pnpm --filter @treerepro/api db:generate` — generate a migration from the Drizzle schema.
 
 ## Non-negotiable rules
 
@@ -338,9 +339,9 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 |---|---|
 | Business rule (formula, state, contract, policy) | `docs/rfc/NN-*.md` |
 | Code/infra pitfall specific to this project | `docs/gotchas/<area>.md` |
-| Design decision | `docs/superpowers/specs/` |
-| Implementation plan | `docs/superpowers/plans/` |
-| Durable project rules | this file — never a log |
+| Design decision | `docs/specs/` |
+| Implementation plan | `docs/plans/` |
+| Durable project rules | this `README.md` — never a log |
 ```
 
 - [ ] **Step 2: RFC index**
@@ -349,7 +350,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 ```markdown
 # RFC index
 
-RFCs are the source of truth for how Elisa behaves. Process: RFC-00.
+RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 
 | Range | Category | Directory |
 |---|---|---|
@@ -459,7 +460,7 @@ None.
 
 ## Context
 
-Elisa holds personal data of its users and scientific data whose integrity matters. These principles apply to every line of code. Specific mechanisms (sessions, permissions, encryption) have their own RFCs; this one sets the baseline.
+TreeRepro holds personal data of its users and scientific data whose integrity matters. These principles apply to every line of code. Specific mechanisms (sessions, permissions, encryption) have their own RFCs; this one sets the baseline.
 
 ## Rules
 
@@ -500,7 +501,7 @@ None.
 
 ## Context
 
-Design: `docs/superpowers/specs/2026-09-12-foundation-design.md`. This RFC fixes the structural rules the code must follow.
+Design: `docs/specs/2026-09-12-foundation-design.md`. This RFC fixes the structural rules the code must follow.
 
 ## Rules
 
@@ -510,7 +511,7 @@ Design: `docs/superpowers/specs/2026-09-12-foundation-design.md`. This RFC fixes
 - **R4** Request and response shapes shared by API and web are Zod schemas in `packages/contracts`. The API validates with them; the web only derives types from them.
 - **R5** Configuration is read only in `apps/api/src/config.ts`: non-secret values from environment variables, secrets from files (RFC-02 R6). The result is validated with Zod; the process refuses to start on any invalid or missing value.
 - **R6** Database access goes through Drizzle ORM. Raw SQL is allowed only through the `sql` template tag (parameterized); string concatenation into SQL is forbidden.
-- **R7** Schema changes are SQL migration files in `apps/api/drizzle/`, generated by `drizzle-kit generate` (or `--custom` for hand-written SQL such as triggers) and applied by the `migrate` service before the API starts, using the `elisa_migrator` role. The API runtime uses the `elisa_app` role, which cannot create or alter tables.
+- **R7** Schema changes are SQL migration files in `apps/api/drizzle/`, generated by `drizzle-kit generate` (or `--custom` for hand-written SQL such as triggers) and applied by the `migrate` service before the API starts, using the `treerepro_migrator` role. The API runtime uses the `treerepro_app` role, which cannot create or alter tables.
 - **R8** Runtime versions: Node 24 LTS, PostgreSQL 18, Redis 8, Caddy 2. Libraries are pinned exact in `package.json`.
 - **R9** Production processes: `caddy` (only public port; TLS; serves the SPA; proxies `/api/*`), `api`, `postgres`, `redis`, `migrate` (one-shot, before `api`), `backup` (daily encrypted `pg_dump`). Development adds `web` (Vite dev server), `mailpit`, and publishes Postgres/Redis ports for inspection.
 - **R10** Health endpoints: `GET /api/health` is public and answers exactly `{"ok":true}` (no envelope, no version, no dependency status). `GET /api/health/ready` checks PostgreSQL and Redis, answers `{"ok":true}` or 503 `SERVICE_UNAVAILABLE`, and is never proxied by Caddy (internal network only).
@@ -548,8 +549,8 @@ Run: `pnpm lint`
 Expected: zero errors (Biome formats Markdown? No — Biome ignores `.md`; this confirms nothing else broke).
 
 ```bash
-git add CLAUDE.md docs/
-git commit -m "docs: add CLAUDE.md, RFC process (RFC-00/01/02/10) and gotchas index"
+git add README.md docs/
+git commit -m "docs: add README handbook, RFC process (RFC-00/01/02/10) and gotchas index"
 ```
 
 ---
@@ -569,7 +570,7 @@ git commit -m "docs: add CLAUDE.md, RFC process (RFC-00/01/02/10) and gotchas in
 `tools/rfc-lint/package.json`:
 ```json
 {
-  "name": "@elisa/rfc-lint",
+  "name": "@treerepro/rfc-lint",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -579,7 +580,7 @@ git commit -m "docs: add CLAUDE.md, RFC process (RFC-00/01/02/10) and gotchas in
     "test": "vitest run"
   },
   "devDependencies": {
-    "@elisa/config": "workspace:*",
+    "@treerepro/config": "workspace:*",
     "@types/node": "24.13.4",
     "typescript": "7.0.2",
     "vitest": "5.0.0"
@@ -590,7 +591,7 @@ git commit -m "docs: add CLAUDE.md, RFC process (RFC-00/01/02/10) and gotchas in
 `tools/rfc-lint/tsconfig.json`:
 ```json
 {
-  "extends": "@elisa/config/tsconfig.base.json",
+  "extends": "@treerepro/config/tsconfig.base.json",
   "compilerOptions": { "types": ["node"] },
   "include": ["src", "vitest.config.ts"]
 }
@@ -686,7 +687,7 @@ describe('RFC-00 R4 parseRfcTags', () => {
 
 - [ ] **Step 3: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/rfc-lint test`
+Run: `pnpm --filter @treerepro/rfc-lint test`
 Expected: FAIL — `Cannot find module './scan.ts'` (or equivalent).
 
 - [ ] **Step 4: Implement the scanner**
@@ -762,7 +763,7 @@ export function parseRfcTags(doc: string): RfcRef[] {
 
 - [ ] **Step 5: Run scanner tests**
 
-Run: `pnpm --filter @elisa/rfc-lint test`
+Run: `pnpm --filter @treerepro/rfc-lint test`
 Expected: all `scan.test.ts` tests PASS.
 
 - [ ] **Step 6: Failing tests for the RFC index**
@@ -809,7 +810,7 @@ describe('RFC-00 R1, R3 loadRfcIndex', () => {
 
 - [ ] **Step 7: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/rfc-lint test`
+Run: `pnpm --filter @treerepro/rfc-lint test`
 Expected: FAIL — cannot find `./rfc-index.ts`.
 
 - [ ] **Step 8: Implement the RFC index**
@@ -849,7 +850,7 @@ export function loadRfcIndex(rfcDir: string): Map<number, RfcEntry> {
 
 - [ ] **Step 9: Run index tests**
 
-Run: `pnpm --filter @elisa/rfc-lint test`
+Run: `pnpm --filter @treerepro/rfc-lint test`
 Expected: PASS.
 
 - [ ] **Step 10: Failing tests for the linter**
@@ -958,7 +959,7 @@ describe('RFC-00 R4 lint', () => {
 
 - [ ] **Step 11: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/rfc-lint test`
+Run: `pnpm --filter @treerepro/rfc-lint test`
 Expected: FAIL — cannot find `./lint.ts`.
 
 - [ ] **Step 12: Implement the linter**
@@ -1077,7 +1078,7 @@ export function lint(options: LintOptions): Violation[] {
 
 - [ ] **Step 13: Run linter tests**
 
-Run: `pnpm --filter @elisa/rfc-lint test`
+Run: `pnpm --filter @treerepro/rfc-lint test`
 Expected: PASS.
 
 - [ ] **Step 14: Repo-wide meta-test and CLI**
@@ -1123,7 +1124,7 @@ if (violations.length > 0) {
 }
 ```
 
-Run: `pnpm --filter @elisa/rfc-lint test`
+Run: `pnpm --filter @treerepro/rfc-lint test`
 Expected: PASS (no `apps/*/src` yet, so zero violations).
 
 Run: `pnpm rfc:check`
@@ -1246,7 +1247,7 @@ Also add both rows to `docs/rfc/README.md` if not already present (they are, fro
 `packages/contracts/package.json`:
 ```json
 {
-  "name": "@elisa/contracts",
+  "name": "@treerepro/contracts",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -1266,7 +1267,7 @@ Also add both rows to `docs/rfc/README.md` if not already present (they are, fro
     "zod": "4.6.2"
   },
   "devDependencies": {
-    "@elisa/config": "workspace:*",
+    "@treerepro/config": "workspace:*",
     "@types/node": "24.13.4",
     "typescript": "7.0.2",
     "vitest": "5.0.0"
@@ -1277,7 +1278,7 @@ Also add both rows to `docs/rfc/README.md` if not already present (they are, fro
 `packages/contracts/tsconfig.json`:
 ```json
 {
-  "extends": "@elisa/config/tsconfig.base.json",
+  "extends": "@treerepro/config/tsconfig.base.json",
   "compilerOptions": { "types": ["node"] },
   "include": ["src", "vitest.config.ts"]
 }
@@ -1385,7 +1386,7 @@ describe('RFC-11 R2 data envelope', () => {
 
 - [ ] **Step 5: Run to verify they fail**
 
-Run: `pnpm --filter @elisa/contracts test`
+Run: `pnpm --filter @treerepro/contracts test`
 Expected: FAIL — modules not found.
 
 - [ ] **Step 6: Implement**
@@ -1467,10 +1468,10 @@ export * from './health.ts';
 
 - [ ] **Step 7: Run tests, typecheck, build, rfc-lint**
 
-Run: `pnpm --filter @elisa/contracts test`
+Run: `pnpm --filter @treerepro/contracts test`
 Expected: PASS.
 
-Run: `pnpm --filter @elisa/contracts build && ls packages/contracts/dist`
+Run: `pnpm --filter @treerepro/contracts build && ls packages/contracts/dist`
 Expected: `index.js index.d.ts error-codes.js … envelope.js … health.js …` and imports inside `dist/index.js` end with `.js` (rewritten from `.ts`).
 
 Run: `pnpm typecheck && pnpm lint && pnpm test`
@@ -1545,7 +1546,7 @@ None.
 `apps/api/package.json`:
 ```json
 {
-  "name": "@elisa/api",
+  "name": "@treerepro/api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -1560,7 +1561,7 @@ None.
     "db:migrate": "node --conditions=development src/db/migrate.ts"
   },
   "dependencies": {
-    "@elisa/contracts": "workspace:*",
+    "@treerepro/contracts": "workspace:*",
     "@hono/node-server": "2.1.1",
     "@hono/zod-validator": "0.9.1",
     "drizzle-orm": "0.45.2",
@@ -1571,7 +1572,7 @@ None.
     "zod": "4.6.2"
   },
   "devDependencies": {
-    "@elisa/config": "workspace:*",
+    "@treerepro/config": "workspace:*",
     "@testcontainers/postgresql": "12.1.0",
     "@testcontainers/redis": "12.1.0",
     "@types/node": "24.13.4",
@@ -1586,7 +1587,7 @@ None.
 `apps/api/tsconfig.json`:
 ```json
 {
-  "extends": "@elisa/config/tsconfig.base.json",
+  "extends": "@treerepro/config/tsconfig.base.json",
   "compilerOptions": { "types": ["node"] },
   "include": ["src", "test", "drizzle.config.ts"]
 }
@@ -1752,7 +1753,7 @@ describe('RFC-40 R9 process-wide configuration', () => {
 
 - [ ] **Step 4: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: FAIL — cannot find `./pii.ts`.
 
 - [ ] **Step 5: Implement**
@@ -1879,7 +1880,7 @@ export function resetPii(): void {
 
 - [ ] **Step 6: Run tests, typecheck, lint, rfc-lint**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: PASS.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -1931,7 +1932,7 @@ const ALL_SECRETS = {
 
 const dirs: string[] = [];
 function secretsDir(secrets: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'elisa-secrets-'));
+  const dir = mkdtempSync(join(tmpdir(), 'treerepro-secrets-'));
   dirs.push(dir);
   for (const [name, value] of Object.entries(secrets)) writeFileSync(join(dir, name), `${value}\n`);
   return dir;
@@ -1945,8 +1946,8 @@ function env(overrides: Record<string, string | undefined> = {}): NodeJS.Process
     NODE_ENV: 'test',
     APP_ORIGIN: 'http://localhost',
     DB_HOST: 'postgres',
-    DB_NAME: 'elisa',
-    DB_USER: 'elisa_app',
+    DB_NAME: 'treerepro',
+    DB_USER: 'treerepro_app',
     REDIS_HOST: 'redis',
     SECRETS_DIR: secretsDir(ALL_SECRETS),
     ...overrides,
@@ -1959,7 +1960,7 @@ describe('RFC-10 R5 loadConfig', () => {
     expect(config.port).toBe(3000);
     expect(config.logLevel).toBe('info');
     expect(config.appOrigin).toBe('http://localhost');
-    expect(config.db.url).toBe('postgres://elisa_app:dbpw@postgres:5432/elisa');
+    expect(config.db.url).toBe('postgres://treerepro_app:dbpw@postgres:5432/treerepro');
     expect(config.redis.url).toBe('redis://:redispw@redis:6379');
     expect(config.pii.keyring.current).toBe('v1');
     expect(config.pii.hmacKey).toHaveLength(32);
@@ -2031,7 +2032,7 @@ describe('RFC-10 R5 url builders', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: FAIL — cannot find `./config.ts`.
 
 - [ ] **Step 3: Implement**
@@ -2169,7 +2170,7 @@ Note: `loadKeyring` is not exported, so it needs no `@rfc` tag, but keeping one 
 
 - [ ] **Step 4: Run tests and checks**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: PASS.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -2272,7 +2273,7 @@ export function captureLogger(level: LogLevel = 'trace') {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: FAIL — cannot find `../../src/logger.ts`.
 
 - [ ] **Step 3: Implement**
@@ -2331,7 +2332,7 @@ export type { Logger };
 
 - [ ] **Step 4: Run tests and checks**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: PASS.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -2369,7 +2370,7 @@ git commit -m "feat(api): add pino logger with PII redaction (RFC-02 R7)"
 
 `apps/api/src/http/errors.test.ts`:
 ```ts
-import { errorEnvelopeSchema } from '@elisa/contracts';
+import { errorEnvelopeSchema } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { requestId } from 'hono/request-id';
@@ -2463,7 +2464,7 @@ describe('RFC-02 R9 error handler', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: FAIL — cannot find `./errors.ts`.
 
 - [ ] **Step 3: Implement env and errors**
@@ -2477,7 +2478,7 @@ export type AppEnv = { Variables: RequestIdVariables };
 
 `apps/api/src/http/errors.ts`:
 ```ts
-import { ERROR_CODES, type ErrorCode, type ErrorDetail, type ErrorEnvelope } from '@elisa/contracts';
+import { ERROR_CODES, type ErrorCode, type ErrorDetail, type ErrorEnvelope } from '@treerepro/contracts';
 import type { ErrorHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -2534,14 +2535,14 @@ export function createErrorHandler(logger: Logger): ErrorHandler<AppEnv> {
 
 - [ ] **Step 4: Run errors tests**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: `errors.test.ts` PASS.
 
 - [ ] **Step 5: Failing tests for the app factory**
 
 `apps/api/src/app.test.ts`:
 ```ts
-import { errorEnvelopeSchema } from '@elisa/contracts';
+import { errorEnvelopeSchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { captureLogger } from '../test/helpers/logger.ts';
 import { type AppDeps, BODY_LIMIT_BYTES, createApp } from './app.ts';
@@ -2659,14 +2660,14 @@ describe('RFC-02 R9 error handling is wired', () => {
 
 - [ ] **Step 6: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: FAIL — cannot find `./app.ts`.
 
 - [ ] **Step 7: Implement health routes and app factory**
 
 `apps/api/src/http/routes/health.ts`:
 ```ts
-import type { HealthResponse } from '@elisa/contracts';
+import type { HealthResponse } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import type { AppEnv } from '../env.ts';
 import { errorBody } from '../errors.ts';
@@ -2743,7 +2744,7 @@ export type App = ReturnType<typeof createApp>;
 
 - [ ] **Step 8: Run tests and checks**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: PASS. If the 413 test fails because `content-length` is ignored by `Request`, keep the test as is: `bodyLimit` also counts streamed bytes, and the `/api/echo` route reads the body, which triggers the 413 through the error handler. If it still returns 200, check that the route reads the body with `c.req.text()`.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -2852,7 +2853,7 @@ describe('RFC-02 R2 strict validation', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: FAIL — cannot find `./validate.ts`.
 
 - [ ] **Step 3: Implement**
@@ -2904,7 +2905,7 @@ export function validate<Target extends keyof ValidationTargets, Schema extends 
 
 - [ ] **Step 4: Run tests and checks**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: PASS.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -2939,7 +2940,7 @@ import type { AppEnv } from './env.ts';
 import { createErrorHandler } from './errors.ts';
 import { originCheck } from './origin-check.ts';
 
-const ORIGIN = 'https://elisa.example.org';
+const ORIGIN = 'https://treerepro.example.org';
 
 function app() {
   const a = new Hono<AppEnv>();
@@ -2960,7 +2961,7 @@ describe('RFC-02 R3 origin check', () => {
   });
 
   it('rejects mutations from another origin, including a different port or scheme', async () => {
-    for (const origin of ['https://evil.example', 'http://elisa.example.org', `${ORIGIN}:8443`]) {
+    for (const origin of ['https://evil.example', 'http://treerepro.example.org', `${ORIGIN}:8443`]) {
       const res = await app().request('/m', { method: 'POST', headers: { origin } });
       expect(res.status).toBe(403);
     }
@@ -2997,7 +2998,7 @@ describe('RFC-02 R3 origin check is wired', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: FAIL — `origin-check.ts` missing; app test expects 403 but gets 200.
 
 - [ ] **Step 3: Implement and wire**
@@ -3040,7 +3041,7 @@ Update the `@rfc` block on `createApp` so the RFC-02 line covers the origin rule
 
 - [ ] **Step 4: Run tests and checks**
 
-Run: `pnpm --filter @elisa/api test:unit`
+Run: `pnpm --filter @treerepro/api test:unit`
 Expected: PASS.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -3097,14 +3098,14 @@ Security-relevant events must be recorded immutably: accountability under the GD
 ## Rules
 
 - **R1** Table `audit_log` columns: `id` uuid primary key default `uuidv7()`; `at` timestamptz not null default `now()`; `actor_user_id` uuid nullable (foreign key to `users` added by RFC-2x); `action` text not null; `target_type` text nullable; `target_id` text nullable; `ip` text nullable (encrypted); `user_agent` text nullable (encrypted); `metadata` jsonb not null default `{}`. Indexes: `(at desc)` and `(actor_user_id, at desc)`.
-- **R2** Append-only. A trigger rejects every `UPDATE` and `TRUNCATE`. It rejects `DELETE` unless the current transaction has executed `SET LOCAL elisa.allow_audit_purge = 'on'`; only the retention job (RFC-42, future) sets it.
+- **R2** Append-only. A trigger rejects every `UPDATE` and `TRUNCATE`. It rejects `DELETE` unless the current transaction has executed `SET LOCAL treerepro.allow_audit_purge = 'on'`; only the retention job (RFC-42, future) sets it.
 - **R3** Actions are dot-separated identifiers `<domain>.<event>` from the catalog below, mirrored exactly by `AUDIT_ACTIONS` in `apps/api/src/audit/actions.ts` (a test compares the two). New actions are added to this RFC first.
 - **R4** `ip` and `user_agent` are encrypted with RFC-40 before storage.
 - **R5** `recordAudit` runs inside the same database transaction as the action it records. If the audit write fails, the action is rolled back (fail closed).
 - **R6** Retention: entries older than 2 years are purged by the retention job (RFC-42, future). Until it exists nothing is purged.
 - **R7** `metadata` never contains personal data or secrets. `recordAudit` rejects the keys `password`, `passwordHash`, `token`, `secret`, `email`, `name`, `ip`, `userAgent` at any depth before writing.
 - **R8** `actor_user_id` is null for events without an authenticated actor (for example a failed login for an unknown email).
-- **R9** The runtime role `elisa_app` never holds `UPDATE` or `TRUNCATE` on `audit_log`: the migration that creates the trigger also revokes `UPDATE` from `elisa_app` when that role exists. The trigger is the second line of defense.
+- **R9** The runtime role `treerepro_app` never holds `UPDATE` or `TRUNCATE` on `audit_log`: the migration that creates the trigger also revokes `UPDATE` from `treerepro_app` when that role exists. The trigger is the second line of defense.
 
 ## Actions
 
@@ -3310,16 +3311,16 @@ export type { Redis };
 
 - [ ] **Step 3: Generate the migrations**
 
-Run: `pnpm --filter @elisa/api db:generate --name audit_log`
+Run: `pnpm --filter @treerepro/api db:generate --name audit_log`
 Expected: creates `apps/api/drizzle/0000_audit_log.sql` and `apps/api/drizzle/meta/{_journal.json,0000_snapshot.json}`. Open the SQL and confirm it contains `CREATE TABLE "audit_log"` with the nine columns, `DEFAULT uuidv7()`, `DEFAULT now()`, `DEFAULT '{}'::jsonb`, and the two `CREATE INDEX` statements. (The PII module is not needed at generate time; `getPii()` is only called on read/write.)
 
-Run: `pnpm --filter @elisa/api exec drizzle-kit generate --custom --name audit_log_append_only`
+Run: `pnpm --filter @treerepro/api exec drizzle-kit generate --custom --name audit_log_append_only`
 Expected: creates an empty `apps/api/drizzle/0001_audit_log_append_only.sql` and a journal entry. Fill the file with:
 ```sql
 CREATE OR REPLACE FUNCTION audit_log_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  IF TG_OP = 'DELETE' AND current_setting('elisa.allow_audit_purge', true) = 'on' THEN
+  IF TG_OP = 'DELETE' AND current_setting('treerepro.allow_audit_purge', true) = 'on' THEN
     RETURN OLD;
   END IF;
   RAISE EXCEPTION 'audit_log is append-only' USING ERRCODE = 'insufficient_privilege';
@@ -3336,8 +3337,8 @@ FOR EACH STATEMENT EXECUTE FUNCTION audit_log_guard();
 --> statement-breakpoint
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'elisa_app') THEN
-    REVOKE UPDATE ON audit_log FROM elisa_app;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'treerepro_app') THEN
+    REVOKE UPDATE ON audit_log FROM treerepro_app;
   END IF;
 END;
 $$;
@@ -3544,7 +3545,7 @@ describe('RFC-10 R2 redis client', () => {
 
 - [ ] **Step 6: Run integration tests**
 
-Run: `pnpm --filter @elisa/api test` (Docker must be running)
+Run: `pnpm --filter @treerepro/api test` (Docker must be running)
 Expected: containers start (first run pulls `postgres:18.6-alpine` and `redis:8.8-alpine`), migrations apply, both integration files PASS, unit tests still PASS.
 
 If `getConnectionUrl` does not exist on the Redis container, use `getClientUrl()` (older name) — check `node_modules/@testcontainers/redis/build/redis-container.d.ts`. If the URL lacks the password, build it with `buildRedisUrl` from `../src/config.ts` using `redis.getHost()`, `redis.getPort()` and `REDIS_PASSWORD`.
@@ -3658,7 +3659,7 @@ describe('RFC-41 recordAudit', () => {
         tx.transaction((sp) => sp.delete(auditLog).where(eq(auditLog.id, id))),
       ).rejects.toThrow(/append-only/);
       await tx.transaction(async (sp) => {
-        await sp.execute(sql`set local elisa.allow_audit_purge = 'on'`);
+        await sp.execute(sql`set local treerepro.allow_audit_purge = 'on'`);
         await sp.delete(auditLog).where(eq(auditLog.id, id));
       });
       const rows = await tx.select().from(auditLog).where(eq(auditLog.id, id));
@@ -3713,7 +3714,7 @@ describe('RFC-41 R7 assertSafeMetadata', () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `pnpm --filter @elisa/api test`
+Run: `pnpm --filter @treerepro/api test`
 Expected: FAIL — cannot find `./actions.ts` / `./audit.ts`.
 
 - [ ] **Step 3: Implement**
@@ -3843,7 +3844,7 @@ export async function recordAudit(db: DbExecutor, entry: AuditEntry): Promise<{ 
 
 - [ ] **Step 4: Run tests and checks**
 
-Run: `pnpm --filter @elisa/api test`
+Run: `pnpm --filter @treerepro/api test`
 Expected: PASS.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -3866,7 +3867,7 @@ git commit -m "feat(api): add append-only audit service with action catalog and 
 
 **Interfaces:**
 - Consumes: everything above.
-- Produces: `createHealthChecks(db: Db, redis: Redis): HealthChecks`; the runnable entry `apps/api/src/server.ts` (`pnpm --filter @elisa/api dev`).
+- Produces: `createHealthChecks(db: Db, redis: Redis): HealthChecks`; the runnable entry `apps/api/src/server.ts` (`pnpm --filter @treerepro/api dev`).
 
 - [ ] **Step 1: Failing tests**
 
@@ -3940,7 +3941,7 @@ describe('RFC-10 R5, R10, R11 server boot', () => {
   it('starts from TypeScript source, serves /api/health and /api/health/ready, and shuts down on SIGTERM', async () => {
     const pg = inject('postgres');
     const redis = inject('redis');
-    secretsDir = mkdtempSync(join(tmpdir(), 'elisa-boot-'));
+    secretsDir = mkdtempSync(join(tmpdir(), 'treerepro-boot-'));
     const secrets: Record<string, string> = {
       db_app_password: pg.password,
       redis_password: redis.password,
@@ -3984,7 +3985,7 @@ describe('RFC-10 R5, R10, R11 server boot', () => {
 
   it('refuses to start when a secret is missing', async () => {
     const pg = inject('postgres');
-    const dir = mkdtempSync(join(tmpdir(), 'elisa-boot-missing-'));
+    const dir = mkdtempSync(join(tmpdir(), 'treerepro-boot-missing-'));
     const proc = spawn('node', ['--conditions=development', 'src/server.ts'], {
       cwd: apiDir,
       env: {
@@ -4012,7 +4013,7 @@ describe('RFC-10 R5, R10, R11 server boot', () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `pnpm --filter @elisa/api test`
+Run: `pnpm --filter @treerepro/api test`
 Expected: FAIL — `health-checks.ts` missing; server test fails with "api exited" because `src/server.ts` does not exist.
 
 - [ ] **Step 3: Implement**
@@ -4074,10 +4075,10 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 - [ ] **Step 4: Run tests and checks**
 
-Run: `pnpm --filter @elisa/api test`
-Expected: PASS. Watch the boot test output: if Node prints `ExperimentalWarning: Type Stripping`, the test still passes; note it for `docs/gotchas/node.md` (Task 16). If the boot fails with `ERR_UNKNOWN_FILE_EXTENSION` or a resolution error for `@elisa/contracts`, the `development` export condition is not being applied — confirm the spawn args include `--conditions=development`.
+Run: `pnpm --filter @treerepro/api test`
+Expected: PASS. Watch the boot test output: if Node prints `ExperimentalWarning: Type Stripping`, the test still passes; note it for `docs/gotchas/node.md` (Task 16). If the boot fails with `ERR_UNKNOWN_FILE_EXTENSION` or a resolution error for `@treerepro/contracts`, the `development` export condition is not being applied — confirm the spawn args include `--conditions=development`.
 
-Run: `pnpm --filter @elisa/api build && ls apps/api/dist`
+Run: `pnpm --filter @treerepro/api build && ls apps/api/dist`
 Expected: `server.js`, `app.js`, `db/migrate.js`, … with `.js` relative imports.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check`
@@ -4109,7 +4110,7 @@ git commit -m "feat(api): add server entry with readiness checks and graceful sh
 `apps/web/package.json`:
 ```json
 {
-  "name": "@elisa/web",
+  "name": "@treerepro/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -4121,7 +4122,7 @@ git commit -m "feat(api): add server entry with readiness checks and graceful sh
     "test": "vitest run"
   },
   "dependencies": {
-    "@elisa/contracts": "workspace:*",
+    "@treerepro/contracts": "workspace:*",
     "@tanstack/react-query": "5.102.8",
     "@tanstack/react-router": "1.170.35",
     "react": "19.3.0",
@@ -4129,7 +4130,7 @@ git commit -m "feat(api): add server entry with readiness checks and graceful sh
     "zod": "4.6.2"
   },
   "devDependencies": {
-    "@elisa/config": "workspace:*",
+    "@treerepro/config": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/router-plugin": "1.168.37",
     "@testing-library/jest-dom": "7.0.1",
@@ -4149,7 +4150,7 @@ git commit -m "feat(api): add server entry with readiness checks and graceful sh
 `apps/web/tsconfig.json`:
 ```json
 {
-  "extends": "@elisa/config/tsconfig.web.json",
+  "extends": "@treerepro/config/tsconfig.web.json",
   "include": ["src", "vite.config.ts"]
 }
 ```
@@ -4188,7 +4189,7 @@ export default defineConfig({
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Elisa</title>
+    <title>TreeRepro</title>
   </head>
   <body>
     <div id="root"></div>
@@ -4233,7 +4234,7 @@ import { HomePage } from './HomePage.tsx';
 describe('RFC-10 R3 HomePage', () => {
   it('renders the product name', () => {
     render(<HomePage />);
-    expect(screen.getByRole('heading', { name: 'Elisa' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'TreeRepro' })).toBeInTheDocument();
   });
 });
 ```
@@ -4316,7 +4317,7 @@ describe('RFC-11 R3 error envelope handling', () => {
 
 - [ ] **Step 3: Run to verify they fail**
 
-Run: `pnpm --filter @elisa/web test`
+Run: `pnpm --filter @treerepro/web test`
 Expected: FAIL — modules not found.
 
 - [ ] **Step 4: Implement**
@@ -4328,7 +4329,7 @@ export function HomePage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-900">
       <div className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">Elisa</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">TreeRepro</h1>
         <p className="mt-2 text-sm text-slate-600">Scientific data collection platform</p>
       </div>
     </main>
@@ -4359,7 +4360,7 @@ export const Route = createFileRoute('/')({
 
 `apps/web/src/api/client.ts`:
 ```ts
-import { type ErrorDetail, errorEnvelopeSchema } from '@elisa/contracts';
+import { type ErrorDetail, errorEnvelopeSchema } from '@treerepro/contracts';
 
 /**
  * @rfc RFC-10 R3
@@ -4455,10 +4456,10 @@ createRoot(container).render(
 
 - [ ] **Step 5: Generate the route tree, run tests and checks**
 
-Run: `pnpm --filter @elisa/web build`
+Run: `pnpm --filter @treerepro/web build`
 Expected: the router plugin writes `apps/web/src/routeTree.gen.ts`; Vite emits `apps/web/dist/index.html` and hashed assets; no inline `<script>` in `dist/index.html` (required by the production CSP, RFC-02 R5). Check: `grep -c '<script' apps/web/dist/index.html` prints `1` and that tag has a `src` attribute.
 
-Run: `pnpm --filter @elisa/web test`
+Run: `pnpm --filter @treerepro/web test`
 Expected: PASS.
 
 Run: `pnpm typecheck && pnpm lint && pnpm rfc:check && pnpm test`
@@ -4518,14 +4519,14 @@ COPY packages/config/package.json packages/config/
 COPY tools/rfc-lint/package.json tools/rfc-lint/
 
 FROM manifests AS build
-RUN pnpm install --frozen-lockfile --filter "@elisa/api..."
+RUN pnpm install --frozen-lockfile --filter "@treerepro/api..."
 COPY packages/config packages/config
 COPY packages/contracts packages/contracts
 COPY apps/api apps/api
-RUN pnpm --filter @elisa/contracts build && pnpm --filter @elisa/api build
+RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/api build
 
 FROM manifests AS prod-deps
-RUN pnpm install --frozen-lockfile --prod --filter "@elisa/api..."
+RUN pnpm install --frozen-lockfile --prod --filter "@treerepro/api..."
 
 FROM node:24.21.0-alpine AS runtime
 ENV NODE_ENV=production
@@ -4556,11 +4557,11 @@ COPY apps/web/package.json apps/web/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/config/package.json packages/config/
 COPY tools/rfc-lint/package.json tools/rfc-lint/
-RUN pnpm install --frozen-lockfile --filter "@elisa/web..."
+RUN pnpm install --frozen-lockfile --filter "@treerepro/web..."
 COPY packages/config packages/config
 COPY packages/contracts packages/contracts
 COPY apps/web apps/web
-RUN pnpm --filter @elisa/contracts build && pnpm --filter @elisa/web build
+RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/web build
 
 FROM caddy:2.9.1-alpine
 COPY infra/docker/Caddyfile.prod /etc/caddy/Caddyfile
@@ -4595,10 +4596,10 @@ set -eu
 PGPASSWORD="$(cat /run/secrets/db_migrator_password)"
 export PGPASSWORD
 stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
-target="/backups/elisa-${stamp}.sql.age"
-pg_dump --host postgres --username elisa_migrator --dbname elisa --no-owner --format=plain \
+target="/backups/treerepro-${stamp}.sql.age"
+pg_dump --host postgres --username treerepro_migrator --dbname treerepro --no-owner --format=plain \
   | age --recipient "$BACKUP_AGE_RECIPIENT" --output "$target"
-find /backups -name 'elisa-*.sql.age' -mtime +30 -delete
+find /backups -name 'treerepro-*.sql.age' -mtime +30 -delete
 echo "backup written: $target"
 ```
 
@@ -4664,15 +4665,15 @@ APP_PW="$(cat /run/secrets/db_app_password)"
 MIG_PW="$(cat /run/secrets/db_migrator_password)"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOSQL
-CREATE ROLE elisa_migrator LOGIN PASSWORD '${MIG_PW}';
-CREATE ROLE elisa_app LOGIN PASSWORD '${APP_PW}';
-GRANT CREATE ON DATABASE ${POSTGRES_DB} TO elisa_migrator;
-GRANT CREATE, USAGE ON SCHEMA public TO elisa_migrator;
-GRANT USAGE ON SCHEMA public TO elisa_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE elisa_migrator IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO elisa_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE elisa_migrator IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO elisa_app;
+CREATE ROLE treerepro_migrator LOGIN PASSWORD '${MIG_PW}';
+CREATE ROLE treerepro_app LOGIN PASSWORD '${APP_PW}';
+GRANT CREATE ON DATABASE ${POSTGRES_DB} TO treerepro_migrator;
+GRANT CREATE, USAGE ON SCHEMA public TO treerepro_migrator;
+GRANT USAGE ON SCHEMA public TO treerepro_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE treerepro_migrator IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO treerepro_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE treerepro_migrator IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO treerepro_app;
 EOSQL
 ```
 Make it executable: `chmod +x infra/postgres/init/01-roles.sh`.
@@ -4746,14 +4747,14 @@ PII_CURRENT_KEY_VERSION=v1
 
 # Production only (compose.prod.yml)
 # COMPOSE_FILE=compose.yml:compose.prod.yml
-# DOMAIN=elisa.example.org
-# APP_ORIGIN=https://elisa.example.org
+# DOMAIN=treerepro.example.org
+# APP_ORIGIN=https://treerepro.example.org
 # BACKUP_AGE_RECIPIENT=age1...
 ```
 
 `compose.yml`:
 ```yaml
-name: elisa
+name: treerepro
 
 x-api-env: &api-env
   NODE_ENV: production
@@ -4761,9 +4762,9 @@ x-api-env: &api-env
   APP_ORIGIN: ${APP_ORIGIN:?set APP_ORIGIN in .env}
   DB_HOST: postgres
   DB_PORT: "5432"
-  DB_NAME: elisa
-  DB_USER: elisa_app
-  DB_MIGRATOR_USER: elisa_migrator
+  DB_NAME: treerepro
+  DB_USER: treerepro_app
+  DB_MIGRATOR_USER: treerepro_migrator
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   PII_CURRENT_KEY_VERSION: ${PII_CURRENT_KEY_VERSION:-v1}
@@ -4773,7 +4774,7 @@ services:
     image: postgres:18.6-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: elisa
+      POSTGRES_DB: treerepro
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/db_superuser_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
@@ -4782,7 +4783,7 @@ services:
       - postgres-data:/var/lib/postgresql
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d elisa"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d treerepro"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -4809,7 +4810,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
-    image: elisa-api
+    image: treerepro-api
     command: ["node", "dist/db/migrate.js"]
     environment: *api-env
     secrets: [db_migrator_password]
@@ -4819,7 +4820,7 @@ services:
     networks: [internal]
 
   api:
-    image: elisa-api
+    image: treerepro-api
     restart: unless-stopped
     environment: *api-env
     secrets: [db_app_password, redis_password, pii_encryption_key_v1, pii_hmac_key, session_secret]
@@ -4883,7 +4884,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/dev.Dockerfile
-    image: elisa-dev
+    image: treerepro-dev
     command: ["pnpm", "install", "--frozen-lockfile"]
     volumes:
       - .:/workspace
@@ -4892,8 +4893,8 @@ services:
 
   migrate:
     build: !reset null
-    image: elisa-dev
-    command: ["pnpm", "--filter", "@elisa/api", "db:migrate"]
+    image: treerepro-dev
+    command: ["pnpm", "--filter", "@treerepro/api", "db:migrate"]
     environment:
       NODE_ENV: development
     volumes:
@@ -4904,8 +4905,8 @@ services:
         condition: service_completed_successfully
 
   api:
-    image: elisa-dev
-    command: ["pnpm", "--filter", "@elisa/api", "dev"]
+    image: treerepro-dev
+    command: ["pnpm", "--filter", "@treerepro/api", "dev"]
     environment:
       NODE_ENV: development
     volumes:
@@ -4916,8 +4917,8 @@ services:
       - "3000:3000"
 
   web:
-    image: elisa-dev
-    command: ["pnpm", "--filter", "@elisa/web", "dev"]
+    image: treerepro-dev
+    command: ["pnpm", "--filter", "@treerepro/web", "dev"]
     environment:
       VITE_HMR_CLIENT_PORT: "80"
     volumes:
@@ -4964,7 +4965,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
-    image: elisa-web
+    image: treerepro-web
     ports:
       - "80:80"
       - "443:443"
@@ -4978,7 +4979,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/backup.Dockerfile
-    image: elisa-backup
+    image: treerepro-backup
     restart: unless-stopped
     environment:
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?set BACKUP_AGE_RECIPIENT in .env}
@@ -5019,25 +5020,25 @@ curl -s -X POST http://localhost/api/health                           # {"error"
 curl -s http://localhost/ | grep -c 'id="root"'                       # 1
 curl -s -I http://localhost/api/health | grep -i x-request-id          # header present
 docker compose exec -e PGPASSWORD="$(cat infra/secrets/db_app_password)" postgres \
-  psql -U elisa_app -d elisa -c '\dt'                                 # lists audit_log
+  psql -U treerepro_app -d treerepro -c '\dt'                                 # lists audit_log
 docker compose exec -e PGPASSWORD="$(cat infra/secrets/db_app_password)" postgres \
-  psql -U elisa_app -d elisa -c "update audit_log set action = 'x'"   # ERROR: permission denied (RFC-41 R9)
+  psql -U treerepro_app -d treerepro -c "update audit_log set action = 'x'"   # ERROR: permission denied (RFC-41 R9)
 docker compose exec redis redis-cli -a "$(cat infra/secrets/redis_password)" --no-auth-warning ping   # PONG
 ```
-Open http://localhost in a browser: the "Elisa" page renders with Tailwind styles; editing `apps/web/src/pages/HomePage.tsx` hot-reloads. If HMR does not reconnect, see `docs/gotchas/docker.md` (Task 16) — `VITE_HMR_CLIENT_PORT` must be `80`.
+Open http://localhost in a browser: the "TreeRepro" page renders with Tailwind styles; editing `apps/web/src/pages/HomePage.tsx` hot-reloads. If HMR does not reconnect, see `docs/gotchas/docker.md` (Task 16) — `VITE_HMR_CLIENT_PORT` must be `80`.
 
 Run: `docker compose down`
 
 - [ ] **Step 7: Verify the production images**
 
-Run: `docker build -f infra/docker/api.Dockerfile -t elisa-api .`
+Run: `docker build -f infra/docker/api.Dockerfile -t treerepro-api .`
 Expected: success.
 
-Run: `docker run --rm elisa-api node --input-type=module -e "await import('./dist/app.js'); console.log('modules ok')"`
-Expected: `modules ok` (proves `@elisa/contracts` resolves to `dist/` without the `development` condition and that pnpm symlinks survived the copy).
+Run: `docker run --rm treerepro-api node --input-type=module -e "await import('./dist/app.js'); console.log('modules ok')"`
+Expected: `modules ok` (proves `@treerepro/contracts` resolves to `dist/` without the `development` condition and that pnpm symlinks survived the copy).
 
-Run: `docker build -f infra/docker/web.Dockerfile -t elisa-web .`
-Expected: success; `docker run --rm elisa-web ls /srv/web` lists `index.html` and `assets/`.
+Run: `docker build -f infra/docker/web.Dockerfile -t treerepro-web .`
+Expected: success; `docker run --rm treerepro-web ls /srv/web` lists `index.html` and `assets/`.
 
 Run: `pnpm lint && pnpm test`
 Expected: still clean (nothing in this task touches TypeScript).
@@ -5132,10 +5133,10 @@ Expected: no output (workflow is valid).
 **Cause:** Type stripping cannot run `enum`, `namespace`, parameter properties or `import x = require()`.
 **Fix:** Use `as const` objects instead of enums; plain constructor assignments. `erasableSyntaxOnly` in `tsconfig.base.json` flags it at typecheck time.
 
-## `@elisa/contracts` resolves to `dist/` unless the `development` condition is set
+## `@treerepro/contracts` resolves to `dist/` unless the `development` condition is set
 **Symptom:** `Cannot find module '.../packages/contracts/dist/index.js'` when running source.
 **Cause:** Node refuses to type-strip files under `node_modules`, so the package exports built JS by default and source only under the `development` export condition.
-**Fix:** Run source with `node --conditions=development …` (the `dev` and `db:migrate` scripts do; `rfc-lint` does not import contracts). Production runs `dist/` after `pnpm --filter @elisa/contracts build`.
+**Fix:** Run source with `node --conditions=development …` (the `dev` and `db:migrate` scripts do; `rfc-lint` does not import contracts). Production runs `dist/` after `pnpm --filter @treerepro/contracts build`.
 
 ## ExperimentalWarning on type stripping
 **Symptom:** `ExperimentalWarning: Type Stripping is an experimental feature` in dev output.
@@ -5154,7 +5155,7 @@ Keep only the last entry if the warning actually appeared during Tasks 3, 11 or 
 **Fix:** `compose.yml` mounts `postgres-data:/var/lib/postgresql`. Never mount `/var/lib/postgresql/data`.
 
 ## Init scripts run once
-**Symptom:** New passwords in `infra/secrets/` are ignored; `elisa_app` cannot log in.
+**Symptom:** New passwords in `infra/secrets/` are ignored; `treerepro_app` cannot log in.
 **Cause:** `/docker-entrypoint-initdb.d` runs only when the data volume is empty.
 **Fix:** Development: `docker compose down -v` (destroys data), then `up`. Production: `ALTER ROLE … PASSWORD` manually, then update the secret file.
 
@@ -5166,7 +5167,7 @@ Keep only the last entry if the warning actually appeared during Tasks 3, 11 or 
 ## Purging the audit log
 **Symptom:** `audit_log is append-only` when deleting.
 **Cause:** RFC-41 R2 trigger.
-**Fix:** Only the retention job may delete, inside a transaction, after `SET LOCAL elisa.allow_audit_purge = 'on'`. `SET` without `LOCAL` is refused by the trigger design (the setting must not outlive the transaction).
+**Fix:** Only the retention job may delete, inside a transaction, after `SET LOCAL treerepro.allow_audit_purge = 'on'`. `SET` without `LOCAL` is refused by the trigger design (the setting must not outlive the transaction).
 ```
 
 `docs/gotchas/pnpm.md`:
@@ -5203,7 +5204,7 @@ Keep only the last entry if the warning actually appeared during Tasks 3, 11 or 
 **Fix:** `compose.dev.yml` sets `VITE_HMR_CLIENT_PORT=80`, which `vite.config.ts` turns into `server.hmr.clientPort`.
 
 ## `!reset` in `compose.dev.yml`
-**Cause:** The base `migrate` service builds the production image; in dev it must use `elisa-dev` instead, and Compose merges maps, so `build` has to be removed explicitly.
+**Cause:** The base `migrate` service builds the production image; in dev it must use `treerepro-dev` instead, and Compose merges maps, so `build` has to be removed explicitly.
 **Fix:** `build: !reset null`. Requires Compose v2.24 or newer.
 
 ## Base images are pinned by tag; pin by digest after the first build
@@ -5240,5 +5241,5 @@ git commit -m "docs: add CI workflow, gotchas and accept foundation RFCs"
 
 - Plan 02 (auth): `users`, `invitations`, `sessions` in Redis, TOTP, the global and per-endpoint rate limiter (RFC-24; spec section 9); uses `validate`, `recordAudit`, `encryptedText`, `blindIndex`, `AppError`, the test harness and `withRollback`.
 - Plan 03 (RBAC): `permissions`, `roles`, `requirePermission`, `routes-guarded` meta-test (RFC-02 R12).
-- Plan 04 (admin + GDPR): admin routes, `/api/me`, export, erase, audit query, retention job (sets `elisa.allow_audit_purge`).
+- Plan 04 (admin + GDPR): admin routes, `/api/me`, export, erase, audit query, retention job (sets `treerepro.allow_audit_purge`).
 - Plan 05 (frontend + E2E): login flows, admin pages, Playwright against the Compose stack.

@@ -14,6 +14,7 @@ build/
 !.env.example
 infra/secrets/*
 !infra/secrets/.gitkeep
+!infra/secrets/README.md
 
 # tests
 coverage/
@@ -28,3 +29,16 @@ playwright-report/
 
 # logs
 *.log
+
+# superpowers scratch (sdd ledgers, briefs, review packages)
+.superpowers/
+
+# AI-assistant local files (never committed; the repository is agent-independent)
+CLAUDE.md
+.claude/
+
+# git worktrees for parallel tasks
+.worktrees/
+
+# tanstack router temp files
+.tanstack/

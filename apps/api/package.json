@@ -1,0 +1,37 @@
+{
+  "name": "@treerepro/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --conditions=development src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config ../../vitest.config.ts --project api:unit --project api:integration",
+    "test:unit": "vitest run --config ../../vitest.config.ts --project api:unit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --conditions=development src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@treerepro/contracts": "workspace:*",
+    "@hono/node-server": "2.1.1",
+    "@hono/zod-validator": "0.9.1",
+    "drizzle-orm": "0.45.2",
+    "hono": "4.13.7",
+    "ioredis": "6.0.0",
+    "pino": "10.3.1",
+    "postgres": "3.4.9",
+    "zod": "4.6.2"
+  },
+  "devDependencies": {
+    "@treerepro/config": "workspace:*",
+    "@testcontainers/postgresql": "12.1.0",
+    "@testcontainers/redis": "12.1.0",
+    "@types/node": "24.13.4",
+    "drizzle-kit": "0.31.10",
+    "testcontainers": "12.1.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  }
+}

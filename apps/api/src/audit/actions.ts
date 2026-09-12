@@ -1,0 +1,28 @@
+/** @rfc RFC-41 R3 */
+export const AUDIT_ACTIONS = [
+  'auth.login.success',
+  'auth.login.failure',
+  'auth.logout',
+  'auth.logout_all',
+  'auth.invite.created',
+  'auth.invite.accepted',
+  'auth.password.reset_requested',
+  'auth.password.reset',
+  'auth.password.changed',
+  'auth.totp.enabled',
+  'auth.totp.disabled',
+  'users.created',
+  'users.updated',
+  'users.roles_changed',
+  'users.suspended',
+  'users.reactivated',
+  'users.deleted',
+  'users.exported',
+  'roles.created',
+  'roles.updated',
+  'roles.deleted',
+  'sessions.revoked',
+  'admin.accessed',
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];

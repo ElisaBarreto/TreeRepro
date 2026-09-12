@@ -1,0 +1,11 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/.tanstack
+**/coverage
+**/test-results
+**/playwright-report
+infra/secrets
+.env
+.env.*
