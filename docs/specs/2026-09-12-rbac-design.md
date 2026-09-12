@@ -99,7 +99,7 @@ export const PERMISSION_KEYS: readonly PermissionKey[];
 | `db/schema/permissions.ts`, `roles.ts`, `role-permissions.ts`, `user-roles.ts` | Drizzle tables; one migration with the catalog rows and the `admin` role |
 | `access/permissions.ts` | `effectivePermissions(db, userId)`, `createPermissionCache(redis, now?)` (`get`, `set`, `invalidate(userIds)`), `resolvePermissions(ctx, userId)` (cache → database) |
 | `access/roles.ts` | `createRole`, `updateRole`, `deleteRole`, `listRoles`, `getRole`, `setUserRoles`, `userIdsWithRole`, `assertNotLastAdmin`; audits; cache invalidation after commit |
-| `access/context.ts` | `AccessContext = { db; permissionCache; logger; now }` (embedded in `AuthContext` as `perms`) |
+| `access/context.ts` | `AccessContext = { db; permissionCache; logger; now }` (`AuthContext` gains `permissionCache` and satisfies it) |
 | `http/middleware/require-permission.ts` | `requirePermission(key, options?)`, `currentPermissions(c)` |
 | `http/routes/admin.ts` | `GET /api/admin/permissions` |
 | `http/self-service-routes.ts` | `SELF_SERVICE_ROUTES` (RFC-32) |
