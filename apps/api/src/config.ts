@@ -38,6 +38,14 @@ const envSchema = z.object({
     .string()
     .regex(/^v\d+$/)
     .default('v1'),
+  SMTP_HOST: z.string().min(1),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_SECURE: z.stringbool().default(false),
+  SMTP_FROM: z.string().min(3),
+  SMTP_USER: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v : undefined)),
 });
 
 const migratorEnvSchema = z.object({
@@ -75,6 +83,17 @@ export class Secret<T> {
   }
 }
 
+/** @rfc RFC-10 R5 */
+export interface SmtpSettings {
+  host: string;
+  port: number;
+  /** Implicit TLS (port 465). Otherwise STARTTLS is attempted. */
+  secure: boolean;
+  from: string;
+  user?: string;
+  password?: Secret<string>;
+}
+
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
@@ -84,6 +103,7 @@ export interface AppConfig {
   redis: { url: Secret<string> };
   pii: { keyring: Secret<PiiKeyring>; hmacKey: Secret<Buffer> };
   sessionSecret: Secret<Buffer>;
+  smtp: SmtpSettings;
 }
 
 export interface MigratorConfig {
@@ -167,6 +187,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const hmacKey = readHexSecret(e.SECRETS_DIR, 'pii_hmac_key');
   const sessionSecret = readHexSecret(e.SECRETS_DIR, 'session_secret');
   const keyring = loadKeyring(e.SECRETS_DIR, e.PII_CURRENT_KEY_VERSION);
+  const smtp: SmtpSettings = {
+    host: e.SMTP_HOST,
+    port: e.SMTP_PORT,
+    secure: e.SMTP_SECURE,
+    from: e.SMTP_FROM,
+  };
+  if (e.SMTP_USER) {
+    smtp.user = e.SMTP_USER;
+    smtp.password = new Secret(readSecret(e.SECRETS_DIR, 'smtp_password'));
+  }
   return {
     nodeEnv: e.NODE_ENV,
     port: e.PORT,
@@ -190,6 +220,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     pii: { keyring: new Secret(keyring), hmacKey: new Secret(hmacKey) },
     sessionSecret: new Secret(sessionSecret),
+    smtp,
   };
 }
 

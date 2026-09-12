@@ -24,6 +24,7 @@ const ALL_SECRETS = {
   pii_encryption_key_v1: hex(),
   pii_hmac_key: hex(),
   session_secret: hex(),
+  smtp_password: 'smtppw',
 };
 
 const dirs: string[] = [];
@@ -45,6 +46,8 @@ function env(overrides: Record<string, string | undefined> = {}): NodeJS.Process
     DB_NAME: 'treerepro',
     DB_USER: 'treerepro_app',
     REDIS_HOST: 'redis',
+    SMTP_HOST: 'mailpit',
+    SMTP_FROM: 'TreeRepro <no-reply@localhost>',
     SECRETS_DIR: secretsDir(ALL_SECRETS),
     ...overrides,
   };
@@ -214,5 +217,48 @@ describe('RFC-10 R5 url builders', () => {
       'postgres://u%40x:p%3Aw@h:1/d',
     );
     expect(buildRedisUrl({ host: 'h', port: 2, password: 'p/w' })).toBe('redis://:p%2Fw@h:2');
+  });
+});
+
+describe('RFC-10 R5 SMTP settings', () => {
+  it('reads SMTP_* with defaults and no auth', () => {
+    const config = loadConfig(
+      env({ SMTP_HOST: 'mailpit', SMTP_FROM: 'TreeRepro <no-reply@localhost>' }),
+    );
+    expect(config.smtp).toMatchObject({
+      host: 'mailpit',
+      port: 587,
+      secure: false,
+      from: 'TreeRepro <no-reply@localhost>',
+    });
+    expect(config.smtp.user).toBeUndefined();
+    expect(config.smtp.password).toBeUndefined();
+  });
+
+  it('reads the smtp_password secret only when SMTP_USER is set', () => {
+    const config = loadConfig(
+      env({
+        SMTP_HOST: 'smtp.example',
+        SMTP_PORT: '465',
+        SMTP_SECURE: 'true',
+        SMTP_FROM: 'x@example',
+        SMTP_USER: 'mailer',
+      }),
+    );
+    expect(config.smtp.port).toBe(465);
+    expect(config.smtp.secure).toBe(true);
+    expect(config.smtp.user).toBe('mailer');
+    expect(config.smtp.password?.expose()).toBe('smtppw');
+    expect(JSON.stringify(config.smtp)).not.toContain('smtppw');
+  });
+
+  it('treats an empty SMTP_USER as unset', () => {
+    expect(
+      loadConfig(env({ SMTP_HOST: 'mailpit', SMTP_FROM: 'x@example', SMTP_USER: '' })).smtp.user,
+    ).toBeUndefined();
+  });
+
+  it('fails without SMTP_HOST or SMTP_FROM, naming the field', () => {
+    expect(() => loadConfig(env({ SMTP_HOST: undefined }))).toThrow(/SMTP_HOST/);
   });
 });

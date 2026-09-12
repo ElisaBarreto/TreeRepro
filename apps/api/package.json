@@ -14,21 +14,25 @@
     "db:migrate": "node --conditions=development src/db/migrate.ts"
   },
   "dependencies": {
-    "@treerepro/contracts": "workspace:*",
     "@hono/node-server": "2.1.1",
     "@hono/zod-validator": "0.9.1",
+    "@node-rs/argon2": "2.2.1",
+    "@treerepro/contracts": "workspace:*",
     "drizzle-orm": "0.45.2",
     "hono": "4.13.7",
     "ioredis": "6.0.0",
+    "nodemailer": "10.0.7",
+    "otpauth": "9.5.2",
     "pino": "10.3.1",
     "postgres": "3.4.9",
     "zod": "4.6.2"
   },
   "devDependencies": {
-    "@treerepro/config": "workspace:*",
     "@testcontainers/postgresql": "12.1.0",
     "@testcontainers/redis": "12.1.0",
+    "@treerepro/config": "workspace:*",
     "@types/node": "24.13.4",
+    "@types/nodemailer": "8.0.1",
     "drizzle-kit": "0.31.10",
     "testcontainers": "12.1.0",
     "typescript": "7.0.2",
