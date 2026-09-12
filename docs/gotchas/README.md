@@ -8,3 +8,4 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 | PostgreSQL | `postgres.md` |
 | pnpm | `pnpm.md` |
 | Docker / Compose / Caddy | `docker.md` |
+| TypeScript | `typescript.md` |

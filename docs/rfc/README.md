@@ -14,11 +14,11 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 
 | RFC | Title | Status |
 |---|---|---|
-| RFC-00 | RFC process | draft |
-| RFC-01 | TDD policy | draft |
-| RFC-02 | Security principles | draft |
-| RFC-10 | Architecture | draft |
-| RFC-11 | API conventions | draft |
-| RFC-12 | Error codes | draft |
-| RFC-40 | PII encryption | draft |
-| RFC-41 | Audit log | draft |
+| RFC-00 | RFC process | accepted |
+| RFC-01 | TDD policy | accepted |
+| RFC-02 | Security principles | accepted |
+| RFC-10 | Architecture | accepted |
+| RFC-11 | API conventions | accepted |
+| RFC-12 | Error codes | accepted |
+| RFC-40 | PII encryption | accepted |
+| RFC-41 | Audit log | accepted |

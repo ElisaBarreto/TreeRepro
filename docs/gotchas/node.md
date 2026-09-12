@@ -1,0 +1,26 @@
+# Node runtime
+
+## Relative imports need explicit `.ts` extensions
+**Symptom:** `ERR_MODULE_NOT_FOUND` at runtime for `./foo` while `tsc` is happy.
+**Cause:** Node executes TypeScript source directly (type stripping) and resolves like ESM: no extension guessing.
+**Fix:** Always write `./foo.ts` (or `.tsx`). `rewriteRelativeImportExtensions` turns them into `.js` in `dist/`.
+
+## Only erasable TypeScript syntax
+**Symptom:** `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` on start.
+**Cause:** Type stripping cannot run `enum`, `namespace`, parameter properties or `import x = require()`.
+**Fix:** Use `as const` objects instead of enums; plain constructor assignments. `erasableSyntaxOnly` in `tsconfig.base.json` flags it at typecheck time.
+
+## `@treerepro/contracts` resolves to `dist/` unless the `development` condition is set
+**Symptom:** `Cannot find module '.../packages/contracts/dist/index.js'` when running source.
+**Cause:** Node refuses to type-strip files under `node_modules`, so the package exports built JS by default and source only under the `development` export condition.
+**Fix:** Run source with `node --conditions=development …` (the `dev` and `db:migrate` scripts do; `rfc-lint` does not import contracts). Production runs `dist/` after `pnpm --filter @treerepro/contracts build`.
+
+## `server.close()` waits for in-flight requests
+**Symptom:** SIGTERM shutdown takes up to 10 s.
+**Cause:** Node's `http.Server.close` waits for active requests before its callback fires (idle keep-alive sockets are closed automatically since Node 19, so those no longer block it).
+**Fix:** `apps/api/src/server.ts` has an unref'd 10 s fallback that force-exits with code 1. Nothing to do unless a long-lived connection (e.g. a stream or upgrade) appears; in that case shorten the fallback or track and destroy the connection explicitly.
+
+## Drizzle wraps driver errors
+**Symptom:** `rejects.toThrow(/postgres message/)` fails even though PostgreSQL rejected the query.
+**Cause:** Drizzle 0.45 throws `DrizzleQueryError` ("Failed query …") and puts the underlying `PostgresError` on `.cause`.
+**Fix:** In tests use `unwrapDbError()` from `apps/api/test/helpers/db.ts`, which walks `.cause` to the root error. In application code inspect `error.cause` rather than matching on the top-level message.
