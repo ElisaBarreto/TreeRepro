@@ -7,24 +7,31 @@ describe('RFC-02 R7 log redaction', () => {
     logger.info(
       {
         password: 'p',
+        passwordHash: 'h',
         token: 't',
         secret: 's',
         email: 'e',
         ip: '1.2.3.4',
         userAgent: 'ua',
-        user: { email: 'e2', name: 'n', id: 'keep' },
+        user: { email: 'e2', name: 'n', passwordHash: 'h2', id: 'keep' },
         err: new Error('boom'),
       },
       'hello',
     );
     const line = lines[0] as Record<string, unknown>;
     expect(line.password).toBe('[REDACTED]');
+    expect(line.passwordHash).toBe('[REDACTED]');
     expect(line.token).toBe('[REDACTED]');
     expect(line.secret).toBe('[REDACTED]');
     expect(line.email).toBe('[REDACTED]');
     expect(line.ip).toBe('[REDACTED]');
     expect(line.userAgent).toBe('[REDACTED]');
-    expect(line.user).toEqual({ email: '[REDACTED]', name: '[REDACTED]', id: 'keep' });
+    expect(line.user).toEqual({
+      email: '[REDACTED]',
+      name: '[REDACTED]',
+      passwordHash: '[REDACTED]',
+      id: 'keep',
+    });
     expect((line.err as { message: string }).message).toBe('boom');
     expect(line.msg).toBe('hello');
   });

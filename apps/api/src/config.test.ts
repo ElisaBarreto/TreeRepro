@@ -3,12 +3,20 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildDbUrl, buildRedisUrl, ConfigError, loadConfig, readSecret } from './config.ts';
+import {
+  buildDbUrl,
+  buildRedisUrl,
+  ConfigError,
+  loadConfig,
+  loadMigratorConfig,
+  readSecret,
+} from './config.ts';
 
 const hex = () => randomBytes(32).toString('hex');
 
 const ALL_SECRETS = {
   db_app_password: 'dbpw',
+  db_migrator_password: 'migpw',
   redis_password: 'redispw',
   pii_encryption_key_v1: hex(),
   pii_hmac_key: hex(),
@@ -60,6 +68,54 @@ describe('RFC-10 R5 loadConfig', () => {
 
   it('coerces numeric ports', () => {
     expect(loadConfig(env({ PORT: '4000', DB_PORT: '6543' })).port).toBe(4000);
+  });
+});
+
+describe('RFC-02 R3 APP_ORIGIN normalization', () => {
+  it('normalizes a trailing slash and an explicit default port to the bare origin', () => {
+    expect(loadConfig(env({ APP_ORIGIN: 'http://localhost/' })).appOrigin).toBe('http://localhost');
+    expect(loadConfig(env({ APP_ORIGIN: 'https://x.example:443/' })).appOrigin).toBe(
+      'https://x.example',
+    );
+    expect(loadConfig(env({ APP_ORIGIN: 'https://x.example:8443/app' })).appOrigin).toBe(
+      'https://x.example:8443',
+    );
+  });
+
+  it('rejects non-http(s) URLs naming only the field', () => {
+    expect(() => loadConfig(env({ APP_ORIGIN: 'mailto:a@b.example' }))).toThrow(
+      new ConfigError('invalid environment: APP_ORIGIN'),
+    );
+  });
+});
+
+describe('RFC-10 R5 loadMigratorConfig', () => {
+  it('builds the migrator URL from env and the migrator secret', () => {
+    const config = loadMigratorConfig({
+      DB_HOST: 'postgres',
+      DB_NAME: 'treerepro',
+      DB_MIGRATOR_USER: 'treerepro_migrator',
+      SECRETS_DIR: secretsDir(ALL_SECRETS),
+    });
+    expect(config.db.url).toBe('postgres://treerepro_migrator:migpw@postgres:5432/treerepro');
+  });
+
+  it('rejects an invalid environment naming the field', () => {
+    expect(() =>
+      loadMigratorConfig({ DB_HOST: 'postgres', DB_NAME: 'treerepro', SECRETS_DIR: '/nowhere' }),
+    ).toThrow(new ConfigError('invalid environment: DB_MIGRATOR_USER'));
+  });
+
+  it('names a missing migrator secret', () => {
+    const { db_migrator_password: _omit, ...rest } = ALL_SECRETS;
+    expect(() =>
+      loadMigratorConfig({
+        DB_HOST: 'postgres',
+        DB_NAME: 'treerepro',
+        DB_MIGRATOR_USER: 'treerepro_migrator',
+        SECRETS_DIR: secretsDir(rest),
+      }),
+    ).toThrow(/missing secret "db_migrator_password"/);
   });
 });
 

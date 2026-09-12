@@ -38,11 +38,27 @@ describe('RFC-02 R9 error handler', () => {
     a.get('/http-400', () => {
       throw new HTTPException(400, { message: 'Malformed JSON in request body' });
     });
+    a.get('/http-400-other', () => {
+      throw new HTTPException(400, { message: 'other' });
+    });
     a.get('/http-418', () => {
       throw new HTTPException(418, { message: 'teapot' });
     });
     a.get('/boom', () => {
       throw new Error('secret internal detail');
+    });
+    a.get('/query-error', () => {
+      // Shaped like Drizzle's DrizzleQueryError: query text and params as own
+      // properties and in the message, the driver error on `cause`.
+      const cause = Object.assign(new Error('duplicate key value'), { code: '23505' });
+      throw Object.assign(
+        new Error('Failed query: insert into users values ($1) params: secret-value', { cause }),
+        {
+          name: 'DrizzleQueryError',
+          query: 'insert into users values ($1)',
+          params: ['secret-value'],
+        },
+      );
     });
     return { a, lines };
   }
@@ -61,6 +77,14 @@ describe('RFC-02 R9 error handler', () => {
     const r400 = await a.request('/http-400');
     expect(r400.status).toBe(400);
     expect((await r400.json()).error.code).toBe('VALIDATION_INVALID_JSON');
+  });
+
+  it('maps an HTTPException 400 with another message to INTERNAL_ERROR (M4)', async () => {
+    const { a, lines } = app();
+    const res = await a.request('/http-400-other');
+    expect(res.status).toBe(500);
+    expect((await res.json()).error.code).toBe('INTERNAL_ERROR');
+    expect(lines.some((l) => (l as { msg: string }).msg === 'unmapped http exception')).toBe(true);
   });
 
   it('maps any other HTTPException to INTERNAL_ERROR without leaking its message', async () => {
@@ -86,5 +110,23 @@ describe('RFC-02 R9 error handler', () => {
     };
     expect(logged.requestId).toBe('req-123');
     expect(logged.err.message).toBe('secret internal detail');
+  });
+
+  it('RFC-02 R7 logs a sanitized error: cause message and code, never query or params', async () => {
+    const { a, lines } = app();
+    const res = await a.request('/query-error');
+    expect(res.status).toBe(500);
+    const logged = lines.find((l) => (l as { msg: string }).msg === 'unhandled error') as {
+      err: { name: string; message: string; code?: string; stack?: string };
+    };
+    expect(logged.err).toMatchObject({
+      name: 'DrizzleQueryError',
+      message: 'duplicate key value',
+      code: '23505',
+    });
+    // The stack keeps the frames but drops its first line (the raw message).
+    expect(logged.err.stack).toMatch(/^\s+at /);
+    expect(JSON.stringify(logged)).not.toContain('secret-value');
+    expect(JSON.stringify(logged)).not.toContain('insert into users');
   });
 });

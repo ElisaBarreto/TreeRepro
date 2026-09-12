@@ -45,5 +45,8 @@ describe('RFC-02 R3 origin check', () => {
   it('does not require Origin on safe methods', async () => {
     expect((await app().request('/g')).status).toBe(200);
     expect((await app().request('/g', { method: 'HEAD' })).status).toBe(200);
+    // OPTIONS is exempt too: no route answers it here, so 404 (not 403) proves
+    // the check let it through.
+    expect((await app().request('/m', { method: 'OPTIONS' })).status).toBe(404);
   });
 });

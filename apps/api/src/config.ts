@@ -6,16 +6,30 @@ import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+// Browsers send `Origin` as scheme://host[:port] with no path, trailing slash
+// or default port, and the check is an exact comparison (RFC-02 R3), so the
+// configured value is normalized to that form.
+const originSchema = z
+  .url()
+  .transform((u) => new URL(u))
+  .refine((u) => u.protocol === 'http:' || u.protocol === 'https:', 'APP_ORIGIN must be http(s)')
+  .transform((u) => u.origin);
+
+const dbHostSchema = {
+  DB_HOST: z.string().min(1),
+  DB_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
+  DB_NAME: z.string().min(1),
+  SECRETS_DIR: z.string().min(1).default('/run/secrets'),
+};
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   // 0 is valid here (not for DB_PORT/REDIS_PORT): it asks the OS for an
   // ephemeral port, used by the boot smoke test (Task 13).
   PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
-  APP_ORIGIN: z.url(),
-  DB_HOST: z.string().min(1),
-  DB_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
-  DB_NAME: z.string().min(1),
+  APP_ORIGIN: originSchema,
+  ...dbHostSchema,
   DB_USER: z.string().min(1),
   REDIS_HOST: z.string().min(1),
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
@@ -23,7 +37,11 @@ const envSchema = z.object({
     .string()
     .regex(/^v\d+$/)
     .default('v1'),
-  SECRETS_DIR: z.string().min(1).default('/run/secrets'),
+});
+
+const migratorEnvSchema = z.object({
+  ...dbHostSchema,
+  DB_MIGRATOR_USER: z.string().min(1),
 });
 
 export interface AppConfig {
@@ -35,6 +53,10 @@ export interface AppConfig {
   redis: { url: string };
   pii: { keyring: PiiKeyring; hmacKey: Buffer };
   sessionSecret: Buffer;
+}
+
+export interface MigratorConfig {
+  db: { url: string };
 }
 
 /** @rfc RFC-10 R5 */
@@ -94,17 +116,21 @@ function loadKeyring(secretsDir: string, current: string): PiiKeyring {
   return keyringFromHex(current, keysHex);
 }
 
+function parseEnv<T extends z.ZodType>(schema: T, env: NodeJS.ProcessEnv): z.output<T> {
+  const parsed = schema.safeParse(env);
+  if (!parsed.success) {
+    const fields = [...new Set(parsed.error.issues.map((i) => i.path.join('.')))].join(', ');
+    throw new ConfigError(`invalid environment: ${fields}`);
+  }
+  return parsed.data;
+}
+
 /**
  * @rfc RFC-10 R5
  * @rfc RFC-02 R6
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const parsed = envSchema.safeParse(env);
-  if (!parsed.success) {
-    const fields = [...new Set(parsed.error.issues.map((i) => i.path.join('.')))].join(', ');
-    throw new ConfigError(`invalid environment: ${fields}`);
-  }
-  const e = parsed.data;
+  const e = parseEnv(envSchema, env);
   const dbPassword = readSecret(e.SECRETS_DIR, 'db_app_password');
   const redisPassword = readSecret(e.SECRETS_DIR, 'redis_password');
   const hmacKey = readHexSecret(e.SECRETS_DIR, 'pii_hmac_key');
@@ -129,5 +155,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     pii: { keyring, hmacKey },
     sessionSecret,
+  };
+}
+
+/**
+ * Configuration of the one-shot `migrate` process (RFC-10 R7): the migrator
+ * role's URL, nothing else.
+ * @rfc RFC-10 R5
+ * @rfc RFC-02 R6
+ */
+export function loadMigratorConfig(env: NodeJS.ProcessEnv = process.env): MigratorConfig {
+  const e = parseEnv(migratorEnvSchema, env);
+  return {
+    db: {
+      url: buildDbUrl({
+        host: e.DB_HOST,
+        port: e.DB_PORT,
+        name: e.DB_NAME,
+        user: e.DB_MIGRATOR_USER,
+        password: readSecret(e.SECRETS_DIR, 'db_migrator_password'),
+      }),
+    },
   };
 }

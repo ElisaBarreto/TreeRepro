@@ -13,6 +13,9 @@ configurePii(config.pii.keyring, config.pii.hmacKey);
 
 const { db, close: closeDb } = createDb(config.db.url);
 const redis = createRedis(config.redis.url);
+// Without a listener ioredis prints "[ioredis] Unhandled error event" to
+// stderr, bypassing pino and its redaction (RFC-02 R7).
+redis.on('error', (err) => logger.error({ err }, 'redis error'));
 await redis.connect();
 
 const app = createApp({ config, logger, health: createHealthChecks(db, redis) });

@@ -73,6 +73,19 @@ describe('RFC-40 R3, R7 keyring and rotation', () => {
     expect(keyringFromHex('v1', { v1: k1 }).keys.get('v1')).toHaveLength(32);
   });
 
+  it('R6 keyringFromHex never echoes the offending key material in the error', () => {
+    const bad = 'deadbeef'.repeat(8).slice(0, 60);
+    let thrown: unknown;
+    try {
+      keyringFromHex('v1', { v1: bad });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(PiiError);
+    expect((thrown as Error).message).not.toContain(bad);
+    expect((thrown as Error).message).not.toContain('deadbeef');
+  });
+
   it('encrypts with the current key and still decrypts older versions', () => {
     const rotated = keyringFromHex('v2', { v1: k1, v2: k2 });
     const old = encryptPii(keyring, 'legacy');
