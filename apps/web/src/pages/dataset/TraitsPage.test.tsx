@@ -184,4 +184,24 @@ describe('RFC-62 R6 TraitsPage editing', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('a traits.manage holder can unfold a categorical trait without levels and add one', async () => {
+    auth.fetchMe.mockResolvedValue(MANAGER);
+    dataset.fetchDictionary.mockResolvedValue([
+      { key: 'seed', label: 'Seed', traits: [NEW_TRAIT] },
+    ]);
+    catalog.createLevel.mockResolvedValue({
+      ...NEW_TRAIT,
+      levels: [{ id: 'l1', key: 'red', sortOrder: 0, active: true }],
+    });
+    renderAt('/app/traits');
+    await userEvent.click(await screen.findByRole('button', { name: 'Show levels' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add level' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add level' });
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /^key/i }), 'red');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add level' }));
+    await waitFor(() =>
+      expect(catalog.createLevel).toHaveBeenCalledWith(NEW_TRAIT.id, { key: 'red' }),
+    );
+  });
 });

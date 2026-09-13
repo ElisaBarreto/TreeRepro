@@ -3,6 +3,7 @@ import type { Trait } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
 import { EditTraitDialog } from '../../components/catalog/EditTraitDialog.tsx';
+import { LevelsEditor } from '../../components/catalog/LevelsEditor.tsx';
 import { NewTraitDialog } from '../../components/catalog/NewTraitDialog.tsx';
 import {
   Alert,
@@ -187,7 +188,7 @@ function TraitRows({
         <Td>{trait.active ? <Badge tone="green">active</Badge> : <Badge>inactive</Badge>}</Td>
         <Td className="whitespace-nowrap">
           <div className="flex items-center gap-2">
-            {trait.levels.length > 0 ? (
+            {trait.valueType === 'categorical' && (trait.levels.length > 0 || canManage) ? (
               <Button
                 variant="secondary"
                 size="sm"
@@ -214,20 +215,7 @@ function TraitRows({
       {open ? (
         <Tr id={levelsId} className="bg-mist-50">
           <Td colSpan={6}>
-            <ul aria-label={`Levels of ${name}`} className="flex flex-wrap gap-1.5">
-              {trait.levels.map((level) => (
-                <li key={level.id}>
-                  {level.active ? (
-                    <Badge>{level.key}</Badge>
-                  ) : (
-                    <Badge>
-                      <span className="line-through">{level.key}</span>
-                      <span className="sr-only"> (inactive)</span>
-                    </Badge>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <LevelsEditor trait={trait} canManage={canManage} />
           </Td>
         </Tr>
       ) : null}
