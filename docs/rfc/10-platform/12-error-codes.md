@@ -12,7 +12,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 
 ## Rules
 
-- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, or a generic word for cross-cutting codes).
+- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, or a generic word for cross-cutting codes).
 - **R2** A code is never renamed, reused with a different meaning, or given a different status once published. Retiring a code keeps its row with "(retired)".
 - **R3** The catalog below is mirrored exactly by `ERROR_CODES` in `packages/contracts/src/error-codes.ts`; a test parses this table and fails on any difference.
 - **R4** Each code maps to exactly one HTTP status (RFC-11 R4).
@@ -48,6 +48,11 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `USER_NOT_FOUND` | 404 | User id does not exist (RFC-50 R4). |
 | `USER_INVALID_STATUS` | 409 | The action is not allowed in the user's current status (RFC-50 R6–R8). |
 | `MAIL_SEND_FAILED` | 502 | The invitation email could not be sent; the invitation can be re-sent (RFC-50 R3, R8). |
+| `SPECIES_NOT_FOUND` | 404 | Species id does not exist (RFC-60 R7, RFC-63 R10). |
+| `TRAIT_NOT_FOUND` | 404 | Trait id does not exist (reserved for RFC-65). |
+| `REFERENCE_NOT_FOUND` | 404 | Reference id does not exist (RFC-61 R4). |
+| `RECORD_NOT_FOUND` | 404 | Record id does not exist (RFC-63 R9). |
+| `IMPORT_NOT_FOUND` | 404 | Import batch id does not exist (RFC-64 R11). |
 
 ## Open questions
 
@@ -60,3 +65,4 @@ None.
 - 2026-09-12 — AUTH_* and USER_EMAIL_TAKEN added (RFC-20–23).
 - 2026-09-12 — PERMISSION_* and ROLE_* codes (RFC-31, RFC-32).
 - 2026-09-12 — USER_NOT_FOUND, USER_INVALID_STATUS, MAIL_SEND_FAILED (RFC-50).
+- 2026-09-13 — dataset codes SPECIES_NOT_FOUND, TRAIT_NOT_FOUND, REFERENCE_NOT_FOUND, RECORD_NOT_FOUND, IMPORT_NOT_FOUND (plan 06).

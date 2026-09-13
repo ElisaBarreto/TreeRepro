@@ -1,0 +1,34 @@
+# RFC-64 — Bulk import
+
+| Field | Value |
+|---|---|
+| Status | accepted |
+| Category | dataset |
+| Supersedes | — |
+
+## Context
+
+The compiled dataset is one CSV of about eight million denormalized rows. It is loaded once by an administrator, occasionally again when a new compilation arrives. Every row must end up in the database: conforming rows as harmonised records, non-conforming ones as records pending harmonisation, and only rows that cannot be attached to a species, a trait or a reference as rejections that keep the raw row.
+
+## Rules
+
+- **R1** Command `pnpm --filter @treerepro/api import:records --file <path> [--run-by <email>] [--force]`, run inside the API container with the `treerepro_app` role. Exit codes: 0 completed, 1 refused or failed, 2 usage. `--run-by` names the administrator running it (stored as `run_by`; unknown email → null with a warning).
+- **R2** Preconditions, checked before any batch row is created: the dictionary is loaded (`traits` is not empty) and the first line of the file, parsed as a CSV record, equals exactly, in order: `primary_reference, secondary_reference, wcvp_species, wcvp_genus, wcvp_family, gbif_species, gbif_usage_key, original_species_name, secondary_source_species_name, original_trait_name, final_standard_trait, broad_category, original_value_clean, trait_value_type, harmonised_value`.
+- **R3** Table `import_batches(id uuid default uuidv7(), file_name text, file_sha256 text, run_by uuid null references users, started_at timestamptz default now(), finished_at timestamptz null, status text in ('running', 'completed', 'failed') default 'running', error text null, rows_total bigint default 0, rows_inserted bigint default 0, rows_duplicate bigint default 0, rows_rejected bigint default 0, rows_pending bigint default 0, unknown_levels jsonb default '[]')`. One row per run. A `completed` batch with the same SHA-256 of the file refuses a new run (exit 1, the existing batch id printed) unless `--force`.
+- **R4** Staging: the file is streamed with `COPY … FROM STDIN (FORMAT csv, HEADER true, ENCODING 'UTF8')` into a session temporary table with a serial `row_no`; `row_no` 1 is the first data row. The file is never held in memory.
+- **R5** Resolution per row, after trimming and collapsing whitespace (RFC-60 R2): the species name is the first non-empty of `wcvp_species`, `gbif_species`, `original_species_name`, `secondary_source_species_name`, with `name_source` `wcvp`, `gbif`, `original`, `original` respectively; genus and family come from `wcvp_genus` and `wcvp_family`; `gbif_species` different from the species name becomes an alternative name with `gbif_usage_key`; references are matched by trimmed `citation_key` for `primary_reference` and `secondary_reference`; the trait is matched by `final_standard_trait`. Missing families, genera, species, alternative names and references are inserted; existing rows are never changed by an import.
+- **R6** Harmonisation per RFC-63 R5, with the level match of RFC-62 R4 and the number pattern `^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$` applied to the trimmed value (a decimal comma is not a number).
+- **R7** Rejections, stored in `import_rejects(id uuid default uuidv7(), batch_id uuid references import_batches restrict, row_no bigint, reason text in ('no_species_name', 'unknown_trait', 'no_reference'), raw_row jsonb, created_at timestamptz)` with the raw row as a JSON object keyed by column name: no species name in any of the four name columns; `final_standard_trait` not in the dictionary; both reference columns empty. The first applicable reason in that order is recorded.
+- **R8** Insertion: `INSERT … SELECT … ORDER BY row_no ON CONFLICT ON CONSTRAINT trait_records_claim_key DO NOTHING` with `origin = 'import'`, the batch id and `row_no`. Counts: `rows_total` = staged rows; `rows_rejected` = rejects; `rows_inserted` = rows the insert returned; `rows_duplicate` = total − rejected − inserted; `rows_pending` = inserted rows whose `harmonisation <> 'harmonised'`; `unknown_levels` = the 30 most frequent `{ trait, value, count }` among this batch's `unknown_level` and `multi_value` records.
+- **R9** Staging, resolution, rejection and insertion run in one transaction. Any failure rolls it back, sets the batch to `failed` with the error message, and exits 1; nothing of the batch remains in the data tables. Re-running after a fix is safe (R3, RFC-63 R3).
+- **R10** On completion the batch is `completed` with `finished_at` and the counts, and the command prints: file, batch id, elapsed time, the five counts, the count per harmonisation status, the unknown levels by trait, and rejections by reason.
+- **R11** `GET /api/imports?cursor=&limit=` (`imports.read`) lists batches newest first (keyset on `id`): `{ id, fileName, fileSha256, status, runBy: { id, name } | null, startedAt, finishedAt, rowsTotal, rowsInserted, rowsDuplicate, rowsRejected, rowsPending, unknownLevels, error }`. `GET /api/imports/:id` returns one; `GET /api/imports/:id/rejects?cursor=&limit=` lists `{ id, rowNo, reason, rawRow }` by `row_no` ascending (keyset on `row_no`, then `id`). Unknown batch answers 404 `IMPORT_NOT_FOUND`.
+
+## Open questions
+
+Tolerating a decimal comma and mapping known aliases (`bees` → `bee`) at import time are deferred; curators resolve them in plan 07.
+
+## Changelog
+
+- 2026-09-13 — created.
+- 2026-09-13 — accepted.

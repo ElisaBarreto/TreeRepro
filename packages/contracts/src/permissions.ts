@@ -14,6 +14,8 @@ export const PERMISSIONS = {
   'sessions.revoke': "Revoke any user's sessions",
   'audit.read': 'Read the audit log',
   'admin.access': 'Open the admin area',
+  'dataset.read': 'Browse species, traits, references and records',
+  'imports.read': 'View import batches and their rejections',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

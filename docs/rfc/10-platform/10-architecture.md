@@ -24,6 +24,8 @@ Design: `docs/specs/2026-09-12-foundation-design.md`. This RFC fixes the structu
 - **R10** Health endpoints: `GET /api/health` is public and answers exactly `{"ok":true}` (no envelope, no version, no dependency status). `GET /api/health/ready` checks PostgreSQL and Redis, answers `{"ok":true}` or 503 `SERVICE_UNAVAILABLE`, and is never proxied by Caddy (internal network only).
 - **R11** Node executes TypeScript source directly in development (`node --watch --conditions=development`) and compiled JavaScript (`tsc` output in `dist/`) in production. `packages/contracts` exposes source under the `development` export condition and `dist/` by default.
 - **R12** Every response carries an `X-Request-Id` header; the same ID is attached to every log line about that request. Middleware binds a child logger carrying the ID to the request context (`c.get('logger')`); request handling code logs only through it, so the ID is present by construction rather than by discipline.
+- **R13** Operational commands live in `apps/api/src/cli/` and are run inside the API container: `seed:admin` (RFC-20 R8), `seed:traits` (RFC-62 R2), `import:records` (RFC-64 R1). In production they run as `node dist/cli/<name>.js`; files they read that are not TypeScript (`apps/api/seed/`) are copied into the image next to `dist/` and `drizzle/`.
+- **R14** PostgreSQL extensions are created by migrations. `pg_trgm` (trusted; the migrator role has `CREATE` on the database) backs the substring searches of RFC-60 R6 and RFC-61 R4.
 
 ## Open questions
 
@@ -35,3 +37,4 @@ None.
 - 2026-09-12 — accepted.
 - 2026-09-12 — R12: per-request child logger bound to the context (issue #5).
 - 2026-09-12 — R5: SMTP settings (RFC-20 R4, RFC-21 R5).
+- 2026-09-13 — R13 operational commands; R14 extensions (plan 06).

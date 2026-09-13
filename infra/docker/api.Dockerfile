@@ -37,6 +37,7 @@ COPY --from=build /workspace/packages/contracts/dist ./packages/contracts/dist
 COPY --from=build /workspace/apps/api/package.json ./apps/api/
 COPY --from=build /workspace/apps/api/dist ./apps/api/dist
 COPY --from=build /workspace/apps/api/drizzle ./apps/api/drizzle
+COPY --from=build /workspace/apps/api/seed ./apps/api/seed
 WORKDIR /workspace/apps/api
 USER node
 EXPOSE 3000

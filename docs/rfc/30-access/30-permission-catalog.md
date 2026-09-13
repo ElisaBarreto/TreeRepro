@@ -33,6 +33,8 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `sessions.revoke` | Revoke any user's sessions |
 | `audit.read` | Read the audit log |
 | `admin.access` | Open the admin area |
+| `dataset.read` | Browse species, traits, references and records |
+| `imports.read` | View import batches and their rejections |
 
 ## Open questions
 
@@ -43,3 +45,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
 - 2026-09-12 — users.delete retired: users are never erased (RFC-50 R12).
+- 2026-09-13 — dataset.read, imports.read (RFC-60–64, plan 06).
