@@ -14,7 +14,7 @@ import { Alert, Badge, Button, Field, Textarea } from '../ui/index.ts';
 
 function HistoryEntry({ entry }: { entry: AcceptedHistoryEntry }) {
   return (
-    <li className="flex flex-col gap-0.5 text-sm">
+    <li className="flex flex-col gap-0.5 text-cell">
       <span className="flex flex-wrap items-center gap-2">
         <Badge tone={entry.decision === 'accepted' ? 'green' : 'neutral'}>{entry.decision}</Badge>
         {entry.valueText ? (
@@ -83,22 +83,22 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
   return (
     <section
       aria-labelledby={`${noteId}-heading`}
-      className="flex flex-col gap-2 rounded-lg border border-canopy-700/15 bg-mist-50/60 p-3"
+      className="flex flex-col gap-2.5 rounded-[10px] border border-canopy-700/15 bg-mist-50/60 p-4"
     >
       <h3
         id={`${noteId}-heading`}
-        className="font-display text-xs font-semibold uppercase tracking-wider text-mist-500"
+        className="text-label font-bold uppercase tracking-[0.08em] text-mist-500"
       >
         Accepted value
       </h3>
       {state.isError ? <Alert tone="error">{pageErrorMessage(state.error)}</Alert> : null}
-      {state.isPending ? <p className="text-sm text-mist-500">Loading…</p> : null}
+      {state.isPending ? <p className="text-body text-mist-500">Loading…</p> : null}
       {state.isSuccess && !current ? (
-        <p className="text-sm text-mist-500">No accepted value yet.</p>
+        <p className="text-body text-mist-500">No accepted value yet.</p>
       ) : null}
       {current ? (
-        <div className="flex flex-col gap-1 text-sm">
-          <span className="font-display text-base font-semibold text-canopy-950">
+        <div className="flex flex-col gap-1 text-cell">
+          <span className="font-display text-card font-semibold text-canopy-950">
             {current.valueText}
           </span>
           <span className="text-mist-500">
@@ -112,6 +112,7 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
         {current && hasPermission(me, 'accepted.manage') ? (
           <Button
             variant="secondary"
+            size="sm"
             onClick={() => toggleClearing(!clearing)}
             aria-pressed={clearing}
           >
@@ -121,6 +122,7 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
         {state.data && state.data.history.length > 0 ? (
           <Button
             variant="secondary"
+            size="sm"
             onClick={() => setShowHistory((v) => !v)}
             aria-pressed={showHistory}
           >
@@ -145,10 +147,10 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
             />
           </Field>
           <div className="flex gap-2">
-            <Button type="submit" variant="danger" pending={clear.isPending}>
+            <Button type="submit" size="sm" variant="danger" pending={clear.isPending}>
               Confirm clear
             </Button>
-            <Button variant="secondary" onClick={() => toggleClearing(false)}>
+            <Button variant="secondary" size="sm" onClick={() => toggleClearing(false)}>
               Cancel
             </Button>
           </div>

@@ -105,7 +105,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
     !isAccepted;
   const error = annotate.error ?? accept.error;
 
-  if (withdrawn) return <p className="text-sm text-mist-500">This record is withdrawn.</p>;
+  if (withdrawn) return <p className="text-body text-mist-500">This record is withdrawn.</p>;
   if (!canAnnotate && !canAccept && !isAccepted) return null;
 
   function submitNote(event: FormEvent<HTMLFormElement>) {
@@ -127,6 +127,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
           <>
             <Button
               variant="secondary"
+              size="sm"
               pending={annotate.isPending}
               onClick={() => annotate.mutate({ kind: 'confirm' })}
             >
@@ -134,6 +135,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
             </Button>
             <Button
               variant="secondary"
+              size="sm"
               pending={annotate.isPending}
               onClick={() => annotate.mutate({ kind: 'neutral' })}
             >
@@ -141,6 +143,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
             </Button>
             <Button
               variant="secondary"
+              size="sm"
               onClick={() => openMode(mode === 'dispute' ? null : 'dispute')}
               aria-pressed={mode === 'dispute'}
             >
@@ -151,6 +154,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
         {canWithdraw ? (
           <Button
             variant="danger"
+            size="sm"
             onClick={() => openMode(mode === 'withdraw' ? null : 'withdraw')}
             aria-pressed={mode === 'withdraw'}
           >
@@ -159,7 +163,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
         ) : null}
         {isAccepted ? <Badge tone="green">accepted value</Badge> : null}
         {canAccept ? (
-          <Button pending={accept.isPending} onClick={() => accept.mutate()}>
+          <Button size="sm" pending={accept.isPending} onClick={() => accept.mutate()}>
             Set as accepted
           </Button>
         ) : null}
@@ -167,7 +171,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
       {mode ? (
         <form
           onSubmit={submitNote}
-          className="flex flex-col gap-3 rounded-lg border border-canopy-700/15 p-3"
+          className="flex flex-col gap-3 rounded-[10px] border border-canopy-700/15 p-4"
           noValidate
         >
           <Field id={noteId} label={NOTE_LABELS[mode].title} error={noteError ?? undefined}>
@@ -183,12 +187,13 @@ export function RecordActions({ record }: { record: RecordDetail }) {
           <div className="flex gap-2">
             <Button
               type="submit"
+              size="sm"
               variant={mode === 'withdraw' ? 'danger' : 'primary'}
               pending={annotate.isPending}
             >
               {NOTE_LABELS[mode].submit}
             </Button>
-            <Button variant="secondary" onClick={() => openMode(null)}>
+            <Button variant="secondary" size="sm" onClick={() => openMode(null)}>
               Cancel
             </Button>
           </div>

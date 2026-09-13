@@ -203,7 +203,7 @@ export function AddValueDialog({
     <Dialog open title="Add value" onClose={onClose} closeDisabled={save.isPending}>
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         {initialTrait ? (
-          <p className="text-sm text-canopy-900">
+          <p className="text-body text-canopy-900">
             <span className="text-mist-500">Trait: </span>
             {humaniseKey(initialTrait.key)}
             {unit ? <span className="text-mist-500"> · {unit}</span> : null}
@@ -264,7 +264,7 @@ export function AddValueDialog({
                 onChange={(e) => setNumeric(e.target.value)}
                 invalid={Boolean(errors['value.numeric'] ?? errors.value)}
               />
-              {unit ? <span className="text-sm text-mist-500">{unit}</span> : null}
+              {unit ? <span className="text-meta text-mist-500">{unit}</span> : null}
             </div>
           </Field>
         ) : null}

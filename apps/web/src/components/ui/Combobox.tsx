@@ -145,9 +145,10 @@ export function Combobox({
     return (
       <div className="flex items-center gap-2">
         <Badge tone="green">{value.label}</Badge>
-        {value.hint ? <span className="text-xs text-mist-500">{value.hint}</span> : null}
+        {value.hint ? <span className="text-meta text-mist-500">{value.hint}</span> : null}
         <Button
           variant="secondary"
+          size="sm"
           aria-label="Clear"
           disabled={disabled}
           onClick={() => onChange(null)}
@@ -180,11 +181,11 @@ export function Combobox({
         onKeyDown={onInputKeyDown}
       />
       {suggestions.isError ? (
-        <p className="text-xs text-red-700">Could not load suggestions.</p>
+        <p className="text-meta text-red-700">Could not load suggestions.</p>
       ) : null}
       {options !== undefined ? (
         options.length === 0 && !showCreate ? (
-          <p className="text-xs text-mist-500">{emptyMessage}</p>
+          <p className="text-meta text-mist-500">{emptyMessage}</p>
         ) : (
           <div
             ref={listRef}
@@ -192,10 +193,10 @@ export function Combobox({
             role="listbox"
             aria-label={listLabel}
             onKeyDown={onListKeyDown}
-            className="max-h-64 overflow-y-auto rounded-lg border border-canopy-700/15 bg-white py-1 text-sm shadow-sm"
+            className="max-h-64 overflow-y-auto rounded-[10px] border border-canopy-700/15 bg-white py-1 text-cell shadow-sm"
           >
             {options.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-mist-500">{emptyMessage}</p>
+              <p className="px-3.5 py-2.5 text-meta text-mist-500">{emptyMessage}</p>
             ) : null}
             {options.map((option) => (
               <button
@@ -203,11 +204,13 @@ export function Combobox({
                 type="button"
                 role="option"
                 aria-selected={false}
-                className="flex w-full items-baseline gap-2 px-3 py-2 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none"
+                className="flex w-full items-baseline gap-2 px-3.5 py-2.5 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none"
                 onClick={() => choose(option)}
               >
                 <span>{option.label}</span>
-                {option.hint ? <span className="text-xs text-mist-500">{option.hint}</span> : null}
+                {option.hint ? (
+                  <span className="text-meta text-mist-500">{option.hint}</span>
+                ) : null}
               </button>
             ))}
             {showCreate ? (
@@ -216,7 +219,7 @@ export function Combobox({
                 role="option"
                 aria-selected={false}
                 disabled={creating}
-                className="flex w-full items-baseline gap-2 border-t border-canopy-700/10 px-3 py-2 text-left font-medium text-canopy-900 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-60"
+                className="flex w-full items-baseline gap-2 border-t border-canopy-700/10 px-3.5 py-2.5 text-left font-medium text-canopy-900 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-60"
                 onClick={create}
               >
                 Create "{term}"
@@ -225,7 +228,9 @@ export function Combobox({
           </div>
         )
       ) : null}
-      {createError ? <p className="text-xs text-red-700">Could not create it. Try again.</p> : null}
+      {createError ? (
+        <p className="text-meta text-red-700">Could not create it. Try again.</p>
+      ) : null}
     </div>
   );
 }
