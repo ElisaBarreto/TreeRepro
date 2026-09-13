@@ -8,8 +8,9 @@ import {
   type TraitRef,
 } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
+import { createReference } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { createRecord, createReference, invalidateAfterRecordWrite } from '../../api/curation.ts';
+import { createRecord, invalidateAfterRecordWrite } from '../../api/curation.ts';
 import { datasetKeys, fetchDictionary, searchReferences } from '../../api/dataset.ts';
 import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';

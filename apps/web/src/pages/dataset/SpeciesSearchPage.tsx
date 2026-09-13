@@ -7,7 +7,7 @@ import {
   SpeciesSearchForm,
   type SpeciesSearchValue,
 } from '../../components/dataset/SpeciesSearchForm.tsx';
-import { Alert, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import { Alert, buttonClassName, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
@@ -48,7 +48,7 @@ export function SpeciesSearchPage({ initialUnresolved = false }: { initialUnreso
               href={EXPORT_ACCEPTED_URL}
               download
               // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
-              className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-canopy-700/30 bg-white px-5 font-display text-cell font-semibold text-canopy-900 transition-colors hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+              className={buttonClassName({ variant: 'secondary' })}
             >
               Export accepted values (CSV)
             </a>

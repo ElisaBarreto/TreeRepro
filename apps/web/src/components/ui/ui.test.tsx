@@ -5,6 +5,7 @@ import {
   Alert,
   Badge,
   Button,
+  buttonClassName,
   Dialog,
   EmptyState,
   Field,
@@ -30,6 +31,18 @@ describe('RFC-13 R5 UI kit renders with classes only', () => {
     expect(button).not.toHaveAttribute('style');
     rerender(<Button variant="danger">Delete</Button>);
     expect(screen.getByRole('button', { name: 'Delete' }).className).toContain('red');
+  });
+
+  it('buttonClassName returns the Button dress for a variant and size', () => {
+    const { container } = render(
+      <Button variant="secondary" size="sm">
+        Same
+      </Button>,
+    );
+    expect(buttonClassName({ variant: 'secondary', size: 'sm' }).trim()).toBe(
+      container.querySelector('button')?.className.trim(),
+    );
+    expect(buttonClassName()).toBe(buttonClassName({ variant: 'primary', size: 'md' }));
   });
 
   it('Field wires label, hint and error to the input', () => {
