@@ -33,6 +33,7 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
  * Every navigation entry of the workspace. Other plans append here; the
  * shell filters by permission (RFC-13 R3).
  * @rfc RFC-13 R3
+ * @rfc RFC-60 R9
  * @rfc RFC-65 R8, R10
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
@@ -52,6 +53,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: 'dataset.read',
     section: 'data',
   },
+  { to: '/app/taxa', label: 'Taxa', icon: 'branch', permission: 'taxa.manage', section: 'data' },
   {
     to: '/app/imports',
     label: 'Imports',

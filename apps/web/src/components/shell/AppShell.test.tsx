@@ -99,6 +99,21 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
   });
 
+  it('shows Taxa under Data with taxa.manage, not with dataset.read alone', () => {
+    const reader = renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read'] },
+    });
+    expect(screen.queryByRole('link', { name: 'Taxa' })).not.toBeInTheDocument();
+    reader.unmount();
+
+    renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['taxa.manage'] },
+    });
+    const data = screen.getByRole('navigation', { name: 'Data' });
+    expect(within(data).getByRole('link', { name: 'Taxa' })).toHaveAttribute('href', '/app/taxa');
+    expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
+  });
+
   it('RFC-13 R3 shows the Curation group with dataset.read, linking Unresolved taxa to the species search with the toggle on', async () => {
     renderWithProviders(<AppShell>content</AppShell>, {
       me: { ...ME, permissions: ['dataset.read'] },
