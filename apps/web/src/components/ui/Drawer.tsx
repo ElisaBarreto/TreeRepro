@@ -44,6 +44,12 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
       sibling.setAttribute('inert', '');
       made.push(sibling);
     }
+    // Two drawers can mount in the same commit: both portal roots already sit
+    // in document.body.children before either effect runs, so each one's
+    // sibling scan can mark the other inert. The later-mounted drawer's
+    // effect runs last, so clearing its own root here — after the scan —
+    // leaves it the active one and keeps the earlier drawer inert beneath it.
+    rootRef.current?.removeAttribute('inert');
     closeRef.current?.focus();
     return () => {
       for (const sibling of made) sibling.removeAttribute('inert');

@@ -154,4 +154,32 @@ describe('RFC-13 R10 Drawer is modal', () => {
     await userEvent.tab({ shift: true });
     expect(last).toHaveFocus();
   });
+
+  it('keeps the later-mounted drawer active when two open in the same commit', () => {
+    const { rerender } = render(
+      <>
+        <Drawer open title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>,
+    );
+    const outer = screen.getByRole('dialog', { name: 'Outer' });
+    const inner = screen.getByRole('dialog', { name: 'Inner' });
+    expect(outer.closest('[inert]')).not.toBeNull();
+    expect(inner.closest('[inert]')).toBeNull();
+    rerender(
+      <>
+        <Drawer open title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open={false} title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>,
+    );
+    expect(screen.getByRole('dialog', { name: 'Outer' }).closest('[inert]')).toBeNull();
+  });
 });
