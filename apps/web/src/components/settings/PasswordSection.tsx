@@ -1,0 +1,104 @@
+import { type FormEvent, useId, useState } from 'react';
+import { changePassword } from '../../api/auth.ts';
+import { ApiError } from '../../api/client.ts';
+import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
+import { PASSWORD_HINT } from '../auth/PasswordFields.tsx';
+import { Alert, Button, Field, Input } from '../ui/index.ts';
+
+/** @rfc RFC-13 R6 */
+export function passwordErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return GENERIC_MESSAGE;
+  switch (error.code) {
+    case 'AUTH_INVALID_CREDENTIALS':
+      return 'Your current password is incorrect.';
+    case 'RATE_LIMITED':
+      return 'Too many attempts. Wait a moment and try again.';
+    default:
+      return GENERIC_MESSAGE;
+  }
+}
+
+/** @rfc RFC-21 R7 */
+export function PasswordSection() {
+  const ids = { current: useId(), next: useId(), confirm: useId() };
+  const [pending, setPending] = useState(false);
+  const [done, setDone] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const currentPassword = String(data.get('currentPassword') ?? '');
+    const newPassword = String(data.get('newPassword') ?? '');
+    const confirm = String(data.get('confirm') ?? '');
+    setDone(false);
+    if (newPassword !== confirm) {
+      setErrors({ confirm: 'The passwords do not match.' });
+      return;
+    }
+    setErrors({});
+    setPending(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      setDone(true);
+      form.reset();
+    } catch (error) {
+      if (isValidationError(error)) setErrors(fieldErrors(error));
+      else if (error instanceof ApiError && error.code === 'AUTH_INVALID_CREDENTIALS') {
+        setErrors({ currentPassword: passwordErrorMessage(error) });
+      } else setErrors({ form: passwordErrorMessage(error) });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="password-heading" className="flex flex-col gap-4">
+      <h2 id="password-heading" className="font-display text-lg font-bold">
+        Password
+      </h2>
+      <form onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
+        <Field id={ids.current} label="Current password" error={errors.currentPassword}>
+          <Input
+            id={ids.current}
+            name="currentPassword"
+            type="password"
+            autoComplete="current-password"
+            required
+            invalid={Boolean(errors.currentPassword)}
+          />
+        </Field>
+        <Field id={ids.next} label="New password" hint={PASSWORD_HINT} error={errors.newPassword}>
+          <Input
+            id={ids.next}
+            name="newPassword"
+            type="password"
+            autoComplete="new-password"
+            required
+            invalid={Boolean(errors.newPassword)}
+          />
+        </Field>
+        <Field id={ids.confirm} label="Confirm password" error={errors.confirm}>
+          <Input
+            id={ids.confirm}
+            name="confirm"
+            type="password"
+            autoComplete="new-password"
+            required
+            invalid={Boolean(errors.confirm)}
+          />
+        </Field>
+        {done ? (
+          <Alert tone="success">Password changed. Other devices were signed out.</Alert>
+        ) : null}
+        {errors.form ? <Alert tone="error">{errors.form}</Alert> : null}
+        <div>
+          <Button type="submit" pending={pending}>
+            Change password
+          </Button>
+        </div>
+      </form>
+    </section>
+  );
+}

@@ -3,6 +3,7 @@ import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
 import { USER } from '../test/fixtures.ts';
 import {
   acceptInvite,
+  changePassword,
   fetchMe,
   forgotPassword,
   login,
@@ -91,6 +92,18 @@ describe('RFC-20 R6, RFC-21 R5-R6 invitation and password recovery calls', () =>
     expect(JSON.parse(String(lastRequest().init?.body))).toEqual({
       token: 't'.repeat(43),
       newPassword: 'a long enough passphrase',
+    });
+  });
+});
+
+describe('RFC-21 R7 changePassword', () => {
+  it('posts both passwords', async () => {
+    mockJson(200, { data: { status: 'ok' } });
+    await changePassword('old passphrase here', 'new passphrase here!');
+    expect(lastRequest().url).toBe('/api/auth/password/change');
+    expect(JSON.parse(String(lastRequest().init?.body))).toEqual({
+      currentPassword: 'old passphrase here',
+      newPassword: 'new passphrase here!',
     });
   });
 });

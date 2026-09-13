@@ -1,5 +1,6 @@
 import type {
   AuthUser,
+  ChangePasswordBody,
   DataEnvelope,
   ForgotPasswordBody,
   InviteAcceptBody,
@@ -70,4 +71,10 @@ export async function forgotPassword(email: string): Promise<void> {
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
   const body: ResetPasswordBody = { token, newPassword };
   await apiFetch('/auth/password/reset', { method: 'POST', json: body });
+}
+
+/** @rfc RFC-21 R7 */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const body: ChangePasswordBody = { currentPassword, newPassword };
+  await apiFetch('/auth/password/change', { method: 'POST', json: body });
 }
