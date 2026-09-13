@@ -9,7 +9,11 @@ export interface DialogProps {
 
 /**
  * Native `<dialog>` opened with `showModal`, so focus trapping and Escape are
- * the browser's. `onClose` fires for the button, Escape and backdrop clicks.
+ * the browser's. The native `close` event is the single source of truth for
+ * `onClose`: the Close button and the backdrop click both call
+ * `ref.current?.close()` rather than `onClose()` directly, so the `<dialog
+ * onClose={onClose}>` handler is the only thing that ever invokes the prop —
+ * each user action (button, backdrop, or Escape) closes exactly once.
  * @rfc RFC-13 R5
  */
 export function Dialog({ open, title, onClose, children }: DialogProps) {
@@ -24,26 +28,24 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
   }, [open]);
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: closes on a backdrop click as a pointer convenience only; Escape (native <dialog> behavior) and the Close button already close this by keyboard
+    // biome-ignore lint/a11y/useKeyWithClickEvents: closes on a backdrop click as a pointer-only convenience; Escape and the Close button are the keyboard paths
     <dialog
       ref={ref}
       aria-labelledby={titleId}
       onClose={onClose}
       onClick={(event) => {
-        if (event.target === ref.current) onClose();
+        if (event.target === ref.current) ref.current?.close();
       }}
       className="m-auto w-[min(92vw,480px)] rounded-2xl border border-canopy-700/20 bg-white p-0 text-canopy-950 shadow-xl backdrop:bg-canopy-950/60"
     >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: only stops the click from bubbling to the backdrop handler above; it triggers no action of its own */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: same as above — nothing to trigger by keyboard */}
-      <div className="flex flex-col gap-5 p-6" onClick={(event) => event.stopPropagation()}>
+      <div className="flex flex-col gap-5 p-6">
         <header className="flex items-start justify-between gap-4">
           <h2 id={titleId} className="font-display text-lg font-bold">
             {title}
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => ref.current?.close()}
             aria-label="Close"
             className="rounded-full px-2 text-mist-500 transition-colors hover:text-canopy-900"
           >

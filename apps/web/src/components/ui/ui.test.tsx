@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -61,6 +61,56 @@ describe('RFC-13 R5 UI kit renders with classes only', () => {
     );
     expect(screen.getByRole('dialog', { name: 'Confirm' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Dialog closes once on a backdrop click', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open title="Confirm" onClose={onClose}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    fireEvent.click(screen.getByRole('dialog', { name: 'Confirm' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Dialog does not close on a click inside its content', async () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open title="Confirm" onClose={onClose}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    await userEvent.click(screen.getByText('Body'));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('Dialog does not re-invoke onClose when the parent reacts to a close by setting open=false', async () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <Dialog open title="Confirm" onClose={onClose}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    rerender(
+      <Dialog open={false} title="Confirm" onClose={onClose}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('Dialog closes once when Escape reaches the browser and fires the native close event', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open title="Confirm" onClose={onClose}>
+        <p>Body</p>
+      </Dialog>,
+    );
+    fireEvent(screen.getByRole('dialog', { name: 'Confirm' }), new Event('close'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
