@@ -7,6 +7,8 @@ import {
   listSpeciesQuerySchema,
   REVIEW_STATUSES,
   recordSchema,
+  referenceDetailSchema,
+  referenceSchema,
   speciesTraitsSchema,
 } from './dataset.ts';
 
@@ -122,6 +124,36 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
       },
     ];
     expect(speciesTraitsSchema.parse(payload)).toEqual(payload);
+  });
+});
+
+describe('RFC-61 R4 referenceSchema', () => {
+  const reference = {
+    id: uuid,
+    citationKey: 'Smith2001',
+    title: null,
+    authors: null,
+    year: null,
+    journal: null,
+    doi: null,
+    url: null,
+    createdAt: '2026-09-13T00:00:00.000Z',
+    primaryCount: 2,
+    secondaryCount: 0,
+  };
+
+  it('every item carries its usage per role as non-negative integers', () => {
+    expect(referenceSchema.parse(reference)).toEqual(reference);
+    const { primaryCount: _p, ...withoutPrimary } = reference;
+    expect(referenceSchema.safeParse(withoutPrimary).success).toBe(false);
+    expect(referenceSchema.safeParse({ ...reference, secondaryCount: -1 }).success).toBe(false);
+    expect(referenceSchema.safeParse({ ...reference, primaryCount: 1.5 }).success).toBe(false);
+  });
+
+  it('the detail adds recordCount on top of the per-role counts', () => {
+    const detail = { ...reference, recordCount: 2 };
+    expect(referenceDetailSchema.parse(detail)).toEqual(detail);
+    expect(referenceDetailSchema.safeParse(reference).success).toBe(false);
   });
 });
 

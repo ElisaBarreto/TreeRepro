@@ -174,7 +174,7 @@ Against the dev stack, after `seed:traits`: `import:records --file docs/exemplos
 | Module | Responsibility |
 |---|---|
 | `dataset/taxa.ts` | `searchSpecies(db, { q?, familyId?, genusId?, unresolved?, cursor?, limit })` → `{ data, nextCursor }` (keyset on `(canonical_name, id)`); `getSpecies(db, id)` with genus, family, names, `recordCount`, `traitCount`; `listFamilies`, `listGenera(db, { familyId?, q?, cursor?, limit })`. |
-| `dataset/references.ts` | `searchReferences(db, { q?, cursor?, limit })`, `getReference(db, id)` with `recordCount`. |
+| `dataset/references.ts` | `searchReferences(db, { q?, cursor?, limit })` ordered by usage with `primaryCount` / `secondaryCount` per item, `getReference(db, id)` adding `recordCount`. |
 | `dataset/dictionary.ts` | `getDictionary(db)` → categories → traits → levels, dictionary order. |
 | `dataset/records.ts` | `listRecords(db, { speciesId?, traitId?, referenceId?, cursor?, limit })` (requires `speciesId` + `traitId`, or `referenceId`); `getRecord(db, id)` with raw fields, batch, annotations and accepted history. |
 | `dataset/summary.ts` | `speciesTraitSummary(db, speciesId)` → categories → traits → `{ recordCount, harmonisationCounts, summary, accepted }`; `reviewStatus` SQL fragment shared with `records.ts`. |
@@ -196,7 +196,7 @@ Against the dev stack, after `seed:traits`: `import:records --file docs/exemplos
 
 `record` (detail): list item plus `rawValue, originalTraitName, originalSpeciesName, secondarySourceSpeciesName, rawCategory, note, importBatch: { id, fileName, startedAt } | null, importRowNo, annotations: [{ id, kind, note, actor: { id, name }, createdAt }], acceptedHistory: [{ id, decision, recordId, actor, note, createdAt }]`.
 
-`reference`: `{ id, citationKey, title, authors, year, journal, doi, url, createdAt }`; detail adds `recordCount`.
+`reference`: `{ id, citationKey, title, authors, year, journal, doi, url, createdAt, primaryCount, secondaryCount }` (records naming it as primary / as secondary; the same record counts once in each role it fills); detail adds `recordCount` (either role, counted once).
 
 `dictionary`: `[{ key, label, traits: [{ id, key, valueType, unit, description, active, levels: [{ id, key, active }] }] }]`.
 
@@ -216,7 +216,7 @@ All permission-guarded with `dataset.read` unless stated; envelopes and paginati
 | `GET /api/records?speciesId=&traitId=&referenceId=&cursor=&limit=` | Requires `speciesId` and `traitId` together, or `referenceId`; other combinations 400 `VALIDATION_FAILED`. Keyset by `id` descending. |
 | `GET /api/records/:id` | 404 `RECORD_NOT_FOUND`. |
 | `GET /api/traits` | Whole dictionary; `Cache-Control: private, max-age=300`. |
-| `GET /api/references?q=&cursor=&limit=` | `q` over `citation_key` and `title`; order by citation key, id. |
+| `GET /api/references?q=&cursor=&limit=` | `q` over `citation_key` and `title`; order by usage (`primaryCount + secondaryCount` desc, then id desc); composite cursor `[total, id]`; the counts come from an on-demand aggregate over `trait_records` (no dedicated index — tens of thousands of references at most). |
 | `GET /api/references/:id` | 404 `REFERENCE_NOT_FOUND`. |
 | `GET /api/families?cursor=&limit=` | Order by name. |
 | `GET /api/genera?familyId=&q=&cursor=&limit=` | Order by name; `q` prefix match. |

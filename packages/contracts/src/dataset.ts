@@ -97,7 +97,11 @@ export const genusSchema = taxonRefSchema.extend({ family: taxonRefSchema.nullab
 /** @rfc RFC-61 R4 */
 export const referenceRefSchema = z.strictObject({ id: z.uuid(), citationKey: z.string() });
 
-/** @rfc RFC-61 R4 */
+/**
+ * `primaryCount` / `secondaryCount`: records naming the reference in that
+ * role; a record naming the same reference in both roles counts once in each.
+ * @rfc RFC-61 R4
+ */
 export const referenceSchema = z.strictObject({
   id: z.uuid(),
   citationKey: z.string(),
@@ -108,9 +112,11 @@ export const referenceSchema = z.strictObject({
   doi: z.string().nullable(),
   url: z.string().nullable(),
   createdAt: z.iso.datetime(),
+  primaryCount: z.number().int().nonnegative(),
+  secondaryCount: z.number().int().nonnegative(),
 });
 
-/** @rfc RFC-61 R4 */
+/** `recordCount`: records naming the reference in either role, counted once. @rfc RFC-61 R4 */
 export const referenceDetailSchema = referenceSchema.extend({
   recordCount: z.number().int().nonnegative(),
 });

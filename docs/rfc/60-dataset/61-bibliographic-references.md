@@ -15,7 +15,7 @@ Every trait value is a claim made by a publication. The compiled dataset identif
 - **R1** Table `bibliographic_references(id uuid default uuidv7(), citation_key text unique, title text null, authors text null, year smallint null, journal text null, doi text null unique where not null, url text null, created_at timestamptz, created_by uuid null references users)`. The table is not named `references` because that word is reserved in SQL; the API path is `/api/references`.
 - **R2** `citation_key` is the identity of a reference: the exact string the source uses, trimmed. The import creates references with the key alone; metadata is filled later through the UI (plan 07).
 - **R3** A trait record names a primary reference and, when the row was taken from a compilation, a secondary reference; at least one is present (RFC-63 R2). Manual records name the primary reference.
-- **R4** `GET /api/references?q=&cursor=&limit=` (`dataset.read`): `q` is 2–100 characters matched case-insensitively as a substring of `citation_key` or `title`; order `citation_key` then `id`, composite cursor. Item: `{ id, citationKey, title, authors, year, journal, doi, url, createdAt }`. `GET /api/references/:id` adds `recordCount` (records naming it as primary or secondary); unknown id answers 404 `REFERENCE_NOT_FOUND`.
+- **R4** `GET /api/references?q=&cursor=&limit=` (`dataset.read`): `q` is 2–100 characters matched case-insensitively as a substring of `citation_key` or `title`; order by usage — `primaryCount + secondaryCount` descending, then `id` descending — with the composite cursor `[total, id]`. Item: `{ id, citationKey, title, authors, year, journal, doi, url, createdAt, primaryCount, secondaryCount }`, where `primaryCount` and `secondaryCount` are the records naming the reference as primary and as secondary (a record naming the same reference in both roles counts once in each). `GET /api/references/:id` adds `recordCount` (records naming it in either role, counted once); unknown id answers 404 `REFERENCE_NOT_FOUND`.
 - **R5** A reference named by any record cannot be deleted (foreign keys `restrict`). No route deletes or edits references in plan 06.
 
 ## Open questions
@@ -26,3 +26,4 @@ None.
 
 - 2026-09-13 — created.
 - 2026-09-13 — accepted.
+- 2026-09-13 — R4 amended (UX-02): items carry `primaryCount` and `secondaryCount`; the list is ordered by usage instead of citation key.
