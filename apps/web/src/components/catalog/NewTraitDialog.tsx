@@ -9,7 +9,7 @@ import {
 import { type FormEvent, useId, useState } from 'react';
 import { createTrait, invalidateAfterCatalogWrite } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
 import { Alert, Button, Dialog, Field, Input, Select, Textarea } from '../ui/index.ts';
 
 /** @rfc RFC-13 R6 */
@@ -176,7 +176,7 @@ export function NewTraitDialog({
             onChange={(e) => setDescription(e.target.value)}
           />
         </Field>
-        {save.isError && !errors.key ? (
+        {save.isError && !isValidationError(save.error) && !errors.key ? (
           <Alert tone="error">{traitErrorMessage(save.error)}</Alert>
         ) : null}
         <div className="flex justify-end gap-2">

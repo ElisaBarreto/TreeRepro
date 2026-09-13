@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type Trait, type UpdateTraitBody, updateTraitBodySchema } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
 import { invalidateAfterCatalogWrite, updateTrait } from '../../api/catalog.ts';
-import { fieldErrors } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError } from '../../lib/errors.ts';
 import { Alert, Button, Dialog, Field, Select, Textarea } from '../ui/index.ts';
 import { traitErrorMessage } from './NewTraitDialog.tsx';
 
@@ -111,7 +111,9 @@ export function EditTraitDialog({
           />
           Active — inactive traits are hidden from manual entry; their records stay
         </label>
-        {save.isError ? <Alert tone="error">{traitErrorMessage(save.error)}</Alert> : null}
+        {save.isError && !isValidationError(save.error) ? (
+          <Alert tone="error">{traitErrorMessage(save.error)}</Alert>
+        ) : null}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
             Cancel

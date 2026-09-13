@@ -104,5 +104,6 @@ describe('RFC-62 R6 NewTraitDialog', () => {
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create trait' }));
     expect(await within(dialog).findByText('Unknown category')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
   });
 });

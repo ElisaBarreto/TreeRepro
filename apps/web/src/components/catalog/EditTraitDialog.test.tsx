@@ -85,4 +85,17 @@ describe('RFC-62 R6 EditTraitDialog', () => {
       'This trait no longer exists. Reload the page.',
     );
   });
+
+  it('shows a VALIDATION_FAILED field message without the Alert alongside it', async () => {
+    catalog.updateTrait.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'bad', [{ path: 'description', message: 'Too long' }]),
+    );
+    const { dialog } = mount(SEXUAL_SYSTEM_TRAIT, 'reproductive_system');
+    const description = within(dialog).getByRole('textbox', { name: /description/i });
+    await userEvent.clear(description);
+    await userEvent.type(description, 'Sex distribution.');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByText('Too long')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
 });
