@@ -62,17 +62,23 @@ export function createApp(deps: AppDeps) {
     appOrigin: deps.config.appOrigin,
     now: deps.now ?? Date.now,
   };
-  const app = new Hono<AppEnv>().basePath('/api');
-
-  app.use(requestId());
-  app.use(requestLogger(deps.logger));
-  app.use(
+  // Request id, security headers, 404 and error handling sit on the root so
+  // that a request outside /api (only the development port exposes any; Caddy
+  // proxies /api/* alone) still gets them: RFC-11 R5 says every response.
+  const root = new Hono<AppEnv>();
+  root.use(requestId());
+  root.use(
     secureHeaders({
       contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
       xFrameOptions: 'DENY',
       referrerPolicy: 'strict-origin-when-cross-origin',
     }),
   );
+  root.notFound((c) => c.json(errorBody('NOT_FOUND', 'Route not found'), 404));
+  root.onError(createErrorHandler(deps.logger));
+
+  const app = root.basePath('/api');
+  app.use(requestLogger(deps.logger));
   app.use(originCheck(deps.config.appOrigin));
   app.use(bodyLimit({ maxSize: BODY_LIMIT_BYTES }));
   app.use(resolveSession({ sessions: deps.sessions, db: deps.db }));
@@ -84,9 +90,7 @@ export function createApp(deps: AppDeps) {
   app.route('/admin', adminRoutes(ctx));
   app.route('/', datasetRoutes(ctx));
 
-  app.notFound((c) => c.json(errorBody('NOT_FOUND', 'Route not found'), 404));
-  app.onError(createErrorHandler(deps.logger));
-  return app;
+  return root;
 }
 
 export type App = ReturnType<typeof createApp>;

@@ -23,7 +23,7 @@
 ## Base images are pinned by tag and digest
 **Symptom:** A build or `docker compose pull` fails with `manifest ... not found` or a digest mismatch after a base image was bumped, or a `FROM`/`image:` line lacks `@sha256:…`.
 **Cause:** RFC-02 R11 pins every base image by tag *and* digest (`postgres:18.6-alpine@sha256:…`); the digest is the multi-arch index digest and changes with every rebuild of the upstream tag, so a version bump must refresh it.
-**Fix:** For each image run `docker buildx imagetools inspect <image:tag> --format '{{json .Manifest.Digest}}'` and replace the `@sha256:…` suffix on every `FROM` in `infra/docker/*.Dockerfile` and every `image:` in `compose*.yml` (node, postgres, redis, caddy, mailpit). Keep the tag next to the digest so the version stays readable. The CI image builds fail on a stale digest.
+**Fix:** For each image run `docker buildx imagetools inspect <image:tag> --format '{{json .Manifest.Digest}}'` and replace the `@sha256:…` suffix on every `FROM` in `infra/docker/*.Dockerfile`, every `image:` in `compose*.yml` (node, postgres, redis, caddy, mailpit) and the two testcontainers images in `apps/api/test/global-setup.ts` (postgres, redis). Keep the tag next to the digest so the version stays readable. The CI image builds fail on a stale digest.
 
 ## Caddy reorders directives
 **Symptom:** `/api/health/ready` returned 200 through Caddy although `respond @ready 404` was written first.
@@ -52,8 +52,13 @@
 
 ## Secret files must be readable by the container user on Linux
 **Symptom:** On a Linux host the `api`, `redis`, `backup` containers or the Postgres init script fail with `EACCES` (or `Permission denied`) reading `/run/secrets/*`, although the same stack works on Docker Desktop.
-**Cause:** Compose file secrets are bind mounts of the host files with their host owner and mode. `scripts/gen-secrets.sh` writes 0600 files owned by whoever ran it, while the services run as uid 1000 (`node`), 999 (`redis`) or 70 (`postgres`); Docker Desktop's file sharing masks ownership, a native Linux daemon does not.
-**Fix:** Before the first Linux deployment make the files readable by the container users, for example `chmod 0440` with a group those uids share (or 0444 if the host directory itself is locked down), or use the service-level secret `mode`/`uid`/`gid` fields if the installed Compose honours them for file secrets. Verify on the target host with `docker compose exec api cat /run/secrets/session_secret >/dev/null`.
+**Cause:** Compose file secrets are bind mounts of the host files with their host owner and mode. The services read them as uid 1000 (`node`), 999 (`redis`) or 70 (`postgres`); Docker Desktop's file sharing masks ownership, a native Linux daemon does not. The service-level `uid`/`gid`/`mode` fields are no way out: Compose applies them only to `environment:`/`content:` secrets, which it copies into the container and refuses for `read_only` services (`pkg/compose/secrets.go`, "cannot create secret … in read-only service …: `file` is the sole supported option").
+**Fix:** `scripts/gen-secrets.sh` makes `infra/secrets/` `0700` and every secret file `0444`: the directory is the host-side boundary, the files are readable by whichever uid the container runs as. Re-run the script on an existing checkout to repair the modes (it never overwrites values). Verify on the target host with `docker compose exec api cat /run/secrets/session_secret >/dev/null`.
+
+## Production needs `DOMAIN`, not `APP_ORIGIN`
+**Symptom:** Every mutating request answers 403 `SECURITY_INVALID_ORIGIN` after the site moved to a new domain, although Caddy serves it fine.
+**Cause:** The API compares the `Origin` header with `APP_ORIGIN` (RFC-02 R3); Caddy serves `DOMAIN`. Two variables for one fact drift.
+**Fix:** `compose.prod.yml` sets `APP_ORIGIN: https://${DOMAIN}` on the `api` service, so the production `.env` carries only `DOMAIN` and any `APP_ORIGIN` in it is ignored. `compose.yml` defaults `APP_ORIGIN` to `http://localhost` for development.
 
 ## Secure cookies work on http://localhost but not on a LAN address
 **Symptom:** Login answers 200 but the browser drops `__Host-session`; every next request is 401.

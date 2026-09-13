@@ -17,7 +17,9 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    host: '0.0.0.0',
+    // Only the Docker dev stack (which sets VITE_HMR_CLIENT_PORT) needs every
+    // interface, so Caddy can reach Vite; on a laptop stay on loopback (issue #13).
+    host: hmrClientPort ? '0.0.0.0' : 'localhost',
     port: 5173,
     strictPort: true,
     // Behind Caddy in Docker the browser reaches Vite through port 80 (docs/gotchas/docker.md).
