@@ -138,6 +138,7 @@ export const traitRefSchema = z.strictObject({
 export const traitLevelSchema = z.strictObject({
   id: z.uuid(),
   key: z.string(),
+  sortOrder: z.number().int(),
   active: z.boolean(),
 });
 

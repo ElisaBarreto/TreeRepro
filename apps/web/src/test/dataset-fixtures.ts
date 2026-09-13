@@ -236,9 +236,24 @@ export const DICTIONARY: Dictionary = [
         description: 'Distribution of male and female function among individuals.',
         active: true,
         levels: [
-          { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11', key: 'hermaphrodite', active: true },
-          { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e12', key: 'dioecious', active: true },
-          { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e13', key: 'polygamous', active: false },
+          {
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11',
+            key: 'hermaphrodite',
+            sortOrder: 0,
+            active: true,
+          },
+          {
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e12',
+            key: 'dioecious',
+            sortOrder: 1,
+            active: true,
+          },
+          {
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e13',
+            key: 'polygamous',
+            sortOrder: 2,
+            active: false,
+          },
         ],
       },
     ],
@@ -263,7 +278,9 @@ export const DICTIONARY: Dictionary = [
         unit: null,
         description: 'Colour of the mature seed coat.',
         active: false,
-        levels: [{ id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e14', key: 'brown', active: true }],
+        levels: [
+          { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e14', key: 'brown', sortOrder: 0, active: true },
+        ],
       },
     ],
   },

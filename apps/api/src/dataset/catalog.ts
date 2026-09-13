@@ -1,11 +1,23 @@
-import type { Genus, NameSource, Species, TaxonRef } from '@treerepro/contracts';
-import { eq } from 'drizzle-orm';
+import type {
+  Genus,
+  NameSource,
+  ReferenceDetail,
+  Species,
+  TaxonRef,
+  Trait,
+  TraitValueType,
+} from '@treerepro/contracts';
+import { and, eq, sql } from 'drizzle-orm';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { isUniqueViolation } from '../db/errors.ts';
+import { isUniqueViolation, violatedConstraint } from '../db/errors.ts';
+import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
+import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
+import { getTrait } from './dictionary.ts';
 import { normaliseName } from './names.ts';
+import { getReference } from './references.ts';
 import { getFamily, getGenus, getSpecies } from './taxa.ts';
 
 type TaxonKind = 'family' | 'genus' | 'species' | 'species_name';
@@ -281,5 +293,316 @@ export async function addSpeciesName(
     const updated = await getSpecies(tx, input.speciesId);
     if (!updated) throw new Error('addSpeciesName: species vanished');
     return updated;
+  });
+}
+
+function referenceTaken(err: unknown): never {
+  if (isUniqueViolation(err)) {
+    throw violatedConstraint(err) === 'bibliographic_references_doi_idx'
+      ? new AppError('REFERENCE_DOI_TAKEN', 'Another reference has this DOI')
+      : new AppError('REFERENCE_KEY_TAKEN', 'Another reference has this citation key');
+  }
+  throw err;
+}
+
+export interface ReferenceFields {
+  citationKey?: string;
+  title?: string | null;
+  authors?: string | null;
+  year?: number | null;
+  journal?: string | null;
+  doi?: string | null;
+  url?: string | null;
+}
+
+const REFERENCE_FIELDS = [
+  'citationKey',
+  'title',
+  'authors',
+  'year',
+  'journal',
+  'doi',
+  'url',
+] as const;
+
+/** @rfc RFC-61 R6 */
+export async function createReference(
+  db: DbExecutor,
+  input: ReferenceFields & { citationKey: string; actorId: string },
+): Promise<ReferenceDetail> {
+  return db.transaction(async (tx) => {
+    let row: { id: string } | undefined;
+    try {
+      [row] = await tx
+        .insert(bibliographicReferences)
+        .values({
+          citationKey: input.citationKey,
+          title: input.title ?? null,
+          authors: input.authors ?? null,
+          year: input.year ?? null,
+          journal: input.journal ?? null,
+          doi: input.doi ?? null,
+          url: input.url ?? null,
+          createdBy: input.actorId,
+        })
+        .returning({ id: bibliographicReferences.id });
+    } catch (err) {
+      referenceTaken(err);
+    }
+    if (!row) throw new Error('createReference: insert returned no row');
+    await recordAudit(tx, {
+      actorUserId: input.actorId,
+      action: 'references.created',
+      targetType: 'bibliographic_references',
+      targetId: row.id,
+      metadata: {},
+    });
+    const created = await getReference(tx, row.id);
+    if (!created) throw new Error('createReference: reference vanished');
+    return created;
+  });
+}
+
+/** `null` clears a metadata field; `citationKey` is never null. @rfc RFC-61 R6 */
+export async function updateReference(
+  db: DbExecutor,
+  input: ReferenceFields & { id: string; actorId: string },
+): Promise<ReferenceDetail> {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.id, input.id))
+      .limit(1);
+    if (!current) throw new AppError('REFERENCE_NOT_FOUND', 'Reference not found');
+    const fields: string[] = [];
+    const set: Partial<Pick<ReferenceRow, (typeof REFERENCE_FIELDS)[number]>> = {};
+    for (const field of REFERENCE_FIELDS) {
+      const next = input[field];
+      if (next !== undefined && next !== current[field]) {
+        fields.push(field);
+        (set as Record<string, unknown>)[field] = next;
+      }
+    }
+    if (fields.length > 0) {
+      try {
+        await tx
+          .update(bibliographicReferences)
+          .set(set)
+          .where(eq(bibliographicReferences.id, input.id));
+      } catch (err) {
+        referenceTaken(err);
+      }
+      await recordAudit(tx, {
+        actorUserId: input.actorId,
+        action: 'references.updated',
+        targetType: 'bibliographic_references',
+        targetId: input.id,
+        metadata: { fields },
+      });
+    }
+    const updated = await getReference(tx, input.id);
+    if (!updated) throw new Error('updateReference: reference vanished');
+    return updated;
+  });
+}
+
+async function requireCategory(db: DbExecutor, key: string): Promise<void> {
+  const [row] = await db
+    .select({ key: traitCategories.key })
+    .from(traitCategories)
+    .where(eq(traitCategories.key, key))
+    .limit(1);
+  if (!row)
+    throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+      { path: 'categoryKey', message: 'Unknown category' },
+    ]);
+}
+
+async function requireTraitRow(db: DbExecutor, id: string) {
+  const [row] = await db.select().from(traits).where(eq(traits.id, id)).limit(1);
+  if (!row) throw new AppError('TRAIT_NOT_FOUND', 'Trait not found');
+  return row;
+}
+
+async function traitAudit(
+  db: DbExecutor,
+  actorId: string,
+  action: 'traits.created' | 'traits.updated',
+  traitId: string,
+  metadata: { fields?: string[]; levelId?: string },
+): Promise<void> {
+  await recordAudit(db, {
+    actorUserId: actorId,
+    action,
+    targetType: 'traits',
+    targetId: traitId,
+    metadata,
+  });
+}
+
+async function traitOrThrow(db: DbExecutor, id: string, where: string): Promise<Trait> {
+  const trait = await getTrait(db, id);
+  if (!trait) throw new Error(`${where}: trait vanished`);
+  return trait;
+}
+
+/** @rfc RFC-62 R6 */
+export async function createTrait(
+  db: DbExecutor,
+  input: {
+    key: string;
+    categoryKey: string;
+    valueType: TraitValueType;
+    unit?: string;
+    description?: string;
+    actorId: string;
+  },
+): Promise<Trait> {
+  return db.transaction(async (tx) => {
+    await requireCategory(tx, input.categoryKey);
+    let row: { id: string } | undefined;
+    try {
+      [row] = await tx
+        .insert(traits)
+        .values({
+          key: input.key,
+          categoryKey: input.categoryKey,
+          valueType: input.valueType,
+          unit: input.unit ?? null,
+          description: input.description ?? '',
+          createdBy: input.actorId,
+        })
+        .returning({ id: traits.id });
+    } catch (err) {
+      if (isUniqueViolation(err))
+        throw new AppError('TRAIT_KEY_TAKEN', 'A trait with this key already exists');
+      throw err;
+    }
+    if (!row) throw new Error('createTrait: insert returned no row');
+    await traitAudit(tx, input.actorId, 'traits.created', row.id, {});
+    return traitOrThrow(tx, row.id, 'createTrait');
+  });
+}
+
+/** `key`, `valueType` and `unit` are immutable (RFC-62 R6). @rfc RFC-62 R6 */
+export async function updateTrait(
+  db: DbExecutor,
+  input: {
+    id: string;
+    categoryKey?: string;
+    description?: string;
+    active?: boolean;
+    actorId: string;
+  },
+): Promise<Trait> {
+  return db.transaction(async (tx) => {
+    const current = await requireTraitRow(tx, input.id);
+    const fields: string[] = [];
+    const set: { categoryKey?: string; description?: string; active?: boolean } = {};
+    if (input.categoryKey !== undefined && input.categoryKey !== current.categoryKey) {
+      await requireCategory(tx, input.categoryKey);
+      fields.push('categoryKey');
+      set.categoryKey = input.categoryKey;
+    }
+    if (input.description !== undefined && input.description !== current.description) {
+      fields.push('description');
+      set.description = input.description;
+    }
+    if (input.active !== undefined && input.active !== current.active) {
+      fields.push('active');
+      set.active = input.active;
+    }
+    if (fields.length > 0) {
+      await tx.update(traits).set(set).where(eq(traits.id, input.id));
+      await traitAudit(tx, input.actorId, 'traits.updated', input.id, { fields });
+    }
+    return traitOrThrow(tx, input.id, 'updateTrait');
+  });
+}
+
+/** @rfc RFC-62 R6 */
+export async function createLevel(
+  db: DbExecutor,
+  input: { traitId: string; key: string; sortOrder?: number; actorId: string },
+): Promise<Trait> {
+  return db.transaction(async (tx) => {
+    await requireTraitRow(tx, input.traitId);
+    const [{ next }] = (await tx.execute(
+      sql`select coalesce(max(sort_order), -1) + 1 as next from trait_levels where trait_id = ${input.traitId}`,
+    )) as unknown as [{ next: number }];
+    let row: { id: string } | undefined;
+    try {
+      [row] = await tx
+        .insert(traitLevels)
+        .values({
+          traitId: input.traitId,
+          key: input.key,
+          sortOrder: input.sortOrder ?? next,
+          createdBy: input.actorId,
+        })
+        .returning({ id: traitLevels.id });
+    } catch (err) {
+      if (isUniqueViolation(err))
+        throw new AppError('LEVEL_KEY_TAKEN', 'The trait already has this level');
+      throw err;
+    }
+    if (!row) throw new Error('createLevel: insert returned no row');
+    await traitAudit(tx, input.actorId, 'traits.updated', input.traitId, {
+      levelId: row.id,
+      fields: ['levels'],
+    });
+    return traitOrThrow(tx, input.traitId, 'createLevel');
+  });
+}
+
+/** Renaming keeps every record's `level_id` and `value_text`. @rfc RFC-62 R6 */
+export async function updateLevel(
+  db: DbExecutor,
+  input: {
+    traitId: string;
+    levelId: string;
+    key?: string;
+    sortOrder?: number;
+    active?: boolean;
+    actorId: string;
+  },
+): Promise<Trait> {
+  return db.transaction(async (tx) => {
+    await requireTraitRow(tx, input.traitId);
+    const [current] = await tx
+      .select()
+      .from(traitLevels)
+      .where(and(eq(traitLevels.id, input.levelId), eq(traitLevels.traitId, input.traitId)))
+      .limit(1);
+    if (!current) throw new AppError('LEVEL_NOT_FOUND', 'Level not found');
+    const fields: string[] = [];
+    const set: { key?: string; sortOrder?: number; active?: boolean } = {};
+    if (input.key !== undefined && input.key !== current.key) {
+      fields.push('key');
+      set.key = input.key;
+    }
+    if (input.sortOrder !== undefined && input.sortOrder !== current.sortOrder) {
+      fields.push('sortOrder');
+      set.sortOrder = input.sortOrder;
+    }
+    if (input.active !== undefined && input.active !== current.active) {
+      fields.push('active');
+      set.active = input.active;
+    }
+    if (fields.length > 0) {
+      try {
+        await tx.update(traitLevels).set(set).where(eq(traitLevels.id, input.levelId));
+      } catch (err) {
+        if (isUniqueViolation(err))
+          throw new AppError('LEVEL_KEY_TAKEN', 'The trait already has this level');
+        throw err;
+      }
+      await traitAudit(tx, input.actorId, 'traits.updated', input.traitId, {
+        levelId: input.levelId,
+        fields,
+      });
+    }
+    return traitOrThrow(tx, input.traitId, 'updateLevel');
   });
 }
