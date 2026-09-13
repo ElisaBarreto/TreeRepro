@@ -1,0 +1,203 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createImportBatch,
+  createRecord,
+  createReference,
+  createSpecies,
+  levelByKey,
+  traitByKey,
+} from '../../test/helpers/dataset.ts';
+import { useTestDb } from '../../test/helpers/db.ts';
+import { createUser } from '../../test/helpers/users.ts';
+import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
+import { getRecord, listRecords } from './records.ts';
+
+describe('RFC-63 R8, R9 listRecords and getRecord', () => {
+  const t = useTestDb();
+
+  it('filters by species and trait or by reference, newest first, with the item shape', async () => {
+    const sp1 = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'flower_color');
+    const blue = await levelByKey(t.db, trait.id, 'blue');
+    const other = await traitByKey(t.db, 'petal_length');
+    const ref = await createReference(t.db);
+    const ref2 = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const r1 = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'blue',
+      levelId: blue.id,
+      rawValue: 'Blue',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    const r2 = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'bluish',
+      primaryReferenceId: ref2.id,
+      secondaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    const r3 = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: other.id,
+      valueText: '2.5',
+      numericValue: 2.5,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+
+    const byTrait = await listRecords(t.db, { speciesId: sp1.id, traitId: trait.id, limit: 10 });
+    expect(byTrait.data.map((r) => r.id)).toEqual([r2.id, r1.id]);
+    expect(byTrait.data[1]).toEqual({
+      id: r1.id,
+      speciesId: sp1.id,
+      trait: { id: trait.id, key: 'flower_color', valueType: 'categorical', unit: null },
+      valueText: 'blue',
+      level: { id: blue.id, key: 'blue' },
+      numericValue: null,
+      harmonisation: 'harmonised',
+      review: 'unreviewed',
+      primaryReference: { id: ref.id, citationKey: ref.citationKey },
+      secondaryReference: null,
+      origin: 'import',
+      createdAt: expect.any(String),
+      createdBy: null,
+    });
+    expect(byTrait.data[0]?.secondaryReference).toEqual({
+      id: ref.id,
+      citationKey: ref.citationKey,
+    });
+
+    const byRef = await listRecords(t.db, { referenceId: ref.id, limit: 2 });
+    expect(byRef.data.map((r) => r.id)).toEqual([r3.id, r2.id]);
+    expect(byRef.nextCursor).not.toBeNull();
+    const rest = await listRecords(t.db, {
+      referenceId: ref.id,
+      cursor: byRef.nextCursor as string,
+      limit: 2,
+    });
+    expect(rest.data.map((r) => r.id)).toEqual([r1.id]);
+    expect(rest.nextCursor).toBeNull();
+    expect(
+      (await listRecords(t.db, { speciesId: sp1.id, traitId: other.id, limit: 10 })).data[0]
+        ?.numericValue,
+    ).toBe(2.5);
+  });
+
+  it('R6 derives the review status from annotations', async () => {
+    const sp1 = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'flower_color');
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'x',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    const ada = (await createUser(t.db, { name: 'Ada' })).user;
+    const bob = (await createUser(t.db, { name: 'Bob' })).user;
+    const status = async () => (await getRecord(t.db, rec.id))?.review;
+
+    expect(await status()).toBe('unreviewed');
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: rec.id, actorId: ada.id, kind: 'confirm' });
+    expect(await status()).toBe('confirmed');
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: rec.id, actorId: bob.id, kind: 'dispute', note: 'Source says purple' });
+    expect(await status()).toBe('disputed');
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: rec.id, actorId: bob.id, kind: 'neutral' });
+    expect(await status()).toBe('confirmed'); // Bob's latest stance is neutral; Ada still confirms
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: rec.id, actorId: ada.id, kind: 'neutral' });
+    expect(await status()).toBe('unreviewed');
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: rec.id, actorId: ada.id, kind: 'withdraw', note: 'Entered by mistake' });
+    expect(await status()).toBe('withdrawn');
+  });
+
+  it('R8 detail carries raw fields, batch, annotations and accepted history; manual records carry their author', async () => {
+    const sp1 = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'flower_color');
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db, { fileName: 'detail.csv' });
+    const { user } = await createUser(t.db, { name: 'Grace' });
+    const imported = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'x',
+      rawValue: 'X',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      importRowNo: 42,
+    });
+    const manual = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'y',
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+      note: 'Table 2',
+    });
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: imported.id, actorId: user.id, kind: 'confirm', note: 'Checked' });
+    await t.db.insert(acceptedValues).values({
+      speciesId: sp1.id,
+      traitId: trait.id,
+      recordId: imported.id,
+      decision: 'accepted',
+      actorId: user.id,
+    });
+    await t.db.insert(acceptedValues).values({
+      speciesId: sp1.id,
+      traitId: trait.id,
+      decision: 'cleared',
+      actorId: user.id,
+      note: 'Undecided',
+    });
+
+    const detail = await getRecord(t.db, imported.id);
+    expect(detail).toMatchObject({
+      rawValue: 'X',
+      importBatch: { id: batch.id, fileName: 'detail.csv', startedAt: expect.any(String) },
+      importRowNo: 42,
+      note: null,
+      createdBy: null,
+      annotations: [
+        {
+          kind: 'confirm',
+          note: 'Checked',
+          actor: { id: user.id, name: 'Grace' },
+          createdAt: expect.any(String),
+          id: expect.any(String),
+        },
+      ],
+    });
+    expect(detail?.acceptedHistory.map((a) => a.decision)).toEqual(['cleared', 'accepted']);
+    expect(detail?.acceptedHistory[1]).toMatchObject({
+      recordId: imported.id,
+      actor: { name: 'Grace' },
+    });
+    const manualDetail = await getRecord(t.db, manual.id);
+    expect(manualDetail).toMatchObject({
+      origin: 'manual',
+      createdBy: { id: user.id, name: 'Grace' },
+      note: 'Table 2',
+      importBatch: null,
+      importRowNo: null,
+    });
+    expect(await getRecord(t.db, '00000000-0000-7000-8000-000000000000')).toBeNull();
+  });
+});
