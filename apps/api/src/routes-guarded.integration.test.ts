@@ -94,6 +94,8 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'GET /api/species/:id',
         'GET /api/families',
         'GET /api/genera',
+        'GET /api/references',
+        'GET /api/references/:id',
       ].sort(),
     );
   });
