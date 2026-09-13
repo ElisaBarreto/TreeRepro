@@ -98,6 +98,10 @@ export async function searchReferences(
     .leftJoin(usage.primaryUses, eq(usage.primaryUses.refId, bibliographicReferences.id))
     .leftJoin(usage.secondaryUses, eq(usage.secondaryUses.refId, bibliographicReferences.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
+    // The sort key (usage count) is mutable: pages stay stable between
+    // imports, but a concurrent `import:records` can shift a reference
+    // between two page fetches (acceptable — imports are batch,
+    // administrative operations).
     .orderBy(desc(usage.total), desc(bibliographicReferences.id))
     .limit(input.limit + 1);
   const page = rows.slice(0, input.limit);

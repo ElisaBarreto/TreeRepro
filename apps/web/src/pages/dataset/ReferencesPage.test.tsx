@@ -80,7 +80,9 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     dataset.searchReferences.mockResolvedValue(page([DOI_KEY, NUMERIC_KEY, REFERENCE, BARE]));
     await openPage();
     expect(
-      screen.getByText('Articles cited by the records, most used first. Search by name or title.'),
+      screen.getByText(
+        'Articles cited by the records, most used first. Search by citation key or title.',
+      ),
     ).toBeInTheDocument();
     const link = await screen.findByRole('link', { name: 'Smith2001' });
     expect(dataset.searchReferences).toHaveBeenCalledWith({

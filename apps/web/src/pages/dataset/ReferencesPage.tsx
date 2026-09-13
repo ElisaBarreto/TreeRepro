@@ -48,7 +48,7 @@ export function ReferencesPage() {
     <>
       <PageHeader
         title="References"
-        description="Articles cited by the records, most used first. Search by name or title."
+        description="Articles cited by the records, most used first. Search by citation key or title."
       />
       <div className="flex flex-col gap-6">
         <div className="max-w-md">
@@ -58,7 +58,7 @@ export function ReferencesPage() {
               type="search"
               autoComplete="off"
               maxLength={100}
-              placeholder="Name or title"
+              placeholder="Citation key or title"
               value={text}
               onChange={(event) => setText(event.target.value)}
             />
