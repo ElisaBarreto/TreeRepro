@@ -8,7 +8,7 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { AppError } from '../http/errors.ts';
-import { annotateRecord, currentAccepted, setAccepted } from './curation.ts';
+import { annotateRecord, currentAccepted, getAccepted, setAccepted } from './curation.ts';
 import { getRecord } from './records.ts';
 
 /** Swallows the `AppError` the losing side of the race legitimately throws once the other side has committed. */
@@ -69,5 +69,45 @@ describe('RFC-65 R4, R6 the withdraw-vs-accept race is serialised by an advisory
         `iteration ${i}: review=${review}, current.recordId=${current?.recordId}`,
       ).toBe(false);
     }
+  });
+});
+
+describe('RFC-65 R6 setAccepted clearing branch locks before deciding', () => {
+  const t = useTestDb();
+
+  it('five concurrent identical clears leave exactly one cleared row in the history', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const ref = await createReference(t.db);
+    const sp = await createSpecies(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await setAccepted(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      actorId: user.id,
+      decision: 'accepted',
+      recordId: rec.id,
+    });
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        setAccepted(t.db, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          actorId: user.id,
+          decision: 'cleared',
+          note: 'Race',
+        }),
+      ),
+    );
+    const { history } = await getAccepted(t.db, sp.id, trait.id);
+    expect(history.filter((h) => h.decision === 'cleared')).toHaveLength(1);
   });
 });

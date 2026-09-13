@@ -29,3 +29,23 @@ describe('RFC-66 R4 csvRow', () => {
     ]);
   });
 });
+
+describe('RFC-66 R4 csvField CSV formula injection guard', () => {
+  it.each([
+    ['=SUM(A1)', "'=SUM(A1)"],
+    ['+1+1', "'+1+1"],
+    ['-1+1', "'-1+1"],
+    ['@cmd', "'@cmd"],
+    ['\tx', "'\tx"],
+  ])('prefixes %j with a quote before RFC 4180 quoting', (input, expected) => {
+    expect(csvRow([input])).toBe(`${expected}\r\n`);
+  });
+
+  it('quotes the prefixed field too when RFC 4180 also requires it', () => {
+    expect(csvRow(['\rx'])).toBe(`"'\rx"\r\n`);
+  });
+
+  it('leaves a plain number unprefixed', () => {
+    expect(csvRow([-12.5, '+3', '1e5'])).toBe('-12.5,+3,1e5\r\n');
+  });
+});

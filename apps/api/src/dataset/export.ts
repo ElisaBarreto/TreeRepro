@@ -18,9 +18,20 @@ export const EXPORT_COLUMNS = [
   'record_id',
 ] as const;
 
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * A field starting with `=`, `+`, `-`, `@`, tab or CR is interpreted as a
+ * formula by spreadsheet software; prefixing it with `'` keeps it inert
+ * without changing the value a plain CSV reader sees. Never applied to a
+ * plain number, which spreadsheet software never treats as a formula.
+ * @rfc RFC-66 R4
+ */
 function csvField(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return '';
-  const text = String(value);
+  let text = String(value);
+  if (FORMULA_PREFIX.test(text) && !PLAIN_NUMBER.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

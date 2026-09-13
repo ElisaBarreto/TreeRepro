@@ -380,21 +380,22 @@ export async function setAccepted(db: DbExecutor, input: SetAcceptedInput): Prom
         });
       }
     } else {
-      const current = await currentAccepted(tx, input.speciesId, input.traitId);
-      if (current?.recordId) {
+      const before = await currentAccepted(tx, input.speciesId, input.traitId);
+      if (before?.decision === 'accepted' && before.recordId) {
         await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${current.recordId}, 0))`,
+          sql`select pg_advisory_xact_lock(hashtextextended(${before.recordId}, 0))`,
         );
-      }
-      if (current && current.decision === 'accepted') {
-        await tx.insert(acceptedValues).values({
-          speciesId: input.speciesId,
-          traitId: input.traitId,
-          recordId: null,
-          decision: 'cleared',
-          actorId: input.actorId,
-          note: input.note ?? null,
-        });
+        const current = await currentAccepted(tx, input.speciesId, input.traitId);
+        if (current?.decision === 'accepted') {
+          await tx.insert(acceptedValues).values({
+            speciesId: input.speciesId,
+            traitId: input.traitId,
+            recordId: null,
+            decision: 'cleared',
+            actorId: input.actorId,
+            note: input.note ?? null,
+          });
+        }
       }
     }
     return getAccepted(tx, input.speciesId, input.traitId);
