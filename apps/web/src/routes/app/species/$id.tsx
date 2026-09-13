@@ -1,11 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PageHeader } from '../../../components/ui/index.ts';
+import { SpeciesPage } from '../../../pages/dataset/SpeciesPage.tsx';
 
 /**
- * Placeholder so the species list can link here; plan 06 task 14 replaces it
- * with the species page (RFC-60 R7).
  * @rfc RFC-13 R2
+ * @rfc RFC-60 R7
  */
 export const Route = createFileRoute('/app/species/$id')({
-  component: () => <PageHeader title="Species" />,
+  component: () => <SpeciesPage id={Route.useParams().id} />,
 });

@@ -4,6 +4,8 @@ export type { ButtonProps } from './Button.tsx';
 export { Button } from './Button.tsx';
 export type { DialogProps } from './Dialog.tsx';
 export { Dialog } from './Dialog.tsx';
+export type { DrawerProps } from './Drawer.tsx';
+export { Drawer } from './Drawer.tsx';
 export { EmptyState } from './EmptyState.tsx';
 export type { FieldProps } from './Field.tsx';
 export { Field } from './Field.tsx';
