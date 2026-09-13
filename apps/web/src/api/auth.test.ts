@@ -1,43 +1,34 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchMe, login, loginTotp, logout } from './auth.ts';
+import { describe, expect, it } from 'vitest';
+import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
+import { USER } from '../test/fixtures.ts';
+import {
+  acceptInvite,
+  fetchMe,
+  forgotPassword,
+  login,
+  loginTotp,
+  logout,
+  resetPassword,
+} from './auth.ts';
 
-const jsonResponse = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-
-const user = {
-  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e',
-  email: 'ada@example.org',
-  name: 'Ada',
-  status: 'active',
-  totpEnabled: false,
-  createdAt: '2026-09-12T00:00:00.000Z',
-};
-
-const fetchMock = vi.fn<typeof fetch>();
-const lastCall = () => fetchMock.mock.calls[0] as [string, RequestInit];
-
-beforeEach(() => {
-  fetchMock.mockReset();
-  vi.stubGlobal('fetch', fetchMock);
-});
-afterEach(() => vi.unstubAllGlobals());
+installFetchMock();
 
 describe('RFC-22 R2-R3 login', () => {
   it('posts email and password and unwraps the data envelope', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { data: { status: 'ok', user } }));
+    mockJson(200, { data: { status: 'ok', user: USER } });
     const result = await login({ email: 'ada@example.org', password: 'hunter2hunter2' });
-    expect(result).toEqual({ status: 'ok', user });
-    const [url, init] = lastCall();
+    expect(result).toEqual({ status: 'ok', user: USER });
+    const { url, init } = lastRequest();
     expect(url).toBe('/api/auth/login');
-    expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body as string)).toEqual({
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
       email: 'ada@example.org',
       password: 'hunter2hunter2',
     });
   });
 
   it('passes the totp_required answer through', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { data: { status: 'totp_required' } }));
+    mockJson(200, { data: { status: 'totp_required' } });
     expect(await login({ email: 'ada@example.org', password: 'x' })).toEqual({
       status: 'totp_required',
     });
@@ -46,35 +37,60 @@ describe('RFC-22 R2-R3 login', () => {
 
 describe('RFC-23 R6 loginTotp', () => {
   it('sends a six-digit code as { code }', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { data: { status: 'ok', user } }));
-    expect(await loginTotp('123456')).toEqual({ status: 'ok', user });
-    const [url, init] = lastCall();
+    mockJson(200, { data: { status: 'ok', user: USER } });
+    expect(await loginTotp('123456')).toEqual({ status: 'ok', user: USER });
+    const { url, init } = lastRequest();
     expect(url).toBe('/api/auth/login/totp');
-    expect(JSON.parse(init.body as string)).toEqual({ code: '123456' });
+    expect(JSON.parse(String(init?.body))).toEqual({ code: '123456' });
   });
 
   it('sends anything else as { recoveryCode }, trimmed', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { data: { status: 'ok', user } }));
+    mockJson(200, { data: { status: 'ok', user: USER } });
     await loginTotp(' abcde-fghij ');
-    const [, init] = lastCall();
-    expect(JSON.parse(init.body as string)).toEqual({ recoveryCode: 'abcde-fghij' });
+    const { init } = lastRequest();
+    expect(JSON.parse(String(init?.body))).toEqual({ recoveryCode: 'abcde-fghij' });
   });
 });
 
 describe('RFC-22 R9-R10 session helpers', () => {
   it('fetchMe reads GET /auth/me', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { data: { user, permissions: ['roles.read'] } }));
-    expect(await fetchMe()).toEqual({ user, permissions: ['roles.read'] });
-    const [url, init] = lastCall();
+    mockJson(200, { data: { user: USER, permissions: ['roles.read'] } });
+    expect(await fetchMe()).toEqual({ user: USER, permissions: ['roles.read'] });
+    const { url, init } = lastRequest();
     expect(url).toBe('/api/auth/me');
-    expect(init.method).toBe('GET');
+    expect(init?.method).toBe('GET');
   });
 
   it('logout posts to /auth/logout', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { data: { status: 'ok' } }));
+    mockJson(200, { data: { status: 'ok' } });
     await logout();
-    const [url, init] = lastCall();
+    const { url, init } = lastRequest();
     expect(url).toBe('/api/auth/logout');
-    expect(init.method).toBe('POST');
+    expect(init?.method).toBe('POST');
+  });
+});
+
+describe('RFC-20 R6, RFC-21 R5-R6 invitation and password recovery calls', () => {
+  it('acceptInvite posts token and password and returns the user', async () => {
+    mockJson(200, { data: { status: 'ok', user: USER } });
+    await expect(acceptInvite('t'.repeat(43), 'a long enough passphrase')).resolves.toEqual(USER);
+    expect(lastRequest().url).toBe('/api/auth/invite/accept');
+    expect(JSON.parse(String(lastRequest().init?.body))).toEqual({
+      token: 't'.repeat(43),
+      password: 'a long enough passphrase',
+    });
+  });
+
+  it('forgotPassword and resetPassword post their bodies', async () => {
+    mockJson(200, { data: { status: 'sent' } });
+    await forgotPassword('ada@example.org');
+    expect(JSON.parse(String(lastRequest().init?.body))).toEqual({ email: 'ada@example.org' });
+    mockJson(200, { data: { status: 'ok' } });
+    await resetPassword('t'.repeat(43), 'a long enough passphrase');
+    expect(lastRequest().url).toBe('/api/auth/password/reset');
+    expect(JSON.parse(String(lastRequest().init?.body))).toEqual({
+      token: 't'.repeat(43),
+      newPassword: 'a long enough passphrase',
+    });
   });
 });

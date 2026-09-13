@@ -1,10 +1,13 @@
 import type {
   AuthUser,
   DataEnvelope,
+  ForgotPasswordBody,
+  InviteAcceptBody,
   LoginBody,
   LoginResponse,
   LoginTotpBody,
   MeResponse,
+  ResetPasswordBody,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 
@@ -45,4 +48,26 @@ export async function fetchMe(): Promise<MeResponse> {
 /** @rfc RFC-22 R9 */
 export async function logout(): Promise<void> {
   await apiFetch('/auth/logout', { method: 'POST' });
+}
+
+/** @rfc RFC-20 R6 */
+export async function acceptInvite(token: string, password: string): Promise<AuthUser> {
+  const body: InviteAcceptBody = { token, password };
+  const { data } = await apiFetch<DataEnvelope<{ status: 'ok'; user: AuthUser }>>(
+    '/auth/invite/accept',
+    { method: 'POST', json: body },
+  );
+  return data.user;
+}
+
+/** @rfc RFC-21 R5 */
+export async function forgotPassword(email: string): Promise<void> {
+  const body: ForgotPasswordBody = { email };
+  await apiFetch('/auth/password/forgot', { method: 'POST', json: body });
+}
+
+/** @rfc RFC-21 R6 */
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const body: ResetPasswordBody = { token, newPassword };
+  await apiFetch('/auth/password/reset', { method: 'POST', json: body });
 }
