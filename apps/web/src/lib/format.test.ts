@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime, formatNumber, humaniseKey, isoDate, truncate } from './format.ts';
+import {
+  articleKind,
+  formatDateTime,
+  formatNumber,
+  humaniseKey,
+  isoDate,
+  truncate,
+} from './format.ts';
 
 describe('RFC-13 R9 format helpers', () => {
   it('humaniseKey replaces every underscore with a space', () => {
@@ -33,5 +40,20 @@ describe('RFC-13 R9 format helpers', () => {
     const long = 'a'.repeat(100);
     expect(truncate(long, 80)).toHaveLength(80);
     expect(truncate(long, 80).endsWith('…')).toBe(true);
+  });
+
+  it('articleKind tells a DOI, a numeric index and a full citation apart from an ordinary key', () => {
+    expect(articleKind('10.1111/geb.13640')).toBe('DOI');
+    expect(articleKind('10.1000/jte.2001.1')).toBe('DOI');
+    // A long DOI is still a DOI, not a full citation.
+    expect(articleKind(`10.1234/${'a'.repeat(90)}`)).toBe('DOI');
+    expect(articleKind('42')).toBe('numeric index');
+    expect(articleKind('3; 4, 12')).toBe('numeric index');
+    expect(articleKind(`Smith, J. (2001). ${'x'.repeat(80)}`)).toBe('full citation');
+    expect(articleKind('Smith2001')).toBeNull();
+    expect(articleKind('Alfaro_et_al_2023_GEB')).toBeNull();
+    // A DOI registrant has at least four digits; eighty characters is still a key.
+    expect(articleKind('10.12/short')).toBeNull();
+    expect(articleKind('x'.repeat(80))).toBeNull();
   });
 });

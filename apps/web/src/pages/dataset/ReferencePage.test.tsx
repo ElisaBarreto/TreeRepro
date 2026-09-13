@@ -51,6 +51,8 @@ const BARE: ReferenceDetail = {
   doi: null,
   url: null,
   recordCount: 1,
+  primaryCount: 1,
+  secondaryCount: 0,
 };
 const page = (data: RecordItem[], nextCursor: string | null = null) => ({
   data,
@@ -83,10 +85,14 @@ function definition(label: string): HTMLElement {
 }
 
 describe('RFC-61 R4 ReferencePage metadata', () => {
-  it('shows the citation key, the record count and every field, DOI and URL as links', async () => {
+  it('shows the citation key, the usage per role and every field, DOI and URL as links', async () => {
     await openPage();
     expect(dataset.fetchReference).toHaveBeenCalledWith(REFERENCE.id);
-    expect(screen.getByText('2 records')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Used as the primary article in 1 record and as the secondary article in 1 record.',
+      ),
+    ).toBeInTheDocument();
     expect(definition('Title')).toHaveTextContent('Breeding systems of tropical trees');
     expect(definition('Authors')).toHaveTextContent('Smith, J.; Doe, A.');
     expect(definition('Year')).toHaveTextContent('2001');
@@ -101,12 +107,31 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
     expect(url).toHaveAttribute('rel', 'noreferrer');
   });
 
-  it('reads "—" for every missing field, keeps a long key whole and counts one record in the singular', async () => {
+  it('pluralises each count on its own and separates thousands', async () => {
+    dataset.fetchReference.mockResolvedValue({
+      ...REFERENCE_DETAIL,
+      recordCount: 1240,
+      primaryCount: 1237,
+      secondaryCount: 3,
+    });
+    await openPage();
+    expect(
+      screen.getByText(
+        'Used as the primary article in 1,237 records and as the secondary article in 3 records.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('reads "—" for every missing field, keeps a long key whole and counts zero in the plural', async () => {
     dataset.fetchReference.mockResolvedValue(BARE);
     dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
     await openPage(BARE);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(BARE.citationKey);
-    expect(screen.getByText('1 record')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Used as the primary article in 1 record and as the secondary article in 0 records.',
+      ),
+    ).toBeInTheDocument();
     for (const label of ['Title', 'Authors', 'Year', 'Journal', 'DOI', 'URL']) {
       expect(definition(label)).toHaveTextContent('—');
     }
@@ -124,7 +149,7 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
 });
 
 describe('RFC-63 R8, R9 ReferencePage records', () => {
-  it('lists the records with the species name as a link and the trait per row, both chips, and opens the drawer from a row', async () => {
+  it('lists the records with the species, trait, primary and secondary article per row, both chips, and opens the drawer from a row', async () => {
     await openPage();
     await waitFor(() =>
       expect(dataset.fetchRecords).toHaveBeenCalledWith({
@@ -134,26 +159,38 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
       }),
     );
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(
-      'Records from this reference',
+      'Records citing this article',
     );
     const rows = within(await screen.findByRole('table')).getAllByRole('row');
     expect(rows).toHaveLength(3);
     const headers = within(rows[0] as HTMLElement)
       .getAllByRole('columnheader')
       .map((th) => th.textContent);
-    expect(headers.slice(0, 3)).toEqual(['Species', 'Trait', 'Value']);
+    expect(headers.slice(0, 5)).toEqual([
+      'Species',
+      'Trait',
+      'Value',
+      'Primary article',
+      'Secondary article',
+    ]);
     const species = within(rows[1] as HTMLElement).getByRole('link', {
       name: 'Adenanthera pavonina',
     });
     expect(species).toHaveAttribute('href', `/app/species/${RECORD.species.id}`);
-    expect(within(rows[1] as HTMLElement).getAllByRole('cell')[1]).toHaveTextContent(
-      'sexual system',
-    );
-    expect(rows[1]).toHaveTextContent('Smith2001');
+    const first = within(rows[1] as HTMLElement).getAllByRole('cell');
+    expect(first[1]).toHaveTextContent('sexual system');
+    expect(
+      within(first[3] as HTMLElement).getByRole('link', { name: 'Smith2001' }),
+    ).toHaveAttribute('href', `/app/references/${REFERENCE.id}`);
+    expect(first[4]).toHaveTextContent(/^—$/);
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('confirmed')).toBeInTheDocument();
-    expect(within(rows[2] as HTMLElement).getAllByRole('cell')[1]).toHaveTextContent('seed mass');
-    expect(rows[2]).toHaveTextContent('Renner2014 via Smith2001');
+    const second = within(rows[2] as HTMLElement).getAllByRole('cell');
+    expect(second[1]).toHaveTextContent('seed mass');
+    expect(
+      within(second[3] as HTMLElement).getByRole('link', { name: 'Renner2014' }),
+    ).toBeVisible();
+    expect(within(second[4] as HTMLElement).getByRole('link', { name: 'Smith2001' })).toBeVisible();
     expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText('disputed')).toBeInTheDocument();
     const pagination = screen.getByRole('navigation', { name: 'Pagination' });
@@ -193,10 +230,10 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     expect(screen.getByText('Page 1')).toBeInTheDocument();
   });
 
-  it('says so when no record names the reference', async () => {
+  it('says so when no record cites the article', async () => {
     dataset.fetchRecords.mockResolvedValue(page([]));
     await openPage();
-    expect(await screen.findByText('No records name this reference yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No records cite this article yet.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
@@ -210,7 +247,7 @@ describe('RFC-13 R4, R6 ReferencePage errors', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Reference');
     expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
-    expect(screen.queryByText('No records name this reference yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No records cite this article yet.')).not.toBeInTheDocument();
     expect(dataset.fetchRecords).not.toHaveBeenCalled();
   });
 
@@ -235,6 +272,6 @@ describe('RFC-13 R4, R6 ReferencePage errors', () => {
       'You do not have permission to do this.',
     );
     expect(definition('Title')).toHaveTextContent('Breeding systems of tropical trees');
-    expect(screen.queryByText('No records name this reference yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No records cite this article yet.')).not.toBeInTheDocument();
   });
 });

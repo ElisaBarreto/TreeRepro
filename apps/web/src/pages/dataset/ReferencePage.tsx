@@ -8,6 +8,7 @@ import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { RecordTable } from '../../components/dataset/RecordTable.tsx';
 import { Alert, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
+import { formatNumber } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
@@ -18,6 +19,11 @@ function errorMessage(error: unknown): string {
     return 'This reference does not exist.';
   }
   return pageErrorMessage(error);
+}
+
+// `1 record`, `2 records`, `1,237 records`.
+function records(n: number): string {
+  return `${formatNumber(n)} ${n === 1 ? 'record' : 'records'}`;
 }
 
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
@@ -92,14 +98,14 @@ function ReferenceRecords({
   return (
     <section className="flex flex-col gap-3">
       <h2 className="font-display text-lg font-semibold text-canopy-950">
-        Records from this reference
+        Records citing this article
       </h2>
       {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
       {list.isLoading && !list.error ? (
         <p className="text-sm text-mist-500">Loading records…</p>
       ) : null}
       {!list.isLoading && !list.error && list.items.length === 0 ? (
-        <EmptyState title="No records name this reference yet." />
+        <EmptyState title="No records cite this article yet." />
       ) : null}
       {list.items.length > 0 ? (
         <RecordTable
@@ -116,11 +122,11 @@ function ReferenceRecords({
 
 /**
  * One bibliographic reference (RFC-61 R4): its citation key as the title,
- * the metadata the import kept, and every record that names it as primary or
- * secondary source, one page at a time with the species and trait of each
- * row; a row opens the record in a drawer. The
- * records section mounts only once the reference resolved, so an unknown id
- * shows one alert and no empty list.
+ * how many records cite it as the primary and as the secondary article, the
+ * metadata the import kept, and every record that names it in either role,
+ * one page at a time with the species, trait and both articles of each row;
+ * a row opens the record in a drawer. The records section mounts only once
+ * the reference resolved, so an unknown id shows one alert and no empty list.
  * @rfc RFC-13 R2, R4
  * @rfc RFC-61 R4
  */
@@ -153,7 +159,7 @@ export function ReferencePage({ id }: { id: string }) {
     <>
       <PageHeader
         title={<span className="break-words">{data.citationKey}</span>}
-        description={`${data.recordCount} ${data.recordCount === 1 ? 'record' : 'records'}`}
+        description={`Used as the primary article in ${records(data.primaryCount)} and as the secondary article in ${records(data.secondaryCount)}.`}
       />
       <div className="flex flex-col gap-8">
         <Metadata reference={data} />

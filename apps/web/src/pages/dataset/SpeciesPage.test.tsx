@@ -133,7 +133,8 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     const rows = within(await within(panel).findByRole('table')).getAllByRole('row');
     expect(rows).toHaveLength(3);
     expect(within(rows[1] as HTMLElement).getByRole('button', { name: 'dioecious' })).toBeVisible();
-    expect(rows[1]).toHaveTextContent('Renner2014 via TRY-6.0');
+    expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'Renner2014' })).toBeVisible();
+    expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'TRY-6.0' })).toBeVisible();
     expect(rows[1]).toHaveTextContent('import');
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('confirmed')).toBeInTheDocument();
