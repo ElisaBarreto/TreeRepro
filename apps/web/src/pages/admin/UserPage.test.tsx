@@ -106,6 +106,9 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     const region = screen.getByRole('region', { name: 'Name' });
     await userEvent.clear(within(region).getByLabelText('Name'));
     await userEvent.type(within(region).getByLabelText('Name'), 'Beatriz');
+    // The write invalidates the detail query too, so it refetches: point the
+    // mock at the same committed user before triggering that refetch.
+    admin.fetchUser.mockResolvedValue({ ...INVITED_USER, name: 'Beatriz' });
     await userEvent.click(within(region).getByRole('button', { name: 'Save name' }));
     await waitFor(() =>
       expect(admin.updateUser).toHaveBeenCalledWith(INVITED_USER.id, { name: 'Beatriz' }),
@@ -116,15 +119,16 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
 
   it('RFC-50 R5, RFC-31 R7 saves roles; ROLE_LAST_ADMIN is mapped', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    const BOTH_ROLES: User = {
+      ...ADMIN_USER,
+      roles: [
+        { id: ROLE_ADMIN.id, name: 'admin' },
+        { id: ROLE_READERS.id, name: 'Readers' },
+      ],
+    };
     admin.updateUser
       .mockRejectedValueOnce(new ApiError(409, 'ROLE_LAST_ADMIN', 'x'))
-      .mockResolvedValueOnce({
-        ...ADMIN_USER,
-        roles: [
-          { id: ROLE_ADMIN.id, name: 'admin' },
-          { id: ROLE_READERS.id, name: 'Readers' },
-        ],
-      });
+      .mockResolvedValueOnce(BOTH_ROLES);
     await openUser(ADMIN_USER);
     const region = screen.getByRole('region', { name: 'Roles' });
     // The accessible name is the whole label (name, badge, description): match its start.
@@ -140,6 +144,9 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     );
     await userEvent.click(adminBox);
     await userEvent.click(within(region).getByRole('checkbox', { name: /^Readers\b/ }));
+    // The write invalidates the detail query too, so it refetches: point the
+    // mock at the same committed user before triggering that refetch.
+    admin.fetchUser.mockResolvedValue(BOTH_ROLES);
     await userEvent.click(within(region).getByRole('button', { name: 'Save roles' }));
     await waitFor(() =>
       expect(admin.updateUser).toHaveBeenLastCalledWith(ADMIN_USER.id, {
@@ -149,21 +156,37 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     expect(await within(region).findByRole('status')).toHaveTextContent('Roles saved.');
   });
 
-  it('RFC-50 R6-R7 suspends after confirming, then offers Reactivate', async () => {
+  it('RFC-50 R6-R7 suspends after confirming (refreshing sessions), then offers Reactivate; ROLE_LAST_ADMIN keeps the dialog open', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
-    admin.suspendUser.mockResolvedValue({
+    const SUSPENDED: User = {
       ...ADMIN_USER,
       status: 'suspended',
       suspendedAt: '2026-09-13T09:00:00.000Z',
-    });
+    };
+    admin.suspendUser
+      .mockRejectedValueOnce(new ApiError(409, 'ROLE_LAST_ADMIN', 'x'))
+      .mockResolvedValueOnce(SUSPENDED);
     admin.reactivateUser.mockResolvedValue(ADMIN_USER);
     await openUser(ADMIN_USER);
     await userEvent.click(screen.getByRole('button', { name: 'Suspend' }));
     const dialog = screen.getByRole('dialog', { name: 'Suspend Ada?' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Suspend' }));
-    await waitFor(() => expect(admin.suspendUser).toHaveBeenCalledWith(ADMIN_USER.id));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'This is the last active administrator.',
+    );
+    expect(screen.getByRole('dialog', { name: 'Suspend Ada?' })).toBeInTheDocument();
+    // The write invalidates the detail (and sessions) query too, so both
+    // refetch: point the mock at the same committed user before retrying.
+    admin.fetchUser.mockResolvedValue(SUSPENDED);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Suspend' }));
+    await waitFor(() => expect(admin.suspendUser).toHaveBeenCalledTimes(2));
+    expect(admin.suspendUser).toHaveBeenCalledWith(ADMIN_USER.id);
     expect(await screen.findByText('suspended')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // RFC-50 R6: suspending deletes every session server-side, so the
+    // mounted sessions table must refetch, not just go stale.
+    await waitFor(() => expect(admin.listUserSessions).toHaveBeenCalledTimes(2));
+    admin.fetchUser.mockResolvedValue(ADMIN_USER);
     await userEvent.click(screen.getByRole('button', { name: 'Reactivate' }));
     await userEvent.click(
       within(screen.getByRole('dialog', { name: 'Reactivate Ada?' })).getByRole('button', {

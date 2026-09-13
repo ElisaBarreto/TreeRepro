@@ -164,7 +164,7 @@ export function RoleDialog({
                     }}
                   />
                   <span>
-                    {entry.description}
+                    {entry.description}{' '}
                     <span className="ml-2 font-mono text-meta text-mist-500">{entry.key}</span>
                   </span>
                 </label>

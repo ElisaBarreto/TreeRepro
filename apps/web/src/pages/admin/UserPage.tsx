@@ -36,16 +36,7 @@ export function UserPage({ id }: { id: string }) {
   const user = useQuery({ queryKey: adminKeys.user(id), queryFn: () => fetchUser(id) });
   const settle = (next: User) => {
     queryClient.setQueryData(adminKeys.user(id), next);
-    // refetchType 'none': the users list is inactive while this page is
-    // mounted (it refetches on its own, staleTime 0, next time it mounts),
-    // and forcing an immediate refetch here would also match this very
-    // query (`adminKeys.user(id)` shares the `['admin', 'users']` prefix)
-    // and clobber the fresher `next` just written above with a stale GET.
-    void queryClient.invalidateQueries({
-      queryKey: ['admin', 'users'],
-      exact: false,
-      refetchType: 'none',
-    });
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
   };
   const suspend = useMutation({
     mutationFn: () => suspendUser(id),

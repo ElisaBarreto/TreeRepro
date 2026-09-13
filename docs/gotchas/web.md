@@ -86,8 +86,3 @@
 **Symptom:** After a save (or another section's write) the checked boxes still show the old roles.
 **Cause:** `useState(initial)` reads the prop once; later prop values are ignored.
 **Fix:** Keep a derived key next to the state and reset during render when it changes (`UserRolesSection.tsx`) — the adjust-state-during-render pattern `usePagedList` uses.
-
-## Invalidating a prefix refetches the detail you just wrote
-**Symptom:** A mutation's `setQueryData(adminKeys.user(id), …)` is immediately overwritten by a refetch.
-**Cause:** `invalidateQueries({ queryKey: ['admin', 'users'] })` prefix-matches the active detail query `['admin', 'users', id]` and refetches it.
-**Fix:** `refetchType: 'none'` — stale lists refetch on their next mount anyway (`UserPage.tsx`, `UserNameSection.tsx`, `UserRolesSection.tsx`).

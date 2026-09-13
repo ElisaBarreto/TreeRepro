@@ -78,7 +78,7 @@ describe('RFC-13 R2, RFC-51 R1 AuditPage', () => {
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
         .map((th) => th.textContent),
-    ).toEqual(['At', 'Actor', 'Action', 'Target', 'IP', 'User agent', 'Details']);
+    ).toEqual(['At (UTC)', 'Actor', 'Action', 'Target', 'IP', 'User agent', 'Details']);
     expect(admin.queryAudit).toHaveBeenCalledWith({
       actor: undefined,
       action: undefined,
@@ -112,15 +112,15 @@ describe('RFC-13 R2, RFC-51 R1 AuditPage', () => {
     expect(screen.getByText('Ada', { selector: 'option' })).toHaveValue(ADMIN_USER.id);
     await userEvent.type(screen.getByLabelText('Actor'), ADMIN_USER.id);
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'users.created');
-    await userEvent.type(screen.getByLabelText('From'), '2026-09-01T00:00');
-    await userEvent.type(screen.getByLabelText('To'), '2026-09-30T23:59');
+    await userEvent.type(screen.getByLabelText('From (UTC)'), '2026-09-01T00:00');
+    await userEvent.type(screen.getByLabelText('To (UTC)'), '2026-09-30T23:59');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() =>
       expect(admin.queryAudit).toHaveBeenLastCalledWith({
         actor: ADMIN_USER.id,
         action: 'users.created',
-        from: new Date('2026-09-01T00:00').toISOString(),
-        to: new Date('2026-09-30T23:59').toISOString(),
+        from: '2026-09-01T00:00:00.000Z',
+        to: '2026-09-30T23:59:00.000Z',
         cursor: undefined,
         limit: 50,
       }),
@@ -132,11 +132,28 @@ describe('RFC-13 R2, RFC-51 R1 AuditPage', () => {
     await openPage();
     await screen.findByRole('table');
     await userEvent.type(screen.getByLabelText('Actor'), 'ada');
-    await userEvent.type(screen.getByLabelText('From'), '2026-09-30T00:00');
-    await userEvent.type(screen.getByLabelText('To'), '2026-09-01T00:00');
+    await userEvent.type(screen.getByLabelText('From (UTC)'), '2026-09-30T00:00');
+    await userEvent.type(screen.getByLabelText('To (UTC)'), '2026-09-01T00:00');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(await screen.findByText('Enter a user id.')).toBeInTheDocument();
     expect(screen.getByText('From must not be later than To.')).toBeInTheDocument();
+    expect(admin.queryAudit).toHaveBeenCalledTimes(1);
+  });
+
+  it('flags an unparsable time in a datetime-local fallback text input', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    await openPage();
+    await screen.findByRole('table');
+    const from = screen.getByLabelText('From (UTC)') as HTMLInputElement;
+    // jsdom sanitizes an unparsable `datetime-local` value back to "" (a
+    // spec-compliant `datetime-local` input can never actually hold
+    // "garbage"): simulate the real-world fallback this guard is for — a
+    // browser without `datetime-local` support renders the control as plain
+    // text — by switching the input to `text` before setting the value.
+    from.type = 'text';
+    from.value = 'garbage';
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText('Enter a date and time.')).toBeInTheDocument();
     expect(admin.queryAudit).toHaveBeenCalledTimes(1);
   });
 

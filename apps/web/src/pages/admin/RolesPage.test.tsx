@@ -185,4 +185,17 @@ describe('RFC-13 R2, RFC-50 R10 RolesPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(admin.listRoles).toHaveBeenCalledTimes(2));
   });
+
+  it('RFC-13 R4 a 403 shows the permission sentence; an empty list says so', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    admin.listRoles.mockRejectedValueOnce(new ApiError(403, 'PERMISSION_DENIED', 'x'));
+    const first = await openPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You do not have permission to do this.',
+    );
+    first.unmount();
+    admin.listRoles.mockResolvedValue([]);
+    await openPage();
+    expect(await screen.findByText('No roles yet.')).toBeInTheDocument();
+  });
 });

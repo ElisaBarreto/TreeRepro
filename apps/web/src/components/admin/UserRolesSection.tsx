@@ -27,10 +27,7 @@ export function UserRolesSection({ user, canEdit }: { user: User; canEdit: boole
     mutationFn: (ids: string[]) => updateUser(user.id, { roles: ids }),
     onSuccess: (next) => {
       queryClient.setQueryData(adminKeys.user(user.id), next);
-      // refetchType 'none': see the comment in UserPage.tsx's `settle` — an
-      // immediate refetch here would also match this section's own query key
-      // and overwrite the fresher `next` just written above.
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'], refetchType: 'none' });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
   });
   const toggle = (id: string) => {

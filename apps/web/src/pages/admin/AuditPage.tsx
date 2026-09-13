@@ -40,9 +40,23 @@ export function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-// A datetime-local value (`2026-09-13T10:00`, local time) as the ISO instant the API takes.
-function toInstant(local: string): string | undefined {
-  return local ? new Date(local).toISOString() : undefined;
+const DATETIME_LOCAL_MINUTES = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const DATETIME_LOCAL_SECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+
+// A datetime-local value (`2026-09-13T10:00`, UTC) as the ISO instant the
+// API takes: append the seconds and the `Z` designator the input lacks (or
+// just the `Z` when it already has seconds), then let `Date` parse it.
+// `undefined` for an empty value; `null` when the raw text (a browser
+// without `datetime-local` support falls back to a text input) does not
+// match the expected shape at all — checked with a regexp rather than left
+// to `Date`, whose loose, non-ISO parsing can turn unrelated text into a
+// spurious valid date instead of `Invalid Date`.
+function toInstant(local: string): string | undefined | null {
+  if (!local) return undefined;
+  const hasSeconds = DATETIME_LOCAL_SECONDS.test(local);
+  if (!hasSeconds && !DATETIME_LOCAL_MINUTES.test(local)) return null;
+  const date = new Date(hasSeconds ? `${local}Z` : `${local}:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /**
@@ -58,7 +72,12 @@ export function AuditPage() {
   const me = useMe();
   const ids = { actor: useId(), action: useId(), from: useId(), to: useId(), list: useId() };
   const [filters, setFilters] = useState<Filters>({});
-  const [errors, setErrors] = useState<{ actor?: string; range?: string }>({});
+  const [errors, setErrors] = useState<{
+    actor?: string;
+    from?: string;
+    to?: string;
+    range?: string;
+  }>({});
   const list = usePagedList(adminKeys.audit({ ...filters }), (cursor, limit) =>
     queryAudit({ ...filters, cursor, limit }),
   );
@@ -77,13 +96,20 @@ export function AuditPage() {
     const action = String(form.get('action') ?? '');
     const from = toInstant(String(form.get('from') ?? ''));
     const to = toInstant(String(form.get('to') ?? ''));
-    const next: { actor?: string; range?: string } = {};
+    const next: { actor?: string; from?: string; to?: string; range?: string } = {};
     if (actor && !z.uuid().safeParse(actor).success) next.actor = 'Enter a user id.';
-    if (from && to && Date.parse(from) > Date.parse(to))
+    if (from === null) next.from = 'Enter a date and time.';
+    if (to === null) next.to = 'Enter a date and time.';
+    if (typeof from === 'string' && typeof to === 'string' && Date.parse(from) > Date.parse(to))
       next.range = 'From must not be later than To.';
     setErrors(next);
-    if (next.actor || next.range) return;
-    setFilters({ actor: actor || undefined, action: action || undefined, from, to });
+    if (next.actor || next.from || next.to || next.range) return;
+    setFilters({
+      actor: actor || undefined,
+      action: action || undefined,
+      from: from ?? undefined,
+      to: to ?? undefined,
+    });
   }
 
   return (
@@ -124,16 +150,21 @@ export function AuditPage() {
               ))}
             </Select>
           </Field>
-          <Field id={ids.from} label="From" error={errors.range}>
+          <Field id={ids.from} label="From (UTC)" error={errors.from ?? errors.range}>
             <Input
               id={ids.from}
               name="from"
               type="datetime-local"
-              invalid={Boolean(errors.range)}
+              invalid={Boolean(errors.from ?? errors.range)}
             />
           </Field>
-          <Field id={ids.to} label="To">
-            <Input id={ids.to} name="to" type="datetime-local" invalid={Boolean(errors.range)} />
+          <Field id={ids.to} label="To (UTC)" error={errors.to}>
+            <Input
+              id={ids.to}
+              name="to"
+              type="datetime-local"
+              invalid={Boolean(errors.to ?? errors.range)}
+            />
           </Field>
           <div>
             <Button type="submit" variant="secondary">
@@ -158,7 +189,7 @@ function AuditTable({ items, names }: { items: AuditLogEntry[]; names: Map<strin
     <Table>
       <Thead>
         <Tr>
-          <Th>At</Th>
+          <Th>At (UTC)</Th>
           <Th>Actor</Th>
           <Th>Action</Th>
           <Th>Target</Th>
