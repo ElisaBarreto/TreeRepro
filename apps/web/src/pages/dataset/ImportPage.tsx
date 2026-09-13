@@ -65,7 +65,7 @@ export function ImportPage({ id }: { id: string }) {
     return (
       <>
         <PageHeader title="Import" />
-        <p className="text-sm text-mist-500">Loading…</p>
+        <p className="text-body text-mist-500">Loading…</p>
       </>
     );
   }
@@ -123,10 +123,10 @@ function Counts({ batch }: { batch: ImportBatch }) {
     <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
       {tiles.map(([label, value]) => (
         <div key={label} className="rounded-xl border border-canopy-700/15 bg-white px-4 py-3">
-          <dt className="text-xs font-semibold uppercase tracking-wider text-canopy-800">
+          <dt className="text-label font-bold uppercase tracking-[0.08em] text-canopy-800">
             {label}
           </dt>
-          <dd className="mt-1 font-display text-2xl font-bold tabular-nums text-canopy-950">
+          <dd className="mt-1 font-display text-title font-bold tabular-nums text-canopy-950">
             {formatNumber(value)}
           </dd>
         </div>
@@ -139,11 +139,11 @@ function UnknownLevels({ batch }: { batch: ImportBatch }) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 id={headingId} className="font-display text-lg font-semibold text-canopy-950">
+      <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
         Unknown levels
       </h2>
       {batch.unknownLevels.length === 0 ? (
-        <p className="text-sm text-mist-500">None</p>
+        <p className="text-body text-mist-500">None</p>
       ) : (
         <Table>
           <Thead>
@@ -173,13 +173,13 @@ function Rejects({ list }: { list: PagedList<ImportReject> }) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 id={headingId} className="font-display text-lg font-semibold text-canopy-950">
+      <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
         Rejected rows
       </h2>
       {error ? <Alert tone="error">{pageErrorMessage(error)}</Alert> : null}
-      {isLoading && !error ? <p className="text-sm text-mist-500">Loading…</p> : null}
+      {isLoading && !error ? <p className="text-body text-mist-500">Loading…</p> : null}
       {!isLoading && !error && items.length === 0 ? (
-        <p className="text-sm text-mist-500">None</p>
+        <p className="text-body text-mist-500">None</p>
       ) : null}
       {items.length > 0 ? (
         <Table>
@@ -201,7 +201,7 @@ function Rejects({ list }: { list: PagedList<ImportReject> }) {
                     <summary className="cursor-pointer text-canopy-900 underline-offset-2 hover:underline">
                       Raw row
                     </summary>
-                    <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
+                    <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-meta">
                       {orderedColumns(reject.rawRow).map((column) => (
                         <div key={column} className="contents">
                           <dt className="font-mono text-mist-500">{column}</dt>

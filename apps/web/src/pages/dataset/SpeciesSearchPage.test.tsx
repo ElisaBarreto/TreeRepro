@@ -261,7 +261,7 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
   it('RFC-13 R3 the Species entry appears in the navigation only with dataset.read', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     const withPermission = await openPage();
-    const main = screen.getByRole('navigation', { name: 'Main' });
+    const main = screen.getByRole('navigation', { name: 'Data' });
     expect(within(main).getByRole('link', { name: 'Species' })).toHaveAttribute(
       'href',
       '/app/species',
@@ -271,8 +271,9 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
 
     auth.fetchMe.mockResolvedValue(ME);
     await openPage();
-    const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(within(nav).queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
-    expect(within(nav).getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    // Without a dataset entry the Data group is not rendered at all.
+    expect(screen.queryByRole('navigation', { name: 'Data' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
 });

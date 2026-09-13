@@ -3,7 +3,7 @@ import type { Genus, TaxonRef } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
-import { Badge, Button, Field, Input } from '../ui/index.ts';
+import { Badge, Button, Field, Input, Select } from '../ui/index.ts';
 
 export interface SpeciesSearchValue {
   q: string;
@@ -11,9 +11,6 @@ export interface SpeciesSearchValue {
   genusId?: string;
   unresolved: boolean;
 }
-
-const SELECT =
-  'h-10 w-full rounded-lg border border-canopy-700/25 bg-white px-3 text-[15px] text-canopy-950 outline-none transition-colors focus:border-pollen-500';
 
 /**
  * The filters of the species search: a name box, a family select, a genus
@@ -74,9 +71,8 @@ export function SpeciesSearchForm({
         label="Family"
         error={families.isError ? 'Could not load families.' : undefined}
       >
-        <select
+        <Select
           id={ids.family}
-          className={SELECT}
           value={value.familyId ?? ''}
           onChange={(event) => {
             setChosenGenus(null);
@@ -89,7 +85,7 @@ export function SpeciesSearchForm({
               {family.name}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
       <div className="flex flex-col gap-2">
         <Field
@@ -116,7 +112,7 @@ export function SpeciesSearchForm({
               id={ids.genera}
               role="listbox"
               aria-label="Genus suggestions"
-              className="max-h-64 overflow-y-auto rounded-lg border border-canopy-700/15 bg-white py-1 text-sm shadow-sm"
+              className="max-h-64 overflow-y-auto rounded-[10px] border border-canopy-700/15 bg-white py-1 text-cell shadow-sm"
             >
               {suggestions.map((genus) => (
                 // The option is the button itself: it is what a keyboard
@@ -126,18 +122,18 @@ export function SpeciesSearchForm({
                   type="button"
                   role="option"
                   aria-selected={genus.id === value.genusId}
-                  className="flex w-full items-baseline gap-2 px-3 py-2 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none"
+                  className="flex w-full items-baseline gap-2 px-3.5 py-2.5 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none"
                   onClick={() => chooseGenus(genus)}
                 >
                   <span className="italic">{genus.name}</span>
                   {genus.family ? (
-                    <span className="text-xs text-mist-500">{genus.family.name}</span>
+                    <span className="text-meta text-mist-500">{genus.family.name}</span>
                   ) : null}
                 </button>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-mist-500">No genus matches.</p>
+            <p className="text-meta text-mist-500">No genus matches.</p>
           )
         ) : null}
         {value.genusId ? (
@@ -145,16 +141,16 @@ export function SpeciesSearchForm({
             <Badge tone="green">
               <span className="italic">{chosenGenus?.name ?? 'Selected genus'}</span>
             </Badge>
-            <Button variant="secondary" aria-label="Clear genus" onClick={clearGenus}>
+            <Button variant="secondary" size="sm" aria-label="Clear genus" onClick={clearGenus}>
               Clear
             </Button>
           </div>
         ) : null}
       </div>
-      <label className="flex h-10 items-center gap-2 text-sm text-canopy-900 md:col-span-3">
+      <label className="flex h-11 items-center gap-2.5 text-body text-canopy-900 md:col-span-3">
         <input
           type="checkbox"
-          className="size-4 accent-pollen-500"
+          className="size-5 accent-canopy-700"
           checked={value.unresolved}
           onChange={(event) => onChange({ ...value, unresolved: event.target.checked })}
         />

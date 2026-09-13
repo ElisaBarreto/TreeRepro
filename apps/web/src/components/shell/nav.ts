@@ -1,13 +1,30 @@
 import type { PermissionKey } from '@treerepro/contracts';
+import type { IconName } from '../ui/Icon.tsx';
+
+export type NavSection = 'data' | 'admin' | 'account';
 
 export interface NavEntry {
   to: string;
   label: string;
+  icon: IconName;
   /** Rendered only when the session holds this permission. */
   permission?: PermissionKey;
-  /** `admin` entries sit under the Admin heading, itself gated by admin.access. */
-  section?: 'admin';
+  /**
+   * Group in the sidebar, in the order of `NAV_SECTIONS`; entries without
+   * one come first. `admin` is also gated by admin.access.
+   */
+  section?: NavSection;
 }
+
+/**
+ * Sidebar groups in display order; a `null` label is a gap without a heading.
+ * @rfc RFC-13 R3
+ */
+export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] = [
+  { key: 'data', label: 'Data' },
+  { key: 'admin', label: 'Admin' },
+  { key: 'account', label: null },
+];
 
 /**
  * Every navigation entry of the workspace. Other plans append here; the
@@ -15,13 +32,64 @@ export interface NavEntry {
  * @rfc RFC-13 R3
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
-  { to: '/app', label: 'Workspace' },
-  { to: '/app/settings', label: 'Settings' },
-  { to: '/app/admin/users', label: 'Users', permission: 'users.read', section: 'admin' },
-  { to: '/app/admin/roles', label: 'Roles', permission: 'roles.read', section: 'admin' },
-  { to: '/app/admin/audit', label: 'Audit', permission: 'audit.read', section: 'admin' },
-  { to: '/app/species', label: 'Species', permission: 'dataset.read' },
-  { to: '/app/traits', label: 'Traits', permission: 'dataset.read' },
-  { to: '/app/references', label: 'References', permission: 'dataset.read' },
-  { to: '/app/imports', label: 'Imports', permission: 'imports.read' },
+  { to: '/app', label: 'Workspace', icon: 'home' },
+  {
+    to: '/app/species',
+    label: 'Species',
+    icon: 'leaf',
+    permission: 'dataset.read',
+    section: 'data',
+  },
+  { to: '/app/traits', label: 'Traits', icon: 'list', permission: 'dataset.read', section: 'data' },
+  {
+    to: '/app/references',
+    label: 'References',
+    icon: 'book',
+    permission: 'dataset.read',
+    section: 'data',
+  },
+  {
+    to: '/app/imports',
+    label: 'Imports',
+    icon: 'upload',
+    permission: 'imports.read',
+    section: 'data',
+  },
+  {
+    to: '/app/admin/users',
+    label: 'Users',
+    icon: 'users',
+    permission: 'users.read',
+    section: 'admin',
+  },
+  {
+    to: '/app/admin/roles',
+    label: 'Roles',
+    icon: 'shield',
+    permission: 'roles.read',
+    section: 'admin',
+  },
+  {
+    to: '/app/admin/audit',
+    label: 'Audit',
+    icon: 'clipboard',
+    permission: 'audit.read',
+    section: 'admin',
+  },
+  { to: '/app/settings', label: 'Settings', icon: 'sliders', section: 'account' },
 ];
+
+/**
+ * The entry a pathname belongs to: the longest `to` that is the path or a
+ * prefix of it at a segment boundary, so `/app/species/<id>` is Species and
+ * `/app` alone is Workspace.
+ * @rfc RFC-13 R3
+ */
+export function currentEntry(pathname: string): NavEntry | undefined {
+  let best: NavEntry | undefined;
+  for (const entry of NAV_ENTRIES) {
+    const match = pathname === entry.to || pathname.startsWith(`${entry.to}/`);
+    if (match && (!best || entry.to.length > best.to.length)) best = entry;
+  }
+  return best;
+}

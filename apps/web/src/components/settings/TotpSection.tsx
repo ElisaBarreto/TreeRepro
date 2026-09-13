@@ -11,7 +11,7 @@ import { totpConfirm, totpDisable, totpSetup } from '../../api/auth.ts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
 import { ME_QUERY_KEY, useMe } from '../../lib/session.ts';
-import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
+import { Alert, Button, Dialog, Field, Input, Section } from '../ui/index.ts';
 
 /** @rfc RFC-13 R6 */
 export function totpErrorMessage(error: unknown): string {
@@ -187,16 +187,17 @@ export function TotpSection() {
     disableFieldErrors.code ?? disableServerErrors.code ?? disableServerErrors.recoveryCode;
 
   return (
-    <section aria-labelledby="totp-heading" className="flex flex-col gap-4">
-      <h2 id="totp-heading" className="font-display text-lg font-bold">
-        Two-factor authentication
-      </h2>
+    <Section
+      id="totp"
+      title="Two-factor authentication"
+      description="A code from your authenticator app on every sign-in."
+    >
       {stage.kind === 'codes' ? (
         <div className="flex max-w-md flex-col gap-4">
           <Alert tone="info">
             Save these recovery codes somewhere safe. Each works once; they are shown only now.
           </Alert>
-          <ul className="grid grid-cols-2 gap-2 font-mono text-sm">
+          <ul className="grid grid-cols-2 gap-2 font-mono text-body">
             {stage.codes.map((code) => (
               <li key={code} className="rounded bg-mist-50 px-3 py-1.5">
                 {code}
@@ -209,12 +210,12 @@ export function TotpSection() {
         </div>
       ) : stage.kind === 'setup' ? (
         <form onSubmit={submitCode} className="flex max-w-md flex-col gap-4" noValidate>
-          <p className="text-sm text-canopy-800">
+          <p className="text-body text-canopy-800">
             Scan the code with your authenticator app, or enter the secret by hand, then type the
             six-digit code it shows.
           </p>
           <QrCanvas uri={stage.otpauthUri} />
-          <p className="font-mono text-sm tracking-wider">{stage.secret}</p>
+          <p className="font-mono text-body tracking-wider">{stage.secret}</p>
           <Field id={ids.code} label="Verification code" error={codeError}>
             <Input
               id={ids.code}
@@ -240,7 +241,7 @@ export function TotpSection() {
         </form>
       ) : me.user.totpEnabled ? (
         <>
-          <p className="text-sm text-canopy-800">Two-factor authentication is on.</p>
+          <p className="text-body text-canopy-800">Two-factor authentication is on.</p>
           <div>
             <Button variant="secondary" onClick={() => setDisabling(true)}>
               Disable
@@ -293,7 +294,7 @@ export function TotpSection() {
         </>
       ) : (
         <>
-          <p className="text-sm text-canopy-800">Two-factor authentication is off.</p>
+          <p className="text-body text-canopy-800">Two-factor authentication is off.</p>
           {setup.isError ? <Alert tone="error">{totpErrorMessage(setup.error)}</Alert> : null}
           <div>
             <Button onClick={() => setup.mutate()} pending={setup.isPending}>
@@ -302,6 +303,6 @@ export function TotpSection() {
           </div>
         </>
       )}
-    </section>
+    </Section>
   );
 }

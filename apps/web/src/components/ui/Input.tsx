@@ -5,11 +5,12 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 /** @rfc RFC-13 R5 */
-export function Input({ invalid = false, className = '', ...rest }: InputProps) {
+export function Input({ invalid = false, className = '', readOnly, ...rest }: InputProps) {
   return (
     <input
       aria-invalid={invalid || undefined}
-      className={`h-10 w-full rounded-lg border bg-white px-3 text-[15px] text-canopy-950 outline-none transition-colors placeholder:text-mist-500 focus:border-pollen-500 ${invalid ? 'border-red-600' : 'border-canopy-700/25'} ${className}`}
+      readOnly={readOnly}
+      className={`h-11 w-full rounded-[10px] border px-3.5 text-body outline-none transition-colors placeholder:text-mist-500 focus:border-pollen-500 focus:ring-[3px] focus:ring-pollen-500/25 ${readOnly ? 'bg-mist-50 text-canopy-800' : 'bg-white text-canopy-950'} ${invalid ? 'border-red-600' : 'border-canopy-700/25'} ${className}`}
       {...rest}
     />
   );

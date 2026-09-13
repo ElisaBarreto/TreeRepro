@@ -56,9 +56,7 @@ function errorMessage(error: unknown): string {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="font-display text-xs font-semibold uppercase tracking-wider text-mist-500">
-        {title}
-      </h3>
+      <h3 className="text-label font-bold uppercase tracking-[0.08em] text-mist-500">{title}</h3>
       {children}
     </section>
   );
@@ -66,7 +64,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Definitions({ rows }: { rows: ReadonlyArray<{ label: string; value: ReactNode }> }) {
   return (
-    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-cell">
       {rows.map((row) => (
         <div key={row.label} className="contents">
           <dt className="text-mist-500">{row.label}</dt>
@@ -95,7 +93,7 @@ function RecordBody({ record }: { record: RecordDetail }) {
   return (
     <div className="flex flex-col gap-6">
       <Section title="Value">
-        <p className="font-display text-lg font-semibold text-canopy-950">
+        <p className="font-display text-section font-semibold text-canopy-950">
           {humaniseKey(record.trait.key)}
         </p>
         <Definitions
@@ -165,11 +163,11 @@ function RecordBody({ record }: { record: RecordDetail }) {
 
       <Section title="Annotations">
         {record.annotations.length === 0 ? (
-          <p className="text-sm text-mist-500">No annotations yet</p>
+          <p className="text-body text-mist-500">No annotations yet</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {record.annotations.map((annotation) => (
-              <li key={annotation.id} className="flex flex-col gap-1 text-sm">
+              <li key={annotation.id} className="flex flex-col gap-1 text-cell">
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge tone={ANNOTATION_TONES[annotation.kind]}>{annotation.kind}</Badge>
                   <span className="text-canopy-900">{annotation.actor.name}</span>
@@ -188,11 +186,11 @@ function RecordBody({ record }: { record: RecordDetail }) {
 
       <Section title="Accepted history">
         {record.acceptedHistory.length === 0 ? (
-          <p className="text-sm text-mist-500">No accepted value decisions yet</p>
+          <p className="text-body text-mist-500">No accepted value decisions yet</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {record.acceptedHistory.map((entry) => (
-              <li key={entry.id} className="flex flex-col gap-1 text-sm">
+              <li key={entry.id} className="flex flex-col gap-1 text-cell">
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge tone={DECISION_TONES[entry.decision]}>{entry.decision}</Badge>
                   <span className="text-canopy-900">{entry.actor.name}</span>
@@ -213,7 +211,7 @@ function RecordBody({ record }: { record: RecordDetail }) {
 function RecordLoader({ id }: { id: string }) {
   const query = useQuery({ queryKey: datasetKeys.record(id), queryFn: () => fetchRecord(id) });
   if (query.error && !query.data) return <Alert tone="error">{errorMessage(query.error)}</Alert>;
-  if (!query.data) return <p className="text-sm text-mist-500">Loading record…</p>;
+  if (!query.data) return <p className="text-body text-mist-500">Loading record…</p>;
   return <RecordBody record={query.data} />;
 }
 

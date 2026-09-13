@@ -10,6 +10,8 @@ import {
   Field,
   Input,
   PageHeader,
+  Section,
+  Select,
   Table,
   Tbody,
   Td,
@@ -189,5 +191,72 @@ describe('RFC-13 R5 UI kit renders with classes only', () => {
     expect(screen.getByRole('cell', { name: 'Ada' })).toBeInTheDocument();
     expect(screen.getByText('active')).toBeInTheDocument();
     expect(screen.getByText('Nothing yet')).toBeInTheDocument();
+  });
+});
+
+describe('RFC-13 R5 UI kit — workspace pattern additions', () => {
+  it('Button: the small size is a distinct class set', () => {
+    const { rerender } = render(<Button>Save</Button>);
+    const large = screen.getByRole('button', { name: 'Save' }).className;
+    rerender(<Button size="sm">Save</Button>);
+    expect(screen.getByRole('button', { name: 'Save' }).className).not.toBe(large);
+  });
+
+  it('Select renders its options, reports changes and marks invalid', async () => {
+    const onChange = vi.fn();
+    render(
+      <Field id="family" label="Family" error="Pick one">
+        <Select id="family" invalid value="" onChange={onChange}>
+          <option value="">Any</option>
+          <option value="f1">Fabaceae</option>
+        </Select>
+      </Field>,
+    );
+    const select = screen.getByLabelText('Family');
+    expect(select).toHaveAttribute('aria-invalid', 'true');
+    expect(select).toHaveAccessibleDescription('Pick one');
+    await userEvent.selectOptions(select, 'f1');
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it('Section is a labelled region with its heading and description', () => {
+    render(
+      <Section id="profile" title="Profile" description="What curators see.">
+        <p>Body</p>
+      </Section>,
+    );
+    const region = screen.getByRole('region', { name: 'Profile' });
+    expect(region).toContainElement(screen.getByText('What curators see.'));
+    expect(region).toContainElement(screen.getByText('Body'));
+    expect(screen.getByRole('heading', { name: 'Profile' })).toHaveAttribute(
+      'id',
+      'profile-heading',
+    );
+  });
+
+  it('Th and Td keep the caller className next to their own', () => {
+    render(
+      <Table>
+        <Thead>
+          <Tr>
+            <Th className="text-right">N</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          <Tr>
+            <Td className="tabular-nums">1</Td>
+          </Tr>
+        </Tbody>
+      </Table>,
+    );
+    expect(screen.getByRole('columnheader', { name: 'N' }).className).toContain('text-right');
+    expect(screen.getByRole('cell', { name: '1' }).className).toContain('tabular-nums');
+  });
+
+  it('Alert keeps its text as the accessible content next to a decorative icon', () => {
+    render(<Alert tone="info">Heads up</Alert>);
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('Heads up');
+    expect(status.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 });

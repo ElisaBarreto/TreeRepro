@@ -34,13 +34,13 @@ export function TraitPanel({
   return (
     <Drawer open title={humaniseKey(summary.trait.key)} onClose={onClose} size="lg">
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-mist-500">
+        <p className="text-body text-mist-500">
           {summary.trait.unit ? `${summary.trait.unit} · ` : ''}
           {summary.recordCount} {summary.recordCount === 1 ? 'record' : 'records'}
         </p>
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading && !list.error ? (
-          <p className="text-sm text-mist-500">Loading records…</p>
+          <p className="text-body text-mist-500">Loading records…</p>
         ) : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No records for this trait yet." />

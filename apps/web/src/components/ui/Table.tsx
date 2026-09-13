@@ -4,14 +4,14 @@ import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } fr
 export function Table({ children }: { children: ReactNode }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-canopy-700/15 bg-white">
-      <table className="w-full text-left text-sm">{children}</table>
+      <table className="w-full text-left text-cell">{children}</table>
     </div>
   );
 }
 /** @rfc RFC-13 R5 */
 export function Thead({ children }: { children: ReactNode }) {
   return (
-    <thead className="bg-mist-50 text-xs uppercase tracking-wider text-canopy-800">
+    <thead className="bg-mist-50 text-label font-bold uppercase tracking-[0.06em] text-canopy-800">
       {children}
     </thead>
   );
@@ -26,9 +26,9 @@ export function Tr(props: HTMLAttributes<HTMLTableRowElement>) {
 }
 /** @rfc RFC-13 R5 */
 export function Th({ className = '', ...rest }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th scope="col" className={`px-4 py-3 font-semibold ${className}`} {...rest} />;
+  return <th scope="col" className={`px-[18px] py-3.5 font-bold ${className}`} {...rest} />;
 }
 /** @rfc RFC-13 R5 */
 export function Td({ className = '', ...rest }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={`px-4 py-3 align-top ${className}`} {...rest} />;
+  return <td className={`px-[18px] py-3.5 align-top ${className}`} {...rest} />;
 }

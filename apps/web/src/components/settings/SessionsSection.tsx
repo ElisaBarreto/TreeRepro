@@ -3,7 +3,19 @@ import { logoutAll } from '../../api/auth.ts';
 import { listSessions, revokeSession } from '../../api/me.ts';
 import { GENERIC_MESSAGE } from '../../lib/errors.ts';
 import { forgetSession } from '../../lib/session.ts';
-import { Alert, Badge, Button, EmptyState, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import {
+  Alert,
+  Badge,
+  Button,
+  EmptyState,
+  Section,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '../ui/index.ts';
 
 const SESSIONS_KEY = ['me', 'sessions'] as const;
 
@@ -41,10 +53,7 @@ export function SessionsSection({
   });
 
   return (
-    <section aria-labelledby="sessions-heading" className="flex flex-col gap-4">
-      <h2 id="sessions-heading" className="font-display text-lg font-bold">
-        Sessions
-      </h2>
+    <Section id="sessions" title="Sessions" description="Every device signed in with your account.">
       {sessions.isError ? <Alert tone="error">{GENERIC_MESSAGE}</Alert> : null}
       {revoke.isError || everywhere.isError ? <Alert tone="error">{GENERIC_MESSAGE}</Alert> : null}
       {sessions.data && sessions.data.length === 0 ? (
@@ -77,6 +86,7 @@ export function SessionsSection({
                   {s.current ? null : (
                     <Button
                       variant="secondary"
+                      size="sm"
                       aria-label={`Sign out ${s.userAgent}`}
                       pending={revoke.isPending && revoke.variables === s.id}
                       onClick={() => revoke.mutate(s.id)}
@@ -95,6 +105,6 @@ export function SessionsSection({
           Sign out everywhere
         </Button>
       </div>
-    </section>
+    </Section>
   );
 }

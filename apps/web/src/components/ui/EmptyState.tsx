@@ -12,8 +12,8 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-canopy-700/25 px-6 py-12 text-center">
-      <p className="font-display font-semibold text-canopy-900">{title}</p>
-      {description ? <p className="max-w-md text-sm text-mist-500">{description}</p> : null}
+      <p className="font-display text-card font-semibold text-canopy-950">{title}</p>
+      {description ? <p className="max-w-md text-body text-mist-500">{description}</p> : null}
       {action}
     </div>
   );

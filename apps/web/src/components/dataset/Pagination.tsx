@@ -1,9 +1,6 @@
 import { useId } from 'react';
 import { PAGE_SIZES, type Pager, type PageSize } from '../../lib/use-paged-list.ts';
-import { Button } from '../ui/index.ts';
-
-const SELECT =
-  'h-10 rounded-lg border border-canopy-700/25 bg-white px-3 text-sm text-canopy-950 outline-none transition-colors focus:border-pollen-500';
+import { Button, Icon, Select } from '../ui/index.ts';
 
 /**
  * Footer of a paged list: Previous / Next (disabled at either end), the
@@ -21,20 +18,22 @@ export function Pagination({ pager }: { pager: Pager }) {
     >
       <div className="flex items-center gap-3">
         <Button variant="secondary" disabled={!pager.hasPrev} onClick={() => pager.prev()}>
+          <Icon name="arrowLeft" size={18} />
           Previous
         </Button>
-        <span className="text-sm tabular-nums text-canopy-900">Page {pager.page}</span>
+        <span className="text-body tabular-nums text-canopy-900">Page {pager.page}</span>
         <Button variant="secondary" disabled={!pager.hasNext} onClick={() => pager.next()}>
           Next
+          <Icon name="arrowRight" size={18} />
         </Button>
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor={sizeId} className="text-sm text-mist-500">
+        <label htmlFor={sizeId} className="whitespace-nowrap text-meta text-mist-500">
           Rows per page
         </label>
-        <select
+        <Select
           id={sizeId}
-          className={SELECT}
+          className="w-24"
           value={pager.pageSize}
           onChange={(event) => pager.setPageSize(Number(event.target.value) as PageSize)}
         >
@@ -43,7 +42,7 @@ export function Pagination({ pager }: { pager: Pager }) {
               {size}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
     </nav>
   );
