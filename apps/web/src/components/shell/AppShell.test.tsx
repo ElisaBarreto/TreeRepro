@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
@@ -12,16 +12,25 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       to,
       children,
       activeOptions: _activeOptions,
+      search,
       ...rest
     }: {
       to: string;
       children: React.ReactNode;
       activeOptions?: unknown;
-    }) => (
-      <a href={to} {...rest}>
-        {children}
-      </a>
-    ),
+      search?: Record<string, unknown>;
+    }) => {
+      const qs = search
+        ? `?${Object.entries(search)
+            .map(([key, value]) => `${key}=${value}`)
+            .join('&')}`
+        : '';
+      return (
+        <a href={`${to}${qs}`} {...rest}>
+          {children}
+        </a>
+      );
+    },
     useNavigate: () => vi.fn(),
     useLocation: () => ({ pathname: location.pathname }),
   };
@@ -85,6 +94,30 @@ describe('RFC-13 R3 AppShell navigation', () => {
     });
     expect(screen.getByRole('link', { name: 'Imports' })).toHaveAttribute('href', '/app/imports');
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
+  });
+
+  it('RFC-13 R3 shows the Curation group with dataset.read, linking Unresolved taxa to the species search with the toggle on', async () => {
+    renderWithProviders(<AppShell>content</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read'] },
+    });
+    const nav = screen.getByRole('navigation', { name: 'Curation' });
+    expect(within(nav).getByRole('link', { name: 'Pending' })).toHaveAttribute(
+      'href',
+      '/app/curation/pending',
+    );
+    expect(within(nav).getByRole('link', { name: 'Disputed' })).toHaveAttribute(
+      'href',
+      '/app/curation/disputed',
+    );
+    expect(within(nav).getByRole('link', { name: 'Unresolved taxa' })).toHaveAttribute(
+      'href',
+      '/app/species?unresolved=true',
+    );
+  });
+
+  it('hides the Curation group without dataset.read', () => {
+    renderWithProviders(<AppShell>content</AppShell>, { me: ME });
+    expect(screen.queryByRole('navigation', { name: 'Curation' })).not.toBeInTheDocument();
   });
 });
 

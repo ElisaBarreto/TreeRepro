@@ -22,6 +22,8 @@ function initials(name: string): string {
 // `aria-current` comes from `currentEntry`, not from the router: with exact
 // matching the router never marks `/app` active under `/app/species`, so the
 // two agree wherever both apply and the prop below is the one that shows.
+// The comparison is by entry identity, not by `to`: two entries may share a
+// path and differ only in search params (Species and Unresolved taxa).
 function NavGroup({
   name,
   heading,
@@ -42,10 +44,11 @@ function NavGroup({
       ) : null}
       {entries.map((e) => (
         <Link
-          key={e.to}
+          key={e.label}
           to={e.to}
+          search={e.search}
           activeOptions={{ exact: true }}
-          aria-current={current?.to === e.to ? 'page' : undefined}
+          aria-current={current === e ? 'page' : undefined}
           className={LINK}
         >
           <Icon name={e.icon} />

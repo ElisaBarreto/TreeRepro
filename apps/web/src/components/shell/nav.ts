@@ -1,7 +1,7 @@
 import type { PermissionKey } from '@treerepro/contracts';
 import type { IconName } from '../ui/Icon.tsx';
 
-export type NavSection = 'data' | 'admin' | 'account';
+export type NavSection = 'data' | 'curation' | 'admin' | 'account';
 
 export interface NavEntry {
   to: string;
@@ -14,6 +14,8 @@ export interface NavEntry {
    * one come first. `admin` is also gated by admin.access.
    */
   section?: NavSection;
+  /** Search params the link carries (typed loosely; the target route validates them). */
+  search?: Record<string, unknown>;
 }
 
 /**
@@ -22,6 +24,7 @@ export interface NavEntry {
  */
 export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] = [
   { key: 'data', label: 'Data' },
+  { key: 'curation', label: 'Curation' },
   { key: 'admin', label: 'Admin' },
   { key: 'account', label: null },
 ];
@@ -30,6 +33,7 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
  * Every navigation entry of the workspace. Other plans append here; the
  * shell filters by permission (RFC-13 R3).
  * @rfc RFC-13 R3
+ * @rfc RFC-65 R8, R10
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app', label: 'Workspace', icon: 'home' },
@@ -54,6 +58,28 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: 'upload',
     permission: 'imports.read',
     section: 'data',
+  },
+  {
+    to: '/app/curation/pending',
+    label: 'Pending',
+    icon: 'clipboard',
+    permission: 'dataset.read',
+    section: 'curation',
+  },
+  {
+    to: '/app/curation/disputed',
+    label: 'Disputed',
+    icon: 'alert',
+    permission: 'dataset.read',
+    section: 'curation',
+  },
+  {
+    to: '/app/species',
+    label: 'Unresolved taxa',
+    icon: 'leaf',
+    permission: 'dataset.read',
+    section: 'curation',
+    search: { unresolved: true },
   },
   {
     to: '/app/admin/users',
@@ -82,7 +108,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
 /**
  * The entry a pathname belongs to: the longest `to` that is the path or a
  * prefix of it at a segment boundary, so `/app/species/<id>` is Species and
- * `/app` alone is Workspace.
+ * `/app` alone is Workspace. Two entries may share a `to` (Species and
+ * Unresolved taxa, which differ only in search params); the first wins.
  * @rfc RFC-13 R3
  */
 export function currentEntry(pathname: string): NavEntry | undefined {

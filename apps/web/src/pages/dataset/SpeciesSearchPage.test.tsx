@@ -276,4 +276,31 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
+
+  it('RFC-60 R6 reads ?unresolved=true into the toggle and sends it on the first search', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    renderAt('/app/species?unresolved=true');
+    expect(await screen.findByRole('checkbox', { name: /unresolved/i })).toBeChecked();
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ unresolved: true }),
+      ),
+    );
+  });
+
+  it('RFC-66 R1 shows the export link only with dataset.export', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'dataset.export'] });
+    renderAt('/app/species');
+    const link = await screen.findByRole('link', { name: /export accepted values/i });
+    expect(link).toHaveAttribute('href', '/api/export/accepted.csv');
+    expect(link).toHaveAttribute('download');
+  });
+
+  it('hides the export link without dataset.export', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    await openPage();
+    await screen.findByRole('heading', { level: 1, name: 'Species' });
+    expect(screen.queryByRole('link', { name: /export accepted values/i })).not.toBeInTheDocument();
+  });
 });

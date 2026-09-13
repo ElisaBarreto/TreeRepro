@@ -49,6 +49,11 @@
 **Cause:** TanStack Router's scroll restoration calls it on every navigation.
 **Fix:** `window.scrollTo = () => {};` in `apps/web/src/test/setup.ts`.
 
+## A file download is a plain `<a download>`
+**Symptom:** Temptation to route a CSV export through `apiFetch` like every other request.
+**Cause:** `apiFetch` buffers the whole response body in memory and returns it as parsed JSON; that loses the browser's native download UI (`Content-Disposition`, progress, the "Save As" prompt) and would hold a large export entirely in memory.
+**Fix:** A file download is a plain `<a download>` to the API path (`EXPORT_ACCEPTED_URL` in `SpeciesSearchPage.tsx`) — the session cookie travels with the navigation like any other same-origin request, no `apiFetch` involved.
+
 ## A suggestion list is `<div role="listbox">` of `<button role="option">`
 **Symptom:** Biome rejects `<ul role="listbox">` / `<li role="option">` (`noNoninteractiveElementToInteractiveRole`, `useFocusableInteractive`); with a `<button>` nested inside the `<li>`, `userEvent.click(getByRole('option'))` does nothing — the click lands on the `li`, not the button, and assistive technology behaves the same way because an option's children are presentational.
 **Fix:** The element that carries `role="option"` must be the focusable, clickable one: render `<div role="listbox">` with `<button type="button" role="option" aria-selected>` as its direct children (`SpeciesSearchForm.tsx`). No `ul`/`li` in between.
