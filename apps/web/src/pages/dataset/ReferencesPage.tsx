@@ -1,11 +1,13 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import type { Reference } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, searchReferences } from '../../api/dataset.ts';
+import { ReferenceDialog } from '../../components/catalog/ReferenceDialog.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import {
   Alert,
   Badge,
+  Button,
   EmptyState,
   Field,
   Input,
@@ -19,6 +21,7 @@ import {
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { articleKind, formatNumber, truncate } from '../../lib/format.ts';
+import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
@@ -31,12 +34,17 @@ const DASH = <span className="text-mist-500">—</span>;
  * lists at once; the term, debounced, narrows it once it has two letters (the
  * API's minimum) and starts over at page 1. Long citation keys are cut in the
  * cell and kept whole in the link's `title`; a small badge says when the key
- * is a DOI, a numeric index or a full citation rather than a name.
- * @rfc RFC-13 R2, R4
- * @rfc RFC-61 R4
+ * is a DOI, a numeric index or a full citation rather than a name. A New
+ * reference action, for `references.manage`, opens `ReferenceDialog` and
+ * navigates to the created reference on success.
+ * @rfc RFC-13 R2, R3, R4
+ * @rfc RFC-61 R4, R6
  */
 export function ReferencesPage() {
+  const me = useMe();
+  const navigate = useNavigate();
   const [text, setText] = useState('');
+  const [creating, setCreating] = useState(false);
   const searchId = useId();
   const term = useDebouncedValue(text.trim(), 300);
   const q = term.length >= 2 ? term : undefined;
@@ -49,7 +57,21 @@ export function ReferencesPage() {
       <PageHeader
         title="References"
         description="Articles cited by the records, most used first. Search by citation key or title."
+        actions={
+          hasPermission(me, 'references.manage') ? (
+            <Button onClick={() => setCreating(true)}>New reference</Button>
+          ) : undefined
+        }
       />
+      {creating ? (
+        <ReferenceDialog
+          onClose={() => setCreating(false)}
+          onSaved={(r) => {
+            setCreating(false);
+            navigate({ to: '/app/references/$id', params: { id: r.id } });
+          }}
+        />
+      ) : null}
       <div className="flex flex-col gap-6">
         <div className="max-w-md">
           <Field id={searchId} label="Search references">
