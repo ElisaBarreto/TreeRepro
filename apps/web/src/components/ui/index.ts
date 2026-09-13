@@ -2,6 +2,8 @@ export { Alert } from './Alert.tsx';
 export { Badge } from './Badge.tsx';
 export type { ButtonProps } from './Button.tsx';
 export { Button } from './Button.tsx';
+export type { ComboboxOption, ComboboxProps } from './Combobox.tsx';
+export { Combobox } from './Combobox.tsx';
 export type { DialogProps } from './Dialog.tsx';
 export { Dialog } from './Dialog.tsx';
 export type { DrawerProps } from './Drawer.tsx';

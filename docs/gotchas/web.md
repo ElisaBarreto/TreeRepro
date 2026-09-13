@@ -62,3 +62,7 @@
 **Symptom:** The sidebar marks both Workspace (`/app`) and Species as the current page under `/app/species/<id>`, although the shell passes `aria-current` itself.
 **Cause:** TanStack Router's `Link` spreads its own `{ "data-status": "active", "aria-current": "page" }` *after* your props whenever it considers itself active, and by default a link is active on a prefix match — so `/app` is active everywhere.
 **Fix:** `activeOptions={{ exact: true }}` on every sidebar link and `aria-current` computed from `currentEntry(pathname)` (`AppShell.tsx`, `nav.ts`): the router only ever agrees with that value, never overrides it with a prefix match.
+
+## `Combobox` keyboard model is roving focus, not `aria-activedescendant`
+**Symptom:** a listbox of `<button role="option">` cannot use `aria-activedescendant` (the options are real focusable buttons), and jsdom does not implement activedescendant either.
+**Fix:** ArrowDown from the input focuses the first option button, the arrows move focus among options, Escape returns focus to the input (`Combobox.tsx`). Tests assert `toHaveFocus()` on the option buttons.
