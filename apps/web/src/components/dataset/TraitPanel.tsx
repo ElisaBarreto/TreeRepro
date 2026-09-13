@@ -3,17 +3,20 @@ import { datasetKeys, fetchRecords } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { AcceptedSection } from '../curation/AcceptedSection.tsx';
 import { Alert, Drawer, EmptyState } from '../ui/index.ts';
 import { Pagination } from './Pagination.tsx';
 import { RecordTable } from './RecordTable.tsx';
 
 /**
- * The records of one trait for one species, in a wide drawer: one page at a
- * time of `GET /api/records?speciesId&traitId` (RFC-63 R9) rendered as a
+ * The records of one trait for one species, in a wide drawer: the accepted
+ * value (RFC-65 R6) above one page at a time of
+ * `GET /api/records?speciesId&traitId` (RFC-63 R9) rendered as a
  * `RecordTable` without the species and trait columns, which the page and
- * the title already name; a row hands its id back so the page can open the
- * record.
+ * the title already name, its accepted row badged; a row hands its id back
+ * so the page can open the record.
  * @rfc RFC-63 R9
+ * @rfc RFC-65 R6
  */
 export function TraitPanel({
   speciesId,
@@ -38,6 +41,7 @@ export function TraitPanel({
           {summary.trait.unit ? `${summary.trait.unit} · ` : ''}
           {summary.recordCount} {summary.recordCount === 1 ? 'record' : 'records'}
         </p>
+        <AcceptedSection speciesId={speciesId} traitId={traitId} />
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading && !list.error ? (
           <p className="text-body text-mist-500">Loading records…</p>
@@ -46,7 +50,11 @@ export function TraitPanel({
           <EmptyState title="No records for this trait yet." />
         ) : null}
         {list.items.length > 0 ? (
-          <RecordTable records={list.items} onSelect={(record) => onSelectRecord(record.id)} />
+          <RecordTable
+            records={list.items}
+            onSelect={(record) => onSelectRecord(record.id)}
+            acceptedRecordId={summary.accepted?.recordId}
+          />
         ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>

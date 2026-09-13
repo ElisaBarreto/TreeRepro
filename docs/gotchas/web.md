@@ -49,6 +49,11 @@
 **Cause:** TanStack Router's scroll restoration calls it on every navigation.
 **Fix:** `window.scrollTo = () => {};` in `apps/web/src/test/setup.ts`.
 
+## A file download is a plain `<a download>`
+**Symptom:** Temptation to route a CSV export through `apiFetch` like every other request.
+**Cause:** `apiFetch` buffers the whole response body in memory and returns it as parsed JSON; that loses the browser's native download UI (`Content-Disposition`, progress, the "Save As" prompt) and would hold a large export entirely in memory.
+**Fix:** A file download is a plain `<a download>` to the API path (`EXPORT_ACCEPTED_URL` in `SpeciesSearchPage.tsx`) — the session cookie travels with the navigation like any other same-origin request, no `apiFetch` involved.
+
 ## A suggestion list is `<div role="listbox">` of `<button role="option">`
 **Symptom:** Biome rejects `<ul role="listbox">` / `<li role="option">` (`noNoninteractiveElementToInteractiveRole`, `useFocusableInteractive`); with a `<button>` nested inside the `<li>`, `userEvent.click(getByRole('option'))` does nothing — the click lands on the `li`, not the button, and assistive technology behaves the same way because an option's children are presentational.
 **Fix:** The element that carries `role="option"` must be the focusable, clickable one: render `<div role="listbox">` with `<button type="button" role="option" aria-selected>` as its direct children (`SpeciesSearchForm.tsx`). No `ul`/`li` in between.
@@ -57,3 +62,17 @@
 **Symptom:** The sidebar marks both Workspace (`/app`) and Species as the current page under `/app/species/<id>`, although the shell passes `aria-current` itself.
 **Cause:** TanStack Router's `Link` spreads its own `{ "data-status": "active", "aria-current": "page" }` *after* your props whenever it considers itself active, and by default a link is active on a prefix match — so `/app` is active everywhere.
 **Fix:** `activeOptions={{ exact: true }}` on every sidebar link and `aria-current` computed from `currentEntry(pathname)` (`AppShell.tsx`, `nav.ts`): the router only ever agrees with that value, never overrides it with a prefix match.
+
+## `Combobox` keyboard model is roving focus, not `aria-activedescendant`
+**Symptom:** a listbox of `<button role="option">` cannot use `aria-activedescendant` (the options are real focusable buttons), and jsdom does not implement activedescendant either.
+**Fix:** ArrowDown from the input focuses the first option button, the arrows move focus among options, Escape returns focus to the input (`Combobox.tsx`). Tests assert `toHaveFocus()` on the option buttons.
+
+## A modal `Drawer` must portal to `document.body` and mark the rest of the page `inert` itself
+**Symptom:** Tab still reaches inputs behind the panel, or a screen reader announces content underneath, while a drawer is meant to be modal.
+**Cause:** A drawer rendered inline in the component tree sits behind the rest of the page in DOM order; nothing keeps it focusable-only, and jsdom's `showModal` polyfill (`test/setup.ts`) does not itself enforce a focus trap or `inert`.
+**Fix:** `Drawer` renders through `createPortal(..., document.body)` and keeps the open drawers in a module-level stack (mount order): after every open or close it recomputes `body`'s children — the topmost drawer's root is the only active one, every other child is `inert` (children that already had the attribute are left alone; only what the module marked is ever unmarked). Tab/Shift+Tab cycle among the panel's own focusable elements; focus moves to Close on open, to the remaining top drawer's Close when one closes beneath or above it, and back to the opener once none remains (RFC-13 R10). Per-instance bookkeeping ("remove what I set") is not enough: two drawers can be open at once (trait panel + record drawer) and the outer can close first — the page dropped it — while the inner stays open; an instance-local cleanup would then un-inert the page under the inner drawer and pull focus out of it.
+
+## A dialog mounted only while open starts from fresh state
+**Symptom:** A dialog's initial field values are stale or wrong after it is reopened for a different item.
+**Cause:** Toggling an `open` prop keeps the component instance (and its `useState`) alive across opens; when the initial value depends on what opened it (which trait, which pending group), the old state leaks into the new open.
+**Fix:** Mount and unmount the dialog instead of toggling `open` — render it only while a piece of state names what to open (`{addValueOpen ? <AddValueDialog ... /> : null}`), so every open is a fresh mount with fresh state (`AddValueDialog`, `MapDialog`).

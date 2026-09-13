@@ -1,7 +1,12 @@
 import type {
+  AcceptedState,
   Dictionary,
+  DisputedRecord,
   ImportBatch,
   ImportReject,
+  MapResult,
+  PendingGroup,
+  PendingTrait,
   RecordDetail,
   RecordItem,
   Reference,
@@ -11,6 +16,7 @@ import type {
   TraitRef,
   TraitSummary,
 } from '@treerepro/contracts';
+import { USER } from './fixtures.ts';
 
 /** @rfc RFC-60 R7 */
 export const FAMILY = { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d01', name: 'Fabaceae' };
@@ -343,5 +349,84 @@ export const IMPORT_REJECT: ImportReject = {
     original_value_clean: 'yellow',
     trait_value_type: 'categorical',
     harmonised_value: '',
+  },
+};
+
+/** The dictionary's sexual_system trait as a `TraitRef` (its id differs from `SEXUAL_SYSTEM`, which the summaries use). @rfc RFC-62 R5 */
+export const DICTIONARY_SEXUAL_SYSTEM: TraitRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e01',
+  key: 'sexual_system',
+  valueType: 'categorical',
+  unit: null,
+};
+
+/** RECORD is the accepted value; one earlier decision was cleared. @rfc RFC-65 R11 */
+export const ACCEPTED_STATE: AcceptedState = {
+  current: {
+    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d90',
+    recordId: RECORD.id,
+    valueText: 'dioecious',
+    actor: { id: USER.id, name: USER.name },
+    note: 'Best sampled population.',
+    decidedAt: '2026-09-05T12:00:00.000Z',
+  },
+  history: [
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d90',
+      decision: 'accepted',
+      recordId: RECORD.id,
+      valueText: 'dioecious',
+      actor: { id: USER.id, name: USER.name },
+      note: 'Best sampled population.',
+      createdAt: '2026-09-05T12:00:00.000Z',
+    },
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d91',
+      decision: 'cleared',
+      recordId: null,
+      valueText: null,
+      actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+      note: 'Sources disagree.',
+      createdAt: '2026-09-04T12:00:00.000Z',
+    },
+  ],
+};
+
+/** @rfc RFC-65 R11 */
+export const EMPTY_ACCEPTED: AcceptedState = { current: null, history: [] };
+
+/** @rfc RFC-65 R8 */
+export const PENDING_TRAITS: PendingTrait[] = [
+  { trait: DICTIONARY_SEXUAL_SYSTEM, count: 3 },
+  { trait: SEED_MASS, count: 1 },
+];
+
+/** @rfc RFC-65 R8 */
+export const PENDING_GROUPS: PendingGroup[] = [
+  {
+    valueText: 'dioecious ',
+    harmonisation: 'unknown_level',
+    count: 2,
+    sampleRecordId: PENDING_RECORD.id,
+  },
+  {
+    valueText: 'dioecious;monoecious',
+    harmonisation: 'multi_value',
+    count: 1,
+    sampleRecordId: RECORD.id,
+  },
+];
+
+/** @rfc RFC-65 R9 */
+export const MAP_RESULT: MapResult = { created: 2, skipped: 0 };
+
+/** @rfc RFC-65 R10 */
+export const DISPUTED_RECORD: DisputedRecord = {
+  ...PENDING_RECORD,
+  latestDispute: {
+    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d70',
+    actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+    note: 'Value is not a number.',
+    createdAt: '2026-09-03T12:00:00.000Z',
   },
 };

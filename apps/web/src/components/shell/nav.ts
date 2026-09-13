@@ -1,7 +1,7 @@
 import type { PermissionKey } from '@treerepro/contracts';
 import type { IconName } from '../ui/Icon.tsx';
 
-export type NavSection = 'data' | 'admin' | 'account';
+export type NavSection = 'data' | 'curation' | 'admin' | 'account';
 
 export interface NavEntry {
   to: string;
@@ -14,6 +14,8 @@ export interface NavEntry {
    * one come first. `admin` is also gated by admin.access.
    */
   section?: NavSection;
+  /** Search params the link carries (typed loosely; the target route validates them). */
+  search?: Record<string, unknown>;
 }
 
 /**
@@ -22,6 +24,7 @@ export interface NavEntry {
  */
 export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] = [
   { key: 'data', label: 'Data' },
+  { key: 'curation', label: 'Curation' },
   { key: 'admin', label: 'Admin' },
   { key: 'account', label: null },
 ];
@@ -30,6 +33,7 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
  * Every navigation entry of the workspace. Other plans append here; the
  * shell filters by permission (RFC-13 R3).
  * @rfc RFC-13 R3
+ * @rfc RFC-65 R8, R10
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app', label: 'Workspace', icon: 'home' },
@@ -56,6 +60,28 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     section: 'data',
   },
   {
+    to: '/app/curation/pending',
+    label: 'Pending',
+    icon: 'clipboard',
+    permission: 'dataset.read',
+    section: 'curation',
+  },
+  {
+    to: '/app/curation/disputed',
+    label: 'Disputed',
+    icon: 'alert',
+    permission: 'dataset.read',
+    section: 'curation',
+  },
+  {
+    to: '/app/species',
+    label: 'Unresolved taxa',
+    icon: 'leaf',
+    permission: 'dataset.read',
+    section: 'curation',
+    search: { unresolved: true },
+  },
+  {
     to: '/app/admin/users',
     label: 'Users',
     icon: 'users',
@@ -79,17 +105,39 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app/settings', label: 'Settings', icon: 'sliders', section: 'account' },
 ];
 
+// Every search entry of `entry` is present in `search` with the same value.
+function searchMatches(entry: NavEntry, search: Record<string, unknown>): boolean {
+  return Object.entries(entry.search ?? {}).every(([key, value]) => search[key] === value);
+}
+
 /**
- * The entry a pathname belongs to: the longest `to` that is the path or a
- * prefix of it at a segment boundary, so `/app/species/<id>` is Species and
- * `/app` alone is Workspace.
+ * The entry a location belongs to: the longest `to` that is the pathname or
+ * a prefix of it at a segment boundary, so `/app/species/<id>` is Species
+ * and `/app` alone is Workspace. Two entries may share a `to` and differ
+ * only in `search` (Species and Unresolved taxa): among those, the one whose
+ * search entries all match the location's search wins, else the one without
+ * a `search`.
  * @rfc RFC-13 R3
  */
-export function currentEntry(pathname: string): NavEntry | undefined {
+export function currentEntry(
+  pathname: string,
+  search: Record<string, unknown> = {},
+): NavEntry | undefined {
   let best: NavEntry | undefined;
   for (const entry of NAV_ENTRIES) {
     const match = pathname === entry.to || pathname.startsWith(`${entry.to}/`);
-    if (match && (!best || entry.to.length > best.to.length)) best = entry;
+    if (!match) continue;
+    if (!best || entry.to.length > best.to.length) {
+      best = entry;
+      continue;
+    }
+    if (entry.to.length !== best.to.length) continue;
+    // Same path: a search-specific entry beats a plain one only when the
+    // location carries its search; a plain one beats a search entry that
+    // does not match.
+    const entryFits = entry.search ? searchMatches(entry, search) : true;
+    const bestFits = best.search ? searchMatches(best, search) : true;
+    if (entryFits && (!bestFits || (entry.search && !best.search))) best = entry;
   }
   return best;
 }

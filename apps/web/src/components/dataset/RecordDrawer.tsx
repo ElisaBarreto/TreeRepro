@@ -11,7 +11,9 @@ import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchRecord } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber, humaniseKey, isoDate } from '../../lib/format.ts';
+import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
+import { DrawerSection } from './DrawerSection.tsx';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 import { ReviewBadge } from './ReviewBadge.tsx';
 
@@ -53,15 +55,6 @@ function errorMessage(error: unknown): string {
   return pageErrorMessage(error);
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-label font-bold uppercase tracking-[0.08em] text-mist-500">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
 function Definitions({ rows }: { rows: ReadonlyArray<{ label: string; value: ReactNode }> }) {
   return (
     <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-cell">
@@ -88,11 +81,41 @@ function ReferenceLink({ reference }: { reference: ReferenceRef | null }) {
   );
 }
 
-function RecordBody({ record }: { record: RecordDetail }) {
+// "Harmonises record …a1b2c3" / "Harmonised as record …a1b2c3": the last six
+// characters of the id name the record; a button when the caller can open it.
+function RecordLink({
+  id,
+  verb,
+  onOpen,
+}: {
+  id: string;
+  verb: 'Harmonises' | 'Harmonised as';
+  onOpen?: (id: string) => void;
+}) {
+  const label = `${verb} record …${id.slice(-6)}`;
+  if (!onOpen) return <span className="text-cell text-canopy-900">{label}</span>;
+  return (
+    <button
+      type="button"
+      className="text-left text-cell font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+      onClick={() => onOpen(id)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function RecordBody({
+  record,
+  onOpenRecord,
+}: {
+  record: RecordDetail;
+  onOpenRecord?: (id: string) => void;
+}) {
   const unit = record.trait.unit;
   return (
     <div className="flex flex-col gap-6">
-      <Section title="Value">
+      <DrawerSection title="Value">
         <p className="font-display text-section font-semibold text-canopy-950">
           {humaniseKey(record.trait.key)}
         </p>
@@ -115,9 +138,11 @@ function RecordBody({ record }: { record: RecordDetail }) {
           <HarmonisationBadge status={record.harmonisation} />
           <ReviewBadge status={record.review} />
         </div>
-      </Section>
+      </DrawerSection>
 
-      <Section title="Source">
+      <RecordActions record={record} />
+
+      <DrawerSection title="Source">
         <Definitions
           rows={[
             { label: 'Primary', value: <ReferenceLink reference={record.primaryReference} /> },
@@ -128,9 +153,9 @@ function RecordBody({ record }: { record: RecordDetail }) {
             ...(record.note ? [{ label: 'Note', value: record.note }] : []),
           ]}
         />
-      </Section>
+      </DrawerSection>
 
-      <Section title="Provenance">
+      <DrawerSection title="Provenance">
         <Definitions
           rows={
             record.origin === 'import'
@@ -150,18 +175,32 @@ function RecordBody({ record }: { record: RecordDetail }) {
                 ]
           }
         />
-      </Section>
+      </DrawerSection>
 
-      <Section title="Raw source columns">
+      {record.supersedes || record.supersededBy.length > 0 ? (
+        <section aria-label="Harmonisation" className="flex flex-col gap-2">
+          <h3 className="text-label font-bold uppercase tracking-[0.08em] text-mist-500">
+            Harmonisation
+          </h3>
+          {record.supersedes ? (
+            <RecordLink id={record.supersedes.id} verb="Harmonises" onOpen={onOpenRecord} />
+          ) : null}
+          {record.supersededBy.map((r) => (
+            <RecordLink key={r.id} id={r.id} verb="Harmonised as" onOpen={onOpenRecord} />
+          ))}
+        </section>
+      ) : null}
+
+      <DrawerSection title="Raw source columns">
         <Definitions
           rows={RAW_COLUMNS.map((column) => ({
             label: column.label,
             value: record[column.key] ?? DASH,
           }))}
         />
-      </Section>
+      </DrawerSection>
 
-      <Section title="Annotations">
+      <DrawerSection title="Annotations">
         {record.annotations.length === 0 ? (
           <p className="text-body text-mist-500">No annotations yet</p>
         ) : (
@@ -182,9 +221,9 @@ function RecordBody({ record }: { record: RecordDetail }) {
             ))}
           </ul>
         )}
-      </Section>
+      </DrawerSection>
 
-      <Section title="Accepted history">
+      <DrawerSection title="Accepted history">
         {record.acceptedHistory.length === 0 ? (
           <p className="text-body text-mist-500">No accepted value decisions yet</p>
         ) : (
@@ -203,36 +242,42 @@ function RecordBody({ record }: { record: RecordDetail }) {
             ))}
           </ul>
         )}
-      </Section>
+      </DrawerSection>
     </div>
   );
 }
 
-function RecordLoader({ id }: { id: string }) {
+function RecordLoader({ id, onOpenRecord }: { id: string; onOpenRecord?: (id: string) => void }) {
   const query = useQuery({ queryKey: datasetKeys.record(id), queryFn: () => fetchRecord(id) });
   if (query.error && !query.data) return <Alert tone="error">{errorMessage(query.error)}</Alert>;
   if (!query.data) return <p className="text-body text-mist-500">Loading record…</p>;
-  return <RecordBody record={query.data} />;
+  return <RecordBody record={query.data} onOpenRecord={onOpenRecord} />;
 }
 
 /**
  * One record in full (RFC-63 R8): its value and both status chips, the
- * references it comes from, where it came from (an import batch and row, or
- * the person who entered it), the source columns as imported, and the
- * curation trail — annotations and accepted-value decisions. Fetches only
- * while a record is selected.
+ * curation actions the session may take on it, the references it comes
+ * from, where it came from (an import batch and row, or the person who
+ * entered it), the harmonisation link to the pending record it resolves or
+ * the records that resolve it (buttons when `onOpenRecord` is given, plain
+ * text otherwise), the source columns as imported, and the curation trail —
+ * annotations and accepted-value decisions. Fetches only while a record is
+ * selected.
  * @rfc RFC-63 R8
+ * @rfc RFC-65 R3, R4, R6, R7
  */
 export function RecordDrawer({
   recordId,
   onClose,
+  onOpenRecord,
 }: {
   recordId: string | null;
   onClose: () => void;
+  onOpenRecord?: (id: string) => void;
 }) {
   return (
     <Drawer open={recordId !== null} title="Record" onClose={onClose}>
-      {recordId !== null ? <RecordLoader id={recordId} /> : null}
+      {recordId !== null ? <RecordLoader id={recordId} onOpenRecord={onOpenRecord} /> : null}
     </Drawer>
   );
 }

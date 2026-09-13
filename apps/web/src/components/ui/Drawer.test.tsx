@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -103,5 +103,157 @@ describe('RFC-13 R5 Drawer', () => {
     await userEvent.keyboard('{Escape}');
     expect(closeInner).toHaveBeenCalledTimes(1);
     expect(closeOuter).not.toHaveBeenCalled();
+  });
+});
+
+describe('RFC-13 R10 Drawer is modal', () => {
+  it('renders at the end of document.body and marks its siblings inert while open', async () => {
+    const onClose = vi.fn();
+    const { container, rerender } = render(
+      <>
+        <button type="button">outside</button>
+        <Drawer open title="Modal" onClose={onClose}>
+          <button type="button">inside</button>
+        </Drawer>
+      </>,
+    );
+    const outside = screen.getByRole('button', { name: 'outside' });
+    expect(outside.closest('[inert]')).not.toBeNull();
+    const dialog = screen.getByRole('dialog', { name: 'Modal' });
+    expect(dialog.closest('[inert]')).toBeNull();
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
+    rerender(
+      <>
+        <button type="button">outside</button>
+        <Drawer open={false} title="Modal" onClose={onClose}>
+          <button type="button">inside</button>
+        </Drawer>
+      </>,
+    );
+    expect(outside.closest('[inert]')).toBeNull();
+    expect(container).toBeInTheDocument();
+  });
+
+  it('cycles Tab inside the panel', async () => {
+    render(
+      <Drawer open title="Modal" onClose={() => undefined}>
+        <button type="button">first</button>
+        <button type="button">last</button>
+      </Drawer>,
+    );
+    const close = screen.getByRole('button', { name: 'Close' });
+    const first = screen.getByRole('button', { name: 'first' });
+    const last = screen.getByRole('button', { name: 'last' });
+    expect(close).toHaveFocus();
+    await userEvent.tab();
+    expect(first).toHaveFocus();
+    await userEvent.tab();
+    expect(last).toHaveFocus();
+    await userEvent.tab();
+    expect(close).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    expect(last).toHaveFocus();
+  });
+
+  it('makes the outer drawer inert while an inner one opens later, and active again with its Close focused once the inner closes', () => {
+    const { rerender } = render(
+      <>
+        <Drawer open title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open={false} title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>,
+    );
+    const outer = screen.getByRole('dialog', { name: 'Outer' });
+    const outerClose = within(outer).getByRole('button', { name: 'Close' });
+    expect(outer.closest('[inert]')).toBeNull();
+    expect(outerClose).toHaveFocus();
+    rerender(
+      <>
+        <Drawer open title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>,
+    );
+    const inner = screen.getByRole('dialog', { name: 'Inner' });
+    expect(outer.closest('[inert]')).not.toBeNull();
+    expect(inner.closest('[inert]')).toBeNull();
+    expect(within(inner).getByRole('button', { name: 'Close' })).toHaveFocus();
+    rerender(
+      <>
+        <Drawer open title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open={false} title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>,
+    );
+    expect(screen.queryByRole('dialog', { name: 'Inner' })).not.toBeInTheDocument();
+    expect(outer.closest('[inert]')).toBeNull();
+    expect(outerClose).toHaveFocus();
+  });
+
+  it('keeps the later-mounted drawer active when two open in the same commit', () => {
+    const { rerender } = render(
+      <>
+        <Drawer open title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>,
+    );
+    const outer = screen.getByRole('dialog', { name: 'Outer' });
+    const inner = screen.getByRole('dialog', { name: 'Inner' });
+    expect(outer.closest('[inert]')).not.toBeNull();
+    expect(inner.closest('[inert]')).toBeNull();
+    rerender(
+      <>
+        <Drawer open title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open={false} title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>,
+    );
+    expect(screen.getByRole('dialog', { name: 'Outer' }).closest('[inert]')).toBeNull();
+  });
+
+  it('closing the outer drawer first keeps the inner modal', () => {
+    const page = (outer: boolean, inner: boolean) => (
+      <>
+        <button type="button">Open</button>
+        <Drawer open={outer} title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open={inner} title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>
+    );
+    const { rerender } = render(page(false, false));
+    const opener = screen.getByRole('button', { name: 'Open' });
+    opener.focus();
+    rerender(page(true, true));
+    expect(opener.closest('[inert]')).not.toBeNull();
+    // The outer closes on its own (the page dropped it) while the inner is
+    // still open: the inner must stay the modal one.
+    rerender(page(false, true));
+    expect(screen.queryByRole('dialog', { name: 'Outer' })).not.toBeInTheDocument();
+    const inner = screen.getByRole('dialog', { name: 'Inner' });
+    expect(inner.closest('[inert]')).toBeNull();
+    expect(opener.closest('[inert]')).not.toBeNull();
+    expect(within(inner).getByRole('button', { name: 'Close' })).toHaveFocus();
+    rerender(page(false, false));
+    expect(document.querySelector('[inert]')).toBeNull();
+    expect(opener).toHaveFocus();
   });
 });

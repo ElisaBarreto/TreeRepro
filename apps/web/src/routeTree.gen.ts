@@ -18,6 +18,8 @@ import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTraitsRouteImport } from './routes/app/traits'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
+import { Route as AppCurationDisputedRouteImport } from './routes/app/curation/disputed'
+import { Route as AppCurationPendingRouteImport } from './routes/app/curation/pending'
 import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
 import { Route as AppImportsIdRouteImport } from './routes/app/imports/$id'
 import { Route as AppReferencesIndexRouteImport } from './routes/app/references/index'
@@ -70,6 +72,16 @@ const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
   path: '/reset-password/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppCurationDisputedRoute = AppCurationDisputedRouteImport.update({
+  id: '/curation/disputed',
+  path: '/curation/disputed',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCurationPendingRoute = AppCurationPendingRouteImport.update({
+  id: '/curation/pending',
+  path: '/curation/pending',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppImportsIndexRoute = AppImportsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -111,6 +123,8 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/curation/disputed': typeof AppCurationDisputedRoute
+  '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
@@ -126,6 +140,8 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app': typeof AppIndexRoute
+  '/app/curation/disputed': typeof AppCurationDisputedRoute
+  '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
@@ -144,6 +160,8 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/curation/disputed': typeof AppCurationDisputedRoute
+  '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
@@ -163,6 +181,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
+    | '/app/curation/disputed'
+    | '/app/curation/pending'
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
@@ -178,6 +198,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app'
+    | '/app/curation/disputed'
+    | '/app/curation/pending'
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
@@ -195,6 +217,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
+    | '/app/curation/disputed'
+    | '/app/curation/pending'
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
@@ -276,6 +300,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/curation/disputed': {
+      id: '/app/curation/disputed'
+      path: '/curation/disputed'
+      fullPath: '/app/curation/disputed'
+      preLoaderRoute: typeof AppCurationDisputedRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/curation/pending': {
+      id: '/app/curation/pending'
+      path: '/curation/pending'
+      fullPath: '/app/curation/pending'
+      preLoaderRoute: typeof AppCurationPendingRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/imports/': {
       id: '/app/imports/'
       path: '/'
@@ -340,6 +378,8 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppTraitsRoute: typeof AppTraitsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppCurationDisputedRoute: typeof AppCurationDisputedRoute
+  AppCurationPendingRoute: typeof AppCurationPendingRoute
   AppReferencesIdRoute: typeof AppReferencesIdRoute
   AppSpeciesIdRoute: typeof AppSpeciesIdRoute
   AppReferencesIndexRoute: typeof AppReferencesIndexRoute
@@ -351,6 +391,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppTraitsRoute: AppTraitsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppCurationDisputedRoute: AppCurationDisputedRoute,
+  AppCurationPendingRoute: AppCurationPendingRoute,
   AppReferencesIdRoute: AppReferencesIdRoute,
   AppSpeciesIdRoute: AppSpeciesIdRoute,
   AppReferencesIndexRoute: AppReferencesIndexRoute,
