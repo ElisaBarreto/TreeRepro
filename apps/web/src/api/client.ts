@@ -61,16 +61,26 @@ export async function apiFetch<T = unknown>(
   if (response.ok) return (await response.json()) as T;
 
   const body: unknown = await response.json().catch(() => null);
-  // Dynamic: `errorEnvelopeSchema` (z.strictObject) is constructed the moment
-  // this module evaluates zod's JIT-fast-path probe (RFC-13 R5). A static
-  // import here would put that construction in the entry's synchronously
-  // evaluated module graph — before main.tsx's `z.config({ jitless: true })`
-  // has run — and trip the CSP even on a response that never errors.
-  const { errorEnvelopeSchema } = await import('@treerepro/contracts');
-  const parsed = errorEnvelopeSchema.safeParse(body);
-  if (parsed.success) {
-    const { code, message, details } = parsed.data.error;
-    throw new ApiError(response.status, code, message, details);
+  // Dynamic: `errorEnvelopeSchema` (z.strictObject) constructs its parser —
+  // and trips zod's JIT-fast-path probe (RFC-13 R5) — the moment this module
+  // is evaluated. A static import here sits in main.tsx's synchronous module
+  // graph, ahead of lib/zod-jitless.ts's config (ES modules evaluate every
+  // import before the importing module's own code runs, regardless of where
+  // in that code a config call is placed), so it must stay lazy: importing
+  // it only here, on an actual API error, keeps it well behind app startup.
+  // Guarded: apiFetch's contract is that every failure surfaces as ApiError
+  // (isSessionLoss, session.ts, only recognizes ApiError), so a failed
+  // chunk load must not reject with a raw module error.
+  let parsedError: { code: string; message: string; details?: ErrorDetail[] } | undefined;
+  try {
+    const { errorEnvelopeSchema } = await import('@treerepro/contracts');
+    const parsed = errorEnvelopeSchema.safeParse(body);
+    if (parsed.success) parsedError = parsed.data.error;
+  } catch {
+    // Falls through to the generic ApiError below.
+  }
+  if (parsedError) {
+    throw new ApiError(response.status, parsedError.code, parsedError.message, parsedError.details);
   }
   throw new ApiError(
     response.status,
