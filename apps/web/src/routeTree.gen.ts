@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAdminRouteImport } from './routes/app/admin'
 import { Route as AppImportsRouteImport } from './routes/app/imports'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTraitsRouteImport } from './routes/app/traits'
@@ -26,6 +27,7 @@ import { Route as AppReferencesIndexRouteImport } from './routes/app/references/
 import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
 import { Route as AppSpeciesIdRouteImport } from './routes/app/species/$id'
+import { Route as AppAdminUsersIndexRouteImport } from './routes/app/admin/users/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -45,6 +47,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppImportsRoute = AppImportsRouteImport.update({
@@ -112,11 +119,17 @@ const AppSpeciesIdRoute = AppSpeciesIdRouteImport.update({
   path: '/species/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminUsersIndexRoute = AppAdminUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/admin': typeof AppAdminRouteWithChildren
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/traits': typeof AppTraitsRoute
@@ -131,10 +144,12 @@ export interface FileRoutesByFullPath {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/admin': typeof AppAdminRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -148,12 +163,14 @@ export interface FileRoutesByTo {
   '/app/imports': typeof AppImportsIndexRoute
   '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
+  '/app/admin/users': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/admin': typeof AppAdminRouteWithChildren
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/traits': typeof AppTraitsRoute
@@ -168,6 +185,7 @@ export interface FileRoutesById {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -175,6 +193,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/forgot-password'
+    | '/app/admin'
     | '/app/imports'
     | '/app/settings'
     | '/app/traits'
@@ -189,10 +208,12 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/users/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/forgot-password'
+    | '/app/admin'
     | '/app/settings'
     | '/app/traits'
     | '/invite/$token'
@@ -206,11 +227,13 @@ export interface FileRouteTypes {
     | '/app/imports'
     | '/app/references'
     | '/app/species'
+    | '/app/admin/users'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/forgot-password'
+    | '/app/admin'
     | '/app/imports'
     | '/app/settings'
     | '/app/traits'
@@ -225,6 +248,7 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/users/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -263,6 +287,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/admin': {
+      id: '/app/admin'
+      path: '/admin'
+      fullPath: '/app/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/imports': {
@@ -356,8 +387,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSpeciesIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/admin/users/': {
+      id: '/app/admin/users/'
+      path: '/users'
+      fullPath: '/app/admin/users/'
+      preLoaderRoute: typeof AppAdminUsersIndexRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
   }
 }
+
+interface AppAdminRouteChildren {
+  AppAdminUsersIndexRoute: typeof AppAdminUsersIndexRoute
+}
+
+const AppAdminRouteChildren: AppAdminRouteChildren = {
+  AppAdminUsersIndexRoute: AppAdminUsersIndexRoute,
+}
+
+const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
+  AppAdminRouteChildren,
+)
 
 interface AppImportsRouteChildren {
   AppImportsIdRoute: typeof AppImportsIdRoute
@@ -374,6 +424,7 @@ const AppImportsRouteWithChildren = AppImportsRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRouteWithChildren
   AppImportsRoute: typeof AppImportsRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppTraitsRoute: typeof AppTraitsRoute
@@ -387,6 +438,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRouteWithChildren,
   AppImportsRoute: AppImportsRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppTraitsRoute: AppTraitsRoute,
