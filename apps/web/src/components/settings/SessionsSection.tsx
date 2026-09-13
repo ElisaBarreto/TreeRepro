@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { logoutAll } from '../../api/auth.ts';
 import { listSessions, revokeSession } from '../../api/me.ts';
 import { GENERIC_MESSAGE } from '../../lib/errors.ts';
-import { ME_QUERY_KEY } from '../../lib/session.ts';
+import { forgetSession } from '../../lib/session.ts';
 import { Alert, Badge, Button, EmptyState, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const SESSIONS_KEY = ['me', 'sessions'] as const;
@@ -13,9 +13,9 @@ function formatWhen(iso: string): string {
 }
 
 /**
- * `onSignedOutEverywhere` runs before the `me` query is dropped — the same
+ * `onSignedOutEverywhere` runs before the session is forgotten — the same
  * navigate-then-forget order as the 401 handler and the shell's sign-out —
- * because dropping the session while sibling settings sections still call
+ * because clearing the cache while sibling settings sections still call
  * `useMe` would throw.
  * @rfc RFC-22 R9, R11
  */
@@ -36,7 +36,7 @@ export function SessionsSection({
     mutationFn: () => logoutAll(),
     onSuccess: async () => {
       await onSignedOutEverywhere?.();
-      queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
+      forgetSession(queryClient);
     },
   });
 

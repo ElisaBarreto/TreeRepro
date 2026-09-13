@@ -23,7 +23,7 @@
 ## A 401 under `/app` must navigate before the `me` query is dropped
 **Symptom:** Infinite refetch loop on session expiry.
 **Cause:** Removing an actively observed query makes the observer refetch; the refetch 401s again. Only code `AUTH_UNAUTHENTICATED` counts as session loss (`isSessionLoss`) — the other 401 codes (`AUTH_INVALID_CREDENTIALS`, `AUTH_TOTP_INVALID`, `AUTH_MFA_EXPIRED`) are form errors and must not sign the user out.
-**Fix:** `createSessionErrorHandler` navigates to `/` first and removes the `me` query only once the post-navigation location is outside `/app`; the shell's sign-out (`AppShell.tsx`) follows the same navigate-then-remove order. Keep that order.
+**Fix:** `createSessionErrorHandler` navigates to `/` first and forgets the session (`forgetSession`, which clears every query and mutation) only once the post-navigation location is outside `/app`; the shell's sign-out (`AppShell.tsx`) and "Sign out everywhere" (`SessionsSection.tsx`) follow the same navigate-then-forget order. Keep that order.
 
 ## jsdom has no `<dialog>`
 **Symptom:** `showModal is not a function` in component tests.

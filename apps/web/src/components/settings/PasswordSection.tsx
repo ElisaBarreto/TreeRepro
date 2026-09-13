@@ -32,6 +32,9 @@ export function PasswordSection() {
   const change = useMutation({
     mutationFn: (vars: { currentPassword: string; newPassword: string }) =>
       changePassword(vars.currentPassword, vars.newPassword),
+    // gcTime 0: the two passwords sit in the mutation's `variables`; they
+    // leave the MutationCache with the section, not five minutes later.
+    gcTime: 0,
     onSuccess: () => {
       setDone(true);
       formRef.current?.reset();

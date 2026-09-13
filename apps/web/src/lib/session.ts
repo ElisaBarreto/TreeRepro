@@ -47,11 +47,24 @@ export function isSessionLoss(error: unknown): boolean {
 }
 
 /**
- * Turns a 401 seen under `/app` into a return to `/`. The `me` query is
- * dropped only once navigation actually lands away from `/app` — a redirect
- * that lands back under `/app` (the API still considers the session valid)
- * leaves the query alone; dropping it first would make the observer refetch
- * and 401 again.
+ * Forgets everything the signed-in session put in the client: every query
+ * (`me`, the sessions list, whatever later `/app` pages cache) and every
+ * mutation, whose `state` still holds the TOTP secret, the recovery codes or
+ * a typed password. Dropping only `me` would leave the rest cached for
+ * `gcTime` into the next sign-in on the same tab. Call it only once
+ * navigation has landed outside `/app` (see `createSessionErrorHandler`).
+ * @rfc RFC-13 R4
+ */
+export function forgetSession(queryClient: QueryClient): void {
+  queryClient.clear();
+}
+
+/**
+ * Turns a 401 seen under `/app` into a return to `/`. The session is
+ * forgotten (`forgetSession`) only once navigation actually lands away from
+ * `/app` — a redirect that lands back under `/app` (the API still considers
+ * the session valid) leaves the cache alone; clearing it first would make the
+ * `me` observer refetch and 401 again.
  * @rfc RFC-13 R4
  */
 export function createSessionErrorHandler(deps: {
@@ -66,9 +79,7 @@ export function createSessionErrorHandler(deps: {
     void deps
       .navigate('/')
       .then(() => {
-        if (!deps.pathname().startsWith('/app')) {
-          deps.queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
-        }
+        if (!deps.pathname().startsWith('/app')) forgetSession(deps.queryClient);
       })
       .finally(() => {
         leaving = false;

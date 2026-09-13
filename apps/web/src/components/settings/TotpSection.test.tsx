@@ -47,6 +47,8 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     expect(screen.queryByText('JBSWY3DPEHPK3PXP')).not.toBeInTheDocument();
     expect(screen.getByText('Two-factor authentication is on.')).toBeInTheDocument();
     expect(queryClient.getQueryData(ME_QUERY_KEY)).toMatchObject({ user: { totpEnabled: true } });
+    // The secret and the codes leave the MutationCache too, not only the screen.
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
   });
 
   it('maps a wrong code', async () => {

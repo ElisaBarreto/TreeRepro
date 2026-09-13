@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { logout } from '../../api/auth.ts';
-import { hasPermission, ME_QUERY_KEY, useMe } from '../../lib/session.ts';
+import { forgetSession, hasPermission, useMe } from '../../lib/session.ts';
 import { Alert, Button } from '../ui/index.ts';
 import { NAV_ENTRIES } from './nav.ts';
 
@@ -26,7 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     // the MutationCache handler in main.tsx.
     onSuccess: async () => {
       await navigate({ to: '/' });
-      queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
+      forgetSession(queryClient);
     },
   });
   const visible = NAV_ENTRIES.filter((e) => !e.permission || hasPermission(me, e.permission));

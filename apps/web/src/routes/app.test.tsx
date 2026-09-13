@@ -40,10 +40,12 @@ describe('RFC-13 R2 session guard', () => {
     auth.logout.mockResolvedValue(undefined);
     const { router, queryClient } = renderAt('/app');
     const button = await screen.findByRole('button', { name: 'Sign out' });
+    queryClient.setQueryData(['me', 'sessions'], []);
     auth.fetchMe.mockRejectedValue(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     await userEvent.click(button);
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
     await waitFor(() => expect(queryClient.getQueryData(['auth', 'me'])).toBeUndefined());
+    expect(queryClient.getQueryData(['me', 'sessions'])).toBeUndefined();
     expect(auth.logout).toHaveBeenCalledTimes(1);
   });
 

@@ -4,6 +4,7 @@ import { ApiError } from '../api/client.ts';
 import { ADMIN_ME, ME } from '../test/fixtures.ts';
 import {
   createSessionErrorHandler,
+  forgetSession,
   hasPermission,
   isSessionLoss,
   ME_QUERY_KEY,
@@ -25,9 +26,24 @@ describe('RFC-13 R4 session loss', () => {
     expect(isSessionLoss(new Error('x'))).toBe(false);
   });
 
-  it('under /app, a 401 navigates to / and then drops the me query; elsewhere it does nothing', async () => {
+  it('forgets every query and every mutation, not only me', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(ME_QUERY_KEY, ME);
+    queryClient.setQueryData(['me', 'sessions'], []);
+    const mutation = queryClient
+      .getMutationCache()
+      .build(queryClient, { mutationFn: async () => 'JBSWY3DPEHPK3PXP' });
+    await mutation.execute(undefined);
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(1);
+    forgetSession(queryClient);
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+  });
+
+  it('under /app, a 401 navigates to / and then drops every query; elsewhere it does nothing', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(ME_QUERY_KEY, ME);
+    queryClient.setQueryData(['me', 'sessions'], []);
     let pathname = '/app/settings';
     // The navigation actually lands on / — flip pathname the way the router would.
     const navigate = vi.fn<(to: '/') => Promise<void>>().mockImplementation(async () => {
@@ -39,6 +55,7 @@ describe('RFC-13 R4 session loss', () => {
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     expect(navigate).toHaveBeenCalledWith('/');
     await vi.waitFor(() => expect(queryClient.getQueryData(ME_QUERY_KEY)).toBeUndefined());
+    expect(queryClient.getQueryData(['me', 'sessions'])).toBeUndefined();
     navigate.mockClear();
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     expect(navigate).not.toHaveBeenCalled();

@@ -77,12 +77,16 @@ export function TotpSection() {
       old ? { ...old, user: { ...old.user, totpEnabled } } : old,
     );
 
+  // gcTime 0: the secret and the recovery codes in these mutations' `data`
+  // leave the MutationCache as soon as they are reset, not five minutes later.
   const setup = useMutation({
     mutationFn: () => totpSetup(),
+    gcTime: 0,
     onSuccess: (data) => setStage({ kind: 'setup', ...data }),
   });
   const confirm = useMutation({
     mutationFn: (code: string) => totpConfirm(code),
+    gcTime: 0,
     onSuccess: (codes) => {
       setEnabled(true);
       setStage({ kind: 'codes', codes });
