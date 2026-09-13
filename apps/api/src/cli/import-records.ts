@@ -7,16 +7,24 @@ import { batchReport, ImportRefusedError, importRecords } from '../dataset/impor
 import { createDb } from '../db/client.ts';
 import { configurePii } from '../security/pii.ts';
 
-const { values } = parseArgs({
-  options: {
-    file: { type: 'string' },
-    'run-by': { type: 'string' },
-    force: { type: 'boolean', default: false },
-  },
-  strict: true,
-});
+const USAGE = 'usage: import-records --file <csv> [--run-by <email>] [--force]\n';
+
+let values: { file?: string; 'run-by'?: string; force: boolean };
+try {
+  ({ values } = parseArgs({
+    options: {
+      file: { type: 'string' },
+      'run-by': { type: 'string' },
+      force: { type: 'boolean', default: false },
+    },
+    strict: true,
+  }));
+} catch {
+  process.stderr.write(USAGE);
+  process.exit(2);
+}
 if (!values.file) {
-  process.stderr.write('usage: import-records --file <csv> [--run-by <email>] [--force]\n');
+  process.stderr.write(USAGE);
   process.exit(2);
 }
 

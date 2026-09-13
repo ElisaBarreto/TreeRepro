@@ -10,7 +10,13 @@ import { importBatches, importRejects } from '../db/schema/imports.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
-import { batchReport, importRecords, listImportBatches, listImportRejects } from './import.ts';
+import {
+  batchReport,
+  IMPORT_COLUMNS,
+  importRecords,
+  listImportBatches,
+  listImportRejects,
+} from './import.ts';
 
 const FIXTURE = fileURLToPath(
   new URL('../../test/fixtures/import/records-small.csv', import.meta.url),
@@ -228,22 +234,53 @@ describe('RFC-64 importRecords', () => {
     ).toEqual([]);
   });
 
-  it('R9 a failure inside the transaction leaves a failed batch and no records', async () => {
+  it('R9 an insert-time Postgres error rolls back the whole transaction, including catalog inserts', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
-    const file = join(dir, 'broken.csv');
-    const header = (await import('./import.ts')).IMPORT_COLUMNS.join(',');
-    // 16 fields on the data row: COPY refuses the file
+    const file = join(dir, 'overflow.csv');
+    const header = IMPORT_COLUMNS.join(',');
+    // A well-formed row (15 fields, passes COPY and R7's checks) whose
+    // quantitative value matches NUMBER_PATTERN but overflows `numeric` only
+    // once cast during the trait_records insert — downstream of every
+    // catalog insert (species, in this case), so the rollback has something
+    // real to undo.
     await writeFile(
       file,
-      `${header}\nFix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,t,flower_color,flower_color,x,categorical,x,EXTRA\n`,
+      `${header}\nOverflowRef,OverflowRef,Overflowia numerica,,,,,,,Plant height,plant_height,plant_form,1e200000,quantitative_or_text,1e200000\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
       .select()
       .from(importBatches)
+      .where(eq(importBatches.fileName, 'overflow.csv'));
+    expect(batch?.status).toBe('failed');
+    expect(batch?.error).toMatch(/value overflows numeric format/i);
+    expect(
+      await t.db.select().from(species).where(eq(species.canonicalName, 'Overflowia numerica')),
+    ).toEqual([]);
+  });
+
+  it('R9 a malformed row fails the batch within the idle timeout instead of hanging', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'import-'));
+    const file = join(dir, 'broken.csv');
+    const header = IMPORT_COLUMNS.join(',');
+    // 16 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
+    // in import.ts); either the driver recovers on its own with the real
+    // PostgresError, or the idle guard aborts it — both are acceptable here,
+    // but it must not take anywhere near the default 60s idle timeout.
+    await writeFile(
+      file,
+      `${header}\nFix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,t,flower_color,flower_color,x,categorical,x,EXTRA\n`,
+    );
+    await expect(
+      importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
+    ).rejects.toThrow();
+    const [batch] = await t.db
+      .select()
+      .from(importBatches)
       .where(eq(importBatches.fileName, 'broken.csv'));
     expect(batch?.status).toBe('failed');
-    expect(batch?.error).toMatch(/extra data|COPY/i);
+    expect(batch?.error).toMatch(/COPY made no progress|extra data after last expected column/i);
     expect(await t.db.select().from(species).where(eq(species.canonicalName, 'Broken sp'))).toEqual(
       [],
     );

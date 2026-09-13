@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { basename } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type {
   HarmonisationStatus,
@@ -10,6 +11,7 @@ import type {
   UserRef,
 } from '@treerepro/contracts';
 import { and, asc, count, desc, sql as dsql, eq, lt } from 'drizzle-orm';
+import postgres from 'postgres';
 import type { Db, DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { type ImportBatchRow, importBatches, importRejects } from '../db/schema/imports.ts';
@@ -44,17 +46,73 @@ export const IMPORT_COLUMNS = [
 /** A number as the importer accepts it; the SQL below uses the same expression. @rfc RFC-64 R6 */
 export const NUMBER_PATTERN = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
-/**
- * postgres.js 3.4.9's `.writable()` COPY stream can hang indefinitely if the
- * write side calls `.end()` (sending CopyDone) before the driver has
- * processed the server's ErrorResponse for a row that violates the COPY
- * format (observed with `pipeline`, `.pipe()` and a synchronous write+end
- * alike — the client never receives the following ReadyForQuery). Bound the
- * wait so a malformed file fails the batch instead of hanging the
- * transaction and the pool. @rfc RFC-64 R9
- */
-const COPY_STREAM_TIMEOUT_MS = 15_000;
+/** How long a COPY may go without the writable accepting a new chunk before it's considered stuck; injectable via {@link ImportInput.copyIdleTimeoutMs} for tests. @rfc RFC-64 R9 */
+const DEFAULT_COPY_IDLE_TIMEOUT_MS = 60_000;
 const NUMBER_PATTERN_SQL = '^[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+)?$';
+
+/**
+ * Streams `source` into `destination`, aborting once `destination` has gone
+ * `idleTimeoutMs` without accepting a chunk — not once the whole transfer
+ * has taken too long, since a real dataset file is millions of rows and the
+ * COPY itself can legitimately run for minutes.
+ *
+ * This guards against a real hang in postgres.js 3.4.9's `.writable()` COPY
+ * stream (verified directly against the driver, outside Drizzle): `.writable()`
+ * runs COPY over the simple query protocol. On a row that violates the COPY
+ * format, the server answers `ErrorResponse` + `ReadyForQuery`, but the
+ * client only resolves the write from its `CommandComplete` handler, which
+ * is also the sole place that invokes the `final()` callback stored when we
+ * call `.end()` (which sends `CopyDone`). `CommandComplete` never arrives on
+ * the error path, so if `.end()` is called before the driver has processed
+ * the server's error, the writable neither errors nor finishes — the pipeline
+ * hangs forever, silently, with no event ever firing on either stream. A
+ * `PassThrough` sits between `source` and `destination` purely so we can
+ * observe every chunk that reaches the destination side and re-arm the idle
+ * timer; once nothing has moved for `idleTimeoutMs` we abort, which reliably
+ * unblocks the driver (a `.destroy()`, sending `CopyFail`) even when the
+ * error path above is stuck.
+ * @rfc RFC-64 R9
+ */
+async function pipelineWithIdleGuard(
+  source: NodeJS.ReadableStream,
+  destination: NodeJS.WritableStream,
+  idleTimeoutMs: number,
+): Promise<void> {
+  const controller = new AbortController();
+  const watcher = new PassThrough();
+  let timer = setTimeout(() => controller.abort(), idleTimeoutMs);
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), idleTimeoutMs);
+  };
+  watcher.on('data', arm);
+  try {
+    await pipeline(source, watcher, destination, { signal: controller.signal });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      throw new Error(
+        `COPY made no progress for ${idleTimeoutMs}ms; the file likely has a row that violates the column count or format`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Unwraps the driver's `PostgresError`, including one hop through Drizzle's `DrizzleQueryError.cause`. */
+function toPostgresError(err: unknown): InstanceType<typeof postgres.PostgresError> | undefined {
+  if (err instanceof postgres.PostgresError) return err;
+  if (err instanceof Error && err.cause instanceof postgres.PostgresError) return err.cause;
+  return undefined;
+}
+
+/** Keeps `detail` and `where` alongside the message — on an 8M-row file, `where` ("COPY import_staging, line 12345: ...") is often the only thing that pinpoints the bad row. @rfc RFC-64 R9 */
+function describeError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const pg = toPostgresError(err);
+  return [message, pg?.detail, pg?.where].filter(Boolean).join(' — ').slice(0, 2000);
+}
 
 /** Why an import did not start. @rfc RFC-64 R2, R3 */
 export class ImportRefusedError extends Error {
@@ -277,6 +335,8 @@ export interface ImportInput {
   runBy?: string | null;
   /** Import a file whose hash was already completed. */
   force?: boolean;
+  /** See {@link pipelineWithIdleGuard}. Default {@link DEFAULT_COPY_IDLE_TIMEOUT_MS}; tests lower it to fail fast. */
+  copyIdleTimeoutMs?: number;
 }
 
 /**
@@ -317,7 +377,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
 
   const sql = db.$client;
   try {
-    const counts = await sql.begin(async (tx) => {
+    await sql.begin(async (tx) => {
       // R4 staging
       await tx`
         create temporary table import_staging (
@@ -336,18 +396,11 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
           original_trait_name, final_standard_trait, broad_category, original_value_clean,
           trait_value_type, harmonised_value
         ) from stdin with (format csv, header true, encoding 'UTF8')`.writable();
-      try {
-        await pipeline(createReadStream(input.filePath), writable, {
-          signal: AbortSignal.timeout(COPY_STREAM_TIMEOUT_MS),
-        });
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') {
-          throw new Error(
-            `COPY did not complete within ${COPY_STREAM_TIMEOUT_MS}ms; the file likely has a row that violates the column count or format`,
-          );
-        }
-        throw err;
-      }
+      await pipelineWithIdleGuard(
+        createReadStream(input.filePath),
+        writable,
+        input.copyIdleTimeoutMs ?? DEFAULT_COPY_IDLE_TIMEOUT_MS,
+      );
       const [{ total }] = (await tx`select count(*)::int as total from import_staging`) as [
         { total: number },
       ];
@@ -362,17 +415,17 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
       await tx`
         update import_staging set
           species_name = coalesce(
-            nullif(regexp_replace(trim(wcvp_species), '\\s+', ' ', 'g'), ''),
-            nullif(regexp_replace(trim(gbif_species), '\\s+', ' ', 'g'), ''),
-            nullif(regexp_replace(trim(original_species_name), '\\s+', ' ', 'g'), ''),
-            nullif(regexp_replace(trim(secondary_source_species_name), '\\s+', ' ', 'g'), '')),
+            nullif(trim(regexp_replace(wcvp_species, '\\s+', ' ', 'g')), ''),
+            nullif(trim(regexp_replace(gbif_species, '\\s+', ' ', 'g')), ''),
+            nullif(trim(regexp_replace(original_species_name, '\\s+', ' ', 'g')), ''),
+            nullif(trim(regexp_replace(secondary_source_species_name, '\\s+', ' ', 'g')), '')),
           name_source = case
             when nullif(trim(wcvp_species), '') is not null then 'wcvp'
             when nullif(trim(gbif_species), '') is not null then 'gbif'
             else 'original' end,
-          genus_name = nullif(regexp_replace(trim(wcvp_genus), '\\s+', ' ', 'g'), ''),
-          family_name = nullif(regexp_replace(trim(wcvp_family), '\\s+', ' ', 'g'), ''),
-          gbif_name = nullif(regexp_replace(trim(gbif_species), '\\s+', ' ', 'g'), ''),
+          genus_name = nullif(trim(regexp_replace(wcvp_genus, '\\s+', ' ', 'g')), ''),
+          family_name = nullif(trim(regexp_replace(wcvp_family, '\\s+', ' ', 'g')), ''),
+          gbif_name = nullif(trim(regexp_replace(gbif_species, '\\s+', ' ', 'g')), ''),
           trait_key = nullif(trim(final_standard_trait), ''),
           primary_key = nullif(trim(primary_reference), ''),
           secondary_key = nullif(trim(secondary_reference), ''),
@@ -492,42 +545,36 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
         group by t.key, r.value_text
         order by count desc, t.key, r.value_text
         limit 30`) as { trait: string; value: string; count: number }[];
-      return {
-        total,
-        rejected: rejected.count,
-        inserted: inserted.count,
-        pending,
-        unknownLevels: unknownLevels.map((u) => ({
-          trait: u.trait,
-          value: u.value,
-          count: u.count,
-        })),
-      };
-    });
 
-    await db
-      .update(importBatches)
-      .set({
-        status: 'completed',
-        finishedAt: new Date(),
-        rowsTotal: counts.total,
-        rowsInserted: counts.inserted,
-        rowsDuplicate: counts.total - counts.rejected - counts.inserted,
-        rowsRejected: counts.rejected,
-        rowsPending: counts.pending,
-        unknownLevels: counts.unknownLevels,
-      })
-      .where(eq(importBatches.id, batch.id));
+      // Recorded in the same transaction as everything above: a crash between
+      // COMMIT and a separate post-commit UPDATE could otherwise leave a
+      // fully-imported batch stuck at `running`/`failed` forever.
+      await tx`
+        update import_batches
+        set status = 'completed',
+            finished_at = now(),
+            rows_total = ${total},
+            rows_inserted = ${inserted.count},
+            rows_duplicate = ${total - rejected.count - inserted.count},
+            rows_rejected = ${rejected.count},
+            rows_pending = ${pending},
+            unknown_levels = ${JSON.stringify(
+              unknownLevels.map((u) => ({ trait: u.trait, value: u.value, count: u.count })),
+            )}::jsonb
+        where id = ${batch.id}`;
+    });
   } catch (err) {
-    // R9: the transaction rolled back; keep the batch as the record of the failure.
-    await db
-      .update(importBatches)
-      .set({
-        status: 'failed',
-        finishedAt: new Date(),
-        error: ((err as Error).message ?? String(err)).slice(0, 2000),
-      })
-      .where(eq(importBatches.id, batch.id));
+    // R9: the transaction rolled back; keep the batch as the record of the
+    // failure. If even this update fails, don't let that secondary error
+    // mask the original one — attach it as `cause` and keep throwing `err`.
+    try {
+      await db
+        .update(importBatches)
+        .set({ status: 'failed', finishedAt: new Date(), error: describeError(err) })
+        .where(eq(importBatches.id, batch.id));
+    } catch (updateErr) {
+      if (err instanceof Error && err.cause === undefined) err.cause = updateErr;
+    }
     throw err;
   }
   const result = await getImportBatch(db, batch.id);
