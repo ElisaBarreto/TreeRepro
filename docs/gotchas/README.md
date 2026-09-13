@@ -9,6 +9,7 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 | Drizzle ORM | `drizzle.md` |
 | pnpm | `pnpm.md` |
 | Docker / Compose / Caddy | `docker.md` |
+| Host, backups, restore, disk encryption | `infra.md` |
 | TypeScript | `typescript.md` |
 | GitHub Actions / security automation | `github-security.md` |
 | Web (React, Vite, Testing Library) | `web.md` |
