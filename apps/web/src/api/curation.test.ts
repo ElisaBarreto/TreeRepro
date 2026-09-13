@@ -7,7 +7,6 @@ import {
   PENDING_GROUPS,
   PENDING_TRAITS,
   RECORD_DETAIL,
-  REFERENCE_DETAIL,
   SEXUAL_SYSTEM,
   SPECIES,
 } from '../test/dataset-fixtures.ts';
@@ -15,7 +14,6 @@ import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
 import {
   annotateRecord,
   createRecord,
-  createReference,
   curationKeys,
   EXPORT_ACCEPTED_URL,
   fetchAccepted,
@@ -99,15 +97,6 @@ describe('RFC-65 R8–R10 queues', () => {
     expect(disputed.data[0]?.latestDispute.actor.name).toBe(
       DISPUTED_RECORD.latestDispute.actor.name,
     );
-  });
-});
-
-describe('RFC-61 R6 createReference', () => {
-  it('posts and unwraps the detail', async () => {
-    mockJson(201, { data: REFERENCE_DETAIL });
-    const ref = await createReference({ citationKey: 'New_2026' });
-    expect(lastRequest().url).toBe('/api/references');
-    expect(ref.id).toBe(REFERENCE_DETAIL.id);
   });
 });
 

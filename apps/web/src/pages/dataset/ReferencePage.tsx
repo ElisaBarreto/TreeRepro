@@ -2,12 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import type { ReferenceDetail } from '@treerepro/contracts';
 import { type ReactNode, useState } from 'react';
 import { datasetKeys, fetchRecords, fetchReference } from '../../api/dataset.ts';
+import { ReferenceDialog } from '../../components/catalog/ReferenceDialog.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { RecordTable } from '../../components/dataset/RecordTable.tsx';
-import { Alert, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import { Alert, Button, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber } from '../../lib/format.ts';
+import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
@@ -123,15 +125,19 @@ function ReferenceRecords({
  * one page at a time with the species, trait and both articles of each row;
  * a row opens the record in a drawer. The records section mounts only once
  * the reference resolved, so an unknown id shows one alert and no empty list.
- * @rfc RFC-13 R2, R4
- * @rfc RFC-61 R4
+ * An Edit action on the loaded header opens `ReferenceDialog` for
+ * `references.manage`; the dialog's own invalidation refreshes this reference.
+ * @rfc RFC-13 R2, R3, R4
+ * @rfc RFC-61 R4, R6
  */
 export function ReferencePage({ id }: { id: string }) {
+  const me = useMe();
   const reference = useQuery({
     queryKey: datasetKeys.reference(id),
     queryFn: () => fetchReference(id),
   });
   const [openRecord, setOpenRecord] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   if (reference.isPending) {
     return (
@@ -156,7 +162,21 @@ export function ReferencePage({ id }: { id: string }) {
       <PageHeader
         title={<span className="break-words">{data.citationKey}</span>}
         description={`Used as the primary article in ${records(data.primaryCount)} and as the secondary article in ${records(data.secondaryCount)}.`}
+        actions={
+          hasPermission(me, 'references.manage') ? (
+            <Button variant="secondary" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+          ) : undefined
+        }
       />
+      {editing ? (
+        <ReferenceDialog
+          reference={data}
+          onClose={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      ) : null}
       <div className="flex flex-col gap-8">
         <Metadata reference={data} />
         <ReferenceRecords id={id} onSelectRecord={setOpenRecord} />

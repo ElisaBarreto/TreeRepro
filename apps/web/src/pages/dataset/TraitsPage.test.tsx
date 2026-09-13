@@ -1,9 +1,9 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MeResponse } from '@treerepro/contracts';
+import type { Dictionary, MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { DICTIONARY } from '../../test/dataset-fixtures.ts';
+import { DICTIONARY, NEW_TRAIT } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -19,17 +19,30 @@ const auth = vi.hoisted(() => ({
   totpDisable: vi.fn(),
 }));
 const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn() }));
+const catalog = vi.hoisted(() => ({
+  createTrait: vi.fn(),
+  updateTrait: vi.fn(),
+  createLevel: vi.fn(),
+}));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
 }));
+vi.mock('../../api/catalog.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
+  ...catalog,
+}));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
+const MANAGER: MeResponse = { ...ME, permissions: ['dataset.read', 'traits.manage'] };
 
 beforeEach(() => {
   auth.fetchMe.mockReset();
   dataset.fetchDictionary.mockReset();
+  catalog.createTrait.mockReset();
+  catalog.updateTrait.mockReset();
+  catalog.createLevel.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
 });
@@ -126,5 +139,69 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     dataset.fetchDictionary.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     await openPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+});
+
+describe('RFC-62 R6 TraitsPage editing', () => {
+  it('hides "New trait" and "Edit" from a reader', async () => {
+    renderAt('/app/traits');
+    await screen.findByText('sexual system');
+    expect(screen.queryByRole('button', { name: 'New trait' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Edit/ })).not.toBeInTheDocument();
+  });
+
+  it('creates a trait from the header dialog and refetches the dictionary', async () => {
+    auth.fetchMe.mockResolvedValue(MANAGER);
+    catalog.createTrait.mockResolvedValue(NEW_TRAIT);
+    dataset.fetchDictionary.mockResolvedValueOnce(DICTIONARY).mockResolvedValue([
+      DICTIONARY[0] as Dictionary[number],
+      {
+        ...(DICTIONARY[1] as Dictionary[number]),
+        traits: [...(DICTIONARY[1] as Dictionary[number]).traits, NEW_TRAIT],
+      },
+    ]);
+    renderAt('/app/traits');
+    await userEvent.click(await screen.findByRole('button', { name: 'New trait' }));
+    const dialog = screen.getByRole('dialog', { name: 'New trait' });
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /^key/i }), 'flower_colour');
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: /category/i }),
+      'seed',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create trait' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await screen.findByText('flower colour')).toBeInTheDocument();
+  });
+
+  it('opens the edit dialog for a trait with its category preselected', async () => {
+    auth.fetchMe.mockResolvedValue(MANAGER);
+    renderAt('/app/traits');
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit sexual system' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit trait' });
+    expect(within(dialog).getByRole('combobox', { name: /category/i })).toHaveValue(
+      'reproductive_system',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a traits.manage holder can unfold a categorical trait without levels and add one', async () => {
+    auth.fetchMe.mockResolvedValue(MANAGER);
+    dataset.fetchDictionary.mockResolvedValue([
+      { key: 'seed', label: 'Seed', traits: [NEW_TRAIT] },
+    ]);
+    catalog.createLevel.mockResolvedValue({
+      ...NEW_TRAIT,
+      levels: [{ id: 'l1', key: 'red', sortOrder: 0, active: true }],
+    });
+    renderAt('/app/traits');
+    await userEvent.click(await screen.findByRole('button', { name: 'Show levels' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add level' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add level' });
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /^key/i }), 'red');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add level' }));
+    await waitFor(() =>
+      expect(catalog.createLevel).toHaveBeenCalledWith(NEW_TRAIT.id, { key: 'red' }),
+    );
   });
 });

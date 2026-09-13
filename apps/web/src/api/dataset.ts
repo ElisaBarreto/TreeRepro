@@ -15,21 +15,11 @@ import type {
   TaxonRef,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
+import { type QueryParams as Params, withQuery } from './query.ts';
 
 export interface Page<T> {
   data: T[];
   meta: ListMeta;
-}
-
-type Params = Record<string, string | number | boolean | undefined>;
-
-function withQuery(path: string, params: Params): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '' && value !== false) search.set(key, String(value));
-  }
-  const qs = search.toString();
-  return qs ? `${path}?${qs}` : path;
 }
 
 /** Query keys of the dataset pages; every fetcher below owns one. @rfc RFC-60 R6 */
@@ -58,9 +48,7 @@ export function searchSpecies(params: {
   cursor?: string;
   limit?: number;
 }) {
-  return apiFetch<Page<SpeciesListItem>>(
-    withQuery('/species', { ...params, unresolved: params.unresolved ? 'true' : undefined }),
-  );
+  return apiFetch<Page<SpeciesListItem>>(withQuery('/species', params));
 }
 /** @rfc RFC-60 R7 */
 export async function fetchSpecies(id: string): Promise<Species> {
@@ -108,7 +96,12 @@ export async function fetchFamilies(): Promise<TaxonRef[]> {
   return all;
 }
 /** @rfc RFC-60 R8 */
-export function fetchGenera(params: { familyId?: string; q?: string; limit?: number }) {
+export function fetchGenera(params: {
+  familyId?: string;
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}) {
   return apiFetch<Page<Genus>>(withQuery('/genera', params));
 }
 /** @rfc RFC-64 R11 */

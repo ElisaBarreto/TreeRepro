@@ -16,6 +16,7 @@ import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAdminRouteImport } from './routes/app/admin'
 import { Route as AppImportsRouteImport } from './routes/app/imports'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppTaxaRouteImport } from './routes/app/taxa'
 import { Route as AppTraitsRouteImport } from './routes/app/traits'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
@@ -65,6 +66,11 @@ const AppImportsRoute = AppImportsRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTaxaRoute = AppTaxaRouteImport.update({
+  id: '/taxa',
+  path: '/taxa',
   getParentRoute: () => AppRoute,
 } as any)
 const AppTraitsRoute = AppTraitsRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/app/admin': typeof AppAdminRouteWithChildren
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
+  '/app/taxa': typeof AppTaxaRoute
   '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/app/admin': typeof AppAdminRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
+  '/app/taxa': typeof AppTaxaRoute
   '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   '/app/admin': typeof AppAdminRouteWithChildren
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
+  '/app/taxa': typeof AppTaxaRoute
   '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
@@ -223,6 +232,7 @@ export interface FileRouteTypes {
     | '/app/admin'
     | '/app/imports'
     | '/app/settings'
+    | '/app/taxa'
     | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/app/admin'
     | '/app/settings'
+    | '/app/taxa'
     | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
@@ -269,6 +280,7 @@ export interface FileRouteTypes {
     | '/app/admin'
     | '/app/imports'
     | '/app/settings'
+    | '/app/taxa'
     | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
@@ -344,6 +356,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/app/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/taxa': {
+      id: '/app/taxa'
+      path: '/taxa'
+      fullPath: '/app/taxa'
+      preLoaderRoute: typeof AppTaxaRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/traits': {
@@ -490,6 +509,7 @@ interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRouteWithChildren
   AppImportsRoute: typeof AppImportsRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
+  AppTaxaRoute: typeof AppTaxaRoute
   AppTraitsRoute: typeof AppTraitsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCurationDisputedRoute: typeof AppCurationDisputedRoute
@@ -504,6 +524,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRouteWithChildren,
   AppImportsRoute: AppImportsRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
+  AppTaxaRoute: AppTaxaRoute,
   AppTraitsRoute: AppTraitsRoute,
   AppIndexRoute: AppIndexRoute,
   AppCurationDisputedRoute: AppCurationDisputedRoute,

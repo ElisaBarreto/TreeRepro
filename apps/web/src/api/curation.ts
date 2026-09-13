@@ -3,7 +3,6 @@ import type {
   AcceptedState,
   AnnotateRecordBody,
   CreateRecordBody,
-  CreateReferenceBody,
   DataEnvelope,
   DisputedRecord,
   MapPendingBody,
@@ -11,22 +10,11 @@ import type {
   PendingGroup,
   PendingTrait,
   RecordDetail,
-  ReferenceDetail,
   SetAcceptedBody,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
-
-type Params = Record<string, string | number | undefined>;
-
-function withQuery(path: string, params: Params): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') search.set(key, String(value));
-  }
-  const qs = search.toString();
-  return qs ? `${path}?${qs}` : path;
-}
+import { withQuery } from './query.ts';
 
 /** Query keys of the curation screens, nested under the dataset prefixes so one invalidation covers both. @rfc RFC-65 R6, R8, R10 */
 export const curationKeys = {
@@ -93,12 +81,6 @@ export async function mapPending(body: MapPendingBody): Promise<MapResult> {
 /** @rfc RFC-65 R10 */
 export function fetchDisputed(params: { cursor?: string; limit?: number }) {
   return apiFetch<Page<DisputedRecord>>(withQuery('/records/disputed', params));
-}
-/** @rfc RFC-61 R6 */
-export async function createReference(body: CreateReferenceBody): Promise<ReferenceDetail> {
-  return (
-    await apiFetch<DataEnvelope<ReferenceDetail>>('/references', { method: 'POST', json: body })
-  ).data;
 }
 
 /**

@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import type { MapResult, PendingGroup, PendingTrait } from '@treerepro/contracts';
 import { useState } from 'react';
 import { curationKeys, fetchPendingGroups, fetchPendingTraits } from '../../api/curation.ts';
@@ -11,6 +10,7 @@ import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import {
   Alert,
   Button,
+  ButtonLink,
   EmptyState,
   PageHeader,
   Table,
@@ -24,10 +24,6 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
-
-// Dressed as the kit's secondary `Button` (sm): a route `Link` styled as a button.
-const MANAGE_LEVELS_LINK =
-  'inline-flex h-9 items-center justify-center gap-2 rounded-full border border-canopy-700/30 bg-white px-3.5 font-display text-meta font-semibold text-canopy-900 transition-colors hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500';
 
 /**
  * The harmonisation queue (RFC-65 R7–R9): the traits with pending import
@@ -100,9 +96,9 @@ export function PendingPage() {
                 </h2>
                 {selected.trait.valueType === 'categorical' &&
                 hasPermission(me, 'traits.manage') ? (
-                  <Link to="/app/traits" className={MANAGE_LEVELS_LINK}>
+                  <ButtonLink to="/app/traits" size="sm">
                     Manage levels
-                  </Link>
+                  </ButtonLink>
                 ) : null}
               </div>
             ) : null}

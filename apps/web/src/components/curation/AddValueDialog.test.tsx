@@ -15,12 +15,16 @@ import { ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { AddValueDialog } from './AddValueDialog.tsx';
 
+const catalog = vi.hoisted(() => ({ createReference: vi.fn() }));
 const curation = vi.hoisted(() => ({
   createRecord: vi.fn(),
-  createReference: vi.fn(),
   invalidateAfterRecordWrite: vi.fn(async () => undefined),
 }));
 const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn(), searchReferences: vi.fn() }));
+vi.mock('../../api/catalog.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
+  ...catalog,
+}));
 vi.mock('../../api/curation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/curation.ts')>()),
   ...curation,
@@ -38,7 +42,7 @@ const LIBRARIAN = {
 
 beforeEach(() => {
   curation.createRecord.mockReset();
-  curation.createReference.mockReset();
+  catalog.createReference.mockReset();
   curation.invalidateAfterRecordWrite.mockClear();
   dataset.fetchDictionary.mockReset().mockResolvedValue(DICTIONARY);
   dataset.searchReferences.mockReset().mockResolvedValue({
@@ -198,7 +202,7 @@ describe('RFC-65 R1 AddValueDialog', () => {
 
   it('offers to create a missing reference only with references.manage, and selects the created one', async () => {
     dataset.searchReferences.mockResolvedValue({ data: [], meta: { nextCursor: null } });
-    curation.createReference.mockResolvedValue({ ...REFERENCE_DETAIL, citationKey: 'Novo_2026' });
+    catalog.createReference.mockResolvedValue({ ...REFERENCE_DETAIL, citationKey: 'Novo_2026' });
     mount({}, LIBRARIAN);
     const dialog = await screen.findByRole('dialog', { name: 'Add value' });
     await userEvent.type(
@@ -207,7 +211,7 @@ describe('RFC-65 R1 AddValueDialog', () => {
     );
     await userEvent.click(await screen.findByRole('option', { name: 'Create "Novo_2026"' }));
     await waitFor(() =>
-      expect(curation.createReference).toHaveBeenCalledWith({ citationKey: 'Novo_2026' }),
+      expect(catalog.createReference).toHaveBeenCalledWith({ citationKey: 'Novo_2026' }),
     );
     expect(await within(dialog).findByText('Novo_2026')).toBeInTheDocument();
   });
