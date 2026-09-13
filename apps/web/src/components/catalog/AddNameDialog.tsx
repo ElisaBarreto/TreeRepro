@@ -3,7 +3,7 @@ import { type Species, type SpeciesNameBody, speciesNameBodySchema } from '@tree
 import { type FormEvent, useId, useState } from 'react';
 import { addSpeciesName, invalidateAfterCatalogWrite } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
 import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
 
 /** @rfc RFC-13 R6 */
@@ -103,7 +103,7 @@ export function AddNameDialog({
             invalid={Boolean(errors.gbifUsageKey)}
           />
         </Field>
-        {save.isError && !nameTaken ? (
+        {save.isError && !nameTaken && !isValidationError(save.error) ? (
           <Alert tone="error">{addNameErrorMessage(save.error)}</Alert>
         ) : null}
         <div className="flex justify-end gap-2">

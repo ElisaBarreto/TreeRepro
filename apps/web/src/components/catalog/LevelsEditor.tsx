@@ -36,7 +36,7 @@ export function levelErrorMessage(error: unknown): string {
 function LevelKeyDialog({
   title,
   submitLabel,
-  initial = '',
+  initial,
   warning = false,
   save,
   onClose,
@@ -44,6 +44,7 @@ function LevelKeyDialog({
 }: {
   title: string;
   submitLabel: string;
+  /** The level's current key on a rename; absent on Add level. */
   initial?: string;
   warning?: boolean;
   save: (key: string) => Promise<Trait>;
@@ -52,7 +53,7 @@ function LevelKeyDialog({
 }) {
   const queryClient = useQueryClient();
   const keyId = useId();
-  const [key, setKey] = useState(initial);
+  const [key, setKey] = useState(initial ?? '');
   const [local, setLocal] = useState<Record<string, string>>({});
   const mutation = useMutation({
     mutationFn: (value: string) => save(value),
@@ -75,6 +76,10 @@ function LevelKeyDialog({
     if (!parsed.success) {
       mutation.reset();
       setLocal(Object.fromEntries(parsed.error.issues.map((i) => [i.path.join('.'), i.message])));
+      return;
+    }
+    if (initial !== undefined && parsed.data.key === initial) {
+      onClose();
       return;
     }
     setLocal({});
@@ -181,6 +186,7 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
                   size="sm"
                   variant="secondary"
                   aria-label={`Rename ${level.key}`}
+                  disabled={move.isPending || toggle.isPending}
                   onClick={() => setRenaming(level)}
                 >
                   Rename
@@ -189,7 +195,7 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
                   size="sm"
                   variant="secondary"
                   aria-label={`Move ${level.key} up`}
-                  disabled={index === 0}
+                  disabled={index === 0 || move.isPending || toggle.isPending}
                   onClick={() => move.mutate({ index, direction: 'up' })}
                 >
                   Move up
@@ -198,7 +204,7 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
                   size="sm"
                   variant="secondary"
                   aria-label={`Move ${level.key} down`}
-                  disabled={index === trait.levels.length - 1}
+                  disabled={index === trait.levels.length - 1 || move.isPending || toggle.isPending}
                   onClick={() => move.mutate({ index, direction: 'down' })}
                 >
                   Move down
@@ -207,6 +213,7 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
                   size="sm"
                   variant="secondary"
                   aria-label={`${level.active ? 'Deactivate' : 'Activate'} ${level.key}`}
+                  disabled={move.isPending || toggle.isPending}
                   onClick={() => toggle.mutate({ levelId: level.id, active: !level.active })}
                 >
                   {level.active ? 'Deactivate' : 'Activate'}

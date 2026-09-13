@@ -70,4 +70,20 @@ describe('RFC-60 R9 AddNameDialog', () => {
       await within(dialog).findByText('This species already has that name.'),
     ).toBeInTheDocument();
   });
+
+  it('shows a VALIDATION_FAILED field message without the Alert alongside it', async () => {
+    catalog.addSpeciesName.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'bad', [
+        { path: 'gbifUsageKey', message: 'Too long' },
+      ]),
+    );
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /^name/i }),
+      'Adenanthera gersenii',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add name' }));
+    expect(await within(dialog).findByText('Too long')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

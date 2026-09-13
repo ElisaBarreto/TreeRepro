@@ -256,7 +256,7 @@ Sections 10.1–10.3 above are the design; the implementation differs in a few s
 - Family and genus are created inline from the species dialog (a "New family" input beside the family `Select`; the genus `Combobox`'s create option under the chosen family); `/app/taxa` is where they are renamed and moved.
 - Edit dialogs send only the changed fields (`null` to clear an optional one) and close without a request when nothing changed — the `PATCH` bodies are `nonEmpty` (`docs/gotchas/web.md`).
 - A level move is two `PATCH`es (moved level first) swapping the `sortOrder`s (`docs/gotchas/web.md`).
-- The trait key, value type and unit are shown as text in the edit dialog with a hint that they are immutable (RFC-62 R6).
+- The trait key, value type and unit are shown as plain text in the edit dialog, with no hint alongside; the immutability hints (`snake_case, immutable once created…`, `Immutable once created.`) are on those same fields in the New trait dialog, before the value is ever set (RFC-62 R6).
 - The kit gained `ButtonLink` / `buttonClassName` (navigation dressed as a button) and `api/query.ts` holds the one `withQuery`.
 - Both trait dialogs gate their `Alert` with `!isValidationError(error)` (`lib/errors.ts`) rather than the plan's single-field sample, so it never shows beside a field-level `VALIDATION_FAILED` message — the codebase's existing convention for that trade-off.
 - `LevelsEditor`'s move invalidates the dictionary in `onSettled`, not only on success, so a failed second `PATCH` still refetches and the tie between the two levels is visible.

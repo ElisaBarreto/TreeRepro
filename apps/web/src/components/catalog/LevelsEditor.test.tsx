@@ -78,6 +78,15 @@ describe('RFC-62 R6 LevelsEditor', () => {
     );
   });
 
+  it('an unchanged rename closes without a request', async () => {
+    renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Rename dioecious' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rename level' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Rename' }));
+    expect(catalog.updateLevel).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('moves a level down by swapping the two sortOrders, moved level first; the ends are disabled', async () => {
     catalog.updateLevel.mockResolvedValue(SEXUAL_SYSTEM_TRAIT);
     renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
@@ -107,6 +116,14 @@ describe('RFC-62 R6 LevelsEditor', () => {
     await waitFor(() => expect(catalog.updateLevel).toHaveBeenCalledTimes(2));
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
     expect(catalog.invalidateAfterCatalogWrite).toHaveBeenCalledWith(expect.anything(), 'traits');
+  });
+
+  it('disables the row buttons while a move or toggle is pending', async () => {
+    catalog.updateLevel.mockReturnValueOnce(new Promise(() => {}));
+    renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Move hermaphrodite down' }));
+    expect(screen.getByRole('button', { name: 'Move dioecious up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Rename dioecious' })).toBeDisabled();
   });
 
   it('sends a single patch with a shifted sortOrder when the neighbours tie', async () => {

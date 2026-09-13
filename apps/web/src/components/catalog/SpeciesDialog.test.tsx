@@ -19,13 +19,22 @@ const catalog = vi.hoisted(() => ({
   updateSpecies: vi.fn(),
   createGenus: vi.fn(),
   createFamily: vi.fn(),
-  invalidateAfterCatalogWrite: vi.fn(async () => undefined),
+  invalidateAfterCatalogWrite: vi.fn<
+    typeof import('../../api/catalog.ts').invalidateAfterCatalogWrite
+  >(async () => undefined),
 }));
+// The real `invalidateAfterCatalogWrite`, kept aside so a test that needs the
+// families query to actually refetch (the inline family create) can delegate
+// the mocked call to it instead of asserting on the mock alone.
+const catalogOriginal: {
+  invalidateAfterCatalogWrite?: typeof import('../../api/catalog.ts').invalidateAfterCatalogWrite;
+} = vi.hoisted(() => ({}));
 const dataset = vi.hoisted(() => ({ fetchFamilies: vi.fn(), fetchGenera: vi.fn() }));
-vi.mock('../../api/catalog.ts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
-  ...catalog,
-}));
+vi.mock('../../api/catalog.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/catalog.ts')>();
+  catalogOriginal.invalidateAfterCatalogWrite = actual.invalidateAfterCatalogWrite;
+  return { ...actual, ...catalog };
+});
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
@@ -98,8 +107,18 @@ describe('RFC-60 R9 SpeciesDialog', () => {
     expect(within(dialog).getByText('Novus')).toBeInTheDocument();
   });
 
-  it('creates a family inline and selects it', async () => {
+  it('creates a family inline, invalidates taxa and selects the created family', async () => {
     catalog.createFamily.mockResolvedValue({ id: 'f-new', name: 'Novaceae' });
+    // This test's assertion needs the families query to actually refetch, so
+    // this mock delegates to the real implementation for this one call
+    // instead of the module's usual no-op (Global Constraint: invalidation
+    // goes through `invalidateAfterCatalogWrite`, verified below).
+    const original = catalogOriginal.invalidateAfterCatalogWrite;
+    if (original) {
+      catalog.invalidateAfterCatalogWrite.mockImplementationOnce((queryClient, area) =>
+        original(queryClient, area),
+      );
+    }
     dataset.fetchFamilies
       .mockResolvedValueOnce(FAMILIES)
       .mockResolvedValue([...FAMILIES, { id: 'f-new', name: 'Novaceae' }]);
@@ -112,9 +131,22 @@ describe('RFC-60 R9 SpeciesDialog', () => {
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(catalog.createFamily).toHaveBeenCalledWith({ name: 'Novaceae' }));
+    expect(catalog.invalidateAfterCatalogWrite).toHaveBeenCalledWith(expect.anything(), 'taxa');
     await waitFor(() =>
       expect(within(dialog).getByRole('combobox', { name: /^family/i })).toHaveValue('f-new'),
     );
+  });
+
+  it('a pending family create ignores a repeated submit (Enter twice)', async () => {
+    catalog.createFamily.mockReturnValue(new Promise(() => {}));
+    const { dialog } = mount();
+    await within(dialog).findByRole('combobox', { name: /^family/i });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'New family' }));
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /new family name/i }),
+      'Novaceae{Enter}{Enter}',
+    );
+    expect(catalog.createFamily).toHaveBeenCalledTimes(1);
   });
 
   it('Enter in the new family name creates the family, not the species', async () => {
@@ -188,5 +220,20 @@ describe('RFC-60 R9 SpeciesDialog', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'The chosen taxon no longer exists. Reload the page.',
     );
+  });
+
+  it('shows a VALIDATION_FAILED field message without the Alert alongside it', async () => {
+    catalog.updateSpecies.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'bad', [
+        { path: 'canonicalName', message: 'Too long' },
+      ]),
+    );
+    const { dialog } = mount(SPECIES);
+    const name = within(dialog).getByRole('textbox', { name: /canonical name/i });
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Adansonia digitata');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByText('Too long')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
   });
 });

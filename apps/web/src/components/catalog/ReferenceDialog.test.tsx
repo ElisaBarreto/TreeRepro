@@ -136,6 +136,19 @@ describe('RFC-61 R6 ReferenceDialog', () => {
     expect(await within(dialog).findByText('Another reference has this DOI.')).toBeInTheDocument();
   });
 
+  it('shows a VALIDATION_FAILED field message without the Alert alongside it', async () => {
+    catalog.updateReference.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'bad', [{ path: 'title', message: 'Too long' }]),
+    );
+    const { dialog } = mount(REFERENCE_DETAIL);
+    const title = within(dialog).getByRole('textbox', { name: /^title/i });
+    await userEvent.clear(title);
+    await userEvent.type(title, 'A new title');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await within(dialog).findByText('Too long')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('a year outside 1500–2100 is refused locally with the schema message', async () => {
     const { dialog } = mount();
     await userEvent.type(within(dialog).getByRole('textbox', { name: /citation key/i }), 'X');

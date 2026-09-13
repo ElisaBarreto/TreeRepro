@@ -13,7 +13,7 @@ import {
   updateReference,
 } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
 import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
 
 const OPTIONAL = ['title', 'authors', 'journal', 'doi', 'url'] as const;
@@ -236,7 +236,7 @@ export function ReferenceDialog({
             invalid={Boolean(errors.url)}
           />
         </Field>
-        {save.isError && Object.keys(taken).length === 0 ? (
+        {save.isError && Object.keys(taken).length === 0 && !isValidationError(save.error) ? (
           <Alert tone="error">{referenceErrorMessage(save.error)}</Alert>
         ) : null}
         <div className="flex justify-end gap-2">

@@ -20,7 +20,7 @@ import {
 } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
-import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
 import {
   Alert,
   Button,
@@ -130,7 +130,7 @@ export function SpeciesDialog({
   const addFamily = useMutation({
     mutationFn: (name: string) => createFamily({ name }),
     onSuccess: async (created) => {
-      await queryClient.invalidateQueries({ queryKey: datasetKeys.families });
+      await invalidateAfterCatalogWrite(queryClient, 'taxa');
       chooseFamily(created.id);
       setNewFamily(null);
     },
@@ -158,11 +158,12 @@ export function SpeciesDialog({
   const createGenusInline = async (name: string) => {
     const created = await createGenus({ name, familyId: family || undefined });
     generaById.current.set(created.id, created);
-    await queryClient.invalidateQueries({ queryKey: ['genera'] });
+    await invalidateAfterCatalogWrite(queryClient, 'taxa');
     return genusOption(created);
   };
 
   function submitFamily() {
+    if (addFamily.isPending) return;
     const name = (newFamily ?? '').trim();
     if (name === '') {
       addFamily.reset();
@@ -270,7 +271,14 @@ export function SpeciesDialog({
                     ))}
                   </Select>
                 )}
-                <Button size="sm" variant="secondary" onClick={() => setNewFamily('')}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    addFamily.reset();
+                    setNewFamily('');
+                  }}
+                >
                   New family
                 </Button>
               </div>
@@ -329,7 +337,7 @@ export function SpeciesDialog({
             invalid={Boolean(errors.genusId)}
           />
         </Field>
-        {save.isError && !nameTaken ? (
+        {save.isError && !nameTaken && !isValidationError(save.error) ? (
           <Alert tone="error">{speciesErrorMessage(save.error)}</Alert>
         ) : null}
         <div className="flex justify-end gap-2">
