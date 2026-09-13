@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
@@ -46,10 +46,37 @@ describe('RFC-21 R7 PasswordSection', () => {
     expect(await screen.findByText('Your current password is incorrect.')).toBeInTheDocument();
     auth.changePassword.mockRejectedValueOnce(
       new ApiError(400, 'AUTH_PASSWORD_WEAK', 'x', [
-        { path: 'newPassword', message: 'Use at least 12 characters' },
+        { path: 'password', message: 'Use at least 12 characters' },
       ]),
     );
     await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
     expect(await screen.findByText('Use at least 12 characters')).toBeInTheDocument();
+  });
+
+  it('shows AUTH_PASSWORD_WEAK under "New password" although the API names the field "password"', async () => {
+    // passwordWeakError (apps/api/src/auth/password.ts) always answers with
+    // `path: 'password'`, for the change flow too.
+    auth.changePassword.mockRejectedValueOnce(
+      new ApiError(400, 'AUTH_PASSWORD_WEAK', 'x', [
+        { path: 'password', message: 'Use at least 12 characters' },
+      ]),
+    );
+    renderWithProviders(<PasswordSection />, { me: ME });
+    await fill(OLD, 'short', 'short');
+    expect(await screen.findByText('Use at least 12 characters')).toBeInTheDocument();
+    const field = screen.getByLabelText('New password');
+    expect(field).toBeInvalid();
+    expect(field).toHaveAccessibleDescription(/Use at least 12 characters/);
+    expect(screen.getByLabelText('Current password')).toBeValid();
+  });
+
+  it('RFC-13 R4 runs through the MutationCache, where the 401 handler lives', async () => {
+    auth.changePassword.mockRejectedValueOnce(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    const { queryClient } = renderWithProviders(<PasswordSection />, { me: ME });
+    await fill(OLD, NEW, NEW);
+    await waitFor(() =>
+      expect(queryClient.getMutationCache().findAll({ status: 'error' })).toHaveLength(1),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
   });
 });

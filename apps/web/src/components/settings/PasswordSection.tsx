@@ -1,4 +1,5 @@
-import { type FormEvent, useId, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { type FormEvent, useId, useRef, useState } from 'react';
 import { changePassword } from '../../api/auth.ts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
@@ -18,17 +19,40 @@ export function passwordErrorMessage(error: unknown): string {
   }
 }
 
-/** @rfc RFC-21 R7 */
+/**
+ * The call goes through `useMutation` like every other request under `/app`,
+ * so the MutationCache's 401 handler sees a lost session (RFC-13 R4).
+ * @rfc RFC-21 R7
+ */
 export function PasswordSection() {
   const ids = { current: useId(), next: useId(), confirm: useId() };
-  const [pending, setPending] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [done, setDone] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const change = useMutation({
+    mutationFn: (vars: { currentPassword: string; newPassword: string }) =>
+      changePassword(vars.currentPassword, vars.newPassword),
+    onSuccess: () => {
+      setDone(true);
+      formRef.current?.reset();
+    },
+    onError: (error) => {
+      if (isValidationError(error)) {
+        // AUTH_PASSWORD_WEAK names the field `password` for every flow
+        // (apps/api/src/auth/password.ts, passwordWeakError); show it under
+        // the new-password field, which is the one it is about here.
+        const { password, ...fe } = fieldErrors(error);
+        const newPassword = fe.newPassword ?? password;
+        setErrors(newPassword === undefined ? fe : { ...fe, newPassword });
+      } else if (error instanceof ApiError && error.code === 'AUTH_INVALID_CREDENTIALS') {
+        setErrors({ currentPassword: passwordErrorMessage(error) });
+      } else setErrors({ form: passwordErrorMessage(error) });
+    },
+  });
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
+    const data = new FormData(event.currentTarget);
     const currentPassword = String(data.get('currentPassword') ?? '');
     const newPassword = String(data.get('newPassword') ?? '');
     const confirm = String(data.get('confirm') ?? '');
@@ -38,19 +62,7 @@ export function PasswordSection() {
       return;
     }
     setErrors({});
-    setPending(true);
-    try {
-      await changePassword(currentPassword, newPassword);
-      setDone(true);
-      form.reset();
-    } catch (error) {
-      if (isValidationError(error)) setErrors(fieldErrors(error));
-      else if (error instanceof ApiError && error.code === 'AUTH_INVALID_CREDENTIALS') {
-        setErrors({ currentPassword: passwordErrorMessage(error) });
-      } else setErrors({ form: passwordErrorMessage(error) });
-    } finally {
-      setPending(false);
-    }
+    change.mutate({ currentPassword, newPassword });
   }
 
   return (
@@ -58,7 +70,7 @@ export function PasswordSection() {
       <h2 id="password-heading" className="font-display text-lg font-bold">
         Password
       </h2>
-      <form onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
+      <form ref={formRef} onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
         <Field id={ids.current} label="Current password" error={errors.currentPassword}>
           <Input
             id={ids.current}
@@ -94,7 +106,7 @@ export function PasswordSection() {
         ) : null}
         {errors.form ? <Alert tone="error">{errors.form}</Alert> : null}
         <div>
-          <Button type="submit" pending={pending}>
+          <Button type="submit" pending={change.isPending}>
             Change password
           </Button>
         </div>
