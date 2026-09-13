@@ -76,3 +76,18 @@
 **Symptom:** A dialog's initial field values are stale or wrong after it is reopened for a different item.
 **Cause:** Toggling an `open` prop keeps the component instance (and its `useState`) alive across opens; when the initial value depends on what opened it (which trait, which pending group), the old state leaks into the new open.
 **Fix:** Mount and unmount the dialog instead of toggling `open` — render it only while a piece of state names what to open (`{addValueOpen ? <AddValueDialog ... /> : null}`), so every open is a fresh mount with fresh state (`AddValueDialog`, `MapDialog`).
+
+## A `fieldset` is a named group only through its `legend`
+**Symptom:** `getByRole('group', { name })` finds nothing although the fieldset has a heading inside.
+**Cause:** The accessible name of a `fieldset` comes from its `legend`, not from a heading or paragraph child.
+**Fix:** `<fieldset><legend>…</legend>…</fieldset>` (`RoleDialog.tsx`).
+
+## A checkbox list seeded from a prop must re-seed when the prop changes
+**Symptom:** After a save (or another section's write) the checked boxes still show the old roles.
+**Cause:** `useState(initial)` reads the prop once; later prop values are ignored.
+**Fix:** Keep a derived key next to the state and reset during render when it changes (`UserRolesSection.tsx`) — the adjust-state-during-render pattern `usePagedList` uses.
+
+## Invalidating a prefix refetches the detail you just wrote
+**Symptom:** A mutation's `setQueryData(adminKeys.user(id), …)` is immediately overwritten by a refetch.
+**Cause:** `invalidateQueries({ queryKey: ['admin', 'users'] })` prefix-matches the active detail query `['admin', 'users', id]` and refetches it.
+**Fix:** `refetchType: 'none'` — stale lists refetch on their next mount anyway (`UserPage.tsx`, `UserNameSection.tsx`, `UserRolesSection.tsx`).
