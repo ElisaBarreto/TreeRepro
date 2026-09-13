@@ -120,7 +120,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportsPage', () => {
       'You do not have permission to open this area.',
     );
     expect(screen.queryByRole('heading', { name: 'Imports' })).not.toBeInTheDocument();
-    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const nav = screen.getByRole('navigation', { name: 'Data' });
     expect(within(nav).queryByRole('link', { name: 'Imports' })).not.toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: 'Species' })).toBeInTheDocument();
     expect(dataset.fetchImports).not.toHaveBeenCalled();
@@ -130,7 +130,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportsPage', () => {
     dataset.fetchImports.mockResolvedValue(page([]));
     renderAt('/app/imports');
     await screen.findByRole('heading', { name: 'Imports' });
-    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const nav = screen.getByRole('navigation', { name: 'Data' });
     expect(within(nav).getByRole('link', { name: 'Imports' })).toHaveAttribute(
       'href',
       '/app/imports',

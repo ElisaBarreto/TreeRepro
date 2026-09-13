@@ -23,8 +23,10 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       </a>
     ),
     useNavigate: () => vi.fn(),
+    useLocation: () => ({ pathname: location.pathname }),
   };
 });
+const location = vi.hoisted(() => ({ pathname: '/app' }));
 const auth = vi.hoisted(() => ({ logout: vi.fn(), fetchMe: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 
@@ -83,5 +85,50 @@ describe('RFC-13 R3 AppShell navigation', () => {
     });
     expect(screen.getByRole('link', { name: 'Imports' })).toHaveAttribute('href', '/app/imports');
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-13 R3 AppShell chrome', () => {
+  it('shows the emblem, the wordmark and the user name and email', () => {
+    renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    expect(screen.getByRole('img', { name: /TreeRepro/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /TreeRepro/ })).toHaveAttribute('href', '/app');
+    expect(screen.getByText('Ada')).toBeInTheDocument();
+    expect(screen.getByText('ada@example.org')).toBeInTheDocument();
+  });
+
+  it('groups entries: Data appears only with a dataset entry, Admin only with admin.access', () => {
+    const { unmount } = renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    expect(screen.queryByText('Data')).not.toBeInTheDocument();
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    unmount();
+    renderWithProviders(<AppShell>child</AppShell>, { me: ADMIN_ME });
+    expect(screen.getByText('Data')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Data' })).toContainElement(
+      screen.getByRole('link', { name: 'Species' }),
+    );
+    expect(screen.getByRole('navigation', { name: 'Admin' })).toContainElement(
+      screen.getByRole('link', { name: 'Users' }),
+    );
+  });
+
+  it('marks the current entry and names it in the breadcrumb', () => {
+    location.pathname = '/app/species/018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
+    renderWithProviders(<AppShell>child</AppShell>, { me: ADMIN_ME });
+    expect(screen.getByRole('link', { name: 'Species' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Workspace' })).not.toHaveAttribute('aria-current');
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(crumb).toHaveTextContent('Data');
+    expect(crumb).toHaveTextContent('Species');
+    location.pathname = '/app';
+  });
+
+  it('the Workspace entry is current only on /app itself', () => {
+    location.pathname = '/app/settings';
+    renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Workspace' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Settings');
+    location.pathname = '/app';
   });
 });

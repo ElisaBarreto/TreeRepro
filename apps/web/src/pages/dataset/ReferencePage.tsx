@@ -74,7 +74,7 @@ function metadataRows(
 
 function Metadata({ reference }: { reference: ReferenceDetail }) {
   return (
-    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-cell">
       {metadataRows(reference).map((row) => (
         <div key={row.label} className="contents">
           <dt className="text-mist-500">{row.label}</dt>
@@ -97,12 +97,12 @@ function ReferenceRecords({
   );
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-display text-lg font-semibold text-canopy-950">
+      <h2 className="font-display text-section font-semibold text-canopy-950">
         Records citing this article
       </h2>
       {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
       {list.isLoading && !list.error ? (
-        <p className="text-sm text-mist-500">Loading records…</p>
+        <p className="text-body text-mist-500">Loading records…</p>
       ) : null}
       {!list.isLoading && !list.error && list.items.length === 0 ? (
         <EmptyState title="No records cite this article yet." />
@@ -141,7 +141,7 @@ export function ReferencePage({ id }: { id: string }) {
     return (
       <>
         <PageHeader title="Reference" />
-        <p className="text-sm text-mist-500">Loading…</p>
+        <p className="text-body text-mist-500">Loading…</p>
       </>
     );
   }

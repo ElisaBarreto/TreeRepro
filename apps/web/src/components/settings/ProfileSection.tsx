@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client.ts';
 import { updateName } from '../../api/me.ts';
 import { GENERIC_MESSAGE } from '../../lib/errors.ts';
 import { ME_QUERY_KEY, useMe } from '../../lib/session.ts';
-import { Alert, Button, Field, Input } from '../ui/index.ts';
+import { Alert, Button, Field, Input, Section } from '../ui/index.ts';
 
 /** @rfc RFC-13 R4, R6 */
 export function profileErrorMessage(error: unknown): string {
@@ -46,10 +46,11 @@ export function ProfileSection() {
   }
 
   return (
-    <section aria-labelledby="profile-heading" className="flex flex-col gap-4">
-      <h2 id="profile-heading" className="font-display text-lg font-bold">
-        Profile
-      </h2>
+    <Section
+      id="profile"
+      title="Profile"
+      description="The name other curators see next to your annotations."
+    >
       <form onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
         <Field id={ids.email} label="Email">
           <Input id={ids.email} value={me.user.email} readOnly />
@@ -71,6 +72,6 @@ export function ProfileSection() {
           </Button>
         </div>
       </form>
-    </section>
+    </Section>
   );
 }

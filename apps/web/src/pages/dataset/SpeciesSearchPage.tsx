@@ -40,7 +40,7 @@ export function SpeciesSearchPage() {
       <div className="flex flex-col gap-6">
         <SpeciesSearchForm value={form} onChange={setForm} />
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
-        {list.isLoading ? <p className="text-sm text-mist-500">Searching…</p> : null}
+        {list.isLoading ? <p className="text-body text-mist-500">Searching…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No species match." />
         ) : null}

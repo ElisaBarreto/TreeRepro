@@ -30,21 +30,21 @@ export function Field({ id, label, hint, error, children }: FieldProps) {
       : child,
   );
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <label
         htmlFor={id}
-        className="text-xs font-semibold uppercase tracking-wider text-canopy-800"
+        className="text-label font-bold uppercase tracking-[0.08em] text-canopy-800"
       >
         {label}
       </label>
       {control}
       {hint ? (
-        <p id={hintId} className="text-xs text-mist-500">
+        <p id={hintId} className="text-meta text-mist-500">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="text-xs text-red-700">
+        <p id={errorId} className="text-meta text-red-700">
           {error}
         </p>
       ) : null}

@@ -47,14 +47,14 @@ export function TraitCard({ summary, onOpen }: { summary: TraitSummary; onOpen: 
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full flex-col gap-3 rounded-xl border border-canopy-700/15 bg-white p-4 text-left transition-colors hover:border-canopy-600/50 hover:bg-mist-50/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+      className="flex w-full flex-col gap-4 rounded-xl border border-canopy-700/15 bg-white p-5 text-left shadow-[0_1px_2px_rgba(7,31,28,0.04)] transition-colors hover:border-canopy-600/50 hover:bg-mist-50/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
     >
       <span className="flex w-full items-start justify-between gap-3">
         <span className="flex flex-col">
-          <span className="font-display font-semibold text-canopy-950">
+          <span className="font-display text-card font-semibold text-canopy-950">
             {humaniseKey(trait.key)}
           </span>
-          <span className="text-xs text-mist-500">
+          <span className="text-meta text-mist-500">
             {trait.unit ? `${trait.unit} · ` : ''}
             {recordCount} {recordCount === 1 ? 'record' : 'records'}
           </span>
@@ -63,14 +63,14 @@ export function TraitCard({ summary, onOpen }: { summary: TraitSummary; onOpen: 
       </span>
 
       {bars.length > 0 ? (
-        <span className="flex w-full flex-col gap-1.5">
+        <span className="flex w-full flex-col gap-2.5">
           {bars.map((level) => (
             <span key={level.levelId} className="flex flex-col gap-0.5">
-              <span className="flex justify-between gap-2 text-xs text-canopy-900">
+              <span className="flex justify-between gap-2 text-meta text-canopy-900">
                 <span className="truncate">{level.key}</span>
                 <span className="tabular-nums text-mist-500">{level.count}</span>
               </span>
-              <span aria-hidden="true" className="block h-1.5 w-full rounded-full bg-mist-100">
+              <span aria-hidden="true" className="block h-2 w-full rounded-full bg-mist-100">
                 <span
                   className={`block h-full rounded-full bg-canopy-500 ${widthClass(level.count, maxCount)}`}
                 />
@@ -82,15 +82,17 @@ export function TraitCard({ summary, onOpen }: { summary: TraitSummary; onOpen: 
 
       {numeric ? (
         <span className="flex flex-col">
-          <span className="text-xs uppercase tracking-wider text-mist-500">min · median · max</span>
-          <span className="text-sm tabular-nums text-canopy-900">
+          <span className="text-label uppercase tracking-[0.06em] text-mist-500">
+            min · median · max
+          </span>
+          <span className="text-body tabular-nums text-canopy-900">
             {`${formatNumber(numeric.min)} · ${formatNumber(numeric.median)} · ${formatNumber(numeric.max)}${trait.unit ? ` ${trait.unit}` : ''}`}
           </span>
         </span>
       ) : null}
 
       {accepted ? (
-        <span className="text-sm text-canopy-800">
+        <span className="text-body text-canopy-800">
           <span className="text-mist-500">accepted: </span>
           {accepted.valueText}
         </span>

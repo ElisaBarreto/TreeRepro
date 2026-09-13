@@ -1,23 +1,73 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { logout } from '../../api/auth.ts';
 import { forgetSession, hasPermission, useMe } from '../../lib/session.ts';
-import { Alert, Button } from '../ui/index.ts';
-import { NAV_ENTRIES } from './nav.ts';
+import { Alert, Button, Emblem, Icon } from '../ui/index.ts';
+import { currentEntry, NAV_ENTRIES, NAV_SECTIONS, type NavEntry } from './nav.ts';
 
 const LINK =
-  'block rounded-lg px-3 py-2 text-sm text-mist-200 transition-colors hover:bg-white/5 hover:text-white [&.active]:bg-white/10 [&.active]:text-white';
+  'flex h-11 items-center gap-3 rounded-[10px] px-3 text-body font-medium text-mist-200 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 aria-[current=page]:bg-white/10 aria-[current=page]:font-semibold aria-[current=page]:text-white [&[aria-current=page]>svg]:text-pollen-400';
+
+// Not exported: no @rfc tag needed (RFC-00 R6 applies to exports only).
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+}
+
+// `aria-current` comes from `currentEntry`, not from the router: with exact
+// matching the router never marks `/app` active under `/app/species`, so the
+// two agree wherever both apply and the prop below is the one that shows.
+function NavGroup({
+  name,
+  heading,
+  entries,
+  current,
+}: {
+  name: string;
+  heading: string | null;
+  entries: NavEntry[];
+  current: NavEntry | undefined;
+}) {
+  return (
+    <nav aria-label={name} className="flex flex-col gap-1">
+      {heading ? (
+        <p className="mb-1 px-3 text-label font-bold uppercase tracking-[0.14em] text-mist-400">
+          {heading}
+        </p>
+      ) : null}
+      {entries.map((e) => (
+        <Link
+          key={e.to}
+          to={e.to}
+          activeOptions={{ exact: true }}
+          aria-current={current?.to === e.to ? 'page' : undefined}
+          className={LINK}
+        >
+          <Icon name={e.icon} />
+          <span>{e.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 /**
- * Dark sidebar, light content. Entries render by permission; the Admin
- * heading needs admin.access on top of the entries' own permissions.
+ * Dark sidebar (emblem, grouped entries), light content under a top bar
+ * (breadcrumb, user, sign-out). Entries render by permission; the Admin
+ * group needs admin.access on top of the entries' own permissions. The
+ * current entry is the one `currentEntry` picks for the pathname.
  * @rfc RFC-13 R2, R3, R4
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { pathname } = useLocation();
   const signOut = useMutation({
     mutationFn: logout,
     // A failed logout (5xx/429) leaves the session in place — no navigation,
@@ -30,49 +80,86 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
   });
   const visible = NAV_ENTRIES.filter((e) => !e.permission || hasPermission(me, e.permission));
-  const main = visible.filter((e) => !e.section);
-  const admin = hasPermission(me, 'admin.access')
-    ? visible.filter((e) => e.section === 'admin')
-    : [];
+  const groups = [
+    { name: 'Main', heading: null, entries: visible.filter((e) => !e.section) },
+    ...NAV_SECTIONS.map((s) => ({
+      name: s.label ?? 'Account',
+      heading: s.label,
+      entries:
+        s.key === 'admin' && !hasPermission(me, 'admin.access')
+          ? []
+          : visible.filter((e) => e.section === s.key),
+    })),
+  ].filter((g) => g.entries.length > 0);
+  const current = currentEntry(pathname);
+  const crumbGroup = current?.section
+    ? NAV_SECTIONS.find((s) => s.key === current.section)?.label
+    : null;
 
   return (
     <div className="flex min-h-screen bg-mist-50 text-canopy-950">
-      <aside className="flex w-60 shrink-0 flex-col gap-6 bg-canopy-900 px-4 py-6 text-mist-100">
+      <aside className="flex w-[264px] shrink-0 flex-col gap-7 bg-canopy-900 px-4 py-6 text-mist-100">
         <Link
           to="/app"
-          className="px-3 font-display text-xs font-semibold uppercase tracking-[0.28em] text-mist-300"
+          className="flex items-center gap-3 rounded-[10px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
         >
-          TreeRepro
+          <Emblem size={40} />
+          <span className="flex flex-col">
+            <span className="font-display text-card font-bold tracking-[-0.01em] text-white">
+              TreeRepro
+            </span>
+            <span className="text-label font-semibold uppercase tracking-[0.14em] text-mist-400">
+              Workspace
+            </span>
+          </span>
         </Link>
-        <nav aria-label="Main" className="flex flex-col gap-1">
-          {main.map((e) => (
-            <Link key={e.to} to={e.to} activeOptions={{ exact: e.to === '/app' }} className={LINK}>
-              {e.label}
-            </Link>
-          ))}
-        </nav>
-        {admin.length > 0 ? (
-          <nav aria-label="Admin" className="flex flex-col gap-1">
-            <p className="px-3 text-xs font-semibold uppercase tracking-wider text-mist-400">
-              Admin
-            </p>
-            {admin.map((e) => (
-              <Link key={e.to} to={e.to} className={LINK}>
-                {e.label}
-              </Link>
-            ))}
-          </nav>
-        ) : null}
+        {groups.map((g) => (
+          <NavGroup
+            key={g.name}
+            name={g.name}
+            heading={g.heading}
+            entries={g.entries}
+            current={current}
+          />
+        ))}
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-end gap-4 border-b border-canopy-700/10 bg-white px-6">
-          {signOut.isError ? <Alert tone="error">Could not sign out. Try again.</Alert> : null}
-          <span className="text-sm text-canopy-800">{me.user.name}</span>
-          <Button variant="secondary" pending={signOut.isPending} onClick={() => signOut.mutate()}>
-            Sign out
-          </Button>
+        <header className="flex h-16 items-center justify-between gap-4 border-b border-canopy-700/10 bg-white px-10">
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-cell text-mist-500">
+            {crumbGroup ? (
+              <>
+                <span>{crumbGroup}</span>
+                <Icon name="chevronRight" size={16} className="text-mist-300" />
+              </>
+            ) : null}
+            <span className="font-semibold text-canopy-900">{current?.label ?? 'Workspace'}</span>
+          </nav>
+          <div className="flex items-center gap-4">
+            {signOut.isError ? <Alert tone="error">Could not sign out. Try again.</Alert> : null}
+            <div className="flex items-center gap-2.5">
+              <span
+                aria-hidden="true"
+                className="inline-flex size-9 items-center justify-center rounded-full bg-canopy-200 font-display text-label font-bold text-canopy-900"
+              >
+                {initials(me.user.name)}
+              </span>
+              <span className="flex flex-col leading-tight">
+                <span className="text-cell font-semibold text-canopy-950">{me.user.name}</span>
+                <span className="text-label text-mist-500">{me.user.email}</span>
+              </span>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              pending={signOut.isPending}
+              onClick={() => signOut.mutate()}
+            >
+              <Icon name="logout" size={18} />
+              Sign out
+            </Button>
+          </div>
         </header>
-        <main className="flex-1 px-6 py-8">{children}</main>
+        <main className="flex-1 px-10 py-8">{children}</main>
       </div>
     </div>
   );

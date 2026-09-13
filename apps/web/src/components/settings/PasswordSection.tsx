@@ -4,7 +4,7 @@ import { changePassword } from '../../api/auth.ts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
 import { PASSWORD_HINT } from '../auth/PasswordFields.tsx';
-import { Alert, Button, Field, Input } from '../ui/index.ts';
+import { Alert, Button, Field, Input, Section } from '../ui/index.ts';
 
 /** @rfc RFC-13 R6 */
 export function passwordErrorMessage(error: unknown): string {
@@ -72,10 +72,7 @@ export function PasswordSection() {
   }
 
   return (
-    <section aria-labelledby="password-heading" className="flex flex-col gap-4">
-      <h2 id="password-heading" className="font-display text-lg font-bold">
-        Password
-      </h2>
+    <Section id="password" title="Password" description="Changing it signs out every other device.">
       <form ref={formRef} onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
         <Field id={ids.current} label="Current password" error={errors.currentPassword}>
           <Input
@@ -117,6 +114,6 @@ export function PasswordSection() {
           </Button>
         </div>
       </form>
-    </section>
+    </Section>
   );
 }

@@ -65,7 +65,7 @@ export function TraitsPage() {
           </Field>
         </div>
         {dictionary.error ? <Alert tone="error">{pageErrorMessage(dictionary.error)}</Alert> : null}
-        {dictionary.isPending ? <p className="text-sm text-mist-500">Loading…</p> : null}
+        {dictionary.isPending ? <p className="text-body text-mist-500">Loading…</p> : null}
         {dictionary.isSuccess && total === 0 ? (
           <EmptyState title="The dictionary is empty." />
         ) : null}
@@ -84,7 +84,7 @@ function CategorySection({ label, traits }: { label: string; traits: Trait[] }) 
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 id={headingId} className="font-display text-lg font-semibold text-canopy-950">
+      <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
         {label}
       </h2>
       <Table>
@@ -127,6 +127,7 @@ function TraitRows({ trait }: { trait: Trait }) {
           {trait.levels.length > 0 ? (
             <Button
               variant="secondary"
+              size="sm"
               aria-expanded={open}
               aria-controls={open ? levelsId : undefined}
               onClick={() => setOpen((value) => !value)}

@@ -7,7 +7,7 @@ export function WorkspacePage() {
   return (
     <>
       <PageHeader title="Workspace" description={`Welcome, ${me.user.name}.`} />
-      <p className="text-sm text-mist-500">Research data arrives in the next release.</p>
+      <p className="text-body text-mist-500">Research data arrives in the next release.</p>
     </>
   );
 }

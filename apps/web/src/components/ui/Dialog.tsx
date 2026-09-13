@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useId, useRef } from 'react';
+import { Icon } from './Icon.tsx';
 
 export interface DialogProps {
   open: boolean;
@@ -60,7 +61,7 @@ export function Dialog({ open, title, onClose, closeDisabled, children }: Dialog
     >
       <div className="flex flex-col gap-5 p-6">
         <header className="flex items-start justify-between gap-4">
-          <h2 id={titleId} className="font-display text-lg font-bold">
+          <h2 id={titleId} className="font-display text-section font-semibold">
             {title}
           </h2>
           <button
@@ -68,9 +69,9 @@ export function Dialog({ open, title, onClose, closeDisabled, children }: Dialog
             onClick={() => ref.current?.close()}
             aria-label="Close"
             disabled={closeDisabled}
-            className="rounded-full px-2 text-mist-500 transition-colors hover:text-canopy-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-mist-500 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            ×
+            <Icon name="close" />
           </button>
         </header>
         {children}
