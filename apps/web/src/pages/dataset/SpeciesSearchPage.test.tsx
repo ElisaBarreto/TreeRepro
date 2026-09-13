@@ -288,6 +288,33 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     );
   });
 
+  it('RFC-60 R6 switches between Species and Unresolved taxa through the navigation while already on the page', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    await openPage();
+    const checkbox = screen.getByRole('checkbox', { name: /unresolved/i });
+    expect(checkbox).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole('link', { name: 'Unresolved taxa' }));
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /unresolved/i })).toBeChecked(),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ unresolved: true }),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole('link', { name: 'Species' }));
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /unresolved/i })).not.toBeChecked(),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ unresolved: false }),
+      ),
+    );
+  });
+
   it('RFC-66 R1 shows the export link only with dataset.export', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'dataset.export'] });

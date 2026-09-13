@@ -64,6 +64,29 @@ describe('RFC-65 R9 MapDialog', () => {
     expect(onMapped).toHaveBeenCalledWith(MAP_RESULT);
   });
 
+  it('shows a traitId API error under the summary line', async () => {
+    curation.mapPending.mockRejectedValueOnce(
+      new ApiError(400, 'VALIDATION_FAILED', 'x', [
+        { path: 'traitId', message: 'Trait is inactive' },
+      ]),
+    );
+    renderWithProviders(
+      <MapDialog
+        trait={DICTIONARY_SEXUAL_SYSTEM}
+        levels={LEVELS}
+        group={GROUP}
+        onClose={() => undefined}
+        onMapped={() => undefined}
+      />,
+      { me },
+    );
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Map records' }));
+    const message = await within(dialog).findByText('Trait is inactive');
+    expect(message.previousElementSibling).toHaveTextContent(/sexual system · 2 records/);
+  });
+
   it('maps a quantitative group to a number and shows API errors', async () => {
     curation.mapPending.mockRejectedValueOnce(
       new ApiError(400, 'VALIDATION_FAILED', 'x', [

@@ -27,6 +27,8 @@ export interface ComboboxProps {
   onCreate?: (text: string) => Promise<ComboboxOption>;
   disabled?: boolean;
   invalid?: boolean;
+  /** Set by `Field` on its child; forwarded to the input and to the Clear button of a chosen value. */
+  'aria-describedby'?: string;
 }
 
 /**
@@ -34,7 +36,9 @@ export interface ComboboxProps {
  * `<div role="listbox">` of `<button role="option">` (docs/gotchas/web.md):
  * ArrowDown moves focus from the input to the first option, the arrows move
  * between options, Enter or a click selects, Escape closes the list and
- * returns to the input. A chosen value replaces the input with a badge and
+ * returns to the input. Escape and Enter are handled only while the list is
+ * open: otherwise Escape reaches the enclosing dialog or drawer, and Enter
+ * submits the form as usual. A chosen value replaces the input with a badge and
  * a Clear button, as the genus filter of the species search does. When the
  * caller passes `onCreate` and the term matches no option exactly, a last
  * option offers to create it. The search runs on the debounced term once it
@@ -54,6 +58,7 @@ export function Combobox({
   onCreate,
   disabled,
   invalid,
+  'aria-describedby': describedBy,
 }: ComboboxProps) {
   const [text, setText] = useState('');
   const [closed, setClosed] = useState(false);
@@ -82,6 +87,7 @@ export function Combobox({
   function choose(option: ComboboxOption) {
     onChange(option);
     setText('');
+    setCreateError(false);
     // Keeps the list closed until the next keystroke, so the debounced term
     // (still the previous search for up to 300 ms) cannot reopen it with
     // stale results once the caller clears the chosen value.
@@ -116,9 +122,14 @@ export function Combobox({
       event.preventDefault();
       focusOption(1);
     }
+    if (!listOpen) return;
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       setClosed(true);
+    } else if (event.key === 'Enter') {
+      // The list is the thing Enter acts on here, not the form.
+      event.preventDefault();
     }
   }
 
@@ -150,6 +161,7 @@ export function Combobox({
           variant="secondary"
           size="sm"
           aria-label="Clear"
+          aria-describedby={describedBy}
           disabled={disabled}
           onClick={() => onChange(null)}
         >
@@ -169,6 +181,7 @@ export function Combobox({
         aria-autocomplete="list"
         aria-expanded={listOpen}
         aria-controls={listOpen ? listId : undefined}
+        aria-describedby={describedBy}
         placeholder={placeholder}
         disabled={disabled}
         invalid={invalid}

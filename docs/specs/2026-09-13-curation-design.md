@@ -240,6 +240,8 @@ Sections 10.1–10.3 above are the design; the implementation differs in a few s
 - The unresolved-taxa navigation entry is a plain `Link` with `search={{ unresolved: true }}` to `/app/species`, not a separate route.
 - The pages adopt the workspace UI kit of `docs/specs/2026-09-13-workspace-ui-pattern.md`, merged onto `main` mid-plan (PR #52): the kit's type scale (`text-title`/`text-section`/`text-card`/`text-body`/`text-cell`/`text-meta`/`text-label`, never `text-xs`/`text-sm`/`text-lg`/`text-2xl`/`text-base`), `Button size="sm"` for row and inline-form actions, and the navigation gains a `curation` section alongside `data`/`admin`/`account`.
 - `AddValueDialog` runs explicit required-field checks before handing the form to the shared `createRecordBodySchema` — Zod's `value` union collapses an empty number input to the single path `value`, which cannot address the two distinct fields (`value.levelId`, `value.numeric`) the field errors need to target.
+- `AcceptedSection` fetches `GET /api/species/:id/traits/:traitId/accepted` once for both the current decision and the history (the response carries both); "Show history" only reveals what that one request already returned.
+- Withdraw in the drawer also requires `records.annotate`: the route `POST /api/records/:id/annotations` is guarded by that permission for every kind, so the author-or-`records.withdraw` rule of RFC-65 R4 applies on top of it, and the button is offered only to a `records.annotate` holder.
 
 ### 10.4 Catalog editors (07c)
 

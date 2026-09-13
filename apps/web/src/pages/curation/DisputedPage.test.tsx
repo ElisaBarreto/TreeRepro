@@ -1,6 +1,7 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/client.ts';
 import { CURATED_RECORD_DETAIL, DISPUTED_RECORD } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
@@ -59,5 +60,27 @@ describe('RFC-65 R10 DisputedPage', () => {
     curation.fetchDisputed.mockResolvedValue({ data: [], meta: { nextCursor: null } });
     renderAt('/app/curation/disputed');
     expect(await screen.findByText('No standing disputes.')).toBeInTheDocument();
+  });
+
+  it('RFC-13 R4 a 403 shows the permission sentence; other failures the generic one', async () => {
+    curation.fetchDisputed.mockRejectedValue(new ApiError(403, 'PERMISSION_DENIED', 'x'));
+    const first = renderAt('/app/curation/disputed');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You do not have permission to do this.',
+    );
+    expect(screen.queryByText('No standing disputes.')).not.toBeInTheDocument();
+    first.unmount();
+
+    curation.fetchDisputed.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
+    renderAt('/app/curation/disputed');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+
+  it('RFC-13 R8 a 401 on the list ends the session and returns to /', async () => {
+    curation.fetchDisputed.mockRejectedValue(
+      new ApiError(401, 'AUTH_UNAUTHENTICATED', 'Authentication required'),
+    );
+    const { router } = renderAt('/app/curation/disputed');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 });

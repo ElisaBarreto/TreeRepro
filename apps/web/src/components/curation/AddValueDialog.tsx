@@ -203,11 +203,14 @@ export function AddValueDialog({
     <Dialog open title="Add value" onClose={onClose} closeDisabled={save.isPending}>
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         {initialTrait ? (
-          <p className="text-body text-canopy-900">
-            <span className="text-mist-500">Trait: </span>
-            {humaniseKey(initialTrait.key)}
-            {unit ? <span className="text-mist-500"> · {unit}</span> : null}
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="text-body text-canopy-900">
+              <span className="text-mist-500">Trait: </span>
+              {humaniseKey(initialTrait.key)}
+              {unit ? <span className="text-mist-500"> · {unit}</span> : null}
+            </p>
+            {errors.traitId ? <p className="text-label text-red-700">{errors.traitId}</p> : null}
+          </div>
         ) : (
           <Field
             id={ids.trait}

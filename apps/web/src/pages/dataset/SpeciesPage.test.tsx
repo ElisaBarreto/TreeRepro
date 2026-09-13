@@ -1,10 +1,12 @@
+import type { QueryClient } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MeResponse, RecordItem } from '@treerepro/contracts';
+import type { MeResponse, RecordItem, SpeciesTraits } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys } from '../../api/dataset.ts';
 import {
+  ACCEPTED_STATE,
   CURATED_RECORD_DETAIL,
   DICTIONARY,
   EMPTY_ACCEPTED,
@@ -14,6 +16,7 @@ import {
   RECORD_DETAIL,
   REFERENCE,
   SEXUAL_SYSTEM,
+  SEXUAL_SYSTEM_SUMMARY,
   SPECIES,
   SPECIES_TRAITS,
   UNRESOLVED_SPECIES,
@@ -42,10 +45,15 @@ const dataset = vi.hoisted(() => ({
 }));
 // TraitPanel renders AcceptedSection, which calls fetchAccepted; mocked so
 // the panel tests below do not hit the real apiFetch.
+// `invalidateAfterRecordWrite` keeps the real signature so one test can
+// swap the real implementation in.
 const curation = vi.hoisted(() => ({
   createRecord: vi.fn(),
-  invalidateAfterRecordWrite: vi.fn(async () => undefined),
+  invalidateAfterRecordWrite: vi.fn(
+    async (_queryClient: QueryClient, _speciesId?: string): Promise<void> => undefined,
+  ),
   fetchAccepted: vi.fn(),
+  setAccepted: vi.fn(),
 }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
@@ -73,7 +81,8 @@ beforeEach(() => {
   dataset.fetchDictionary.mockReset();
   dataset.searchReferences.mockReset();
   curation.createRecord.mockReset();
-  curation.invalidateAfterRecordWrite.mockClear();
+  curation.setAccepted.mockReset();
+  curation.invalidateAfterRecordWrite.mockReset().mockResolvedValue(undefined);
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchSpecies.mockResolvedValue(SPECIES);
   dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS);
@@ -95,7 +104,7 @@ async function openPage(species = SPECIES) {
 }
 
 async function openTraitPanel() {
-  await userEvent.click(screen.getByRole('button', { name: /sexual system/ }));
+  await userEvent.click(screen.getByRole('button', { name: /^sexual system/ }));
   return screen.findByRole('dialog', { name: 'sexual system' });
 }
 
@@ -179,7 +188,7 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
 
     await userEvent.click(within(panel).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /sexual system/ })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /^sexual system/ })).toHaveFocus();
   });
 
   it('steps to the next page of records with the cursor and back', async () => {
@@ -287,6 +296,68 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
   });
 });
 
+describe('RFC-65 R6 SpeciesPage trait panel follows the live summary', () => {
+  // The summary as the page first loads it, with RECORD as the accepted
+  // value, and the same summary once the accepted value is cleared.
+  const withAccepted: SpeciesTraits = [
+    {
+      category: { key: 'sexual_system', label: 'Sexual system' },
+      traits: [
+        {
+          ...SEXUAL_SYSTEM_SUMMARY,
+          accepted: { recordId: RECORD.id, valueText: 'dioecious', decidedAt: RECORD.createdAt },
+        },
+      ],
+    },
+  ];
+  const cleared: SpeciesTraits = [
+    {
+      category: { key: 'sexual_system', label: 'Sexual system' },
+      traits: [{ ...SEXUAL_SYSTEM_SUMMARY, accepted: null }],
+    },
+  ];
+
+  it('drops the accepted badge from the row once Clear refetches the summary', async () => {
+    // The real invalidation, so the write reaches the species' summary query
+    // the way it does in production.
+    const actual =
+      await vi.importActual<typeof import('../../api/curation.ts')>('../../api/curation.ts');
+    curation.invalidateAfterRecordWrite.mockImplementation(actual.invalidateAfterRecordWrite);
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'accepted.manage'] });
+    dataset.fetchSpeciesTraits.mockResolvedValueOnce(withAccepted).mockResolvedValue(cleared);
+    dataset.fetchRecords.mockResolvedValue(page([RECORD]));
+    curation.fetchAccepted.mockResolvedValue(ACCEPTED_STATE);
+    curation.setAccepted.mockResolvedValue(EMPTY_ACCEPTED);
+    await openPage();
+    const panel = await openTraitPanel();
+    const table = await within(panel).findByRole('table');
+    expect(within(table).getByText('accepted')).toBeInTheDocument();
+
+    await userEvent.click(await within(panel).findByRole('button', { name: 'Clear' }));
+    await userEvent.type(
+      within(panel).getByRole('textbox', { name: /why is the accepted value cleared/i }),
+      'Sources disagree',
+    );
+    await userEvent.click(within(panel).getByRole('button', { name: 'Confirm clear' }));
+    await waitFor(() => expect(curation.setAccepted).toHaveBeenCalled());
+    await waitFor(() => expect(dataset.fetchSpeciesTraits).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(within(panel).queryByText('accepted', { selector: 'span' })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('dialog', { name: 'sexual system' })).toBeInTheDocument();
+  });
+
+  it('closes the panel when its trait leaves the summary', async () => {
+    dataset.fetchSpeciesTraits.mockResolvedValueOnce(withAccepted).mockResolvedValue([]);
+    const { queryClient } = await openPage();
+    await openTraitPanel();
+    await act(() =>
+      queryClient.refetchQueries({ queryKey: datasetKeys.speciesTraits(SPECIES.id) }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});
+
 describe('RFC-13 R4, R6 SpeciesPage errors', () => {
   it('SPECIES_NOT_FOUND renders the not-found alert and nothing else', async () => {
     dataset.fetchSpecies.mockRejectedValue(new ApiError(404, 'SPECIES_NOT_FOUND', 'x'));
@@ -375,7 +446,7 @@ describe('RFC-13 R2 SpeciesPage remounts per id', () => {
 describe('RFC-65 R1 Add value from the species page', () => {
   it('shows the Add value buttons only with records.create; the header button opens the dialog without a trait, a card button with its trait', async () => {
     const first = await openPage();
-    expect(screen.queryByRole('button', { name: 'Add value' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Add value/ })).not.toBeInTheDocument();
     // Unmount before remounting with the new permission: both renders show
     // the same species name, so a second `openPage()` without unmounting
     // would let its heading wait resolve against the still-mounted first
@@ -383,8 +454,9 @@ describe('RFC-65 R1 Add value from the species page', () => {
     first.unmount();
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
     await openPage();
-    const buttons = screen.getAllByRole('button', { name: 'Add value' });
+    const buttons = screen.getAllByRole('button', { name: /^Add value/ });
     expect(buttons.length).toBeGreaterThan(1);
+    expect(buttons[0]).toHaveAccessibleName('Add value');
     await userEvent.click(buttons[0] as HTMLElement);
     const dialog = await screen.findByRole('dialog', { name: 'Add value' });
     expect(within(dialog).getByRole('combobox', { name: /trait/i })).toBeInTheDocument();
@@ -392,8 +464,9 @@ describe('RFC-65 R1 Add value from the species page', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Add value' })).not.toBeInTheDocument(),
     );
-    const card = screen.getByRole('button', { name: /sexual system/ }).parentElement as HTMLElement;
-    await userEvent.click(within(card).getByRole('button', { name: 'Add value' }));
+    const card = screen.getByRole('button', { name: /^sexual system/ })
+      .parentElement as HTMLElement;
+    await userEvent.click(within(card).getByRole('button', { name: /^Add value for/ }));
     const prefilled = await screen.findByRole('dialog', { name: 'Add value' });
     expect(within(prefilled).getByText('sexual system')).toBeInTheDocument();
     expect(within(prefilled).queryByRole('combobox', { name: /trait/i })).not.toBeInTheDocument();
@@ -404,7 +477,7 @@ describe('RFC-65 R1 Add value from the species page', () => {
     curation.createRecord.mockResolvedValue(RECORD_DETAIL);
     dataset.fetchRecord.mockResolvedValue(RECORD_DETAIL);
     await openPage();
-    await userEvent.click(screen.getAllByRole('button', { name: 'Add value' })[0] as HTMLElement);
+    await userEvent.click(screen.getByRole('button', { name: 'Add value' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add value' });
     await userEvent.type(within(dialog).getByRole('combobox', { name: /trait/i }), 'sexual');
     await userEvent.click(await screen.findByRole('option', { name: /sexual system/ }));

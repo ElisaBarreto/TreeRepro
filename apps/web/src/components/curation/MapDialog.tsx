@@ -97,6 +97,7 @@ export function MapDialog({
           {humaniseKey(trait.key)} · {group.count} {group.count === 1 ? 'record' : 'records'} ·{' '}
           {group.harmonisation.replace('_', ' ')}
         </p>
+        {errors.traitId ? <p className="text-label text-red-700">{errors.traitId}</p> : null}
         {trait.valueType === 'categorical' ? (
           <fieldset
             className="flex flex-col gap-2"

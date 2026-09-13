@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/client.ts';
 import {
   CURATED_RECORD_DETAIL,
   DICTIONARY,
@@ -99,5 +100,27 @@ describe('RFC-65 R7–R9 PendingPage', () => {
     curation.fetchPendingTraits.mockResolvedValue([]);
     renderAt('/app/curation/pending');
     expect(await screen.findByText('Nothing is pending harmonisation.')).toBeInTheDocument();
+  });
+
+  it('RFC-13 R4 a 403 shows the permission sentence; other failures the generic one', async () => {
+    curation.fetchPendingTraits.mockRejectedValue(new ApiError(403, 'PERMISSION_DENIED', 'x'));
+    const first = renderAt('/app/curation/pending');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You do not have permission to do this.',
+    );
+    expect(screen.queryByText('Nothing is pending harmonisation.')).not.toBeInTheDocument();
+    first.unmount();
+
+    curation.fetchPendingTraits.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
+    renderAt('/app/curation/pending');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+
+  it('RFC-13 R8 a 401 on the list ends the session and returns to /', async () => {
+    curation.fetchPendingTraits.mockRejectedValue(
+      new ApiError(401, 'AUTH_UNAUTHENTICATED', 'Authentication required'),
+    );
+    const { router } = renderAt('/app/curation/pending');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 });

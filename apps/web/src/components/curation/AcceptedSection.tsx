@@ -143,7 +143,6 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
               maxLength={2000}
               onChange={(e) => setNote(e.target.value)}
               invalid={Boolean(noteError)}
-              aria-label="Note"
             />
           </Field>
           <div className="flex gap-2">

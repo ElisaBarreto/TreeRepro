@@ -178,6 +178,24 @@ describe('RFC-65 R1 AddValueDialog', () => {
     expect(onOpenRecord).toHaveBeenCalledWith(RECORD_DETAIL.id);
   });
 
+  it('with a preselected trait shows a traitId API error under the trait line', async () => {
+    curation.createRecord.mockRejectedValueOnce(
+      new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'traitId', message: 'Trait is inactive' },
+      ]),
+    );
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: /level/i }),
+      'dioecious',
+    );
+    await pickPrimaryReference();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));
+    const message = await within(dialog).findByText('Trait is inactive');
+    expect(message.previousElementSibling).toHaveTextContent('Trait: sexual system');
+  });
+
   it('offers to create a missing reference only with references.manage, and selects the created one', async () => {
     dataset.searchReferences.mockResolvedValue({ data: [], meta: { nextCursor: null } });
     curation.createReference.mockResolvedValue({ ...REFERENCE_DETAIL, citationKey: 'Novo_2026' });

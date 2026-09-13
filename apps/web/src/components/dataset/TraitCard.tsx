@@ -31,8 +31,9 @@ function pendingCount(summary: TraitSummary): number {
 
 /**
  * One trait of a species, as a button that opens its records, plus an
- * optional separate "Add value" button (RFC-65 R1) — a sibling, never
- * nested inside the main button. Shows the summary the API computed
+ * optional separate "Add value for <trait>" button (RFC-65 R1) — a sibling,
+ * never nested inside the main button, named after the trait so the cards'
+ * buttons read apart. Shows the summary the API computed
  * (RFC-63 R10): the top levels as bars scaled against the most frequent
  * one, or min · median · max for a measurement, how many records still
  * wait for harmonisation, and the accepted value. Only spans inside the
@@ -114,7 +115,7 @@ export function TraitCard({
         <Button
           variant="secondary"
           size="sm"
-          aria-label="Add value"
+          aria-label={`Add value for ${humaniseKey(trait.key)}`}
           onClick={onAdd}
           className="shrink-0 px-3"
         >

@@ -9,8 +9,9 @@ import {
   setAccepted,
 } from '../../api/curation.ts';
 import { datasetKeys } from '../../api/dataset.ts';
-import { pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { DrawerSection } from '../dataset/DrawerSection.tsx';
 import { Alert, Badge, Button, Field, Textarea } from '../ui/index.ts';
 
 /** @rfc RFC-13 R6 */
@@ -47,8 +48,10 @@ const NOTE_LABELS: Record<NoteMode, { title: string; submit: string }> = {
  * as the species × trait value. Withdraw appears only on a manual record of
  * the signed-in user, or for a `records.withdraw` holder. A withdrawn record
  * has no actions; the accepted record shows a badge instead of the button.
- * After a write the drawer's record query is replaced with the answer and the
- * lists and summaries are invalidated.
+ * Renders its own "Actions" section, and none at all for a viewer with
+ * nothing to show, so the drawer never carries an empty heading. After a
+ * write the drawer's record query is replaced with the answer and the lists
+ * and summaries are invalidated.
  * @rfc RFC-13 R3, R6
  * @rfc RFC-65 R3, R4, R6
  */
@@ -59,14 +62,6 @@ export function RecordActions({ record }: { record: RecordDetail }) {
   const [mode, setMode] = useState<NoteMode | null>(null);
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | null>(null);
-
-  // Switching between Dispute and Withdraw, or cancelling either, must not
-  // leave the other's typed note or validation error behind.
-  function openMode(next: NoteMode | null) {
-    setMode(next);
-    setNote('');
-    setNoteError(null);
-  }
 
   const annotate = useMutation({
     mutationFn: (body: AnnotateRecordBody) => annotateRecord(record.id, body),
@@ -89,6 +84,16 @@ export function RecordActions({ record }: { record: RecordDetail }) {
     },
   });
 
+  // Switching between Dispute and Withdraw, or cancelling either, must not
+  // leave the other's typed note, validation error or failed write behind.
+  function openMode(next: NoteMode | null) {
+    setMode(next);
+    setNote('');
+    setNoteError(null);
+    annotate.reset();
+    accept.reset();
+  }
+
   const withdrawn = record.review === 'withdrawn';
   const canAnnotate = hasPermission(me, 'records.annotate') && !withdrawn;
   const isAuthor = record.createdBy?.id === me.user.id;
@@ -103,9 +108,18 @@ export function RecordActions({ record }: { record: RecordDetail }) {
     !withdrawn &&
     record.harmonisation === 'harmonised' &&
     !isAccepted;
-  const error = annotate.error ?? accept.error;
+  // A validation detail on the note lands under the field; anything else is
+  // the alert below the buttons.
+  const noteDetail = fieldErrors(annotate.error).note;
+  const error = noteDetail ? accept.error : (annotate.error ?? accept.error);
 
-  if (withdrawn) return <p className="text-body text-mist-500">This record is withdrawn.</p>;
+  if (withdrawn) {
+    return (
+      <DrawerSection title="Actions">
+        <p className="text-body text-mist-500">This record is withdrawn.</p>
+      </DrawerSection>
+    );
+  }
   if (!canAnnotate && !canAccept && !isAccepted) return null;
 
   function submitNote(event: FormEvent<HTMLFormElement>) {
@@ -121,7 +135,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <DrawerSection title="Actions">
       <div className="flex flex-wrap gap-2">
         {canAnnotate ? (
           <>
@@ -174,14 +188,17 @@ export function RecordActions({ record }: { record: RecordDetail }) {
           className="flex flex-col gap-3 rounded-[10px] border border-canopy-700/15 p-4"
           noValidate
         >
-          <Field id={noteId} label={NOTE_LABELS[mode].title} error={noteError ?? undefined}>
+          <Field
+            id={noteId}
+            label={NOTE_LABELS[mode].title}
+            error={noteError ?? noteDetail ?? undefined}
+          >
             <Textarea
               id={noteId}
               value={note}
               maxLength={2000}
               onChange={(e) => setNote(e.target.value)}
-              invalid={Boolean(noteError)}
-              aria-label="Note"
+              invalid={Boolean(noteError ?? noteDetail)}
             />
           </Field>
           <div className="flex gap-2">
@@ -200,6 +217,6 @@ export function RecordActions({ record }: { record: RecordDetail }) {
         </form>
       ) : null}
       {error ? <Alert tone="error">{actionErrorMessage(error)}</Alert> : null}
-    </div>
+    </DrawerSection>
   );
 }

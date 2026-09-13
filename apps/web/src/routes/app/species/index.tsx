@@ -6,9 +6,17 @@ function validateSearch(search: Record<string, unknown>): { unresolved?: boolean
   return search.unresolved === true || search.unresolved === 'true' ? { unresolved: true } : {};
 }
 
+// The page seeds its form state once, and the router keeps this component
+// mounted across a search-only change (Species <-> Unresolved taxa in the
+// sidebar); the key remounts it so the toggle follows the URL.
 function SpeciesSearchRoute() {
   const { unresolved } = Route.useSearch();
-  return <SpeciesSearchPage initialUnresolved={unresolved === true} />;
+  return (
+    <SpeciesSearchPage
+      key={unresolved ? 'unresolved' : 'all'}
+      initialUnresolved={unresolved === true}
+    />
+  );
 }
 
 /**

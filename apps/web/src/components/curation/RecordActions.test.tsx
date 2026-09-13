@@ -59,7 +59,7 @@ describe('RFC-65 R3–R6 RecordActions', () => {
       MINE.speciesId,
     );
     await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
-    const note = screen.getByRole('textbox', { name: /note/i });
+    const note = screen.getByRole('textbox', { name: /why do you dispute/i });
     await userEvent.click(screen.getByRole('button', { name: 'Send dispute' }));
     expect(screen.getByText('A note is required.')).toBeInTheDocument();
     expect(curation.annotateRecord).toHaveBeenCalledTimes(1);
@@ -83,7 +83,10 @@ describe('RFC-65 R3–R6 RecordActions', () => {
       me: perms('records.annotate'),
     });
     await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
-    await userEvent.type(screen.getByRole('textbox', { name: /note/i }), 'Wrong species');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /why is this record withdrawn/i }),
+      'Wrong species',
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Confirm withdrawal' }));
     await waitFor(() =>
       expect(curation.annotateRecord).toHaveBeenCalledWith(MINE.id, {
@@ -127,17 +130,47 @@ describe('RFC-65 R3–R6 RecordActions', () => {
   it('resets the note and its error on Cancel or when switching between Dispute and Withdraw', async () => {
     renderWithProviders(<RecordActions record={MINE} />, { me: perms('records.annotate') });
     await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
-    await userEvent.type(screen.getByRole('textbox', { name: /note/i }), 'abc');
+    await userEvent.type(screen.getByRole('textbox', { name: /why do you dispute/i }), 'abc');
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
-    expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: /why is this record withdrawn/i })).toHaveValue('');
     expect(screen.queryByText('A note is required.')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm withdrawal' }));
     expect(screen.getByText('A note is required.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
-    expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: /why do you dispute/i })).toHaveValue('');
     expect(screen.queryByText('A note is required.')).not.toBeInTheDocument();
+  });
+
+  it('clears a previous failure when a note form opens, and lands a note validation detail under the field', async () => {
+    curation.annotateRecord.mockRejectedValueOnce(new ApiError(409, 'RECORD_WITHDRAWN', 'x'));
+    renderWithProviders(<RecordActions record={MINE} />, { me: perms('records.annotate') });
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('This record is withdrawn.');
+    await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    curation.annotateRecord.mockRejectedValueOnce(
+      new ApiError(400, 'VALIDATION_FAILED', 'x', [
+        { path: 'note', message: 'Note must be at most 2000 characters.' },
+      ]),
+    );
+    const note = screen.getByRole('textbox', { name: /why do you dispute/i });
+    await userEvent.type(note, 'far too long');
+    await userEvent.click(screen.getByRole('button', { name: 'Send dispute' }));
+    expect(await screen.findByText('Note must be at most 2000 characters.')).toBeInTheDocument();
+    expect(note).toHaveAccessibleDescription('Note must be at most 2000 characters.');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Check the note.')).not.toBeInTheDocument();
+  });
+
+  it('hides Set as accepted on a record that is not harmonised, even with accepted.manage', () => {
+    renderWithProviders(<RecordActions record={{ ...MINE, harmonisation: 'not_numeric' }} />, {
+      me: perms('accepted.manage'),
+    });
+    expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Actions' })).not.toBeInTheDocument();
   });
 
   it('sets the record as the accepted value with accepted.manage; maps API refusals to sentences', async () => {

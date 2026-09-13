@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { Species, TraitRef, TraitSummary } from '@treerepro/contracts';
+import type { Species, TraitRef } from '@treerepro/contracts';
 import { type ReactNode, useState } from 'react';
 import { datasetKeys, fetchSpecies, fetchSpeciesTraits } from '../../api/dataset.ts';
 import { AddValueDialog } from '../../components/curation/AddValueDialog.tsx';
@@ -58,11 +58,15 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
  * "Add value" button in the header and one on each trait card open the
  * add-value dialog (RFC-65 R1) — the header button without a fixed trait,
  * a card's button with its trait. Both fetches fail together for an unknown
- * id, so one alert covers the page.
+ * id, so one alert covers the page. The open panel is remembered by trait
+ * id and its summary read from the traits query on every render, so the
+ * accepted badge follows a Clear or a Set-as-accepted (which invalidate the
+ * summary) instead of freezing at the click; a trait that leaves the summary
+ * closes its panel.
  * @rfc RFC-13 R2, R4
  * @rfc RFC-60 R7
  * @rfc RFC-63 R10
- * @rfc RFC-65 R1
+ * @rfc RFC-65 R1, R6
  */
 export function SpeciesPage({ id }: { id: string }) {
   const me = useMe();
@@ -75,7 +79,14 @@ export function SpeciesPage({ id }: { id: string }) {
     queryKey: datasetKeys.speciesTraits(id),
     queryFn: () => fetchSpeciesTraits(id),
   });
-  const [openTrait, setOpenTrait] = useState<TraitSummary | null>(null);
+  const [openTraitId, setOpenTraitId] = useState<string | null>(null);
+  const openTrait =
+    openTraitId === null
+      ? undefined
+      : traits.data?.flatMap((c) => c.traits).find((t) => t.trait.id === openTraitId);
+  // The trait left the summary (a refetch no longer lists it): forget it
+  // during this render so a later summary cannot reopen the panel unasked.
+  if (openTraitId !== null && traits.data && !openTrait) setOpenTraitId(null);
   const [openRecord, setOpenRecord] = useState<string | null>(null);
   const [adding, setAdding] = useState<{ trait: TraitRef | null } | null>(null);
   const error = species.error ?? traits.error;
@@ -113,7 +124,7 @@ export function SpeciesPage({ id }: { id: string }) {
                   <TraitCard
                     key={summary.trait.id}
                     summary={summary}
-                    onOpen={() => setOpenTrait(summary)}
+                    onOpen={() => setOpenTraitId(summary.trait.id)}
                     onAdd={canAdd ? () => setAdding({ trait: summary.trait }) : undefined}
                   />
                 ))}
@@ -125,7 +136,7 @@ export function SpeciesPage({ id }: { id: string }) {
         <TraitPanel
           speciesId={id}
           summary={openTrait}
-          onClose={() => setOpenTrait(null)}
+          onClose={() => setOpenTraitId(null)}
           onSelectRecord={setOpenRecord}
         />
       ) : null}

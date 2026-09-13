@@ -208,6 +208,22 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('RFC-65 R7 follows a harmonisation link inside the drawer to the linked record', async () => {
+    dataset.fetchRecord.mockImplementation(async (id: string) =>
+      id === RECORD.id
+        ? { ...RECORD_DETAIL, supersededBy: [{ id: PENDING_RECORD.id }] }
+        : { ...RECORD_DETAIL, id: PENDING_RECORD.id, valueText: 'about two', rawValue: null },
+    );
+    await openPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'dioecious' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Record' });
+    await userEvent.click(
+      await within(drawer).findByRole('button', { name: /^Harmonised as record …/ }),
+    );
+    await waitFor(() => expect(dataset.fetchRecord).toHaveBeenCalledWith(PENDING_RECORD.id));
+    expect(await within(drawer).findByText('about two')).toBeInTheDocument();
+  });
+
   it('steps to the next page of records with the cursor and back', async () => {
     dataset.fetchRecords
       .mockResolvedValueOnce(page([PRIMARY], 'c1'))

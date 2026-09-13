@@ -59,7 +59,10 @@ describe('RFC-65 R6, R11 AcceptedSection', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Clear' }));
     await userEvent.click(screen.getByRole('button', { name: 'Confirm clear' }));
     expect(screen.getByText('A note is required.')).toBeInTheDocument();
-    await userEvent.type(screen.getByRole('textbox', { name: /note/i }), 'Sources disagree');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /why is the accepted value cleared/i }),
+      'Sources disagree',
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Confirm clear' }));
     await waitFor(() =>
       expect(curation.setAccepted).toHaveBeenCalledWith(SPECIES.id, SEXUAL_SYSTEM.id, {
@@ -75,9 +78,14 @@ describe('RFC-65 R6, R11 AcceptedSection', () => {
       me: { ...ME, permissions: ['dataset.read', 'accepted.manage'] },
     });
     await userEvent.click(await screen.findByRole('button', { name: 'Clear' }));
-    await userEvent.type(screen.getByRole('textbox', { name: /note/i }), 'x');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /why is the accepted value cleared/i }),
+      'x',
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: /why is the accepted value cleared/i })).toHaveValue(
+      '',
+    );
   });
 });

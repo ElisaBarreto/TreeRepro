@@ -105,18 +105,39 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app/settings', label: 'Settings', icon: 'sliders', section: 'account' },
 ];
 
+// Every search entry of `entry` is present in `search` with the same value.
+function searchMatches(entry: NavEntry, search: Record<string, unknown>): boolean {
+  return Object.entries(entry.search ?? {}).every(([key, value]) => search[key] === value);
+}
+
 /**
- * The entry a pathname belongs to: the longest `to` that is the path or a
- * prefix of it at a segment boundary, so `/app/species/<id>` is Species and
- * `/app` alone is Workspace. Two entries may share a `to` (Species and
- * Unresolved taxa, which differ only in search params); the first wins.
+ * The entry a location belongs to: the longest `to` that is the pathname or
+ * a prefix of it at a segment boundary, so `/app/species/<id>` is Species
+ * and `/app` alone is Workspace. Two entries may share a `to` and differ
+ * only in `search` (Species and Unresolved taxa): among those, the one whose
+ * search entries all match the location's search wins, else the one without
+ * a `search`.
  * @rfc RFC-13 R3
  */
-export function currentEntry(pathname: string): NavEntry | undefined {
+export function currentEntry(
+  pathname: string,
+  search: Record<string, unknown> = {},
+): NavEntry | undefined {
   let best: NavEntry | undefined;
   for (const entry of NAV_ENTRIES) {
     const match = pathname === entry.to || pathname.startsWith(`${entry.to}/`);
-    if (match && (!best || entry.to.length > best.to.length)) best = entry;
+    if (!match) continue;
+    if (!best || entry.to.length > best.to.length) {
+      best = entry;
+      continue;
+    }
+    if (entry.to.length !== best.to.length) continue;
+    // Same path: a search-specific entry beats a plain one only when the
+    // location carries its search; a plain one beats a search entry that
+    // does not match.
+    const entryFits = entry.search ? searchMatches(entry, search) : true;
+    const bestFits = best.search ? searchMatches(best, search) : true;
+    if (entryFits && (!bestFits || (entry.search && !best.search))) best = entry;
   }
   return best;
 }
