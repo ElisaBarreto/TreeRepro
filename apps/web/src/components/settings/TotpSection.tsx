@@ -1,14 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { MeResponse, TotpDisableBody } from '@treerepro/contracts';
+import {
+  type MeResponse,
+  recoveryCodeSchema,
+  type TotpDisableBody,
+  totpCodeSchema,
+} from '@treerepro/contracts';
 import { toCanvas } from 'qrcode';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { totpConfirm, totpDisable, totpSetup } from '../../api/auth.ts';
 import { ApiError } from '../../api/client.ts';
-import { GENERIC_MESSAGE } from '../../lib/errors.ts';
+import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
 import { ME_QUERY_KEY, useMe } from '../../lib/session.ts';
 import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
-
-const SIX_DIGITS = /^\d{6}$/;
 
 /** @rfc RFC-13 R6 */
 export function totpErrorMessage(error: unknown): string {
@@ -33,7 +36,8 @@ export function totpErrorMessage(error: unknown): string {
 function QrCanvas({ uri }: { uri: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (ref.current) void toCanvas(ref.current, uri, { width: 192, margin: 1 });
+    // The secret text rendered below the canvas is the fallback if this never resolves.
+    if (ref.current) toCanvas(ref.current, uri, { width: 192, margin: 1 }).catch(() => {});
   }, [uri]);
   return (
     <canvas
@@ -62,6 +66,12 @@ export function TotpSection() {
   const ids = { code: useId(), password: useId(), disableCode: useId() };
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
   const [disabling, setDisabling] = useState(false);
+  const [codeFieldError, setCodeFieldError] = useState<string | null>(null);
+  const [disableFieldErrors, setDisableFieldErrors] = useState<{
+    password?: string;
+    code?: string;
+  }>({});
+  const disableFormRef = useRef<HTMLFormElement>(null);
   const setEnabled = (totpEnabled: boolean) =>
     queryClient.setQueryData<MeResponse>(ME_QUERY_KEY, (old) =>
       old ? { ...old, user: { ...old.user, totpEnabled } } : old,
@@ -78,17 +88,48 @@ export function TotpSection() {
       setStage({ kind: 'codes', codes });
     },
   });
+
   const disable = useMutation({
     mutationFn: (body: TotpDisableBody) => totpDisable(body),
     onSuccess: () => {
       setEnabled(false);
-      setDisabling(false);
+      closeDisable();
     },
   });
 
+  /** Drops the mutation's cached data (and any error) so the disable form's error and
+   * password never linger past the flow that produced them. */
+  function closeDisable() {
+    disable.reset();
+    setDisableFieldErrors({});
+    disableFormRef.current?.reset();
+    setDisabling(false);
+  }
+
+  /** Leaves the recovery-codes stage: both mutations' cached results (the enrolled secret
+   * and the ten codes) are dropped, not just the visible stage. */
+  function acknowledgeCodes() {
+    setup.reset();
+    confirm.reset();
+    setStage({ kind: 'idle' });
+  }
+
+  function cancelSetup() {
+    setup.reset();
+    confirm.reset();
+    setCodeFieldError(null);
+    setStage({ kind: 'idle' });
+  }
+
   function submitCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    confirm.mutate(String(new FormData(event.currentTarget).get('code') ?? '').trim());
+    const value = String(new FormData(event.currentTarget).get('code') ?? '').trim();
+    if (!totpCodeSchema.safeParse(value).success) {
+      setCodeFieldError('Enter the six-digit code from your authenticator app.');
+      return;
+    }
+    setCodeFieldError(null);
+    confirm.mutate(value);
   }
 
   function submitDisable(event: FormEvent<HTMLFormElement>) {
@@ -96,11 +137,26 @@ export function TotpSection() {
     const form = new FormData(event.currentTarget);
     const password = String(form.get('password') ?? '');
     const value = String(form.get('code') ?? '').trim();
-    const body: TotpDisableBody = SIX_DIGITS.test(value)
-      ? { password, code: value }
-      : { password, recoveryCode: value };
+    const errors: { password?: string; code?: string } = {};
+    if (!password) errors.password = 'Enter your password.';
+    let body: TotpDisableBody | undefined;
+    if (totpCodeSchema.safeParse(value).success) body = { password, code: value };
+    else if (recoveryCodeSchema.safeParse(value).success) body = { password, recoveryCode: value };
+    else errors.code = 'Enter a six-digit code or a recovery code.';
+    setDisableFieldErrors(errors);
+    if (Object.keys(errors).length > 0 || !body) return;
     disable.mutate(body);
   }
+
+  const codeServerError = isValidationError(confirm.error)
+    ? fieldErrors(confirm.error).code
+    : undefined;
+  const codeError = codeFieldError ?? codeServerError;
+
+  const disableServerErrors = isValidationError(disable.error) ? fieldErrors(disable.error) : {};
+  const passwordError = disableFieldErrors.password ?? disableServerErrors.password;
+  const disableCodeError =
+    disableFieldErrors.code ?? disableServerErrors.code ?? disableServerErrors.recoveryCode;
 
   return (
     <section aria-labelledby="totp-heading" className="flex flex-col gap-4">
@@ -120,7 +176,7 @@ export function TotpSection() {
             ))}
           </ul>
           <div>
-            <Button onClick={() => setStage({ kind: 'idle' })}>I saved these codes</Button>
+            <Button onClick={acknowledgeCodes}>I saved these codes</Button>
           </div>
         </div>
       ) : stage.kind === 'setup' ? (
@@ -131,22 +187,25 @@ export function TotpSection() {
           </p>
           <QrCanvas uri={stage.otpauthUri} />
           <p className="font-mono text-sm tracking-wider">{stage.secret}</p>
-          <Field id={ids.code} label="Verification code">
+          <Field id={ids.code} label="Verification code" error={codeError}>
             <Input
               id={ids.code}
               name="code"
               inputMode="numeric"
               autoComplete="one-time-code"
               placeholder="123456"
+              invalid={Boolean(codeError)}
               required
             />
           </Field>
-          {confirm.isError ? <Alert tone="error">{totpErrorMessage(confirm.error)}</Alert> : null}
+          {confirm.isError && !isValidationError(confirm.error) ? (
+            <Alert tone="error">{totpErrorMessage(confirm.error)}</Alert>
+          ) : null}
           <div className="flex gap-2">
             <Button type="submit" pending={confirm.isPending}>
               Turn on
             </Button>
-            <Button variant="secondary" onClick={() => setStage({ kind: 'idle' })}>
+            <Button variant="secondary" onClick={cancelSetup}>
               Cancel
             </Button>
           </div>
@@ -159,29 +218,37 @@ export function TotpSection() {
               Disable
             </Button>
           </div>
-          <Dialog
-            open={disabling}
-            title="Disable two-factor authentication"
-            onClose={() => setDisabling(false)}
-          >
-            <form onSubmit={submitDisable} className="flex flex-col gap-4" noValidate>
-              <Field id={ids.password} label="Password">
+          <Dialog open={disabling} title="Disable two-factor authentication" onClose={closeDisable}>
+            <form
+              ref={disableFormRef}
+              onSubmit={submitDisable}
+              className="flex flex-col gap-4"
+              noValidate
+            >
+              <Field id={ids.password} label="Password" error={passwordError}>
                 <Input
                   id={ids.password}
                   name="password"
                   type="password"
                   autoComplete="current-password"
+                  invalid={Boolean(passwordError)}
                   required
                 />
               </Field>
-              <Field id={ids.disableCode} label="Code or recovery code">
-                <Input id={ids.disableCode} name="code" autoComplete="one-time-code" required />
+              <Field id={ids.disableCode} label="Code or recovery code" error={disableCodeError}>
+                <Input
+                  id={ids.disableCode}
+                  name="code"
+                  autoComplete="one-time-code"
+                  invalid={Boolean(disableCodeError)}
+                  required
+                />
               </Field>
-              {disable.isError ? (
+              {disable.isError && !isValidationError(disable.error) ? (
                 <Alert tone="error">{totpErrorMessage(disable.error)}</Alert>
               ) : null}
               <div className="flex justify-end gap-2">
-                <Button variant="secondary" onClick={() => setDisabling(false)}>
+                <Button variant="secondary" onClick={closeDisable}>
                   Cancel
                 </Button>
                 <Button type="submit" variant="danger" pending={disable.isPending}>

@@ -7,7 +7,7 @@ import { Alert, Badge, Button, EmptyState, Table, Tbody, Td, Th, Thead, Tr } fro
 
 const SESSIONS_KEY = ['me', 'sessions'] as const;
 
-/** @rfc RFC-13 R6 */
+// Not exported: no @rfc tag needed (RFC-00 R6 applies to exports only).
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 }
@@ -28,7 +28,9 @@ export function SessionsSection({
   const sessions = useQuery({ queryKey: SESSIONS_KEY, queryFn: listSessions });
   const revoke = useMutation({
     mutationFn: (id: string) => revokeSession(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SESSIONS_KEY }),
+    // onSettled, not onSuccess: a failed revoke (the session may already have
+    // expired server-side) still resyncs the list against the server.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: SESSIONS_KEY }),
   });
   const everywhere = useMutation({
     mutationFn: () => logoutAll(),
@@ -55,7 +57,9 @@ export function SessionsSection({
               <Th>Device</Th>
               <Th>IP</Th>
               <Th>Last seen</Th>
-              <Th />
+              <Th>
+                <span className="sr-only">Actions</span>
+              </Th>
             </Tr>
           </Thead>
           <Tbody>

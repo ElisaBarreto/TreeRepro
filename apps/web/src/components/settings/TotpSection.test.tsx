@@ -44,6 +44,7 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     expect(auth.totpConfirm).toHaveBeenCalledWith('123456');
     await userEvent.click(screen.getByRole('button', { name: 'I saved these codes' }));
     expect(screen.queryByText(CODES[0] ?? '')).not.toBeInTheDocument();
+    expect(screen.queryByText('JBSWY3DPEHPK3PXP')).not.toBeInTheDocument();
     expect(screen.getByText('Two-factor authentication is on.')).toBeInTheDocument();
     expect(queryClient.getQueryData(ME_QUERY_KEY)).toMatchObject({ user: { totpEnabled: true } });
   });
@@ -57,6 +58,18 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('That code is not valid.');
   });
+
+  it('validates the code locally before calling the API', async () => {
+    auth.totpSetup.mockResolvedValue({ secret: 'S', otpauthUri: 'otpauth://totp/x' });
+    renderWithProviders(<TotpSection />, { me: ME });
+    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await userEvent.type(await screen.findByLabelText('Verification code'), '12345');
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    expect(
+      await screen.findByText('Enter the six-digit code from your authenticator app.'),
+    ).toBeInTheDocument();
+    expect(auth.totpConfirm).not.toHaveBeenCalled();
+  });
 });
 
 describe('RFC-23 R7 disabling TOTP', () => {
@@ -68,7 +81,7 @@ describe('RFC-23 R7 disabling TOTP', () => {
     expect(screen.getByText('Two-factor authentication is on.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
     const dialog = await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
-    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute('open');
     await userEvent.type(screen.getByLabelText('Password'), 'my passphrase');
     await userEvent.type(screen.getByLabelText('Code or recovery code'), 'abcde-fghij');
     await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
@@ -83,5 +96,55 @@ describe('RFC-23 R7 disabling TOTP', () => {
         user: { totpEnabled: false },
       }),
     );
+  });
+
+  it('accepts a six-digit code alongside the password', async () => {
+    auth.totpDisable.mockResolvedValue(undefined);
+    renderWithProviders(<TotpSection />, { me: { ...ME, user: { ...USER, totpEnabled: true } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
+    await userEvent.type(screen.getByLabelText('Password'), 'my passphrase');
+    await userEvent.type(screen.getByLabelText('Code or recovery code'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
+    await waitFor(() =>
+      expect(auth.totpDisable).toHaveBeenCalledWith({ password: 'my passphrase', code: '123456' }),
+    );
+  });
+
+  it('validates the password and the code locally before calling the API', async () => {
+    renderWithProviders(<TotpSection />, { me: { ...ME, user: { ...USER, totpEnabled: true } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
+    await userEvent.type(screen.getByLabelText('Password'), 'my passphrase');
+    await userEvent.type(screen.getByLabelText('Code or recovery code'), 'abc');
+    await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
+    expect(
+      await screen.findByText('Enter a six-digit code or a recovery code.'),
+    ).toBeInTheDocument();
+    expect(auth.totpDisable).not.toHaveBeenCalled();
+  });
+
+  it('requires a password even when the code is valid', async () => {
+    renderWithProviders(<TotpSection />, { me: { ...ME, user: { ...USER, totpEnabled: true } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await userEvent.type(await screen.findByLabelText('Code or recovery code'), 'abcde-fghij');
+    await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
+    expect(await screen.findByText('Enter your password.')).toBeInTheDocument();
+    expect(auth.totpDisable).not.toHaveBeenCalled();
+  });
+
+  it('forgets a failed attempt after Cancel: no stale error, no retained password', async () => {
+    auth.totpDisable.mockRejectedValueOnce(new ApiError(401, 'AUTH_INVALID_CREDENTIALS', 'x'));
+    renderWithProviders(<TotpSection />, { me: { ...ME, user: { ...USER, totpEnabled: true } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
+    await userEvent.type(screen.getByLabelText('Password'), 'wrong password');
+    await userEvent.type(screen.getByLabelText('Code or recovery code'), 'abcde-fghij');
+    await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your password is incorrect.');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Password')).toHaveValue('');
   });
 });
