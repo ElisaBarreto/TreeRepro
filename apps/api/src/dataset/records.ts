@@ -9,7 +9,7 @@ import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
-import { decodeCursor, encodeCursor } from '../http/cursor.ts';
+import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
 
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
 const secondaryRef = alias(bibliographicReferences, 'secondary_ref');
@@ -130,12 +130,8 @@ export async function listRecords(
     .where(and(...conditions))
     .orderBy(desc(traitRecords.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  return {
-    data: page.map(toItem),
-    nextCursor: rows.length > input.limit && last ? encodeCursor(last.record.id) : null,
-  };
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
+  return { data: page.map(toItem), nextCursor };
 }
 
 /**

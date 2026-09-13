@@ -20,6 +20,7 @@ const SPECIES = {
   genus: { id: GENUS.id, name: GENUS.name },
   family: FAMILY,
   matchedName: null,
+  unresolvedTaxon: false,
 };
 
 describe('RFC-60 R6 searchSpecies', () => {

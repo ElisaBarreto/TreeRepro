@@ -24,6 +24,7 @@ import {
   encodeCursor,
   isDigits,
   isUuid,
+  pageOf,
 } from '../http/cursor.ts';
 
 /** The 15 columns of the compiled dataset, in file order. @rfc RFC-64 R2 */
@@ -270,12 +271,8 @@ export async function listImportBatches(
     .where(input.cursor ? lt(importBatches.id, decodeCursor(input.cursor)) : undefined)
     .orderBy(desc(importBatches.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  return {
-    data: page.map(fromJoined),
-    nextCursor: rows.length > input.limit && last ? encodeCursor(last.batch.id) : null,
-  };
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.batch.id));
+  return { data: page.map(fromJoined), nextCursor };
 }
 
 /** By row number ascending; composite cursor (row_no, id). @rfc RFC-64 R11 */
@@ -299,14 +296,12 @@ export async function listImportRejects(
     .where(and(...conditions))
     .orderBy(asc(importRejects.rowNo), asc(importRejects.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    encodeCompositeCursor([String(r.rowNo), r.id]),
+  );
   return {
     data: page.map((r) => ({ id: r.id, rowNo: r.rowNo, reason: r.reason, rawRow: r.rawRow })),
-    nextCursor:
-      rows.length > input.limit && last
-        ? encodeCompositeCursor([String(last.rowNo), last.id])
-        : null,
+    nextCursor,
   };
 }
 

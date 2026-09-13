@@ -38,6 +38,7 @@ const ADENANTHERA: SpeciesListItem = {
   genus: { id: GENUS.id, name: GENUS.name },
   family: FAMILY,
   matchedName: null,
+  unresolvedTaxon: false,
 };
 const ADANSONIA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04',
@@ -46,6 +47,7 @@ const ADANSONIA: SpeciesListItem = {
   genus: null,
   family: null,
   matchedName: 'Adansonia baobab',
+  unresolvedTaxon: true,
 };
 const page = (data: SpeciesListItem[], nextCursor: string | null = null) => ({
   data,

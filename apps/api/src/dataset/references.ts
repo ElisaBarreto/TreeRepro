@@ -3,7 +3,13 @@ import { and, count, desc, eq, ilike, isNotNull, or, type SQL, sql } from 'drizz
 import type { DbExecutor } from '../db/client.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
-import { decodeCompositeCursor, encodeCompositeCursor, isDigits, isUuid } from '../http/cursor.ts';
+import {
+  decodeCompositeCursor,
+  encodeCompositeCursor,
+  isDigits,
+  isUuid,
+  pageOf,
+} from '../http/cursor.ts';
 import { likePattern } from './taxa.ts';
 
 interface Usage {
@@ -104,15 +110,10 @@ export async function searchReferences(
     // administrative operations).
     .orderBy(desc(usage.total), desc(bibliographicReferences.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  return {
-    data: page.map((r) => toReference(r.reference, r)),
-    nextCursor:
-      rows.length > input.limit && last
-        ? encodeCompositeCursor([String(last.total), last.reference.id])
-        : null,
-  };
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    encodeCompositeCursor([String(r.total), r.reference.id]),
+  );
+  return { data: page.map((r) => toReference(r.reference, r)), nextCursor };
 }
 
 /** @rfc RFC-61 R4 */

@@ -6,6 +6,7 @@ import {
   encodeCursor,
   isDigits,
   isUuid,
+  pageOf,
 } from './cursor.ts';
 import { AppError } from './errors.ts';
 
@@ -116,5 +117,17 @@ describe('RFC-11 R6 composite cursor', () => {
     expect(isDigits('12.3')).toBe(false);
     expect(isDigits('-1')).toBe(false);
     expect(isDigits('1a')).toBe(false);
+  });
+});
+
+describe('RFC-11 R6 pageOf', () => {
+  it('returns the first limit rows and a cursor only when a row beyond the page exists', () => {
+    const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    expect(pageOf(rows, 2, (r) => `c:${r.id}`)).toEqual({
+      page: [{ id: 'a' }, { id: 'b' }],
+      nextCursor: 'c:b',
+    });
+    expect(pageOf(rows, 3, (r) => `c:${r.id}`)).toEqual({ page: rows, nextCursor: null });
+    expect(pageOf([], 3, (r: { id: string }) => r.id)).toEqual({ page: [], nextCursor: null });
   });
 });

@@ -4,7 +4,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { DbExecutor } from '../db/client.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
-import { decodeCompositeCursor, encodeCompositeCursor, isUuid } from '../http/cursor.ts';
+import { decodeCompositeCursor, encodeCompositeCursor, isUuid, pageOf } from '../http/cursor.ts';
 
 /** Escapes `%`, `_` and `\` so a search term matches literally. @rfc RFC-60 R6 */
 export function likePattern(term: string, mode: 'substring' | 'prefix'): string {
@@ -37,6 +37,7 @@ function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
     genus: r.genusId && r.genusName ? { id: r.genusId, name: r.genusName } : null,
     family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
     matchedName: r.matchedName ?? null,
+    unresolvedTaxon: r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null,
   };
 }
 
@@ -96,15 +97,10 @@ export async function searchSpecies(
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(asc(species.canonicalName), asc(species.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  return {
-    data: page.map(toListItem),
-    nextCursor:
-      rows.length > input.limit && last
-        ? encodeCompositeCursor([last.canonicalName, last.id])
-        : null,
-  };
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    encodeCompositeCursor([r.canonicalName, r.id]),
+  );
+  return { data: page.map(toListItem), nextCursor };
 }
 
 /** @rfc RFC-60 R3, R7 */
@@ -137,7 +133,6 @@ export async function getSpecies(db: DbExecutor, id: string): Promise<Species | 
     })),
     recordCount: counts?.recordCount ?? 0,
     traitCount: counts?.traitCount ?? 0,
-    unresolvedTaxon: row.nameSource !== 'wcvp' || row.genusId === null || row.familyId === null,
   };
 }
 
@@ -152,13 +147,10 @@ export async function listFamilies(
     .where(input.cursor ? afterNameCursor(input.cursor, families.name, families.id) : undefined)
     .orderBy(asc(families.name), asc(families.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  return {
-    data: page,
-    nextCursor:
-      rows.length > input.limit && last ? encodeCompositeCursor([last.name, last.id]) : null,
-  };
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    encodeCompositeCursor([r.name, r.id]),
+  );
+  return { data: page, nextCursor };
 }
 
 /** @rfc RFC-60 R8 */
@@ -177,15 +169,41 @@ export async function listGenera(
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(asc(genera.name), asc(genera.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    encodeCompositeCursor([r.name, r.id]),
+  );
   return {
     data: page.map((g) => ({
       id: g.id,
       name: g.name,
       family: g.familyId && g.familyName ? { id: g.familyId, name: g.familyName } : null,
     })),
-    nextCursor:
-      rows.length > input.limit && last ? encodeCompositeCursor([last.name, last.id]) : null,
+    nextCursor,
+  };
+}
+
+/** @rfc RFC-60 R9 */
+export async function getFamily(db: DbExecutor, id: string): Promise<TaxonRef | null> {
+  const [row] = await db
+    .select({ id: families.id, name: families.name })
+    .from(families)
+    .where(eq(families.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+/** @rfc RFC-60 R9 */
+export async function getGenus(db: DbExecutor, id: string): Promise<Genus | null> {
+  const [row] = await db
+    .select({ id: genera.id, name: genera.name, familyId: families.id, familyName: families.name })
+    .from(genera)
+    .leftJoin(families, eq(families.id, genera.familyId))
+    .where(eq(genera.id, id))
+    .limit(1);
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    family: row.familyId && row.familyName ? { id: row.familyId, name: row.familyName } : null,
   };
 }

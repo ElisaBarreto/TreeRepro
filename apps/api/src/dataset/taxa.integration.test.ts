@@ -88,6 +88,27 @@ describe('RFC-60 R6 searchSpecies', () => {
     expect(ids).toEqual(expect.arrayContaining([noGenus.id, gbif.id, noFamily.id]));
     expect(page.data.some((s) => s.canonicalName === `Unres ok-${k}`)).toBe(false);
   });
+
+  it('R6 every item carries unresolvedTaxon (R3: name source, missing genus or missing family)', async () => {
+    const k = tag();
+    const family = await createFamily(t.db);
+    const genus = await createGenus(t.db, { familyId: family.id });
+    const resolved = await createSpecies(t.db, {
+      canonicalName: `Flagus resolved-${k}`,
+      genusId: genus.id,
+    });
+    const noGenus = await createSpecies(t.db, { canonicalName: `Flagus nogenus-${k}` });
+    const gbif = await createSpecies(t.db, {
+      canonicalName: `Flagus gbif-${k}`,
+      nameSource: 'gbif',
+      genusId: genus.id,
+    });
+    const { data } = await searchSpecies(t.db, { q: `Flagus`, limit: 50 });
+    const flag = (id: string) => data.find((s) => s.id === id)?.unresolvedTaxon;
+    expect(flag(resolved.id)).toBe(false);
+    expect(flag(noGenus.id)).toBe(true);
+    expect(flag(gbif.id)).toBe(true);
+  });
 });
 
 describe('RFC-60 R7 getSpecies', () => {
