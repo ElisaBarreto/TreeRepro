@@ -32,19 +32,28 @@ export function totpErrorMessage(error: unknown): string {
   }
 }
 
-/** Draws the otpauth URI into a canvas; no styles involved (RFC-13 R5). @rfc RFC-23 R2 */
+/**
+ * Draws the otpauth URI into a canvas. qrcode's canvas renderer also sets
+ * `style.width/height`, which lands as a `style` attribute; it is removed once
+ * the drawing is done and `size-48` carries the layout size (RFC-13 R5).
+ * @rfc RFC-23 R2
+ */
 function QrCanvas({ uri }: { uri: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    // The secret text rendered below the canvas is the fallback if this never resolves.
-    if (ref.current) toCanvas(ref.current, uri, { width: 192, margin: 1 }).catch(() => {});
+    const el = ref.current;
+    if (!el) return;
+    toCanvas(el, uri, { width: 192, margin: 1 })
+      .then(() => el.removeAttribute('style'))
+      // The secret text rendered below the canvas is the fallback if this never resolves.
+      .catch(() => {});
   }, [uri]);
   return (
     <canvas
       ref={ref}
       role="img"
       aria-label="QR code for your authenticator app"
-      className="rounded-lg bg-white"
+      className="size-48 rounded-lg bg-white"
     />
   );
 }

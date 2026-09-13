@@ -14,7 +14,15 @@ const auth = vi.hoisted(() => ({
   fetchMe: vi.fn(),
 }));
 vi.mock('../../api/auth.ts', () => auth);
-vi.mock('qrcode', () => ({ toCanvas: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('qrcode', () => ({
+  toCanvas: vi.fn((canvas: HTMLCanvasElement) => {
+    // Besides drawing, qrcode's canvas renderer sets style.width/height,
+    // which lands as a `style` attribute (RFC-13 R5).
+    canvas.style.width = '192px';
+    canvas.style.height = '192px';
+    return Promise.resolve();
+  }),
+}));
 const CODES = Array.from({ length: 10 }, (_, i) => `abcde-fgh${i}${i}`);
 
 beforeEach(() => {
@@ -34,9 +42,9 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     expect(screen.getByText('Two-factor authentication is off.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
     expect(await screen.findByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument();
-    expect(
-      screen.getByRole('img', { name: 'QR code for your authenticator app' }),
-    ).toBeInTheDocument();
+    const canvas = screen.getByRole('img', { name: 'QR code for your authenticator app' });
+    await waitFor(() => expect(canvas).not.toHaveAttribute('style'));
+    expect(canvas).toHaveClass('size-48');
     await userEvent.type(screen.getByLabelText('Verification code'), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(await screen.findByText(CODES[0] ?? '')).toBeInTheDocument();
