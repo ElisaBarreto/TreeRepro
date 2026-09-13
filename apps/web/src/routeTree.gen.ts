@@ -14,8 +14,13 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppTraitsRouteImport } from './routes/app/traits'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
+import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
+import { Route as AppImportsIdRouteImport } from './routes/app/imports/$id'
+import { Route as AppReferencesIndexRouteImport } from './routes/app/references/index'
+import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
 import { Route as AppSpeciesIdRouteImport } from './routes/app/species/$id'
 
@@ -44,6 +49,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTraitsRoute = AppTraitsRouteImport.update({
+  id: '/traits',
+  path: '/traits',
+  getParentRoute: () => AppRoute,
+} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -53,6 +63,26 @@ const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
   id: '/reset-password/$token',
   path: '/reset-password/$token',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppImportsIndexRoute = AppImportsIndexRouteImport.update({
+  id: '/imports/',
+  path: '/imports/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportsIdRoute = AppImportsIdRouteImport.update({
+  id: '/imports/$id',
+  path: '/imports/$id',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReferencesIndexRoute = AppReferencesIndexRouteImport.update({
+  id: '/references/',
+  path: '/references/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReferencesIdRoute = AppReferencesIdRouteImport.update({
+  id: '/references/$id',
+  path: '/references/$id',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppSpeciesIndexRoute = AppSpeciesIndexRouteImport.update({
   id: '/species/',
@@ -70,20 +100,30 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/imports/$id': typeof AppImportsIdRoute
+  '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
+  '/app/imports/': typeof AppImportsIndexRoute
+  '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app': typeof AppIndexRoute
+  '/app/imports/$id': typeof AppImportsIdRoute
+  '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
+  '/app/imports': typeof AppImportsIndexRoute
+  '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
 }
 export interface FileRoutesById {
@@ -92,10 +132,15 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/imports/$id': typeof AppImportsIdRoute
+  '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
+  '/app/imports/': typeof AppImportsIndexRoute
+  '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
 }
 export interface FileRouteTypes {
@@ -105,20 +150,30 @@ export interface FileRouteTypes {
     | '/app'
     | '/forgot-password'
     | '/app/settings'
+    | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
+    | '/app/imports/$id'
+    | '/app/references/$id'
     | '/app/species/$id'
+    | '/app/imports/'
+    | '/app/references/'
     | '/app/species/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/forgot-password'
     | '/app/settings'
+    | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app'
+    | '/app/imports/$id'
+    | '/app/references/$id'
     | '/app/species/$id'
+    | '/app/imports'
+    | '/app/references'
     | '/app/species'
   id:
     | '__root__'
@@ -126,10 +181,15 @@ export interface FileRouteTypes {
     | '/app'
     | '/forgot-password'
     | '/app/settings'
+    | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
+    | '/app/imports/$id'
+    | '/app/references/$id'
     | '/app/species/$id'
+    | '/app/imports/'
+    | '/app/references/'
     | '/app/species/'
   fileRoutesById: FileRoutesById
 }
@@ -178,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/traits': {
+      id: '/app/traits'
+      path: '/traits'
+      fullPath: '/app/traits'
+      preLoaderRoute: typeof AppTraitsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -191,6 +258,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/reset-password/$token'
       preLoaderRoute: typeof ResetPasswordTokenRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/imports/': {
+      id: '/app/imports/'
+      path: '/imports'
+      fullPath: '/app/imports/'
+      preLoaderRoute: typeof AppImportsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/imports/$id': {
+      id: '/app/imports/$id'
+      path: '/imports/$id'
+      fullPath: '/app/imports/$id'
+      preLoaderRoute: typeof AppImportsIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/references/': {
+      id: '/app/references/'
+      path: '/references'
+      fullPath: '/app/references/'
+      preLoaderRoute: typeof AppReferencesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/references/$id': {
+      id: '/app/references/$id'
+      path: '/references/$id'
+      fullPath: '/app/references/$id'
+      preLoaderRoute: typeof AppReferencesIdRouteImport
+      parentRoute: typeof AppRoute
     }
     '/app/species/': {
       id: '/app/species/'
@@ -211,15 +306,25 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
+  AppTraitsRoute: typeof AppTraitsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppImportsIdRoute: typeof AppImportsIdRoute
+  AppReferencesIdRoute: typeof AppReferencesIdRoute
   AppSpeciesIdRoute: typeof AppSpeciesIdRoute
+  AppImportsIndexRoute: typeof AppImportsIndexRoute
+  AppReferencesIndexRoute: typeof AppReferencesIndexRoute
   AppSpeciesIndexRoute: typeof AppSpeciesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
+  AppTraitsRoute: AppTraitsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppImportsIdRoute: AppImportsIdRoute,
+  AppReferencesIdRoute: AppReferencesIdRoute,
   AppSpeciesIdRoute: AppSpeciesIdRoute,
+  AppImportsIndexRoute: AppImportsIndexRoute,
+  AppReferencesIndexRoute: AppReferencesIndexRoute,
   AppSpeciesIndexRoute: AppSpeciesIndexRoute,
 }
 
