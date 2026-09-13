@@ -3,7 +3,8 @@ name: treerepro
 x-api-env: &api-env
   NODE_ENV: production
   LOG_LEVEL: ${LOG_LEVEL:-info}
-  APP_ORIGIN: ${APP_ORIGIN:?set APP_ORIGIN in .env}
+  # Development default; compose.prod.yml derives it from DOMAIN (issue #10).
+  APP_ORIGIN: ${APP_ORIGIN:-http://localhost}
   DB_HOST: postgres
   DB_PORT: "5432"
   DB_NAME: treerepro
@@ -27,7 +28,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/db_superuser_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
-    secrets: [db_superuser_password, db_app_password, db_migrator_password]
+    secrets: [db_superuser_password, db_app_password, db_migrator_password, db_backup_password]
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -121,6 +122,8 @@ secrets:
     file: ./infra/secrets/db_app_password
   db_migrator_password:
     file: ./infra/secrets/db_migrator_password
+  db_backup_password:
+    file: ./infra/secrets/db_backup_password
   redis_password:
     file: ./infra/secrets/redis_password
   pii_encryption_key_v1:
