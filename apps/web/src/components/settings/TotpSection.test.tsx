@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
@@ -80,6 +80,16 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     ).toBeInTheDocument();
     expect(auth.totpConfirm).not.toHaveBeenCalled();
   });
+
+  it('disables Cancel while the confirmation is pending, so the setup flow cannot be dismissed mid-request', async () => {
+    auth.totpSetup.mockResolvedValue({ secret: 'S', otpauthUri: 'otpauth://totp/x' });
+    auth.totpConfirm.mockImplementation(() => new Promise(() => {}));
+    renderWithProviders(<TotpSection />, { me: ME });
+    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await userEvent.type(await screen.findByLabelText('Verification code'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled());
+  });
 });
 
 describe('RFC-23 R7 disabling TOTP', () => {
@@ -158,5 +168,22 @@ describe('RFC-23 R7 disabling TOTP', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
     expect(screen.getByLabelText('Password')).toHaveValue('');
+  });
+
+  it('disables Cancel and Close while disabling is pending, and a stray native close does not dismiss the dialog', async () => {
+    auth.totpDisable.mockImplementation(() => new Promise(() => {}));
+    renderWithProviders(<TotpSection />, { me: { ...ME, user: { ...USER, totpEnabled: true } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
+    await userEvent.type(screen.getByLabelText('Password'), 'my passphrase');
+    await userEvent.type(screen.getByLabelText('Code or recovery code'), 'abcde-fghij');
+    await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
+    // A native close (e.g. Escape) reaching the dialog while the mutation is
+    // still pending must not dismiss it: the effect re-opens it because
+    // `disabling` stays true.
+    fireEvent(dialog, new Event('close'));
+    expect(dialog).toHaveAttribute('open');
   });
 });

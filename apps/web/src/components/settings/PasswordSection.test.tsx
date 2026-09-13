@@ -1,7 +1,9 @@
-import { screen, waitFor } from '@testing-library/react';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
+import { ME_QUERY_KEY } from '../../lib/session.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { PasswordSection } from './PasswordSection.tsx';
@@ -70,13 +72,23 @@ describe('RFC-21 R7 PasswordSection', () => {
     expect(screen.getByLabelText('Current password')).toBeValid();
   });
 
-  it('RFC-13 R4 runs through the MutationCache, where the 401 handler lives', async () => {
-    auth.changePassword.mockRejectedValueOnce(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
-    const { queryClient } = renderWithProviders(<PasswordSection />, { me: ME });
-    await fill(OLD, NEW, NEW);
-    await waitFor(() =>
-      expect(queryClient.getMutationCache().findAll({ status: 'error' })).toHaveLength(1),
+  it('RFC-13 R4 runs through the MutationCache, where the 401 handler lives, and resets once settled', async () => {
+    const error = new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x');
+    auth.changePassword.mockRejectedValueOnce(error);
+    const onError = vi.fn();
+    const queryClient = new QueryClient({ mutationCache: new MutationCache({ onError }) });
+    queryClient.setQueryData(ME_QUERY_KEY, ME);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <PasswordSection />
+      </QueryClientProvider>,
     );
+    await fill(OLD, NEW, NEW);
+    await waitFor(() => expect(onError).toHaveBeenCalled());
+    expect(onError.mock.calls[0]?.[0]).toBe(error);
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+    // The two passwords sat in the mutation's `variables`; they must not
+    // linger in the cache while the section stays mounted (RFC-21 R7).
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
   });
 });

@@ -20,6 +20,28 @@ describe('RFC-13 R6 PasswordFields', () => {
     expect(screen.getByText('Use at least 12 characters')).toBeInTheDocument();
   });
 
+  it('links the New password hint (and error, when present) to the input as its accessible description', () => {
+    const { rerender } = render(
+      <form>
+        <PasswordFields ids={{ password: 'p', confirm: 'c' }} errors={{}} />
+      </form>,
+    );
+    expect(screen.getByLabelText('New password')).toHaveAccessibleDescription(
+      /At least 12 characters; a passphrase works well\.$/,
+    );
+    rerender(
+      <form>
+        <PasswordFields
+          ids={{ password: 'p', confirm: 'c' }}
+          errors={{ password: 'Use at least 12 characters' }}
+        />
+      </form>,
+    );
+    expect(screen.getByLabelText('New password')).toHaveAccessibleDescription(
+      /At least 12 characters; a passphrase works well\.\s+Use at least 12 characters$/,
+    );
+  });
+
   it('readPasswords reads both values', () => {
     const form = new FormData();
     form.set('password', 'abc');

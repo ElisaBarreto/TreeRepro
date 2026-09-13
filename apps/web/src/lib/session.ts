@@ -125,6 +125,8 @@ export function createSessionErrorHandler(deps: {
       .then(() => {
         if (!deps.pathname().startsWith('/app')) forgetSession(deps.queryClient);
       })
+      // A failed navigation leaves the user where they are; `finally` re-arms the handler.
+      .catch(() => {})
       .finally(() => {
         leaving = false;
       });

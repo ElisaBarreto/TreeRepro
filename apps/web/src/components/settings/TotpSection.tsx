@@ -108,17 +108,30 @@ export function TotpSection() {
     gcTime: 0,
     onSuccess: () => {
       setEnabled(false);
-      closeDisable();
+      resetDisableForm();
     },
   });
 
   /** Drops the mutation's cached data (and any error) so the disable form's error and
    * password never linger past the flow that produced them. */
-  function closeDisable() {
+  function resetDisableForm() {
     disable.reset();
     setDisableFieldErrors({});
     disableFormRef.current?.reset();
     setDisabling(false);
+  }
+
+  /**
+   * User-triggered dismissal: the Cancel/Close buttons and a native `close`
+   * event (backdrop click, Escape) all funnel through this. It does nothing
+   * while the mutation is in flight — this must stay separate from the
+   * `onSuccess` reset above, which runs while `disable.isPending` is still
+   * `true` (the mutation dispatches to "success" only after its `onSuccess`
+   * option returns), so guarding here would also block a successful close.
+   */
+  function closeDisable() {
+    if (disable.isPending) return;
+    resetDisableForm();
   }
 
   /** Leaves the recovery-codes stage: both mutations' cached results (the enrolled secret
@@ -220,7 +233,7 @@ export function TotpSection() {
             <Button type="submit" pending={confirm.isPending}>
               Turn on
             </Button>
-            <Button variant="secondary" onClick={cancelSetup}>
+            <Button variant="secondary" onClick={cancelSetup} disabled={confirm.isPending}>
               Cancel
             </Button>
           </div>
@@ -233,7 +246,12 @@ export function TotpSection() {
               Disable
             </Button>
           </div>
-          <Dialog open={disabling} title="Disable two-factor authentication" onClose={closeDisable}>
+          <Dialog
+            open={disabling}
+            title="Disable two-factor authentication"
+            onClose={closeDisable}
+            closeDisabled={disable.isPending}
+          >
             <form
               ref={disableFormRef}
               onSubmit={submitDisable}
@@ -263,7 +281,7 @@ export function TotpSection() {
                 <Alert tone="error">{totpErrorMessage(disable.error)}</Alert>
               ) : null}
               <div className="flex justify-end gap-2">
-                <Button variant="secondary" onClick={closeDisable}>
+                <Button variant="secondary" onClick={closeDisable} disabled={disable.isPending}>
                   Cancel
                 </Button>
                 <Button type="submit" variant="danger" pending={disable.isPending}>

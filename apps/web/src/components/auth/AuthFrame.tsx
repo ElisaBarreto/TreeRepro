@@ -1,4 +1,10 @@
-import type { InputHTMLAttributes, ReactNode } from 'react';
+import {
+  Children,
+  cloneElement,
+  type InputHTMLAttributes,
+  isValidElement,
+  type ReactNode,
+} from 'react';
 
 /**
  * The dark card of the public pages: same ground as the landing page, no
@@ -45,7 +51,13 @@ export function DarkInput({
   );
 }
 
-/** Label + control + error for the dark card. @rfc RFC-13 R6 */
+/**
+ * Label + control + error for the dark card. The hint and error paragraphs
+ * get ids and the single child control is cloned with `aria-describedby` —
+ * merged with any value the caller already set — exactly like
+ * `components/ui/Field.tsx` does, so the description attaches to the control.
+ * @rfc RFC-13 R6
+ */
 export function DarkField({
   id,
   label,
@@ -59,14 +71,34 @@ export function DarkField({
   error?: string;
   children: ReactNode;
 }) {
+  const hintId = hint ? `${id}-hint` : undefined;
+  const errorId = error ? `${id}-error` : undefined;
+  const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined;
+  const control = Children.map(children, (child) =>
+    isValidElement<{ 'aria-describedby'?: string }>(child) && describedBy
+      ? cloneElement(child, {
+          'aria-describedby': [child.props['aria-describedby'], describedBy]
+            .filter(Boolean)
+            .join(' '),
+        })
+      : child,
+  );
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-xs font-semibold uppercase tracking-wider text-mist-300">
         {label}
       </label>
-      {children}
-      {hint ? <p className="text-xs text-mist-400">{hint}</p> : null}
-      {error ? <p className="text-xs text-red-300">{error}</p> : null}
+      {control}
+      {hint ? (
+        <p id={hintId} className="text-xs text-mist-400">
+          {hint}
+        </p>
+      ) : null}
+      {error ? (
+        <p id={errorId} className="text-xs text-red-300">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

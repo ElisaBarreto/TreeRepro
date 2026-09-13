@@ -65,7 +65,10 @@ export function PasswordSection() {
       return;
     }
     setErrors({});
-    change.mutate({ currentPassword, newPassword });
+    // gcTime 0 only takes effect once the observer detaches; while the
+    // section stays mounted, resetting on settle is what drops the two
+    // passwords out of the mutation's `variables` right away (RFC-21 R7).
+    change.mutate({ currentPassword, newPassword }, { onSettled: () => change.reset() });
   }
 
   return (

@@ -41,6 +41,17 @@ describe('RFC-13 R5 UI kit renders with classes only', () => {
     expect(screen.getByText('Work address')).toBeInTheDocument();
   });
 
+  it('Field merges an existing aria-describedby instead of replacing it', () => {
+    render(
+      <Field id="x" label="X" hint="Some hint">
+        <Input id="x" aria-describedby="extra" />
+      </Field>,
+    );
+    const describedBy = screen.getByLabelText('X').getAttribute('aria-describedby');
+    expect(describedBy).toContain('extra');
+    expect(describedBy).toContain('x-hint');
+  });
+
   it('Alert has role alert for errors and status otherwise', () => {
     render(
       <>

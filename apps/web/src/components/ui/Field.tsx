@@ -22,7 +22,11 @@ export function Field({ id, label, hint, error, children }: FieldProps) {
   const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined;
   const control = Children.map(children, (child) =>
     isValidElement<{ 'aria-describedby'?: string }>(child) && describedBy
-      ? cloneElement(child, { 'aria-describedby': describedBy })
+      ? cloneElement(child, {
+          'aria-describedby': [child.props['aria-describedby'], describedBy]
+            .filter(Boolean)
+            .join(' '),
+        })
       : child,
   );
   return (

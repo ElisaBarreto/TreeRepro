@@ -4,6 +4,8 @@ export interface DialogProps {
   open: boolean;
   title: string;
   onClose: () => void;
+  /** Disables the Close (×) button, e.g. while a mutation triggered from inside is pending. */
+  closeDisabled?: boolean;
   children: ReactNode;
 }
 
@@ -16,7 +18,7 @@ export interface DialogProps {
  * each user action (button, backdrop, or Escape) closes exactly once.
  * @rfc RFC-13 R5
  */
-export function Dialog({ open, title, onClose, children }: DialogProps) {
+export function Dialog({ open, title, onClose, closeDisabled, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -47,7 +49,8 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
             type="button"
             onClick={() => ref.current?.close()}
             aria-label="Close"
-            className="rounded-full px-2 text-mist-500 transition-colors hover:text-canopy-900"
+            disabled={closeDisabled}
+            className="rounded-full px-2 text-mist-500 transition-colors hover:text-canopy-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
             ×
           </button>
