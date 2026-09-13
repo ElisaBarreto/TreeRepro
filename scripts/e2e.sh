@@ -21,7 +21,6 @@ results="$root/apps/e2e/test-results"
 
 secrets_dir="$(mktemp -d)"
 export E2E_SECRETS_DIR="$secrets_dir"
-sh "$root/scripts/gen-secrets.sh" "$secrets_dir" >/dev/null
 
 compose() {
   docker compose -p "$project" -f "$root/compose.yml" -f "$root/compose.e2e.yml" "$@"
@@ -29,6 +28,15 @@ compose() {
 
 cleanup() {
   status=$?
+  # Disarm before doing anything else: EXIT, INT and TERM all point at this
+  # function, and it ends in `exit "$status"`, which re-fires the EXIT trap.
+  # Without disarming first, a SIGTERM runs this body twice — signal
+  # invocation, then the EXIT trap re-fired by its own `exit` — and the
+  # second pass re-captures `compose logs` against an already-torn-down
+  # stack, overwriting stack.log with empty/error output. (`status=$?` must
+  # come first: the `trap` builtin itself would otherwise overwrite `$?`
+  # with its own success code before we read the real one.)
+  trap - EXIT INT TERM
   if [ "$status" -ne 0 ]; then
     mkdir -p "$results"
     compose logs --no-color --timestamps > "$results/stack.log" 2>&1 || true
@@ -43,6 +51,8 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT INT TERM
+
+sh "$root/scripts/gen-secrets.sh" "$secrets_dir" >/dev/null
 
 echo "e2e: building and starting $project"
 compose up -d --build
@@ -71,4 +81,4 @@ echo "e2e: running Playwright"
 cd "$root"
 E2E_BASE_URL="$base_url" E2E_MAILPIT_URL="$mailpit_url" E2E_ADMIN_EMAIL="$admin_email" \
   E2E_ADMIN_INVITE_LINK="$link" \
-  pnpm --filter @treerepro/e2e exec playwright test "$@"
+  pnpm --filter @treerepro/e2e --fail-if-no-match exec playwright test "$@"
