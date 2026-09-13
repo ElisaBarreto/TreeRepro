@@ -4,6 +4,8 @@ export type { ButtonProps } from './Button.tsx';
 export { Button } from './Button.tsx';
 export type { ComboboxOption, ComboboxProps } from './Combobox.tsx';
 export { Combobox } from './Combobox.tsx';
+export type { ConfirmDialogProps } from './ConfirmDialog.tsx';
+export { ConfirmDialog } from './ConfirmDialog.tsx';
 export type { DialogProps } from './Dialog.tsx';
 export { Dialog } from './Dialog.tsx';
 export type { DrawerProps } from './Drawer.tsx';
