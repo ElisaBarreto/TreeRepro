@@ -114,7 +114,36 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
     expect(values[0]).toBe('Smith2001');
     expect(values[1]).toBe('—');
     expect(values[10]).toBe('flower_hue');
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    const pagination = within(rejected as HTMLElement).getByRole('navigation', {
+      name: 'Pagination',
+    });
+    expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
+    expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
+  });
+
+  it('steps through the rejected rows page by page with the cursor', async () => {
+    dataset.fetchImportRejects
+      .mockResolvedValueOnce(page([IMPORT_REJECT], 'c1'))
+      .mockResolvedValueOnce(page([NO_REFERENCE]))
+      .mockResolvedValue(page([IMPORT_REJECT], 'c1'));
+    renderAt(PATH);
+    await screen.findByRole('heading', { name: 'records-2026-09.csv' });
+    const rejected = screen.getByRole('heading', { name: 'Rejected rows' }).closest('section');
+    const section = within(rejected as HTMLElement);
+    expect(await section.findByText('Unknown trait')).toBeInTheDocument();
+
+    await userEvent.click(section.getByRole('button', { name: 'Next' }));
+    expect(await section.findByText('No reference')).toBeInTheDocument();
+    expect(dataset.fetchImportRejects).toHaveBeenLastCalledWith(IMPORT_BATCH.id, {
+      cursor: 'c1',
+      limit: 50,
+    });
+    expect(section.queryByText('Unknown trait')).not.toBeInTheDocument();
+    expect(section.getByText('Page 2')).toBeInTheDocument();
+
+    await userEvent.click(section.getByRole('button', { name: 'Previous' }));
+    expect(await section.findByText('Unknown trait')).toBeInTheDocument();
+    expect(section.getByText('Page 1')).toBeInTheDocument();
   });
 
   it('says "None" when there are no unknown levels and no rejected rows', async () => {
@@ -127,6 +156,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
     const rejected = screen.getByRole('heading', { name: 'Rejected rows' }).closest('section');
     expect(await within(rejected as HTMLElement).findByText('None')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
   it('shows the error of a failed batch, and an operator without a name as a dash', async () => {

@@ -54,6 +54,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     expect(byTrait.data[1]).toEqual({
       id: r1.id,
       speciesId: sp1.id,
+      species: { id: sp1.id, canonicalName: sp1.canonicalName },
       trait: { id: trait.id, key: 'flower_color', valueType: 'categorical', unit: null },
       valueText: 'blue',
       level: { id: blue.id, key: 'blue' },
@@ -170,6 +171,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
 
     const detail = await getRecord(t.db, imported.id);
     expect(detail).toMatchObject({
+      species: { id: sp1.id, canonicalName: sp1.canonicalName },
       rawValue: 'X',
       importBatch: { id: batch.id, fileName: 'detail.csv', startedAt: expect.any(String) },
       importRowNo: 42,

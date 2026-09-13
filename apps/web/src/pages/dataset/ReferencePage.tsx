@@ -3,14 +3,13 @@ import type { ReferenceDetail } from '@treerepro/contracts';
 import { type ReactNode, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchRecords, fetchReference } from '../../api/dataset.ts';
-import { LoadMore } from '../../components/dataset/LoadMore.tsx';
+import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { RecordTable } from '../../components/dataset/RecordTable.tsx';
 import { Alert, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
-import { useCursorList } from '../../lib/use-cursor-list.ts';
+import { usePagedList } from '../../lib/use-paged-list.ts';
 
-const PAGE_SIZE = 50;
 const DASH = <span className="text-mist-500">—</span>;
 const LINK = 'font-medium text-canopy-900 underline-offset-2 hover:underline break-all';
 
@@ -87,8 +86,8 @@ function ReferenceRecords({
   id: string;
   onSelectRecord: (recordId: string) => void;
 }) {
-  const list = useCursorList(datasetKeys.records({ referenceId: id }), (cursor) =>
-    fetchRecords({ referenceId: id, cursor, limit: PAGE_SIZE }),
+  const list = usePagedList(datasetKeys.records({ referenceId: id }), (cursor, limit) =>
+    fetchRecords({ referenceId: id, cursor, limit }),
   );
   return (
     <section className="flex flex-col gap-3">
@@ -107,14 +106,10 @@ function ReferenceRecords({
           records={list.items}
           onSelect={(record) => onSelectRecord(record.id)}
           showSpecies
+          showTrait
         />
       ) : null}
-      <LoadMore
-        hasMore={list.hasMore}
-        isLoadingMore={list.isLoadingMore}
-        onLoadMore={list.loadMore}
-        paused={Boolean(list.error)}
-      />
+      {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
     </section>
   );
 }
@@ -122,7 +117,8 @@ function ReferenceRecords({
 /**
  * One bibliographic reference (RFC-61 R4): its citation key as the title,
  * the metadata the import kept, and every record that names it as primary or
- * secondary source, page by page; a row opens the record in a drawer. The
+ * secondary source, one page at a time with the species and trait of each
+ * row; a row opens the record in a drawer. The
  * records section mounts only once the reference resolved, so an unknown id
  * shows one alert and no empty list.
  * @rfc RFC-13 R2, R4

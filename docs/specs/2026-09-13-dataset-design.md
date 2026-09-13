@@ -192,7 +192,7 @@ Against the dev stack, after `seed:traits`: `import:records --file docs/exemplos
 
 `traitSummary`: `{ trait: { id, key, valueType, unit }, recordCount, harmonisationCounts: { harmonised, unknownLevel, multiValue, notNumeric, empty }, levels: [{ levelId, key, count }] | null, numeric: { min, median, max, count } | null, accepted: { recordId, valueText, decidedAt } | null }` (`levels` for categorical traits, `numeric` for quantitative ones); grouped as `{ category: { key, label }, traits: [traitSummary] }[]`.
 
-`record` (list item): `{ id, speciesId, trait: { id, key, valueType, unit }, valueText, level: { id, key } | null, numericValue, harmonisation, review, primaryReference: { id, citationKey } | null, secondaryReference, origin, createdAt, createdBy: { id, name } | null }`.
+`record` (list item): `{ id, speciesId, species: { id, canonicalName }, trait: { id, key, valueType, unit }, valueText, level: { id, key } | null, numericValue, harmonisation, review, primaryReference: { id, citationKey } | null, secondaryReference, origin, createdAt, createdBy: { id, name } | null }`.
 
 `record` (detail): list item plus `rawValue, originalTraitName, originalSpeciesName, secondarySourceSpeciesName, rawCategory, note, importBatch: { id, fileName, startedAt } | null, importRowNo, annotations: [{ id, kind, note, actor: { id, name }, createdAt }], acceptedHistory: [{ id, decision, recordId, actor, note, createdAt }]`.
 
@@ -234,10 +234,10 @@ Plan 05 (`feat/ui-05`, issue #20) owns the authenticated `/app` layout (session 
 
 | Route | Access | Screen |
 |---|---|---|
-| `/app/species` | `dataset.read` | Search box (debounced, min 2 chars), family select, genus combobox (`/api/genera?familyId=&q=`), "unresolved taxa" toggle; infinite list by cursor (`IntersectionObserver`); row: italic canonical name, family, "matched: <alternative name>" when relevant. |
+| `/app/species` | `dataset.read` | Search box (debounced, min 2 chars), family select, genus combobox (`/api/genera?familyId=&q=`), "unresolved taxa" toggle; the first page lists at once and every list pages explicitly by cursor (Previous / Next, "Page N", rows per page 25 / 50 / 100 remembered in `localStorage`; UX-01); row: italic canonical name, family, "matched: <alternative name>" when relevant. |
 | `/app/species/$id` | `dataset.read` | Header: family › genus › *species*, badge (WCVP / unresolved taxon), alternative names. Sections per category in dictionary order; trait cards: key, unit, record count, summary (level bars or min–median–max), pending badge. Card click opens the trait panel: paginated record table (value, references, origin, harmonisation and review chips, date); row click opens the record drawer (raw fields, batch, annotations and accepted history when present). Explicit empty states. |
 | `/app/traits` | `dataset.read` | Dictionary browser: categories → traits (type, unit, description, active) → levels. Read-only in plan 06. |
-| `/app/references`, `/app/references/$id` | `dataset.read` | Search list; detail with metadata and that reference's records (`/api/records?referenceId=`). |
+| `/app/references`, `/app/references/$id` | `dataset.read` | Search list; detail with metadata and that reference's records (`/api/records?referenceId=`) with the species (linked) and trait of each row. |
 | `/app/imports`, `/app/imports/$id` | `imports.read` | Batch list with counts and status; batch detail with unknown levels and paginated rejects (reason, raw row). |
 
 Rules: no business logic in the web (RFC-02) — statuses arrive computed; navigation filtering by `permissions` is cosmetic, the API decides. Identity tokens and fonts of `docs/specs/2026-09-12-visual-identity.md`; no motion outside the landing. Components in `apps/web/src/components/dataset/`, pages in `pages/dataset/`, typed API calls in `api/dataset.ts` validated with the shared Zod schemas. Layout primitives (page header, table, drawer, chips) come from plan 05 when they exist there; otherwise plan 06 adds them in `components/ui/` for plan 05 to reuse.

@@ -4,13 +4,12 @@ import { useId } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchImport, fetchImportRejects } from '../../api/dataset.ts';
 import { ImportStatusBadge } from '../../components/dataset/ImportStatusBadge.tsx';
-import { LoadMore } from '../../components/dataset/LoadMore.tsx';
+import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { Alert, PageHeader, Table, Tbody, Td, Th, Thead, Tr } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, formatNumber } from '../../lib/format.ts';
-import { useCursorList } from '../../lib/use-cursor-list.ts';
+import { type PagedList, usePagedList } from '../../lib/use-paged-list.ts';
 
-const PAGE_SIZE = 50;
 const NUMBER = 'text-right tabular-nums';
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -56,9 +55,9 @@ function orderedColumns(rawRow: Record<string, string>): string[] {
  */
 export function ImportPage({ id }: { id: string }) {
   const batch = useQuery({ queryKey: datasetKeys.importBatch(id), queryFn: () => fetchImport(id) });
-  const rejects = useCursorList(
+  const rejects = usePagedList(
     datasetKeys.importRejects(id),
-    (cursor) => fetchImportRejects(id, { cursor, limit: PAGE_SIZE }),
+    (cursor, limit) => fetchImportRejects(id, { cursor, limit }),
     { enabled: batch.isSuccess },
   );
 
@@ -106,14 +105,7 @@ export function ImportPage({ id }: { id: string }) {
         ) : null}
         <Counts batch={data} />
         <UnknownLevels batch={data} />
-        <Rejects
-          items={rejects.items}
-          isLoading={rejects.isLoading}
-          error={rejects.error}
-          hasMore={rejects.hasMore}
-          isLoadingMore={rejects.isLoadingMore}
-          onLoadMore={rejects.loadMore}
-        />
+        <Rejects list={rejects} />
       </div>
     </>
   );
@@ -176,21 +168,8 @@ function UnknownLevels({ batch }: { batch: ImportBatch }) {
   );
 }
 
-function Rejects({
-  items,
-  isLoading,
-  error,
-  hasMore,
-  isLoadingMore,
-  onLoadMore,
-}: {
-  items: ImportReject[];
-  isLoading: boolean;
-  error: unknown;
-  hasMore: boolean;
-  isLoadingMore: boolean;
-  onLoadMore: () => void;
-}) {
+function Rejects({ list }: { list: PagedList<ImportReject> }) {
+  const { items, isLoading, error } = list;
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -237,12 +216,7 @@ function Rejects({
           </Tbody>
         </Table>
       ) : null}
-      <LoadMore
-        hasMore={hasMore}
-        isLoadingMore={isLoadingMore}
-        onLoadMore={onLoadMore}
-        paused={Boolean(error)}
-      />
+      {items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
     </section>
   );
 }

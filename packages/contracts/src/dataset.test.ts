@@ -53,6 +53,7 @@ describe('RFC-63 R8 recordSchema', () => {
     const record = {
       id: uuid,
       speciesId: uuid,
+      species: { id: uuid, canonicalName: 'Testus specimen' },
       trait: { id: uuid, key: 'flower_color', valueType: 'categorical', unit: null },
       valueText: 'blue',
       level: { id: uuid, key: 'blue' },
@@ -68,6 +69,7 @@ describe('RFC-63 R8 recordSchema', () => {
     expect(recordSchema.parse(record)).toEqual(record);
     expect(recordSchema.safeParse({ ...record, extra: true }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, harmonisation: 'weird' }).success).toBe(false);
+    expect(recordSchema.safeParse({ ...record, species: undefined }).success).toBe(false);
   });
 
   it('enumerations match the RFC', () => {

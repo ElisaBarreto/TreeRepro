@@ -131,6 +131,7 @@ export const SECONDARY_REFERENCE = {
 export const RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d50',
   speciesId: SPECIES.id,
+  species: { id: SPECIES.id, canonicalName: SPECIES.canonicalName },
   trait: SEXUAL_SYSTEM,
   valueText: 'dioecious',
   level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20', key: 'dioecious' },
@@ -148,6 +149,7 @@ export const RECORD: RecordItem = {
 export const PENDING_RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d51',
   speciesId: SPECIES.id,
+  species: { id: SPECIES.id, canonicalName: SPECIES.canonicalName },
   trait: SEED_MASS,
   valueText: 'about two',
   level: null,

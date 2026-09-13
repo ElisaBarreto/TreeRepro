@@ -53,26 +53,16 @@ async function openPage() {
 }
 
 describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
-  it('waits for two letters, searches once the typing settles and lists the rows', async () => {
+  it('lists the first page at once and searches again once two letters settle', async () => {
     dataset.searchReferences.mockResolvedValue(page([REFERENCE, BARE]));
     await openPage();
-    expect(screen.getByText('Type at least two letters to search references.')).toBeInTheDocument();
-
-    await userEvent.type(screen.getByLabelText('Search references'), 's');
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    expect(dataset.searchReferences).not.toHaveBeenCalled();
-
-    await userEvent.type(screen.getByLabelText('Search references'), 'm');
-    await waitFor(() =>
-      expect(dataset.searchReferences).toHaveBeenCalledWith({
-        q: 'sm',
-        cursor: undefined,
-        limit: 50,
-      }),
-    );
-    expect(dataset.searchReferences).toHaveBeenCalledTimes(1);
-
     const link = await screen.findByRole('link', { name: 'Smith2001' });
+    expect(dataset.searchReferences).toHaveBeenCalledWith({
+      q: undefined,
+      cursor: undefined,
+      limit: 50,
+    });
+    expect(dataset.searchReferences).toHaveBeenCalledTimes(1);
     expect(link).toHaveAttribute('href', `/app/references/${REFERENCE.id}`);
     expect(link).not.toHaveAttribute('title');
     const rows = within(screen.getByRole('table')).getAllByRole('row');
@@ -86,44 +76,81 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(truncated).toHaveAttribute('title', LONG_KEY);
     expect(truncated).toHaveAttribute('href', `/app/references/${BARE.id}`);
     expect(within(rows[2] as HTMLElement).getAllByText('—')).toHaveLength(3);
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    const pagination = screen.getByRole('navigation', { name: 'Pagination' });
+    expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
+    expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
+
+    // One letter is below the API's minimum and asks for nothing new.
+    await userEvent.type(screen.getByLabelText('Search references'), 's');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(dataset.searchReferences).toHaveBeenCalledTimes(1);
+
+    await userEvent.type(screen.getByLabelText('Search references'), 'm');
+    await waitFor(() =>
+      expect(dataset.searchReferences).toHaveBeenLastCalledWith({
+        q: 'sm',
+        cursor: undefined,
+        limit: 50,
+      }),
+    );
+    expect(dataset.searchReferences).toHaveBeenCalledTimes(2);
   });
 
-  it('says so when nothing matches', async () => {
-    dataset.searchReferences.mockResolvedValue(page([]));
+  it('says so when nothing matches, and only once the page arrived', async () => {
+    let resolvePage: (value: ReturnType<typeof page>) => void = () => {};
+    dataset.searchReferences.mockReturnValue(
+      new Promise<ReturnType<typeof page>>((resolve) => {
+        resolvePage = resolve;
+      }),
+    );
     await openPage();
-    await userEvent.type(screen.getByLabelText('Search references'), 'zz');
+    expect(screen.getByText('Searching…')).toBeInTheDocument();
+    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
+
+    resolvePage(page([]));
     expect(await screen.findByText('No references match.')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
-  it('loads the next page with the cursor on "Load more"', async () => {
+  it('steps to the next page with the cursor and back to the first', async () => {
     dataset.searchReferences
       .mockResolvedValueOnce(page([REFERENCE], 'c1'))
-      .mockResolvedValueOnce(page([BARE]));
+      .mockResolvedValueOnce(page([BARE]))
+      .mockResolvedValue(page([REFERENCE], 'c1'));
     await openPage();
-    await userEvent.type(screen.getByLabelText('Search references'), 'sm');
     expect(await screen.findByRole('link', { name: 'Smith2001' })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() =>
-      expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(3),
+      expect(within(screen.getByRole('table')).getByRole('link')).toHaveAttribute(
+        'href',
+        `/app/references/${BARE.id}`,
+      ),
     );
-    expect(dataset.searchReferences).toHaveBeenLastCalledWith({ q: 'sm', cursor: 'c1', limit: 50 });
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(dataset.searchReferences).toHaveBeenLastCalledWith({
+      q: undefined,
+      cursor: 'c1',
+      limit: 50,
+    });
+    expect(screen.getByText('Page 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: 'Smith2001' })).toBeInTheDocument();
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
   });
 
   it('RFC-13 R4 a 403 shows the permission sentence; other failures the generic one', async () => {
     dataset.searchReferences.mockRejectedValue(new ApiError(403, 'PERMISSION_DENIED', 'x'));
     const first = await openPage();
-    await userEvent.type(screen.getByLabelText('Search references'), 'sm');
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You do not have permission to do this.',
     );
+    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
     first.unmount();
 
     dataset.searchReferences.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     await openPage();
-    await userEvent.type(screen.getByLabelText('Search references'), 'sm');
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
   });
 });

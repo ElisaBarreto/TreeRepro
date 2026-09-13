@@ -154,6 +154,7 @@ export const userRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 export const recordSchema = z.strictObject({
   id: z.uuid(),
   speciesId: z.uuid(),
+  species: z.strictObject({ id: z.uuid(), canonicalName: z.string() }),
   trait: traitRefSchema,
   valueText: z.string(),
   level: z.strictObject({ id: z.uuid(), key: z.string() }).nullable(),

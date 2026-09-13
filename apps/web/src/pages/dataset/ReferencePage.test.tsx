@@ -124,7 +124,7 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
 });
 
 describe('RFC-63 R8, R9 ReferencePage records', () => {
-  it('lists the records with a species link per row, both chips, and opens the drawer from a row', async () => {
+  it('lists the records with the species name as a link and the trait per row, both chips, and opens the drawer from a row', async () => {
     await openPage();
     await waitFor(() =>
       expect(dataset.fetchRecords).toHaveBeenCalledWith({
@@ -138,19 +138,27 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     );
     const rows = within(await screen.findByRole('table')).getAllByRole('row');
     expect(rows).toHaveLength(3);
-    const headers = within(rows[0] as HTMLElement).getAllByRole('columnheader');
-    expect(headers[0]).toHaveTextContent('Species');
+    const headers = within(rows[0] as HTMLElement)
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent);
+    expect(headers.slice(0, 3)).toEqual(['Species', 'Trait', 'Value']);
     const species = within(rows[1] as HTMLElement).getByRole('link', {
-      name: 'Open species for record dioecious',
+      name: 'Adenanthera pavonina',
     });
-    expect(species).toHaveAttribute('href', `/app/species/${RECORD.speciesId}`);
+    expect(species).toHaveAttribute('href', `/app/species/${RECORD.species.id}`);
+    expect(within(rows[1] as HTMLElement).getAllByRole('cell')[1]).toHaveTextContent(
+      'sexual system',
+    );
     expect(rows[1]).toHaveTextContent('Smith2001');
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('confirmed')).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getAllByRole('cell')[1]).toHaveTextContent('seed mass');
     expect(rows[2]).toHaveTextContent('Renner2014 via Smith2001');
     expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText('disputed')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    const pagination = screen.getByRole('navigation', { name: 'Pagination' });
+    expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
+    expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
 
     await userEvent.click(
       within(rows[1] as HTMLElement).getByRole('button', { name: 'dioecious' }),
@@ -163,20 +171,26 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('loads the next page of records with the cursor', async () => {
+  it('steps to the next page of records with the cursor and back', async () => {
     dataset.fetchRecords
       .mockResolvedValueOnce(page([PRIMARY], 'c1'))
-      .mockResolvedValueOnce(page([SECONDARY]));
+      .mockResolvedValueOnce(page([SECONDARY]))
+      .mockResolvedValue(page([PRIMARY], 'c1'));
     await openPage();
     expect(await screen.findByRole('button', { name: 'dioecious' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('button', { name: 'about two' })).toBeInTheDocument();
     expect(dataset.fetchRecords).toHaveBeenLastCalledWith({
       referenceId: REFERENCE.id,
       cursor: 'c1',
       limit: 50,
     });
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'dioecious' })).not.toBeInTheDocument();
+    expect(screen.getByText('Page 2')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('button', { name: 'dioecious' })).toBeInTheDocument();
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
   });
 
   it('says so when no record names the reference', async () => {
@@ -184,6 +198,7 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     await openPage();
     expect(await screen.findByText('No records name this reference yet.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 });
 
