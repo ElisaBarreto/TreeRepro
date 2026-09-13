@@ -180,9 +180,15 @@ describe('RFC-23 R7 disabling TOTP', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled();
-    // A native close (e.g. Escape) reaching the dialog while the mutation is
-    // still pending must not dismiss it: the effect re-opens it because
-    // `disabling` stays true.
+    // This dispatches a synthetic `close` event, not the native `.close()`
+    // method, so jsdom's dialog polyfill never removes the `open` attribute
+    // here in the first place. What this guards against is `closeDisable`
+    // tearing the form down: its `disable.isPending` guard keeps `disabling`
+    // true, so the React side never re-renders the dialog closed. Dialog
+    // itself now also refuses native dismissal outright while
+    // `closeDisabled` is set — reopening immediately if the browser closes
+    // it anyway and ignoring backdrop clicks and Escape — see the
+    // `closeDisabled` tests in `ui.test.tsx`.
     fireEvent(dialog, new Event('close'));
     expect(dialog).toHaveAttribute('open');
   });

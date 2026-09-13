@@ -16,6 +16,14 @@ export interface DialogProps {
  * `ref.current?.close()` rather than `onClose()` directly, so the `<dialog
  * onClose={onClose}>` handler is the only thing that ever invokes the prop —
  * each user action (button, backdrop, or Escape) closes exactly once.
+ *
+ * `closeDisabled` means the dialog cannot be dismissed at all while it is
+ * set, not just that the Close button is inert: a backdrop click is ignored,
+ * Escape's `cancel` event is prevented (browsers that honour that keep the
+ * dialog open), and if the browser closes it anyway — some close-watcher
+ * implementations close before `cancel` can be prevented — the native
+ * `close` handler reopens it immediately and swallows the event instead of
+ * calling `onClose`.
  * @rfc RFC-13 R5
  */
 export function Dialog({ open, title, onClose, closeDisabled, children }: DialogProps) {
@@ -34,8 +42,18 @@ export function Dialog({ open, title, onClose, closeDisabled, children }: Dialog
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      onClose={onClose}
+      onClose={() => {
+        if (closeDisabled) {
+          ref.current?.showModal();
+          return;
+        }
+        onClose();
+      }}
+      onCancel={(event) => {
+        if (closeDisabled) event.preventDefault();
+      }}
       onClick={(event) => {
+        if (closeDisabled) return;
         if (event.target === ref.current) ref.current?.close();
       }}
       className="m-auto w-[min(92vw,480px)] rounded-2xl border border-canopy-700/20 bg-white p-0 text-canopy-950 shadow-xl backdrop:bg-canopy-950/60"

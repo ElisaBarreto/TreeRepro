@@ -125,6 +125,45 @@ describe('RFC-13 R5 UI kit renders with classes only', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('Dialog with closeDisabled ignores a backdrop click', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open title="Confirm" onClose={onClose} closeDisabled>
+        <p>Body</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Confirm' });
+    fireEvent.click(dialog);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(dialog).toHaveAttribute('open');
+  });
+
+  it('Dialog with closeDisabled prevents the default on a cancel event (Escape)', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open title="Confirm" onClose={onClose} closeDisabled>
+        <p>Body</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Confirm' });
+    const ok = fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    expect(ok).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('Dialog with closeDisabled reopens immediately if the browser closes it anyway, without calling onClose', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog open title="Confirm" onClose={onClose} closeDisabled>
+        <p>Body</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Confirm' }) as HTMLDialogElement;
+    dialog.close();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(dialog).toHaveAttribute('open');
+  });
+
   it('Table, Badge, PageHeader and EmptyState render their content', () => {
     render(
       <>
