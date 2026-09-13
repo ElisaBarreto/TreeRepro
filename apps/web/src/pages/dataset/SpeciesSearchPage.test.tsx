@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse, SpeciesListItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
+import { SPECIES } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -19,13 +20,20 @@ const auth = vi.hoisted(() => ({
 }));
 const dataset = vi.hoisted(() => ({
   searchSpecies: vi.fn(),
+  fetchSpecies: vi.fn(),
+  fetchSpeciesTraits: vi.fn(),
   fetchFamilies: vi.fn(),
   fetchGenera: vi.fn(),
 }));
+const catalog = vi.hoisted(() => ({ createSpecies: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
+}));
+vi.mock('../../api/catalog.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
+  ...catalog,
 }));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
@@ -57,8 +65,11 @@ const page = (data: SpeciesListItem[], nextCursor: string | null = null) => ({
 beforeEach(() => {
   auth.fetchMe.mockReset();
   dataset.searchSpecies.mockReset();
+  dataset.fetchSpecies.mockReset();
+  dataset.fetchSpeciesTraits.mockReset();
   dataset.fetchFamilies.mockReset();
   dataset.fetchGenera.mockReset();
+  catalog.createSpecies.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchFamilies.mockResolvedValue([FAMILY]);
   dataset.fetchGenera.mockResolvedValue({ data: [GENUS], meta: { nextCursor: null } });
@@ -329,5 +340,28 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     await openPage();
     await screen.findByRole('heading', { level: 1, name: 'Species' });
     expect(screen.queryByRole('link', { name: /export accepted values/i })).not.toBeInTheDocument();
+  });
+
+  it('RFC-60 R9 offers "New species" to taxa.manage and navigates to the created species', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'taxa.manage'] });
+    catalog.createSpecies.mockResolvedValue(SPECIES);
+    dataset.fetchSpecies.mockResolvedValue(SPECIES);
+    dataset.fetchSpeciesTraits.mockResolvedValue([]);
+    const { router } = renderAt('/app/species');
+    await userEvent.click(await screen.findByRole('button', { name: 'New species' }));
+    const dialog = screen.getByRole('dialog', { name: 'New species' });
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Adenanthera pavonina',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create species' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/app/species/${SPECIES.id}`));
+  });
+
+  it('RFC-60 R9 hides "New species" from a reader', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    await openPage();
+    expect(screen.queryByRole('button', { name: 'New species' })).not.toBeInTheDocument();
   });
 });

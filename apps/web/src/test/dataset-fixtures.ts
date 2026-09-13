@@ -2,6 +2,7 @@ import type {
   AcceptedState,
   Dictionary,
   DisputedRecord,
+  Genus,
   ImportBatch,
   ImportReject,
   MapResult,
@@ -13,6 +14,8 @@ import type {
   ReferenceDetail,
   Species,
   SpeciesTraits,
+  TaxonRef,
+  Trait,
   TraitRef,
   TraitSummary,
 } from '@treerepro/contracts';
@@ -291,6 +294,33 @@ export const DICTIONARY: Dictionary = [
     ],
   },
 ];
+
+/** @rfc RFC-60 R8 */
+export const MALVACEAE = { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d05', name: 'Malvaceae' };
+/** @rfc RFC-60 R8 */
+export const FAMILIES: TaxonRef[] = [FAMILY, MALVACEAE];
+/** A genus without a family, the case `/app/taxa` moves. @rfc RFC-60 R8 */
+export const ADANSONIA_GENUS: Genus = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d06',
+  name: 'Adansonia',
+  family: null,
+};
+/** @rfc RFC-60 R8 */
+export const GENERA: Genus[] = [{ ...GENUS, family: FAMILY }, ADANSONIA_GENUS];
+/** @rfc RFC-62 R5 */
+export const SEXUAL_SYSTEM_TRAIT: Trait = DICTIONARY[0]?.traits[0] as Trait;
+/** @rfc RFC-62 R5 */
+export const SEED_MASS_TRAIT: Trait = DICTIONARY[1]?.traits[0] as Trait;
+/** What `POST /api/traits` answers for a fresh categorical trait. @rfc RFC-62 R6 */
+export const NEW_TRAIT: Trait = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e04',
+  key: 'flower_colour',
+  valueType: 'categorical',
+  unit: null,
+  description: '',
+  active: true,
+  levels: [],
+};
 
 /** @rfc RFC-61 R4 */
 export const REFERENCE: Reference = {

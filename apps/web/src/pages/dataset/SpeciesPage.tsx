@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { Species, TraitRef } from '@treerepro/contracts';
 import { type ReactNode, useState } from 'react';
 import { datasetKeys, fetchSpecies, fetchSpeciesTraits } from '../../api/dataset.ts';
+import { AddNameDialog } from '../../components/catalog/AddNameDialog.tsx';
+import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
 import { AddValueDialog } from '../../components/curation/AddValueDialog.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
@@ -62,15 +64,19 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
  * id and its summary read from the traits query on every render, so the
  * accepted badge follows a Clear or a Set-as-accepted (which invalidate the
  * summary) instead of freezing at the click; a trait that leaves the summary
- * closes its panel.
- * @rfc RFC-13 R2, R4
- * @rfc RFC-60 R7
+ * closes its panel. With `taxa.manage`, "Edit species" and "Add name" in the
+ * header open the species editor and the alternative-name dialog (RFC-60
+ * R9); their write invalidates the species detail, so the header re-renders
+ * from the refetch.
+ * @rfc RFC-13 R2, R3, R4
+ * @rfc RFC-60 R7, R9
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1, R6
  */
 export function SpeciesPage({ id }: { id: string }) {
   const me = useMe();
   const canAdd = hasPermission(me, 'records.create');
+  const canManageTaxa = hasPermission(me, 'taxa.manage');
   const species = useQuery({
     queryKey: datasetKeys.speciesDetail(id),
     queryFn: () => fetchSpecies(id),
@@ -89,6 +95,8 @@ export function SpeciesPage({ id }: { id: string }) {
   if (openTraitId !== null && traits.data && !openTrait) setOpenTraitId(null);
   const [openRecord, setOpenRecord] = useState<string | null>(null);
   const [adding, setAdding] = useState<{ trait: TraitRef | null } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [addingName, setAddingName] = useState(false);
   const error = species.error ?? traits.error;
 
   return (
@@ -97,8 +105,22 @@ export function SpeciesPage({ id }: { id: string }) {
         <SpeciesHeader
           species={species.data}
           actions={
-            canAdd ? (
-              <Button onClick={() => setAdding({ trait: null })}>Add value</Button>
+            canAdd || canManageTaxa ? (
+              <>
+                {canAdd ? (
+                  <Button onClick={() => setAdding({ trait: null })}>Add value</Button>
+                ) : null}
+                {canManageTaxa ? (
+                  <>
+                    <Button variant="secondary" onClick={() => setEditing(true)}>
+                      Edit species
+                    </Button>
+                    <Button variant="secondary" onClick={() => setAddingName(true)}>
+                      Add name
+                    </Button>
+                  </>
+                ) : null}
+              </>
             ) : undefined
           }
         />
@@ -158,6 +180,20 @@ export function SpeciesPage({ id }: { id: string }) {
             setAdding(null);
             setOpenRecord(recordId);
           }}
+        />
+      ) : null}
+      {editing && species.data ? (
+        <SpeciesDialog
+          species={species.data}
+          onClose={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      ) : null}
+      {addingName && species.data ? (
+        <AddNameDialog
+          species={species.data}
+          onClose={() => setAddingName(false)}
+          onSaved={() => setAddingName(false)}
         />
       ) : null}
     </>

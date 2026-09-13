@@ -96,6 +96,18 @@ describe('RFC-65 R7–R9 PendingPage', () => {
     expect(screen.queryByRole('button', { name: 'Map' })).not.toBeInTheDocument();
   });
 
+  it('offers "Manage levels" to a traits.manage holder as a link to /app/traits', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...ME,
+      permissions: ['dataset.read', 'records.create', 'traits.manage'],
+    });
+    renderAt('/app/curation/pending');
+    await userEvent.click(await screen.findByRole('button', { name: /sexual system/i }));
+    const link = await screen.findByRole('link', { name: 'Manage levels' });
+    expect(link).toHaveAttribute('href', '/app/traits');
+    expect(link.className).toContain('rounded-full');
+  });
+
   it('shows the empty state when nothing is pending', async () => {
     curation.fetchPendingTraits.mockResolvedValue([]);
     renderAt('/app/curation/pending');

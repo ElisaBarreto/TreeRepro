@@ -76,3 +76,11 @@
 **Symptom:** A dialog's initial field values are stale or wrong after it is reopened for a different item.
 **Cause:** Toggling an `open` prop keeps the component instance (and its `useState`) alive across opens; when the initial value depends on what opened it (which trait, which pending group), the old state leaks into the new open.
 **Fix:** Mount and unmount the dialog instead of toggling `open` — render it only while a piece of state names what to open (`{addValueOpen ? <AddValueDialog ... /> : null}`), so every open is a fresh mount with fresh state (`AddValueDialog`, `MapDialog`).
+
+## An edit dialog sends a diff, and an unchanged form is not a request
+
+The catalog `PATCH` bodies are `nonEmpty` (400 `VALIDATION_FAILED` on `{}`) and a `PATCH` that changes nothing writes no audit row. Edit dialogs therefore compute the difference against the loaded entity — a changed field sends its value, an emptied optional field sends `null`, an untouched field is omitted — and close without a request when the difference is empty. Comparing trimmed strings against the stored value is what makes "typed a space and deleted it" a no-op.
+
+## Reordering dictionary levels is two PATCHes, moved level first
+
+`PATCH /api/traits/:id/levels/:levelId` changes one level; a move swaps the `sortOrder` of two. `LevelsEditor` sends the moved level first, then the neighbour, inside one `mutationFn`, and invalidates the dictionary once at the end — a first-call failure leaves the order untouched, a second-call failure leaves the two levels tied (the list then orders them by key), which the next move repairs. Ties are only possible in that state or in a dictionary seeded before `sortOrder` existed; a move across a tie sends a single shifted `sortOrder` instead of a swap. A move up across a tie at `sortOrder` 0 cannot shift the moved level below 0, so it pushes the neighbour down instead (the moved level's `sortOrder` stays put while the neighbour's becomes the moved level's `sortOrder + 1`). The invalidation runs in `onSettled`, not `onSuccess`, so a failed move still refetches the dictionary — the tie is visible in the list right away rather than after an unrelated refetch, and the next move repairs it.

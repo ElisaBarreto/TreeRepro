@@ -250,6 +250,17 @@ Sections 10.1–10.3 above are the design; the implementation differs in a few s
 - `/app/species/$id` with `taxa.manage`: **Edit species** (canonical name, name source, genus combobox with inline "Create genus" → family `Select` with inline "Create family"); **Add alternative name** (name, GBIF usage key).
 - `/app/taxa` (navigation entry **Taxa**, `taxa.manage`): families list with rename and create; selecting a family lists its genera with rename, move to another family and create. Small page: the one place where a family or a genus can be renamed.
 
+### As delivered (plan 07c)
+
+- **New species** on `/app/species` (header, `taxa.manage`) opens the species dialog in create mode — section 10.4 only listed the edit; `POST /api/species` existed (section 6) and a species missing from the catalog has no other way in but an import.
+- Family and genus are created inline from the species dialog (a "New family" input beside the family `Select`; the genus `Combobox`'s create option under the chosen family); `/app/taxa` is where they are renamed and moved.
+- Edit dialogs send only the changed fields (`null` to clear an optional one) and close without a request when nothing changed — the `PATCH` bodies are `nonEmpty` (`docs/gotchas/web.md`).
+- A level move is two `PATCH`es (moved level first) swapping the `sortOrder`s (`docs/gotchas/web.md`).
+- The trait key, value type and unit are shown as plain text in the edit dialog, with no hint alongside; the immutability hints (`snake_case, immutable once created…`, `Immutable once created.`) are on those same fields in the New trait dialog, before the value is ever set (RFC-62 R6).
+- The kit gained `ButtonLink` / `buttonClassName` (navigation dressed as a button) and `api/query.ts` holds the one `withQuery`.
+- Both trait dialogs gate their `Alert` with `!isValidationError(error)` (`lib/errors.ts`) rather than the plan's single-field sample, so it never shows beside a field-level `VALIDATION_FAILED` message — the codebase's existing convention for that trade-off.
+- `LevelsEditor`'s move invalidates the dictionary in `onSettled`, not only on success, so a failed second `PATCH` still refetches and the tie between the two levels is visible.
+
 ## 11. RFCs and amendments
 
 | RFC | Change |
