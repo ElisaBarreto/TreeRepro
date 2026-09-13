@@ -1,8 +1,15 @@
 import { randomBytes } from 'node:crypto';
-import type { HarmonisationStatus, NameSource, TraitValueType } from '@treerepro/contracts';
+import type {
+  AcceptedDecision,
+  AnnotationKind,
+  HarmonisationStatus,
+  NameSource,
+  TraitValueType,
+} from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../../src/db/client.ts';
-import { traitLevels, traits } from '../../src/db/schema/dictionary.ts';
+import { acceptedValues, recordAnnotations } from '../../src/db/schema/curation.ts';
+import { traitCategories, traitLevels, traits } from '../../src/db/schema/dictionary.ts';
 import { importBatches } from '../../src/db/schema/imports.ts';
 import { traitRecords } from '../../src/db/schema/records.ts';
 import { bibliographicReferences } from '../../src/db/schema/references.ts';
@@ -129,6 +136,7 @@ type RecordBase = {
   rawValue?: string;
   primaryReferenceId?: string | null;
   secondaryReferenceId?: string | null;
+  supersedesRecordId?: string;
 };
 type RecordOrigin =
   | { origin?: 'import'; importBatchId: string; importRowNo?: number }
@@ -155,6 +163,7 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
       rawValue: input.rawValue ?? null,
       primaryReferenceId: input.primaryReferenceId ?? null,
       secondaryReferenceId: input.secondaryReferenceId ?? null,
+      supersedesRecordId: input.supersedesRecordId ?? null,
       ...(input.origin === 'manual'
         ? { origin: 'manual' as const, createdBy: input.createdBy, note: input.note ?? null }
         : {
@@ -165,5 +174,97 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
     })
     .returning({ id: traitRecords.id });
   if (!row) throw new Error('createRecord: no row');
+  return row;
+}
+
+/**
+ * A trait of its own for tests that edit the dictionary or read the global
+ * queues: seeded traits are shared by every test file and must stay untouched.
+ */
+export async function createTrait(
+  db: DbExecutor,
+  options: {
+    key?: string;
+    valueType?: TraitValueType;
+    unit?: string | null;
+    categoryKey?: string;
+    levels?: string[];
+    active?: boolean;
+  } = {},
+): Promise<{
+  id: string;
+  key: string;
+  valueType: TraitValueType;
+  unit: string | null;
+  levels: { id: string; key: string }[];
+}> {
+  const valueType = options.valueType ?? 'categorical';
+  const categoryKey =
+    options.categoryKey ??
+    (await db.select({ key: traitCategories.key }).from(traitCategories).limit(1))[0]?.key;
+  if (!categoryKey) throw new Error('createTrait: no trait category (is the dictionary seeded?)');
+  const [trait] = await db
+    .insert(traits)
+    .values({
+      key: options.key ?? `test_trait_${suffix()}`,
+      categoryKey,
+      valueType,
+      unit: options.unit ?? (valueType === 'quantitative' ? 'mm' : null),
+      active: options.active ?? true,
+    })
+    .returning({ id: traits.id, key: traits.key, valueType: traits.valueType, unit: traits.unit });
+  if (!trait) throw new Error('createTrait: no row');
+  const levelKeys = options.levels ?? (valueType === 'categorical' ? ['alpha', 'beta'] : []);
+  const levels =
+    levelKeys.length === 0
+      ? []
+      : await db
+          .insert(traitLevels)
+          .values(levelKeys.map((key, i) => ({ traitId: trait.id, key, sortOrder: i })))
+          .returning({ id: traitLevels.id, key: traitLevels.key });
+  return { ...trait, levels };
+}
+
+export async function createAnnotation(
+  db: DbExecutor,
+  input: { recordId: string; actorId: string; kind: AnnotationKind; note?: string },
+): Promise<{ id: string }> {
+  const [row] = await db
+    .insert(recordAnnotations)
+    .values({
+      recordId: input.recordId,
+      actorId: input.actorId,
+      kind: input.kind,
+      note: input.note ?? (input.kind === 'dispute' || input.kind === 'withdraw' ? 'test' : null),
+    })
+    .returning({ id: recordAnnotations.id });
+  if (!row) throw new Error('createAnnotation: no row');
+  return row;
+}
+
+export async function createAcceptedValue(
+  db: DbExecutor,
+  input: {
+    speciesId: string;
+    traitId: string;
+    actorId: string;
+    recordId?: string | null;
+    decision?: AcceptedDecision;
+    note?: string;
+  },
+): Promise<{ id: string }> {
+  const decision = input.decision ?? (input.recordId ? 'accepted' : 'cleared');
+  const [row] = await db
+    .insert(acceptedValues)
+    .values({
+      speciesId: input.speciesId,
+      traitId: input.traitId,
+      actorId: input.actorId,
+      recordId: decision === 'accepted' ? (input.recordId ?? null) : null,
+      decision,
+      note: input.note ?? null,
+    })
+    .returning({ id: acceptedValues.id });
+  if (!row) throw new Error('createAcceptedValue: no row');
   return row;
 }

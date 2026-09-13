@@ -99,6 +99,13 @@
       "when": 1789303363560,
       "tag": "0013_permissions_curation",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789304033255,
+      "tag": "0014_records_supersedes",
+      "breakpoints": true
     }
   ]
 }
