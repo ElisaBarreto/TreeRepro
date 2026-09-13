@@ -174,7 +174,7 @@ Against the dev stack, after `seed:traits`: `import:records --file docs/exemplos
 | Module | Responsibility |
 |---|---|
 | `dataset/taxa.ts` | `searchSpecies(db, { q?, familyId?, genusId?, unresolved?, cursor?, limit })` → `{ data, nextCursor }` (keyset on `(canonical_name, id)`); `getSpecies(db, id)` with genus, family, names, `recordCount`, `traitCount`; `listFamilies`, `listGenera(db, { familyId?, q?, cursor?, limit })`. |
-| `dataset/references.ts` | `searchReferences(db, { q?, cursor?, limit })`, `getReference(db, id)` with `recordCount`. |
+| `dataset/references.ts` | `searchReferences(db, { q?, cursor?, limit })` ordered by usage with `primaryCount` / `secondaryCount` per item, `getReference(db, id)` adding `recordCount`. |
 | `dataset/dictionary.ts` | `getDictionary(db)` → categories → traits → levels, dictionary order. |
 | `dataset/records.ts` | `listRecords(db, { speciesId?, traitId?, referenceId?, cursor?, limit })` (requires `speciesId` + `traitId`, or `referenceId`); `getRecord(db, id)` with raw fields, batch, annotations and accepted history. |
 | `dataset/summary.ts` | `speciesTraitSummary(db, speciesId)` → categories → traits → `{ recordCount, harmonisationCounts, summary, accepted }`; `reviewStatus` SQL fragment shared with `records.ts`. |
@@ -196,7 +196,7 @@ Against the dev stack, after `seed:traits`: `import:records --file docs/exemplos
 
 `record` (detail): list item plus `rawValue, originalTraitName, originalSpeciesName, secondarySourceSpeciesName, rawCategory, note, importBatch: { id, fileName, startedAt } | null, importRowNo, annotations: [{ id, kind, note, actor: { id, name }, createdAt }], acceptedHistory: [{ id, decision, recordId, actor, note, createdAt }]`.
 
-`reference`: `{ id, citationKey, title, authors, year, journal, doi, url, createdAt }`; detail adds `recordCount`.
+`reference`: `{ id, citationKey, title, authors, year, journal, doi, url, createdAt, primaryCount, secondaryCount }` (records naming it as primary / as secondary; the same record counts once in each role it fills); detail adds `recordCount` (either role, counted once).
 
 `dictionary`: `[{ key, label, traits: [{ id, key, valueType, unit, description, active, levels: [{ id, key, active }] }] }]`.
 
@@ -216,7 +216,7 @@ All permission-guarded with `dataset.read` unless stated; envelopes and paginati
 | `GET /api/records?speciesId=&traitId=&referenceId=&cursor=&limit=` | Requires `speciesId` and `traitId` together, or `referenceId`; other combinations 400 `VALIDATION_FAILED`. Keyset by `id` descending. |
 | `GET /api/records/:id` | 404 `RECORD_NOT_FOUND`. |
 | `GET /api/traits` | Whole dictionary; `Cache-Control: private, max-age=300`. |
-| `GET /api/references?q=&cursor=&limit=` | `q` over `citation_key` and `title`; order by citation key, id. |
+| `GET /api/references?q=&cursor=&limit=` | `q` over `citation_key` and `title`; order by usage (`primaryCount + secondaryCount` desc, then id desc); composite cursor `[total, id]`; the counts come from an on-demand aggregate over `trait_records` (no dedicated index — tens of thousands of references at most). |
 | `GET /api/references/:id` | 404 `REFERENCE_NOT_FOUND`. |
 | `GET /api/families?cursor=&limit=` | Order by name. |
 | `GET /api/genera?familyId=&q=&cursor=&limit=` | Order by name; `q` prefix match. |
@@ -235,9 +235,9 @@ Plan 05 (`feat/ui-05`, issue #20) owns the authenticated `/app` layout (session 
 | Route | Access | Screen |
 |---|---|---|
 | `/app/species` | `dataset.read` | Search box (debounced, min 2 chars), family select, genus combobox (`/api/genera?familyId=&q=`), "unresolved taxa" toggle; the first page lists at once and every list pages explicitly by cursor (Previous / Next, "Page N", rows per page 25 / 50 / 100 remembered in `localStorage`; UX-01); row: italic canonical name, family, "matched: <alternative name>" when relevant. |
-| `/app/species/$id` | `dataset.read` | Header: family › genus › *species*, badge (WCVP / unresolved taxon), alternative names. Sections per category in dictionary order; trait cards: key, unit, record count, summary (level bars or min–median–max), pending badge. Card click opens the trait panel: paginated record table (value, references, origin, harmonisation and review chips, date); row click opens the record drawer (raw fields, batch, annotations and accepted history when present). Explicit empty states. |
+| `/app/species/$id` | `dataset.read` | Header: family › genus › *species*, badge (WCVP / unresolved taxon), alternative names. Sections per category in dictionary order; trait cards: key, unit, record count, summary (level bars or min–median–max), pending badge. Card click opens the trait panel: paginated record table (value, primary article, secondary article — each linked to its reference —, origin, harmonisation and review chips, date); row click opens the record drawer (raw fields, batch, annotations and accepted history when present). Explicit empty states. |
 | `/app/traits` | `dataset.read` | Dictionary browser: categories → traits (type, unit, description, active) → levels. Read-only in plan 06. |
-| `/app/references`, `/app/references/$id` | `dataset.read` | Search list; detail with metadata and that reference's records (`/api/records?referenceId=`) with the species (linked) and trait of each row. |
+| `/app/references`, `/app/references/$id` | `dataset.read` | Articles most cited first (the API's order) with the counts as primary and as secondary, a badge when the key is a DOI, a numeric index or a full citation, and the year; search by key or title. Detail: "Used as the primary article in N records and as the secondary article in M records", metadata, and that article's records (`/api/records?referenceId=`) with the species (linked), trait, primary and secondary article of each row. |
 | `/app/imports`, `/app/imports/$id` | `imports.read` | Batch list with counts and status; batch detail with unknown levels and paginated rejects (reason, raw row). |
 
 Rules: no business logic in the web (RFC-02) — statuses arrive computed; navigation filtering by `permissions` is cosmetic, the API decides. Identity tokens and fonts of `docs/specs/2026-09-12-visual-identity.md`; no motion outside the landing. Components in `apps/web/src/components/dataset/`, pages in `pages/dataset/`, typed API calls in `api/dataset.ts` validated with the shared Zod schemas. Layout primitives (page header, table, drawer, chips) come from plan 05 when they exist there; otherwise plan 06 adds them in `components/ui/` for plan 05 to reuse.

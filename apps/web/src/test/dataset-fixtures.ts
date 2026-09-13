@@ -276,9 +276,11 @@ export const REFERENCE: Reference = {
   doi: '10.1000/jte.2001.1',
   url: 'https://example.org/smith2001',
   createdAt: '2026-09-13T09:00:00.000Z',
+  primaryCount: 1,
+  secondaryCount: 1,
 };
 
-/** REFERENCE with the count `GET /api/references/:id` adds. @rfc RFC-61 R4 */
+/** REFERENCE with the count `GET /api/references/:id` adds: two records, one per role. @rfc RFC-61 R4 */
 export const REFERENCE_DETAIL: ReferenceDetail = { ...REFERENCE, recordCount: 2 };
 
 /** A completed batch with one unknown level. @rfc RFC-64 R11 */

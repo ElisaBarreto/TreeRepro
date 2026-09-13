@@ -39,3 +39,20 @@ export function formatNumber(value: number): string {
 export function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+export type ArticleKind = 'DOI' | 'numeric index' | 'full citation';
+
+/**
+ * How a citation key reads, for a hint next to it: a DOI (`10.1234/…`), a
+ * bare numeric index the compilation left in place of a name (`42`, `3; 4`),
+ * or a full citation pasted as the key (over 80 characters). An ordinary key
+ * (`Smith2001`, `Alfaro_et_al_2023_GEB`) gets `null`. Presentation only: the
+ * key itself stays the reference's identity (RFC-61 R2).
+ * @rfc RFC-13 R9
+ */
+export function articleKind(key: string): ArticleKind | null {
+  if (/^10\.\d{4,}\//.test(key)) return 'DOI';
+  if (/^[\d,;\s]+$/.test(key)) return 'numeric index';
+  if (key.length > 80) return 'full citation';
+  return null;
+}

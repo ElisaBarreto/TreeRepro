@@ -21,11 +21,16 @@ describe('RFC-61 R4 reference routes', () => {
     );
     expect(list.status).toBe(200);
     expect(await list.json()).toEqual({
-      data: [expect.objectContaining({ id: ref.id })],
+      data: [expect.objectContaining({ id: ref.id, primaryCount: 0, secondaryCount: 0 })],
       meta: { nextCursor: null },
     });
     const detail = await call(t.app, 'GET', `/api/references/${ref.id}`, { cookie });
-    expect((await detail.json()).data).toMatchObject({ id: ref.id, recordCount: 0 });
+    expect((await detail.json()).data).toMatchObject({
+      id: ref.id,
+      recordCount: 0,
+      primaryCount: 0,
+      secondaryCount: 0,
+    });
     const missing = await call(
       t.app,
       'GET',

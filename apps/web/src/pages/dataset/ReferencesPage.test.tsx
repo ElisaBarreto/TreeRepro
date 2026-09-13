@@ -27,6 +27,7 @@ vi.mock('../../api/dataset.ts', async (importOriginal) => ({
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
 const LONG_KEY = `Smithsonian${'x'.repeat(80)}2002`;
+// A full citation pasted as the key, never cited.
 const BARE: Reference = {
   ...REFERENCE,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f02',
@@ -34,6 +35,26 @@ const BARE: Reference = {
   title: null,
   year: null,
   journal: null,
+  primaryCount: 0,
+  secondaryCount: 0,
+};
+const DOI_KEY: Reference = {
+  ...REFERENCE,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f03',
+  citationKey: '10.1111/geb.13640',
+  title: null,
+  year: 2023,
+  primaryCount: 1234,
+  secondaryCount: 0,
+};
+const NUMERIC_KEY: Reference = {
+  ...REFERENCE,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f04',
+  citationKey: '42',
+  title: null,
+  year: null,
+  primaryCount: 0,
+  secondaryCount: 3,
 };
 const page = (data: Reference[], nextCursor: string | null = null) => ({
   data,
@@ -52,10 +73,17 @@ async function openPage() {
   return utils;
 }
 
+const cells = (row: HTMLElement) => within(row).getAllByRole('cell');
+
 describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
-  it('lists the first page at once and searches again once two letters settle', async () => {
-    dataset.searchReferences.mockResolvedValue(page([REFERENCE, BARE]));
+  it('lists the first page at once, in the order the API sent, and searches again once two letters settle', async () => {
+    dataset.searchReferences.mockResolvedValue(page([DOI_KEY, NUMERIC_KEY, REFERENCE, BARE]));
     await openPage();
+    expect(
+      screen.getByText(
+        'Articles cited by the records, most used first. Search by citation key or title.',
+      ),
+    ).toBeInTheDocument();
     const link = await screen.findByRole('link', { name: 'Smith2001' });
     expect(dataset.searchReferences).toHaveBeenCalledWith({
       q: undefined,
@@ -66,16 +94,40 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(link).toHaveAttribute('href', `/app/references/${REFERENCE.id}`);
     expect(link).not.toHaveAttribute('title');
     const rows = within(screen.getByRole('table')).getAllByRole('row');
-    expect(rows).toHaveLength(3);
-    expect(rows[1]).toHaveTextContent('Breeding systems of tropical trees');
-    expect(rows[1]).toHaveTextContent('2001');
-    expect(rows[1]).toHaveTextContent('Journal of Tropical Ecology');
+    expect(rows).toHaveLength(5);
+    expect(
+      within(rows[0] as HTMLElement)
+        .getAllByRole('columnheader')
+        .map((th) => th.textContent),
+    ).toEqual(['Article', 'As primary', 'As secondary', 'Year']);
+    expect(
+      rows.slice(1).map((row) => within(row as HTMLElement).getByRole('link').textContent),
+    ).toEqual(['10.1111/geb.13640', '42', 'Smith2001', `${LONG_KEY.slice(0, 79)}…`]);
 
-    const truncated = within(rows[2] as HTMLElement).getByRole('link');
+    // Ordinary key: no badge; counts and year in their columns.
+    const smith = cells(rows[3] as HTMLElement);
+    expect(smith[0]).toHaveTextContent(/^Smith2001$/);
+    expect(smith[1]).toHaveTextContent(/^1$/);
+    expect(smith[2]).toHaveTextContent(/^1$/);
+    expect(smith[3]).toHaveTextContent(/^2001$/);
+    expect(screen.queryByText('Breeding systems of tropical trees')).not.toBeInTheDocument();
+
+    const doi = cells(rows[1] as HTMLElement);
+    expect(within(doi[0] as HTMLElement).getByText('DOI')).toBeInTheDocument();
+    expect(doi[1]).toHaveTextContent(/^1,234$/);
+    expect(doi[2]).toHaveTextContent(/^0$/);
+    const numeric = cells(rows[2] as HTMLElement);
+    expect(within(numeric[0] as HTMLElement).getByText('numeric index')).toBeInTheDocument();
+    expect(numeric[2]).toHaveTextContent(/^3$/);
+
+    const truncated = within(rows[4] as HTMLElement).getByRole('link');
     expect(truncated).toHaveTextContent(`${LONG_KEY.slice(0, 79)}…`);
     expect(truncated).toHaveAttribute('title', LONG_KEY);
     expect(truncated).toHaveAttribute('href', `/app/references/${BARE.id}`);
-    expect(within(rows[2] as HTMLElement).getAllByText('—')).toHaveLength(3);
+    expect(
+      within(cells(rows[4] as HTMLElement)[0] as HTMLElement).getByText('full citation'),
+    ).toBeInTheDocument();
+    expect(within(rows[4] as HTMLElement).getAllByText('—')).toHaveLength(1);
     const pagination = screen.getByRole('navigation', { name: 'Pagination' });
     expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
     expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
@@ -105,10 +157,10 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     );
     await openPage();
     expect(screen.getByText('Searching…')).toBeInTheDocument();
-    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No articles match.')).not.toBeInTheDocument();
 
     resolvePage(page([]));
-    expect(await screen.findByText('No references match.')).toBeInTheDocument();
+    expect(await screen.findByText('No articles match.')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
@@ -146,7 +198,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You do not have permission to do this.',
     );
-    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No articles match.')).not.toBeInTheDocument();
     first.unmount();
 
     dataset.searchReferences.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
