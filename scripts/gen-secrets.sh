@@ -1,5 +1,5 @@
 #!/bin/sh
-# Generates development secrets in infra/secrets/ (RFC-02 R6). Never overwrites existing files.
+# Generates development secrets in infra/secrets/ — or in the directory given as the first argument (RFC-02 R6). Never overwrites existing files.
 # Values are hex only, so they are safe inside SQL and URLs.
 #
 # Permissions (infra/secrets/README.md): the directory is 0700 — the only host-side
@@ -8,7 +8,8 @@
 # (node), 999 (redis) or 70 (postgres). Re-running the script repairs the modes.
 set -eu
 umask 077
-dir="$(cd "$(dirname "$0")/.." && pwd)/infra/secrets"
+# Target directory: the first argument (scripts/e2e.sh passes a temp dir), else infra/secrets.
+dir="${1:-$(cd "$(dirname "$0")/.." && pwd)/infra/secrets}"
 mkdir -p "$dir"
 chmod 700 "$dir"
 
