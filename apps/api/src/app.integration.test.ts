@@ -58,7 +58,7 @@ describe('RFC-10 R12 request id', () => {
 
   it('binds a child logger carrying the request id to the context', async () => {
     const { app, lines } = build();
-    app.get('/probe', (c) => {
+    app.get('/api/probe', (c) => {
       c.get('logger').info({ step: 1 }, 'probe');
       return c.json({ ok: true });
     });
@@ -70,7 +70,7 @@ describe('RFC-10 R12 request id', () => {
 
   it('logs an unhandled error through the request logger', async () => {
     const { app, lines } = build();
-    app.get('/boom', () => {
+    app.get('/api/boom', () => {
       throw new Error('kaboom');
     });
     const res = await app.request('/api/boom', { headers: { 'x-request-id': 'req-43' } });
@@ -90,13 +90,27 @@ describe('RFC-02 R5 security headers', () => {
     expect(res.headers.get('content-security-policy')).toContain("default-src 'none'");
     expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
   });
+
+  it('RFC-11 R5: also outside /api, where only the development port is reachable', async () => {
+    const { app } = build();
+    for (const path of ['/', '/robots.txt', '/apix']) {
+      const res = await app.request(path);
+      expect(res.status).toBe(404);
+      expect((await res.json()).error.code).toBe('NOT_FOUND');
+      expect(res.headers.get('x-request-id')).toMatch(/\S+/);
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(res.headers.get('content-security-policy')).toContain("default-src 'none'");
+    }
+    const echoed = await app.request('/', { headers: { 'x-request-id': 'abc-123' } });
+    expect(echoed.headers.get('x-request-id')).toBe('abc-123');
+  });
 });
 
 describe('RFC-02 R4 body limit', () => {
   it('rejects bodies over 1 MiB with 413 REQUEST_TOO_LARGE', async () => {
     const { app } = build();
-    // Routes added to the app are prefixed with the /api basePath automatically.
-    app.post('/echo', async (c) => c.json({ length: (await c.req.text()).length }));
+    // createApp returns the root app; the API middlewares apply under /api only.
+    app.post('/api/echo', async (c) => c.json({ length: (await c.req.text()).length }));
     const big = 'x'.repeat(BODY_LIMIT_BYTES + 1);
     const res = await app.request('/api/echo', {
       method: 'POST',
@@ -118,7 +132,7 @@ describe('RFC-02 R3 origin check is wired', () => {
   it('rejects a mutation without Origin before any handler runs', async () => {
     const { app } = build();
     let handlerRan = false;
-    app.post('/mutate', (c) => {
+    app.post('/api/mutate', (c) => {
       handlerRan = true;
       return c.json({ data: null });
     });
@@ -131,10 +145,10 @@ describe('RFC-02 R3 origin check is wired', () => {
 describe('RFC-02 R9 error handling is wired', () => {
   it('maps AppError and hides unexpected errors', async () => {
     const { app, lines } = build();
-    app.get('/app-error', () => {
+    app.get('/api/app-error', () => {
       throw new AppError('RATE_LIMITED', 'Slow down');
     });
-    app.get('/boom', () => {
+    app.get('/api/boom', () => {
       throw new Error('internal detail');
     });
     expect((await app.request('/api/app-error')).status).toBe(429);

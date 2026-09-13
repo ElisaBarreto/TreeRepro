@@ -7,6 +7,12 @@ allowBuilds:
   esbuild: true
   protobufjs: true
   ssh2: true
+# drizzle-kit's config loader (@esbuild-kit/esm-loader, unmaintained) still pins
+# esbuild 0.18, which carries GHSA-67mh-4wv8-2f99 (dev server only; we never run
+# it). Point that one edge at the esbuild drizzle-kit itself already ships with,
+# so `pnpm audit` is clean. Drop when drizzle-kit drops @esbuild-kit (issue #15).
+overrides:
+  "@esbuild-kit/core-utils>esbuild": "0.25.12"
 # Supply-chain guard: refuse versions published less than 7 days (10080 minutes) ago.
 # Mirrors Dependabot's cooldown in .github/dependabot.yml. Exclude a package only
 # for an urgent security patch, and remove the exclusion afterwards.

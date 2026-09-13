@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
 import type { TestProject } from 'vitest/node';
@@ -41,11 +42,20 @@ const BACKUP_PASSWORD = 'test-backup-password';
 // test container, so the roles and grants under test are exactly the ones a
 // deployment gets; the migrations then run as `treerepro_migrator` and every
 // test connects as `treerepro_app` unless it asks for the superuser.
-const ROLES_SCRIPT = new URL('../../../infra/postgres/init/01-roles.sh', import.meta.url).pathname;
+const ROLES_SCRIPT = fileURLToPath(
+  new URL('../../../infra/postgres/init/01-roles.sh', import.meta.url),
+);
+
+// The same images, tags and digests as compose.yml (RFC-02 R11; refresh them
+// together, docs/gotchas/docker.md "Base images are pinned by tag and digest").
+const POSTGRES_IMAGE =
+  'postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2';
+const REDIS_IMAGE =
+  'redis:8.10-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576';
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const [postgres, redis] = await Promise.all([
-    new PostgreSqlContainer('postgres:18.6-alpine')
+    new PostgreSqlContainer(POSTGRES_IMAGE)
       .withCopyFilesToContainer([
         { source: ROLES_SCRIPT, target: '/docker-entrypoint-initdb.d/01-roles.sh', mode: 0o755 },
       ])
@@ -55,7 +65,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
         { content: BACKUP_PASSWORD, target: '/run/secrets/db_backup_password', mode: 0o444 },
       ])
       .start(),
-    new RedisContainer('redis:8.8-alpine').withPassword(REDIS_PASSWORD).start(),
+    new RedisContainer(REDIS_IMAGE).withPassword(REDIS_PASSWORD).start(),
   ]);
 
   const base = { host: postgres.getHost(), port: postgres.getPort(), name: postgres.getDatabase() };
