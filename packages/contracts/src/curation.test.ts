@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   annotateRecordBodySchema,
+  createLevelBodySchema,
   createRecordBodySchema,
   createReferenceBodySchema,
   mapPendingBodySchema,
@@ -142,5 +143,13 @@ describe('RFC-60 R9, RFC-61 R6, RFC-62 R6 catalog bodies', () => {
     expect(createReferenceBodySchema.parse({ citationKey: ' Key_2020 ' })).toEqual({
       citationKey: 'Key_2020',
     });
+  });
+
+  it('createLevelBodySchema rejects a sortOrder outside the integer column range', () => {
+    expect(createLevelBodySchema.safeParse({ key: 'a', sortOrder: -1 }).success).toBe(false);
+    expect(createLevelBodySchema.safeParse({ key: 'a', sortOrder: 2147483647 }).success).toBe(true);
+    expect(createLevelBodySchema.safeParse({ key: 'a', sortOrder: 2147483648 }).success).toBe(
+      false,
+    );
   });
 });

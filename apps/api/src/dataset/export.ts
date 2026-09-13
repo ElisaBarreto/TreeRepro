@@ -52,9 +52,11 @@ const BATCH = 500;
  * The current accepted value per species and trait as a CSV stream: a
  * postgres.js cursor feeds a `ReadableStream` batch by batch, so the file is
  * never held in memory. The BOM lets spreadsheet software read UTF-8.
+ * `batch` is injectable so tests can force several small batches instead of
+ * one that swallows every row.
  * @rfc RFC-66 R2, R3, R4, R5
  */
-export function acceptedCsv(db: Db): ReadableStream<Uint8Array> {
+export function acceptedCsv(db: Db, options: { batch?: number } = {}): ReadableStream<Uint8Array> {
   const client = db.$client;
   const encoder = new TextEncoder();
   const cursor = client<ExportRow[]>`
@@ -79,8 +81,20 @@ export function acceptedCsv(db: Db): ReadableStream<Uint8Array> {
     left join bibliographic_references pr on pr.id = r.primary_reference_id
     left join bibliographic_references sr on sr.id = r.secondary_reference_id
     where cur.decision = 'accepted'
-    order by f.name nulls last, g.name nulls last, s.canonical_name, t.key`.cursor(BATCH);
+    order by f.name nulls last, g.name nulls last, s.canonical_name, t.key`.cursor(
+    options.batch ?? BATCH,
+  );
   const batches = cursor[Symbol.asyncIterator]();
+  // postgres.js's cursor iterator implements `return()` as "resolve the
+  // previous batch's continuation with CLOSE"; `next()` consumes that
+  // continuation before starting its own fetch. So a `cancel()` that fires
+  // while a `next()` is in flight (the Web Streams `cancel()` a client abort
+  // triggers, per @hono/node-server, while `pull()` awaits `batches.next()`)
+  // finds nothing left to resolve: the arriving batch then awaits a
+  // continuation nobody resolves, and the pooled connection never comes
+  // back. `inflight` lets `cancel()` wait for that fetch first — the same
+  // thing a plain `for await` loop gets for free.
+  let inflight: Promise<IteratorResult<ExportRow[]>> | null = null;
   const toLine = (r: ExportRow) =>
     csvRow([
       r.family,
@@ -103,7 +117,13 @@ export function acceptedCsv(db: Db): ReadableStream<Uint8Array> {
       controller.enqueue(encoder.encode(`\uFEFF${csvRow(EXPORT_COLUMNS)}`));
     },
     async pull(controller) {
-      const next = await batches.next();
+      inflight = batches.next();
+      let next: IteratorResult<ExportRow[]>;
+      try {
+        next = await inflight;
+      } finally {
+        inflight = null;
+      }
       if (next.done) {
         controller.close();
         return;
@@ -111,6 +131,7 @@ export function acceptedCsv(db: Db): ReadableStream<Uint8Array> {
       controller.enqueue(encoder.encode(next.value.map(toLine).join('')));
     },
     async cancel() {
+      if (inflight) await inflight.catch(() => undefined);
       await batches.return?.();
     },
   });

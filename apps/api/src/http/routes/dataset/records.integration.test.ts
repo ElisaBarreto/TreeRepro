@@ -372,6 +372,90 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
     expect((await unknown.json()).error.code).toBe('TRAIT_NOT_FOUND');
   });
 
+  it('R8 one group per distinct value_text, even when its rows disagree on harmonisation', async () => {
+    const { cookie } = await scientist(t);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'ambiguous',
+      rawValue: 'v1',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      harmonisation: 'unknown_level',
+    });
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'ambiguous',
+      rawValue: 'v2',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      harmonisation: 'multi_value',
+    });
+    const res = await call(t.app, 'GET', `/api/records/pending?traitId=${trait.id}`, { cookie });
+    expect(res.status).toBe(200);
+    const groups = (await res.json()).data as { valueText: string; count: number }[];
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ valueText: 'ambiguous', count: 2 });
+  });
+
+  it('R8 the pending-group cursor stays well under the 4096-character cap even for a long value_text', async () => {
+    const { cookie } = await scientist(t);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const longText = 'x'.repeat(4000);
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: longText,
+      rawValue: 'v1',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      harmonisation: 'unknown_level',
+    });
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: longText,
+      rawValue: 'v2',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      harmonisation: 'unknown_level',
+    });
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'short',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      harmonisation: 'unknown_level',
+    });
+    // count desc puts the long-text group (2 rows) on page 1.
+    const page1 = await call(t.app, 'GET', `/api/records/pending?traitId=${trait.id}&limit=1`, {
+      cookie,
+    });
+    expect(page1.status).toBe(200);
+    const body1 = await page1.json();
+    expect(body1.data[0].valueText).toBe(longText);
+    const cursor = body1.meta.nextCursor as string;
+    expect(cursor).not.toBeNull();
+    expect(cursor.length).toBeLessThan(256);
+    const page2 = await call(
+      t.app,
+      'GET',
+      `/api/records/pending?traitId=${trait.id}&limit=1&cursor=${cursor}`,
+      { cookie },
+    );
+    expect(page2.status).toBe(200);
+    expect((await page2.json()).data[0].valueText).toBe('short');
+  });
+
   it('R9 maps a group to one level: one harmonised record per pending row, inheriting references and raw value', async () => {
     const f = await queueFixture();
     const red = f.cat.levels[0]?.id ?? '';

@@ -18,14 +18,20 @@ const author = alias(users, 'author');
 /**
  * The review axis of one record, derived from its annotations: withdrawn >
  * disputed > confirmed > unreviewed, where a scientist's stance is their
- * latest non-withdraw annotation.
+ * latest non-withdraw annotation. `recordId` is wrapped as an `sql` fragment
+ * before use: Drizzle's single-table `buildSelection` rewrites a bare top-level
+ * `Column` argument (`traitRecords.id`) to an unqualified identifier, which
+ * would then resolve inside this function's own correlated subquery over
+ * `record_annotations` to that table's own `id` instead of the record being
+ * checked — handled here so every caller can pass a bare column.
  * @rfc RFC-63 R6
  */
 export function reviewStatusSql(recordId: SQL | typeof traitRecords.id): SQL<ReviewStatus> {
+  const id = sql`${recordId}`;
   const stances = sql`(select distinct on (a.actor_id) a.kind from ${recordAnnotations} a
-    where a.record_id = ${recordId} and a.kind <> 'withdraw' order by a.actor_id, a.id desc)`;
+    where a.record_id = ${id} and a.kind <> 'withdraw' order by a.actor_id, a.id desc)`;
   return sql<ReviewStatus>`case
-    when exists (select 1 from ${recordAnnotations} w where w.record_id = ${recordId} and w.kind = 'withdraw') then 'withdrawn'
+    when exists (select 1 from ${recordAnnotations} w where w.record_id = ${id} and w.kind = 'withdraw') then 'withdrawn'
     when exists (select 1 from ${stances} s where s.kind = 'dispute') then 'disputed'
     when exists (select 1 from ${stances} s where s.kind = 'confirm') then 'confirmed'
     else 'unreviewed' end`;

@@ -341,4 +341,20 @@ describe('RFC-65 R6 accepted value per species and trait', () => {
     });
     expect(getMissing.status).toBe(404);
   });
+
+  it('R6 five concurrent identical PUT accepted requests insert the decision only once', async () => {
+    const { user, cookie } = await curator();
+    const { sp1, trait, recA } = await fixture(user.id);
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        put(cookie, sp1.id, trait.id, { decision: 'accepted', recordId: recA.id }),
+      ),
+    );
+    for (const res of results) expect(res.status).toBe(200);
+    const got = await call(t.app, 'GET', `/api/species/${sp1.id}/traits/${trait.id}/accepted`, {
+      cookie,
+    });
+    const history = (await got.json()).data.history as { decision: string }[];
+    expect(history.filter((h) => h.decision === 'accepted')).toHaveLength(1);
+  });
 });

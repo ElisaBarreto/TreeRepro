@@ -15,6 +15,7 @@ import {
   encodeCompositeCursor,
   encodeCursor,
   isDigits,
+  isUuid,
   pageOf,
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
@@ -62,7 +63,14 @@ interface GroupRow {
 
 const isCount = (part: string) => isDigits(part) && Number.isSafeInteger(Number(part));
 
-/** Groups of one trait's pending records by value; composite cursor `[count, valueText]`. @rfc RFC-65 R8 */
+/**
+ * Groups of one trait's pending records by value; composite cursor
+ * `[count, sampleRecordId]` — `sampleRecordId` (a fixed-size uuid) re-derives
+ * the group's `value_text` through a subquery on `trait_records` rather than
+ * carrying the text itself, which can run to 4000 characters and would push
+ * the base64url-encoded cursor past `cursorQuerySchema`'s 4096-character cap.
+ * @rfc RFC-65 R8
+ */
 export async function pendingGroups(
   db: DbExecutor,
   input: { traitId: string; cursor?: string; limit: number },
@@ -70,25 +78,29 @@ export async function pendingGroups(
   await requireTrait(db, input.traitId);
   let after: SQL = sql`true`;
   if (input.cursor) {
-    const [count, valueText] = decodeCompositeCursor(input.cursor, 2, [isCount, () => true]) as [
+    const [count, sampleRecordId] = decodeCompositeCursor(input.cursor, 2, [isCount, isUuid]) as [
       string,
       string,
     ];
     after = sql`(count(*) < ${Number(count)}::bigint
-      or (count(*) = ${Number(count)}::bigint and r.value_text > ${valueText}))`;
+      or (count(*) = ${Number(count)}::bigint
+        and r.value_text > (select s.value_text from trait_records s where s.id = ${sampleRecordId}::uuid)))`;
   }
   // `max(uuid)` does not exist; the ordered array_agg picks the newest id.
+  // One group per distinct value_text (RFC-65 R8): a categorical value's rows
+  // may disagree on harmonisation (unknown_level vs multi_value), so the
+  // group's harmonisation is the least of them, not part of the grouping key.
   const rows = (await db.execute(sql`
-    select r.value_text, r.harmonisation, count(*)::int as count,
+    select r.value_text, min(r.harmonisation) as harmonisation, count(*)::int as count,
       (array_agg(r.id order by r.id desc))[1] as sample_record_id
     from trait_records r
     where r.trait_id = ${input.traitId} and ${PENDING}
-    group by r.value_text, r.harmonisation
+    group by r.value_text
     having ${after}
     order by count desc, r.value_text asc
     limit ${input.limit + 1}`)) as unknown as GroupRow[];
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    encodeCompositeCursor([String(r.count), r.value_text]),
+    encodeCompositeCursor([String(r.count), r.sample_record_id]),
   );
   return {
     data: page.map((r) => ({
@@ -143,25 +155,30 @@ export async function mapPending(db: DbExecutor, input: MapPendingInput): Promis
         )}) as v(level_id, level_key)`;
   const group = sql`r.trait_id = ${input.traitId} and r.value_text = ${input.valueText} and ${PENDING}`;
   return db.transaction(async (tx) => {
-    const [counted] = (await tx.execute(
-      sql`select count(*)::int as pending from trait_records r where ${group}`,
-    )) as unknown as [{ pending: number }];
-    const inserted = (await tx.execute(sql`
+    // The pending count and the insert come from one statement (and so one
+    // snapshot): a separate earlier count could disagree with the insert's
+    // own view of `pending` under READ COMMITTED, if a concurrent import adds
+    // rows to the group in between.
+    const [result] = (await tx.execute(sql`
       with pending as (
         select r.id, r.species_id, r.primary_reference_id, r.secondary_reference_id,
           coalesce(r.raw_value, r.value_text) as raw_value
         from trait_records r where ${group}),
-      chosen as (${chosen})
-      insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
-        raw_value, primary_reference_id, secondary_reference_id, origin, created_by, note, supersedes_record_id)
-      select p.species_id, ${input.traitId}, c.level_id, ${numeric}::numeric,
-        coalesce(c.level_key, (${numeric}::numeric)::text), 'harmonised', p.raw_value,
-        p.primary_reference_id, p.secondary_reference_id, 'manual', ${input.actorId}, ${input.note ?? null}, p.id
-      from pending p cross join chosen c
-      on conflict on constraint trait_records_claim_key do nothing
-      returning id`)) as unknown as { id: string }[];
-    const created = inserted.length;
-    return { created, skipped: (counted?.pending ?? 0) * chosenCount - created };
+      chosen as (${chosen}),
+      ins as (
+        insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
+          raw_value, primary_reference_id, secondary_reference_id, origin, created_by, note, supersedes_record_id)
+        select p.species_id, ${input.traitId}, c.level_id, ${numeric}::numeric,
+          coalesce(c.level_key, (${numeric}::numeric)::text), 'harmonised', p.raw_value,
+          p.primary_reference_id, p.secondary_reference_id, 'manual', ${input.actorId}, ${input.note ?? null}, p.id
+        from pending p cross join chosen c
+        on conflict on constraint trait_records_claim_key do nothing
+        returning 1)
+      select (select count(*)::int from pending) as pending, (select count(*)::int from ins) as created`)) as unknown as [
+      { pending: number; created: number },
+    ];
+    const created = result?.created ?? 0;
+    return { created, skipped: (result?.pending ?? 0) * chosenCount - created };
   });
 }
 

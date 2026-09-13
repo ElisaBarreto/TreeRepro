@@ -223,13 +223,13 @@ export const updateTraitBodySchema = nonEmpty(
 /** @rfc RFC-62 R6 */
 export const createLevelBodySchema = z.strictObject({
   key: catalogNameSchema,
-  sortOrder: z.number().int().optional(),
+  sortOrder: z.number().int().min(0).max(2147483647).optional(),
 });
 /** @rfc RFC-62 R6 */
 export const updateLevelBodySchema = nonEmpty(
   {
     key: catalogNameSchema.optional(),
-    sortOrder: z.number().int().optional(),
+    sortOrder: z.number().int().min(0).max(2147483647).optional(),
     active: z.boolean().optional(),
   },
   'key',

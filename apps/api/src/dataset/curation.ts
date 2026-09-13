@@ -218,53 +218,60 @@ export interface AnnotateRecordInput {
   canWithdrawAny: boolean;
 }
 
-/** @rfc RFC-65 R3, R4 */
+/**
+ * `treerepro_app` has no `UPDATE` on `trait_records`, so `SELECT … FOR
+ * UPDATE` cannot serialise this read-then-insert against a concurrent
+ * `setAccepted` deciding the same record; interleaved, a withdrawal and an
+ * acceptance could otherwise both succeed, leaving an accepted value pointing
+ * at a withdrawn record. `pg_advisory_xact_lock`, held for the whole
+ * transaction and keyed on the record id, plays that role instead: the two
+ * functions lock the same key, so whichever gets there first finishes (and
+ * releases the lock) before the other re-reads the now-current state.
+ * @rfc RFC-65 R3, R4
+ */
 export async function annotateRecord(
   db: DbExecutor,
   input: AnnotateRecordInput,
 ): Promise<RecordDetail> {
-  const [rec] = await db
-    .select({
-      id: traitRecords.id,
-      origin: traitRecords.origin,
-      createdBy: traitRecords.createdBy,
-      speciesId: traitRecords.speciesId,
-      traitId: traitRecords.traitId,
-      // A bare Column here renders unqualified ("id" instead of
-      // "trait_records"."id") because this SELECT has a single FROM table;
-      // reviewStatusSql then embeds it inside a subquery over
-      // record_annotations, where unqualified "id" resolves to that table's
-      // own id column instead. Wrapping it as an SQL fragment forces correct
-      // qualification.
-      review: reviewStatusSql(sql`${traitRecords.id}`).as('review'),
-    })
-    .from(traitRecords)
-    .where(eq(traitRecords.id, input.recordId))
-    .limit(1);
-  if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
-  if (rec.review === 'withdrawn')
-    throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
-  if (input.kind === 'withdraw') {
-    if (rec.origin !== 'manual')
-      throw new AppError('RECORD_NOT_WITHDRAWABLE', 'Only manual records can be withdrawn');
-    if (rec.createdBy !== input.actorId && !input.canWithdrawAny)
-      throw new AppError('PERMISSION_DENIED', 'Only the author may withdraw this record');
-    const current = await currentAccepted(db, rec.speciesId, rec.traitId);
-    if (current?.decision === 'accepted' && current.recordId === rec.id)
-      throw new AppError(
-        'RECORD_IS_ACCEPTED',
-        'This record is the accepted value; change the accepted value first',
-      );
-  }
-  await db.insert(recordAnnotations).values({
-    recordId: rec.id,
-    actorId: input.actorId,
-    kind: input.kind,
-    note: input.note ?? null,
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.recordId}, 0))`);
+    const [rec] = await tx
+      .select({
+        id: traitRecords.id,
+        origin: traitRecords.origin,
+        createdBy: traitRecords.createdBy,
+        speciesId: traitRecords.speciesId,
+        traitId: traitRecords.traitId,
+        review: reviewStatusSql(traitRecords.id).as('review'),
+      })
+      .from(traitRecords)
+      .where(eq(traitRecords.id, input.recordId))
+      .limit(1);
+    if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
+    if (rec.review === 'withdrawn')
+      throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
+    if (input.kind === 'withdraw') {
+      if (rec.origin !== 'manual')
+        throw new AppError('RECORD_NOT_WITHDRAWABLE', 'Only manual records can be withdrawn');
+      if (rec.createdBy !== input.actorId && !input.canWithdrawAny)
+        throw new AppError('PERMISSION_DENIED', 'Only the author may withdraw this record');
+      const current = await currentAccepted(tx, rec.speciesId, rec.traitId);
+      if (current?.decision === 'accepted' && current.recordId === rec.id)
+        throw new AppError(
+          'RECORD_IS_ACCEPTED',
+          'This record is the accepted value; change the accepted value first',
+        );
+    }
+    await tx.insert(recordAnnotations).values({
+      recordId: rec.id,
+      actorId: input.actorId,
+      kind: input.kind,
+      note: input.note ?? null,
+    });
+    const detail = await getRecord(tx, rec.id);
+    if (!detail) throw new Error('annotateRecord: record vanished');
+    return detail;
   });
-  const detail = await getRecord(db, rec.id);
-  if (!detail) throw new Error('annotateRecord: record vanished');
-  return detail;
 }
 
 /** @rfc RFC-65 R6, R11 */
@@ -322,54 +329,74 @@ export interface SetAcceptedInput {
   note?: string;
 }
 
-/** Idempotent: a request equal to the current state inserts nothing. @rfc RFC-65 R6 */
+/**
+ * Idempotent: a request equal to the current state inserts nothing.
+ *
+ * `treerepro_app` has no `UPDATE` on `trait_records`, so `SELECT … FOR
+ * UPDATE` cannot serialise this read-then-insert against a concurrent
+ * `annotateRecord` withdrawal of the same record, or against another
+ * identical `setAccepted` call (both would otherwise insert). Accepting locks
+ * the target record before reading state, so the losing side of a race
+ * re-reads the now-current state and answers `RECORD_WITHDRAWN` or skips its
+ * own now-redundant insert; clearing locks the record currently accepted, if
+ * any, the same way `annotateRecord` would.
+ * @rfc RFC-65 R6
+ */
 export async function setAccepted(db: DbExecutor, input: SetAcceptedInput): Promise<AcceptedState> {
-  await requireSpecies(db, input.speciesId);
-  await requireTrait(db, input.traitId);
-  const current = await currentAccepted(db, input.speciesId, input.traitId);
-  if (input.decision === 'accepted') {
-    const recordId = input.recordId;
-    if (!recordId) throw validation('recordId', 'Required');
-    const [rec] = await db
-      .select({
-        id: traitRecords.id,
-        speciesId: traitRecords.speciesId,
-        traitId: traitRecords.traitId,
-        harmonisation: traitRecords.harmonisation,
-        // See the comment in annotateRecord: this SELECT has a single FROM
-        // table, so a bare Column here would render unqualified and break
-        // reviewStatusSql's nested subquery.
-        review: reviewStatusSql(sql`${traitRecords.id}`).as('review'),
-      })
-      .from(traitRecords)
-      .where(eq(traitRecords.id, recordId))
-      .limit(1);
-    if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
-    if (rec.speciesId !== input.speciesId || rec.traitId !== input.traitId)
-      throw validation('recordId', 'Record belongs to another species or trait');
-    if (rec.harmonisation !== 'harmonised')
-      throw new AppError('RECORD_NOT_HARMONISED', 'Only a harmonised record can be accepted');
-    if (rec.review === 'withdrawn')
-      throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
-    if (!(current?.decision === 'accepted' && current.recordId === recordId)) {
-      await db.insert(acceptedValues).values({
-        speciesId: input.speciesId,
-        traitId: input.traitId,
-        recordId,
-        decision: 'accepted',
-        actorId: input.actorId,
-        note: input.note ?? null,
-      });
+  return db.transaction(async (tx) => {
+    await requireSpecies(tx, input.speciesId);
+    await requireTrait(tx, input.traitId);
+    if (input.decision === 'accepted') {
+      const recordId = input.recordId;
+      if (!recordId) throw validation('recordId', 'Required');
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${recordId}, 0))`);
+      const current = await currentAccepted(tx, input.speciesId, input.traitId);
+      const [rec] = await tx
+        .select({
+          id: traitRecords.id,
+          speciesId: traitRecords.speciesId,
+          traitId: traitRecords.traitId,
+          harmonisation: traitRecords.harmonisation,
+          review: reviewStatusSql(traitRecords.id).as('review'),
+        })
+        .from(traitRecords)
+        .where(eq(traitRecords.id, recordId))
+        .limit(1);
+      if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
+      if (rec.speciesId !== input.speciesId || rec.traitId !== input.traitId)
+        throw validation('recordId', 'Record belongs to another species or trait');
+      if (rec.harmonisation !== 'harmonised')
+        throw new AppError('RECORD_NOT_HARMONISED', 'Only a harmonised record can be accepted');
+      if (rec.review === 'withdrawn')
+        throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
+      if (!(current?.decision === 'accepted' && current.recordId === recordId)) {
+        await tx.insert(acceptedValues).values({
+          speciesId: input.speciesId,
+          traitId: input.traitId,
+          recordId,
+          decision: 'accepted',
+          actorId: input.actorId,
+          note: input.note ?? null,
+        });
+      }
+    } else {
+      const current = await currentAccepted(tx, input.speciesId, input.traitId);
+      if (current?.recordId) {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${current.recordId}, 0))`,
+        );
+      }
+      if (current && current.decision === 'accepted') {
+        await tx.insert(acceptedValues).values({
+          speciesId: input.speciesId,
+          traitId: input.traitId,
+          recordId: null,
+          decision: 'cleared',
+          actorId: input.actorId,
+          note: input.note ?? null,
+        });
+      }
     }
-  } else if (current && current.decision === 'accepted') {
-    await db.insert(acceptedValues).values({
-      speciesId: input.speciesId,
-      traitId: input.traitId,
-      recordId: null,
-      decision: 'cleared',
-      actorId: input.actorId,
-      note: input.note ?? null,
-    });
-  }
-  return getAccepted(db, input.speciesId, input.traitId);
+    return getAccepted(tx, input.speciesId, input.traitId);
+  });
 }
