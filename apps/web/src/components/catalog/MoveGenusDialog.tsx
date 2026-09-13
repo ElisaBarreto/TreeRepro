@@ -23,7 +23,8 @@ export function MoveGenusDialog({
   genus: Genus;
   families: TaxonRef[];
   onClose: () => void;
-  onSaved: () => void;
+  /** Receives the genus as the API answered it after the move. */
+  onSaved: (genus: Genus) => void;
 }) {
   const queryClient = useQueryClient();
   const id = useId();
@@ -31,9 +32,9 @@ export function MoveGenusDialog({
   const [familyId, setFamilyId] = useState(current);
   const mutation = useMutation({
     mutationFn: (next: string | null) => updateGenus(genus.id, { familyId: next }),
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
       await invalidateAfterCatalogWrite(queryClient, 'taxa');
-      onSaved();
+      onSaved(saved);
     },
   });
   const fieldError = fieldErrors(mutation.error).familyId;

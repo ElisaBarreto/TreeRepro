@@ -53,7 +53,7 @@ describe('RFC-60 R9 MoveGenusDialog', () => {
       expect(catalog.updateGenus).toHaveBeenCalledWith(GENUS.id, { familyId: MALVACEAE.id }),
     );
     expect(catalog.invalidateAfterCatalogWrite).toHaveBeenCalledWith(expect.anything(), 'taxa');
-    expect(second.onSaved).toHaveBeenCalled();
+    expect(second.onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: GENUS.id }));
     cleanup();
     const third = mount(GENERA[0] as Genus);
     await userEvent.selectOptions(
