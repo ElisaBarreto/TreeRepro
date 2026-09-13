@@ -6,9 +6,14 @@
 **Fix:** `compose.yml` mounts `postgres-data:/var/lib/postgresql`. Never mount `/var/lib/postgresql/data`.
 
 ## Init scripts run once
-**Symptom:** New passwords in `infra/secrets/` are ignored; `treerepro_app` cannot log in.
-**Cause:** `/docker-entrypoint-initdb.d` runs only when the data volume is empty.
-**Fix:** Development: `docker compose down -v` (destroys data), then `up`. Production: `ALTER ROLE … PASSWORD` manually, then update the secret file.
+**Symptom:** New passwords in `infra/secrets/` are ignored; `treerepro_app` cannot log in. Or, on a volume created before the `backup` service got its own role, the backup container fails with `password authentication failed for user "treerepro_backup"`.
+**Cause:** `/docker-entrypoint-initdb.d` runs only when the data volume is empty, so `infra/postgres/init/01-roles.sh` never re-runs: neither a changed password nor a role added later reaches an existing volume.
+**Fix:** Development: `docker compose down -v` (destroys data), then `up`. Production: apply the change by hand as the superuser, with `\password` so the value never appears in the statement text (`docker compose exec postgres psql -U postgres -d treerepro`, then `\password treerepro_app` and type the value from the secret file). A missing backup role: `CREATE ROLE treerepro_backup LOGIN; GRANT pg_read_all_data TO treerepro_backup;` followed by `\password treerepro_backup`.
+
+## Role passwords are set with `\password`, not `CREATE ROLE … PASSWORD`
+**Symptom:** A reviewer expects `01-roles.sh` to pass the passwords as psql variables or `-c` arguments.
+**Cause:** Anything in argv shows in `/proc` while psql runs, and `CREATE ROLE … PASSWORD :'var'` is expanded client-side, so the server still receives the plaintext and logs it with the statement on error (`log_min_error_statement`) or always (`log_statement = all`).
+**Fix:** The script feeds `\password <role>` and the value twice through psql's stdin (the heredoc; the container has no controlling terminal, so the `/dev/tty` prompt falls back to stdin). psql computes the SCRAM-SHA-256 verifier itself and sends `ALTER USER … PASSWORD 'SCRAM-SHA-256$…'`, so the plaintext never reaches the server. Checked against `postgres:18.6-alpine` with `log_statement = all`: the log shows only verifiers.
 
 ## `uuidv7()` needs PostgreSQL 18
 **Symptom:** `function uuidv7() does not exist`.

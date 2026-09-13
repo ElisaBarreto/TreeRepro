@@ -86,3 +86,44 @@ describe('RFC-41 R9 treerepro_app privileges on audit_log', () => {
     expect(enabled[0]?.tgenabled).toBe('O');
   });
 });
+
+describe('RFC-10 R7 treerepro_backup is read-only and passwords are stored as SCRAM verifiers', () => {
+  const su = useTestDb({ role: 'superuser' });
+
+  it('treerepro_backup can read every table but write none', async () => {
+    await withRollback(su.db, async (tx) => {
+      await tx.execute(sql`set local role treerepro_backup`);
+      const who = await tx.execute(sql`select current_user as role`);
+      expect(who[0]?.role).toBe('treerepro_backup');
+      const readable = await tx.execute(sql`
+        select bool_and(has_table_privilege(c.oid, 'SELECT')) as all_readable,
+               bool_or(has_table_privilege(c.oid, 'INSERT')) as any_writable
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relkind = 'r'
+      `);
+      expect(readable[0]).toEqual({ all_readable: true, any_writable: false });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(auditLog).values({ actorUserId: null, action: 'auth.logout' }),
+          ),
+        ),
+      ).rejects.toMatchObject({
+        code: INSUFFICIENT_PRIVILEGE,
+        message: 'permission denied for table audit_log',
+      });
+    });
+  });
+
+  it('the init script stored SCRAM-SHA-256 verifiers for every project role', async () => {
+    const rows = await su.db.execute(sql`
+      select rolname, rolpassword like 'SCRAM-SHA-256$%' as scram
+      from pg_authid where starts_with(rolname, 'treerepro_') order by rolname
+    `);
+    expect(rows).toEqual([
+      { rolname: 'treerepro_app', scram: true },
+      { rolname: 'treerepro_backup', scram: true },
+      { rolname: 'treerepro_migrator', scram: true },
+    ]);
+  });
+});
