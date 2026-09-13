@@ -18,6 +18,7 @@ import { originCheck } from './http/origin-check.ts';
 import { requestLogger } from './http/request-logger.ts';
 import { adminRoutes } from './http/routes/admin/index.ts';
 import { authRoutes } from './http/routes/auth.ts';
+import { datasetRoutes } from './http/routes/dataset/index.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import { meRoutes } from './http/routes/me.ts';
 import type { Logger } from './logger.ts';
@@ -81,6 +82,7 @@ export function createApp(deps: AppDeps) {
   app.route('/auth', authRoutes(ctx));
   app.route('/me', meRoutes(ctx));
   app.route('/admin', adminRoutes(ctx));
+  app.route('/', datasetRoutes(ctx));
 
   app.notFound((c) => c.json(errorBody('NOT_FOUND', 'Route not found'), 404));
   app.onError(createErrorHandler(deps.logger));
