@@ -49,10 +49,25 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `USER_INVALID_STATUS` | 409 | The action is not allowed in the user's current status (RFC-50 R6–R8). |
 | `MAIL_SEND_FAILED` | 502 | The invitation email could not be sent; the invitation can be re-sent (RFC-50 R3, R8). |
 | `SPECIES_NOT_FOUND` | 404 | Species id does not exist (RFC-60 R7, RFC-63 R10). |
-| `TRAIT_NOT_FOUND` | 404 | Trait id does not exist (reserved for RFC-65). |
+| `TRAIT_NOT_FOUND` | 404 | Trait id does not exist (RFC-65 R1, R6, R8; RFC-62 R6). |
 | `REFERENCE_NOT_FOUND` | 404 | Reference id does not exist (RFC-61 R4). |
 | `RECORD_NOT_FOUND` | 404 | Record id does not exist (RFC-63 R9). |
 | `IMPORT_NOT_FOUND` | 404 | Import batch id does not exist (RFC-64 R11). |
+| `RECORD_DUPLICATE` | 409 | The claim already exists; `details[0].message` is the existing record id (RFC-65 R2). |
+| `RECORD_WITHDRAWN` | 409 | The record is withdrawn: no annotation, no acceptance (RFC-65 R3, R6). |
+| `RECORD_NOT_WITHDRAWABLE` | 409 | Only manual records can be withdrawn (RFC-65 R4). |
+| `RECORD_IS_ACCEPTED` | 409 | The record is the current accepted value; change it first (RFC-65 R4). |
+| `RECORD_NOT_HARMONISED` | 409 | Only a harmonised record can be the accepted value (RFC-65 R6). |
+| `FAMILY_NOT_FOUND` | 404 | Family id does not exist (RFC-60 R9). |
+| `GENUS_NOT_FOUND` | 404 | Genus id does not exist (RFC-60 R9). |
+| `LEVEL_NOT_FOUND` | 404 | Level id does not exist for this trait (RFC-62 R6). |
+| `FAMILY_NAME_TAKEN` | 409 | Another family has this name (RFC-60 R9). |
+| `GENUS_NAME_TAKEN` | 409 | Another genus has this name (RFC-60 R9). |
+| `SPECIES_NAME_TAKEN` | 409 | Another species has this canonical name, or the species already carries this name (RFC-60 R9). |
+| `TRAIT_KEY_TAKEN` | 409 | Another trait has this key (RFC-62 R6). |
+| `LEVEL_KEY_TAKEN` | 409 | The trait already has this level, case-insensitively (RFC-62 R6). |
+| `REFERENCE_KEY_TAKEN` | 409 | Another reference has this citation key (RFC-61 R6). |
+| `REFERENCE_DOI_TAKEN` | 409 | Another reference has this DOI (RFC-61 R6). |
 
 ## Open questions
 
@@ -66,3 +81,4 @@ None.
 - 2026-09-12 — PERMISSION_* and ROLE_* codes (RFC-31, RFC-32).
 - 2026-09-12 — USER_NOT_FOUND, USER_INVALID_STATUS, MAIL_SEND_FAILED (RFC-50).
 - 2026-09-13 — dataset codes SPECIES_NOT_FOUND, TRAIT_NOT_FOUND, REFERENCE_NOT_FOUND, RECORD_NOT_FOUND, IMPORT_NOT_FOUND (plan 06).
+- 2026-09-13 — curation and catalog codes (RFC-60–62, RFC-65, plan 07).

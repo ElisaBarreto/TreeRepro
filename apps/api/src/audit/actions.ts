@@ -24,6 +24,13 @@ export const AUDIT_ACTIONS = [
   'roles.deleted',
   'sessions.revoked',
   'admin.accessed',
+  'taxa.created',
+  'taxa.updated',
+  'references.created',
+  'references.updated',
+  'traits.created',
+  'traits.updated',
+  'dataset.exported',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

@@ -16,6 +16,14 @@ export const PERMISSIONS = {
   'admin.access': 'Open the admin area',
   'dataset.read': 'Browse species, traits, references and records',
   'imports.read': 'View import batches and their rejections',
+  'records.create': 'Add trait records and map pending values',
+  'records.annotate': 'Confirm, dispute and comment on records',
+  'records.withdraw': 'Withdraw any manual record',
+  'accepted.manage': 'Set and clear the accepted value per species and trait',
+  'taxa.manage': 'Create and edit families, genera, species and names',
+  'references.manage': 'Create and edit bibliographic references',
+  'traits.manage': 'Create and edit traits and levels',
+  'dataset.export': 'Download the accepted values',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
