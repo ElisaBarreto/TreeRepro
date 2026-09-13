@@ -25,6 +25,11 @@
 **Cause:** RFC-02 R11 pins every base image by tag *and* digest (`postgres:18.6-alpine@sha256:…`); the digest is the multi-arch index digest and changes with every rebuild of the upstream tag, so a version bump must refresh it.
 **Fix:** For each image run `docker buildx imagetools inspect <image:tag> --format '{{json .Manifest.Digest}}'` and replace the `@sha256:…` suffix on every `FROM` in `infra/docker/*.Dockerfile`, every `image:` in `compose*.yml` (node, postgres, redis, caddy, mailpit) and the two testcontainers images in `apps/api/test/global-setup.ts` (postgres, redis). Keep the tag next to the digest so the version stays readable. The CI image builds fail on a stale digest.
 
+## Bumping pnpm
+**Symptom:** A Dockerfile build fails with `Internal Error: Mismatch hashes` from corepack, or `pnpm --version` inside a container differs from `packageManager` in `package.json`.
+**Cause:** The three Dockerfiles install pnpm with `corepack prepare pnpm@<version>+sha512.<hex> --activate`; corepack compares the download with the hex sha512 of the npm tarball and refuses a mismatch. `npm install -g pnpm@<version>` would be simpler but OpenSSF Scorecard reports every `npm install` in a Dockerfile as an unpinned dependency.
+**Fix:** Bump the version in the same PR in `package.json` (`packageManager`), `.github/workflows/ci.yml` (`pnpm/action-setup`), `pnpm-workspace.yaml` (`minimumReleaseAgeExclude`, only while that list exists) and the `corepack prepare` line of `infra/docker/{api,web,dev}.Dockerfile`. The hex hash comes from the registry: `npm view pnpm@<version> dist.integrity | sed 's/^sha512-//' | base64 -d | xxd -p | tr -d '\n'`. Dependabot does not track this line.
+
 ## Caddy reorders directives
 **Symptom:** `/api/health/ready` returned 200 through Caddy although `respond @ready 404` was written first.
 **Cause:** Caddy does not run directives in file order; it sorts them by its built-in directive order (`handle` runs before `respond`), so a later `handle` swallowed the request before the earlier `respond` could match.
