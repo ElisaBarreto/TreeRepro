@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import type { Species, TraitSummary } from '@treerepro/contracts';
-import { useState } from 'react';
+import type { Species, TraitRef, TraitSummary } from '@treerepro/contracts';
+import { type ReactNode, useState } from 'react';
 import { datasetKeys, fetchSpecies, fetchSpeciesTraits } from '../../api/dataset.ts';
+import { AddValueDialog } from '../../components/curation/AddValueDialog.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
-import { Alert, Badge, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import { Alert, Badge, Button, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
+import { hasPermission, useMe } from '../../lib/session.ts';
 
 function errorMessage(error: unknown): string {
   return detailErrorMessage(error, 'SPECIES_NOT_FOUND', 'This species does not exist.');
@@ -19,7 +21,7 @@ function taxonomyLine(species: Species): string {
     .join(' › ');
 }
 
-function SpeciesHeader({ species }: { species: Species }) {
+function SpeciesHeader({ species, actions }: { species: Species; actions?: ReactNode }) {
   const names = species.names.map((n) => n.name);
   return (
     <PageHeader
@@ -43,6 +45,7 @@ function SpeciesHeader({ species }: { species: Species }) {
           </span>
         </>
       }
+      actions={actions}
     />
   );
 }
@@ -51,13 +54,19 @@ function SpeciesHeader({ species }: { species: Species }) {
  * One species: its taxonomy and names (RFC-60 R7) and, per category in
  * dictionary order, a card per trait with the summary the API computed
  * (RFC-63 R10). A card opens the trait's records in a panel; a row there
- * opens the record's detail in a drawer on top. Both fetches fail together
- * for an unknown id, so one alert covers the page.
+ * opens the record's detail in a drawer on top. With `records.create`, an
+ * "Add value" button in the header and one on each trait card open the
+ * add-value dialog (RFC-65 R1) — the header button without a fixed trait,
+ * a card's button with its trait. Both fetches fail together for an unknown
+ * id, so one alert covers the page.
  * @rfc RFC-13 R2, R4
  * @rfc RFC-60 R7
  * @rfc RFC-63 R10
+ * @rfc RFC-65 R1
  */
 export function SpeciesPage({ id }: { id: string }) {
+  const me = useMe();
+  const canAdd = hasPermission(me, 'records.create');
   const species = useQuery({
     queryKey: datasetKeys.speciesDetail(id),
     queryFn: () => fetchSpecies(id),
@@ -68,11 +77,23 @@ export function SpeciesPage({ id }: { id: string }) {
   });
   const [openTrait, setOpenTrait] = useState<TraitSummary | null>(null);
   const [openRecord, setOpenRecord] = useState<string | null>(null);
+  const [adding, setAdding] = useState<{ trait: TraitRef | null } | null>(null);
   const error = species.error ?? traits.error;
 
   return (
     <>
-      {species.data ? <SpeciesHeader species={species.data} /> : <PageHeader title="Species" />}
+      {species.data ? (
+        <SpeciesHeader
+          species={species.data}
+          actions={
+            canAdd ? (
+              <Button onClick={() => setAdding({ trait: null })}>Add value</Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <PageHeader title="Species" />
+      )}
       <div className="flex flex-col gap-8">
         {error ? <Alert tone="error">{errorMessage(error)}</Alert> : null}
         {!error && (species.isPending || traits.isPending) ? (
@@ -93,6 +114,7 @@ export function SpeciesPage({ id }: { id: string }) {
                     key={summary.trait.id}
                     summary={summary}
                     onOpen={() => setOpenTrait(summary)}
+                    onAdd={canAdd ? () => setAdding({ trait: summary.trait }) : undefined}
                   />
                 ))}
               </div>
@@ -112,6 +134,21 @@ export function SpeciesPage({ id }: { id: string }) {
         onClose={() => setOpenRecord(null)}
         onOpenRecord={setOpenRecord}
       />
+      {adding ? (
+        <AddValueDialog
+          speciesId={id}
+          initialTrait={adding.trait}
+          onClose={() => setAdding(null)}
+          onCreated={(record) => {
+            setAdding(null);
+            setOpenRecord(record.id);
+          }}
+          onOpenRecord={(recordId) => {
+            setAdding(null);
+            setOpenRecord(recordId);
+          }}
+        />
+      ) : null}
     </>
   );
 }

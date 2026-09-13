@@ -64,4 +64,13 @@ describe('RFC-63 R10 TraitCard', () => {
     await userEvent.click(card);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
+
+  it('renders an Add value button beside the card when onAdd is given', async () => {
+    const onAdd = vi.fn();
+    const onOpen = vi.fn();
+    render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={onOpen} onAdd={onAdd} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add value' }));
+    expect(onAdd).toHaveBeenCalled();
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });
