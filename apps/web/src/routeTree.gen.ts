@@ -28,6 +28,7 @@ import { Route as AppReferencesIndexRouteImport } from './routes/app/references/
 import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
 import { Route as AppSpeciesIdRouteImport } from './routes/app/species/$id'
+import { Route as AppAdminUsersIndexRouteImport } from './routes/app/admin/users/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -124,6 +125,11 @@ const AppSpeciesIdRoute = AppSpeciesIdRouteImport.update({
   path: '/species/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminUsersIndexRoute = AppAdminUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -145,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/app/imports': typeof AppImportsIndexRoute
   '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
+  '/app/admin/users': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -186,6 +194,7 @@ export interface FileRoutesById {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -209,6 +218,7 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/users/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/app/imports'
     | '/app/references'
     | '/app/species'
+    | '/app/admin/users'
   id:
     | '__root__'
     | '/'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/users/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -394,15 +406,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSpeciesIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/admin/users/': {
+      id: '/app/admin/users/'
+      path: '/users'
+      fullPath: '/app/admin/users/'
+      preLoaderRoute: typeof AppAdminUsersIndexRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
   }
 }
 
 interface AppAdminRouteChildren {
   AppAdminAuditRoute: typeof AppAdminAuditRoute
+  AppAdminUsersIndexRoute: typeof AppAdminUsersIndexRoute
 }
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
   AppAdminAuditRoute: AppAdminAuditRoute,
+  AppAdminUsersIndexRoute: AppAdminUsersIndexRoute,
 }
 
 const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
