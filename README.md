@@ -9,7 +9,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 ## Layout
 
 - `apps/api` — the only process that touches Postgres, Redis and secrets.
-- `apps/web` — UI only. Calls `/api/*` on the same origin. Contains no business rules.
+- `apps/web` — UI only. Calls `/api/*` on the same origin. Contains no business rules. The workspace lives under `/app` (settings, admin from plan 05b); public pages are `/`, `/invite/:token`, `/forgot-password`, `/reset-password/:token` (RFC-13).
 - `packages/contracts` — Zod schemas and constants shared by API and web.
 - `packages/config` — shared tsconfig bases.
 - `tools/rfc-lint` — enforces `@rfc` linkage in code.

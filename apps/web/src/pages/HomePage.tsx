@@ -1,32 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { AuthUser } from '@treerepro/contracts';
 import { useRef, useState } from 'react';
-import { fetchMe, logout } from '../api/auth.ts';
 import { LoginForm } from '../components/landing/LoginForm.tsx';
 import { PollenField } from '../components/landing/PollenField.tsx';
 import { TreeEmblem } from '../components/landing/TreeEmblem.tsx';
 import '../components/landing/landing.css';
 
-const ME_QUERY_KEY = ['auth', 'me'] as const;
-
 /**
  * The landing page: the only public screen. Sign in on the right, the emblem
- * on the left, pollen in the air. A visitor with a live session sees who they
- * are signed in as until the workspace pages exist.
- * @rfc RFC-10 R3
+ * on the left, pollen in the air. The route redirects a signed-in visitor to
+ * the workspace before this ever renders.
+ * @rfc RFC-13 R2, R7
  * @rfc RFC-22 R7
  */
-export function HomePage() {
+export function HomePage({ onSignedIn }: { onSignedIn: (user: AuthUser) => void }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLElement>(null);
   const [grainCount] = useState(() => (window.innerWidth < 720 ? 24 : 50));
-  const queryClient = useQueryClient();
-  const me = useQuery({ queryKey: ME_QUERY_KEY, queryFn: fetchMe, retry: false });
-  const signOut = useMutation({
-    mutationFn: logout,
-    onSettled: () => queryClient.resetQueries({ queryKey: ME_QUERY_KEY }),
-  });
-  // A failed refetch (session expired) keeps stale data around; only trust a successful answer.
-  const session = me.status === 'success' ? me.data : null;
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[linear-gradient(135deg,var(--color-canopy-950)_0%,var(--color-canopy-700)_52%,var(--color-pollen-600)_100%)] px-4 py-6 text-mist-50">
@@ -50,7 +39,7 @@ export function HomePage() {
               TreeRepro
             </h1>
             <h2 className="font-display text-[28px] font-bold tracking-tight text-white md:text-[34px]">
-              {session ? `Signed in as ${session.user.name}` : 'Welcome back'}
+              Welcome back
             </h2>
             <p className="font-display text-base font-semibold text-pollen-500">
               Tracking how trees reproduce.
@@ -58,26 +47,7 @@ export function HomePage() {
           </header>
 
           <div className="tr-rise tr-rise-2">
-            {me.isPending ? null : session ? (
-              <div className="flex flex-col items-start gap-6">
-                <p className="text-sm leading-relaxed text-mist-300">
-                  Your workspace opens here in the next release. You can sign out on this device for
-                  now.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => signOut.mutate()}
-                  disabled={signOut.isPending}
-                  className="tr-cta relative isolate inline-flex h-[46px] min-w-[220px] items-center justify-center rounded-full px-7 font-display text-sm font-bold uppercase tracking-[0.08em] text-ink disabled:cursor-progress"
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : (
-              <LoginForm
-                onSignedIn={() => queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY })}
-              />
-            )}
+            <LoginForm onSignedIn={onSignedIn} />
           </div>
 
           <footer className="tr-rise tr-rise-3 flex justify-center border-t border-white/12 pt-5 text-xs text-mist-400">

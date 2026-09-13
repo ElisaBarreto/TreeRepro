@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('RFC-10 R3 apiFetch', () => {
+describe('RFC-13 R1 apiFetch', () => {
   it('prefixes /api, sends cookies and a JSON body', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { data: { id: '1' } }));
     const result = await apiFetch<{ data: { id: string } }>('/things', {

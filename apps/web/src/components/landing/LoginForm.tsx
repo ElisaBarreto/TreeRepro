@@ -42,7 +42,7 @@ export function loginErrorMessage(error: unknown): string {
 /**
  * Email + password, then a verification code when the account has TOTP enabled.
  * Holds no session state: the parent decides what happens after `onSignedIn`.
- * @rfc RFC-10 R3
+ * @rfc RFC-13 R6, R9
  * @rfc RFC-22 R2-R3
  * @rfc RFC-23 R6
  */

@@ -14,3 +14,37 @@
 **Symptom:** `lint/a11y/noAriaHiddenOnFocusable` on a decorative canvas.
 **Cause:** Biome counts `canvas` among focusable elements even without `tabIndex`.
 **Fix:** Keep `aria-hidden="true"` (the drawing is decorative and `pointer-events: none`) and suppress the rule on that element with a `biome-ignore` comment stating why, as in `PollenField.tsx`.
+
+## `useMe()` throws outside `/app`
+**Symptom:** `Error: useMe: no session in the cache` in a component test or on a public page.
+**Cause:** The `/app` layout's `beforeLoad` resolves the session; `useMe` assumes it did.
+**Fix:** Render the component under `/app` (the route tree) or seed the session in tests with `renderWithProviders(ui, { me })` / mock `fetchMe` for `renderAt(path)`.
+
+## A 401 under `/app` must navigate before the `me` query is dropped
+**Symptom:** Infinite refetch loop on session expiry.
+**Cause:** Removing an actively observed query makes the observer refetch; the refetch 401s again. Only code `AUTH_UNAUTHENTICATED` counts as session loss (`isSessionLoss`) — the other 401 codes (`AUTH_INVALID_CREDENTIALS`, `AUTH_TOTP_INVALID`, `AUTH_MFA_EXPIRED`) are form errors and must not sign the user out.
+**Fix:** `createSessionErrorHandler` navigates to `/` first and forgets the session (`forgetSession`, which clears every query and mutation) only once the post-navigation location is outside `/app`; the shell's sign-out (`AppShell.tsx`) and "Sign out everywhere" (`SessionsSection.tsx`) follow the same navigate-then-forget order. Keep that order.
+
+## jsdom has no `<dialog>`
+**Symptom:** `showModal is not a function` in component tests.
+**Fix:** `apps/web/src/test/setup.ts` polyfills `showModal`/`close`; do not mock `Dialog` itself.
+
+## A `beforeEach` that returns the mock runs it as cleanup
+**Symptom:** A test fails with the API error a persistent `mockRejectedValue` was set up to return, or a mock records one call more than the component made.
+**Cause:** `beforeEach(() => auth.x.mockReset())` returns the mock (`mockReset()` returns it) and Vitest calls a function returned from a hook as that hook's cleanup, so the mock is invoked after every test.
+**Fix:** Block bodies — `beforeEach(() => { auth.x.mockReset(); });`.
+
+## `mutationFn` receives a second argument
+**Symptom:** `expect(api.fn).toHaveBeenCalledWith(value)` fails with an unexpected second object argument.
+**Cause:** TanStack Query 5.102 calls `mutationFn(variables, context)`.
+**Fix:** Wrap it — `mutationFn: (name) => updateName(name)` — so the api function sees only its own parameters.
+
+## Test files under `routes/`
+**Symptom:** `Warning: Route file ".../routes/app.test.tsx" does not export a Route` at Vitest startup.
+**Cause:** The router plugin scans `routes/` and the default ignore prefix is `-`.
+**Fix:** `routeFileIgnorePattern: '\\.test\\.tsx?$'` in `apps/web/vite.config.ts`.
+
+## jsdom has no `scrollTo`
+**Symptom:** `Not implemented: Window's scrollTo() method` during router navigation tests.
+**Cause:** TanStack Router's scroll restoration calls it on every navigation.
+**Fix:** `window.scrollTo = () => {};` in `apps/web/src/test/setup.ts`.

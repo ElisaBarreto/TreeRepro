@@ -21,7 +21,7 @@ const PALE = '255,248,230';
  * Full-bleed canvas behind and over the landing card: pollen drifting on the
  * wind (see pollen.ts). Decorative only: hidden from assistive tech, never
  * intercepts the pointer, and a single still frame under reduced motion.
- * @rfc RFC-10 R3
+ * @rfc RFC-13 R7
  */
 export function PollenField({ count, emitterRef, cardRef }: PollenFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);

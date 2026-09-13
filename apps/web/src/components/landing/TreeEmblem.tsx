@@ -20,7 +20,7 @@ const SEEDS = [
 /**
  * The landing emblem: a tree in fruit inside a disc, wrapped in a pulsing glow
  * and three rings, floating, letting seeds go, and leaning toward the pointer.
- * @rfc RFC-10 R3
+ * @rfc RFC-13 R7
  */
 export function TreeEmblem({ ref }: TreeEmblemProps) {
   const stageRef = useRef<HTMLDivElement>(null);

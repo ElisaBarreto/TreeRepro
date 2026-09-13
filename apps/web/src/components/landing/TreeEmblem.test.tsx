@@ -26,7 +26,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('RFC-10 R3 TreeEmblem', () => {
+describe('RFC-13 R7 TreeEmblem', () => {
   it('is an image with a name, and exposes its stage through the ref', () => {
     const ref = createRef<HTMLDivElement>();
     render(<TreeEmblem ref={ref} />);

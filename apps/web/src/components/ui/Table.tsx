@@ -1,0 +1,34 @@
+import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from 'react';
+
+/** @rfc RFC-13 R5 */
+export function Table({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-canopy-700/15 bg-white">
+      <table className="w-full text-left text-sm">{children}</table>
+    </div>
+  );
+}
+/** @rfc RFC-13 R5 */
+export function Thead({ children }: { children: ReactNode }) {
+  return (
+    <thead className="bg-mist-50 text-xs uppercase tracking-wider text-canopy-800">
+      {children}
+    </thead>
+  );
+}
+/** @rfc RFC-13 R5 */
+export function Tbody({ children }: { children: ReactNode }) {
+  return <tbody className="divide-y divide-canopy-700/10">{children}</tbody>;
+}
+/** @rfc RFC-13 R5 */
+export function Tr(props: HTMLAttributes<HTMLTableRowElement>) {
+  return <tr {...props} />;
+}
+/** @rfc RFC-13 R5 */
+export function Th({ className = '', ...rest }: ThHTMLAttributes<HTMLTableCellElement>) {
+  return <th scope="col" className={`px-4 py-3 font-semibold ${className}`} {...rest} />;
+}
+/** @rfc RFC-13 R5 */
+export function Td({ className = '', ...rest }: TdHTMLAttributes<HTMLTableCellElement>) {
+  return <td className={`px-4 py-3 align-top ${className}`} {...rest} />;
+}

@@ -1,7 +1,7 @@
 import { type ErrorDetail, errorEnvelopeSchema } from '@treerepro/contracts';
 
 /**
- * @rfc RFC-10 R3
+ * @rfc RFC-13 R1
  * @rfc RFC-11 R3
  */
 export class ApiError extends Error {
@@ -33,7 +33,7 @@ export interface RequestOptions {
 /**
  * The only place in the web app that calls fetch. Same origin, cookies included,
  * every failure surfaces as ApiError.
- * @rfc RFC-10 R3
+ * @rfc RFC-13 R1
  * @rfc RFC-11 R2-R3
  */
 export async function apiFetch<T = unknown>(
