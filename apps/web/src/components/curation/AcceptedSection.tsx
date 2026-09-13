@@ -45,6 +45,15 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
   const [showHistory, setShowHistory] = useState(false);
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | null>(null);
+
+  // Cancelling, or reopening after a cancel, must not leave a stale note or
+  // validation error from the previous time the form was open.
+  function toggleClearing(next: boolean) {
+    setClearing(next);
+    setNote('');
+    setNoteError(null);
+  }
+
   const state = useQuery({
     queryKey: curationKeys.accepted(speciesId, traitId),
     queryFn: () => fetchAccepted(speciesId, traitId),
@@ -54,8 +63,7 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
       setAccepted(speciesId, traitId, { decision: 'cleared', note: text }),
     onSuccess: async (next) => {
       queryClient.setQueryData(curationKeys.accepted(speciesId, traitId), next);
-      setClearing(false);
-      setNote('');
+      toggleClearing(false);
       await invalidateAfterRecordWrite(queryClient, speciesId);
     },
   });
@@ -104,7 +112,7 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
         {current && hasPermission(me, 'accepted.manage') ? (
           <Button
             variant="secondary"
-            onClick={() => setClearing((v) => !v)}
+            onClick={() => toggleClearing(!clearing)}
             aria-pressed={clearing}
           >
             Clear
@@ -140,7 +148,7 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
             <Button type="submit" variant="danger" pending={clear.isPending}>
               Confirm clear
             </Button>
-            <Button variant="secondary" onClick={() => setClearing(false)}>
+            <Button variant="secondary" onClick={() => toggleClearing(false)}>
               Cancel
             </Button>
           </div>

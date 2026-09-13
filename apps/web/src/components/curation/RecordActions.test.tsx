@@ -124,6 +124,22 @@ describe('RFC-65 R3–R6 RecordActions', () => {
     expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
   });
 
+  it('resets the note and its error on Cancel or when switching between Dispute and Withdraw', async () => {
+    renderWithProviders(<RecordActions record={MINE} />, { me: perms('records.annotate') });
+    await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /note/i }), 'abc');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('');
+    expect(screen.queryByText('A note is required.')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm withdrawal' }));
+    expect(screen.getByText('A note is required.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
+    expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('');
+    expect(screen.queryByText('A note is required.')).not.toBeInTheDocument();
+  });
+
   it('sets the record as the accepted value with accepted.manage; maps API refusals to sentences', async () => {
     curation.setAccepted.mockResolvedValue(ACCEPTED_STATE);
     renderWithProviders(<RecordActions record={MINE} />, { me: perms('accepted.manage') });

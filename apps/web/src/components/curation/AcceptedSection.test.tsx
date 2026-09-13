@@ -69,4 +69,15 @@ describe('RFC-65 R6, R11 AcceptedSection', () => {
     );
     expect(curation.invalidateAfterRecordWrite).toHaveBeenCalledWith(expect.anything(), SPECIES.id);
   });
+
+  it('resets the note when Cancel closes the clear form', async () => {
+    renderWithProviders(<AcceptedSection speciesId={SPECIES.id} traitId={SEXUAL_SYSTEM.id} />, {
+      me: { ...ME, permissions: ['dataset.read', 'accepted.manage'] },
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Clear' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /note/i }), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByRole('textbox', { name: /note/i })).toHaveValue('');
+  });
 });

@@ -60,12 +60,19 @@ export function RecordActions({ record }: { record: RecordDetail }) {
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | null>(null);
 
+  // Switching between Dispute and Withdraw, or cancelling either, must not
+  // leave the other's typed note or validation error behind.
+  function openMode(next: NoteMode | null) {
+    setMode(next);
+    setNote('');
+    setNoteError(null);
+  }
+
   const annotate = useMutation({
     mutationFn: (body: AnnotateRecordBody) => annotateRecord(record.id, body),
     onSuccess: async (detail) => {
       queryClient.setQueryData(datasetKeys.record(record.id), detail);
-      setMode(null);
-      setNote('');
+      openMode(null);
       await invalidateAfterRecordWrite(queryClient, record.speciesId);
     },
   });
@@ -120,21 +127,21 @@ export function RecordActions({ record }: { record: RecordDetail }) {
           <>
             <Button
               variant="secondary"
-              pending={annotate.isPending && !mode}
+              pending={annotate.isPending}
               onClick={() => annotate.mutate({ kind: 'confirm' })}
             >
               Confirm
             </Button>
             <Button
               variant="secondary"
-              pending={annotate.isPending && !mode}
+              pending={annotate.isPending}
               onClick={() => annotate.mutate({ kind: 'neutral' })}
             >
               Neutral
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setMode(mode === 'dispute' ? null : 'dispute')}
+              onClick={() => openMode(mode === 'dispute' ? null : 'dispute')}
               aria-pressed={mode === 'dispute'}
             >
               Dispute
@@ -144,7 +151,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
         {canWithdraw ? (
           <Button
             variant="danger"
-            onClick={() => setMode(mode === 'withdraw' ? null : 'withdraw')}
+            onClick={() => openMode(mode === 'withdraw' ? null : 'withdraw')}
             aria-pressed={mode === 'withdraw'}
           >
             Withdraw
@@ -181,7 +188,7 @@ export function RecordActions({ record }: { record: RecordDetail }) {
             >
               {NOTE_LABELS[mode].submit}
             </Button>
-            <Button variant="secondary" onClick={() => setMode(null)}>
+            <Button variant="secondary" onClick={() => openMode(null)}>
               Cancel
             </Button>
           </div>
