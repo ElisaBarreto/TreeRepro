@@ -17,6 +17,11 @@ vi.mock('../api/auth.ts', () => ({
   logoutAll: vi.fn(),
   fetchMe: vi.fn(),
 }));
+vi.mock('qrcode', () => ({ toCanvas: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@tanstack/react-router', async (orig) => ({
+  ...(await orig<typeof import('@tanstack/react-router')>()),
+  useNavigate: () => vi.fn(),
+}));
 
 describe('RFC-13 R2 SettingsPage', () => {
   it('shows the four sections', async () => {

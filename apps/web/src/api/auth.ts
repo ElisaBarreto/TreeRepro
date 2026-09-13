@@ -9,6 +9,10 @@ import type {
   LoginTotpBody,
   MeResponse,
   ResetPasswordBody,
+  TotpConfirmBody,
+  TotpConfirmResponse,
+  TotpDisableBody,
+  TotpSetupResponse,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 
@@ -77,4 +81,32 @@ export async function resetPassword(token: string, newPassword: string): Promise
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   const body: ChangePasswordBody = { currentPassword, newPassword };
   await apiFetch('/auth/password/change', { method: 'POST', json: body });
+}
+
+/** @rfc RFC-23 R2 */
+export async function totpSetup(): Promise<TotpSetupResponse> {
+  const { data } = await apiFetch<DataEnvelope<TotpSetupResponse>>('/auth/totp/setup', {
+    method: 'POST',
+  });
+  return data;
+}
+
+/** Returns the ten recovery codes, shown once. @rfc RFC-23 R3, R5 */
+export async function totpConfirm(code: string): Promise<string[]> {
+  const body: TotpConfirmBody = { code };
+  const { data } = await apiFetch<DataEnvelope<TotpConfirmResponse>>('/auth/totp/confirm', {
+    method: 'POST',
+    json: body,
+  });
+  return data.recoveryCodes;
+}
+
+/** @rfc RFC-23 R7 */
+export async function totpDisable(body: TotpDisableBody): Promise<void> {
+  await apiFetch('/auth/totp/disable', { method: 'POST', json: body });
+}
+
+/** @rfc RFC-22 R9 */
+export async function logoutAll(): Promise<void> {
+  await apiFetch('/auth/logout-all', { method: 'POST' });
 }

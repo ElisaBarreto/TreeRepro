@@ -1,9 +1,13 @@
+import { useNavigate } from '@tanstack/react-router';
 import { PasswordSection } from '../components/settings/PasswordSection.tsx';
 import { ProfileSection } from '../components/settings/ProfileSection.tsx';
+import { SessionsSection } from '../components/settings/SessionsSection.tsx';
+import { TotpSection } from '../components/settings/TotpSection.tsx';
 import { PageHeader } from '../components/ui/index.ts';
 
 /** @rfc RFC-13 R2 */
 export function SettingsPage() {
+  const navigate = useNavigate();
   return (
     <>
       <PageHeader
@@ -13,16 +17,8 @@ export function SettingsPage() {
       <div className="flex flex-col gap-12">
         <ProfileSection />
         <PasswordSection />
-        <section aria-labelledby="totp-heading">
-          <h2 id="totp-heading" className="font-display text-lg font-bold">
-            Two-factor authentication
-          </h2>
-        </section>
-        <section aria-labelledby="sessions-heading">
-          <h2 id="sessions-heading" className="font-display text-lg font-bold">
-            Sessions
-          </h2>
-        </section>
+        <TotpSection />
+        <SessionsSection onSignedOutEverywhere={() => navigate({ to: '/' })} />
       </div>
     </>
   );
