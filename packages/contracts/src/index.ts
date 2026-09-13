@@ -1,5 +1,6 @@
 export * from './audit.ts';
 export * from './auth.ts';
+export * from './dataset.ts';
 export * from './envelope.ts';
 export * from './error-codes.ts';
 export * from './health.ts';

@@ -64,6 +64,20 @@
       "when": 1789257830459,
       "tag": "0008_permissions_dataset",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789258520416,
+      "tag": "0009_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789258538870,
+      "tag": "0010_dataset_catalogs",
+      "breakpoints": true
     }
   ]
 }
