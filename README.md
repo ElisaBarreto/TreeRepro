@@ -9,6 +9,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 ## Layout
 
 - `apps/api` — the only process that touches Postgres, Redis and secrets.
+- `apps/api/seed` — the trait dictionary (versioned vocabulary).
 - `apps/web` — UI only. Calls `/api/*` on the same origin. Contains no business rules. The workspace lives under `/app` (settings, admin from plan 05b); public pages are `/`, `/invite/:token`, `/forgot-password`, `/reset-password/:token` (RFC-13).
 - `packages/contracts` — Zod schemas and constants shared by API and web.
 - `packages/config` — shared tsconfig bases.
@@ -29,6 +30,8 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `docker compose up` — full dev stack. First time: `cp .env.example .env && ./scripts/gen-secrets.sh`.
 - `pnpm --filter @treerepro/api db:generate` — generate a migration from the Drizzle schema.
 - `pnpm seed:admin --email <email> --name <name>` — invite the first user and assign the `admin` role (prints the invitation link; needs the dev stack or a reachable Postgres/Redis/SMTP). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:admin --email … --name …`. In production: `docker compose exec api node dist/cli/seed-admin.js --email … --name …`.
+- `pnpm --filter @treerepro/api seed:traits` — load the trait dictionary (`apps/api/seed/trait-dictionary.csv`); idempotent. Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:traits`. In production: `docker compose exec api node dist/cli/seed-traits.js`.
+- `pnpm --filter @treerepro/api import:records --file <csv> [--run-by <email>] [--force]` — import a compiled-dataset CSV (RFC-64); prints the batch report. In production: `docker compose exec api node dist/cli/import-records.js --file …`.
 - Admin API (`/api/admin/users`, `/api/admin/roles`, `/api/admin/audit`, `/api/admin/permissions`; every route permission-guarded) and `PATCH /api/me`: RFC-50, RFC-51. Users are never erased — offboarding is suspension (RFC-50 R12). Audit entries older than 2 years are purged by the API's daily timer through `audit_log_purge()` (RFC-42).
 - `./scripts/github-admin.sh` — owner only: apply the GitHub security settings and the `main` ruleset (`--check` to inspect).
 

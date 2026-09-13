@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -31,3 +31,4 @@ Tolerating a decimal comma and mapping known aliases (`bees` → `bee`) at impor
 ## Changelog
 
 - 2026-09-13 — created.
+- 2026-09-13 — accepted.

@@ -34,8 +34,8 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-42 | Audit retention | accepted |
 | RFC-50 | User administration | accepted |
 | RFC-51 | Audit query | accepted |
-| RFC-60 | Taxonomy catalog | draft |
-| RFC-61 | Bibliographic references | draft |
-| RFC-62 | Trait dictionary | draft |
-| RFC-63 | Trait records and provenance | draft |
-| RFC-64 | Bulk import | draft |
+| RFC-60 | Taxonomy catalog | accepted |
+| RFC-61 | Bibliographic references | accepted |
+| RFC-62 | Trait dictionary | accepted |
+| RFC-63 | Trait records and provenance | accepted |
+| RFC-64 | Bulk import | accepted |

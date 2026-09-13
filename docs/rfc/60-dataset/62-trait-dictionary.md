@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -28,3 +28,4 @@ None.
 ## Changelog
 
 - 2026-09-13 — created.
+- 2026-09-13 — accepted.
