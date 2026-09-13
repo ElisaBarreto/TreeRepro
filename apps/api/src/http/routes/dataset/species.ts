@@ -1,17 +1,25 @@
-import { idParamSchema, listSpeciesQuerySchema } from '@treerepro/contracts';
+import {
+  createSpeciesBodySchema,
+  idParamSchema,
+  listSpeciesQuerySchema,
+  speciesNameBodySchema,
+  updateSpeciesBodySchema,
+} from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
+import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
 import { speciesTraitSummary } from '../../../dataset/summary.ts';
 import { getSpecies, searchSpecies } from '../../../dataset/taxa.ts';
 import { species } from '../../../db/schema/taxa.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { requirePermission } from '../../middleware/require-permission.ts';
+import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 
 /**
- * @rfc RFC-60 R6, R7
+ * @rfc RFC-60 R6, R7, R9, R10
  * @rfc RFC-63 R10
  */
 export function speciesRoutes(ctx: AuthContext) {
@@ -33,6 +41,21 @@ export function speciesRoutes(ctx: AuthContext) {
         return c.json({ data, meta: { nextCursor } });
       },
     )
+    .post(
+      '/',
+      requirePermission(ctx, 'taxa.manage'),
+      validate('json', createSpeciesBodySchema),
+      async (c) =>
+        c.json(
+          {
+            data: await createSpecies(ctx.db, {
+              ...c.req.valid('json'),
+              actorId: currentUser(c).id,
+            }),
+          },
+          201,
+        ),
+    )
     .get(
       '/:id',
       requirePermission(ctx, 'dataset.read'),
@@ -42,6 +65,20 @@ export function speciesRoutes(ctx: AuthContext) {
         if (!found) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
         return c.json({ data: found });
       },
+    )
+    .patch(
+      '/:id',
+      requirePermission(ctx, 'taxa.manage'),
+      validate('param', idParamSchema),
+      validate('json', updateSpeciesBodySchema),
+      async (c) =>
+        c.json({
+          data: await updateSpecies(ctx.db, {
+            id: c.req.valid('param').id,
+            ...c.req.valid('json'),
+            actorId: currentUser(c).id,
+          }),
+        }),
     )
     .get(
       '/:id/traits',
@@ -57,5 +94,22 @@ export function speciesRoutes(ctx: AuthContext) {
         if (!exists) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
         return c.json({ data: await speciesTraitSummary(ctx.db, id) });
       },
+    )
+    .post(
+      '/:id/names',
+      requirePermission(ctx, 'taxa.manage'),
+      validate('param', idParamSchema),
+      validate('json', speciesNameBodySchema),
+      async (c) =>
+        c.json(
+          {
+            data: await addSpeciesName(ctx.db, {
+              speciesId: c.req.valid('param').id,
+              ...c.req.valid('json'),
+              actorId: currentUser(c).id,
+            }),
+          },
+          201,
+        ),
     );
 }

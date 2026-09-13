@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
+import { lastAudit } from '../../../../test/helpers/audit.ts';
 import { createFamily, createGenus, createSpecies } from '../../../../test/helpers/dataset.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
@@ -105,5 +106,94 @@ describe('RFC-60 R6-R8 species, families and genera routes', () => {
         family: { id: family.id, name: `Famroute-${k}` },
       },
     ]);
+  });
+});
+
+describe('RFC-60 R9, R10 species writes', () => {
+  const t = useTestApp();
+
+  async function taxonomist() {
+    const role = await createRole(t.db, { permissions: ['taxa.manage', 'dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, cookie: (await loginAs(t, user)).cookie };
+  }
+
+  it('creates a species, edits its name, source and genus, adds alternative names; 409s and 404s', async () => {
+    const { user, cookie } = await taxonomist();
+    const family = await createFamily(t.db);
+    const genus = await createGenus(t.db, { familyId: family.id });
+    const name = `Testus creatus-${Math.random().toString(16).slice(2)}`;
+    const created = await call(t.app, 'POST', '/api/species', {
+      cookie,
+      body: { canonicalName: name, nameSource: 'original' },
+    });
+    expect(created.status).toBe(201);
+    const sp = (await created.json()).data;
+    expect(sp).toMatchObject({
+      canonicalName: name,
+      nameSource: 'original',
+      genus: null,
+      family: null,
+      unresolvedTaxon: true,
+      names: [],
+      recordCount: 0,
+    });
+    expect((await lastAudit(t.db, 'taxa.created', { targetId: sp.id }))?.metadata).toEqual({
+      kind: 'species',
+    });
+    const dup = await call(t.app, 'POST', '/api/species', {
+      cookie,
+      body: { canonicalName: name, nameSource: 'wcvp' },
+    });
+    expect((await dup.json()).error.code).toBe('SPECIES_NAME_TAKEN');
+    const resolved = await call(t.app, 'PATCH', `/api/species/${sp.id}`, {
+      cookie,
+      body: { nameSource: 'wcvp', genusId: genus.id },
+    });
+    expect(resolved.status).toBe(200);
+    expect((await resolved.json()).data).toMatchObject({
+      nameSource: 'wcvp',
+      genus: { id: genus.id },
+      family: { id: family.id },
+      unresolvedTaxon: false,
+    });
+    expect((await lastAudit(t.db, 'taxa.updated', { targetId: sp.id }))?.metadata).toEqual({
+      kind: 'species',
+      fields: ['nameSource', 'genusId'],
+    });
+    const unknownGenus = await call(t.app, 'PATCH', `/api/species/${sp.id}`, {
+      cookie,
+      body: { genusId: '00000000-0000-7000-8000-000000000000' },
+    });
+    expect((await unknownGenus.json()).error.code).toBe('GENUS_NOT_FOUND');
+    const alt = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name: `${name} alt`, gbifUsageKey: '123' },
+    });
+    expect(alt.status).toBe(201);
+    expect((await alt.json()).data.names).toEqual([
+      { name: `${name} alt`, source: 'gbif', gbifUsageKey: '123' },
+    ]);
+    expect((await lastAudit(t.db, 'taxa.created', { actorUserId: user.id }))?.metadata).toEqual({
+      kind: 'species_name',
+      speciesId: sp.id,
+    });
+    const altAgain = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name: `${name} alt` },
+    });
+    expect((await altAgain.json()).error.code).toBe('SPECIES_NAME_TAKEN');
+    const canonical = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name },
+    });
+    expect((await canonical.json()).error.code).toBe('SPECIES_NAME_TAKEN');
+    const missing = await call(
+      t.app,
+      'POST',
+      '/api/species/00000000-0000-7000-8000-000000000000/names',
+      { cookie, body: { name: 'x' } },
+    );
+    expect((await missing.json()).error.code).toBe('SPECIES_NOT_FOUND');
   });
 });
