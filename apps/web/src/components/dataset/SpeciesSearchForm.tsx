@@ -140,10 +140,10 @@ export function SpeciesSearchForm({
             <p className="text-xs text-mist-500">No genus matches.</p>
           )
         ) : null}
-        {value.genusId && chosenGenus ? (
+        {value.genusId ? (
           <div className="flex items-center gap-2">
             <Badge tone="green">
-              <span className="italic">{chosenGenus.name}</span>
+              <span className="italic">{chosenGenus?.name ?? 'Selected genus'}</span>
             </Badge>
             <Button variant="secondary" aria-label="Clear genus" onClick={clearGenus}>
               Clear

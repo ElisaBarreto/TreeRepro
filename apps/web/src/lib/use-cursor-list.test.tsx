@@ -45,17 +45,21 @@ describe('RFC-11 R6 useCursorList', () => {
   });
 
   it('does not fetch while disabled and exposes the error of a failed page', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const fetchPage = vi.fn<(cursor: string | undefined) => Promise<Page<{ id: string }>>>();
+    const disabledClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const disabled = renderHook(() => useCursorList(['things'], fetchPage, { enabled: false }), {
-      wrapper: createWrapper(client),
+      wrapper: createWrapper(disabledClient),
     });
     expect(disabled.result.current.items).toEqual([]);
     expect(fetchPage).not.toHaveBeenCalled();
 
     fetchPage.mockRejectedValueOnce(new Error('boom'));
+    // A separate client from `disabled`'s: sharing one would let this
+    // query's error observer bleed into the disabled render's cache entry
+    // for the same key.
+    const failedClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const failed = renderHook(() => useCursorList(['things'], fetchPage), {
-      wrapper: createWrapper(client),
+      wrapper: createWrapper(failedClient),
     });
     await waitFor(() => expect(failed.result.current.error).toBeInstanceOf(Error));
     expect(failed.result.current.items).toEqual([]);

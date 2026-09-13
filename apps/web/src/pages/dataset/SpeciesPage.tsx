@@ -82,25 +82,26 @@ export function SpeciesPage({ id }: { id: string }) {
         {!error && (species.isPending || traits.isPending) ? (
           <p className="text-sm text-mist-500">Loading…</p>
         ) : null}
-        {traits.data && traits.data.length === 0 ? (
+        {species.isSuccess && traits.data && traits.data.length === 0 ? (
           <EmptyState title="No trait records for this species yet." />
         ) : null}
-        {traits.data?.map((category) => (
-          <section key={category.category.key} className="flex flex-col gap-3">
-            <h2 className="font-display text-lg font-semibold text-canopy-950">
-              {category.category.label}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {category.traits.map((summary) => (
-                <TraitCard
-                  key={summary.trait.id}
-                  summary={summary}
-                  onOpen={() => setOpenTrait(summary)}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        {species.isSuccess &&
+          traits.data?.map((category) => (
+            <section key={category.category.key} className="flex flex-col gap-3">
+              <h2 className="font-display text-lg font-semibold text-canopy-950">
+                {category.category.label}
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {category.traits.map((summary) => (
+                  <TraitCard
+                    key={summary.trait.id}
+                    summary={summary}
+                    onOpen={() => setOpenTrait(summary)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
       </div>
       {openTrait ? (
         <TraitPanel

@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MeResponse, RecordItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
+import { datasetKeys } from '../../api/dataset.ts';
 import {
   CURATED_RECORD_DETAIL,
   PENDING_RECORD,
@@ -220,6 +221,20 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(within(drawer).queryByText('No annotations yet')).not.toBeInTheDocument();
   });
 
+  it('keeps showing the record after a background refetch fails', async () => {
+    const { queryClient } = await openPage();
+    const panel = await openTraitPanel();
+    await userEvent.click(await within(panel).findByRole('button', { name: 'dioecious' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Record' });
+    expect(await within(drawer).findByText('Dioecious')).toBeInTheDocument();
+
+    dataset.fetchRecord.mockRejectedValueOnce(new Error('network blip'));
+    await act(() => queryClient.refetchQueries({ queryKey: datasetKeys.record(RECORD.id) }));
+
+    expect(within(drawer).getByText('Dioecious')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('maps RECORD_NOT_FOUND inside the drawer', async () => {
     dataset.fetchRecord.mockRejectedValue(new ApiError(404, 'RECORD_NOT_FOUND', 'x'));
     await openPage();
@@ -259,6 +274,21 @@ describe('RFC-13 R4, R6 SpeciesPage errors', () => {
     await openPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
     expect(screen.getByText('Fabaceae › Adenanthera')).toBeInTheDocument();
+  });
+
+  it('a species 404 renders only the alert, even once traits resolves', async () => {
+    dataset.fetchSpecies.mockRejectedValue(new ApiError(404, 'SPECIES_NOT_FOUND', 'x'));
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS);
+    const withTraits = renderAt(`/app/species/${SPECIES.id}`);
+    expect(await screen.findByRole('alert')).toHaveTextContent('This species does not exist.');
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+    expect(screen.queryByText('No trait records for this species yet.')).not.toBeInTheDocument();
+    withTraits.unmount();
+
+    dataset.fetchSpeciesTraits.mockResolvedValue([]);
+    renderAt(`/app/species/${SPECIES.id}`);
+    expect(await screen.findByRole('alert')).toHaveTextContent('This species does not exist.');
+    expect(screen.queryByText('No trait records for this species yet.')).not.toBeInTheDocument();
   });
 
   it('a 403 inside the trait panel is shown there', async () => {

@@ -212,7 +212,7 @@ function RecordBody({ record }: { record: RecordDetail }) {
 
 function RecordLoader({ id }: { id: string }) {
   const query = useQuery({ queryKey: datasetKeys.record(id), queryFn: () => fetchRecord(id) });
-  if (query.error) return <Alert tone="error">{errorMessage(query.error)}</Alert>;
+  if (query.error && !query.data) return <Alert tone="error">{errorMessage(query.error)}</Alert>;
   if (!query.data) return <p className="text-sm text-mist-500">Loading record…</p>;
   return <RecordBody record={query.data} />;
 }
