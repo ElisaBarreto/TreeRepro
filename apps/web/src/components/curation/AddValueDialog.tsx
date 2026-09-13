@@ -153,13 +153,32 @@ export function AddValueDialog({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Local, per-required-field checks first: `createRecordBodySchema.value`
+    // is a plain `z.union` of the categorical/quantitative shapes, so a bad
+    // number (`NaN`) fails both branches and Zod reports one `invalid_union`
+    // issue at the union's own path (`value`), never reaching the nested
+    // `value.numeric`/`value.levelId` paths the messages below key on. Only
+    // once every required field is present does the schema parse run, to
+    // catch what these checks don't (out-of-range numbers, lengths, …).
+    const required: Record<string, string> = {};
+    if (!trait) required.traitId = LOCAL_MESSAGES.traitId ?? '';
+    if (valueType === 'categorical' && levelId === '') {
+      required['value.levelId'] = LOCAL_MESSAGES['value.levelId'] ?? '';
+    }
+    if (valueType === 'quantitative' && (numeric.trim() === '' || Number.isNaN(Number(numeric)))) {
+      required['value.numeric'] = LOCAL_MESSAGES['value.numeric'] ?? '';
+    }
+    if (!primary) required.primaryReferenceId = LOCAL_MESSAGES.primaryReferenceId ?? '';
+    if (Object.keys(required).length > 0) {
+      save.reset();
+      setLocal(required);
+      return;
+    }
+
     const candidate = {
       speciesId,
       traitId: trait?.id ?? '',
-      value:
-        valueType === 'quantitative'
-          ? { numeric: numeric === '' ? Number.NaN : Number(numeric) }
-          : { levelId },
+      value: valueType === 'quantitative' ? { numeric: Number(numeric) } : { levelId },
       primaryReferenceId: primary?.id ?? '',
       secondaryReferenceId: secondary?.id,
       rawValue: rawValue.trim() || undefined,
@@ -173,7 +192,6 @@ export function AddValueDialog({
         const path = issue.path.join('.');
         next[path] = LOCAL_MESSAGES[path] ?? LOCAL_MESSAGES[String(issue.path[0])] ?? issue.message;
       }
-      if (!trait) next.traitId = LOCAL_MESSAGES.traitId ?? '';
       setLocal(next);
       return;
     }

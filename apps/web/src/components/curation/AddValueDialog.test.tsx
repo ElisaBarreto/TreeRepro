@@ -128,6 +128,28 @@ describe('RFC-65 R1 AddValueDialog', () => {
     expect(curation.createRecord).not.toHaveBeenCalled();
   });
 
+  it('with a quantitative trait and no number, submitting shows "Enter a number." under the field and does not save', async () => {
+    mount();
+    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
+    const trait = within(dialog).getByRole('combobox', { name: /trait/i });
+    await userEvent.type(trait, 'seed');
+    await userEvent.click(await screen.findByRole('option', { name: /seed mass/ }));
+    await within(dialog).findByRole('spinbutton', { name: /number/i });
+    await pickPrimaryReference();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));
+    expect(within(dialog).getByText('Enter a number.')).toBeInTheDocument();
+    expect(curation.createRecord).not.toHaveBeenCalled();
+  });
+
+  it('with a preselected categorical trait and no level chosen, submitting shows "Choose a level."', async () => {
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
+    await pickPrimaryReference();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));
+    expect(within(dialog).getByText('Choose a level.')).toBeInTheDocument();
+    expect(curation.createRecord).not.toHaveBeenCalled();
+  });
+
   it('shows API field errors under their fields and maps RECORD_DUPLICATE to a link to the existing record', async () => {
     curation.createRecord.mockRejectedValueOnce(
       new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
