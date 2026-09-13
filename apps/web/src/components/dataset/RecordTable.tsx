@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import type { RecordItem, ReferenceRef } from '@treerepro/contracts';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
-import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { Badge, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 import { ReviewBadge } from './ReviewBadge.tsx';
 
@@ -45,19 +45,23 @@ function ArticleCell({ reference }: { reference: ReferenceRef | null }) {
  * the row, so every record is reachable by keyboard. Outside a species page
  * (`showSpecies`) a first column names each row's species and links to it;
  * outside a trait panel (`showTrait`) a column names the trait, so a row
- * reads on its own.
+ * reads on its own. `acceptedRecordId` marks the species × trait's current
+ * accepted value with a badge next to it (RFC-65 R6).
  * @rfc RFC-63 R8
+ * @rfc RFC-65 R6
  */
 export function RecordTable({
   records,
   onSelect,
   showSpecies = false,
   showTrait = false,
+  acceptedRecordId,
 }: {
   records: RecordItem[];
   onSelect: (record: RecordItem) => void;
   showSpecies?: boolean;
   showTrait?: boolean;
+  acceptedRecordId?: string;
 }) {
   return (
     <Table>
@@ -92,13 +96,16 @@ export function RecordTable({
               ) : null}
               {showTrait ? <Td>{humaniseKey(record.trait.key)}</Td> : null}
               <Td>
-                <button
-                  type="button"
-                  onClick={() => onSelect(record)}
-                  className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-                >
-                  {value}
-                </button>
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(record)}
+                    className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+                  >
+                    {value}
+                  </button>
+                  {record.id === acceptedRecordId ? <Badge tone="green">accepted</Badge> : null}
+                </span>
               </Td>
               <ArticleCell reference={record.primaryReference} />
               <ArticleCell reference={record.secondaryReference} />

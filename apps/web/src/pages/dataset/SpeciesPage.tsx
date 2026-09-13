@@ -107,7 +107,11 @@ export function SpeciesPage({ id }: { id: string }) {
           onSelectRecord={setOpenRecord}
         />
       ) : null}
-      <RecordDrawer recordId={openRecord} onClose={() => setOpenRecord(null)} />
+      <RecordDrawer
+        recordId={openRecord}
+        onClose={() => setOpenRecord(null)}
+        onOpenRecord={setOpenRecord}
+      />
     </>
   );
 }

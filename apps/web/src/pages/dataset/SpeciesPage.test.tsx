@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client.ts';
 import { datasetKeys } from '../../api/dataset.ts';
 import {
   CURATED_RECORD_DETAIL,
+  EMPTY_ACCEPTED,
   PENDING_RECORD,
   RECORD,
   RECORD_DETAIL,
@@ -34,10 +35,19 @@ const dataset = vi.hoisted(() => ({
   fetchRecords: vi.fn(),
   fetchRecord: vi.fn(),
 }));
+// TraitPanel renders AcceptedSection, which calls fetchAccepted; mocked so
+// the panel tests below do not hit the real apiFetch.
+const curation = vi.hoisted(() => ({
+  fetchAccepted: vi.fn(),
+}));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
+}));
+vi.mock('../../api/curation.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/curation.ts')>()),
+  ...curation,
 }));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
@@ -52,6 +62,7 @@ beforeEach(() => {
   dataset.fetchSpeciesTraits.mockReset();
   dataset.fetchRecords.mockReset();
   dataset.fetchRecord.mockReset();
+  curation.fetchAccepted.mockReset().mockResolvedValue(EMPTY_ACCEPTED);
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchSpecies.mockResolvedValue(SPECIES);
   dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS);

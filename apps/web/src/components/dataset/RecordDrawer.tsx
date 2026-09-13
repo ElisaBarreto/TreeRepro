@@ -11,6 +11,7 @@ import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchRecord } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber, humaniseKey, isoDate } from '../../lib/format.ts';
+import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 import { ReviewBadge } from './ReviewBadge.tsx';
@@ -88,7 +89,13 @@ function ReferenceLink({ reference }: { reference: ReferenceRef | null }) {
   );
 }
 
-function RecordBody({ record }: { record: RecordDetail }) {
+function RecordBody({
+  record,
+  onOpenRecord,
+}: {
+  record: RecordDetail;
+  onOpenRecord?: (id: string) => void;
+}) {
   const unit = record.trait.unit;
   return (
     <div className="flex flex-col gap-6">
@@ -115,6 +122,10 @@ function RecordBody({ record }: { record: RecordDetail }) {
           <HarmonisationBadge status={record.harmonisation} />
           <ReviewBadge status={record.review} />
         </div>
+      </Section>
+
+      <Section title="Actions">
+        <RecordActions record={record} />
       </Section>
 
       <Section title="Source">
@@ -151,6 +162,33 @@ function RecordBody({ record }: { record: RecordDetail }) {
           }
         />
       </Section>
+
+      {record.supersedes || record.supersededBy.length > 0 ? (
+        <section aria-label="Harmonisation" className="flex flex-col gap-2">
+          <h3 className="text-label font-bold uppercase tracking-[0.08em] text-mist-500">
+            Harmonisation
+          </h3>
+          {record.supersedes ? (
+            <button
+              type="button"
+              className="text-left text-cell font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+              onClick={() => onOpenRecord?.(record.supersedes?.id ?? '')}
+            >
+              Harmonises record
+            </button>
+          ) : null}
+          {record.supersededBy.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className="text-left text-cell font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+              onClick={() => onOpenRecord?.(r.id)}
+            >
+              Harmonised as record {r.id.slice(-6)}
+            </button>
+          ))}
+        </section>
+      ) : null}
 
       <Section title="Raw source columns">
         <Definitions
@@ -208,31 +246,36 @@ function RecordBody({ record }: { record: RecordDetail }) {
   );
 }
 
-function RecordLoader({ id }: { id: string }) {
+function RecordLoader({ id, onOpenRecord }: { id: string; onOpenRecord?: (id: string) => void }) {
   const query = useQuery({ queryKey: datasetKeys.record(id), queryFn: () => fetchRecord(id) });
   if (query.error && !query.data) return <Alert tone="error">{errorMessage(query.error)}</Alert>;
   if (!query.data) return <p className="text-body text-mist-500">Loading record…</p>;
-  return <RecordBody record={query.data} />;
+  return <RecordBody record={query.data} onOpenRecord={onOpenRecord} />;
 }
 
 /**
  * One record in full (RFC-63 R8): its value and both status chips, the
- * references it comes from, where it came from (an import batch and row, or
- * the person who entered it), the source columns as imported, and the
+ * curation actions the session may take on it, the references it comes
+ * from, where it came from (an import batch and row, or the person who
+ * entered it), the harmonisation link to the pending record it resolves or
+ * the records that resolve it, the source columns as imported, and the
  * curation trail — annotations and accepted-value decisions. Fetches only
  * while a record is selected.
  * @rfc RFC-63 R8
+ * @rfc RFC-65 R3, R4, R6, R7
  */
 export function RecordDrawer({
   recordId,
   onClose,
+  onOpenRecord,
 }: {
   recordId: string | null;
   onClose: () => void;
+  onOpenRecord?: (id: string) => void;
 }) {
   return (
     <Drawer open={recordId !== null} title="Record" onClose={onClose}>
-      {recordId !== null ? <RecordLoader id={recordId} /> : null}
+      {recordId !== null ? <RecordLoader id={recordId} onOpenRecord={onOpenRecord} /> : null}
     </Drawer>
   );
 }
