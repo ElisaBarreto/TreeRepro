@@ -66,3 +66,13 @@
 ## `Combobox` keyboard model is roving focus, not `aria-activedescendant`
 **Symptom:** a listbox of `<button role="option">` cannot use `aria-activedescendant` (the options are real focusable buttons), and jsdom does not implement activedescendant either.
 **Fix:** ArrowDown from the input focuses the first option button, the arrows move focus among options, Escape returns focus to the input (`Combobox.tsx`). Tests assert `toHaveFocus()` on the option buttons.
+
+## A modal `Drawer` must portal to `document.body` and mark the rest of the page `inert` itself
+**Symptom:** Tab still reaches inputs behind the panel, or a screen reader announces content underneath, while a drawer is meant to be modal.
+**Cause:** A drawer rendered inline in the component tree sits behind the rest of the page in DOM order; nothing keeps it focusable-only, and jsdom's `showModal` polyfill (`test/setup.ts`) does not itself enforce a focus trap or `inert`.
+**Fix:** `Drawer` renders through `createPortal(..., document.body)` and, on open, sets `inert` on every other child of `body` (removing it again on close, and leaving siblings that already had it alone); Tab/Shift+Tab cycle among the panel's own focusable elements, and focus moves to Close on open and back to the opener on close (RFC-13 R10). Two drawers can be open in the same render commit (trait panel + record drawer): both portal roots already sit in `document.body.children` before either mount effect runs, so each effect's sibling scan can mark the other's root `inert` too — each effect must clear `inert` from its own root after its scan, so the later-mounted drawer ends up the active one.
+
+## A dialog mounted only while open starts from fresh state
+**Symptom:** A dialog's initial field values are stale or wrong after it is reopened for a different item.
+**Cause:** Toggling an `open` prop keeps the component instance (and its `useState`) alive across opens; when the initial value depends on what opened it (which trait, which pending group), the old state leaks into the new open.
+**Fix:** Mount and unmount the dialog instead of toggling `open` — render it only while a piece of state names what to open (`{addValueOpen ? <AddValueDialog ... /> : null}`), so every open is a fresh mount with fresh state (`AddValueDialog`, `MapDialog`).

@@ -230,6 +230,17 @@ Navigation gains a **Curation** group: Pending (`/app/curation/pending`), Disput
 - **Disputed**: paginated table of disputed records (species, trait, value, disputer, note, date); a row opens the record drawer, whose actions resolve the dispute (a curator sets or clears the accepted value; the disputer changes their stance).
 - **Export**: button "Export accepted values (CSV)" in the `/app/species` page header, visible with `dataset.export`, rendered as `<a href="/api/export/accepted.csv" download>`.
 
+### As delivered (plan 07b)
+
+Sections 10.1–10.3 above are the design; the implementation differs in a few small ways, kept here rather than edited into the design text above:
+
+- `Combobox`'s keyboard model is roving focus among the option `<button>`s, not `aria-activedescendant` — the options are real focusable buttons, and jsdom does not implement `aria-activedescendant` either (`docs/gotchas/web.md`).
+- `AddValueDialog` and `MapDialog` are mounted only while open (no `open` prop) rather than always rendered and toggled — their initial state depends on what opened them (the preselected trait, the pending group), so a fresh mount is simpler than resetting state on every open (`docs/gotchas/web.md`).
+- The accepted-row badge in `RecordTable` reads `acceptedRecordId` from the trait summary's `summary.accepted.recordId` (already fetched for the trait panel) rather than issuing a second query.
+- The unresolved-taxa navigation entry is a plain `Link` with `search={{ unresolved: true }}` to `/app/species`, not a separate route.
+- The pages adopt the workspace UI kit of `docs/specs/2026-09-13-workspace-ui-pattern.md`, merged onto `main` mid-plan (PR #52): the kit's type scale (`text-title`/`text-section`/`text-card`/`text-body`/`text-cell`/`text-meta`/`text-label`, never `text-xs`/`text-sm`/`text-lg`/`text-2xl`/`text-base`), `Button size="sm"` for row and inline-form actions, and the navigation gains a `curation` section alongside `data`/`admin`/`account`.
+- `AddValueDialog` runs explicit required-field checks before handing the form to the shared `createRecordBodySchema` — Zod's `value` union collapses an empty number input to the single path `value`, which cannot address the two distinct fields (`value.levelId`, `value.numeric`) the field errors need to target.
+
 ### 10.4 Catalog editors (07c)
 
 - `/app/traits` with `traits.manage`: **New trait** dialog (key, category, value type, unit, description); per trait **Edit** (category, description, active); levels: **Add level**, rename, move up / down (`PATCH sortOrder` swapping with the neighbour), activate / deactivate; the rename dialog carries the seed warning of section 6. The dictionary query is invalidated after every write.
