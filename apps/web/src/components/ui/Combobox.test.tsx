@@ -58,6 +58,25 @@ describe('RFC-13 R5 Combobox', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
+  it('does not reopen the list with stale results after Clear', async () => {
+    renderWithProviders(<Harness />);
+    const input = screen.getByRole('combobox');
+    await userEvent.type(input, 'al');
+    await screen.findByRole('listbox');
+    await userEvent.click(screen.getByRole('option', { name: /Alfaro/ }));
+    await userEvent.click(screen.getByRole('button', { name: /clear/i }));
+
+    const reopened = screen.getByRole('combobox');
+    expect(reopened).toHaveValue('');
+    expect(reopened).not.toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    // Give the 300 ms debounce a chance to catch up; the list must stay closed.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(screen.queryByRole('combobox')).toBeInTheDocument();
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
   it('moves focus into the list with ArrowDown, between options with the arrows, back to the input with Escape', async () => {
     renderWithProviders(<Harness />);
     const input = screen.getByRole('combobox');
@@ -87,8 +106,11 @@ describe('RFC-13 R5 Combobox', () => {
 
   it('without onCreate shows only the empty message; a search failure shows an error line', async () => {
     renderWithProviders(<Harness />);
-    await userEvent.type(screen.getByRole('combobox'), 'zz');
+    const input = screen.getByRole('combobox');
+    await userEvent.type(input, 'zz');
     expect(await screen.findByText('No matches.')).toBeInTheDocument();
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute('aria-expanded', 'true');
+    expect(input).not.toHaveAttribute('aria-controls');
   });
 });

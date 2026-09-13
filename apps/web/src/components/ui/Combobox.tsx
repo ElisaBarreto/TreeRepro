@@ -73,11 +73,19 @@ export function Combobox({
   const options = active ? suggestions.data : undefined;
   const exact = options?.some((o) => o.label.toLowerCase() === term.toLowerCase()) ?? false;
   const showCreate = onCreate !== undefined && active && options !== undefined && !exact;
+  // The listbox itself only renders when there is something to show; drive
+  // aria-expanded/aria-controls off this instead of `options !== undefined`
+  // so they never point at an id that is not in the DOM (e.g. the empty
+  // message with no onCreate).
+  const listOpen = options !== undefined && (options.length > 0 || showCreate);
 
   function choose(option: ComboboxOption) {
     onChange(option);
     setText('');
-    setClosed(false);
+    // Keeps the list closed until the next keystroke, so the debounced term
+    // (still the previous search for up to 300 ms) cannot reopen it with
+    // stale results once the caller clears the chosen value.
+    setClosed(true);
   }
 
   async function create() {
@@ -158,8 +166,8 @@ export function Combobox({
         role="combobox"
         autoComplete="off"
         aria-autocomplete="list"
-        aria-expanded={options !== undefined}
-        aria-controls={options !== undefined ? listId : undefined}
+        aria-expanded={listOpen}
+        aria-controls={listOpen ? listId : undefined}
         placeholder={placeholder}
         disabled={disabled}
         invalid={invalid}
@@ -167,6 +175,7 @@ export function Combobox({
         onChange={(event) => {
           setText(event.target.value);
           setClosed(false);
+          setCreateError(false);
         }}
         onKeyDown={onInputKeyDown}
       />
