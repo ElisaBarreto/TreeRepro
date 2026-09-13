@@ -1,13 +1,21 @@
+import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { EXPORT_ACCEPTED_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
+import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { SpeciesList } from '../../components/dataset/SpeciesList.tsx';
 import {
   SpeciesSearchForm,
   type SpeciesSearchValue,
 } from '../../components/dataset/SpeciesSearchForm.tsx';
-import { Alert, buttonClassName, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import {
+  Alert,
+  Button,
+  buttonClassName,
+  EmptyState,
+  PageHeader,
+} from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
@@ -19,13 +27,17 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  * the API's minimum of two letters (RFC-60 R6) is not sent. `initialUnresolved`
  * seeds the toggle from the route's `?unresolved=true` (the unresolved-taxa
  * nav entry); the export link is a plain download, gated by dataset.export.
- * @rfc RFC-13 R2, R4
- * @rfc RFC-60 R6
+ * With `taxa.manage`, "New species" opens the species editor and a created
+ * species opens its own page (RFC-60 R9).
+ * @rfc RFC-13 R2, R3, R4
+ * @rfc RFC-60 R6, R9
  * @rfc RFC-66 R1
  */
 export function SpeciesSearchPage({ initialUnresolved = false }: { initialUnresolved?: boolean }) {
   const me = useMe();
+  const navigate = useNavigate();
   const [form, setForm] = useState<SpeciesSearchValue>({ q: '', unresolved: initialUnresolved });
+  const [creating, setCreating] = useState(false);
   const term = useDebouncedValue(form.q.trim(), 300);
   const params = {
     q: term.length >= 2 ? term : undefined,
@@ -43,15 +55,22 @@ export function SpeciesSearchPage({ initialUnresolved = false }: { initialUnreso
         title="Species"
         description="Browse the taxonomy catalog, or narrow it by name, family or genus."
         actions={
-          hasPermission(me, 'dataset.export') ? (
-            <a
-              href={EXPORT_ACCEPTED_URL}
-              download
-              // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
-              className={buttonClassName({ variant: 'secondary' })}
-            >
-              Export accepted values (CSV)
-            </a>
+          hasPermission(me, 'taxa.manage') || hasPermission(me, 'dataset.export') ? (
+            <>
+              {hasPermission(me, 'taxa.manage') ? (
+                <Button onClick={() => setCreating(true)}>New species</Button>
+              ) : null}
+              {hasPermission(me, 'dataset.export') ? (
+                <a
+                  href={EXPORT_ACCEPTED_URL}
+                  download
+                  // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
+                  className={buttonClassName({ variant: 'secondary' })}
+                >
+                  Export accepted values (CSV)
+                </a>
+              ) : null}
+            </>
           ) : undefined
         }
       />
@@ -65,6 +84,15 @@ export function SpeciesSearchPage({ initialUnresolved = false }: { initialUnreso
         {list.items.length > 0 ? <SpeciesList items={list.items} /> : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
+      {creating ? (
+        <SpeciesDialog
+          onClose={() => setCreating(false)}
+          onSaved={(s) => {
+            setCreating(false);
+            navigate({ to: '/app/species/$id', params: { id: s.id } });
+          }}
+        />
+      ) : null}
     </>
   );
 }
