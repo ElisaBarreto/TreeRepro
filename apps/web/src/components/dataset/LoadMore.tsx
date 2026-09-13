@@ -4,18 +4,23 @@ import { Button } from '../ui/index.ts';
 /**
  * Tail of a cursor list. A sentinel observed with `IntersectionObserver`
  * asks for the next page as it scrolls into view; the visible button does the
- * same for keyboards and for environments without the observer (jsdom).
- * Renders nothing once the list is complete.
+ * same for keyboards and for environments without the observer (jsdom). While
+ * `paused` (a failed `onLoadMore` whose list keeps `hasMore` true) the
+ * observer disconnects, so a visible sentinel does not retry on a loop; the
+ * button stays as the manual retry path. Renders nothing once the list is
+ * complete.
  * @rfc RFC-11 R6
  */
 export function LoadMore({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  paused = false,
 }: {
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  paused?: boolean;
 }) {
   const sentinel = useRef<HTMLDivElement>(null);
   // The callback changes identity on every render of the caller; the observer
@@ -27,7 +32,8 @@ export function LoadMore({
 
   useEffect(() => {
     const node = sentinel.current;
-    if (!node || !hasMore || isLoadingMore || typeof IntersectionObserver === 'undefined') return;
+    if (!node || !hasMore || isLoadingMore || paused || typeof IntersectionObserver === 'undefined')
+      return;
     // Re-observing after each page fires the initial callback again, so a
     // sentinel still in view keeps loading until it is pushed off-screen.
     const observer = new IntersectionObserver((entries) => {
@@ -35,7 +41,7 @@ export function LoadMore({
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasMore, isLoadingMore]);
+  }, [hasMore, isLoadingMore, paused]);
 
   if (!hasMore) return null;
   return (

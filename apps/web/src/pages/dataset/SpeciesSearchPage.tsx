@@ -58,6 +58,7 @@ export function SpeciesSearchPage() {
             hasMore={list.hasMore}
             isLoadingMore={list.isLoadingMore}
             onLoadMore={list.loadMore}
+            paused={Boolean(list.error)}
           />
         ) : null}
       </div>

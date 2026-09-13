@@ -89,6 +89,7 @@ export function ImportsPage() {
           hasMore={list.hasMore}
           isLoadingMore={list.isLoadingMore}
           onLoadMore={list.loadMore}
+          paused={Boolean(list.error)}
         />
       </div>
     </>

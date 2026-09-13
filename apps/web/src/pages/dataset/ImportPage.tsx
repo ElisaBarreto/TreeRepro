@@ -214,7 +214,8 @@ function Rejects({
           <Tbody>
             {items.map((reject) => (
               <Tr key={reject.id}>
-                <Td className={NUMBER}>{formatNumber(reject.rowNo)}</Td>
+                {/* A row number, not a quantity: no thousands separator. */}
+                <Td className={NUMBER}>{reject.rowNo}</Td>
                 <Td>{REASONS[reject.reason]}</Td>
                 <Td>
                   <details>
@@ -236,7 +237,12 @@ function Rejects({
           </Tbody>
         </Table>
       ) : null}
-      <LoadMore hasMore={hasMore} isLoadingMore={isLoadingMore} onLoadMore={onLoadMore} />
+      <LoadMore
+        hasMore={hasMore}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={onLoadMore}
+        paused={Boolean(error)}
+      />
     </section>
   );
 }

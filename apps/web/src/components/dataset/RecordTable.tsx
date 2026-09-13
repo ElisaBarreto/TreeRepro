@@ -58,6 +58,7 @@ export function RecordTable({
       </Thead>
       <Tbody>
         {records.map((record) => {
+          const value = valueLabel(record);
           const references = referencesLabel(record);
           const shown = truncate(references, REFERENCES_MAX);
           return (
@@ -67,6 +68,7 @@ export function RecordTable({
                   <Link
                     to="/app/species/$id"
                     params={{ id: record.speciesId }}
+                    aria-label={`Open species for record ${value}`}
                     className="font-medium text-canopy-900 underline-offset-2 hover:underline"
                   >
                     Open species
@@ -79,7 +81,7 @@ export function RecordTable({
                   onClick={() => onSelect(record)}
                   className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
                 >
-                  {valueLabel(record)}
+                  {value}
                 </button>
               </Td>
               <Td title={shown === references ? undefined : references}>{shown}</Td>

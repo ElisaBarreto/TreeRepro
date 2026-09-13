@@ -29,6 +29,12 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
   );
 }
 
+// A `url` field is free text from the import, not validated as a URL; only
+// render it as a link when it is actually one the browser can follow.
+function isHttpUrl(value: string): boolean {
+  return value.startsWith('http://') || value.startsWith('https://');
+}
+
 // The bibliographic fields in citation order; a missing one reads "—".
 function metadataRows(
   reference: ReferenceDetail,
@@ -49,7 +55,11 @@ function metadataRows(
     {
       label: 'URL',
       value: reference.url ? (
-        <ExternalLink href={reference.url}>{reference.url}</ExternalLink>
+        isHttpUrl(reference.url) ? (
+          <ExternalLink href={reference.url}>{reference.url}</ExternalLink>
+        ) : (
+          reference.url
+        )
       ) : (
         DASH
       ),
@@ -103,6 +113,7 @@ function ReferenceRecords({
         hasMore={list.hasMore}
         isLoadingMore={list.isLoadingMore}
         onLoadMore={list.loadMore}
+        paused={Boolean(list.error)}
       />
     </section>
   );

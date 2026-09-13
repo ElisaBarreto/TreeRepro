@@ -187,6 +187,15 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
   });
 
+  it('RFC-13 R8 a 401 during a search ends the session and returns to /', async () => {
+    dataset.searchSpecies.mockRejectedValue(
+      new ApiError(401, 'AUTH_UNAUTHENTICATED', 'Authentication required'),
+    );
+    const { router } = await openPage();
+    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+  });
+
   it('RFC-13 R3 the Species entry appears in the navigation only with dataset.read', async () => {
     const withPermission = await openPage();
     const main = screen.getByRole('navigation', { name: 'Main' });

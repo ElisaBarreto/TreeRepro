@@ -112,6 +112,15 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
     }
     expect(within(definition('DOI')).queryByRole('link')).not.toBeInTheDocument();
   });
+
+  it('shows the URL as plain text when it is not an http(s) address', async () => {
+    dataset.fetchReference.mockResolvedValue({ ...REFERENCE_DETAIL, url: 'example.org/smith2001' });
+    dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
+    await openPage();
+    const urlField = definition('URL');
+    expect(urlField).toHaveTextContent('example.org/smith2001');
+    expect(within(urlField).queryByRole('link')).not.toBeInTheDocument();
+  });
 });
 
 describe('RFC-63 R8, R9 ReferencePage records', () => {
@@ -131,7 +140,9 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     expect(rows).toHaveLength(3);
     const headers = within(rows[0] as HTMLElement).getAllByRole('columnheader');
     expect(headers[0]).toHaveTextContent('Species');
-    const species = within(rows[1] as HTMLElement).getByRole('link', { name: 'Open species' });
+    const species = within(rows[1] as HTMLElement).getByRole('link', {
+      name: 'Open species for record dioecious',
+    });
     expect(species).toHaveAttribute('href', `/app/species/${RECORD.speciesId}`);
     expect(rows[1]).toHaveTextContent('Smith2001');
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();

@@ -52,6 +52,7 @@ export function TraitPanel({
           hasMore={list.hasMore}
           isLoadingMore={list.isLoadingMore}
           onLoadMore={list.loadMore}
+          paused={Boolean(list.error)}
         />
       </div>
     </Drawer>

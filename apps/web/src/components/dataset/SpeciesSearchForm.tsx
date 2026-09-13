@@ -63,6 +63,7 @@ export function SpeciesSearchForm({
           id={ids.q}
           type="search"
           autoComplete="off"
+          maxLength={100}
           placeholder="Canonical or alternative name"
           value={value.q}
           onChange={(event) => onChange({ ...value, q: event.target.value })}
@@ -100,6 +101,7 @@ export function SpeciesSearchForm({
             id={ids.genus}
             role="combobox"
             autoComplete="off"
+            maxLength={100}
             aria-autocomplete="list"
             aria-expanded={suggestions !== undefined}
             aria-controls={suggestions !== undefined ? ids.genera : undefined}

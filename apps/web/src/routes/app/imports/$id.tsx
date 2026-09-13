@@ -6,7 +6,7 @@ import { ImportPage } from '../../../pages/dataset/ImportPage.tsx';
 function ImportRoute() {
   const { id } = Route.useParams();
   if (!hasPermission(useMe(), 'imports.read')) return <NoPermission />;
-  return <ImportPage id={id} />;
+  return <ImportPage key={id} id={id} />;
 }
 
 /**

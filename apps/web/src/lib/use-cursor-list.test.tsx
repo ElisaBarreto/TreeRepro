@@ -5,19 +5,27 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Page } from '../api/dataset.ts';
 import { useCursorList } from './use-cursor-list.ts';
 
-function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+// Created once per test and captured by the closure below, so the same
+// client backs every render of the hook; building it inside the component
+// would hand React a fresh cache — and lose the one just populated — on
+// each re-render the hook triggers.
+function createWrapper(client: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
 }
 
 describe('RFC-11 R6 useCursorList', () => {
   it('flattens pages, loads the next one with its cursor and stops when there is none', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const fetchPage = vi.fn<(cursor: string | undefined) => Promise<Page<{ id: string }>>>();
     fetchPage
       .mockResolvedValueOnce({ data: [{ id: 'a' }, { id: 'b' }], meta: { nextCursor: 'c1' } })
       .mockResolvedValueOnce({ data: [{ id: 'c' }], meta: { nextCursor: null } });
 
-    const { result } = renderHook(() => useCursorList(['things'], fetchPage), { wrapper });
+    const { result } = renderHook(() => useCursorList(['things'], fetchPage), {
+      wrapper: createWrapper(client),
+    });
     expect(result.current.isLoading).toBe(true);
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.items).toEqual([{ id: 'a' }, { id: 'b' }]);
@@ -37,15 +45,18 @@ describe('RFC-11 R6 useCursorList', () => {
   });
 
   it('does not fetch while disabled and exposes the error of a failed page', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const fetchPage = vi.fn<(cursor: string | undefined) => Promise<Page<{ id: string }>>>();
     const disabled = renderHook(() => useCursorList(['things'], fetchPage, { enabled: false }), {
-      wrapper,
+      wrapper: createWrapper(client),
     });
     expect(disabled.result.current.items).toEqual([]);
     expect(fetchPage).not.toHaveBeenCalled();
 
     fetchPage.mockRejectedValueOnce(new Error('boom'));
-    const failed = renderHook(() => useCursorList(['things'], fetchPage), { wrapper });
+    const failed = renderHook(() => useCursorList(['things'], fetchPage), {
+      wrapper: createWrapper(client),
+    });
     await waitFor(() => expect(failed.result.current.error).toBeInstanceOf(Error));
     expect(failed.result.current.items).toEqual([]);
   });

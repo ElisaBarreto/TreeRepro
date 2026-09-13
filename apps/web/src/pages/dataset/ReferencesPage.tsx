@@ -17,6 +17,7 @@ import {
   Tr,
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
+import { truncate } from '../../lib/format.ts';
 import { useCursorList } from '../../lib/use-cursor-list.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 
@@ -55,6 +56,7 @@ export function ReferencesPage() {
               id={searchId}
               type="search"
               autoComplete="off"
+              maxLength={100}
               placeholder="Citation key or title"
               value={text}
               onChange={(event) => setText(event.target.value)}
@@ -73,6 +75,7 @@ export function ReferencesPage() {
             hasMore={list.hasMore}
             isLoadingMore={list.isLoadingMore}
             onLoadMore={list.loadMore}
+            paused={Boolean(list.error)}
           />
         ) : null}
       </div>
@@ -93,17 +96,17 @@ function ReferenceTable({ items }: { items: Reference[] }) {
       </Thead>
       <Tbody>
         {items.map((reference) => {
-          const long = reference.citationKey.length > KEY_MAX;
+          const shown = truncate(reference.citationKey, KEY_MAX);
           return (
             <Tr key={reference.id}>
               <Td>
                 <Link
                   to="/app/references/$id"
                   params={{ id: reference.id }}
-                  title={long ? reference.citationKey : undefined}
+                  title={shown === reference.citationKey ? undefined : reference.citationKey}
                   className="font-medium text-canopy-900 underline-offset-2 hover:underline"
                 >
-                  {long ? `${reference.citationKey.slice(0, KEY_MAX - 1)}…` : reference.citationKey}
+                  {shown}
                 </Link>
               </Td>
               <Td className="text-canopy-800">{reference.title ?? DASH}</Td>

@@ -79,7 +79,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
     expect(rows).toHaveLength(3);
     expect(rows[1]).toHaveTextContent('42');
     expect(rows[1]).toHaveTextContent('Unknown trait');
-    expect(rows[2]).toHaveTextContent('1,200');
+    expect(rows[2]).toHaveTextContent('1200');
     expect(rows[2]).toHaveTextContent('No reference');
 
     const details = within(rows[1] as HTMLElement)

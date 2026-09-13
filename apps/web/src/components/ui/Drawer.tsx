@@ -21,7 +21,10 @@ const SIZES: Record<NonNullable<DrawerProps['size']>, string> = {
  * button on open and returns to the element that had it when it closes;
  * Escape and a backdrop click close it, a click inside does not. Escape is
  * handled on the panel itself, not on the document, so with two drawers open
- * only the one holding focus closes. Renders nothing while closed.
+ * only the one holding focus closes; the panel is given `tabIndex={-1}` so a
+ * click on non-focusable text inside it still moves focus there, keeping
+ * Escape working rather than firing on `document.body`. Renders nothing
+ * while closed.
  * @rfc RFC-13 R5, R7
  */
 export function Drawer({ open, title, onClose, size = 'md', children }: DrawerProps) {
@@ -58,6 +61,7 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         onKeyDown={onKeyDown}
         className={`flex h-full w-full flex-col bg-white text-canopy-950 shadow-xl ${SIZES[size]}`}
       >

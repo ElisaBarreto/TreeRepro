@@ -95,7 +95,7 @@ describe('RFC-60 R7 SpeciesPage header', () => {
     expect(screen.getByText('unresolved taxonomy')).toBeInTheDocument();
     expect(screen.queryByText(/Also known as/)).not.toBeInTheDocument();
     expect(screen.getByText('0 records · 0 traits')).toBeInTheDocument();
-    expect(screen.getByText('No trait records for this species yet')).toBeInTheDocument();
+    expect(screen.getByText('No trait records for this species yet.')).toBeInTheDocument();
   });
 });
 
@@ -268,5 +268,27 @@ describe('RFC-13 R4, R6 SpeciesPage errors', () => {
     expect(await within(panel).findByRole('alert')).toHaveTextContent(
       'You do not have permission to do this.',
     );
+  });
+});
+
+describe('RFC-13 R2 SpeciesPage remounts per id', () => {
+  it('closes an open trait panel and refetches when navigating to another species', async () => {
+    dataset.fetchSpecies.mockImplementation(async (id: string) =>
+      id === UNRESOLVED_SPECIES.id ? UNRESOLVED_SPECIES : SPECIES,
+    );
+    dataset.fetchSpeciesTraits.mockImplementation(async (id: string) =>
+      id === UNRESOLVED_SPECIES.id ? [] : SPECIES_TRAITS,
+    );
+    const { router } = await openPage();
+    await openTraitPanel();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await router.navigate({ to: '/app/species/$id', params: { id: UNRESOLVED_SPECIES.id } });
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Adansonia digitata/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(dataset.fetchSpecies).toHaveBeenCalledWith(UNRESOLVED_SPECIES.id);
   });
 });

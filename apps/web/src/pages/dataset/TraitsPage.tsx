@@ -18,13 +18,9 @@ import {
   Tr,
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
+import { humaniseKey } from '../../lib/format.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
-
-/** `seed_mass` reads as "seed mass"; the filter compares the same spelling. */
-function spaced(key: string): string {
-  return key.replaceAll('_', ' ');
-}
 
 /**
  * Trait dictionary browser: the whole dictionary arrives at once (RFC-62 R5)
@@ -38,11 +34,13 @@ export function TraitsPage() {
   const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
   const [filter, setFilter] = useState('');
   const filterId = useId();
-  const term = spaced(filter.trim().toLowerCase());
+  const term = humaniseKey(filter.trim().toLowerCase());
   const categories = (dictionary.data ?? [])
     .map((category) => ({
       ...category,
-      traits: category.traits.filter((trait) => spaced(trait.key.toLowerCase()).includes(term)),
+      traits: category.traits.filter((trait) =>
+        humaniseKey(trait.key.toLowerCase()).includes(term),
+      ),
     }))
     .filter((category) => category.traits.length > 0);
   const total = (dictionary.data ?? []).reduce((sum, c) => sum + c.traits.length, 0);
@@ -116,7 +114,7 @@ function CategorySection({ label, traits }: { label: string; traits: Trait[] }) 
 function TraitRows({ trait }: { trait: Trait }) {
   const [open, setOpen] = useState(false);
   const levelsId = useId();
-  const name = spaced(trait.key);
+  const name = humaniseKey(trait.key);
   return (
     <>
       <Tr>

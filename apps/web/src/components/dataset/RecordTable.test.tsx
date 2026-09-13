@@ -57,9 +57,12 @@ describe('RFC-63 R8 RecordTable', () => {
     const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
     expect(headers[0]).toBe('Species');
     expect(headers).toHaveLength(7);
-    const links = screen.getAllByRole('link', { name: 'Open species' });
+    const links = screen.getAllByRole('link', { name: /^Open species for record/ });
     expect(links).toHaveLength(2);
+    expect(links[0]).toHaveAccessibleName('Open species for record dioecious');
+    expect(links[0]).toHaveTextContent('Open species');
     expect(links[0]).toHaveAttribute('href', `/app/species/${RECORD.speciesId}`);
+    expect(links[1]).toHaveAccessibleName('Open species for record about two');
     const rows = screen.getAllByRole('row');
     expect(within(rows[1] as HTMLElement).getAllByRole('cell')[0]).toContainElement(
       links[0] as HTMLElement,

@@ -83,7 +83,7 @@ export function SpeciesPage({ id }: { id: string }) {
           <p className="text-sm text-mist-500">Loading…</p>
         ) : null}
         {traits.data && traits.data.length === 0 ? (
-          <EmptyState title="No trait records for this species yet" />
+          <EmptyState title="No trait records for this species yet." />
         ) : null}
         {traits.data?.map((category) => (
           <section key={category.category.key} className="flex flex-col gap-3">
