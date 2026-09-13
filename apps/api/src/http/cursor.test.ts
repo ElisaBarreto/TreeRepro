@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { decodeCursor, encodeCursor } from './cursor.ts';
+import {
+  decodeCompositeCursor,
+  decodeCursor,
+  encodeCompositeCursor,
+  encodeCursor,
+} from './cursor.ts';
 import { AppError } from './errors.ts';
 
 const ID = '019a0000-0000-7000-8000-000000000001';
@@ -28,6 +33,45 @@ describe('RFC-11 R6 opaque keyset cursor', () => {
       expect(caught).toBeInstanceOf(AppError);
       expect((caught as AppError).code).toBe('VALIDATION_FAILED');
       expect((caught as AppError).details).toEqual([{ path: 'cursor', message: 'Invalid cursor' }]);
+    }
+  });
+});
+
+describe('RFC-11 R6 composite cursor', () => {
+  it('round-trips an ordered list of strings, opaque to clients', () => {
+    const token = encodeCompositeCursor([
+      'Adesmia glutinosa',
+      '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e',
+    ]);
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(decodeCompositeCursor(token, 2)).toEqual([
+      'Adesmia glutinosa',
+      '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e',
+    ]);
+  });
+
+  it('keeps unicode and separators intact', () => {
+    const parts = ['Kühn, I., W. Durka; 2004', '42'];
+    expect(decodeCompositeCursor(encodeCompositeCursor(parts), 2)).toEqual(parts);
+  });
+
+  it('rejects the wrong arity, non-JSON, non-string parts and padding tricks with VALIDATION_FAILED on cursor', () => {
+    const token = encodeCompositeCursor(['a', 'b']);
+    for (const bad of [
+      () => decodeCompositeCursor(token, 3),
+      () => decodeCompositeCursor('not-base64-json', 2),
+      () => decodeCompositeCursor(Buffer.from('[1,2]').toString('base64url'), 2),
+      () => decodeCompositeCursor(Buffer.from('{"a":1}').toString('base64url'), 1),
+      () => decodeCompositeCursor(`${token}=`, 2),
+    ]) {
+      expect(bad).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
+      try {
+        bad();
+      } catch (err) {
+        expect((err as { details?: unknown }).details).toEqual([
+          { path: 'cursor', message: 'Invalid cursor' },
+        ]);
+      }
     }
   });
 });
