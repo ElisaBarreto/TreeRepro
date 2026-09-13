@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppImportsRouteImport } from './routes/app/imports'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTraitsRouteImport } from './routes/app/traits'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -44,6 +45,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppImportsRoute = AppImportsRouteImport.update({
+  id: '/imports',
+  path: '/imports',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -65,14 +71,14 @@ const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppImportsIndexRoute = AppImportsIndexRouteImport.update({
-  id: '/imports/',
-  path: '/imports/',
-  getParentRoute: () => AppRoute,
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppImportsRoute,
 } as any)
 const AppImportsIdRoute = AppImportsIdRouteImport.update({
-  id: '/imports/$id',
-  path: '/imports/$id',
-  getParentRoute: () => AppRoute,
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppImportsRoute,
 } as any)
 const AppReferencesIndexRoute = AppReferencesIndexRouteImport.update({
   id: '/references/',
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -131,6 +138,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -149,6 +157,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/forgot-password'
+    | '/app/imports'
     | '/app/settings'
     | '/app/traits'
     | '/invite/$token'
@@ -180,6 +189,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/forgot-password'
+    | '/app/imports'
     | '/app/settings'
     | '/app/traits'
     | '/invite/$token'
@@ -231,6 +241,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/imports': {
+      id: '/app/imports'
+      path: '/imports'
+      fullPath: '/app/imports'
+      preLoaderRoute: typeof AppImportsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/settings': {
       id: '/app/settings'
       path: '/settings'
@@ -261,17 +278,17 @@ declare module '@tanstack/react-router' {
     }
     '/app/imports/': {
       id: '/app/imports/'
-      path: '/imports'
+      path: '/'
       fullPath: '/app/imports/'
       preLoaderRoute: typeof AppImportsIndexRouteImport
-      parentRoute: typeof AppRoute
+      parentRoute: typeof AppImportsRoute
     }
     '/app/imports/$id': {
       id: '/app/imports/$id'
-      path: '/imports/$id'
+      path: '/$id'
       fullPath: '/app/imports/$id'
       preLoaderRoute: typeof AppImportsIdRouteImport
-      parentRoute: typeof AppRoute
+      parentRoute: typeof AppImportsRoute
     }
     '/app/references/': {
       id: '/app/references/'
@@ -304,26 +321,38 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppImportsRouteChildren {
+  AppImportsIdRoute: typeof AppImportsIdRoute
+  AppImportsIndexRoute: typeof AppImportsIndexRoute
+}
+
+const AppImportsRouteChildren: AppImportsRouteChildren = {
+  AppImportsIdRoute: AppImportsIdRoute,
+  AppImportsIndexRoute: AppImportsIndexRoute,
+}
+
+const AppImportsRouteWithChildren = AppImportsRoute._addFileChildren(
+  AppImportsRouteChildren,
+)
+
 interface AppRouteChildren {
+  AppImportsRoute: typeof AppImportsRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppTraitsRoute: typeof AppTraitsRoute
   AppIndexRoute: typeof AppIndexRoute
-  AppImportsIdRoute: typeof AppImportsIdRoute
   AppReferencesIdRoute: typeof AppReferencesIdRoute
   AppSpeciesIdRoute: typeof AppSpeciesIdRoute
-  AppImportsIndexRoute: typeof AppImportsIndexRoute
   AppReferencesIndexRoute: typeof AppReferencesIndexRoute
   AppSpeciesIndexRoute: typeof AppSpeciesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppImportsRoute: AppImportsRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppTraitsRoute: AppTraitsRoute,
   AppIndexRoute: AppIndexRoute,
-  AppImportsIdRoute: AppImportsIdRoute,
   AppReferencesIdRoute: AppReferencesIdRoute,
   AppSpeciesIdRoute: AppSpeciesIdRoute,
-  AppImportsIndexRoute: AppImportsIndexRoute,
   AppReferencesIndexRoute: AppReferencesIndexRoute,
   AppSpeciesIndexRoute: AppSpeciesIndexRoute,
 }

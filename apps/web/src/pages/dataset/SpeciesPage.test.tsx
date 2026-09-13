@@ -272,6 +272,15 @@ describe('RFC-13 R4, R6 SpeciesPage errors', () => {
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
   });
 
+  it('a rejected id (VALIDATION_FAILED) reads as not found', async () => {
+    const rejected = new ApiError(400, 'VALIDATION_FAILED', 'x', [{ path: 'id', message: 'x' }]);
+    dataset.fetchSpecies.mockRejectedValue(rejected);
+    dataset.fetchSpeciesTraits.mockRejectedValue(rejected);
+    renderAt('/app/species/not-a-uuid');
+    expect(await screen.findByRole('alert')).toHaveTextContent('This species does not exist.');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('a 403 shows the permission sentence once; another failure the generic one', async () => {
     dataset.fetchSpecies.mockRejectedValue(new ApiError(403, 'PERMISSION_DENIED', 'x'));
     dataset.fetchSpeciesTraits.mockRejectedValue(new ApiError(403, 'PERMISSION_DENIED', 'x'));

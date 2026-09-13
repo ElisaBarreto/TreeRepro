@@ -33,3 +33,24 @@ export function pageErrorMessage(error: unknown): string {
   }
   return GENERIC_MESSAGE;
 }
+
+/**
+ * The sentence a detail page (`/app/<kind>/$id`) shows for a failed lookup:
+ * `notFoundCode` and a rejected id (400 `VALIDATION_FAILED` — the only input a
+ * detail GET has is the id in the URL) both read as `notFoundSentence`; the
+ * rest falls through to {@link pageErrorMessage}.
+ * @rfc RFC-13 R4, R6
+ */
+export function detailErrorMessage(
+  error: unknown,
+  notFoundCode: string,
+  notFoundSentence: string,
+): string {
+  if (
+    error instanceof ApiError &&
+    (error.code === notFoundCode || error.code === 'VALIDATION_FAILED')
+  ) {
+    return notFoundSentence;
+  }
+  return pageErrorMessage(error);
+}

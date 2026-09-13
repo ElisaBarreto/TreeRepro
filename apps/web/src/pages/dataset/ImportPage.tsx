@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ImportBatch, ImportReject, ImportRejectReason } from '@treerepro/contracts';
 import { useId } from 'react';
-import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchImport, fetchImportRejects } from '../../api/dataset.ts';
 import { ImportStatusBadge } from '../../components/dataset/ImportStatusBadge.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { Alert, PageHeader, Table, Tbody, Td, Th, Thead, Tr } from '../../components/ui/index.ts';
-import { pageErrorMessage } from '../../lib/errors.ts';
+import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, formatNumber } from '../../lib/format.ts';
 import { type PagedList, usePagedList } from '../../lib/use-paged-list.ts';
 
@@ -70,12 +69,11 @@ export function ImportPage({ id }: { id: string }) {
     );
   }
   if (batch.isError) {
-    const notFound = batch.error instanceof ApiError && batch.error.code === 'IMPORT_NOT_FOUND';
     return (
       <>
         <PageHeader title="Import" />
         <Alert tone="error">
-          {notFound ? 'This import does not exist.' : pageErrorMessage(batch.error)}
+          {detailErrorMessage(batch.error, 'IMPORT_NOT_FOUND', 'This import does not exist.')}
         </Alert>
       </>
     );

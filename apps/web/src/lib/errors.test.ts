@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/client.ts';
-import { fieldErrors, GENERIC_MESSAGE, isValidationError, pageErrorMessage } from './errors.ts';
+import {
+  detailErrorMessage,
+  fieldErrors,
+  GENERIC_MESSAGE,
+  isValidationError,
+  pageErrorMessage,
+} from './errors.ts';
 
 describe('RFC-13 R6 field errors', () => {
   it('maps VALIDATION_FAILED and AUTH_PASSWORD_WEAK details by path, an empty path to form', () => {
@@ -35,5 +41,39 @@ describe('RFC-13 R4 pageErrorMessage', () => {
     );
     expect(pageErrorMessage(new ApiError(500, 'INTERNAL_ERROR', 'x'))).toBe(GENERIC_MESSAGE);
     expect(pageErrorMessage(new Error('boom'))).toBe(GENERIC_MESSAGE);
+  });
+});
+
+describe('RFC-13 R4, R6 detailErrorMessage', () => {
+  it('reads the not-found code and a rejected id (VALIDATION_FAILED) as the not-found sentence', () => {
+    const sentence = 'This species does not exist.';
+    expect(
+      detailErrorMessage(
+        new ApiError(404, 'SPECIES_NOT_FOUND', 'x'),
+        'SPECIES_NOT_FOUND',
+        sentence,
+      ),
+    ).toBe(sentence);
+    // `/app/species/not-a-uuid`: the API refuses the id before looking it up.
+    expect(
+      detailErrorMessage(
+        new ApiError(400, 'VALIDATION_FAILED', 'x', [{ path: 'id', message: 'Invalid uuid' }]),
+        'SPECIES_NOT_FOUND',
+        sentence,
+      ),
+    ).toBe(sentence);
+    expect(
+      detailErrorMessage(
+        new ApiError(403, 'PERMISSION_DENIED', 'x'),
+        'SPECIES_NOT_FOUND',
+        sentence,
+      ),
+    ).toBe('You do not have permission to do this.');
+    expect(
+      detailErrorMessage(new ApiError(404, 'RECORD_NOT_FOUND', 'x'), 'SPECIES_NOT_FOUND', sentence),
+    ).toBe(GENERIC_MESSAGE);
+    expect(detailErrorMessage(new Error('boom'), 'SPECIES_NOT_FOUND', sentence)).toBe(
+      GENERIC_MESSAGE,
+    );
   });
 });
