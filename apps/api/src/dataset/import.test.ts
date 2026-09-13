@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   IMPORT_COLUMNS,
   ImportRefusedError,
+  isHarmonisableNumber,
   NUMBER_PATTERN,
   parseCsvLine,
   validateHeader,
@@ -36,11 +37,30 @@ describe('RFC-64 R2 header validation', () => {
   });
 });
 
-describe('RFC-64 R6 number pattern', () => {
-  it('matches integers, decimals, signs and exponents; not text, commas or blanks', () => {
-    for (const ok of ['0', '12', '12.5', '-.5', '+3.', '1e2', '2.5E-3'])
+describe('RFC-64 R6 number rule', () => {
+  it('pattern: integers, decimals, signs, exponents of 1–3 digits; not text, commas, blanks or longer exponents', () => {
+    for (const ok of ['0', '12', '12.5', '-.5', '+3.', '1e2', '2.5E-3', '1e307', '1e999'])
       expect(NUMBER_PATTERN.test(ok), ok).toBe(true);
-    for (const bad of ['', ' 1', '1,5', 'Aug', '<10mm', '1/2', 'NaN', '1e', '.'])
+    for (const bad of [
+      '',
+      ' 1',
+      '1,5',
+      'Aug',
+      '<10mm',
+      '1/2',
+      'NaN',
+      '1e',
+      '.',
+      '1e2000',
+      '1e200000',
+    ])
       expect(NUMBER_PATTERN.test(bad), bad).toBe(false);
+  });
+
+  it('isHarmonisableNumber adds the 64-character cap and the magnitude bound', () => {
+    for (const ok of ['0', '-0', '1e99', '1e307', '.5', '+3', '9'.repeat(64)])
+      expect(isHarmonisableNumber(ok), ok).toBe(true);
+    for (const bad of ['1e308', '1e400', '1e999', '-1e308', '1'.repeat(65), '1e200000', 'Aug'])
+      expect(isHarmonisableNumber(bad), bad).toBe(false);
   });
 });

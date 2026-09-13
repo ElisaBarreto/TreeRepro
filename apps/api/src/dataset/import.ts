@@ -46,12 +46,26 @@ export const IMPORT_COLUMNS = [
   'harmonised_value',
 ] as const;
 
-/** A number as the importer accepts it; the SQL below uses the same expression. @rfc RFC-64 R6 */
-export const NUMBER_PATTERN = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+/** A number as the importer accepts it: at most three exponent digits (RFC-64 R6); the SQL below uses the same expression. @rfc RFC-64 R6 */
+export const NUMBER_PATTERN = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d{1,3})?$/;
+/** Longest text the number rule considers (RFC-64 R6). @rfc RFC-64 R6 */
+export const NUMBER_MAX_LENGTH = 64;
+/** Largest magnitude the summary's `double precision` arithmetic can hold (RFC-64 R6). */
+const NUMBER_MAX_MAGNITUDE = 1e308;
+
+/**
+ * The RFC-64 R6 number rule in TypeScript: length cap, pattern and magnitude
+ * bound. Manual entry (RFC-65 R1, R9) applies it to `String(number)`.
+ * @rfc RFC-64 R6
+ */
+export function isHarmonisableNumber(text: string): boolean {
+  if (text.length > NUMBER_MAX_LENGTH || !NUMBER_PATTERN.test(text)) return false;
+  return Math.abs(Number(text)) < NUMBER_MAX_MAGNITUDE;
+}
 
 /** How long a COPY may go without the writable accepting a new chunk before it's considered stuck; injectable via {@link ImportInput.copyIdleTimeoutMs} for tests. @rfc RFC-64 R9 */
 const DEFAULT_COPY_IDLE_TIMEOUT_MS = 60_000;
-const NUMBER_PATTERN_SQL = '^[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+)?$';
+const NUMBER_PATTERN_SQL = '^[+-]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]{1,3})?$';
 
 /**
  * Streams `source` into `destination`, aborting once `destination` has gone
@@ -522,8 +536,8 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
             nullif(trim(s.broad_category), '') as raw_category,
             pr.id as primary_reference_id, sr.id as secondary_reference_id,
             lv.id as level_id,
-            case when t.value_type = 'quantitative' and s.value ~ ${NUMBER_PATTERN_SQL}
-                 then s.value::numeric end as numeric_value
+            case when t.value_type = 'quantitative' and length(s.value) <= ${NUMBER_MAX_LENGTH} and s.value ~ ${NUMBER_PATTERN_SQL}
+                 then (case when abs(s.value::numeric) < 1e308 then s.value::numeric end) end as numeric_value
           from import_staging s
           join species sp on sp.canonical_name = s.species_name
           join traits t on t.key = s.trait_key
