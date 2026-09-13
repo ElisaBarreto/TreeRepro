@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/client.ts';
-import { fieldErrors, GENERIC_MESSAGE, isValidationError } from './errors.ts';
+import { fieldErrors, GENERIC_MESSAGE, isValidationError, pageErrorMessage } from './errors.ts';
 
 describe('RFC-13 R6 field errors', () => {
   it('maps VALIDATION_FAILED and AUTH_PASSWORD_WEAK details by path, an empty path to form', () => {
@@ -25,5 +25,15 @@ describe('RFC-13 R6 field errors', () => {
     expect(fieldErrors(new Error('boom'))).toEqual({});
     expect(isValidationError(new Error('boom'))).toBe(false);
     expect(GENERIC_MESSAGE).toBe('Something went wrong. Try again.');
+  });
+});
+
+describe('RFC-13 R4 pageErrorMessage', () => {
+  it('names the permission problem on a 403 and stays generic otherwise', () => {
+    expect(pageErrorMessage(new ApiError(403, 'PERMISSION_DENIED', 'x'))).toBe(
+      'You do not have permission to do this.',
+    );
+    expect(pageErrorMessage(new ApiError(500, 'INTERNAL_ERROR', 'x'))).toBe(GENERIC_MESSAGE);
+    expect(pageErrorMessage(new Error('boom'))).toBe(GENERIC_MESSAGE);
   });
 });

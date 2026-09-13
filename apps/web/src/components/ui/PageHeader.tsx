@@ -6,8 +6,9 @@ export function PageHeader({
   description,
   actions,
 }: {
-  title: string;
-  description?: string;
+  /** Usually a string; inline markup (an italic species name, a badge) is allowed. */
+  title: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
 }) {
   return (

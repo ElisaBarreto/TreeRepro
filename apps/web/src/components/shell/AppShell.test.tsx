@@ -58,4 +58,30 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
   });
+
+  it('shows Species, Traits and References with dataset.read and Imports with imports.read', () => {
+    const { unmount } = renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    for (const name of ['Species', 'Traits', 'References', 'Imports']) {
+      expect(screen.queryByRole('link', { name })).not.toBeInTheDocument();
+    }
+    unmount();
+
+    const reader = renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read'] },
+    });
+    expect(screen.getByRole('link', { name: 'Species' })).toHaveAttribute('href', '/app/species');
+    expect(screen.getByRole('link', { name: 'Traits' })).toHaveAttribute('href', '/app/traits');
+    expect(screen.getByRole('link', { name: 'References' })).toHaveAttribute(
+      'href',
+      '/app/references',
+    );
+    expect(screen.queryByRole('link', { name: 'Imports' })).not.toBeInTheDocument();
+    reader.unmount();
+
+    renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['imports.read'] },
+    });
+    expect(screen.getByRole('link', { name: 'Imports' })).toHaveAttribute('href', '/app/imports');
+    expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
+  });
 });

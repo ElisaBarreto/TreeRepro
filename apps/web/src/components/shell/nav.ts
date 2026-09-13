@@ -20,4 +20,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app/admin/users', label: 'Users', permission: 'users.read', section: 'admin' },
   { to: '/app/admin/roles', label: 'Roles', permission: 'roles.read', section: 'admin' },
   { to: '/app/admin/audit', label: 'Audit', permission: 'audit.read', section: 'admin' },
+  { to: '/app/species', label: 'Species', permission: 'dataset.read' },
+  { to: '/app/traits', label: 'Traits', permission: 'dataset.read' },
+  { to: '/app/references', label: 'References', permission: 'dataset.read' },
+  { to: '/app/imports', label: 'Imports', permission: 'imports.read' },
 ];
