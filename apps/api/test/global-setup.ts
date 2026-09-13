@@ -36,6 +36,7 @@ declare module 'vitest' {
 const REDIS_PASSWORD = 'test-redis-password';
 const APP_PASSWORD = 'test-app-password';
 const MIGRATOR_PASSWORD = 'test-migrator-password';
+const BACKUP_PASSWORD = 'test-backup-password';
 
 // The production init script (infra/postgres/init/01-roles.sh) runs inside the
 // test container, so the roles and grants under test are exactly the ones a
@@ -61,6 +62,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
       .withCopyContentToContainer([
         { content: APP_PASSWORD, target: '/run/secrets/db_app_password', mode: 0o444 },
         { content: MIGRATOR_PASSWORD, target: '/run/secrets/db_migrator_password', mode: 0o444 },
+        { content: BACKUP_PASSWORD, target: '/run/secrets/db_backup_password', mode: 0o444 },
       ])
       .start(),
     new RedisContainer(REDIS_IMAGE).withPassword(REDIS_PASSWORD).start(),
