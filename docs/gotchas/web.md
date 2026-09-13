@@ -48,3 +48,7 @@
 **Symptom:** `Not implemented: Window's scrollTo() method` during router navigation tests.
 **Cause:** TanStack Router's scroll restoration calls it on every navigation.
 **Fix:** `window.scrollTo = () => {};` in `apps/web/src/test/setup.ts`.
+
+## A suggestion list is `<div role="listbox">` of `<button role="option">`
+**Symptom:** Biome rejects `<ul role="listbox">` / `<li role="option">` (`noNoninteractiveElementToInteractiveRole`, `useFocusableInteractive`); with a `<button>` nested inside the `<li>`, `userEvent.click(getByRole('option'))` does nothing — the click lands on the `li`, not the button, and assistive technology behaves the same way because an option's children are presentational.
+**Fix:** The element that carries `role="option"` must be the focusable, clickable one: render `<div role="listbox">` with `<button type="button" role="option" aria-selected>` as its direct children (`SpeciesSearchForm.tsx`). No `ul`/`li` in between.

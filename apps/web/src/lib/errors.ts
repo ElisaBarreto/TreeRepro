@@ -21,3 +21,15 @@ export function fieldErrors(error: unknown): Record<string, string> {
   for (const detail of error.details ?? []) out[detail.path || 'form'] = detail.message;
   return out;
 }
+
+/**
+ * The sentence a page shows for an API failure it has no mapping of its own
+ * for: a 403 is the permission sentence, anything else the generic one.
+ * @rfc RFC-13 R4, R6
+ */
+export function pageErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 403) {
+    return 'You do not have permission to do this.';
+  }
+  return GENERIC_MESSAGE;
+}

@@ -1,0 +1,52 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import type { Page } from '../api/dataset.ts';
+import { useCursorList } from './use-cursor-list.ts';
+
+function wrapper({ children }: { children: ReactNode }) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
+describe('RFC-11 R6 useCursorList', () => {
+  it('flattens pages, loads the next one with its cursor and stops when there is none', async () => {
+    const fetchPage = vi.fn<(cursor: string | undefined) => Promise<Page<{ id: string }>>>();
+    fetchPage
+      .mockResolvedValueOnce({ data: [{ id: 'a' }, { id: 'b' }], meta: { nextCursor: 'c1' } })
+      .mockResolvedValueOnce({ data: [{ id: 'c' }], meta: { nextCursor: null } });
+
+    const { result } = renderHook(() => useCursorList(['things'], fetchPage), { wrapper });
+    expect(result.current.isLoading).toBe(true);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.items).toEqual([{ id: 'a' }, { id: 'b' }]);
+    expect(result.current.hasMore).toBe(true);
+    expect(fetchPage).toHaveBeenLastCalledWith(undefined);
+
+    act(() => {
+      void result.current.loadMore();
+    });
+    // The observer notifies React in a later batch, hence waitFor.
+    await waitFor(() =>
+      expect(result.current.items).toEqual([{ id: 'a' }, { id: 'b' }, { id: 'c' }]),
+    );
+    expect(fetchPage).toHaveBeenLastCalledWith('c1');
+    expect(result.current.hasMore).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('does not fetch while disabled and exposes the error of a failed page', async () => {
+    const fetchPage = vi.fn<(cursor: string | undefined) => Promise<Page<{ id: string }>>>();
+    const disabled = renderHook(() => useCursorList(['things'], fetchPage, { enabled: false }), {
+      wrapper,
+    });
+    expect(disabled.result.current.items).toEqual([]);
+    expect(fetchPage).not.toHaveBeenCalled();
+
+    fetchPage.mockRejectedValueOnce(new Error('boom'));
+    const failed = renderHook(() => useCursorList(['things'], fetchPage), { wrapper });
+    await waitFor(() => expect(failed.result.current.error).toBeInstanceOf(Error));
+    expect(failed.result.current.items).toEqual([]);
+  });
+});
