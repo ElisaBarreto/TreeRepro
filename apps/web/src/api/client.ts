@@ -61,16 +61,14 @@ export async function apiFetch<T = unknown>(
   if (response.ok) return (await response.json()) as T;
 
   const body: unknown = await response.json().catch(() => null);
-  // Dynamic: `errorEnvelopeSchema` (z.strictObject) constructs its parser —
-  // and trips zod's JIT-fast-path probe (RFC-13 R5) — the moment this module
-  // is evaluated. A static import here sits in main.tsx's synchronous module
-  // graph, ahead of lib/zod-jitless.ts's config (ES modules evaluate every
-  // import before the importing module's own code runs, regardless of where
-  // in that code a config call is placed), so it must stay lazy: importing
-  // it only here, on an actual API error, keeps it well behind app startup.
-  // Guarded: apiFetch's contract is that every failure surfaces as ApiError
-  // (isSessionLoss, session.ts, only recognizes ApiError), so a failed
-  // chunk load must not reject with a raw module error.
+  // Dynamic: the entry chunk statically imports @treerepro/contracts, which
+  // imports zod internals back from the entry (a chunk cycle), so the
+  // contracts chunk — every schema — evaluates before the entry's own
+  // modules, lib/zod-jitless.ts included; a static import here would trip
+  // zod's JIT probe (RFC-13 R5) before the config runs. Guarded: apiFetch's
+  // contract is that every failure surfaces as ApiError (isSessionLoss,
+  // session.ts, only recognizes ApiError), so a failed chunk load must not
+  // reject with a raw module error.
   let parsedError: { code: string; message: string; details?: ErrorDetail[] } | undefined;
   try {
     const { errorEnvelopeSchema } = await import('@treerepro/contracts');
