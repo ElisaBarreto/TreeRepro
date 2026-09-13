@@ -207,6 +207,8 @@ export const recordDetailSchema = recordSchema.extend({
   importRowNo: z.number().int().nullable(),
   annotations: z.array(annotationSchema),
   acceptedHistory: z.array(acceptedDecisionSchema),
+  supersedes: z.strictObject({ id: z.uuid() }).nullable(),
+  supersededBy: z.array(z.strictObject({ id: z.uuid() })),
 });
 
 /** @rfc RFC-63 R9 */

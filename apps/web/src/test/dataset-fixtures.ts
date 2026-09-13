@@ -180,6 +180,8 @@ export const RECORD_DETAIL: RecordDetail = {
   importRowNo: 4821,
   annotations: [],
   acceptedHistory: [],
+  supersedes: null,
+  supersededBy: [],
 };
 
 /** The detail of PENDING_RECORD: manual, annotated and accepted once. @rfc RFC-63 R8 */
@@ -212,6 +214,8 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
       createdAt: '2026-09-04T12:00:00.000Z',
     },
   ],
+  supersedes: null,
+  supersededBy: [],
 };
 
 /**

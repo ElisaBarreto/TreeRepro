@@ -43,7 +43,7 @@ const itemColumns = {
   authorName: author.name,
 };
 
-type ItemRow = {
+export type ItemRow = {
   record: typeof traitRecords.$inferSelect;
   speciesName: string;
   traitKey: string;
@@ -56,7 +56,8 @@ type ItemRow = {
   review: ReviewStatus;
 };
 
-function toItem(r: ItemRow): RecordItem {
+/** @rfc RFC-63 R8 */
+export function toItem(r: ItemRow): RecordItem {
   const rec = r.record;
   return {
     id: rec.id,
@@ -82,7 +83,8 @@ function toItem(r: ItemRow): RecordItem {
   };
 }
 
-function itemQuery(db: DbExecutor) {
+/** The joined select behind every record item; the queues reuse it. @rfc RFC-63 R8 */
+export function itemQuery(db: DbExecutor) {
   return db
     .select({ ...itemColumns, review: reviewStatusSql(traitRecords.id).as('review') })
     .from(traitRecords)
@@ -143,7 +145,7 @@ export async function getRecord(db: DbExecutor, id: string): Promise<RecordDetai
   const [row] = await itemQuery(db).where(eq(traitRecords.id, id)).limit(1);
   if (!row) return null;
   const rec = row.record;
-  const [batch, annotations, history] = await Promise.all([
+  const [batch, annotations, history, supersededBy] = await Promise.all([
     rec.importBatchId
       ? db
           .select({
@@ -184,6 +186,11 @@ export async function getRecord(db: DbExecutor, id: string): Promise<RecordDetai
         and(eq(acceptedValues.speciesId, rec.speciesId), eq(acceptedValues.traitId, rec.traitId)),
       )
       .orderBy(desc(acceptedValues.id)),
+    db
+      .select({ id: traitRecords.id })
+      .from(traitRecords)
+      .where(eq(traitRecords.supersedesRecordId, id))
+      .orderBy(desc(traitRecords.id)),
   ]);
   const b = batch[0];
   return {
@@ -213,5 +220,7 @@ export async function getRecord(db: DbExecutor, id: string): Promise<RecordDetai
       note: h.note,
       createdAt: h.createdAt.toISOString(),
     })),
+    supersedes: rec.supersedesRecordId ? { id: rec.supersedesRecordId } : null,
+    supersededBy: supersededBy.map((r) => ({ id: r.id })),
   };
 }
