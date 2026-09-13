@@ -14,6 +14,14 @@ const OPTIONS: ComboboxOption[] = [
 const filterOptions = async (term: string) =>
   OPTIONS.filter((o) => o.label.toLowerCase().includes(term.toLowerCase()));
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
 // `Field` clones its direct child, so the hint case renders the Combobox
 // straight inside it, the way the dialogs do.
 function Harness({
@@ -148,6 +156,27 @@ describe('RFC-13 R5 Combobox', () => {
       expect(screen.queryByRole('option', { name: /^Create/ })).not.toBeInTheDocument(),
     );
     expect(list).toHaveTextContent('Alvarez 2020');
+  });
+
+  it("offers to create the term only once its own results are in, not on the previous term's", async () => {
+    const pending = deferred<ComboboxOption[]>();
+    const search = vi.fn((term: string) =>
+      term === 'alz' ? pending.promise : filterOptions(term),
+    );
+    const onCreate = vi.fn(async (text: string) => ({ id: '9', label: text }));
+    renderWithProviders(<Harness onCreate={onCreate} search={search} />);
+    const input = screen.getByRole('combobox');
+    await userEvent.type(input, 'al');
+    const list = await screen.findByRole('listbox');
+    expect(list).toHaveTextContent('Alfaro 2023');
+    await userEvent.type(input, 'z');
+    await waitFor(() => expect(search).toHaveBeenCalledWith('alz'));
+    // The previous results stay on screen while "alz" loads, but no create
+    // option is derived from them.
+    expect(screen.getByRole('listbox')).toHaveTextContent('Alfaro 2023');
+    expect(screen.queryByRole('option', { name: /^Create/ })).not.toBeInTheDocument();
+    pending.resolve([]);
+    expect(await screen.findByRole('option', { name: 'Create "alz"' })).toBeInTheDocument();
   });
 
   it('clears a failed create once an option is chosen', async () => {

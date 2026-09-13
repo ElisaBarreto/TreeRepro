@@ -19,14 +19,52 @@ const SIZES: Record<NonNullable<DrawerProps['size']>, string> = {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+interface OpenDrawer {
+  root: HTMLElement;
+  /** Where focus returns once this drawer (or the last one standing) closes. */
+  opener: HTMLElement | null;
+}
+
+/**
+ * Every open drawer's portal root, in mount order: the last one is the
+ * active drawer. Shared by all instances so that one drawer closing — in
+ * whatever order — leaves exactly the topmost remaining drawer active and
+ * everything else `inert`.
+ */
+const openDrawers: OpenDrawer[] = [];
+/** Body children this module set `inert` on; only those are ever unmarked. */
+const marked = new WeakSet<Element>();
+
+/** Topmost open drawer active, every other child of `body` inert. */
+function recompute() {
+  const top = openDrawers[openDrawers.length - 1]?.root;
+  for (const child of Array.from(document.body.children)) {
+    if (child === top) {
+      if (marked.delete(child)) child.removeAttribute('inert');
+    } else if (!child.hasAttribute('inert')) {
+      child.setAttribute('inert', '');
+      marked.add(child);
+    }
+  }
+}
+
+function clearMarks() {
+  for (const child of Array.from(document.body.children)) {
+    if (marked.delete(child)) child.removeAttribute('inert');
+  }
+}
+
 /**
  * Right-side panel over a dimmed backdrop, rendered through a portal at the
  * end of `document.body` so it can make the rest of the document `inert`
- * while open (RFC-13 R10): every other child of `body` gets the attribute on
- * open and loses it on close (those that already had it keep it). Focus
- * moves to the Close button on open and returns to the opener on close; Tab
- * and Shift+Tab cycle among the panel's focusable elements; Escape and a
- * backdrop click close it. Renders nothing while closed.
+ * while open (RFC-13 R10). The open drawers are kept in a module-level
+ * stack: the topmost is the only active child of `body`, every other child
+ * is `inert` (those that already had the attribute keep it), whichever
+ * drawer opens or closes and in whatever order. Focus moves to the Close
+ * button on open; on close it goes to the Close button of the drawer left
+ * on top, or back to the opener once no drawer remains. Tab and Shift+Tab
+ * cycle among the panel's focusable elements; Escape and a backdrop click
+ * close it. Renders nothing while closed.
  * @rfc RFC-13 R5, R7, R10
  */
 export function Drawer({ open, title, onClose, size = 'md', children }: DrawerProps) {
@@ -36,24 +74,34 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
   const titleId = useId();
 
   useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const made: Element[] = [];
-    for (const sibling of Array.from(document.body.children)) {
-      if (sibling === rootRef.current || sibling.hasAttribute('inert')) continue;
-      sibling.setAttribute('inert', '');
-      made.push(sibling);
-    }
-    // Two drawers can mount in the same commit: both portal roots already sit
-    // in document.body.children before either effect runs, so each one's
-    // sibling scan can mark the other inert. The later-mounted drawer's
-    // effect runs last, so clearing its own root here — after the scan —
-    // leaves it the active one and keeps the earlier drawer inert beneath it.
-    rootRef.current?.removeAttribute('inert');
+    const root = rootRef.current;
+    if (!open || !root) return;
+    const entry: OpenDrawer = {
+      root,
+      opener: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    };
+    // Two drawers mounting in the same commit push in effect order, so the
+    // later-mounted one ends up on top.
+    openDrawers.push(entry);
+    recompute();
     closeRef.current?.focus();
     return () => {
-      for (const sibling of made) sibling.removeAttribute('inert');
-      if (previous?.isConnected) previous.focus();
+      const index = openDrawers.indexOf(entry);
+      if (index !== -1) openDrawers.splice(index, 1);
+      const remaining = openDrawers[openDrawers.length - 1];
+      if (!remaining) {
+        clearMarks();
+        if (entry.opener?.isConnected) entry.opener.focus();
+        return;
+      }
+      // A drawer opened from inside this one captured a focus target that
+      // leaves the document with this root; hand it this drawer's own, so
+      // the last drawer to close still returns focus to the page.
+      for (const other of openDrawers) {
+        if (!other.opener?.isConnected || root.contains(other.opener)) other.opener = entry.opener;
+      }
+      recompute();
+      remaining.root.querySelector<HTMLElement>('[aria-label="Close"]')?.focus();
     };
   }, [open]);
 

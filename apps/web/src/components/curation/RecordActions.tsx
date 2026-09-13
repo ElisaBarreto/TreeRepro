@@ -67,7 +67,12 @@ export function RecordActions({ record }: { record: RecordDetail }) {
     mutationFn: (body: AnnotateRecordBody) => annotateRecord(record.id, body),
     onSuccess: async (detail) => {
       queryClient.setQueryData(datasetKeys.record(record.id), detail);
-      openMode(null);
+      // Only the form state here — not `openMode(null)`: resetting a mutation
+      // from inside its own onSuccess flips isPending before the invalidation
+      // below settles, and would detach an in-flight accept.
+      setMode(null);
+      setNote('');
+      setNoteError(null);
       await invalidateAfterRecordWrite(queryClient, record.speciesId);
     },
   });

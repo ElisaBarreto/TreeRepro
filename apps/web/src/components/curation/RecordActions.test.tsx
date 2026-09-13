@@ -71,6 +71,8 @@ describe('RFC-65 R3–R6 RecordActions', () => {
         note: 'Table 2 says otherwise',
       }),
     );
+    // The note form closes on success.
+    await waitFor(() => expect(note).not.toBeInTheDocument());
     await userEvent.click(screen.getByRole('button', { name: 'Neutral' }));
     await waitFor(() =>
       expect(curation.annotateRecord).toHaveBeenLastCalledWith(MINE.id, { kind: 'neutral' }),

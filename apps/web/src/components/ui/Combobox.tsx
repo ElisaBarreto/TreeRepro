@@ -40,7 +40,8 @@ export interface ComboboxProps {
  * open: otherwise Escape reaches the enclosing dialog or drawer, and Enter
  * submits the form as usual. A chosen value replaces the input with a badge and
  * a Clear button, as the genus filter of the species search does. When the
- * caller passes `onCreate` and the term matches no option exactly, a last
+ * caller passes `onCreate` and the term's own results (not the previous
+ * term's, kept on screen while they load) match it exactly nowhere, a last
  * option offers to create it. The search runs on the debounced term once it
  * reaches `minChars`.
  * @rfc RFC-13 R5, R6
@@ -75,9 +76,14 @@ export function Combobox({
     enabled: active,
     placeholderData: keepPreviousData,
   });
+  // `options` keeps the previous term's list on screen while the next term
+  // loads (placeholder data); the create option and the exact-match check
+  // wait for the current term's own results, so the offer never comes from
+  // a list that is not this term's.
   const options = active ? suggestions.data : undefined;
-  const exact = options?.some((o) => o.label.toLowerCase() === term.toLowerCase()) ?? false;
-  const showCreate = onCreate !== undefined && active && options !== undefined && !exact;
+  const settled = suggestions.isPlaceholderData ? undefined : options;
+  const exact = settled?.some((o) => o.label.toLowerCase() === term.toLowerCase()) ?? false;
+  const showCreate = onCreate !== undefined && settled !== undefined && !exact;
   // The listbox itself only renders when there is something to show; drive
   // aria-expanded/aria-controls off this instead of `options !== undefined`
   // so they never point at an id that is not in the DOM (e.g. the empty

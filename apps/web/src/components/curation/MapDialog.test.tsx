@@ -87,6 +87,27 @@ describe('RFC-65 R9 MapDialog', () => {
     expect(message.previousElementSibling).toHaveTextContent(/sexual system · 2 records/);
   });
 
+  it('shows the schema message under the number field for an out-of-range number and does not send it', async () => {
+    renderWithProviders(
+      <MapDialog
+        trait={SEED_MASS}
+        levels={[]}
+        group={{ ...GROUP, valueText: 'huge', harmonisation: 'not_numeric' }}
+        onClose={() => undefined}
+        onMapped={() => undefined}
+      />,
+      { me },
+    );
+    const dialog = await screen.findByRole('dialog');
+    const number = within(dialog).getByRole('spinbutton', { name: /number/i });
+    await userEvent.type(number, '1.5e308');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Map records' }));
+    expect(within(dialog).getByText('Number is out of range')).toBeInTheDocument();
+    expect(number).toHaveAccessibleDescription('Number is out of range');
+    expect(within(dialog).queryByText('Enter a number.')).not.toBeInTheDocument();
+    expect(curation.mapPending).not.toHaveBeenCalled();
+  });
+
   it('maps a quantitative group to a number and shows API errors', async () => {
     curation.mapPending.mockRejectedValueOnce(
       new ApiError(400, 'VALIDATION_FAILED', 'x', [

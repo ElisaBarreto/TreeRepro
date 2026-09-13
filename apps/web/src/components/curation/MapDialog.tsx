@@ -66,30 +66,40 @@ export function MapDialog({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // The empty cases get a fixed sentence; anything else the schema rejects
+    // (a number out of range, a note too long) shows the schema's own
+    // message under its field, as AddValueDialog does.
+    const empty = trait.valueType === 'categorical' ? chosen.length === 0 : numeric === '';
+    if (empty) {
+      map.reset();
+      setLocal({
+        value: trait.valueType === 'categorical' ? 'Choose at least one level.' : 'Enter a number.',
+      });
+      return;
+    }
     const candidate = {
       traitId: trait.id,
       valueText: group.valueText,
       value:
-        trait.valueType === 'categorical'
-          ? { levelIds: chosen }
-          : { numeric: numeric === '' ? Number.NaN : Number(numeric) },
+        trait.valueType === 'categorical' ? { levelIds: chosen } : { numeric: Number(numeric) },
       note: note.trim() || undefined,
     };
     const parsed = mapPendingBodySchema.safeParse(candidate);
     if (!parsed.success) {
       map.reset();
-      setLocal(
-        trait.valueType === 'categorical'
-          ? { value: 'Choose at least one level.' }
-          : { value: 'Enter a number.' },
-      );
+      const next: Record<string, string> = {};
+      for (const issue of parsed.error.issues) next[issue.path.join('.')] = issue.message;
+      setLocal(next);
       return;
     }
     setLocal({});
     map.mutate(parsed.data);
   }
 
-  const valueError = errors['value.levelId'] ?? errors['value.numeric'] ?? errors.value;
+  // `value.levelId` is the API's path (it resolves the levels one by one);
+  // `value.levelIds` the shared schema's (the array as a whole).
+  const valueError =
+    errors['value.levelId'] ?? errors['value.levelIds'] ?? errors['value.numeric'] ?? errors.value;
   return (
     <Dialog open title={`Map "${group.valueText}"`} onClose={onClose} closeDisabled={map.isPending}>
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>

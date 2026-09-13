@@ -226,4 +226,34 @@ describe('RFC-13 R10 Drawer is modal', () => {
     );
     expect(screen.getByRole('dialog', { name: 'Outer' }).closest('[inert]')).toBeNull();
   });
+
+  it('closing the outer drawer first keeps the inner modal', () => {
+    const page = (outer: boolean, inner: boolean) => (
+      <>
+        <button type="button">Open</button>
+        <Drawer open={outer} title="Outer" onClose={() => undefined}>
+          <p>Outer body</p>
+        </Drawer>
+        <Drawer open={inner} title="Inner" onClose={() => undefined}>
+          <p>Inner body</p>
+        </Drawer>
+      </>
+    );
+    const { rerender } = render(page(false, false));
+    const opener = screen.getByRole('button', { name: 'Open' });
+    opener.focus();
+    rerender(page(true, true));
+    expect(opener.closest('[inert]')).not.toBeNull();
+    // The outer closes on its own (the page dropped it) while the inner is
+    // still open: the inner must stay the modal one.
+    rerender(page(false, true));
+    expect(screen.queryByRole('dialog', { name: 'Outer' })).not.toBeInTheDocument();
+    const inner = screen.getByRole('dialog', { name: 'Inner' });
+    expect(inner.closest('[inert]')).toBeNull();
+    expect(opener.closest('[inert]')).not.toBeNull();
+    expect(within(inner).getByRole('button', { name: 'Close' })).toHaveFocus();
+    rerender(page(false, false));
+    expect(document.querySelector('[inert]')).toBeNull();
+    expect(opener).toHaveFocus();
+  });
 });
