@@ -52,7 +52,7 @@ describe('RFC-13 R5 UI kit renders with classes only', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Saved');
   });
 
-  it('Dialog opens as a modal and closes through its button and Escape', async () => {
+  it('Dialog opens as a modal and closes through its button', async () => {
     const onClose = vi.fn();
     render(
       <Dialog open title="Confirm" onClose={onClose}>

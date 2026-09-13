@@ -1,4 +1,11 @@
-import { type QueryClient, queryOptions, useQuery } from '@tanstack/react-query';
+import {
+  type DefaultOptions,
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  queryOptions,
+  useQuery,
+} from '@tanstack/react-query';
 import type { MeResponse, PermissionKey } from '@treerepro/contracts';
 import { fetchMe } from '../api/auth.ts';
 import { ApiError } from '../api/client.ts';
@@ -44,6 +51,41 @@ export function hasPermission(me: Pick<MeResponse, 'permissions'>, key: Permissi
  */
 export function isSessionLoss(error: unknown): boolean {
   return error instanceof ApiError && error.status === 401 && error.code === 'AUTH_UNAUTHENTICATED';
+}
+
+type QueryDefaults = NonNullable<DefaultOptions['queries']>;
+
+/**
+ * The client the app runs on. Query and mutation failures reach one session
+ * handler that is bound later — the handler needs the router and the router
+ * needs the client — through `setSessionErrorHandler`. Queries retry twice,
+ * except when the API answered below 500: a 4xx is final, retrying it only
+ * delays the message. Tests pass `{ retry: false }` to fail fast.
+ * @rfc RFC-13 R4
+ */
+export function createAppQueryClient(overrides: Pick<QueryDefaults, 'retry'> = {}): {
+  queryClient: QueryClient;
+  setSessionErrorHandler: (handler: (error: unknown) => void) => void;
+} {
+  let onSessionError: (error: unknown) => void = () => {};
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry:
+          overrides.retry ??
+          ((failureCount, error) =>
+            !(error instanceof ApiError && error.status < 500) && failureCount < 2),
+      },
+    },
+    queryCache: new QueryCache({ onError: (error) => onSessionError(error) }),
+    mutationCache: new MutationCache({ onError: (error) => onSessionError(error) }),
+  });
+  return {
+    queryClient,
+    setSessionErrorHandler: (handler) => {
+      onSessionError = handler;
+    },
+  };
 }
 
 /**

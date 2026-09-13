@@ -48,8 +48,11 @@ describe('RFC-22 R11 SessionsSection', () => {
     expect(screen.getByText('This device')).toBeInTheDocument();
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows).toHaveLength(2);
-    const buttons = screen.getAllByRole('button', { name: 'Sign out' });
-    expect(buttons).toHaveLength(1);
+    // Row buttons are named after their device; "Sign out everywhere" keeps its exact name.
+    const buttons = screen.getAllByRole('button', { name: /^Sign out (?!everywhere$).+/ });
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Sign out Safari on iPhone']);
+    expect(buttons[0]).toHaveTextContent('Sign out');
+    expect(screen.getByRole('button', { name: 'Sign out everywhere' })).toBeInTheDocument();
     await userEvent.click(buttons[0] as HTMLElement);
     await waitFor(() => expect(me.revokeSession).toHaveBeenCalledWith('b'.repeat(64)));
     await waitFor(() => expect(screen.queryByText('Safari on iPhone')).not.toBeInTheDocument());

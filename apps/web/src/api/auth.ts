@@ -58,7 +58,7 @@ export async function logout(): Promise<void> {
 /** @rfc RFC-20 R6 */
 export async function acceptInvite(token: string, password: string): Promise<AuthUser> {
   const body: InviteAcceptBody = { token, password };
-  const { data } = await apiFetch<DataEnvelope<{ status: 'ok'; user: AuthUser }>>(
+  const { data } = await apiFetch<DataEnvelope<Extract<LoginResponse, { status: 'ok' }>>>(
     '/auth/invite/accept',
     { method: 'POST', json: body },
   );

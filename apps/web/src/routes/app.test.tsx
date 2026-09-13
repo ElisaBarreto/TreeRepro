@@ -10,12 +10,25 @@ const auth = vi.hoisted(() => ({
   loginTotp: vi.fn(),
   fetchMe: vi.fn(),
   logout: vi.fn(),
+  logoutAll: vi.fn(),
+  changePassword: vi.fn(),
+  totpSetup: vi.fn(),
+  totpConfirm: vi.fn(),
+  totpDisable: vi.fn(),
+}));
+const me = vi.hoisted(() => ({
+  updateName: vi.fn(),
+  listSessions: vi.fn(),
+  revokeSession: vi.fn(),
 }));
 vi.mock('../api/auth.ts', () => auth);
+vi.mock('../api/me.ts', () => me);
+vi.mock('qrcode', () => ({ toCanvas: vi.fn().mockResolvedValue(undefined) }));
 
 beforeEach(() => {
   auth.fetchMe.mockReset();
   auth.logout.mockReset();
+  me.listSessions.mockReset();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
 
@@ -47,6 +60,19 @@ describe('RFC-13 R2 session guard', () => {
     await waitFor(() => expect(queryClient.getQueryData(['auth', 'me'])).toBeUndefined());
     expect(queryClient.getQueryData(['me', 'sessions'])).toBeUndefined();
     expect(auth.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('RFC-13 R4, R8 a 401 from a call made on /app/settings returns to / and forgets the session', async () => {
+    auth.fetchMe
+      .mockResolvedValueOnce(ME)
+      .mockRejectedValue(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    me.listSessions.mockRejectedValue(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    const { router, queryClient } = renderAt('/app/settings');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    await waitFor(() => expect(queryClient.getQueryData(['auth', 'me'])).toBeUndefined());
+    expect(queryClient.getQueryData(['me', 'sessions'])).toBeUndefined();
+    expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
+    expect(me.listSessions).toHaveBeenCalledTimes(1);
   });
 
   it('RFC-13 R4 a failed sign out keeps the session and shows an alert', async () => {

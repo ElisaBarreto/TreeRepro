@@ -77,6 +77,7 @@ export function SessionsSection({
                   {s.current ? null : (
                     <Button
                       variant="secondary"
+                      aria-label={`Sign out ${s.userAgent}`}
                       pending={revoke.isPending && revoke.variables === s.id}
                       onClick={() => revoke.mutate(s.id)}
                     >
