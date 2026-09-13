@@ -73,7 +73,10 @@ export function decodeCompositeCursor(
   ) {
     throw invalidCursor();
   }
-  if (validators && !parsed.every((p, i) => validators[i]?.(p) ?? true)) {
+  if (
+    validators &&
+    (validators.length !== arity || !parsed.every((p, i) => validators[i]?.(p) === true))
+  ) {
     throw invalidCursor();
   }
   return parsed;

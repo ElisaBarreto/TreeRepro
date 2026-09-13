@@ -231,10 +231,17 @@ export const traitSummarySchema = z.strictObject({
   recordCount: z.number().int().nonnegative(),
   harmonisationCounts: harmonisationCountsSchema,
   levels: z
-    .array(z.strictObject({ levelId: z.uuid(), key: z.string(), count: z.number().int() }))
+    .array(
+      z.strictObject({ levelId: z.uuid(), key: z.string(), count: z.number().int().nonnegative() }),
+    )
     .nullable(),
   numeric: z
-    .strictObject({ min: z.number(), median: z.number(), max: z.number(), count: z.number().int() })
+    .strictObject({
+      min: z.number(),
+      median: z.number(),
+      max: z.number(),
+      count: z.number().int().nonnegative(),
+    })
     .nullable(),
   accepted: z
     .strictObject({ recordId: z.uuid(), valueText: z.string(), decidedAt: z.iso.datetime() })
@@ -253,7 +260,7 @@ export const speciesTraitsSchema = z.array(
 export const unknownLevelSchema = z.strictObject({
   trait: z.string(),
   value: z.string(),
-  count: z.number().int(),
+  count: z.number().int().nonnegative(),
 });
 
 /** @rfc RFC-64 R11 */
