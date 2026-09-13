@@ -97,6 +97,7 @@ async function pipelineWithIdleGuard(
     throw err;
   } finally {
     clearTimeout(timer);
+    watcher.off('data', arm);
   }
 }
 
@@ -552,7 +553,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
       await tx`
         update import_batches
         set status = 'completed',
-            finished_at = now(),
+            finished_at = clock_timestamp(),
             rows_total = ${total},
             rows_inserted = ${inserted.count},
             rows_duplicate = ${total - rejected.count - inserted.count},

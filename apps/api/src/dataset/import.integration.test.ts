@@ -48,6 +48,11 @@ describe('RFC-64 importRecords', () => {
     });
     expect(batch.fileSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(batch.finishedAt).not.toBeNull();
+    // clock_timestamp(), not now()/transaction_timestamp() — the real
+    // guarantee is the function choice; this is a cheap sanity check.
+    expect(new Date(batch.finishedAt as string).getTime()).toBeGreaterThanOrEqual(
+      new Date(batch.startedAt).getTime(),
+    );
     expect(batch.unknownLevels).toEqual(
       expect.arrayContaining([
         { trait: 'pollinator_group', value: 'bees', count: 1 },
