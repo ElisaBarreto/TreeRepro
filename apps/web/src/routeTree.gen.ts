@@ -20,6 +20,7 @@ import { Route as AppTraitsRouteImport } from './routes/app/traits'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as AppAdminAuditRouteImport } from './routes/app/admin/audit'
+import { Route as AppAdminRolesRouteImport } from './routes/app/admin/roles'
 import { Route as AppCurationDisputedRouteImport } from './routes/app/curation/disputed'
 import { Route as AppCurationPendingRouteImport } from './routes/app/curation/pending'
 import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
@@ -86,6 +87,11 @@ const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => AppAdminRoute,
 } as any)
+const AppAdminRolesRoute = AppAdminRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 const AppCurationDisputedRoute = AppCurationDisputedRouteImport.update({
   id: '/curation/disputed',
   path: '/curation/disputed',
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -170,6 +177,7 @@ export interface FileRoutesByTo {
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -194,6 +202,7 @@ export interface FileRoutesById {
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -219,6 +228,7 @@ export interface FileRouteTypes {
     | '/reset-password/$token'
     | '/app/'
     | '/app/admin/audit'
+    | '/app/admin/roles'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -240,6 +250,7 @@ export interface FileRouteTypes {
     | '/reset-password/$token'
     | '/app'
     | '/app/admin/audit'
+    | '/app/admin/roles'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -263,6 +274,7 @@ export interface FileRouteTypes {
     | '/reset-password/$token'
     | '/app/'
     | '/app/admin/audit'
+    | '/app/admin/roles'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -362,6 +374,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminAuditRouteImport
       parentRoute: typeof AppAdminRoute
     }
+    '/app/admin/roles': {
+      id: '/app/admin/roles'
+      path: '/roles'
+      fullPath: '/app/admin/roles'
+      preLoaderRoute: typeof AppAdminRolesRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
     '/app/curation/disputed': {
       id: '/app/curation/disputed'
       path: '/curation/disputed'
@@ -437,12 +456,14 @@ declare module '@tanstack/react-router' {
 
 interface AppAdminRouteChildren {
   AppAdminAuditRoute: typeof AppAdminAuditRoute
+  AppAdminRolesRoute: typeof AppAdminRolesRoute
   AppAdminUsersIdRoute: typeof AppAdminUsersIdRoute
   AppAdminUsersIndexRoute: typeof AppAdminUsersIndexRoute
 }
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
   AppAdminAuditRoute: AppAdminAuditRoute,
+  AppAdminRolesRoute: AppAdminRolesRoute,
   AppAdminUsersIdRoute: AppAdminUsersIdRoute,
   AppAdminUsersIndexRoute: AppAdminUsersIndexRoute,
 }
