@@ -1,19 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Species, TraitSummary } from '@treerepro/contracts';
 import { useState } from 'react';
-import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchSpecies, fetchSpeciesTraits } from '../../api/dataset.ts';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
 import { Alert, Badge, EmptyState, PageHeader } from '../../components/ui/index.ts';
-import { pageErrorMessage } from '../../lib/errors.ts';
+import { detailErrorMessage } from '../../lib/errors.ts';
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.code === 'SPECIES_NOT_FOUND') {
-    return 'This species does not exist.';
-  }
-  return pageErrorMessage(error);
+  return detailErrorMessage(error, 'SPECIES_NOT_FOUND', 'This species does not exist.');
 }
 
 // Family › Genus; a missing family (or both) reads as RFC-60 R3's term.

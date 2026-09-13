@@ -1,19 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type MeResponse, nameSchema } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
-import { ApiError } from '../../api/client.ts';
 import { updateName } from '../../api/me.ts';
-import { GENERIC_MESSAGE } from '../../lib/errors.ts';
+import { pageErrorMessage } from '../../lib/errors.ts';
 import { ME_QUERY_KEY, useMe } from '../../lib/session.ts';
 import { Alert, Button, Field, Input, Section } from '../ui/index.ts';
-
-/** @rfc RFC-13 R4, R6 */
-export function profileErrorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.code === 'PERMISSION_DENIED') {
-    return 'You do not have permission to do this.';
-  }
-  return GENERIC_MESSAGE;
-}
 
 /** @rfc RFC-50 R11 */
 export function ProfileSection() {
@@ -65,7 +56,7 @@ export function ProfileSection() {
           />
         </Field>
         {save.isSuccess ? <Alert tone="success">Name saved.</Alert> : null}
-        {save.isError ? <Alert tone="error">{profileErrorMessage(save.error)}</Alert> : null}
+        {save.isError ? <Alert tone="error">{pageErrorMessage(save.error)}</Alert> : null}
         <div>
           <Button type="submit" pending={save.isPending}>
             Save name

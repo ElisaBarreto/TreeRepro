@@ -183,6 +183,15 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
     expect(dataset.fetchImportRejects).not.toHaveBeenCalled();
   });
 
+  it('a rejected id (VALIDATION_FAILED) reads as not found', async () => {
+    dataset.fetchImport.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'x', [{ path: 'id', message: 'x' }]),
+    );
+    renderAt('/app/imports/not-a-uuid');
+    expect(await screen.findByRole('alert')).toHaveTextContent('This import does not exist.');
+    expect(dataset.fetchImportRejects).not.toHaveBeenCalled();
+  });
+
   it('RFC-13 R3 without imports.read the route shows NoPermission and calls nothing', async () => {
     auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read'] });
     renderAt(PATH);

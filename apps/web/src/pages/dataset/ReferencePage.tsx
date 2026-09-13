@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ReferenceDetail } from '@treerepro/contracts';
 import { type ReactNode, useState } from 'react';
-import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchRecords, fetchReference } from '../../api/dataset.ts';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { RecordTable } from '../../components/dataset/RecordTable.tsx';
 import { Alert, EmptyState, PageHeader } from '../../components/ui/index.ts';
-import { pageErrorMessage } from '../../lib/errors.ts';
+import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
@@ -15,10 +14,7 @@ const DASH = <span className="text-mist-500">—</span>;
 const LINK = 'font-medium text-canopy-900 underline-offset-2 hover:underline break-all';
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.code === 'REFERENCE_NOT_FOUND') {
-    return 'This reference does not exist.';
-  }
-  return pageErrorMessage(error);
+  return detailErrorMessage(error, 'REFERENCE_NOT_FOUND', 'This reference does not exist.');
 }
 
 // `1 record`, `2 records`, `1,237 records`.

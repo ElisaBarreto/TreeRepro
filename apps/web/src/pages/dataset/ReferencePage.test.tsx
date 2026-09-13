@@ -240,6 +240,15 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
 });
 
 describe('RFC-13 R4, R6 ReferencePage errors', () => {
+  it('a rejected id (VALIDATION_FAILED) reads as not found', async () => {
+    dataset.fetchReference.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'x', [{ path: 'id', message: 'x' }]),
+    );
+    renderAt('/app/references/not-a-uuid');
+    expect(await screen.findByRole('alert')).toHaveTextContent('This reference does not exist.');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('REFERENCE_NOT_FOUND renders the not-found alert and nothing else', async () => {
     dataset.fetchReference.mockRejectedValue(new ApiError(404, 'REFERENCE_NOT_FOUND', 'x'));
     renderAt(`/app/references/${REFERENCE.id}`);
