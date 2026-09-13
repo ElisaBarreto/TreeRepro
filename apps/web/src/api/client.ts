@@ -1,4 +1,4 @@
-import { type ErrorDetail, errorEnvelopeSchema } from '@treerepro/contracts';
+import type { ErrorDetail } from '@treerepro/contracts';
 
 /**
  * @rfc RFC-13 R1
@@ -61,6 +61,12 @@ export async function apiFetch<T = unknown>(
   if (response.ok) return (await response.json()) as T;
 
   const body: unknown = await response.json().catch(() => null);
+  // Dynamic: `errorEnvelopeSchema` (z.strictObject) is constructed the moment
+  // this module evaluates zod's JIT-fast-path probe (RFC-13 R5). A static
+  // import here would put that construction in the entry's synchronously
+  // evaluated module graph — before main.tsx's `z.config({ jitless: true })`
+  // has run — and trip the CSP even on a response that never errors.
+  const { errorEnvelopeSchema } = await import('@treerepro/contracts');
   const parsed = errorEnvelopeSchema.safeParse(body);
   if (parsed.success) {
     const { code, message, details } = parsed.data.error;
