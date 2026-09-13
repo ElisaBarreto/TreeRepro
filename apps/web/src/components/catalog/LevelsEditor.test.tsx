@@ -98,6 +98,17 @@ describe('RFC-62 R6 LevelsEditor', () => {
     ]);
   });
 
+  it('refetches the dictionary even when the second PATCH of a move fails', async () => {
+    catalog.updateLevel
+      .mockResolvedValueOnce(SEXUAL_SYSTEM_TRAIT)
+      .mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'boom'));
+    renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Move hermaphrodite down' }));
+    await waitFor(() => expect(catalog.updateLevel).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+    expect(catalog.invalidateAfterCatalogWrite).toHaveBeenCalledWith(expect.anything(), 'traits');
+  });
+
   it('sends a single patch with a shifted sortOrder when the neighbours tie', async () => {
     catalog.updateLevel.mockResolvedValue(SEXUAL_SYSTEM_TRAIT);
     const tied = {

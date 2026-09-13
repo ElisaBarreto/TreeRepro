@@ -154,7 +154,11 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
       await updateLevel(trait.id, level.id, { sortOrder: neighbour.sortOrder });
       await updateLevel(trait.id, neighbour.id, { sortOrder: level.sortOrder });
     },
-    onSuccess: () => invalidateAfterCatalogWrite(queryClient, 'traits'),
+    // A partial swap (the moved level's PATCH lands, the neighbour's fails)
+    // is still a write: onSettled refetches even on failure, so the tie it
+    // leaves behind (docs/gotchas/web.md) is visible in the list right away
+    // instead of waiting for an unrelated refetch.
+    onSettled: () => invalidateAfterCatalogWrite(queryClient, 'traits'),
   });
   const listError = toggle.isError ? toggle.error : move.isError ? move.error : undefined;
 
