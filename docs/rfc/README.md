@@ -10,7 +10,7 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | 30–39 | access control | `30-access/` |
 | 40–49 | data protection | `40-data-protection/` |
 | 50–59 | admin | `50-admin/` |
-| 60+ | business domains (assigned when features arrive) | |
+| 60–69 | dataset | `60-dataset/` |
 
 | RFC | Title | Status |
 |---|---|---|
@@ -34,3 +34,8 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-42 | Audit retention | accepted |
 | RFC-50 | User administration | accepted |
 | RFC-51 | Audit query | accepted |
+| RFC-60 | Taxonomy catalog | draft |
+| RFC-61 | Bibliographic references | draft |
+| RFC-62 | Trait dictionary | draft |
+| RFC-63 | Trait records and provenance | draft |
+| RFC-64 | Bulk import | draft |
