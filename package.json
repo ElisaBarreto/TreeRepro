@@ -16,7 +16,8 @@
     "build": "pnpm -r build",
     "rfc:check": "pnpm --filter @treerepro/rfc-lint check",
     "seed:admin": "pnpm --filter @treerepro/api seed:admin",
-    "seed:traits": "pnpm --filter @treerepro/api seed:traits"
+    "seed:traits": "pnpm --filter @treerepro/api seed:traits",
+    "import:records": "pnpm --filter @treerepro/api import:records"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
