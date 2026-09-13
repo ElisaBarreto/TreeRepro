@@ -76,3 +76,7 @@
 **Symptom:** A dialog's initial field values are stale or wrong after it is reopened for a different item.
 **Cause:** Toggling an `open` prop keeps the component instance (and its `useState`) alive across opens; when the initial value depends on what opened it (which trait, which pending group), the old state leaks into the new open.
 **Fix:** Mount and unmount the dialog instead of toggling `open` — render it only while a piece of state names what to open (`{addValueOpen ? <AddValueDialog ... /> : null}`), so every open is a fresh mount with fresh state (`AddValueDialog`, `MapDialog`).
+
+## An edit dialog sends a diff, and an unchanged form is not a request
+
+The catalog `PATCH` bodies are `nonEmpty` (400 `VALIDATION_FAILED` on `{}`) and a `PATCH` that changes nothing writes no audit row. Edit dialogs therefore compute the difference against the loaded entity — a changed field sends its value, an emptied optional field sends `null`, an untouched field is omitted — and close without a request when the difference is empty. Comparing trimmed strings against the stored value is what makes "typed a space and deleted it" a no-op.

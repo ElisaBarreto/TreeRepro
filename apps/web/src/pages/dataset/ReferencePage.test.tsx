@@ -29,13 +29,19 @@ const dataset = vi.hoisted(() => ({
   fetchRecords: vi.fn(),
   fetchRecord: vi.fn(),
 }));
+const catalog = vi.hoisted(() => ({ updateReference: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
+vi.mock('../../api/catalog.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
+  ...catalog,
+}));
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
 }));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
+const LIBRARIAN: MeResponse = { ...ME, permissions: ['dataset.read', 'references.manage'] };
 const SMITH = { id: REFERENCE.id, citationKey: REFERENCE.citationKey };
 // The records of this page name Smith2001 as primary or secondary source.
 const PRIMARY: RecordItem = { ...RECORD, primaryReference: SMITH, secondaryReference: null };
@@ -61,6 +67,7 @@ const page = (data: RecordItem[], nextCursor: string | null = null) => ({
 
 beforeEach(() => {
   auth.fetchMe.mockReset();
+  catalog.updateReference.mockReset();
   dataset.fetchReference.mockReset();
   dataset.fetchRecords.mockReset();
   dataset.fetchRecord.mockReset();
@@ -298,5 +305,24 @@ describe('RFC-13 R4, R6 ReferencePage errors', () => {
     );
     expect(definition('Title')).toHaveTextContent('Breeding systems of tropical trees');
     expect(screen.queryByText('No records cite this article yet.')).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-61 R6 ReferencePage editor', () => {
+  it('offers "Edit" to references.manage; a saved edit re-renders the detail', async () => {
+    auth.fetchMe.mockResolvedValue(LIBRARIAN);
+    dataset.fetchReference
+      .mockResolvedValueOnce(REFERENCE_DETAIL)
+      .mockResolvedValue({ ...REFERENCE_DETAIL, title: 'New title' });
+    catalog.updateReference.mockResolvedValue({ ...REFERENCE_DETAIL, title: 'New title' });
+    renderAt(`/app/references/${REFERENCE_DETAIL.id}`);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit reference' });
+    const title = within(dialog).getByRole('textbox', { name: /^title/i });
+    await userEvent.clear(title);
+    await userEvent.type(title, 'New title');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await screen.findByText('New title')).toBeInTheDocument();
   });
 });

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse, Reference } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { REFERENCE } from '../../test/dataset-fixtures.ts';
+import { REFERENCE, REFERENCE_DETAIL } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -18,14 +18,20 @@ const auth = vi.hoisted(() => ({
   totpConfirm: vi.fn(),
   totpDisable: vi.fn(),
 }));
-const dataset = vi.hoisted(() => ({ searchReferences: vi.fn() }));
+const catalog = vi.hoisted(() => ({ createReference: vi.fn() }));
+const dataset = vi.hoisted(() => ({ searchReferences: vi.fn(), fetchReference: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
+vi.mock('../../api/catalog.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
+  ...catalog,
+}));
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
 }));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
+const LIBRARIAN: MeResponse = { ...ME, permissions: ['dataset.read', 'references.manage'] };
 const LONG_KEY = `Smithsonian${'x'.repeat(80)}2002`;
 // A full citation pasted as the key, never cited.
 const BARE: Reference = {
@@ -63,7 +69,9 @@ const page = (data: Reference[], nextCursor: string | null = null) => ({
 
 beforeEach(() => {
   auth.fetchMe.mockReset();
+  catalog.createReference.mockReset();
   dataset.searchReferences.mockReset();
+  dataset.fetchReference.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
 });
 
@@ -204,5 +212,29 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     dataset.searchReferences.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     await openPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+
+  it('offers "New reference" to references.manage and navigates to the created reference', async () => {
+    auth.fetchMe.mockResolvedValue(LIBRARIAN);
+    catalog.createReference.mockResolvedValue(REFERENCE_DETAIL);
+    dataset.fetchReference.mockResolvedValue(REFERENCE_DETAIL);
+    const { router } = renderAt('/app/references');
+    await userEvent.click(await screen.findByRole('button', { name: 'New reference' }));
+    const dialog = screen.getByRole('dialog', { name: 'New reference' });
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /citation key/i }),
+      'Smith2001',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create reference' }));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/app/references/${REFERENCE_DETAIL.id}`),
+    );
+  });
+
+  it('hides "New reference" from a reader', async () => {
+    // `openPage`, not a bare `findByText`: "References" also names the
+    // sidebar entry and the breadcrumb, so only the heading disambiguates.
+    await openPage();
+    expect(screen.queryByRole('button', { name: 'New reference' })).not.toBeInTheDocument();
   });
 });
