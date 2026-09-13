@@ -33,8 +33,16 @@ So the directory is the boundary and the files are readable by anyone who can re
 repairs the modes. Verify on a Linux host with
 `docker compose exec api cat /run/secrets/session_secret >/dev/null`.
 
-To write a value by hand (for example `smtp_password`), lift the read-only bit first:
-`chmod u+w infra/secrets/smtp_password && printf '%s' 'the-password' > infra/secrets/smtp_password && chmod 444 infra/secrets/smtp_password`.
+To write a value by hand (for example `smtp_password`), lift the read-only bit first and read
+the value from a silent prompt so it never lands in the shell history:
+
+```sh
+read -r -s -p 'SMTP password: ' smtp_password; printf '\n'
+chmod u+w infra/secrets/smtp_password
+printf '%s' "$smtp_password" > infra/secrets/smtp_password
+unset smtp_password
+chmod 444 infra/secrets/smtp_password
+```
 
 ## Rotation
 

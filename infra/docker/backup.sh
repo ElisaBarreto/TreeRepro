@@ -18,5 +18,5 @@ echo "backup written: $target"
 # Dead man's switch (optional): a monitor that expects this ping daily alerts
 # when it stops arriving. A failed ping is logged but does not fail the backup.
 if [ -n "${BACKUP_PING_URL:-}" ]; then
-  wget -q -O /dev/null -T 10 "$BACKUP_PING_URL" || echo "backup ping failed: $BACKUP_PING_URL"
+  wget -q -O /dev/null -T 10 "$BACKUP_PING_URL" || echo "backup ping failed"
 fi
