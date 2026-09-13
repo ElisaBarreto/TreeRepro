@@ -142,13 +142,10 @@ describe('RFC-02 R6 secrets', () => {
 
   it('never includes secret values in error messages', () => {
     const dir = secretsDir({ ...ALL_SECRETS, pii_hmac_key: 'nothex' });
-    try {
-      loadConfig(env({ SECRETS_DIR: dir }));
-      expect.unreachable();
-    } catch (e) {
-      expect((e as Error).message).not.toContain('nothex');
-      expect((e as Error).message).toMatch(/pii_hmac_key/);
-    }
+    expect(() => loadConfig(env({ SECRETS_DIR: dir }))).toThrow(
+      expect.objectContaining({ message: expect.not.stringContaining('nothex') }),
+    );
+    expect(() => loadConfig(env({ SECRETS_DIR: dir }))).toThrow(/pii_hmac_key/);
   });
 
   it('readSecret trims trailing newlines', () => {

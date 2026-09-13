@@ -16,7 +16,7 @@ export interface RfcRef {
 const EXPORT_RE = /^export\s/;
 const EXEMPT_RE = /^export\s+(type|interface|declare|\{|\*)/;
 const NAMED_RE =
-  /^export\s+(?:default\s+)?(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/;
+  /^export\s+(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/;
 const DEFAULT_RE = /^export\s+default\b/;
 
 /**
@@ -32,8 +32,8 @@ export function findExports(source: string): ExportSite[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
     if (!EXPORT_RE.test(line) || EXEMPT_RE.test(line)) continue;
-    const named = NAMED_RE.exec(line);
-    const name = named?.[1] ?? (DEFAULT_RE.test(line) ? 'default' : UNPARSED_EXPORT);
+    // A default export is reported as `default` whatever its local name.
+    const name = DEFAULT_RE.test(line) ? 'default' : (NAMED_RE.exec(line)?.[1] ?? UNPARSED_EXPORT);
     sites.push({ line: i + 1, name, doc: docAbove(lines, i) });
   }
   return sites;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { captureLogger } from '../test/helpers/logger.ts';
+import { AppError } from './http/errors.ts';
 
 describe('RFC-02 R7 log redaction', () => {
   it('redacts sensitive keys at the top level and one level deep', () => {
@@ -34,6 +35,20 @@ describe('RFC-02 R7 log redaction', () => {
     });
     expect((line.err as { message: string }).message).toBe('boom');
     expect(line.msg).toBe('hello');
+  });
+
+  it('keeps the name of a serialized error', () => {
+    // `name` is redacted only where R7 lists it (user.name, body.name, input.name).
+    // AppError sets `name` as an own property, which pino's serializer copies; a
+    // future `*.name` wildcard would hide the error class, so pin it here.
+    const { logger, lines } = captureLogger();
+    logger.error({ err: new AppError('NOT_FOUND', 'Route not found') }, 'failed');
+    expect((lines[0] as { err: Record<string, unknown> }).err).toMatchObject({
+      type: 'AppError',
+      name: 'AppError',
+      code: 'NOT_FOUND',
+      message: 'Route not found',
+    });
   });
 
   it('redacts cookie, authorization and set-cookie headers', () => {

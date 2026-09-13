@@ -15,6 +15,7 @@ describe('RFC-00 R4 findExports', () => {
       'export class Gamma {}',
       'export default function () {}',
       'export async function* delta() {}',
+      'export default class Epsilon {}',
     ].join('\n');
     const sites = findExports(src);
     expect(sites.map((s) => [s.name, s.line, s.doc !== null])).toEqual([
@@ -23,6 +24,7 @@ describe('RFC-00 R4 findExports', () => {
       ['Gamma', 9, false],
       ['default', 10, false],
       ['delta', 11, false],
+      ['default', 12, false],
     ]);
   });
 
