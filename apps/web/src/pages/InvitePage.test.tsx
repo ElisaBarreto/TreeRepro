@@ -13,7 +13,9 @@ vi.mock('../api/auth.ts', () => auth);
 const TOKEN = 't'.repeat(43);
 const PASSPHRASE = 'a long enough passphrase';
 
-beforeEach(() => auth.acceptInvite.mockReset());
+beforeEach(() => {
+  auth.acceptInvite.mockReset();
+});
 
 describe('RFC-20 R6 InvitePage', () => {
   it('accepts with matching passwords and reports success', async () => {

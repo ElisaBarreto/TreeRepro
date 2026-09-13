@@ -12,7 +12,9 @@ vi.mock('../api/auth.ts', () => auth);
 const TOKEN = 't'.repeat(43);
 const PASSPHRASE = 'a long enough passphrase';
 
-beforeEach(() => auth.resetPassword.mockReset());
+beforeEach(() => {
+  auth.resetPassword.mockReset();
+});
 
 describe('RFC-21 R6 ResetPasswordPage', () => {
   it('resets and shows the done state with a link to sign in', async () => {
@@ -27,7 +29,7 @@ describe('RFC-21 R6 ResetPasswordPage', () => {
   });
 
   it('maps AUTH_TOKEN_INVALID', async () => {
-    auth.resetPassword.mockRejectedValueOnce(new ApiError(400, 'AUTH_TOKEN_INVALID', 'x'));
+    auth.resetPassword.mockRejectedValue(new ApiError(400, 'AUTH_TOKEN_INVALID', 'x'));
     renderWithProviders(<ResetPasswordPage token={TOKEN} />);
     await userEvent.type(screen.getByLabelText('New password'), PASSPHRASE);
     await userEvent.type(screen.getByLabelText('Confirm password'), PASSPHRASE);

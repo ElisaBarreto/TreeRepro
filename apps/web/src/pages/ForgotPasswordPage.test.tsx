@@ -10,7 +10,9 @@ import { ForgotPasswordPage } from './ForgotPasswordPage.tsx';
 const auth = vi.hoisted(() => ({ forgotPassword: vi.fn(), fetchMe: vi.fn() }));
 vi.mock('../api/auth.ts', () => auth);
 
-beforeEach(() => auth.forgotPassword.mockReset());
+beforeEach(() => {
+  auth.forgotPassword.mockReset();
+});
 
 describe('RFC-21 R5 ForgotPasswordPage', () => {
   it('sends the email and shows the same sentence whatever the account', async () => {
