@@ -106,6 +106,8 @@ describe('RFC-23 R7 disabling TOTP', () => {
         user: { totpEnabled: false },
       }),
     );
+    // The password in the mutation's `variables` leaves the MutationCache with the dialog.
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
   });
 
   it('accepts a six-digit code alongside the password', async () => {

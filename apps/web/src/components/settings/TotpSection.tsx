@@ -104,6 +104,8 @@ export function TotpSection() {
 
   const disable = useMutation({
     mutationFn: (body: TotpDisableBody) => totpDisable(body),
+    // gcTime 0: the password sits in `variables`.
+    gcTime: 0,
     onSuccess: () => {
       setEnabled(false);
       closeDisable();

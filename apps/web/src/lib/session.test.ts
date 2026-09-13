@@ -127,12 +127,15 @@ describe('RFC-13 R4 createAppQueryClient', () => {
     expect(handler).toHaveBeenCalledTimes(2);
   });
 
-  it('retries a query twice unless the API answered below 500; tests can turn retries off', () => {
+  it('retries a query twice unless the API answered with a 4xx; tests can turn retries off', () => {
     const retry = createAppQueryClient().queryClient.getDefaultOptions().queries?.retry;
     if (typeof retry !== 'function') throw new Error('expected a retry function');
     expect(retry(0, new ApiError(500, 'INTERNAL_ERROR', 'x'))).toBe(true);
     expect(retry(1, new ApiError(503, 'UNAVAILABLE', 'x'))).toBe(true);
     expect(retry(2, new ApiError(500, 'INTERNAL_ERROR', 'x'))).toBe(false);
+    // status 0 is NETWORK_ERROR (apiFetch): the server never answered, so retry.
+    expect(retry(0, new ApiError(0, 'NETWORK_ERROR', 'x'))).toBe(true);
+    expect(retry(2, new ApiError(0, 'NETWORK_ERROR', 'x'))).toBe(false);
     expect(retry(0, new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'))).toBe(false);
     expect(retry(0, new ApiError(403, 'PERMISSION_DENIED', 'x'))).toBe(false);
     expect(retry(0, new ApiError(404, 'NOT_FOUND', 'x'))).toBe(false);

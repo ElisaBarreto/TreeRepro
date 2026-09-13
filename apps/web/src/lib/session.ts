@@ -59,8 +59,9 @@ type QueryDefaults = NonNullable<DefaultOptions['queries']>;
  * The client the app runs on. Query and mutation failures reach one session
  * handler that is bound later — the handler needs the router and the router
  * needs the client — through `setSessionErrorHandler`. Queries retry twice,
- * except when the API answered below 500: a 4xx is final, retrying it only
- * delays the message. Tests pass `{ retry: false }` to fail fast.
+ * except when the API answered with a 4xx: that answer is final, retrying it
+ * only delays the message; a 5xx or a network failure (`ApiError` status 0)
+ * is retried. Tests pass `{ retry: false }` to fail fast.
  * @rfc RFC-13 R4
  */
 export function createAppQueryClient(overrides: Pick<QueryDefaults, 'retry'> = {}): {
@@ -74,7 +75,8 @@ export function createAppQueryClient(overrides: Pick<QueryDefaults, 'retry'> = {
         retry:
           overrides.retry ??
           ((failureCount, error) =>
-            !(error instanceof ApiError && error.status < 500) && failureCount < 2),
+            !(error instanceof ApiError && error.status >= 400 && error.status < 500) &&
+            failureCount < 2),
       },
     },
     queryCache: new QueryCache({ onError: (error) => onSessionError(error) }),
