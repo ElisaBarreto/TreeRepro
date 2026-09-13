@@ -1,0 +1,77 @@
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { asc, eq } from 'drizzle-orm';
+import { describe, expect, it } from 'vitest';
+import { useTestDb } from '../../test/helpers/db.ts';
+import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
+import { dictionaryPath, seedDictionary } from './seed.ts';
+
+describe('RFC-62 R2 seedDictionary', () => {
+  const t = useTestDb();
+
+  it('loads the versioned dictionary: categories in first-appearance order, traits, levels in list order', async () => {
+    // global-setup already seeded; a second run inserts nothing
+    const report = await seedDictionary(t.db, dictionaryPath());
+    expect(report).toEqual({ categories: 0, traits: 0, levels: 0 });
+
+    const categories = await t.db
+      .select()
+      .from(traitCategories)
+      .orderBy(asc(traitCategories.sortOrder));
+    expect(categories.map((c) => c.key).slice(0, 4)).toEqual([
+      'dispersal',
+      'pollination',
+      'reproduction',
+      'fruit',
+    ]);
+    expect(categories.find((c) => c.key === 'fruit_color')?.label).toBe('Fruit Color');
+
+    const [flowerColor] = await t.db.select().from(traits).where(eq(traits.key, 'flower_color'));
+    expect(flowerColor).toMatchObject({
+      categoryKey: 'flower_color',
+      valueType: 'categorical',
+      unit: null,
+      active: true,
+    });
+    const [petalLength] = await t.db.select().from(traits).where(eq(traits.key, 'petal_length'));
+    expect(petalLength).toMatchObject({
+      categoryKey: 'flower',
+      valueType: 'quantitative',
+      unit: 'mm',
+    });
+
+    const levels = await t.db
+      .select({ key: traitLevels.key, sortOrder: traitLevels.sortOrder })
+      .from(traitLevels)
+      .where(eq(traitLevels.traitId, flowerColor?.id as string))
+      .orderBy(asc(traitLevels.sortOrder));
+    expect(levels[0]).toEqual({ key: 'black', sortOrder: 1 });
+    expect(levels.map((l) => l.key)).toContain('corolla_absent');
+    const [quantitative] = await t.db.select().from(traits).where(eq(traits.key, 'seed_mass'));
+    const none = await t.db
+      .select()
+      .from(traitLevels)
+      .where(eq(traitLevels.traitId, quantitative?.id as string));
+    expect(none).toEqual([]);
+  });
+
+  it('inserts only what is missing and never changes existing rows', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dict-'));
+    const file = join(dir, 'extra.csv');
+    await writeFile(
+      file,
+      [
+        'final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels',
+        'flower_color,flower_color,categorical,,CHANGED DESCRIPTION,black;blue;test_level_zz',
+        'zz_test_trait,zz_test_category,quantitative,kg,A test trait,',
+      ].join('\n'),
+    );
+    const report = await seedDictionary(t.db, file);
+    expect(report).toEqual({ categories: 1, traits: 1, levels: 1 });
+    const [flowerColor] = await t.db.select().from(traits).where(eq(traits.key, 'flower_color'));
+    expect(flowerColor?.description).not.toBe('CHANGED DESCRIPTION');
+    const again = await seedDictionary(t.db, file);
+    expect(again).toEqual({ categories: 0, traits: 0, levels: 0 });
+  });
+});

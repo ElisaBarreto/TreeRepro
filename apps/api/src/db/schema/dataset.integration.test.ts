@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   createImportBatch,
   createRecord,
@@ -212,26 +212,8 @@ describe('RFC-62 R1 dictionary tables', () => {
   });
 });
 
-/**
- * Task 6 seeds the dictionary in test/global-setup.ts; until then, each describe
- * below that needs `flower_color` seeds it itself, idempotently.
- */
-async function seedFlowerColorDictionary(db: Parameters<typeof withRollback>[0]) {
-  await db
-    .insert(traitCategories)
-    .values({ key: 'flower_color', label: 'Flower color', sortOrder: 0 })
-    .onConflictDoNothing();
-  await db
-    .insert(traits)
-    .values({ key: 'flower_color', categoryKey: 'flower_color', valueType: 'categorical' })
-    .onConflictDoNothing();
-  const trait = await traitByKey(db, 'flower_color');
-  await db.insert(traitLevels).values({ traitId: trait.id, key: 'blue' }).onConflictDoNothing();
-}
-
 describe('RFC-63 R1-R3 trait_records constraints', () => {
   const t = useTestDb();
-  beforeAll(() => seedFlowerColorDictionary(t.db));
 
   it('R2 requires a reference and the origin columns that match the origin', async () => {
     await withRollback(t.db, async (tx) => {
@@ -361,7 +343,6 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
 describe('RFC-63 R4 append-only records and curation tables', () => {
   const t = useTestDb();
   const su = useTestDb({ role: 'superuser' });
-  beforeAll(() => seedFlowerColorDictionary(t.db));
 
   it('treerepro_app holds SELECT and INSERT but neither UPDATE, DELETE nor TRUNCATE', async () => {
     for (const table of ['trait_records', 'record_annotations', 'accepted_values']) {

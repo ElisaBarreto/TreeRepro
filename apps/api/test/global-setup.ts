@@ -2,6 +2,8 @@ import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
 import type { TestProject } from 'vitest/node';
 import { buildDbUrl } from '../src/config.ts';
+import { seedDictionary } from '../src/dataset/seed.ts';
+import { createDb } from '../src/db/client.ts';
 import { runMigrations } from '../src/db/migrator.ts';
 
 export interface PostgresInfo {
@@ -62,6 +64,14 @@ export default async function setup(project: TestProject): Promise<() => Promise
   });
   const appUrl = buildDbUrl({ ...base, user: 'treerepro_app', password: APP_PASSWORD });
   await runMigrations(migratorUrl);
+
+  // RFC-62 R2: the dictionary is part of every environment; tests use its traits.
+  const seedHandle = createDb(appUrl, { max: 1 });
+  try {
+    await seedDictionary(seedHandle.db);
+  } finally {
+    await seedHandle.close();
+  }
 
   project.provide('databaseUrl', appUrl);
   project.provide('superuserDatabaseUrl', postgres.getConnectionUri());
