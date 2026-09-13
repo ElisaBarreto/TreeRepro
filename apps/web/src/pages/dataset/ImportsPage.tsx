@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { datasetKeys, fetchImports } from '../../api/dataset.ts';
 import { ImportStatusBadge } from '../../components/dataset/ImportStatusBadge.tsx';
-import { LoadMore } from '../../components/dataset/LoadMore.tsx';
+import { Pagination } from '../../components/dataset/Pagination.tsx';
 import {
   Alert,
   EmptyState,
@@ -15,21 +15,21 @@ import {
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, formatNumber } from '../../lib/format.ts';
-import { useCursorList } from '../../lib/use-cursor-list.ts';
+import { usePagedList } from '../../lib/use-paged-list.ts';
 
-const PAGE_SIZE = 50;
 const DASH = <span className="text-mist-500">—</span>;
 const NUMBER = 'text-right tabular-nums';
 
 /**
- * Import batches, newest first, with the counts the import computed.
- * Requires `imports.read`; the route shows `NoPermission` otherwise.
+ * Import batches, newest first and one page at a time, with the counts the
+ * import computed. Requires `imports.read`; the route shows `NoPermission`
+ * otherwise.
  * @rfc RFC-13 R2, R4
  * @rfc RFC-64 R11
  */
 export function ImportsPage() {
-  const list = useCursorList(datasetKeys.imports, (cursor) =>
-    fetchImports({ cursor, limit: PAGE_SIZE }),
+  const list = usePagedList(datasetKeys.imports, (cursor, limit) =>
+    fetchImports({ cursor, limit }),
   );
 
   return (
@@ -85,12 +85,7 @@ export function ImportsPage() {
             </Tbody>
           </Table>
         ) : null}
-        <LoadMore
-          hasMore={list.hasMore}
-          isLoadingMore={list.isLoadingMore}
-          onLoadMore={list.loadMore}
-          paused={Boolean(list.error)}
-        />
+        {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
     </>
   );

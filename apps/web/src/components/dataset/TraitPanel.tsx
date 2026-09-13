@@ -2,17 +2,17 @@ import type { TraitSummary } from '@treerepro/contracts';
 import { datasetKeys, fetchRecords } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
-import { useCursorList } from '../../lib/use-cursor-list.ts';
+import { usePagedList } from '../../lib/use-paged-list.ts';
 import { Alert, Drawer, EmptyState } from '../ui/index.ts';
-import { LoadMore } from './LoadMore.tsx';
+import { Pagination } from './Pagination.tsx';
 import { RecordTable } from './RecordTable.tsx';
 
-const PAGE_SIZE = 50;
-
 /**
- * The records of one trait for one species, in a wide drawer: a cursor list
- * over `GET /api/records?speciesId&traitId` (RFC-63 R9) rendered as a
- * `RecordTable`; a row hands its id back so the page can open the record.
+ * The records of one trait for one species, in a wide drawer: one page at a
+ * time of `GET /api/records?speciesId&traitId` (RFC-63 R9) rendered as a
+ * `RecordTable` without the species and trait columns, which the page and
+ * the title already name; a row hands its id back so the page can open the
+ * record.
  * @rfc RFC-63 R9
  */
 export function TraitPanel({
@@ -27,8 +27,8 @@ export function TraitPanel({
   onSelectRecord: (id: string) => void;
 }) {
   const traitId = summary.trait.id;
-  const list = useCursorList(datasetKeys.records({ speciesId, traitId }), (cursor) =>
-    fetchRecords({ speciesId, traitId, cursor, limit: PAGE_SIZE }),
+  const list = usePagedList(datasetKeys.records({ speciesId, traitId }), (cursor, limit) =>
+    fetchRecords({ speciesId, traitId, cursor, limit }),
   );
 
   return (
@@ -48,12 +48,7 @@ export function TraitPanel({
         {list.items.length > 0 ? (
           <RecordTable records={list.items} onSelect={(record) => onSelectRecord(record.id)} />
         ) : null}
-        <LoadMore
-          hasMore={list.hasMore}
-          isLoadingMore={list.isLoadingMore}
-          onLoadMore={list.loadMore}
-          paused={Boolean(list.error)}
-        />
+        {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
     </Drawer>
   );

@@ -142,26 +142,37 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText('disputed')).toBeInTheDocument();
     expect(rows[2]).toHaveTextContent('manual');
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    // The trait is the panel's title, so the rows do not repeat it.
+    expect(within(rows[0] as HTMLElement).queryByText('Trait')).not.toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).queryByText('Species')).not.toBeInTheDocument();
+    const pagination = within(panel).getByRole('navigation', { name: 'Pagination' });
+    expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
+    expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
 
     await userEvent.click(within(panel).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sexual system/ })).toHaveFocus();
   });
 
-  it('loads the next page of records with the cursor', async () => {
+  it('steps to the next page of records with the cursor and back', async () => {
     dataset.fetchRecords
       .mockResolvedValueOnce(page([RECORD], 'c1'))
-      .mockResolvedValueOnce(page([PENDING_RECORD]));
+      .mockResolvedValueOnce(page([PENDING_RECORD]))
+      .mockResolvedValue(page([RECORD], 'c1'));
     await openPage();
     const panel = await openTraitPanel();
     expect(await within(panel).findByRole('button', { name: 'dioecious' })).toBeInTheDocument();
-    await userEvent.click(within(panel).getByRole('button', { name: 'Load more' }));
+    await userEvent.click(within(panel).getByRole('button', { name: 'Next' }));
     expect(await within(panel).findByRole('button', { name: 'about two' })).toBeInTheDocument();
     expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
       expect.objectContaining({ speciesId: SPECIES.id, traitId: SEXUAL_SYSTEM.id, cursor: 'c1' }),
     );
-    expect(within(panel).queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole('button', { name: 'dioecious' })).not.toBeInTheDocument();
+    expect(within(panel).getByText('Page 2')).toBeInTheDocument();
+
+    await userEvent.click(within(panel).getByRole('button', { name: 'Previous' }));
+    expect(await within(panel).findByRole('button', { name: 'dioecious' })).toBeInTheDocument();
+    expect(within(panel).getByText('Page 1')).toBeInTheDocument();
   });
 
   it('says so when a trait has no records', async () => {
@@ -169,6 +180,7 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     await openPage();
     const panel = await openTraitPanel();
     expect(await within(panel).findByText('No records for this trait yet.')).toBeInTheDocument();
+    expect(within(panel).queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
   it('opens the record drawer from a row: value, source links, provenance, raw columns, empty curation', async () => {

@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import type { RecordItem } from '@treerepro/contracts';
-import { formatNumber, isoDate, truncate } from '../../lib/format.ts';
+import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
 import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 import { ReviewBadge } from './ReviewBadge.tsx';
@@ -17,10 +17,14 @@ function valueLabel(record: RecordItem): string {
   return record.valueText || '(empty)';
 }
 
+// The primary citation key, "via" the secondary one when the claim reached
+// the primary through another source; the same reference in both roles is
+// named once.
 function referencesLabel(record: RecordItem): string {
+  const { primaryReference: primary, secondaryReference: secondary } = record;
   return [
-    record.primaryReference?.citationKey,
-    record.secondaryReference ? `via ${record.secondaryReference.citationKey}` : undefined,
+    primary?.citationKey,
+    secondary && secondary.id !== primary?.id ? `via ${secondary.citationKey}` : undefined,
   ]
     .filter((part): part is string => part !== undefined)
     .join(' ');
@@ -30,24 +34,28 @@ function referencesLabel(record: RecordItem): string {
  * Records as rows: value, references (primary, "via" the secondary), origin,
  * the two status chips and the date added. The value is a button that
  * selects the row, so every record is reachable by keyboard. Outside a
- * species page (`showSpecies`) a first column links each row to its species;
- * the item carries only the id (RFC-63 R8), hence the fixed link text.
+ * species page (`showSpecies`) a first column names each row's species and
+ * links to it; outside a trait panel (`showTrait`) a column names the trait,
+ * so a row reads on its own.
  * @rfc RFC-63 R8
  */
 export function RecordTable({
   records,
   onSelect,
   showSpecies = false,
+  showTrait = false,
 }: {
   records: RecordItem[];
   onSelect: (record: RecordItem) => void;
   showSpecies?: boolean;
+  showTrait?: boolean;
 }) {
   return (
     <Table>
       <Thead>
         <Tr>
           {showSpecies ? <Th>Species</Th> : null}
+          {showTrait ? <Th>Trait</Th> : null}
           <Th>Value</Th>
           <Th>References</Th>
           <Th>Origin</Th>
@@ -64,17 +72,17 @@ export function RecordTable({
           return (
             <Tr key={record.id} className="transition-colors hover:bg-mist-50">
               {showSpecies ? (
-                <Td className="whitespace-nowrap">
+                <Td>
                   <Link
                     to="/app/species/$id"
-                    params={{ id: record.speciesId }}
-                    aria-label={`Open species for record ${value}`}
-                    className="font-medium text-canopy-900 underline-offset-2 hover:underline"
+                    params={{ id: record.species.id }}
+                    className="font-medium italic text-canopy-900 underline-offset-2 hover:underline"
                   >
-                    Open species
+                    {record.species.canonicalName}
                   </Link>
                 </Td>
               ) : null}
+              {showTrait ? <Td>{humaniseKey(record.trait.key)}</Td> : null}
               <Td>
                 <button
                   type="button"

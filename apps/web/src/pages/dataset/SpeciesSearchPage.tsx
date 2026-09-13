@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
-import { LoadMore } from '../../components/dataset/LoadMore.tsx';
+import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { SpeciesList } from '../../components/dataset/SpeciesList.tsx';
 import {
   SpeciesSearchForm,
@@ -8,15 +8,13 @@ import {
 } from '../../components/dataset/SpeciesSearchForm.tsx';
 import { Alert, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
-import { useCursorList } from '../../lib/use-cursor-list.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
-
-const PAGE_SIZE = 50;
+import { usePagedList } from '../../lib/use-paged-list.ts';
 
 /**
- * Species search: the form's value, with the name debounced, becomes the
- * query parameters; the list only runs once there is something to search by
- * (two letters, a family, a genus or the unresolved toggle).
+ * Species catalog: the first page lists at once; the form's value, with the
+ * name debounced, narrows it and starts over at page 1. A name shorter than
+ * the API's minimum of two letters (RFC-60 R6) is not sent.
  * @rfc RFC-13 R2, R4
  * @rfc RFC-60 R6
  */
@@ -29,38 +27,25 @@ export function SpeciesSearchPage() {
     genusId: form.genusId,
     unresolved: form.unresolved,
   };
-  const enabled = Boolean(params.q || params.familyId || params.genusId || params.unresolved);
-  const list = useCursorList(
-    datasetKeys.species(params),
-    (cursor) => searchSpecies({ ...params, cursor, limit: PAGE_SIZE }),
-    { enabled },
+  const list = usePagedList(datasetKeys.species(params), (cursor, limit) =>
+    searchSpecies({ ...params, cursor, limit }),
   );
 
   return (
     <>
       <PageHeader
         title="Species"
-        description="Search the taxonomy catalog by name, family or genus."
+        description="Browse the taxonomy catalog, or narrow it by name, family or genus."
       />
       <div className="flex flex-col gap-6">
         <SpeciesSearchForm value={form} onChange={setForm} />
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
-        {!enabled ? (
-          <EmptyState title="Type at least two letters, or choose a family or genus." />
-        ) : null}
-        {enabled && list.isLoading ? <p className="text-sm text-mist-500">Searching…</p> : null}
-        {enabled && !list.isLoading && !list.error && list.items.length === 0 ? (
+        {list.isLoading ? <p className="text-sm text-mist-500">Searching…</p> : null}
+        {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No species match." />
         ) : null}
         {list.items.length > 0 ? <SpeciesList items={list.items} /> : null}
-        {enabled ? (
-          <LoadMore
-            hasMore={list.hasMore}
-            isLoadingMore={list.isLoadingMore}
-            onLoadMore={list.loadMore}
-            paused={Boolean(list.error)}
-          />
-        ) : null}
+        {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
     </>
   );

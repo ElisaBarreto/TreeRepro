@@ -69,22 +69,19 @@ async function openPage() {
 }
 
 describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
-  it('waits for two letters, searches once the typing settles and lists the rows', async () => {
+  it('lists the first page at once and searches again once the typing settles', async () => {
     dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA, ADANSONIA]));
     await openPage();
-    expect(
-      screen.getByText('Type at least two letters, or choose a family or genus.'),
-    ).toBeInTheDocument();
-
-    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
-    await waitFor(() =>
-      expect(dataset.searchSpecies).toHaveBeenCalledWith(
-        expect.objectContaining({ q: 'ad', cursor: undefined, limit: 50 }),
-      ),
-    );
-    expect(dataset.searchSpecies).toHaveBeenCalledTimes(1);
-
     const link = await screen.findByRole('link', { name: 'Adenanthera pavonina' });
+    expect(dataset.searchSpecies).toHaveBeenCalledWith({
+      q: undefined,
+      familyId: undefined,
+      genusId: undefined,
+      unresolved: false,
+      cursor: undefined,
+      limit: 50,
+    });
+    expect(dataset.searchSpecies).toHaveBeenCalledTimes(1);
     expect(link).toHaveAttribute('href', `/app/species/${ADENANTHERA.id}`);
     const table = screen.getByRole('table');
     const rows = within(table).getAllByRole('row');
@@ -94,31 +91,94 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     expect(within(rows[1] as HTMLElement).queryByText('unresolved')).not.toBeInTheDocument();
     expect(rows[2]).toHaveTextContent('matched: Adansonia baobab');
     expect(within(rows[2] as HTMLElement).getByText('unresolved')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    const pagination = screen.getByRole('navigation', { name: 'Pagination' });
+    expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
+    expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(within(pagination).getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+    // One letter is below the API's minimum and asks for nothing new.
+    await userEvent.type(screen.getByLabelText('Search species'), 'a');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(dataset.searchSpecies).toHaveBeenCalledTimes(1);
+
+    await userEvent.type(screen.getByLabelText('Search species'), 'd');
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ q: 'ad', cursor: undefined, limit: 50 }),
+      ),
+    );
+    expect(dataset.searchSpecies).toHaveBeenCalledTimes(2);
   });
 
-  it('says so when nothing matches', async () => {
-    dataset.searchSpecies.mockResolvedValue(page([]));
+  it('says so when nothing matches, and only once the page arrived', async () => {
+    let resolvePage: (value: ReturnType<typeof page>) => void = () => {};
+    dataset.searchSpecies.mockReturnValue(
+      new Promise<ReturnType<typeof page>>((resolve) => {
+        resolvePage = resolve;
+      }),
+    );
     await openPage();
-    await userEvent.type(screen.getByLabelText('Search species'), 'zz');
+    expect(screen.getByText('Searching…')).toBeInTheDocument();
+    expect(screen.queryByText('No species match.')).not.toBeInTheDocument();
+
+    resolvePage(page([]));
     expect(await screen.findByText('No species match.')).toBeInTheDocument();
+    expect(screen.queryByText('Searching…')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
-  it('loads the next page with the cursor on "Load more"', async () => {
+  it('steps to the next page with the cursor and back to the first', async () => {
     dataset.searchSpecies
       .mockResolvedValueOnce(page([ADENANTHERA], 'c1'))
-      .mockResolvedValueOnce(page([ADANSONIA]));
+      .mockResolvedValueOnce(page([ADANSONIA]))
+      .mockResolvedValue(page([ADENANTHERA], 'c1'));
     await openPage();
-    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
     expect(await screen.findByRole('link', { name: 'Adenanthera pavonina' })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('link', { name: 'Adansonia digitata' })).toBeInTheDocument();
     expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
-      expect.objectContaining({ q: 'ad', cursor: 'c1', limit: 50 }),
+      expect.objectContaining({ q: undefined, cursor: 'c1', limit: 50 }),
     );
-    expect(screen.getByRole('link', { name: 'Adenanthera pavonina' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Adenanthera pavonina' })).not.toBeInTheDocument();
+    expect(screen.getByText('Page 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: 'Adenanthera pavonina' })).toBeInTheDocument();
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+  });
+
+  it('a new filter starts over at page 1, and the page size is applied from page 1', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA], 'c1'));
+    await openPage();
+    await screen.findByRole('link', { name: 'Adenanthera pavonina' });
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cursor: 'c1' }),
+      ),
+    );
+    expect(screen.getByText('Page 2')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Unresolved taxa only'));
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ unresolved: true, cursor: undefined, limit: 50 }),
+      ),
+    );
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Page 2')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Rows per page'), '25');
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cursor: undefined, limit: 25 }),
+      ),
+    );
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
   });
 
   it('searches by family and by unresolved taxa without a term', async () => {
@@ -167,36 +227,37 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Clear genus' }));
     expect(screen.queryByRole('button', { name: 'Clear genus' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Genus')).toHaveValue('');
-    expect(
-      await screen.findByText('Type at least two letters, or choose a family or genus.'),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ genusId: undefined }),
+      ),
+    );
   });
 
   it('RFC-13 R4 a 403 shows the permission sentence; other failures the generic one', async () => {
     dataset.searchSpecies.mockRejectedValue(new ApiError(403, 'PERMISSION_DENIED', 'x'));
     const first = await openPage();
-    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You do not have permission to do this.',
     );
+    expect(screen.queryByText('No species match.')).not.toBeInTheDocument();
     first.unmount();
 
     dataset.searchSpecies.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     await openPage();
-    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
   });
 
-  it('RFC-13 R8 a 401 during a search ends the session and returns to /', async () => {
+  it('RFC-13 R8 a 401 on the list ends the session and returns to /', async () => {
     dataset.searchSpecies.mockRejectedValue(
       new ApiError(401, 'AUTH_UNAUTHENTICATED', 'Authentication required'),
     );
-    const { router } = await openPage();
-    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
+    const { router } = renderAt('/app/species');
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 
   it('RFC-13 R3 the Species entry appears in the navigation only with dataset.read', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
     const withPermission = await openPage();
     const main = screen.getByRole('navigation', { name: 'Main' });
     expect(within(main).getByRole('link', { name: 'Species' })).toHaveAttribute(

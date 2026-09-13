@@ -82,26 +82,35 @@ describe('RFC-13 R2, RFC-64 R11 ImportsPage', () => {
     expect(within(failed).getByText('failed')).toBeInTheDocument();
     expect(within(failed).getByText('2026-09-12 23:59')).toBeInTheDocument();
     expect(within(failed).getByText('—')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    const pagination = screen.getByRole('navigation', { name: 'Pagination' });
+    expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
+    expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
   });
 
   it('says so when nothing was imported yet', async () => {
     dataset.fetchImports.mockResolvedValue(page([]));
     renderAt('/app/imports');
     expect(await screen.findByText('No imports yet.')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
-  it('loads the next page with the cursor on "Load more"', async () => {
+  it('steps to the next page with the cursor and back to the first', async () => {
     dataset.fetchImports
       .mockResolvedValueOnce(page([IMPORT_BATCH], 'c1'))
-      .mockResolvedValueOnce(page([FAILED]));
+      .mockResolvedValueOnce(page([FAILED]))
+      .mockResolvedValue(page([IMPORT_BATCH], 'c1'));
     renderAt('/app/imports');
     expect(await screen.findByRole('link', { name: 'records-2026-09.csv' })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('link', { name: 'records-broken.csv' })).toBeInTheDocument();
     expect(dataset.fetchImports).toHaveBeenLastCalledWith({ cursor: 'c1', limit: 50 });
-    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'records-2026-09.csv' })).not.toBeInTheDocument();
+    expect(screen.getByText('Page 2')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: 'records-2026-09.csv' })).toBeInTheDocument();
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
   });
 
   it('RFC-13 R3 without imports.read the route shows NoPermission and the nav hides Imports', async () => {

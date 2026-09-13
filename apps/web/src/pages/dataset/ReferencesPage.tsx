@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router';
 import type { Reference } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, searchReferences } from '../../api/dataset.ts';
-import { LoadMore } from '../../components/dataset/LoadMore.tsx';
+import { Pagination } from '../../components/dataset/Pagination.tsx';
 import {
   Alert,
   EmptyState,
@@ -18,36 +18,34 @@ import {
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { truncate } from '../../lib/format.ts';
-import { useCursorList } from '../../lib/use-cursor-list.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
+import { usePagedList } from '../../lib/use-paged-list.ts';
 
-const PAGE_SIZE = 50;
 const KEY_MAX = 80;
 const DASH = <span className="text-mist-500">—</span>;
 
 /**
- * References search: the term, debounced, feeds the cursor list once it has
- * two letters (the API's minimum, RFC-61 R4). Long citation keys are cut in
- * the cell and kept whole in the link's `title`.
+ * Bibliography: the first page lists at once; the term, debounced, narrows
+ * it once it has two letters (the API's minimum, RFC-61 R4) and starts over
+ * at page 1. Long citation keys are cut in the cell and kept whole in the
+ * link's `title`.
  * @rfc RFC-13 R2, R4
  * @rfc RFC-61 R4
  */
 export function ReferencesPage() {
   const [text, setText] = useState('');
   const searchId = useId();
-  const q = useDebouncedValue(text.trim(), 300);
-  const enabled = q.length >= 2;
-  const list = useCursorList(
-    datasetKeys.references({ q }),
-    (cursor) => searchReferences({ q, cursor, limit: PAGE_SIZE }),
-    { enabled },
+  const term = useDebouncedValue(text.trim(), 300);
+  const q = term.length >= 2 ? term : undefined;
+  const list = usePagedList(datasetKeys.references({ q }), (cursor, limit) =>
+    searchReferences({ q, cursor, limit }),
   );
 
   return (
     <>
       <PageHeader
         title="References"
-        description="Search the bibliography by citation key or title."
+        description="Browse the bibliography, or narrow it by citation key or title."
       />
       <div className="flex flex-col gap-6">
         <div className="max-w-md">
@@ -64,20 +62,12 @@ export function ReferencesPage() {
           </Field>
         </div>
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
-        {!enabled ? <EmptyState title="Type at least two letters to search references." /> : null}
-        {enabled && list.isLoading ? <p className="text-sm text-mist-500">Searching…</p> : null}
-        {enabled && !list.isLoading && !list.error && list.items.length === 0 ? (
+        {list.isLoading ? <p className="text-sm text-mist-500">Searching…</p> : null}
+        {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No references match." />
         ) : null}
         {list.items.length > 0 ? <ReferenceTable items={list.items} /> : null}
-        {enabled ? (
-          <LoadMore
-            hasMore={list.hasMore}
-            isLoadingMore={list.isLoadingMore}
-            onLoadMore={list.loadMore}
-            paused={Boolean(list.error)}
-          />
-        ) : null}
+        {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
     </>
   );
