@@ -22,6 +22,8 @@ function initials(name: string): string {
 // `aria-current` comes from `currentEntry`, not from the router: with exact
 // matching the router never marks `/app` active under `/app/species`, so the
 // two agree wherever both apply and the prop below is the one that shows.
+// The comparison is by entry identity, not by `to`: two entries may share a
+// path and differ only in search params (Species and Unresolved taxa).
 function NavGroup({
   name,
   heading,
@@ -42,10 +44,11 @@ function NavGroup({
       ) : null}
       {entries.map((e) => (
         <Link
-          key={e.to}
+          key={e.label}
           to={e.to}
+          search={e.search}
           activeOptions={{ exact: true }}
-          aria-current={current?.to === e.to ? 'page' : undefined}
+          aria-current={current === e ? 'page' : undefined}
           className={LINK}
         >
           <Icon name={e.icon} />
@@ -60,14 +63,14 @@ function NavGroup({
  * Dark sidebar (emblem, grouped entries), light content under a top bar
  * (breadcrumb, user, sign-out). Entries render by permission; the Admin
  * group needs admin.access on top of the entries' own permissions. The
- * current entry is the one `currentEntry` picks for the pathname.
+ * current entry is the one `currentEntry` picks for the pathname and search.
  * @rfc RFC-13 R2, R3, R4
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const signOut = useMutation({
     mutationFn: logout,
     // A failed logout (5xx/429) leaves the session in place — no navigation,
@@ -91,7 +94,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           : visible.filter((e) => e.section === s.key),
     })),
   ].filter((g) => g.entries.length > 0);
-  const current = currentEntry(pathname);
+  const current = currentEntry(pathname, search);
   const crumbGroup = current?.section
     ? NAV_SECTIONS.find((s) => s.key === current.section)?.label
     : null;

@@ -161,7 +161,11 @@ export function ReferencePage({ id }: { id: string }) {
         <Metadata reference={data} />
         <ReferenceRecords id={id} onSelectRecord={setOpenRecord} />
       </div>
-      <RecordDrawer recordId={openRecord} onClose={() => setOpenRecord(null)} />
+      <RecordDrawer
+        recordId={openRecord}
+        onClose={() => setOpenRecord(null)}
+        onOpenRecord={setOpenRecord}
+      />
     </>
   );
 }

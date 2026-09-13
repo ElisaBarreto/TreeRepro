@@ -276,4 +276,58 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
+
+  it('RFC-60 R6 reads ?unresolved=true into the toggle and sends it on the first search', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    renderAt('/app/species?unresolved=true');
+    expect(await screen.findByRole('checkbox', { name: /unresolved/i })).toBeChecked();
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ unresolved: true }),
+      ),
+    );
+  });
+
+  it('RFC-60 R6 switches between Species and Unresolved taxa through the navigation while already on the page', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    await openPage();
+    const checkbox = screen.getByRole('checkbox', { name: /unresolved/i });
+    expect(checkbox).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole('link', { name: 'Unresolved taxa' }));
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /unresolved/i })).toBeChecked(),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ unresolved: true }),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole('link', { name: 'Species' }));
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /unresolved/i })).not.toBeChecked(),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ unresolved: false }),
+      ),
+    );
+  });
+
+  it('RFC-66 R1 shows the export link only with dataset.export', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'dataset.export'] });
+    renderAt('/app/species');
+    const link = await screen.findByRole('link', { name: /export accepted values/i });
+    expect(link).toHaveAttribute('href', '/api/export/accepted.csv');
+    expect(link).toHaveAttribute('download');
+  });
+
+  it('hides the export link without dataset.export', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    await openPage();
+    await screen.findByRole('heading', { level: 1, name: 'Species' });
+    expect(screen.queryByRole('link', { name: /export accepted values/i })).not.toBeInTheDocument();
+  });
 });
