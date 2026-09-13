@@ -1,5 +1,6 @@
 import type {
   AcceptedDecision,
+  AcceptedState,
   AnnotationKind,
   RecordDetail,
   RecordValue,
@@ -13,6 +14,7 @@ import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
+import { users } from '../db/schema/users.ts';
 import { AppError } from '../http/errors.ts';
 import { isHarmonisableNumber } from './import.ts';
 import { getRecord, reviewStatusSql } from './records.ts';
@@ -263,4 +265,111 @@ export async function annotateRecord(
   const detail = await getRecord(db, rec.id);
   if (!detail) throw new Error('annotateRecord: record vanished');
   return detail;
+}
+
+/** @rfc RFC-65 R6, R11 */
+export async function getAccepted(
+  db: DbExecutor,
+  speciesId: string,
+  traitId: string,
+): Promise<AcceptedState> {
+  const rows = await db
+    .select({
+      id: acceptedValues.id,
+      decision: acceptedValues.decision,
+      recordId: acceptedValues.recordId,
+      note: acceptedValues.note,
+      createdAt: acceptedValues.createdAt,
+      actorId: users.id,
+      actorName: users.name,
+      valueText: traitRecords.valueText,
+    })
+    .from(acceptedValues)
+    .innerJoin(users, eq(users.id, acceptedValues.actorId))
+    .leftJoin(traitRecords, eq(traitRecords.id, acceptedValues.recordId))
+    .where(and(eq(acceptedValues.speciesId, speciesId), eq(acceptedValues.traitId, traitId)))
+    .orderBy(desc(acceptedValues.id));
+  const history = rows.map((r) => ({
+    id: r.id,
+    decision: r.decision,
+    recordId: r.recordId,
+    valueText: r.valueText ?? null,
+    actor: { id: r.actorId, name: r.actorName },
+    note: r.note,
+    createdAt: r.createdAt.toISOString(),
+  }));
+  const newest = rows[0];
+  const current =
+    newest && newest.decision === 'accepted' && newest.recordId && newest.valueText !== null
+      ? {
+          id: newest.id,
+          recordId: newest.recordId,
+          valueText: newest.valueText,
+          actor: { id: newest.actorId, name: newest.actorName },
+          note: newest.note,
+          decidedAt: newest.createdAt.toISOString(),
+        }
+      : null;
+  return { current, history };
+}
+
+export interface SetAcceptedInput {
+  speciesId: string;
+  traitId: string;
+  actorId: string;
+  decision: AcceptedDecision;
+  recordId?: string;
+  note?: string;
+}
+
+/** Idempotent: a request equal to the current state inserts nothing. @rfc RFC-65 R6 */
+export async function setAccepted(db: DbExecutor, input: SetAcceptedInput): Promise<AcceptedState> {
+  await requireSpecies(db, input.speciesId);
+  await requireTrait(db, input.traitId);
+  const current = await currentAccepted(db, input.speciesId, input.traitId);
+  if (input.decision === 'accepted') {
+    const recordId = input.recordId;
+    if (!recordId) throw validation('recordId', 'Required');
+    const [rec] = await db
+      .select({
+        id: traitRecords.id,
+        speciesId: traitRecords.speciesId,
+        traitId: traitRecords.traitId,
+        harmonisation: traitRecords.harmonisation,
+        // See the comment in annotateRecord: this SELECT has a single FROM
+        // table, so a bare Column here would render unqualified and break
+        // reviewStatusSql's nested subquery.
+        review: reviewStatusSql(sql`${traitRecords.id}`).as('review'),
+      })
+      .from(traitRecords)
+      .where(eq(traitRecords.id, recordId))
+      .limit(1);
+    if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
+    if (rec.speciesId !== input.speciesId || rec.traitId !== input.traitId)
+      throw validation('recordId', 'Record belongs to another species or trait');
+    if (rec.harmonisation !== 'harmonised')
+      throw new AppError('RECORD_NOT_HARMONISED', 'Only a harmonised record can be accepted');
+    if (rec.review === 'withdrawn')
+      throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
+    if (!(current?.decision === 'accepted' && current.recordId === recordId)) {
+      await db.insert(acceptedValues).values({
+        speciesId: input.speciesId,
+        traitId: input.traitId,
+        recordId,
+        decision: 'accepted',
+        actorId: input.actorId,
+        note: input.note ?? null,
+      });
+    }
+  } else if (current && current.decision === 'accepted') {
+    await db.insert(acceptedValues).values({
+      speciesId: input.speciesId,
+      traitId: input.traitId,
+      recordId: null,
+      decision: 'cleared',
+      actorId: input.actorId,
+      note: input.note ?? null,
+    });
+  }
+  return getAccepted(db, input.speciesId, input.traitId);
 }

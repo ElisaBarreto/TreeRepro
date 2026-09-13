@@ -96,6 +96,8 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'PATCH /api/species/:id',
         'GET /api/species/:id/traits',
         'POST /api/species/:id/names',
+        'GET /api/species/:id/traits/:traitId/accepted',
+        'PUT /api/species/:id/traits/:traitId/accepted',
         'GET /api/families',
         'POST /api/families',
         'PATCH /api/families/:id',
@@ -189,6 +191,7 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       'PATCH /api/traits/:id',
       'POST /api/traits/:id/levels',
       'PATCH /api/traits/:id/levels/:levelId',
+      'PUT /api/species/:id/traits/:traitId/accepted',
     ];
     for (const key of withBody) {
       const [method, path] = key.split(' ') as [string, string];

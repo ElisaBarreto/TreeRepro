@@ -2,7 +2,16 @@ import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
-import { createFamily, createGenus, createSpecies } from '../../../../test/helpers/dataset.ts';
+import {
+  createAnnotation,
+  createFamily,
+  createGenus,
+  createImportBatch,
+  createRecord,
+  createReference,
+  createSpecies,
+  createTrait,
+} from '../../../../test/helpers/dataset.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
@@ -195,5 +204,141 @@ describe('RFC-60 R9, R10 species writes', () => {
       { cookie, body: { name: 'x' } },
     );
     expect((await missing.json()).error.code).toBe('SPECIES_NOT_FOUND');
+  });
+});
+
+describe('RFC-65 R6 accepted value per species and trait', () => {
+  const t = useTestApp();
+
+  async function curator() {
+    const role = await createRole(t.db, { permissions: ['accepted.manage', 'dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, cookie: (await loginAs(t, user)).cookie };
+  }
+  async function fixture(authorId: string) {
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
+    const ref = await createReference(t.db);
+    const mk = (levelIndex: number, valueText: string) =>
+      createRecord(t.db, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText,
+        levelId: trait.levels[levelIndex]?.id,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: authorId,
+      });
+    return { sp1, trait, ref, recA: await mk(0, 'a'), recB: await mk(1, 'b') };
+  }
+  const put = (cookie: string, speciesId: string, traitId: string, body: Record<string, unknown>) =>
+    call(t.app, 'PUT', `/api/species/${speciesId}/traits/${traitId}/accepted`, { cookie, body });
+
+  it('accepts, replaces, clears; repeats insert nothing; the summary and the GET agree', async () => {
+    const { user, cookie } = await curator();
+    const { sp1, trait, recA, recB } = await fixture(user.id);
+    const first = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: recA.id,
+      note: 'Best sampled',
+    });
+    expect(first.status).toBe(200);
+    expect((await first.json()).data).toMatchObject({
+      current: {
+        recordId: recA.id,
+        valueText: 'a',
+        actor: { id: user.id, name: 'Test User' },
+        note: 'Best sampled',
+      },
+      history: [{ decision: 'accepted', recordId: recA.id, valueText: 'a' }],
+    });
+    const summary = await call(t.app, 'GET', `/api/species/${sp1.id}/traits`, { cookie });
+    expect((await summary.json()).data[0].traits[0].accepted).toMatchObject({
+      recordId: recA.id,
+      valueText: 'a',
+    });
+    const same = await put(cookie, sp1.id, trait.id, { decision: 'accepted', recordId: recA.id });
+    expect((await same.json()).data.history).toHaveLength(1);
+    const replaced = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: recB.id,
+    });
+    expect((await replaced.json()).data).toMatchObject({
+      current: { recordId: recB.id },
+      history: [{ recordId: recB.id }, { recordId: recA.id }],
+    });
+    const cleared = await put(cookie, sp1.id, trait.id, {
+      decision: 'cleared',
+      note: 'Sources disagree',
+    });
+    expect((await cleared.json()).data).toMatchObject({
+      current: null,
+      history: [
+        { decision: 'cleared', recordId: null, valueText: null, note: 'Sources disagree' },
+        {},
+        {},
+      ],
+    });
+    const clearedAgain = await put(cookie, sp1.id, trait.id, {
+      decision: 'cleared',
+      note: 'still',
+    });
+    const clearedAgainBody = await clearedAgain.json();
+    expect(clearedAgainBody.data.history).toHaveLength(3);
+    const got = await call(t.app, 'GET', `/api/species/${sp1.id}/traits/${trait.id}/accepted`, {
+      cookie,
+    });
+    expect(got.status).toBe(200);
+    expect((await got.json()).data).toEqual(clearedAgainBody.data);
+  });
+
+  it('refuses a record of another species or trait, a pending record and a withdrawn one; 404s', async () => {
+    const { user, cookie } = await curator();
+    const { sp1, trait, ref, recA } = await fixture(user.id);
+    const otherSpecies = await createSpecies(t.db);
+    const batch = await createImportBatch(t.db);
+    const pending = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'zz',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    await createAnnotation(t.db, {
+      recordId: recA.id,
+      actorId: user.id,
+      kind: 'withdraw',
+      note: 'gone',
+    });
+    const zero = '00000000-0000-7000-8000-000000000000';
+    const wrong = await put(cookie, otherSpecies.id, trait.id, {
+      decision: 'accepted',
+      recordId: recA.id,
+    });
+    expect(wrong.status).toBe(400);
+    expect((await wrong.json()).error.details[0].path).toBe('recordId');
+    const notHarmonised = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: pending.id,
+    });
+    expect((await notHarmonised.json()).error.code).toBe('RECORD_NOT_HARMONISED');
+    const withdrawn = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: recA.id,
+    });
+    expect((await withdrawn.json()).error.code).toBe('RECORD_WITHDRAWN');
+    for (const [s, tr, r, code] of [
+      [zero, trait.id, recA.id, 'SPECIES_NOT_FOUND'],
+      [sp1.id, zero, recA.id, 'TRAIT_NOT_FOUND'],
+      [sp1.id, trait.id, zero, 'RECORD_NOT_FOUND'],
+    ] as const) {
+      const res = await put(cookie, s, tr, { decision: 'accepted', recordId: r });
+      expect(res.status, code).toBe(404);
+      expect((await res.json()).error.code, code).toBe(code);
+    }
+    const getMissing = await call(t.app, 'GET', `/api/species/${sp1.id}/traits/${zero}/accepted`, {
+      cookie,
+    });
+    expect(getMissing.status).toBe(404);
   });
 });
