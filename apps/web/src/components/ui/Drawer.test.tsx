@@ -105,3 +105,53 @@ describe('RFC-13 R5 Drawer', () => {
     expect(closeOuter).not.toHaveBeenCalled();
   });
 });
+
+describe('RFC-13 R10 Drawer is modal', () => {
+  it('renders at the end of document.body and marks its siblings inert while open', async () => {
+    const onClose = vi.fn();
+    const { container, rerender } = render(
+      <>
+        <button type="button">outside</button>
+        <Drawer open title="Modal" onClose={onClose}>
+          <button type="button">inside</button>
+        </Drawer>
+      </>,
+    );
+    const outside = screen.getByRole('button', { name: 'outside' });
+    expect(outside.closest('[inert]')).not.toBeNull();
+    const dialog = screen.getByRole('dialog', { name: 'Modal' });
+    expect(dialog.closest('[inert]')).toBeNull();
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
+    rerender(
+      <>
+        <button type="button">outside</button>
+        <Drawer open={false} title="Modal" onClose={onClose}>
+          <button type="button">inside</button>
+        </Drawer>
+      </>,
+    );
+    expect(outside.closest('[inert]')).toBeNull();
+    expect(container).toBeInTheDocument();
+  });
+
+  it('cycles Tab inside the panel', async () => {
+    render(
+      <Drawer open title="Modal" onClose={() => undefined}>
+        <button type="button">first</button>
+        <button type="button">last</button>
+      </Drawer>,
+    );
+    const close = screen.getByRole('button', { name: 'Close' });
+    const first = screen.getByRole('button', { name: 'first' });
+    const last = screen.getByRole('button', { name: 'last' });
+    expect(close).toHaveFocus();
+    await userEvent.tab();
+    expect(first).toHaveFocus();
+    await userEvent.tab();
+    expect(last).toHaveFocus();
+    await userEvent.tab();
+    expect(close).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    expect(last).toHaveFocus();
+  });
+});

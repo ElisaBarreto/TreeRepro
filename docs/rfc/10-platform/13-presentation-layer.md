@@ -21,6 +21,7 @@
 - **R7** Motion is confined to the landing page (visual identity spec); every other screen uses hover and focus transitions only and honours `prefers-reduced-motion`.
 - **R8** Every page and shared component has component tests (Vitest, Testing Library, `vi.mock` of `apps/web/src/api/*`): rendering by permission, the happy path, mapped errors, and — for `/app` routes — the 401 and 403 behaviour of R4. Critical flows have Playwright end-to-end tests (RFC-01 R6, plan 05c).
 - **R9** Copy is English. Error messages never echo internals (RFC-02 R9); on sign-in, unknown email and wrong password share one sentence (RFC-22 R2).
+- **R10** Dialogs and drawers are modal: while one is open the rest of the document is `inert` (not focusable, not clickable, hidden from assistive technology), Tab and Shift+Tab cycle inside it, focus moves into it on open and returns to the element that opened it on close. The native `<dialog>` opened with `showModal` provides this; the `Drawer` renders through a portal at the end of `document.body` and marks its siblings `inert` itself.
 
 ## Open questions
 
@@ -31,3 +32,4 @@ None.
 - 2026-09-13 — created.
 - 2026-09-13 — accepted.
 - 2026-09-13 — R5 clarified: markup vs CSSOM.
+- 2026-09-13 — R10: modal focus trap and inert background (plan 07b).

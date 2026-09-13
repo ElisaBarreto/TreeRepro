@@ -1,4 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon.tsx';
 
 export interface DrawerProps {
@@ -15,28 +16,37 @@ const SIZES: Record<NonNullable<DrawerProps['size']>, string> = {
   lg: 'max-w-4xl',
 };
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
- * Right-side panel over a dimmed backdrop, built from plain elements rather
- * than `<dialog>` so it renders the same everywhere (jsdom included). While
- * open it is the labelled modal dialog of the page: focus moves to its Close
- * button on open and returns to the element that had it when it closes;
- * Escape and a backdrop click close it, a click inside does not. Escape is
- * handled on the panel itself, not on the document, so with two drawers open
- * only the one holding focus closes; the panel is given `tabIndex={-1}` so a
- * click on non-focusable text inside it still moves focus there, keeping
- * Escape working rather than firing on `document.body`. Renders nothing
- * while closed.
- * @rfc RFC-13 R5, R7
+ * Right-side panel over a dimmed backdrop, rendered through a portal at the
+ * end of `document.body` so it can make the rest of the document `inert`
+ * while open (RFC-13 R10): every other child of `body` gets the attribute on
+ * open and loses it on close (those that already had it keep it). Focus
+ * moves to the Close button on open and returns to the opener on close; Tab
+ * and Shift+Tab cycle among the panel's focusable elements; Escape and a
+ * backdrop click close it. Renders nothing while closed.
+ * @rfc RFC-13 R5, R7, R10
  */
 export function Drawer({ open, title, onClose, size = 'md', children }: DrawerProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const made: Element[] = [];
+    for (const sibling of Array.from(document.body.children)) {
+      if (sibling === rootRef.current || sibling.hasAttribute('inert')) continue;
+      sibling.setAttribute('inert', '');
+      made.push(sibling);
+    }
     closeRef.current?.focus();
     return () => {
+      for (const sibling of made) sibling.removeAttribute('inert');
       if (previous?.isConnected) previous.focus();
     };
   }, [open]);
@@ -44,21 +54,38 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
   if (!open) return null;
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key !== 'Escape') return;
-    event.stopPropagation();
-    onClose();
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab' || !panelRef.current) return;
+    const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === panelRef.current)) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first?.focus();
+    }
   }
 
-  return (
+  return createPortal(
     // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop closes on a pointer click as a convenience; Escape and the Close button are the keyboard paths
     // biome-ignore lint/a11y/useKeyWithClickEvents: same — the keyboard handler lives on the panel, which holds focus
     <div
+      ref={rootRef}
       className="fixed inset-0 z-40 flex justify-end bg-canopy-950/60"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <section
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -82,6 +109,7 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

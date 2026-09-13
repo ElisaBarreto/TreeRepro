@@ -15,6 +15,7 @@ import {
   Table,
   Tbody,
   Td,
+  Textarea,
   Th,
   Thead,
   Tr,
@@ -258,5 +259,27 @@ describe('RFC-13 R5 UI kit — workspace pattern additions', () => {
     const status = screen.getByRole('status');
     expect(status).toHaveTextContent('Heads up');
     expect(status.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+describe('RFC-13 R5 Select and Textarea', () => {
+  it('Select renders a native select with its options and the invalid state', () => {
+    render(
+      <Select aria-label="Level" invalid>
+        <option value="a">a</option>
+      </Select>,
+    );
+    const select = screen.getByRole('combobox', { name: 'Level' });
+    expect(select.tagName).toBe('SELECT');
+    expect(select).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('option', { name: 'a' })).toBeInTheDocument();
+  });
+
+  it('Textarea renders a textarea and forwards attributes', () => {
+    render(<Textarea aria-label="Note" maxLength={2000} />);
+    const area = screen.getByRole('textbox', { name: 'Note' });
+    expect(area.tagName).toBe('TEXTAREA');
+    expect(area).toHaveAttribute('maxlength', '2000');
+    expect(area).not.toHaveAttribute('aria-invalid');
   });
 });
