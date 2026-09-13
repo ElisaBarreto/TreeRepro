@@ -14,7 +14,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 
 - **R1** Table `audit_log` columns: `id` uuid primary key default `uuidv7()`; `at` timestamptz not null default `now()`; `actor_user_id` uuid nullable (foreign key to `users`, RFC-20 R9); `action` text not null; `target_type` text nullable; `target_id` text nullable; `ip` text nullable (encrypted); `user_agent` text nullable (encrypted); `metadata` jsonb not null default `{}`. Indexes: `(at desc)` and `(actor_user_id, at desc)`.
 - **R2** Append-only. A trigger rejects every `UPDATE` and `TRUNCATE`, and rejects `DELETE` unless the current transaction has set `treerepro.allow_audit_purge = 'on'`. Only `audit_log_purge()` (RFC-42 R2) sets that flag; the runtime role cannot delete directly (R9).
-- **R3** Actions are dot-separated identifiers `<domain>.<event>` from the catalog below, mirrored exactly by `AUDIT_ACTIONS` in `apps/api/src/audit/actions.ts` (a test compares the two). New actions are added to this RFC first.
+- **R3** Actions are dot-separated identifiers `<domain>.<event>` from the catalog below, mirrored exactly by `AUDIT_ACTIONS` in `packages/contracts/src/audit.ts` — shared with the web app, which offers it as the audit filter (RFC-51 R1) — and re-exported by `apps/api/src/audit/actions.ts` (a test compares the catalog with this table). New actions are added to this RFC first.
 - **R4** `ip` and `user_agent` are encrypted with RFC-40 before storage. `auth.login.failure` entries carry `metadata.reason` with one of `unknown_email`, `wrong_password`, `not_active`, `suspended`, `rate_limited` (RFC-22 R2, RFC-24 R6).
 - **R5** `recordAudit` runs inside the same database transaction as the action it records. If the audit write fails, the action is rolled back (fail closed).
 - **R6** Retention: entries older than 2 years are purged by `audit_log_purge()` on the schedule of RFC-42.
@@ -71,3 +71,4 @@ None.
 - 2026-09-12 — R1 FK, R4 reason metadata, three auth actions (RFC-20, RFC-22, RFC-23).
 - 2026-09-12 — R2, R6, R9: purge through audit_log_purge() (RFC-42); users.deleted and users.exported removed (RFC-50 R12).
 - 2026-09-13 — catalog and export actions (RFC-60–62, RFC-66, plan 07).
+- 2026-09-13 — R3: the catalog lives in packages/contracts (plan 05b).
