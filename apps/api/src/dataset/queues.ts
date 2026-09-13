@@ -175,14 +175,11 @@ interface DisputeRow {
 
 /**
  * Standing disputes: per record, the newest annotation among the actors whose
- * latest stance is `dispute`; excluded once withdrawn, or once a later
- * decision resolves it — an `accepted` decision naming that same record, or a
- * `cleared` decision (no record; it settles every standing dispute of the
- * species and trait). A decision that accepts a *different* record leaves
- * other records' standing disputes alone. Starts from `record_annotations`
- * (human-scale), never scans `trait_records`. Two steps: the page of dispute
- * rows, then the record items through the shared join and the actors through
- * Drizzle so their names are decrypted (RFC-40).
+ * latest stance is `dispute`; excluded once withdrawn or once an accepted
+ * decision for the species and trait is newer than the dispute. Starts from
+ * `record_annotations` (human-scale), never scans `trait_records`. Two steps:
+ * the page of dispute rows, then the record items through the shared join and
+ * the actors through Drizzle so their names are decrypted (RFC-40).
  * @rfc RFC-65 R10
  */
 export async function listDisputed(
@@ -203,8 +200,7 @@ export async function listDisputed(
     from standing d join trait_records r on r.id = d.record_id
     where not exists (select 1 from record_annotations w where w.record_id = d.record_id and w.kind = 'withdraw')
       and not exists (select 1 from accepted_values v
-        where v.species_id = r.species_id and v.trait_id = r.trait_id and v.created_at > d.created_at
-          and (v.record_id = d.record_id or v.record_id is null))
+        where v.species_id = r.species_id and v.trait_id = r.trait_id and v.created_at > d.created_at)
       and (${after}::uuid is null or d.annotation_id < ${after}::uuid)
     order by d.annotation_id desc
     limit ${input.limit + 1}`)) as unknown as DisputeRow[];

@@ -525,7 +525,7 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
     return ids;
   };
 
-  it('lists standing disputes newest first, drops them after a later accepted decision or a changed stance, never withdrawn records', async () => {
+  it('lists standing disputes newest first, drops them after a later accepted decision for the species and trait or a changed stance, never withdrawn records', async () => {
     const author = await scientist(t, ['records.annotate', 'dataset.read']);
     const b = await scientist(t, ['records.annotate']);
     const sp1 = await createSpecies(t.db);
@@ -556,7 +556,8 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
       note: 'Newer claim wrong',
     });
     let ids = await idsOf(author.cookie);
-    expect(ids.indexOf(newer.id)).toBeGreaterThanOrEqual(0);
+    expect(ids).toContain(newer.id);
+    expect(ids).toContain(older.id);
     expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
     const first = await call(t.app, 'GET', '/api/records/disputed?limit=200', {
       cookie: author.cookie,
@@ -566,7 +567,8 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
       review: 'disputed',
       latestDispute: { actor: { id: b.user.id, name: 'Test User' }, note: 'Newer claim wrong' },
     });
-    // a curator decides after the dispute: the record leaves the queue
+    // a curator decides after both standing disputes: the decision retires them both
+    // (RFC-65 R10 is scoped to the species x trait, not to the decided record)
     await createAcceptedValue(t.db, {
       speciesId: sp1.id,
       traitId: trait.id,
@@ -575,8 +577,8 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
     });
     ids = await idsOf(author.cookie);
     expect(ids).not.toContain(newer.id);
-    expect(ids).toContain(older.id);
-    // a new dispute after the decision brings it back
+    expect(ids).not.toContain(older.id);
+    // a new dispute after the decision brings its record back
     await createAnnotation(t.db, {
       recordId: newer.id,
       actorId: b.user.id,
@@ -584,6 +586,13 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
       note: 'Still wrong',
     });
     expect(await idsOf(author.cookie)).toContain(newer.id);
+    await createAnnotation(t.db, {
+      recordId: older.id,
+      actorId: b.user.id,
+      kind: 'dispute',
+      note: 'Older still wrong',
+    });
+    expect(await idsOf(author.cookie)).toContain(older.id);
     // the disputer steps back: gone
     await createAnnotation(t.db, { recordId: newer.id, actorId: b.user.id, kind: 'neutral' });
     expect(await idsOf(author.cookie)).not.toContain(newer.id);
