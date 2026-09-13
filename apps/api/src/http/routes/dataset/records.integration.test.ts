@@ -281,3 +281,223 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
     });
   });
 });
+
+describe('RFC-65 R7–R9 harmonisation queue', () => {
+  const t = useTestApp();
+
+  /** Two species, one reference, a categorical trait (red, blue) and a quantitative one; pending import rows on both. */
+  async function queueFixture() {
+    const { user, cookie } = await scientist(t, ['records.create', 'dataset.read']);
+    const s1 = await createSpecies(t.db);
+    const s2 = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    const cat = await createTrait(t.db, { levels: ['red', 'blue'] });
+    const quant = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const batch = await createImportBatch(t.db);
+    const imp = (
+      speciesId: string,
+      traitId: string,
+      valueText: string,
+      extra: Record<string, unknown> = {},
+    ) =>
+      createRecord(t.db, {
+        speciesId,
+        traitId,
+        valueText,
+        primaryReferenceId: ref.id,
+        importBatchId: batch.id,
+        harmonisation: 'unknown_level',
+        ...extra,
+      });
+    const reds1 = await imp(s1.id, cat.id, 'reds', { rawValue: 'Reds' });
+    const reds2 = await imp(s2.id, cat.id, 'reds');
+    const reds3 = await imp(s2.id, cat.id, 'reds', { rawValue: 'reds!' });
+    const multi = await imp(s1.id, cat.id, 'red;blue', { harmonisation: 'multi_value' });
+    await imp(s1.id, cat.id, '', { harmonisation: 'empty' });
+    const approx = await imp(s1.id, quant.id, 'ca. 12', { harmonisation: 'not_numeric' });
+    return { user, cookie, s1, s2, ref, cat, quant, reds1, reds2, reds3, multi, approx };
+  }
+
+  it('R7, R8 lists traits with pending counts and the groups of one trait; empty rows are not pending', async () => {
+    const f = await queueFixture();
+    const traitsRes = await call(t.app, 'GET', '/api/records/pending/traits', { cookie: f.cookie });
+    expect(traitsRes.status).toBe(200);
+    const traits = (await traitsRes.json()).data as {
+      trait: { id: string; key: string };
+      count: number;
+    }[];
+    expect(traits.find((x) => x.trait.id === f.cat.id)).toMatchObject({
+      trait: { key: f.cat.key, valueType: 'categorical' },
+      count: 4,
+    });
+    expect(traits.find((x) => x.trait.id === f.quant.id)).toMatchObject({ count: 1 });
+    const groups = await call(t.app, 'GET', `/api/records/pending?traitId=${f.cat.id}`, {
+      cookie: f.cookie,
+    });
+    expect(groups.status).toBe(200);
+    expect((await groups.json()).data).toEqual([
+      { valueText: 'reds', harmonisation: 'unknown_level', count: 3, sampleRecordId: f.reds3.id },
+      { valueText: 'red;blue', harmonisation: 'multi_value', count: 1, sampleRecordId: f.multi.id },
+    ]);
+    const page1 = await call(t.app, 'GET', `/api/records/pending?traitId=${f.cat.id}&limit=1`, {
+      cookie: f.cookie,
+    });
+    const body1 = await page1.json();
+    expect(body1.data[0].valueText).toBe('reds');
+    expect(body1.meta.nextCursor).not.toBeNull();
+    const page2 = await call(
+      t.app,
+      'GET',
+      `/api/records/pending?traitId=${f.cat.id}&limit=1&cursor=${body1.meta.nextCursor}`,
+      { cookie: f.cookie },
+    );
+    const body2 = await page2.json();
+    expect(body2.data[0].valueText).toBe('red;blue');
+    expect(body2.meta.nextCursor).toBeNull();
+    const bad = await call(t.app, 'GET', `/api/records/pending?traitId=${f.cat.id}&cursor=nope`, {
+      cookie: f.cookie,
+    });
+    expect(bad.status).toBe(400);
+    const noTrait = await call(t.app, 'GET', '/api/records/pending', { cookie: f.cookie });
+    expect(noTrait.status).toBe(400);
+    const unknown = await call(
+      t.app,
+      'GET',
+      '/api/records/pending?traitId=00000000-0000-7000-8000-000000000000',
+      { cookie: f.cookie },
+    );
+    expect(unknown.status).toBe(404);
+    expect((await unknown.json()).error.code).toBe('TRAIT_NOT_FOUND');
+  });
+
+  it('R9 maps a group to one level: one harmonised record per pending row, inheriting references and raw value', async () => {
+    const f = await queueFixture();
+    const red = f.cat.levels[0]?.id ?? '';
+    const res = await call(t.app, 'POST', '/api/records/pending/map', {
+      cookie: f.cookie,
+      body: {
+        traitId: f.cat.id,
+        valueText: 'reds',
+        value: { levelIds: [red] },
+        note: 'Plural of red',
+      },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual({ created: 3, skipped: 0 });
+    const original = await call(t.app, 'GET', `/api/records/${f.reds1.id}`, { cookie: f.cookie });
+    const detail = (await original.json()).data;
+    expect(detail.supersededBy).toHaveLength(1);
+    expect(detail.review).toBe('unreviewed');
+    const mapped = await call(t.app, 'GET', `/api/records/${detail.supersededBy[0].id}`, {
+      cookie: f.cookie,
+    });
+    expect((await mapped.json()).data).toMatchObject({
+      speciesId: f.s1.id,
+      valueText: 'red',
+      level: { id: red, key: 'red' },
+      harmonisation: 'harmonised',
+      origin: 'manual',
+      createdBy: { id: f.user.id },
+      primaryReference: { id: f.ref.id },
+      rawValue: 'Reds',
+      note: 'Plural of red',
+      supersedes: { id: f.reds1.id },
+    });
+    const noRaw = await call(t.app, 'GET', `/api/records/${f.reds2.id}`, { cookie: f.cookie });
+    const noRawMapped = await call(
+      t.app,
+      'GET',
+      `/api/records/${(await noRaw.json()).data.supersededBy[0].id}`,
+      { cookie: f.cookie },
+    );
+    expect((await noRawMapped.json()).data.rawValue).toBe('reds');
+    const groups = await call(t.app, 'GET', `/api/records/pending?traitId=${f.cat.id}`, {
+      cookie: f.cookie,
+    });
+    expect((await groups.json()).data.map((g: { valueText: string }) => g.valueText)).toEqual([
+      'red;blue',
+    ]);
+    const again = await call(t.app, 'POST', '/api/records/pending/map', {
+      cookie: f.cookie,
+      body: { traitId: f.cat.id, valueText: 'reds', value: { levelIds: [red] } },
+    });
+    expect((await again.json()).data).toEqual({ created: 0, skipped: 0 });
+  });
+
+  it('R9 a multi-value group maps to several levels; a numeric group maps to a number; existing claims are skipped', async () => {
+    const f = await queueFixture();
+    const [red, blue] = f.cat.levels.map((l) => l.id);
+    const multi = await call(t.app, 'POST', '/api/records/pending/map', {
+      cookie: f.cookie,
+      body: { traitId: f.cat.id, valueText: 'red;blue', value: { levelIds: [red, blue] } },
+    });
+    expect((await multi.json()).data).toEqual({ created: 2, skipped: 0 });
+    const original = await call(t.app, 'GET', `/api/records/${f.multi.id}`, { cookie: f.cookie });
+    expect((await original.json()).data.supersededBy).toHaveLength(2);
+    const numeric = await call(t.app, 'POST', '/api/records/pending/map', {
+      cookie: f.cookie,
+      body: { traitId: f.quant.id, valueText: 'ca. 12', value: { numeric: 12 } },
+    });
+    expect((await numeric.json()).data).toEqual({ created: 1, skipped: 0 });
+    const approx = await call(t.app, 'GET', `/api/records/${f.approx.id}`, { cookie: f.cookie });
+    const reading = await call(
+      t.app,
+      'GET',
+      `/api/records/${(await approx.json()).data.supersededBy[0].id}`,
+      { cookie: f.cookie },
+    );
+    expect((await reading.json()).data).toMatchObject({
+      valueText: '12',
+      numericValue: 12,
+      rawValue: 'ca. 12',
+    });
+    // a claim the spreadsheet had already harmonised: (s2, cat, 'red', raw 'reds!', ref) exists → the mapping skips it
+    await createRecord(t.db, {
+      speciesId: f.s2.id,
+      traitId: f.cat.id,
+      valueText: 'red',
+      levelId: red,
+      rawValue: 'reds!',
+      primaryReferenceId: f.ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+    const skipped = await call(t.app, 'POST', '/api/records/pending/map', {
+      cookie: f.cookie,
+      body: { traitId: f.cat.id, valueText: 'reds', value: { levelIds: [red] } },
+    });
+    expect((await skipped.json()).data).toEqual({ created: 2, skipped: 1 });
+    const groups = await call(t.app, 'GET', `/api/records/pending?traitId=${f.cat.id}`, {
+      cookie: f.cookie,
+    });
+    expect((await groups.json()).data).toEqual([
+      { valueText: 'reds', harmonisation: 'unknown_level', count: 1, sampleRecordId: f.reds3.id },
+    ]);
+  });
+
+  it('R9 validates like a manual record: level of another trait, levels on a quantitative trait, unknown trait', async () => {
+    const f = await queueFixture();
+    const other = await createTrait(t.db, { levels: ['x'] });
+    const post = (body: Record<string, unknown>) =>
+      call(t.app, 'POST', '/api/records/pending/map', { cookie: f.cookie, body });
+    const foreign = await post({
+      traitId: f.cat.id,
+      valueText: 'reds',
+      value: { levelIds: [other.levels[0]?.id] },
+    });
+    expect(foreign.status).toBe(400);
+    expect((await foreign.json()).error.details[0].path).toBe('value.levelId');
+    const shape = await post({
+      traitId: f.quant.id,
+      valueText: 'ca. 12',
+      value: { levelIds: [f.cat.levels[0]?.id] },
+    });
+    expect(shape.status).toBe(400);
+    expect((await shape.json()).error.details[0].path).toBe('value');
+    const unknown = await post({
+      traitId: '00000000-0000-7000-8000-000000000000',
+      valueText: 'reds',
+      value: { numeric: 1 },
+    });
+    expect(unknown.status).toBe(404);
+  });
+});

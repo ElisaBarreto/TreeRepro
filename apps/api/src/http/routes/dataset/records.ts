@@ -2,10 +2,13 @@ import {
   createRecordBodySchema,
   idParamSchema,
   listRecordsQuerySchema,
+  mapPendingBodySchema,
+  pendingGroupsQuerySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
 import { createRecord } from '../../../dataset/curation.ts';
+import { mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
@@ -16,6 +19,7 @@ import { validate } from '../../validate.ts';
 /**
  * @rfc RFC-63 R8, R9
  * @rfc RFC-65 R1, R2
+ * @rfc RFC-65 R7-R9
  */
 export function recordRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
@@ -45,6 +49,35 @@ export function recordRoutes(ctx: AuthContext) {
           limit: q.limit,
         });
         return c.json({ data, meta: { nextCursor } });
+      },
+    )
+    .get('/pending/traits', requirePermission(ctx, 'dataset.read'), async (c) =>
+      c.json({ data: await pendingTraits(ctx.db) }),
+    )
+    .get(
+      '/pending',
+      requirePermission(ctx, 'dataset.read'),
+      validate('query', pendingGroupsQuerySchema),
+      async (c) => {
+        const q = c.req.valid('query');
+        const { data, nextCursor } = await pendingGroups(ctx.db, {
+          traitId: q.traitId,
+          cursor: q.cursor,
+          limit: q.limit,
+        });
+        return c.json({ data, meta: { nextCursor } });
+      },
+    )
+    .post(
+      '/pending/map',
+      requirePermission(ctx, 'records.create'),
+      validate('json', mapPendingBodySchema),
+      async (c) => {
+        const result = await mapPending(ctx.db, {
+          ...c.req.valid('json'),
+          actorId: currentUser(c).id,
+        });
+        return c.json({ data: result });
       },
     )
     .get(
