@@ -3,7 +3,7 @@ import { and, asc, count, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/client.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
-import { decodeCompositeCursor, encodeCompositeCursor } from '../http/cursor.ts';
+import { decodeCompositeCursor, encodeCompositeCursor, isUuid } from '../http/cursor.ts';
 import { likePattern } from './taxa.ts';
 
 /** @rfc RFC-61 R4 */
@@ -37,7 +37,10 @@ export async function searchReferences(
     );
   }
   if (input.cursor) {
-    const [key, id] = decodeCompositeCursor(input.cursor, 2) as [string, string];
+    const [key, id] = decodeCompositeCursor(input.cursor, 2, [() => true, isUuid]) as [
+      string,
+      string,
+    ];
     conditions.push(
       sql`(${bibliographicReferences.citationKey}, ${bibliographicReferences.id}) > (${key}, ${id}::uuid)`,
     );

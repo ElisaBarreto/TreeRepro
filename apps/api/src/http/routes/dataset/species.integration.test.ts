@@ -5,6 +5,7 @@ import { createFamily, createGenus, createSpecies } from '../../../../test/helpe
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
+import { encodeCompositeCursor } from '../../cursor.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -51,6 +52,17 @@ describe('RFC-60 R6-R8 species, families and genera routes', () => {
     expect((await short.json()).error.details[0].path).toBe('q');
     const badCursor = await call(t.app, 'GET', '/api/species?cursor=zzz', { cookie });
     expect(badCursor.status).toBe(400);
+    // A well-formed composite cursor (right shape, right arity) whose id
+    // part is not a uuid must still answer 400, not reach the `::uuid` cast
+    // and surface as a 500.
+    const tamperedCursor = await call(
+      t.app,
+      'GET',
+      `/api/species?cursor=${encodeURIComponent(encodeCompositeCursor(['a', 'b']))}`,
+      { cookie },
+    );
+    expect(tamperedCursor.status).toBe(400);
+    expect((await tamperedCursor.json()).error.code).toBe('VALIDATION_FAILED');
   });
 
   it('R7 detail answers the species or 404 SPECIES_NOT_FOUND', async () => {

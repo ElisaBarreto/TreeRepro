@@ -12,7 +12,7 @@
 
 ## `CREATE TABLE` fails for the app role — but temporary tables don't
 **Symptom:** `permission denied for schema public` when the importer tries to stage rows in a normal table under the `treerepro_app` role.
-**Cause:** RFC-30's least-privilege grants give `treerepro_app` `SELECT/INSERT/UPDATE` on the application tables but not `CREATE` in `public` (that's `treerepro_migrator`'s job). Session-local temporary tables are exempt — they live in `pg_temp`, which every role can create in.
+**Cause:** `infra/postgres/init/01-roles.sh` (RFC-10 R7, RFC-41 R9) grants `treerepro_app` default privileges of `SELECT, INSERT, UPDATE, DELETE` on the application tables but not `CREATE` in `public` (that's `treerepro_migrator`'s job). Session-local temporary tables are exempt — they live in `pg_temp`, which every role can create in.
 **Fix:** Stage with `create temporary table import_staging (...) on commit drop`, inside the same `sql.begin` transaction as the `COPY` and the inserts that follow. `on commit drop` means no cleanup step is needed even on error.
 
 ## `ON CONFLICT DO NOTHING`'s row count *is* the duplicate counter
@@ -31,8 +31,8 @@
 **Fix:** Keep `0009_pg_trgm.sql` (`CREATE EXTENSION IF NOT EXISTS pg_trgm`) as its own migration, numbered ahead of `0010_dataset_catalogs.sql`, which builds the trigram indexes on `bibliographic_references.citation_key`, `species.canonical_name` and `species_names.name` (RFC-10 R14). Migration order is filename order — don't fold the extension into the same file as the indexes it enables, or a future regeneration could reorder the statements.
 
 ## JS template strings need `'\\s+'` for Postgres to see `\s+`
-**Symptom:** `regexp_replace(wcvp_species, '\s+', ' ', 'g')` written directly in a JS template literal collapses to a single backslash escape the JS engine consumes, and the regex Postgres receives no longer matches whitespace runs the way it should (or the literal backslash-s reaches Postgres, which still happens to mean the same thing in this case — but relying on that is an accident, not a rule).
-**Cause:** `\s` inside a normal (non-raw) JS string/template literal is not a recognised escape sequence, but `\` followed by certain characters *is* consumed by the JS parser for other escapes; the safe, unambiguous way to send a literal backslash to Postgres from a JS template string is to write it twice.
+**Symptom:** `regexp_replace(wcvp_species, '\s+', ' ', 'g')` written directly in a *cooked* JS template literal never reaches Postgres as `\s+`: a single `\s` is not a recognised JS escape, so the engine drops the backslash and Postgres receives the literal letter `s` — `regexp_replace(x, 's+', ' ', 'g')` would collapse runs of the letter `s`, not whitespace.
+**Cause:** In a normal (non-raw) JS string/template literal, `\` followed by a character with no defined escape meaning is silently discarded, keeping only the character; the safe, unambiguous way to send a literal backslash to Postgres from a JS template string is to write it twice.
 **Fix:** Write `'\\s+'` in the tagged-template SQL (`tx\`... regexp_replace(wcvp_species, '\\s+', ' ', 'g') ...\``) so the string that actually reaches Postgres contains `\s+`. `apps/api/src/dataset/import.ts` does this for every `regexp_replace` call that normalises whitespace in species, genus and family names.
 
 ## postgres.js 3.4.9 can hang forever on a bad `COPY` row

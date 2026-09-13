@@ -1,10 +1,10 @@
 import type { Genus, Species, SpeciesListItem, TaxonRef } from '@treerepro/contracts';
-import { and, asc, count, countDistinct, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, countDistinct, eq, ilike, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { DbExecutor } from '../db/client.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
-import { decodeCompositeCursor, encodeCompositeCursor } from '../http/cursor.ts';
+import { decodeCompositeCursor, encodeCompositeCursor, isUuid } from '../http/cursor.ts';
 
 /** Escapes `%`, `_` and `\` so a search term matches literally. @rfc RFC-60 R6 */
 export function likePattern(term: string, mode: 'substring' | 'prefix'): string {
@@ -14,7 +14,7 @@ export function likePattern(term: string, mode: 'substring' | 'prefix'): string 
 
 /** Ordering by a text column and id needs both values in the cursor. */
 function afterNameCursor(cursor: string, nameCol: AnyPgColumn, idCol: AnyPgColumn): SQL {
-  const [name, id] = decodeCompositeCursor(cursor, 2) as [string, string];
+  const [name, id] = decodeCompositeCursor(cursor, 2, [() => true, isUuid]) as [string, string];
   return sql`(${nameCol}, ${idCol}) > (${name}, ${id}::uuid)`;
 }
 
@@ -65,11 +65,14 @@ export async function searchSpecies(
   const conditions: SQL[] = [];
   const pattern = input.q ? likePattern(input.q, 'substring') : undefined;
   if (pattern) {
+    // A single `or(ilike, exists(...))` forces a full scan of `species` (the planner
+    // can't turn an OR across two tables into an index-only lookup); a semi-join over
+    // the UNION of both trigram lookups lets it bitmap-scan each gin index instead.
     conditions.push(
-      or(
-        ilike(species.canonicalName, pattern),
-        sql`exists (select 1 from ${speciesNames} sn where sn.species_id = ${species.id} and sn.name ilike ${pattern})`,
-      ) as SQL,
+      sql`${species.id} in (
+        select s.id from ${species} s where s.canonical_name ilike ${pattern}
+        union
+        select sn.species_id from ${speciesNames} sn where sn.name ilike ${pattern})`,
     );
   }
   if (input.familyId) conditions.push(eq(genera.familyId, input.familyId));

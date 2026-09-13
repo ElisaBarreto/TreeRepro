@@ -60,6 +60,11 @@
 **Cause:** `__Host-` cookies require `Secure`, and browsers accept `Secure` cookies only from secure contexts: `https://…` or `http://localhost`. `http://192.168.x.y` is not one.
 **Fix:** Open the dev stack through `http://localhost` (Caddy on :80) or serve TLS. Do not weaken the cookie (RFC-22 R5).
 
+## `docker compose cp` into a tmpfs mount silently does nothing
+**Symptom:** `docker compose cp ./records.csv api:/tmp/records.csv` exits 0, but the file is not there — `docker compose exec api ls /tmp` never shows it, and a later `import:records --file /tmp/records.csv` fails with `ENOENT`.
+**Cause:** `api`'s `/tmp` is a `tmpfs` mount (`read_only: true`, `tmpfs: [/tmp]`, RFC-02 R11). `docker compose cp` writes through the container's *image* filesystem layer via the Docker API, not through a live process inside the container; on a path that is actually a separate `tmpfs` mount, the copy either errors or (depending on the Compose/Docker version) reports success while writing nowhere the running container can see.
+**Fix:** Stream the file into the container through a live process instead, which writes directly into the mounted tmpfs: `docker compose exec -T api sh -c 'cat > /tmp/<file>.csv' < <local path>` (small files only — the tmpfs is memory-backed and finite). For anything larger, or in production, bind-mount the host directory that holds the file read-only and point the CLI at that path instead of copying into the container at all (`docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-records.js --file /imports/<file>.csv`).
+
 ## Never expose the API port directly
 **Symptom:** Per-IP rate limits can be dodged and audit IPs are wrong.
 **Cause:** The API trusts the last `X-Forwarded-For` entry (RFC-22 R12) because Caddy sanitizes it, so a client that reaches the API without Caddy chooses its own IP.

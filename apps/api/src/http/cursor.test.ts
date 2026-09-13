@@ -4,6 +4,8 @@ import {
   decodeCursor,
   encodeCompositeCursor,
   encodeCursor,
+  isDigits,
+  isUuid,
 } from './cursor.ts';
 import { AppError } from './errors.ts';
 
@@ -73,5 +75,33 @@ describe('RFC-11 R6 composite cursor', () => {
         ]);
       }
     }
+  });
+
+  it('rejects a part that fails its validator with VALIDATION_FAILED at path cursor', () => {
+    const token = encodeCompositeCursor(['x', 'y']);
+    let caught: unknown;
+    try {
+      decodeCompositeCursor(token, 2, [() => true, isUuid]);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe('VALIDATION_FAILED');
+    expect((caught as AppError).details).toEqual([{ path: 'cursor', message: 'Invalid cursor' }]);
+  });
+
+  it('passes a token whose parts satisfy every validator', () => {
+    const id = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
+    const token = encodeCompositeCursor(['free text', id]);
+    expect(decodeCompositeCursor(token, 2, [() => true, isUuid])).toEqual(['free text', id]);
+  });
+
+  it('isDigits accepts only ASCII digit strings', () => {
+    expect(isDigits('0')).toBe(true);
+    expect(isDigits('12345')).toBe(true);
+    expect(isDigits('')).toBe(false);
+    expect(isDigits('12.3')).toBe(false);
+    expect(isDigits('-1')).toBe(false);
+    expect(isDigits('1a')).toBe(false);
   });
 });

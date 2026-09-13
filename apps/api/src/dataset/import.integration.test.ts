@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -289,5 +290,22 @@ describe('RFC-64 importRecords', () => {
     expect(await t.db.select().from(species).where(eq(species.canonicalName, 'Broken sp'))).toEqual(
       [],
     );
+  });
+
+  it('R5 a whitespace-only wcvp_species falls through to gbif_species for both the name and its source', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'import-'));
+    const file = join(dir, 'tab-only.csv');
+    const header = IMPORT_COLUMNS.join(',');
+    const gbifName = `Tabby gbif-${randomBytes(4).toString('hex')}`;
+    // wcvp_species is a quoted tab: `trim()` alone (space only) leaves it
+    // non-empty, so `name_source` must be decided on the same
+    // whitespace-collapsing normalisation as `species_name`, not on the raw
+    // column — otherwise this row would wrongly get `name_source = 'wcvp'`
+    // while `species_name` itself already fell through to `gbif_species`.
+    const row = ['', '', '"\t"', '', '', gbifName, '', '', '', '', '', '', '', '', ''].join(',');
+    await writeFile(file, `${header}\n${row}\n`);
+    await importRecords(t.db, { filePath: file });
+    const [created] = await t.db.select().from(species).where(eq(species.canonicalName, gbifName));
+    expect(created).toMatchObject({ nameSource: 'gbif', canonicalName: gbifName });
   });
 });

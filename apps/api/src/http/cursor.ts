@@ -27,6 +27,16 @@ const invalidCursor = () =>
     { path: 'cursor', message: 'Invalid cursor' },
   ]);
 
+/** A composite cursor part shaped like a UUID (reuses {@link decodeCursor}'s pattern). @rfc RFC-11 R6 */
+export function isUuid(part: string): boolean {
+  return UUID.test(part);
+}
+
+/** A composite cursor part made only of ASCII digits (a `bigserial` row number). @rfc RFC-11 R6 */
+export function isDigits(part: string): boolean {
+  return /^\d+$/.test(part);
+}
+
 /**
  * Keyset cursor over several sort columns (name then id, row_no then id):
  * the JSON array of the last row's values, base64url so clients treat it as
@@ -37,8 +47,18 @@ export function encodeCompositeCursor(parts: string[]): string {
   return Buffer.from(JSON.stringify(parts), 'utf8').toString('base64url');
 }
 
-/** @rfc RFC-11 R6 */
-export function decodeCompositeCursor(token: string, arity: number): string[] {
+/**
+ * Decodes a composite cursor, optionally validating each part (one validator
+ * per position, e.g. {@link isUuid} for a uuid part) — a tampered token whose
+ * shape is otherwise valid JSON must still fail with 400, not reach the SQL
+ * cast that would throw a raw driver error.
+ * @rfc RFC-11 R6
+ */
+export function decodeCompositeCursor(
+  token: string,
+  arity: number,
+  validators?: ((part: string) => boolean)[],
+): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
@@ -51,6 +71,9 @@ export function decodeCompositeCursor(token: string, arity: number): string[] {
     !parsed.every((p) => typeof p === 'string') ||
     encodeCompositeCursor(parsed) !== token
   ) {
+    throw invalidCursor();
+  }
+  if (validators && !parsed.every((p, i) => validators[i]?.(p) ?? true)) {
     throw invalidCursor();
   }
   return parsed;

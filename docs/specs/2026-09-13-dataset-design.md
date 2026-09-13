@@ -51,7 +51,7 @@ All ids are `uuid` with `default uuidv7()`; timestamps are `timestamptz`. `creat
 | `families` | `id`, `name text`, `created_at`, `created_by` | `unique(name)` |
 | `genera` | `id`, `family_id null`, `name text`, `created_at`, `created_by` | `unique(name)`; `family_id` null = family unresolved |
 | `species` | `id`, `genus_id null`, `canonical_name text`, `name_source text` (`wcvp`, `gbif`, `original`), `created_at`, `created_by` | `unique(canonical_name)`; check on `name_source`; GIN trigram index on `canonical_name` |
-| `species_names` | `id`, `species_id`, `name text`, `source text` (`gbif`), `gbif_usage_key bigint null`, `created_at` | `unique(species_id, name)`; GIN trigram index on `name` |
+| `species_names` | `id`, `species_id`, `name text`, `source text` (`gbif`), `gbif_usage_key text null`, `created_at` | `unique(species_id, name)`; GIN trigram index on `name` |
 
 Names are stored trimmed with internal whitespace collapsed. A species whose `name_source` is not `wcvp` is an *unresolved taxon*; a species without a genus or a genus without a family is *unresolved taxonomy*; both are visible flags for curators, never blockers for import.
 
@@ -67,7 +67,7 @@ Names are stored trimmed with internal whitespace collapsed. A species whose `na
 |---|---|---|
 | `trait_categories` | `key text pk`, `label text`, `sort_order int` | |
 | `traits` | `id`, `key text`, `category_key`, `value_type text` (`categorical`, `quantitative`), `unit text null`, `description text`, `active bool default true`, `created_at`, `created_by` | `unique(key)`; check on `value_type` |
-| `trait_levels` | `id`, `trait_id`, `key text`, `sort_order int`, `active bool default true`, `created_at`, `created_by` | `unique(trait_id, key)` |
+| `trait_levels` | `id`, `trait_id`, `key text`, `sort_order int`, `active bool default true`, `created_at`, `created_by` | `unique (trait_id, lower(key))` |
 
 `key` values are stored exactly as the dictionary spells them (including `whole plant`, `hea`, `grey` and `gray`); matching at import compares `lower(trim(value))` with `lower(key)`. Cleaning the vocabulary is curation work (plan 07): rename a level's key, deactivate it, or add a level; never delete. Categories are the dictionary's twelve `broad_category` values plus their display order (`dispersal`, `pollination`, `reproduction`, `fruit`, `fruit_color`, `seed`, `flower`, `flower_color`, `plant_form`, `demography`, `root`, `metadata_or_context`, `structural`).
 

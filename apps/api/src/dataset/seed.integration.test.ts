@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { asc, eq } from 'drizzle-orm';
@@ -59,10 +59,24 @@ describe('RFC-62 R2 seedDictionary', () => {
   it('inserts only what is missing and never changes existing rows', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dict-'));
     const file = join(dir, 'extra.csv');
+    // The extra rows are appended after the real dictionary's full content
+    // (not a two-row file of their own) so `zz_test_category`'s first
+    // appearance (its `sort_order`, RFC-62 R2) lands after every real row —
+    // a standalone extra file would give it row_no 2, sorting it second in
+    // /api/traits ahead of nearly every real category for the rest of the
+    // test run. The real file is CRLF-terminated; COPY's CSV reader commits
+    // to whatever line ending the first line uses, so appending plain-LF
+    // rows after it as-is makes it see an "unquoted newline" and (per the
+    // postgres.js COPY-hang gotcha, since seedDictionary's pipeline has no
+    // idle guard) the import hangs instead of erroring — normalise to LF
+    // throughout before appending.
+    const realDictionary = (await readFile(dictionaryPath(), 'utf8'))
+      .replace(/\r\n/g, '\n')
+      .replace(/\n$/, '');
     await writeFile(
       file,
       [
-        'final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels',
+        realDictionary,
         'flower_color,flower_color,categorical,,CHANGED DESCRIPTION,black;blue;test_level_zz',
         'zz_test_trait,zz_test_category,quantitative,kg,A test trait,',
       ].join('\n'),

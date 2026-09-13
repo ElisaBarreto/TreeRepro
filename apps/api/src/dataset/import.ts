@@ -22,6 +22,8 @@ import {
   decodeCursor,
   encodeCompositeCursor,
   encodeCursor,
+  isDigits,
+  isUuid,
 } from '../http/cursor.ts';
 
 /** The 15 columns of the compiled dataset, in file order. @rfc RFC-64 R2 */
@@ -176,6 +178,9 @@ export function validateHeader(line: string): void {
   }
 }
 
+/** Refuses a header line with no newline within this many bytes, rather than buffering an unbounded amount of a non-CSV file. @rfc RFC-64 R2 */
+const MAX_FIRST_LINE_BYTES = 64 * 1024;
+
 /** First line of a file without reading the rest. @rfc RFC-64 R2 */
 export async function readFirstLine(path: string): Promise<string> {
   const stream = createReadStream(path, { encoding: 'utf8' });
@@ -186,6 +191,13 @@ export async function readFirstLine(path: string): Promise<string> {
     if (nl >= 0) {
       stream.destroy();
       return buffer.slice(0, nl);
+    }
+    if (Buffer.byteLength(buffer, 'utf8') > MAX_FIRST_LINE_BYTES) {
+      stream.destroy();
+      throw new ImportRefusedError(
+        'header_mismatch',
+        'The first line is longer than 64 KiB; is this a CSV with LF or CRLF line endings?',
+      );
     }
   }
   return buffer;
@@ -273,7 +285,10 @@ export async function listImportRejects(
 ): Promise<{ data: ImportReject[]; nextCursor: string | null }> {
   const conditions = [eq(importRejects.batchId, input.batchId)];
   if (input.cursor) {
-    const [rowNo, id] = decodeCompositeCursor(input.cursor, 2) as [string, string];
+    const [rowNo, id] = decodeCompositeCursor(input.cursor, 2, [isDigits, isUuid]) as [
+      string,
+      string,
+    ];
     conditions.push(
       dsql`(${importRejects.rowNo}, ${importRejects.id}) > (${Number(rowNo)}::bigint, ${id}::uuid)`,
     );
@@ -421,8 +436,10 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
             nullif(trim(regexp_replace(original_species_name, '\\s+', ' ', 'g')), ''),
             nullif(trim(regexp_replace(secondary_source_species_name, '\\s+', ' ', 'g')), '')),
           name_source = case
-            when nullif(trim(wcvp_species), '') is not null then 'wcvp'
-            when nullif(trim(gbif_species), '') is not null then 'gbif'
+            when nullif(trim(regexp_replace(wcvp_species, '\\s+', ' ', 'g')), '') is not null
+              then 'wcvp'
+            when nullif(trim(regexp_replace(gbif_species, '\\s+', ' ', 'g')), '') is not null
+              then 'gbif'
             else 'original' end,
           genus_name = nullif(trim(regexp_replace(wcvp_genus, '\\s+', ' ', 'g')), ''),
           family_name = nullif(trim(regexp_replace(wcvp_family, '\\s+', ' ', 'g')), ''),
@@ -433,6 +450,10 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
           value = trim(coalesce(harmonised_value, ''))`;
       await tx`create index on import_staging (species_name)`;
       await tx`create index on import_staging (trait_key)`;
+      // autovacuum ignores temp tables, so the planner never sees updated
+      // stats unless we analyze explicitly (both catalog inserts below rely
+      // on the two indexes just created).
+      await tx`analyze import_staging`;
 
       // R5 catalogs: insert what is missing, never touch what exists
       await tx`
