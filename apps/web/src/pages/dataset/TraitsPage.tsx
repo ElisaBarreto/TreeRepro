@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { Trait } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
+import { EditTraitDialog } from '../../components/catalog/EditTraitDialog.tsx';
+import { NewTraitDialog } from '../../components/catalog/NewTraitDialog.tsx';
 import {
   Alert,
   Badge,
@@ -19,6 +21,7 @@ import {
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
+import { hasPermission, useMe } from '../../lib/session.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -27,12 +30,21 @@ const DASH = <span className="text-mist-500">—</span>;
  * and a local filter narrows the trait keys; categories without a matching
  * trait disappear. Each trait row can unfold its levels; inactive traits and
  * levels stay visible, marked as such, because records may still cite them.
- * @rfc RFC-13 R2, R4
- * @rfc RFC-62 R5
+ * With `traits.manage`, a header action creates a trait and each row can
+ * edit its own.
+ * @rfc RFC-13 R2, R3, R4
+ * @rfc RFC-62 R5, R6
  */
 export function TraitsPage() {
+  const me = useMe();
+  const canManage = hasPermission(me, 'traits.manage');
   const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
   const [filter, setFilter] = useState('');
+  const [creating, setCreating] = useState(false);
+  // Lifted above the table, not per row: `Dialog` renders a native `<dialog>`
+  // without a portal, so it must never nest inside `<tbody>`/`<tr>` (see
+  // `MapDialog` in `PendingPage.tsx` for the same pattern).
+  const [editing, setEditing] = useState<{ trait: Trait; categoryKey: string } | null>(null);
   const filterId = useId();
   const term = humaniseKey(filter.trim().toLowerCase());
   const categories = (dictionary.data ?? [])
@@ -44,12 +56,16 @@ export function TraitsPage() {
     }))
     .filter((category) => category.traits.length > 0);
   const total = (dictionary.data ?? []).reduce((sum, c) => sum + c.traits.length, 0);
+  const allCategories = (dictionary.data ?? []).map((c) => ({ key: c.key, label: c.label }));
 
   return (
     <>
       <PageHeader
         title="Traits"
         description="The controlled vocabulary every record is harmonised against."
+        actions={
+          canManage ? <Button onClick={() => setCreating(true)}>New trait</Button> : undefined
+        }
       />
       <div className="flex flex-col gap-6">
         <div className="max-w-md">
@@ -73,14 +89,46 @@ export function TraitsPage() {
           <EmptyState title="No traits match." />
         ) : null}
         {categories.map((category) => (
-          <CategorySection key={category.key} label={category.label} traits={category.traits} />
+          <CategorySection
+            key={category.key}
+            label={category.label}
+            traits={category.traits}
+            canManage={canManage}
+            onEdit={(trait) => setEditing({ trait, categoryKey: category.key })}
+          />
         ))}
       </div>
+      {creating ? (
+        <NewTraitDialog
+          categories={allCategories}
+          onClose={() => setCreating(false)}
+          onSaved={() => setCreating(false)}
+        />
+      ) : null}
+      {editing ? (
+        <EditTraitDialog
+          trait={editing.trait}
+          categoryKey={editing.categoryKey}
+          categories={allCategories}
+          onClose={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+        />
+      ) : null}
     </>
   );
 }
 
-function CategorySection({ label, traits }: { label: string; traits: Trait[] }) {
+function CategorySection({
+  label,
+  traits,
+  canManage,
+  onEdit,
+}: {
+  label: string;
+  traits: Trait[];
+  canManage: boolean;
+  onEdit: (trait: Trait) => void;
+}) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -102,7 +150,7 @@ function CategorySection({ label, traits }: { label: string; traits: Trait[] }) 
         </Thead>
         <Tbody>
           {traits.map((trait) => (
-            <TraitRows key={trait.id} trait={trait} />
+            <TraitRows key={trait.id} trait={trait} canManage={canManage} onEdit={onEdit} />
           ))}
         </Tbody>
       </Table>
@@ -110,8 +158,22 @@ function CategorySection({ label, traits }: { label: string; traits: Trait[] }) 
   );
 }
 
-/** A trait's row and, once unfolded, the row below it listing its levels. */
-function TraitRows({ trait }: { trait: Trait }) {
+/**
+ * A trait's row and, once unfolded, the row below it listing its levels.
+ * `onEdit` reports the click up to `TraitsPage`, which owns the edit dialog
+ * — a native `<dialog>` cannot nest inside `<tbody>`/`<tr>` — rather than
+ * opening one itself (`MapDialog` in `PendingPage.tsx` follows the same
+ * pattern).
+ */
+function TraitRows({
+  trait,
+  canManage,
+  onEdit,
+}: {
+  trait: Trait;
+  canManage: boolean;
+  onEdit: (trait: Trait) => void;
+}) {
   const [open, setOpen] = useState(false);
   const levelsId = useId();
   const name = humaniseKey(trait.key);
@@ -124,17 +186,29 @@ function TraitRows({ trait }: { trait: Trait }) {
         <Td className="text-canopy-800">{trait.description}</Td>
         <Td>{trait.active ? <Badge tone="green">active</Badge> : <Badge>inactive</Badge>}</Td>
         <Td className="whitespace-nowrap">
-          {trait.levels.length > 0 ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              aria-expanded={open}
-              aria-controls={open ? levelsId : undefined}
-              onClick={() => setOpen((value) => !value)}
-            >
-              {open ? 'Hide levels' : 'Show levels'}
-            </Button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {trait.levels.length > 0 ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-expanded={open}
+                aria-controls={open ? levelsId : undefined}
+                onClick={() => setOpen((value) => !value)}
+              >
+                {open ? 'Hide levels' : 'Show levels'}
+              </Button>
+            ) : null}
+            {canManage ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-label={`Edit ${name}`}
+                onClick={() => onEdit(trait)}
+              >
+                Edit
+              </Button>
+            ) : null}
+          </div>
         </Td>
       </Tr>
       {open ? (
