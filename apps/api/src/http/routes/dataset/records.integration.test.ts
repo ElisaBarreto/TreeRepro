@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import type { TestApp } from '../../../../test/helpers/app.ts';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import {
+  createAcceptedValue,
+  createAnnotation,
   createImportBatch,
   createRecord,
   createReference,
@@ -499,5 +501,103 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
       value: { numeric: 1 },
     });
     expect(unknown.status).toBe(404);
+  });
+});
+
+describe('RFC-65 R10 GET /api/records/disputed', () => {
+  const t = useTestApp();
+
+  const idsOf = async (cookie: string) => {
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const res = await call(
+        t.app,
+        'GET',
+        `/api/records/disputed?limit=200${cursor ? `&cursor=${cursor}` : ''}`,
+        { cookie },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      ids.push(...body.data.map((r: { id: string }) => r.id));
+      cursor = body.meta.nextCursor;
+    } while (cursor);
+    return ids;
+  };
+
+  it('lists standing disputes newest first, drops them after a later accepted decision or a changed stance, never withdrawn records', async () => {
+    const author = await scientist(t, ['records.annotate', 'dataset.read']);
+    const b = await scientist(t, ['records.annotate']);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
+    const ref = await createReference(t.db);
+    const mk = (i: number) =>
+      createRecord(t.db, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: ['a', 'b'][i] ?? 'a',
+        levelId: trait.levels[i]?.id,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: author.user.id,
+      });
+    const older = await mk(0);
+    const newer = await mk(1);
+    await createAnnotation(t.db, {
+      recordId: older.id,
+      actorId: b.user.id,
+      kind: 'dispute',
+      note: 'Older claim wrong',
+    });
+    await createAnnotation(t.db, {
+      recordId: newer.id,
+      actorId: b.user.id,
+      kind: 'dispute',
+      note: 'Newer claim wrong',
+    });
+    let ids = await idsOf(author.cookie);
+    expect(ids.indexOf(newer.id)).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
+    const first = await call(t.app, 'GET', '/api/records/disputed?limit=200', {
+      cookie: author.cookie,
+    });
+    const item = (await first.json()).data.find((r: { id: string }) => r.id === newer.id);
+    expect(item).toMatchObject({
+      review: 'disputed',
+      latestDispute: { actor: { id: b.user.id, name: 'Test User' }, note: 'Newer claim wrong' },
+    });
+    // a curator decides after the dispute: the record leaves the queue
+    await createAcceptedValue(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      recordId: newer.id,
+      actorId: author.user.id,
+    });
+    ids = await idsOf(author.cookie);
+    expect(ids).not.toContain(newer.id);
+    expect(ids).toContain(older.id);
+    // a new dispute after the decision brings it back
+    await createAnnotation(t.db, {
+      recordId: newer.id,
+      actorId: b.user.id,
+      kind: 'dispute',
+      note: 'Still wrong',
+    });
+    expect(await idsOf(author.cookie)).toContain(newer.id);
+    // the disputer steps back: gone
+    await createAnnotation(t.db, { recordId: newer.id, actorId: b.user.id, kind: 'neutral' });
+    expect(await idsOf(author.cookie)).not.toContain(newer.id);
+    // withdrawn records never appear
+    await createAnnotation(t.db, {
+      recordId: older.id,
+      actorId: author.user.id,
+      kind: 'withdraw',
+      note: 'Retracted',
+    });
+    expect(await idsOf(author.cookie)).not.toContain(older.id);
+    const bad = await call(t.app, 'GET', '/api/records/disputed?cursor=nope', {
+      cookie: author.cookie,
+    });
+    expect(bad.status).toBe(400);
   });
 });

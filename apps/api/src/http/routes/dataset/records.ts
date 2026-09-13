@@ -1,5 +1,6 @@
 import {
   createRecordBodySchema,
+  cursorQuerySchema,
   idParamSchema,
   listRecordsQuerySchema,
   mapPendingBodySchema,
@@ -8,7 +9,7 @@ import {
 import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
 import { createRecord } from '../../../dataset/curation.ts';
-import { mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
+import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
@@ -78,6 +79,19 @@ export function recordRoutes(ctx: AuthContext) {
           actorId: currentUser(c).id,
         });
         return c.json({ data: result });
+      },
+    )
+    .get(
+      '/disputed',
+      requirePermission(ctx, 'dataset.read'),
+      validate('query', cursorQuerySchema),
+      async (c) => {
+        const q = c.req.valid('query');
+        const { data, nextCursor } = await listDisputed(ctx.db, {
+          cursor: q.cursor,
+          limit: q.limit,
+        });
+        return c.json({ data, meta: { nextCursor } });
       },
     )
     .get(
