@@ -48,8 +48,10 @@ export function isSessionLoss(error: unknown): boolean {
 
 /**
  * Turns a 401 seen under `/app` into a return to `/`. The `me` query is
- * dropped only after navigation, when the layout that observes it is gone;
- * dropping it first would make the observer refetch and 401 again.
+ * dropped only once navigation actually lands away from `/app` — a redirect
+ * that lands back under `/app` (the API still considers the session valid)
+ * leaves the query alone; dropping it first would make the observer refetch
+ * and 401 again.
  * @rfc RFC-13 R4
  */
 export function createSessionErrorHandler(deps: {
@@ -63,7 +65,11 @@ export function createSessionErrorHandler(deps: {
     leaving = true;
     void deps
       .navigate('/')
-      .then(() => deps.queryClient.removeQueries({ queryKey: ME_QUERY_KEY }))
+      .then(() => {
+        if (!deps.pathname().startsWith('/app')) {
+          deps.queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
+        }
+      })
       .finally(() => {
         leaving = false;
       });

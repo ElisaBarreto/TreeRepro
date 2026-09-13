@@ -43,4 +43,19 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.getByRole('link', { name: 'Roles' })).toHaveAttribute('href', '/app/admin/roles');
     expect(screen.getByRole('link', { name: 'Audit' })).toHaveAttribute('href', '/app/admin/audit');
   });
+
+  it('needs admin.access AND the entry permission — neither alone is enough', () => {
+    const { unmount } = renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['admin.access'] },
+    });
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Roles' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Audit' })).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<AppShell>child</AppShell>, { me: { ...ME, permissions: ['users.read'] } });
+    expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+  });
 });

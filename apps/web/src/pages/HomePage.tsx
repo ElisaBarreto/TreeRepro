@@ -1,3 +1,4 @@
+import type { AuthUser } from '@treerepro/contracts';
 import { useRef, useState } from 'react';
 import { LoginForm } from '../components/landing/LoginForm.tsx';
 import { PollenField } from '../components/landing/PollenField.tsx';
@@ -11,7 +12,7 @@ import '../components/landing/landing.css';
  * @rfc RFC-13 R2, R7
  * @rfc RFC-22 R7
  */
-export function HomePage({ onSignedIn }: { onSignedIn: () => void }) {
+export function HomePage({ onSignedIn }: { onSignedIn: (user: AuthUser) => void }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLElement>(null);
   const [grainCount] = useState(() => (window.innerWidth < 720 ? 24 : 50));
@@ -46,7 +47,7 @@ export function HomePage({ onSignedIn }: { onSignedIn: () => void }) {
           </header>
 
           <div className="tr-rise tr-rise-2">
-            <LoginForm onSignedIn={() => onSignedIn()} />
+            <LoginForm onSignedIn={onSignedIn} />
           </div>
 
           <footer className="tr-rise tr-rise-3 flex justify-center border-t border-white/12 pt-5 text-xs text-mist-400">

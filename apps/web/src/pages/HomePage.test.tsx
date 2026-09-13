@@ -5,18 +5,17 @@ import { USER } from '../test/fixtures.ts';
 import { renderWithProviders } from '../test/render.tsx';
 import { HomePage } from './HomePage.tsx';
 
+// fetchMe stays in the factory even though this file never calls it: `session.ts`
+// (imported transitively via `renderWithProviders`) reads it at module scope.
 const auth = vi.hoisted(() => ({
   login: vi.fn(),
   loginTotp: vi.fn(),
   fetchMe: vi.fn(),
-  logout: vi.fn(),
 }));
 vi.mock('../api/auth.ts', () => auth);
 
 beforeEach(() => {
   auth.login.mockReset();
-  auth.fetchMe.mockReset();
-  auth.logout.mockReset();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
 
@@ -34,7 +33,7 @@ describe('RFC-13 R2 HomePage', () => {
     expect(screen.getByText(/Invitation only/)).toBeInTheDocument();
   });
 
-  it('calls onSignedIn after a successful login', async () => {
+  it('calls onSignedIn with the user after a successful login', async () => {
     auth.login.mockResolvedValue({ status: 'ok', user: USER });
     const onSignedIn = vi.fn();
     renderWithProviders(<HomePage onSignedIn={onSignedIn} />);
@@ -42,6 +41,6 @@ describe('RFC-13 R2 HomePage', () => {
     await typing.type(screen.getByLabelText('Email'), 'ada@example.org');
     await typing.type(screen.getByLabelText('Password'), 'hunter2hunter2');
     await typing.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(onSignedIn).toHaveBeenCalledTimes(1);
+    expect(onSignedIn).toHaveBeenCalledWith(USER);
   });
 });

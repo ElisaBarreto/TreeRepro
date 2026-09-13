@@ -28,31 +28,54 @@ describe('RFC-13 R4 session loss', () => {
   it('under /app, a 401 navigates to / and then drops the me query; elsewhere it does nothing', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(ME_QUERY_KEY, ME);
-    const navigate = vi.fn<(to: '/') => Promise<void>>().mockResolvedValue(undefined);
     let pathname = '/app/settings';
+    // The navigation actually lands on / — flip pathname the way the router would.
+    const navigate = vi.fn<(to: '/') => Promise<void>>().mockImplementation(async () => {
+      pathname = '/';
+    });
     const handle = createSessionErrorHandler({ queryClient, navigate, pathname: () => pathname });
     handle(new ApiError(403, 'PERMISSION_DENIED', 'x'));
     expect(navigate).not.toHaveBeenCalled();
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     expect(navigate).toHaveBeenCalledWith('/');
     await vi.waitFor(() => expect(queryClient.getQueryData(ME_QUERY_KEY)).toBeUndefined());
-    pathname = '/';
     navigate.mockClear();
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it('leaves the me query alone when the redirect lands back under /app', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(ME_QUERY_KEY, ME);
+    // The navigation resolves, but a beforeLoad redirect sent us right back to /app.
+    const navigate = vi.fn<(to: '/') => Promise<void>>().mockResolvedValue(undefined);
+    const handle = createSessionErrorHandler({
+      queryClient,
+      navigate,
+      pathname: () => '/app/settings',
+    });
+    handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    expect(navigate).toHaveBeenCalledWith('/');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(queryClient.getQueryData(ME_QUERY_KEY)).toEqual(ME);
+  });
+
   it('coalesces concurrent 401s into one navigation and re-arms afterwards', async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(ME_QUERY_KEY, ME);
+    let pathname = '/app';
     let resolve!: () => void;
     const navigate = vi.fn<(to: '/') => Promise<void>>(
       () =>
         new Promise<void>((r) => {
-          resolve = r;
+          // The navigation actually lands on / — flip pathname the way the router would.
+          resolve = () => {
+            pathname = '/';
+            r();
+          };
         }),
     );
-    const handle = createSessionErrorHandler({ queryClient, navigate, pathname: () => '/app' });
+    const handle = createSessionErrorHandler({ queryClient, navigate, pathname: () => pathname });
 
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
@@ -61,6 +84,8 @@ describe('RFC-13 R4 session loss', () => {
     resolve();
     await vi.waitFor(() => expect(queryClient.getQueryData(ME_QUERY_KEY)).toBeUndefined());
 
+    // Back under /app for a fresh session — a later 401 should navigate again.
+    pathname = '/app';
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     expect(navigate).toHaveBeenCalledTimes(2);
   });

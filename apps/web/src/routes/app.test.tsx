@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client.ts';
 import { ME } from '../test/fixtures.ts';
@@ -40,9 +41,20 @@ describe('RFC-13 R2 session guard', () => {
     const { router, queryClient } = renderAt('/app');
     const button = await screen.findByRole('button', { name: 'Sign out' });
     auth.fetchMe.mockRejectedValue(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
-    button.click();
+    await userEvent.click(button);
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
     await waitFor(() => expect(queryClient.getQueryData(['auth', 'me'])).toBeUndefined());
     expect(auth.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('RFC-13 R4 a failed sign out keeps the session and shows an alert', async () => {
+    auth.fetchMe.mockResolvedValue(ME);
+    auth.logout.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
+    const { router, queryClient } = renderAt('/app');
+    const button = await screen.findByRole('button', { name: 'Sign out' });
+    await userEvent.click(button);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign out. Try again.');
+    expect(router.state.location.pathname).toBe('/app');
+    expect(queryClient.getQueryData(['auth', 'me'])).toBeDefined();
   });
 });

@@ -15,3 +15,7 @@ if (!HTMLDialogElement.prototype.showModal) {
     this.dispatchEvent(new Event('close'));
   };
 }
+
+// jsdom has no layout, so it doesn't implement scrolling; the router's scroll
+// restoration calls this on every rendered navigation.
+window.scrollTo = () => {};

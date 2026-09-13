@@ -3,7 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { logout } from '../../api/auth.ts';
 import { hasPermission, ME_QUERY_KEY, useMe } from '../../lib/session.ts';
-import { Button } from '../ui/index.ts';
+import { Alert, Button } from '../ui/index.ts';
 import { NAV_ENTRIES } from './nav.ts';
 
 const LINK =
@@ -20,7 +20,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const signOut = useMutation({
     mutationFn: logout,
-    onSettled: async () => {
+    // A failed logout (5xx/429) leaves the session in place — no navigation,
+    // no removal — instead of forgetting a session the API still holds. A
+    // session-loss failure (401 AUTH_UNAUTHENTICATED) is handled globally by
+    // the MutationCache handler in main.tsx.
+    onSuccess: async () => {
       await navigate({ to: '/' });
       queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
     },
@@ -62,6 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-end gap-4 border-b border-canopy-700/10 bg-white px-6">
+          {signOut.isError ? <Alert tone="error">Could not sign out. Try again.</Alert> : null}
           <span className="text-sm text-canopy-800">{me.user.name}</span>
           <Button variant="secondary" pending={signOut.isPending} onClick={() => signOut.mutate()}>
             Sign out
