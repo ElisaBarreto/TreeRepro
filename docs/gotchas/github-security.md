@@ -43,6 +43,15 @@ The repository belongs to a personal account, so collaborators cannot be admins:
 
 CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default setup": GitHub refuses SARIF from the workflow while default setup is active.
 
+## Scorecard findings that code cannot fix
+**Symptom:** Code scanning lists Scorecard alerts with "no file associated": `Maintained`, `Code-Review`, `Branch-Protection`, `CII-Best-Practices`.
+**Cause:** These checks grade repository activity and settings, not files:
+- `Maintained` scores 0 for any repository younger than 90 days, whatever its activity. It resolves itself after 2026-12-11 (repository created 2026-09-12) as long as `main` keeps receiving commits.
+- `Code-Review` counts approved pull request reviews from a human other than the author on recent commits. CodeRabbit comments do not count. It scores only when the owner and the maintainer approve each other's PRs.
+- `Branch-Protection` wants `required_approving_review_count` ≥ 1, `dismiss_stale_reviews_on_push`, `require_code_owner_review` (needs a `CODEOWNERS` file) and `require_last_push_approval` in the `main` ruleset (`infra/github/ruleset-main.json`, applied by the owner). The ruleset keeps all four off on purpose: a required human approval blocks every PR until the second person is available. Turning them on is the owner's call.
+- `CII-Best-Practices` looks for an OpenSSF Best Practices badge (https://www.bestpractices.dev). Registering the project there (any collaborator with push access can) scores 2 while "in progress", 5 once "passing".
+**Fix:** Nothing in the repository. Either change the process (approve each other's PRs and enable the ruleset options above) or dismiss the alerts as "won't fix" with that reason; a dismissed Scorecard alert stays dismissed on later runs. `Pinned-Dependencies` and `Fuzzing` are code-level and are satisfied (corepack pins pnpm by hash, `fast-check` property tests in `apps/api`).
+
 ## Required check never reports
 **Symptom:** A PR stays blocked on a required check that shows as "Expected — waiting for status".
 **Cause:** The check's job name changed, or the job has an `if:` that skipped it on this PR. Ruleset entries match check names literally.
