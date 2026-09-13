@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import type { RecordItem } from '@treerepro/contracts';
 import { formatNumber, isoDate, truncate } from '../../lib/format.ts';
 import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
@@ -28,20 +29,25 @@ function referencesLabel(record: RecordItem): string {
 /**
  * Records as rows: value, references (primary, "via" the secondary), origin,
  * the two status chips and the date added. The value is a button that
- * selects the row, so every record is reachable by keyboard.
+ * selects the row, so every record is reachable by keyboard. Outside a
+ * species page (`showSpecies`) a first column links each row to its species;
+ * the item carries only the id (RFC-63 R8), hence the fixed link text.
  * @rfc RFC-63 R8
  */
 export function RecordTable({
   records,
   onSelect,
+  showSpecies = false,
 }: {
   records: RecordItem[];
   onSelect: (record: RecordItem) => void;
+  showSpecies?: boolean;
 }) {
   return (
     <Table>
       <Thead>
         <Tr>
+          {showSpecies ? <Th>Species</Th> : null}
           <Th>Value</Th>
           <Th>References</Th>
           <Th>Origin</Th>
@@ -56,6 +62,17 @@ export function RecordTable({
           const shown = truncate(references, REFERENCES_MAX);
           return (
             <Tr key={record.id} className="transition-colors hover:bg-mist-50">
+              {showSpecies ? (
+                <Td className="whitespace-nowrap">
+                  <Link
+                    to="/app/species/$id"
+                    params={{ id: record.speciesId }}
+                    className="font-medium text-canopy-900 underline-offset-2 hover:underline"
+                  >
+                    Open species
+                  </Link>
+                </Td>
+              ) : null}
               <Td>
                 <button
                   type="button"
