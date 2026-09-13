@@ -37,6 +37,7 @@ export function ProfileSection() {
     const name = String(new FormData(event.currentTarget).get('name') ?? '');
     const parsed = nameSchema.safeParse(name);
     if (!parsed.success) {
+      save.reset();
       setFieldError('Enter a name (up to 120 characters).');
       return;
     }

@@ -47,4 +47,23 @@ describe('RFC-50 R11 ProfileSection', () => {
       'You do not have permission to do this.',
     );
   });
+
+  it('drops the stale success alert when a later save fails local validation', async () => {
+    me.updateName.mockResolvedValue({
+      ...USER,
+      name: 'Ada L.',
+      roles: [],
+      updatedAt: USER.createdAt,
+      suspendedAt: null,
+    });
+    renderWithProviders(<ProfileSection />, { me: ME });
+    await userEvent.clear(screen.getByLabelText('Name'));
+    await userEvent.type(screen.getByLabelText('Name'), 'Ada L.');
+    await userEvent.click(screen.getByRole('button', { name: 'Save name' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Name saved.');
+    await userEvent.clear(screen.getByLabelText('Name'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save name' }));
+    expect(screen.getByText('Enter a name (up to 120 characters).')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
 });
