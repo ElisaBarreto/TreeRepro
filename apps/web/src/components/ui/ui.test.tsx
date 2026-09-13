@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   buttonClassName,
+  ConfirmDialog,
   Dialog,
   EmptyState,
   Field,
@@ -294,5 +295,46 @@ describe('RFC-13 R5 Select and Textarea', () => {
     expect(area.tagName).toBe('TEXTAREA');
     expect(area).toHaveAttribute('maxlength', '2000');
     expect(area).not.toHaveAttribute('aria-invalid');
+  });
+});
+
+describe('RFC-13 R10 ConfirmDialog', () => {
+  it('shows title, message and error; confirm calls back; pending disables both buttons', async () => {
+    const onConfirm = vi.fn();
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <ConfirmDialog
+        title="Suspend Bea?"
+        message="Bea loses access at once."
+        confirmLabel="Suspend"
+        danger
+        pending={false}
+        error="Nope."
+        onConfirm={onConfirm}
+        onClose={onClose}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Suspend Bea?' });
+    expect(within(dialog).getByText('Bea loses access at once.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Nope.');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Suspend' }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    rerender(
+      <ConfirmDialog
+        title="Suspend Bea?"
+        message="Bea loses access at once."
+        confirmLabel="Suspend"
+        danger
+        pending
+        error={null}
+        onConfirm={onConfirm}
+        onClose={onClose}
+      />,
+    );
+    expect(within(dialog).getByRole('button', { name: 'Suspend' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Close' })).toBeDisabled();
   });
 });

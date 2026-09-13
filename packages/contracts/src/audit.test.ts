@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { auditLogEntrySchema, auditQuerySchema } from './audit.ts';
+import { AUDIT_ACTIONS, auditLogEntrySchema, auditQuerySchema, isAuditAction } from './audit.ts';
 
 describe('RFC-51 R2 audit entry', () => {
   it('accepts the documented shape with nulls and rejects extras', () => {
@@ -43,5 +43,16 @@ describe('RFC-51 R1, R4 audit query', () => {
       auditQuerySchema.safeParse({ from: '2026-01-01T00:00:00.000Z', to: '2026-01-01T00:00:00Z' })
         .success,
     ).toBe(true);
+  });
+});
+
+describe('RFC-41 R3 action catalog', () => {
+  it('holds the catalog keys in <domain>.<event> form and answers membership', () => {
+    expect(AUDIT_ACTIONS.length).toBeGreaterThan(20);
+    for (const action of AUDIT_ACTIONS) expect(action).toMatch(/^[a-z_]+(?:\.[a-z_]+)+$/);
+    expect(new Set(AUDIT_ACTIONS).size).toBe(AUDIT_ACTIONS.length);
+    expect(isAuditAction('auth.login.success')).toBe(true);
+    expect(isAuditAction('users.created')).toBe(true);
+    expect(isAuditAction('Login')).toBe(false);
   });
 });

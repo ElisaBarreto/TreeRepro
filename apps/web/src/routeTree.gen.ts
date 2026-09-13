@@ -13,12 +13,15 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAdminRouteImport } from './routes/app/admin'
 import { Route as AppImportsRouteImport } from './routes/app/imports'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTaxaRouteImport } from './routes/app/taxa'
 import { Route as AppTraitsRouteImport } from './routes/app/traits'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
+import { Route as AppAdminAuditRouteImport } from './routes/app/admin/audit'
+import { Route as AppAdminRolesRouteImport } from './routes/app/admin/roles'
 import { Route as AppCurationDisputedRouteImport } from './routes/app/curation/disputed'
 import { Route as AppCurationPendingRouteImport } from './routes/app/curation/pending'
 import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
@@ -27,6 +30,8 @@ import { Route as AppReferencesIndexRouteImport } from './routes/app/references/
 import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
 import { Route as AppSpeciesIdRouteImport } from './routes/app/species/$id'
+import { Route as AppAdminUsersIndexRouteImport } from './routes/app/admin/users/index'
+import { Route as AppAdminUsersIdRouteImport } from './routes/app/admin/users/$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +51,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppImportsRoute = AppImportsRouteImport.update({
@@ -77,6 +87,16 @@ const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
   id: '/reset-password/$token',
   path: '/reset-password/$token',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminRolesRoute = AppAdminRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => AppAdminRoute,
 } as any)
 const AppCurationDisputedRoute = AppCurationDisputedRouteImport.update({
   id: '/curation/disputed',
@@ -118,11 +138,22 @@ const AppSpeciesIdRoute = AppSpeciesIdRouteImport.update({
   path: '/species/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminUsersIndexRoute = AppAdminUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminUsersIdRoute = AppAdminUsersIdRouteImport.update({
+  id: '/users/$id',
+  path: '/users/$id',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/admin': typeof AppAdminRouteWithChildren
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/taxa': typeof AppTaxaRoute
@@ -130,6 +161,8 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -138,16 +171,21 @@ export interface FileRoutesByFullPath {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/users/$id': typeof AppAdminUsersIdRoute
+  '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/admin': typeof AppAdminRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/taxa': typeof AppTaxaRoute
   '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app': typeof AppIndexRoute
+  '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -156,12 +194,15 @@ export interface FileRoutesByTo {
   '/app/imports': typeof AppImportsIndexRoute
   '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
+  '/app/admin/users/$id': typeof AppAdminUsersIdRoute
+  '/app/admin/users': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/app/admin': typeof AppAdminRouteWithChildren
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/taxa': typeof AppTaxaRoute
@@ -169,6 +210,8 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
+  '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -177,6 +220,8 @@ export interface FileRoutesById {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/users/$id': typeof AppAdminUsersIdRoute
+  '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -184,6 +229,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/forgot-password'
+    | '/app/admin'
     | '/app/imports'
     | '/app/settings'
     | '/app/taxa'
@@ -191,6 +237,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
+    | '/app/admin/audit'
+    | '/app/admin/roles'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -199,16 +247,21 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/users/$id'
+    | '/app/admin/users/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/forgot-password'
+    | '/app/admin'
     | '/app/settings'
     | '/app/taxa'
     | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app'
+    | '/app/admin/audit'
+    | '/app/admin/roles'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -217,11 +270,14 @@ export interface FileRouteTypes {
     | '/app/imports'
     | '/app/references'
     | '/app/species'
+    | '/app/admin/users/$id'
+    | '/app/admin/users'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/forgot-password'
+    | '/app/admin'
     | '/app/imports'
     | '/app/settings'
     | '/app/taxa'
@@ -229,6 +285,8 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
+    | '/app/admin/audit'
+    | '/app/admin/roles'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -237,6 +295,8 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/users/$id'
+    | '/app/admin/users/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -275,6 +335,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/admin': {
+      id: '/app/admin'
+      path: '/admin'
+      fullPath: '/app/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/imports': {
@@ -318,6 +385,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/reset-password/$token'
       preLoaderRoute: typeof ResetPasswordTokenRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/admin/audit': {
+      id: '/app/admin/audit'
+      path: '/audit'
+      fullPath: '/app/admin/audit'
+      preLoaderRoute: typeof AppAdminAuditRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/app/admin/roles': {
+      id: '/app/admin/roles'
+      path: '/roles'
+      fullPath: '/app/admin/roles'
+      preLoaderRoute: typeof AppAdminRolesRouteImport
+      parentRoute: typeof AppAdminRoute
     }
     '/app/curation/disputed': {
       id: '/app/curation/disputed'
@@ -375,8 +456,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSpeciesIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/admin/users/': {
+      id: '/app/admin/users/'
+      path: '/users'
+      fullPath: '/app/admin/users/'
+      preLoaderRoute: typeof AppAdminUsersIndexRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/app/admin/users/$id': {
+      id: '/app/admin/users/$id'
+      path: '/users/$id'
+      fullPath: '/app/admin/users/$id'
+      preLoaderRoute: typeof AppAdminUsersIdRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
   }
 }
+
+interface AppAdminRouteChildren {
+  AppAdminAuditRoute: typeof AppAdminAuditRoute
+  AppAdminRolesRoute: typeof AppAdminRolesRoute
+  AppAdminUsersIdRoute: typeof AppAdminUsersIdRoute
+  AppAdminUsersIndexRoute: typeof AppAdminUsersIndexRoute
+}
+
+const AppAdminRouteChildren: AppAdminRouteChildren = {
+  AppAdminAuditRoute: AppAdminAuditRoute,
+  AppAdminRolesRoute: AppAdminRolesRoute,
+  AppAdminUsersIdRoute: AppAdminUsersIdRoute,
+  AppAdminUsersIndexRoute: AppAdminUsersIndexRoute,
+}
+
+const AppAdminRouteWithChildren = AppAdminRoute._addFileChildren(
+  AppAdminRouteChildren,
+)
 
 interface AppImportsRouteChildren {
   AppImportsIdRoute: typeof AppImportsIdRoute
@@ -393,6 +506,7 @@ const AppImportsRouteWithChildren = AppImportsRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRouteWithChildren
   AppImportsRoute: typeof AppImportsRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppTaxaRoute: typeof AppTaxaRoute
@@ -407,6 +521,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRouteWithChildren,
   AppImportsRoute: AppImportsRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppTaxaRoute: AppTaxaRoute,
