@@ -1,4 +1,4 @@
-import { hashKey, type QueryKey, useQuery } from '@tanstack/react-query';
+import { hashKey, keepPreviousData, type QueryKey, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { Page } from '../api/dataset.ts';
 
@@ -48,6 +48,8 @@ export interface Pager {
 export interface PagedList<T> extends Pager {
   items: T[];
   isLoading: boolean;
+  /** A fetch (including a background one behind the previous page) is in flight. */
+  isFetching: boolean;
   error: unknown;
   reset: () => void;
 }
@@ -59,8 +61,15 @@ export interface PagedList<T> extends Pager {
  * current page's `nextCursor`, `prev()` pops. Each page is its own query
  * (`[...queryKeyBase, { cursor, limit }]`), so stepping back shows the cached
  * page. A change of `queryKeyBase` (new filters) or of the page size starts
- * over at page 1. The page size is shared by every list and remembered in
- * `localStorage`.
+ * over at page 1; that reset is written back to state during the same render
+ * (React's adjust-state-during-render pattern), not only on the next click,
+ * so restoring an earlier key later can never resurrect its old stack. The
+ * page size is shared by every list and remembered in `localStorage`.
+ *
+ * `placeholderData: keepPreviousData` keeps the previous page on screen
+ * while the next one loads (no blank flash); `hasNext` is false during that
+ * window (`query.isPlaceholderData`) so a click cannot push a cursor read
+ * off the stale, still-displayed page.
  * @rfc RFC-11 R6
  */
 export function usePagedList<T>(
@@ -72,13 +81,23 @@ export function usePagedList<T>(
     () => readStoredPageSize() ?? options.pageSize ?? DEFAULT_PAGE_SIZE,
   );
   const filterKey = hashKey(queryKeyBase);
-  // The stack is remembered together with the key it belongs to; when the
-  // key changes the stale stack is ignored on that very render instead of
-  // one effect later, so the old page is never requested with new filters.
+  // The stack is remembered together with the key it belongs to.
   const [stack, setStack] = useState<{ key: string; cursors: (string | undefined)[] }>({
     key: filterKey,
     cursors: [undefined],
   });
+  if (stack.key !== filterKey) {
+    // A key change (new filters, or a page size change via setPageSize
+    // below) resets the stack right here, during render, rather than
+    // waiting for a click on Next/Previous. That makes the reset durable:
+    // without it, switching filters A -> B -> A with no clicks in between
+    // would still have `stack.key === A` on the way back, so the old,
+    // stale cursor stack for A would resurface instead of starting at
+    // page 1. Guarded by the key comparison, so this runs once per key
+    // change instead of looping (React's adjust-state-during-render
+    // pattern: https://react.dev/learn/you-might-not-need-an-effect).
+    setStack({ key: filterKey, cursors: [undefined] });
+  }
   const cursors = stack.key === filterKey ? stack.cursors : [undefined];
   const page = cursors.length;
   const cursor = cursors[page - 1];
@@ -87,17 +106,25 @@ export function usePagedList<T>(
     queryKey: [...queryKeyBase, { cursor, limit: pageSize }],
     queryFn: () => fetchPage(cursor, pageSize),
     enabled: options.enabled ?? true,
+    placeholderData: keepPreviousData,
   });
   const nextCursor = query.data?.meta.nextCursor ?? null;
+  // `query.data` still holds the previous page while the next one loads, so
+  // its `nextCursor` is stale until the fetch for the current cursor settles.
+  const hasNext = !query.isPlaceholderData && nextCursor !== null;
 
   return {
     items: query.data?.data ?? [],
     page,
     pageSize,
     hasPrev: page > 1,
-    hasNext: nextCursor !== null,
+    hasNext,
     next: () => {
-      if (nextCursor !== null) setStack({ key: filterKey, cursors: [...cursors, nextCursor] });
+      // Mirrors `hasNext`: a call reaching here while `data` is still the
+      // previous page (a stale `nextCursor`) is a no-op too.
+      if (nextCursor !== null && !query.isPlaceholderData) {
+        setStack({ key: filterKey, cursors: [...cursors, nextCursor] });
+      }
     },
     prev: () => {
       if (page > 1) setStack({ key: filterKey, cursors: cursors.slice(0, -1) });
@@ -110,6 +137,7 @@ export function usePagedList<T>(
     },
     reset: () => setStack({ key: filterKey, cursors: [undefined] }),
     isLoading: query.isPending,
+    isFetching: query.isFetching,
     error: query.error,
   };
 }

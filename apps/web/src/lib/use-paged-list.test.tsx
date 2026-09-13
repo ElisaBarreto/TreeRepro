@@ -127,6 +127,72 @@ describe('RFC-11 R6 usePagedList', () => {
     expect(result.current.page).toBe(1);
   });
 
+  it("switching A -> B -> A starts over at page 1, not A's old stack", async () => {
+    const fetchPage = vi.fn<Fetcher>();
+    fetchPage
+      .mockResolvedValueOnce(page([{ id: 'a1' }], 'a-c1')) // A, page 1
+      .mockResolvedValueOnce(page([{ id: 'a2' }], 'a-c2')) // A, page 2
+      .mockResolvedValueOnce(page([{ id: 'a3' }])) // A, page 3 (no next)
+      .mockResolvedValueOnce(page([{ id: 'b1' }])); // B, page 1
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => usePagedList(['things', { q }], fetchPage),
+      { wrapper: createWrapper(createClient()), initialProps: { q: 'A' } },
+    );
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 'a1' }]));
+
+    act(() => result.current.next());
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 'a2' }]));
+    act(() => result.current.next());
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 'a3' }]));
+    expect(result.current.page).toBe(3);
+
+    // No clicks for B: the render-time reset must land in state on its own.
+    rerender({ q: 'B' });
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 'b1' }]));
+    expect(result.current.page).toBe(1);
+
+    // Back to A, still with no clicks: A's stack must not have survived.
+    rerender({ q: 'A' });
+    expect(result.current.page).toBe(1);
+    expect(result.current.hasPrev).toBe(false);
+    expect(fetchPage).toHaveBeenCalledWith(undefined, 50);
+    // The cached page 1 for A comes back, not the stale page-3 stack.
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 'a1' }]));
+  });
+
+  it('keeps the previous page while the next loads, and blocks a stale Next', async () => {
+    const fetchPage = vi.fn<Fetcher>();
+    let resolveSecondPage!: (value: Page<Item>) => void;
+    fetchPage.mockResolvedValueOnce(page([{ id: 'a' }], 'c1')).mockImplementationOnce(
+      () =>
+        new Promise<Page<Item>>((resolve) => {
+          resolveSecondPage = resolve;
+        }),
+    );
+    const { result } = renderHook(() => usePagedList(['things'], fetchPage), {
+      wrapper: createWrapper(createClient()),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.hasNext).toBe(true);
+
+    act(() => result.current.next());
+    // The second page is in flight: the first page's items stay on screen
+    // (no blank flash) and hasNext is disabled so a stale nextCursor cannot
+    // be pushed by a second click.
+    expect(result.current.items).toEqual([{ id: 'a' }]);
+    expect(result.current.hasNext).toBe(false);
+    expect(result.current.isFetching).toBe(true);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+
+    act(() => result.current.next());
+    expect(fetchPage).toHaveBeenCalledTimes(2); // still a no-op
+
+    await act(async () => resolveSecondPage(page([{ id: 'b' }])));
+    await waitFor(() => expect(result.current.items).toEqual([{ id: 'b' }]));
+    expect(result.current.isFetching).toBe(false);
+    expect(result.current.hasNext).toBe(false);
+  });
+
   it('does not fetch while disabled and exposes the error of a failed page', async () => {
     const fetchPage = vi.fn<Fetcher>();
     const disabled = renderHook(() => usePagedList(['things'], fetchPage, { enabled: false }), {
