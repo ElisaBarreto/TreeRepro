@@ -17,6 +17,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/config/package.json packages/config/
 COPY tools/rfc-lint/package.json tools/rfc-lint/
+COPY apps/e2e/package.json apps/e2e/
 
 FROM manifests AS build
 RUN pnpm install --frozen-lockfile --filter "@treerepro/api..."
