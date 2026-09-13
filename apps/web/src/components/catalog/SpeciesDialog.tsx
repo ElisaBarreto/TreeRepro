@@ -72,8 +72,9 @@ function genusOption(genus: Genus): ComboboxOption {
  * searched by prefix (created inline when missing); the family select
  * narrows that search and is what an inline-created genus belongs to — the
  * body carries `genusId` only, the family is the genus's. Choosing a genus
- * of another family moves the family select to it. A missing family is
- * created in place of the select. Without `species` it creates; with one it
+ * of another family moves the family select to it; choosing a family drops
+ * a genus of another family. A missing family is created in place of the
+ * select (Enter there creates it). Without `species` it creates; with one it
  * edits and sends only the fields that differ (`genusId: null` detaches),
  * closing without a request when nothing changed. Mounted only while open.
  * @rfc RFC-13 R3, R6
@@ -110,13 +111,27 @@ export function SpeciesDialog({
   // Every genus the search or the inline create has shown, so choosing one
   // can move the family select to the genus's family.
   const generaById = useRef(new Map<string, Genus>());
+  // The family of a chosen genus: from the search or the inline create that
+  // showed it, or the species' own for the prefilled genus; `''` when none.
+  function genusFamilyId(genusId: string): string {
+    const known = generaById.current.get(genusId);
+    if (known) return known.family?.id ?? '';
+    return genusId === species?.genus?.id ? (species?.family?.id ?? '') : '';
+  }
+  // A genus belongs to a family, so a family chosen by the user drops a genus
+  // of another family (as the species search form does) — the form never
+  // shows a pair the API would not store.
+  function chooseFamily(next: string) {
+    setFamily(next);
+    if (genus && genusFamilyId(genus.id) !== next) setGenus(null);
+  }
 
   const families = useQuery({ queryKey: datasetKeys.families, queryFn: fetchFamilies });
   const addFamily = useMutation({
     mutationFn: (name: string) => createFamily({ name }),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: datasetKeys.families });
-      setFamily(created.id);
+      chooseFamily(created.id);
       setNewFamily(null);
     },
   });
@@ -245,7 +260,7 @@ export function SpeciesDialog({
                   <Select
                     id={ids.family}
                     value={family}
-                    onChange={(e) => setFamily(e.target.value)}
+                    onChange={(e) => chooseFamily(e.target.value)}
                   >
                     <option value="">No family</option>
                     {(families.data ?? []).map((f) => (
@@ -268,6 +283,14 @@ export function SpeciesDialog({
                   value={newFamily}
                   maxLength={200}
                   onChange={(e) => setNewFamily(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Enter here creates the family; the form's default
+                    // button would submit the species instead.
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitFamily();
+                    }
+                  }}
                   invalid={Boolean(inlineFamilyError)}
                 />
                 <Button size="sm" pending={addFamily.isPending} onClick={submitFamily}>

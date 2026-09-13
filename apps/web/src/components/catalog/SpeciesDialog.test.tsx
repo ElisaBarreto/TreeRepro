@@ -117,6 +117,36 @@ describe('RFC-60 R9 SpeciesDialog', () => {
     );
   });
 
+  it('Enter in the new family name creates the family, not the species', async () => {
+    catalog.createFamily.mockResolvedValue({ id: 'f-new', name: 'Novaceae' });
+    catalog.createSpecies.mockResolvedValue(SPECIES);
+    const { dialog, onClose } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Adenanthera pavonina',
+    );
+    await within(dialog).findByRole('combobox', { name: /^family/i });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'New family' }));
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /new family name/i }),
+      'Novaceae{Enter}',
+    );
+    await waitFor(() => expect(catalog.createFamily).toHaveBeenCalledWith({ name: 'Novaceae' }));
+    expect(catalog.createSpecies).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('changing the family drops a chosen genus of another family', async () => {
+    const { dialog } = mount(SPECIES);
+    expect(within(dialog).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: /^family/i }),
+      MALVACEAE.id,
+    );
+    expect(within(dialog).queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox', { name: /^genus/i })).toHaveValue('');
+  });
+
   it('edit: prefilled from the species; detaching the genus sends null; unchanged closes without a request', async () => {
     catalog.updateSpecies.mockResolvedValue({ ...SPECIES, genus: null, family: null });
     const first = mount(SPECIES);
