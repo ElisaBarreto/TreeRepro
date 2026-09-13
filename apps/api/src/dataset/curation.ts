@@ -1,14 +1,21 @@
-import type { RecordDetail, RecordValue, TraitValueType } from '@treerepro/contracts';
-import { and, eq, isNull, type SQL, sql } from 'drizzle-orm';
+import type {
+  AcceptedDecision,
+  AnnotationKind,
+  RecordDetail,
+  RecordValue,
+  TraitValueType,
+} from '@treerepro/contracts';
+import { and, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
+import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
 import { isHarmonisableNumber } from './import.ts';
-import { getRecord } from './records.ts';
+import { getRecord, reviewStatusSql } from './records.ts';
 
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
@@ -182,5 +189,78 @@ export async function createRecord(
   if (!inserted) throw new Error('createRecord: insert returned no row');
   const detail = await getRecord(db, inserted.id);
   if (!detail) throw new Error('createRecord: record vanished');
+  return detail;
+}
+
+/** The newest accepted-value decision of a species and trait, or null. @rfc RFC-65 R4, R6 */
+export async function currentAccepted(
+  db: DbExecutor,
+  speciesId: string,
+  traitId: string,
+): Promise<{ decision: AcceptedDecision; recordId: string | null } | null> {
+  const [row] = await db
+    .select({ decision: acceptedValues.decision, recordId: acceptedValues.recordId })
+    .from(acceptedValues)
+    .where(and(eq(acceptedValues.speciesId, speciesId), eq(acceptedValues.traitId, traitId)))
+    .orderBy(desc(acceptedValues.id))
+    .limit(1);
+  return row ?? null;
+}
+
+export interface AnnotateRecordInput {
+  recordId: string;
+  actorId: string;
+  kind: AnnotationKind;
+  note?: string;
+  /** The actor holds `records.withdraw` (RFC-65 R4). */
+  canWithdrawAny: boolean;
+}
+
+/** @rfc RFC-65 R3, R4 */
+export async function annotateRecord(
+  db: DbExecutor,
+  input: AnnotateRecordInput,
+): Promise<RecordDetail> {
+  const [rec] = await db
+    .select({
+      id: traitRecords.id,
+      origin: traitRecords.origin,
+      createdBy: traitRecords.createdBy,
+      speciesId: traitRecords.speciesId,
+      traitId: traitRecords.traitId,
+      // A bare Column here renders unqualified ("id" instead of
+      // "trait_records"."id") because this SELECT has a single FROM table;
+      // reviewStatusSql then embeds it inside a subquery over
+      // record_annotations, where unqualified "id" resolves to that table's
+      // own id column instead. Wrapping it as an SQL fragment forces correct
+      // qualification.
+      review: reviewStatusSql(sql`${traitRecords.id}`).as('review'),
+    })
+    .from(traitRecords)
+    .where(eq(traitRecords.id, input.recordId))
+    .limit(1);
+  if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
+  if (rec.review === 'withdrawn')
+    throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
+  if (input.kind === 'withdraw') {
+    if (rec.origin !== 'manual')
+      throw new AppError('RECORD_NOT_WITHDRAWABLE', 'Only manual records can be withdrawn');
+    if (rec.createdBy !== input.actorId && !input.canWithdrawAny)
+      throw new AppError('PERMISSION_DENIED', 'Only the author may withdraw this record');
+    const current = await currentAccepted(db, rec.speciesId, rec.traitId);
+    if (current?.decision === 'accepted' && current.recordId === rec.id)
+      throw new AppError(
+        'RECORD_IS_ACCEPTED',
+        'This record is the accepted value; change the accepted value first',
+      );
+  }
+  await db.insert(recordAnnotations).values({
+    recordId: rec.id,
+    actorId: input.actorId,
+    kind: input.kind,
+    note: input.note ?? null,
+  });
+  const detail = await getRecord(db, rec.id);
+  if (!detail) throw new Error('annotateRecord: record vanished');
   return detail;
 }

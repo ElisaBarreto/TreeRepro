@@ -1,4 +1,5 @@
 import {
+  annotateRecordBodySchema,
   createRecordBodySchema,
   cursorQuerySchema,
   idParamSchema,
@@ -8,18 +9,18 @@ import {
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
-import { createRecord } from '../../../dataset/curation.ts';
+import { annotateRecord, createRecord } from '../../../dataset/curation.ts';
 import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
-import { requirePermission } from '../../middleware/require-permission.ts';
+import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 
 /**
  * @rfc RFC-63 R8, R9
- * @rfc RFC-65 R1, R2
+ * @rfc RFC-65 R1, R2, R3, R4
  * @rfc RFC-65 R7-R9
  */
 export function recordRoutes(ctx: AuthContext) {
@@ -32,6 +33,21 @@ export function recordRoutes(ctx: AuthContext) {
         const record = await createRecord(ctx.db, {
           ...c.req.valid('json'),
           actorId: currentUser(c).id,
+        });
+        return c.json({ data: record }, 201);
+      },
+    )
+    .post(
+      '/:id/annotations',
+      requirePermission(ctx, 'records.annotate'),
+      validate('param', idParamSchema),
+      validate('json', annotateRecordBodySchema),
+      async (c) => {
+        const record = await annotateRecord(ctx.db, {
+          recordId: c.req.valid('param').id,
+          ...c.req.valid('json'),
+          actorId: currentUser(c).id,
+          canWithdrawAny: currentPermissions(c).has('records.withdraw'),
         });
         return c.json({ data: record }, 201);
       },

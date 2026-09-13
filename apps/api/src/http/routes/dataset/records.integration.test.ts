@@ -610,3 +610,120 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
+  const t = useTestApp();
+
+  async function manualRecord(authorId: string) {
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const ref = await createReference(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: authorId,
+    });
+    return { sp1, trait, ref, rec };
+  }
+  const annotate = (cookie: string, id: string, body: Record<string, unknown>) =>
+    call(t.app, 'POST', `/api/records/${id}/annotations`, { cookie, body });
+
+  it('R3 stances drive the review axis of RFC-63 R6 and answer the detail', async () => {
+    const a = await scientist(t, ['records.annotate', 'dataset.read']);
+    const b = await scientist(t, ['records.annotate', 'dataset.read']);
+    const { rec } = await manualRecord(a.user.id);
+    const confirmed = await annotate(a.cookie, rec.id, { kind: 'confirm' });
+    expect(confirmed.status).toBe(201);
+    expect((await confirmed.json()).data).toMatchObject({ id: rec.id, review: 'confirmed' });
+    const disputed = await annotate(b.cookie, rec.id, {
+      kind: 'dispute',
+      note: 'Figure 3 says otherwise',
+    });
+    expect((await disputed.json()).data).toMatchObject({ review: 'disputed' });
+    const stepped = await annotate(b.cookie, rec.id, { kind: 'neutral' });
+    const steppedBody = await stepped.json();
+    expect(steppedBody.data).toMatchObject({ review: 'confirmed' });
+    const body = steppedBody.data;
+    expect(body.annotations.map((x: { kind: string }) => x.kind)).toEqual([
+      'neutral',
+      'dispute',
+      'confirm',
+    ]);
+    expect(body.annotations[1]).toMatchObject({
+      actor: { id: b.user.id, name: 'Test User' },
+      note: 'Figure 3 says otherwise',
+    });
+  });
+
+  it('R3 a dispute needs a note; an unknown record answers 404', async () => {
+    const a = await scientist(t, ['records.annotate']);
+    const { rec } = await manualRecord(a.user.id);
+    const noNote = await annotate(a.cookie, rec.id, { kind: 'dispute' });
+    expect(noNote.status).toBe(400);
+    expect((await noNote.json()).error.details[0].path).toBe('note');
+    const missing = await annotate(a.cookie, '00000000-0000-7000-8000-000000000000', {
+      kind: 'confirm',
+    });
+    expect(missing.status).toBe(404);
+    expect((await missing.json()).error.code).toBe('RECORD_NOT_FOUND');
+  });
+
+  it('R4 the author withdraws a manual record; nothing more can be annotated afterwards', async () => {
+    const a = await scientist(t, ['records.annotate']);
+    const { rec } = await manualRecord(a.user.id);
+    const withdrawn = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'Wrong species' });
+    expect(withdrawn.status).toBe(201);
+    expect((await withdrawn.json()).data.review).toBe('withdrawn');
+    const after = await annotate(a.cookie, rec.id, { kind: 'confirm' });
+    expect(after.status).toBe(409);
+    expect((await after.json()).error.code).toBe('RECORD_WITHDRAWN');
+  });
+
+  it('R4 a third party needs records.withdraw', async () => {
+    const author = await scientist(t, ['records.annotate']);
+    const other = await scientist(t, ['records.annotate']);
+    const curator = await scientist(t, ['records.annotate', 'records.withdraw']);
+    const { rec } = await manualRecord(author.user.id);
+    const denied = await annotate(other.cookie, rec.id, { kind: 'withdraw', note: 'Not mine' });
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error.code).toBe('PERMISSION_DENIED');
+    const allowed = await annotate(curator.cookie, rec.id, {
+      kind: 'withdraw',
+      note: 'Retracted by the author by email',
+    });
+    expect(allowed.status).toBe(201);
+  });
+
+  it('R4 import records are never withdrawn; the accepted record is not withdrawn', async () => {
+    const a = await scientist(t, ['records.annotate']);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const imported = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    const res = await annotate(a.cookie, imported.id, { kind: 'withdraw', note: 'x' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe('RECORD_NOT_WITHDRAWABLE');
+    const { rec, sp1: sp2, trait: trait2 } = await manualRecord(a.user.id);
+    await createAcceptedValue(t.db, {
+      speciesId: sp2.id,
+      traitId: trait2.id,
+      recordId: rec.id,
+      actorId: a.user.id,
+    });
+    const accepted = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'x' });
+    expect(accepted.status).toBe(409);
+    expect((await accepted.json()).error.code).toBe('RECORD_IS_ACCEPTED');
+  });
+});
