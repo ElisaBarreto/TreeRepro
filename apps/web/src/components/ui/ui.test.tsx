@@ -234,6 +234,25 @@ describe('RFC-13 R5 UI kit — workspace pattern additions', () => {
     );
   });
 
+  it('Th and Td keep the caller className next to their own', () => {
+    render(
+      <Table>
+        <Thead>
+          <Tr>
+            <Th className="text-right">N</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          <Tr>
+            <Td className="tabular-nums">1</Td>
+          </Tr>
+        </Tbody>
+      </Table>,
+    );
+    expect(screen.getByRole('columnheader', { name: 'N' }).className).toContain('text-right');
+    expect(screen.getByRole('cell', { name: '1' }).className).toContain('tabular-nums');
+  });
+
   it('Alert keeps its text as the accessible content next to a decorative icon', () => {
     render(<Alert tone="info">Heads up</Alert>);
     const status = screen.getByRole('status');

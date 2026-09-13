@@ -26,9 +26,9 @@ export function Tr(props: HTMLAttributes<HTMLTableRowElement>) {
 }
 /** @rfc RFC-13 R5 */
 export function Th({ className = '', ...rest }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th scope="col" className={`px-[18px] py-3.5 font-bold `} {...rest} />;
+  return <th scope="col" className={`px-[18px] py-3.5 font-bold ${className}`} {...rest} />;
 }
 /** @rfc RFC-13 R5 */
 export function Td({ className = '', ...rest }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={`px-[18px] py-3.5 align-top `} {...rest} />;
+  return <td className={`px-[18px] py-3.5 align-top ${className}`} {...rest} />;
 }
