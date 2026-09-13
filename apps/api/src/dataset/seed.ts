@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs';
-import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import type { Db } from '../db/client.ts';
+import { DEFAULT_COPY_IDLE_TIMEOUT_MS, pipelineWithIdleGuard } from '../db/copy.ts';
 
 /** `apps/api/seed/trait-dictionary.csv`, next to `src/` in development and to `dist/` in the image. @rfc RFC-62 R2 */
 export function dictionaryPath(): string {
@@ -14,13 +14,22 @@ export interface SeedReport {
   levels: number;
 }
 
+export interface SeedOptions {
+  /** See `pipelineWithIdleGuard` in `db/copy.ts`. Default {@link DEFAULT_COPY_IDLE_TIMEOUT_MS}; tests lower it to fail fast. */
+  copyIdleTimeoutMs?: number;
+}
+
 /**
  * Inserts the categories, traits and levels the database lacks; never updates.
  * Postgres parses the CSV (COPY into a temporary table), so no CSV parser is
  * needed in Node.
  * @rfc RFC-62 R2
  */
-export async function seedDictionary(db: Db, csvPath = dictionaryPath()): Promise<SeedReport> {
+export async function seedDictionary(
+  db: Db,
+  csvPath = dictionaryPath(),
+  options: SeedOptions = {},
+): Promise<SeedReport> {
   const sql = db.$client;
   return sql.begin(async (tx): Promise<SeedReport> => {
     await tx`
@@ -36,7 +45,11 @@ export async function seedDictionary(db: Db, csvPath = dictionaryPath()): Promis
     const writable = await tx`
       copy dictionary_staging (final_standard_trait, broad_category, trait_value_type, standard_unit, description, harmonised_levels)
       from stdin with (format csv, header true, encoding 'UTF8')`.writable();
-    await pipeline(createReadStream(csvPath), writable);
+    await pipelineWithIdleGuard(
+      createReadStream(csvPath),
+      writable,
+      options.copyIdleTimeoutMs ?? DEFAULT_COPY_IDLE_TIMEOUT_MS,
+    );
 
     const categories = await tx`
       insert into trait_categories (key, label, sort_order)

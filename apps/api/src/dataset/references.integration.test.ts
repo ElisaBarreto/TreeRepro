@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createImportBatch,
@@ -8,6 +9,7 @@ import {
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
+import { bibliographicReferences } from '../db/schema/references.ts';
 import { getReference, searchReferences } from './references.ts';
 
 const tag = () => randomBytes(4).toString('hex');
@@ -143,5 +145,47 @@ describe('RFC-61 R4 references', () => {
     expect(listed.data).toEqual([
       expect.objectContaining({ id: ref.id, primaryCount: 2, secondaryCount: 2 }),
     ]);
+  });
+
+  it('usage counters live on the reference row, maintained by the insert trigger for every write path', async () => {
+    const ref = await createReference(t.db);
+    const sp = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'flower_color');
+    const batch = await createImportBatch(t.db);
+    const stored = async () =>
+      (
+        await t.db
+          .select({
+            primaryCount: bibliographicReferences.primaryCount,
+            secondaryCount: bibliographicReferences.secondaryCount,
+            usageCount: bibliographicReferences.usageCount,
+          })
+          .from(bibliographicReferences)
+          .where(eq(bibliographicReferences.id, ref.id))
+      )[0];
+    expect(await stored()).toEqual({ primaryCount: 0, secondaryCount: 0, usageCount: 0 });
+    // A single-row insert (the manual writer's path).
+    await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      primaryReferenceId: ref.id,
+      secondaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    expect(await stored()).toEqual({ primaryCount: 1, secondaryCount: 1, usageCount: 2 });
+    // A multi-row statement (the importer's path): one statement, both roles.
+    await t.db.execute(sql`
+      insert into trait_records (species_id, trait_id, value_text, harmonisation, primary_reference_id, secondary_reference_id, origin, import_batch_id, import_row_no)
+      select ${sp.id}::uuid, ${trait.id}::uuid, 'bulk-' || g, 'unknown_level', ${ref.id}::uuid, case when g = 1 then ${ref.id}::uuid end, 'import', ${batch.id}::uuid, 900000 + g
+      from generate_series(1, 3) g
+    `);
+    expect(await stored()).toEqual({ primaryCount: 4, secondaryCount: 2, usageCount: 6 });
+    // The aggregate the detail still computes agrees with the counters.
+    expect(await getReference(t.db, ref.id)).toMatchObject({
+      recordCount: 4,
+      primaryCount: 4,
+      secondaryCount: 2,
+    });
   });
 });
