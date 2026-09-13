@@ -50,6 +50,13 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `roles.deleted` | Role deleted. |
 | `sessions.revoked` | A session revoked by an admin. |
 | `admin.accessed` | Admin area opened. |
+| `taxa.created` | Family, genus, species or alternative name created (RFC-60 R10). |
+| `taxa.updated` | Family, genus or species changed (RFC-60 R10). |
+| `references.created` | Bibliographic reference created (RFC-61 R6). |
+| `references.updated` | Bibliographic reference changed (RFC-61 R6). |
+| `traits.created` | Trait created (RFC-62 R6). |
+| `traits.updated` | Trait or one of its levels changed, or a level added (RFC-62 R6). |
+| `dataset.exported` | Accepted values downloaded as a file (RFC-66 R6). |
 
 ## Open questions
 
@@ -63,3 +70,4 @@ None.
 - 2026-09-12 — R7: key normalization and contains-matching (issue #8).
 - 2026-09-12 — R1 FK, R4 reason metadata, three auth actions (RFC-20, RFC-22, RFC-23).
 - 2026-09-12 — R2, R6, R9: purge through audit_log_purge() (RFC-42); users.deleted and users.exported removed (RFC-50 R12).
+- 2026-09-13 — catalog and export actions (RFC-60–62, RFC-66, plan 07).

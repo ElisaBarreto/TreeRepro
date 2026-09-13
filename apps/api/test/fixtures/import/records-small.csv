@@ -24,3 +24,5 @@ Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Fl
 Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,Dark Blue,categorical,DARK_BLUE
 Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Plant height,plant_height,plant_form,1e2,quantitative_or_text,1e2
 Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Plant height,plant_height,plant_form,-.5,quantitative_or_text,-.5
+Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,1e200000,quantitative_or_text,1e200000
+Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,1e400,quantitative_or_text,1e400

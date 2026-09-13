@@ -81,3 +81,20 @@ export function decodeCompositeCursor(
   }
   return parsed;
 }
+
+/**
+ * The limit + 1 tail every keyset list shares: `rows` were fetched with
+ * `limit + 1`; the page is the first `limit` of them and the cursor of the
+ * page's last row is emitted only when a row beyond the page proved there
+ * is more.
+ * @rfc RFC-11 R6
+ */
+export function pageOf<Row>(
+  rows: Row[],
+  limit: number,
+  cursorOf: (last: Row) => string,
+): { page: Row[]; nextCursor: string | null } {
+  const page = rows.slice(0, limit);
+  const last = page[page.length - 1];
+  return { page, nextCursor: rows.length > limit && last ? cursorOf(last) : null };
+}

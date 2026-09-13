@@ -9,13 +9,13 @@ import { importRejects } from '../../../db/schema/imports.ts';
 describe('RFC-62 R5 GET /api/traits', () => {
   const t = useTestApp();
 
-  it('returns the dictionary with a private cache header', async () => {
+  it('returns the dictionary, not HTTP-cached', async () => {
     const role = await createRole(t.db, { permissions: ['dataset.read'] });
     const { user } = await createUser(t.db, { roles: [role.id] });
     const { cookie } = await loginAs(t, user);
     const res = await call(t.app, 'GET', '/api/traits', { cookie });
     expect(res.status).toBe(200);
-    expect(res.headers.get('cache-control')).toBe('private, max-age=300');
+    expect(res.headers.get('cache-control') ?? '').not.toMatch(/max-age/);
     const body = await res.json();
     expect(body.data[0].key).toBe('dispersal');
     expect(

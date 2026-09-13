@@ -60,7 +60,7 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   unresolved: z.enum(['true', 'false']).optional(),
 });
 
-/** @rfc RFC-60 R6 */
+/** @rfc RFC-60 R3, R6 */
 export const speciesListItemSchema = z.strictObject({
   id: z.uuid(),
   canonicalName: z.string(),
@@ -68,6 +68,7 @@ export const speciesListItemSchema = z.strictObject({
   genus: taxonRefSchema.nullable(),
   family: taxonRefSchema.nullable(),
   matchedName: z.string().nullable(),
+  unresolvedTaxon: z.boolean(),
 });
 
 /** @rfc RFC-60 R4, R7 */
@@ -82,7 +83,6 @@ export const speciesSchema = speciesListItemSchema.extend({
   names: z.array(speciesNameSchema),
   recordCount: z.number().int().nonnegative(),
   traitCount: z.number().int().nonnegative(),
-  unresolvedTaxon: z.boolean(),
 });
 
 /** @rfc RFC-60 R8 */
@@ -138,6 +138,7 @@ export const traitRefSchema = z.strictObject({
 export const traitLevelSchema = z.strictObject({
   id: z.uuid(),
   key: z.string(),
+  sortOrder: z.number().int(),
   active: z.boolean(),
 });
 
@@ -207,6 +208,8 @@ export const recordDetailSchema = recordSchema.extend({
   importRowNo: z.number().int().nullable(),
   annotations: z.array(annotationSchema),
   acceptedHistory: z.array(acceptedDecisionSchema),
+  supersedes: z.strictObject({ id: z.uuid() }).nullable(),
+  supersededBy: z.array(z.strictObject({ id: z.uuid() })),
 });
 
 /** @rfc RFC-63 R9 */

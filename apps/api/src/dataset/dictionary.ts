@@ -16,6 +16,7 @@ export async function getDictionary(db: DbExecutor): Promise<Dictionary> {
         id: traitLevels.id,
         traitId: traitLevels.traitId,
         key: traitLevels.key,
+        sortOrder: traitLevels.sortOrder,
         active: traitLevels.active,
       })
       .from(traitLevels)
@@ -26,7 +27,7 @@ export async function getDictionary(db: DbExecutor): Promise<Dictionary> {
   for (const l of levelRows) {
     levelsByTrait.set(l.traitId, [
       ...(levelsByTrait.get(l.traitId) ?? []),
-      { id: l.id, key: l.key, active: l.active },
+      { id: l.id, key: l.key, sortOrder: l.sortOrder, active: l.active },
     ]);
   }
   const traitsByCategory = new Map<string, Trait[]>();
@@ -47,4 +48,29 @@ export async function getDictionary(db: DbExecutor): Promise<Dictionary> {
     label: c.label,
     traits: traitsByCategory.get(c.key) ?? [],
   }));
+}
+
+/** One trait with its levels, in dictionary order. @rfc RFC-62 R5, R6 */
+export async function getTrait(db: DbExecutor, id: string): Promise<Trait | null> {
+  const [t] = await db.select().from(traits).where(eq(traits.id, id)).limit(1);
+  if (!t) return null;
+  const levels = await db
+    .select({
+      id: traitLevels.id,
+      key: traitLevels.key,
+      sortOrder: traitLevels.sortOrder,
+      active: traitLevels.active,
+    })
+    .from(traitLevels)
+    .where(eq(traitLevels.traitId, id))
+    .orderBy(asc(traitLevels.sortOrder), asc(traitLevels.key));
+  return {
+    id: t.id,
+    key: t.key,
+    valueType: t.valueType,
+    unit: t.unit,
+    description: t.description,
+    active: t.active,
+    levels,
+  };
 }

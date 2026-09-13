@@ -9,7 +9,7 @@ import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
-import { decodeCursor, encodeCursor } from '../http/cursor.ts';
+import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
 
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
 const secondaryRef = alias(bibliographicReferences, 'secondary_ref');
@@ -18,14 +18,20 @@ const author = alias(users, 'author');
 /**
  * The review axis of one record, derived from its annotations: withdrawn >
  * disputed > confirmed > unreviewed, where a scientist's stance is their
- * latest non-withdraw annotation.
+ * latest non-withdraw annotation. `recordId` is wrapped as an `sql` fragment
+ * before use: Drizzle's single-table `buildSelection` rewrites a bare top-level
+ * `Column` argument (`traitRecords.id`) to an unqualified identifier, which
+ * would then resolve inside this function's own correlated subquery over
+ * `record_annotations` to that table's own `id` instead of the record being
+ * checked — handled here so every caller can pass a bare column.
  * @rfc RFC-63 R6
  */
 export function reviewStatusSql(recordId: SQL | typeof traitRecords.id): SQL<ReviewStatus> {
+  const id = sql`${recordId}`;
   const stances = sql`(select distinct on (a.actor_id) a.kind from ${recordAnnotations} a
-    where a.record_id = ${recordId} and a.kind <> 'withdraw' order by a.actor_id, a.id desc)`;
+    where a.record_id = ${id} and a.kind <> 'withdraw' order by a.actor_id, a.id desc)`;
   return sql<ReviewStatus>`case
-    when exists (select 1 from ${recordAnnotations} w where w.record_id = ${recordId} and w.kind = 'withdraw') then 'withdrawn'
+    when exists (select 1 from ${recordAnnotations} w where w.record_id = ${id} and w.kind = 'withdraw') then 'withdrawn'
     when exists (select 1 from ${stances} s where s.kind = 'dispute') then 'disputed'
     when exists (select 1 from ${stances} s where s.kind = 'confirm') then 'confirmed'
     else 'unreviewed' end`;
@@ -43,7 +49,7 @@ const itemColumns = {
   authorName: author.name,
 };
 
-type ItemRow = {
+export type ItemRow = {
   record: typeof traitRecords.$inferSelect;
   speciesName: string;
   traitKey: string;
@@ -56,7 +62,8 @@ type ItemRow = {
   review: ReviewStatus;
 };
 
-function toItem(r: ItemRow): RecordItem {
+/** @rfc RFC-63 R8 */
+export function toItem(r: ItemRow): RecordItem {
   const rec = r.record;
   return {
     id: rec.id,
@@ -82,7 +89,8 @@ function toItem(r: ItemRow): RecordItem {
   };
 }
 
-function itemQuery(db: DbExecutor) {
+/** The joined select behind every record item; the queues reuse it. @rfc RFC-63 R8 */
+export function itemQuery(db: DbExecutor) {
   return db
     .select({ ...itemColumns, review: reviewStatusSql(traitRecords.id).as('review') })
     .from(traitRecords)
@@ -130,12 +138,8 @@ export async function listRecords(
     .where(and(...conditions))
     .orderBy(desc(traitRecords.id))
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  return {
-    data: page.map(toItem),
-    nextCursor: rows.length > input.limit && last ? encodeCursor(last.record.id) : null,
-  };
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
+  return { data: page.map(toItem), nextCursor };
 }
 
 /**
@@ -147,7 +151,7 @@ export async function getRecord(db: DbExecutor, id: string): Promise<RecordDetai
   const [row] = await itemQuery(db).where(eq(traitRecords.id, id)).limit(1);
   if (!row) return null;
   const rec = row.record;
-  const [batch, annotations, history] = await Promise.all([
+  const [batch, annotations, history, supersededBy] = await Promise.all([
     rec.importBatchId
       ? db
           .select({
@@ -188,6 +192,11 @@ export async function getRecord(db: DbExecutor, id: string): Promise<RecordDetai
         and(eq(acceptedValues.speciesId, rec.speciesId), eq(acceptedValues.traitId, rec.traitId)),
       )
       .orderBy(desc(acceptedValues.id)),
+    db
+      .select({ id: traitRecords.id })
+      .from(traitRecords)
+      .where(eq(traitRecords.supersedesRecordId, id))
+      .orderBy(desc(traitRecords.id)),
   ]);
   const b = batch[0];
   return {
@@ -217,5 +226,7 @@ export async function getRecord(db: DbExecutor, id: string): Promise<RecordDetai
       note: h.note,
       createdAt: h.createdAt.toISOString(),
     })),
+    supersedes: rec.supersedesRecordId ? { id: rec.supersedesRecordId } : null,
+    supersededBy: supersededBy.map((r) => ({ id: r.id })),
   };
 }

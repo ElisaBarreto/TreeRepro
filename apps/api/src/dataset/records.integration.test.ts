@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createImportBatch,
@@ -10,7 +11,8 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
-import { getRecord, listRecords } from './records.ts';
+import { traitRecords } from '../db/schema/records.ts';
+import { getRecord, listRecords, reviewStatusSql } from './records.ts';
 
 describe('RFC-63 R8, R9 listRecords and getRecord', () => {
   const t = useTestDb();
@@ -125,6 +127,31 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'withdraw', note: 'Entered by mistake' });
     expect(await status()).toBe('withdrawn');
+  });
+
+  it('reviewStatusSql keeps the record id qualified when called from a single-table select', async () => {
+    const sp1 = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'flower_color');
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'x',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    const { user } = await createUser(t.db);
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: rec.id, actorId: user.id, kind: 'withdraw', note: 'Entered by mistake' });
+    // A bare `traitRecords.id` here (no join) is the case a caller selecting
+    // from trait_records alone hits; the helper must qualify it itself.
+    const [row] = await t.db
+      .select({ review: reviewStatusSql(traitRecords.id).as('review') })
+      .from(traitRecords)
+      .where(eq(traitRecords.id, rec.id));
+    expect(row?.review).toBe('withdrawn');
   });
 
   it('R8 detail carries raw fields, batch, annotations and accepted history; manual records carry their author', async () => {

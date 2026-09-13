@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
@@ -39,11 +39,11 @@ describe('RFC-64 importRecords', () => {
     expect(batch).toMatchObject({
       fileName: 'records-small.csv',
       status: 'completed',
-      rowsTotal: 25,
-      rowsInserted: 20,
+      rowsTotal: 27,
+      rowsInserted: 22,
       rowsDuplicate: 2,
       rowsRejected: 3,
-      rowsPending: 5,
+      rowsPending: 7,
       runBy: null,
       error: null,
     });
@@ -165,6 +165,25 @@ describe('RFC-64 importRecords', () => {
     const row2 = await recordAt(batch.id, 2);
     expect(row2?.primaryReferenceId).not.toBe(row2?.secondaryReferenceId);
 
+    // R6 number rule: bounded exponent and magnitude, no numeric overflow on either
+    const overLong = await t.db
+      .select({
+        harmonisation: traitRecords.harmonisation,
+        numericValue: traitRecords.numericValue,
+      })
+      .from(traitRecords)
+      .where(
+        and(
+          eq(traitRecords.importBatchId, batch.id),
+          inArray(traitRecords.valueText, ['1e200000', '1e400']),
+        ),
+      );
+    expect(overLong).toHaveLength(2);
+    for (const row of overLong) {
+      expect(row.harmonisation).toBe('not_numeric');
+      expect(row.numericValue).toBeNull();
+    }
+
     // R7 rejects
     const rejects = await t.db
       .select({
@@ -192,7 +211,7 @@ describe('RFC-64 importRecords', () => {
       harmonised: 15,
       unknown_level: 1,
       multi_value: 1,
-      not_numeric: 2,
+      not_numeric: 4,
       empty: 1,
     });
     expect(report.rejectReasons).toEqual({ no_species_name: 1, unknown_trait: 1, no_reference: 1 });
@@ -205,9 +224,9 @@ describe('RFC-64 importRecords', () => {
     });
     const forced = await importRecords(t.db, { filePath: FIXTURE, force: true });
     expect(forced).toMatchObject({
-      rowsTotal: 25,
+      rowsTotal: 27,
       rowsInserted: 0,
-      rowsDuplicate: 22,
+      rowsDuplicate: 24,
       rowsRejected: 3,
       rowsPending: 0,
     });
@@ -245,13 +264,17 @@ describe('RFC-64 importRecords', () => {
     const file = join(dir, 'overflow.csv');
     const header = IMPORT_COLUMNS.join(',');
     // A well-formed row (15 fields, passes COPY and R7's checks) whose
-    // quantitative value matches NUMBER_PATTERN but overflows `numeric` only
-    // once cast during the trait_records insert — downstream of every
-    // catalog insert (species, in this case), so the rollback has something
-    // real to undo.
+    // reference is too large — and incompressible, so TOAST can't shrink it
+    // under the limit — to fit a btree index entry. The bibliographic
+    // references insert runs after the species catalog insert, so its
+    // failure gives the rollback something real to undo. (RFC-64 R6 now
+    // bounds every quantitative value below the numeric cast's own overflow
+    // point, so that former trigger — an unbounded exponent — no longer
+    // reaches Postgres at all; this is a different, still-genuine failure.)
+    const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\nOverflowRef,OverflowRef,Overflowia numerica,,,,,,,Plant height,plant_height,plant_form,1e200000,quantitative_or_text,1e200000\n`,
+      `${header}\n${hugeRef},${hugeRef},Overflowia numerica,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -259,7 +282,7 @@ describe('RFC-64 importRecords', () => {
       .from(importBatches)
       .where(eq(importBatches.fileName, 'overflow.csv'));
     expect(batch?.status).toBe('failed');
-    expect(batch?.error).toMatch(/value overflows numeric format/i);
+    expect(batch?.error).toMatch(/index row size|exceeds btree/i);
     expect(
       await t.db.select().from(species).where(eq(species.canonicalName, 'Overflowia numerica')),
     ).toEqual([]);

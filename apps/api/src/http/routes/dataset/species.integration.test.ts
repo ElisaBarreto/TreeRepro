@@ -1,7 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
-import { createFamily, createGenus, createSpecies } from '../../../../test/helpers/dataset.ts';
+import { lastAudit } from '../../../../test/helpers/audit.ts';
+import {
+  createAnnotation,
+  createFamily,
+  createGenus,
+  createImportBatch,
+  createRecord,
+  createReference,
+  createSpecies,
+  createTrait,
+} from '../../../../test/helpers/dataset.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
@@ -105,5 +115,246 @@ describe('RFC-60 R6-R8 species, families and genera routes', () => {
         family: { id: family.id, name: `Famroute-${k}` },
       },
     ]);
+  });
+});
+
+describe('RFC-60 R9, R10 species writes', () => {
+  const t = useTestApp();
+
+  async function taxonomist() {
+    const role = await createRole(t.db, { permissions: ['taxa.manage', 'dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, cookie: (await loginAs(t, user)).cookie };
+  }
+
+  it('creates a species, edits its name, source and genus, adds alternative names; 409s and 404s', async () => {
+    const { user, cookie } = await taxonomist();
+    const family = await createFamily(t.db);
+    const genus = await createGenus(t.db, { familyId: family.id });
+    const name = `Testus creatus-${Math.random().toString(16).slice(2)}`;
+    const created = await call(t.app, 'POST', '/api/species', {
+      cookie,
+      body: { canonicalName: name, nameSource: 'original' },
+    });
+    expect(created.status).toBe(201);
+    const sp = (await created.json()).data;
+    expect(sp).toMatchObject({
+      canonicalName: name,
+      nameSource: 'original',
+      genus: null,
+      family: null,
+      unresolvedTaxon: true,
+      names: [],
+      recordCount: 0,
+    });
+    expect((await lastAudit(t.db, 'taxa.created', { targetId: sp.id }))?.metadata).toEqual({
+      kind: 'species',
+    });
+    const dup = await call(t.app, 'POST', '/api/species', {
+      cookie,
+      body: { canonicalName: name, nameSource: 'wcvp' },
+    });
+    expect((await dup.json()).error.code).toBe('SPECIES_NAME_TAKEN');
+    const resolved = await call(t.app, 'PATCH', `/api/species/${sp.id}`, {
+      cookie,
+      body: { nameSource: 'wcvp', genusId: genus.id },
+    });
+    expect(resolved.status).toBe(200);
+    expect((await resolved.json()).data).toMatchObject({
+      nameSource: 'wcvp',
+      genus: { id: genus.id },
+      family: { id: family.id },
+      unresolvedTaxon: false,
+    });
+    expect((await lastAudit(t.db, 'taxa.updated', { targetId: sp.id }))?.metadata).toEqual({
+      kind: 'species',
+      fields: ['nameSource', 'genusId'],
+    });
+    const unknownGenus = await call(t.app, 'PATCH', `/api/species/${sp.id}`, {
+      cookie,
+      body: { genusId: '00000000-0000-7000-8000-000000000000' },
+    });
+    expect((await unknownGenus.json()).error.code).toBe('GENUS_NOT_FOUND');
+    const alt = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name: `${name} alt`, gbifUsageKey: '123' },
+    });
+    expect(alt.status).toBe(201);
+    expect((await alt.json()).data.names).toEqual([
+      { name: `${name} alt`, source: 'gbif', gbifUsageKey: '123' },
+    ]);
+    expect((await lastAudit(t.db, 'taxa.created', { actorUserId: user.id }))?.metadata).toEqual({
+      kind: 'species_name',
+      speciesId: sp.id,
+    });
+    const altAgain = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name: `${name} alt` },
+    });
+    expect((await altAgain.json()).error.code).toBe('SPECIES_NAME_TAKEN');
+    const canonical = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name },
+    });
+    expect((await canonical.json()).error.code).toBe('SPECIES_NAME_TAKEN');
+    const missing = await call(
+      t.app,
+      'POST',
+      '/api/species/00000000-0000-7000-8000-000000000000/names',
+      { cookie, body: { name: 'x' } },
+    );
+    expect((await missing.json()).error.code).toBe('SPECIES_NOT_FOUND');
+  });
+});
+
+describe('RFC-65 R6 accepted value per species and trait', () => {
+  const t = useTestApp();
+
+  async function curator() {
+    const role = await createRole(t.db, { permissions: ['accepted.manage', 'dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, cookie: (await loginAs(t, user)).cookie };
+  }
+  async function fixture(authorId: string) {
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
+    const ref = await createReference(t.db);
+    const mk = (levelIndex: number, valueText: string) =>
+      createRecord(t.db, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText,
+        levelId: trait.levels[levelIndex]?.id,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: authorId,
+      });
+    return { sp1, trait, ref, recA: await mk(0, 'a'), recB: await mk(1, 'b') };
+  }
+  const put = (cookie: string, speciesId: string, traitId: string, body: Record<string, unknown>) =>
+    call(t.app, 'PUT', `/api/species/${speciesId}/traits/${traitId}/accepted`, { cookie, body });
+
+  it('accepts, replaces, clears; repeats insert nothing; the summary and the GET agree', async () => {
+    const { user, cookie } = await curator();
+    const { sp1, trait, recA, recB } = await fixture(user.id);
+    const first = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: recA.id,
+      note: 'Best sampled',
+    });
+    expect(first.status).toBe(200);
+    expect((await first.json()).data).toMatchObject({
+      current: {
+        recordId: recA.id,
+        valueText: 'a',
+        actor: { id: user.id, name: 'Test User' },
+        note: 'Best sampled',
+      },
+      history: [{ decision: 'accepted', recordId: recA.id, valueText: 'a' }],
+    });
+    const summary = await call(t.app, 'GET', `/api/species/${sp1.id}/traits`, { cookie });
+    expect((await summary.json()).data[0].traits[0].accepted).toMatchObject({
+      recordId: recA.id,
+      valueText: 'a',
+    });
+    const same = await put(cookie, sp1.id, trait.id, { decision: 'accepted', recordId: recA.id });
+    expect((await same.json()).data.history).toHaveLength(1);
+    const replaced = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: recB.id,
+    });
+    expect((await replaced.json()).data).toMatchObject({
+      current: { recordId: recB.id },
+      history: [{ recordId: recB.id }, { recordId: recA.id }],
+    });
+    const cleared = await put(cookie, sp1.id, trait.id, {
+      decision: 'cleared',
+      note: 'Sources disagree',
+    });
+    expect((await cleared.json()).data).toMatchObject({
+      current: null,
+      history: [
+        { decision: 'cleared', recordId: null, valueText: null, note: 'Sources disagree' },
+        {},
+        {},
+      ],
+    });
+    const clearedAgain = await put(cookie, sp1.id, trait.id, {
+      decision: 'cleared',
+      note: 'still',
+    });
+    const clearedAgainBody = await clearedAgain.json();
+    expect(clearedAgainBody.data.history).toHaveLength(3);
+    const got = await call(t.app, 'GET', `/api/species/${sp1.id}/traits/${trait.id}/accepted`, {
+      cookie,
+    });
+    expect(got.status).toBe(200);
+    expect((await got.json()).data).toEqual(clearedAgainBody.data);
+  });
+
+  it('refuses a record of another species or trait, a pending record and a withdrawn one; 404s', async () => {
+    const { user, cookie } = await curator();
+    const { sp1, trait, ref, recA } = await fixture(user.id);
+    const otherSpecies = await createSpecies(t.db);
+    const batch = await createImportBatch(t.db);
+    const pending = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'zz',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    await createAnnotation(t.db, {
+      recordId: recA.id,
+      actorId: user.id,
+      kind: 'withdraw',
+      note: 'gone',
+    });
+    const zero = '00000000-0000-7000-8000-000000000000';
+    const wrong = await put(cookie, otherSpecies.id, trait.id, {
+      decision: 'accepted',
+      recordId: recA.id,
+    });
+    expect(wrong.status).toBe(400);
+    expect((await wrong.json()).error.details[0].path).toBe('recordId');
+    const notHarmonised = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: pending.id,
+    });
+    expect((await notHarmonised.json()).error.code).toBe('RECORD_NOT_HARMONISED');
+    const withdrawn = await put(cookie, sp1.id, trait.id, {
+      decision: 'accepted',
+      recordId: recA.id,
+    });
+    expect((await withdrawn.json()).error.code).toBe('RECORD_WITHDRAWN');
+    for (const [s, tr, r, code] of [
+      [zero, trait.id, recA.id, 'SPECIES_NOT_FOUND'],
+      [sp1.id, zero, recA.id, 'TRAIT_NOT_FOUND'],
+      [sp1.id, trait.id, zero, 'RECORD_NOT_FOUND'],
+    ] as const) {
+      const res = await put(cookie, s, tr, { decision: 'accepted', recordId: r });
+      expect(res.status, code).toBe(404);
+      expect((await res.json()).error.code, code).toBe(code);
+    }
+    const getMissing = await call(t.app, 'GET', `/api/species/${sp1.id}/traits/${zero}/accepted`, {
+      cookie,
+    });
+    expect(getMissing.status).toBe(404);
+  });
+
+  it('R6 five concurrent identical PUT accepted requests insert the decision only once', async () => {
+    const { user, cookie } = await curator();
+    const { sp1, trait, recA } = await fixture(user.id);
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        put(cookie, sp1.id, trait.id, { decision: 'accepted', recordId: recA.id }),
+      ),
+    );
+    for (const res of results) expect(res.status).toBe(200);
+    const got = await call(t.app, 'GET', `/api/species/${sp1.id}/traits/${trait.id}/accepted`, {
+      cookie,
+    });
+    const history = (await got.json()).data.history as { decision: string }[];
+    expect(history.filter((h) => h.decision === 'accepted')).toHaveLength(1);
   });
 });

@@ -35,6 +35,14 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `admin.access` | Open the admin area |
 | `dataset.read` | Browse species, traits, references and records |
 | `imports.read` | View import batches and their rejections |
+| `records.create` | Add trait records and map pending values |
+| `records.annotate` | Confirm, dispute and comment on records |
+| `records.withdraw` | Withdraw any manual record |
+| `accepted.manage` | Set and clear the accepted value per species and trait |
+| `taxa.manage` | Create and edit families, genera, species and names |
+| `references.manage` | Create and edit bibliographic references |
+| `traits.manage` | Create and edit traits and levels |
+| `dataset.export` | Download the accepted values |
 
 ## Open questions
 
@@ -46,3 +54,4 @@ None.
 - 2026-09-12 — accepted.
 - 2026-09-12 — users.delete retired: users are never erased (RFC-50 R12).
 - 2026-09-13 — dataset.read, imports.read (RFC-60–64, plan 06).
+- 2026-09-13 — curation permissions (RFC-65, RFC-66, plan 07).

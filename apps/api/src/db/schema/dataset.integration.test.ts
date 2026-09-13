@@ -338,6 +338,120 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
       await tx.insert(traitRecords).values({ ...claim, importRowNo: 3, rawValue: 'Blueish' });
     });
   });
+
+  it('R1, R2 supersedes_record_id: a manual record may inherit references from the pending record it supersedes; imports never supersede', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'flower_color');
+      const level = await levelByKey(tx, trait.id, 'blue');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const { user } = await createUser(tx);
+      // an import row with only a secondary reference, unharmonised
+      const pending = await createRecord(tx, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'blues',
+        secondaryReferenceId: ref.id,
+        importBatchId: batch.id,
+      });
+      // a manual row with no primary reference is refused unless it supersedes a record
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'blue',
+              levelId: level.id,
+              harmonisation: 'harmonised',
+              secondaryReferenceId: ref.id,
+              origin: 'manual',
+              createdBy: user.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      const [mapped] = await tx
+        .insert(traitRecords)
+        .values({
+          speciesId: sp1.id,
+          traitId: trait.id,
+          valueText: 'blue',
+          levelId: level.id,
+          harmonisation: 'harmonised',
+          secondaryReferenceId: ref.id,
+          origin: 'manual',
+          createdBy: user.id,
+          supersedesRecordId: pending.id,
+        })
+        .returning();
+      expect(mapped?.supersedesRecordId).toBe(pending.id);
+      // an import row never supersedes
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'x',
+              harmonisation: 'unknown_level',
+              primaryReferenceId: ref.id,
+              origin: 'import',
+              importBatchId: batch.id,
+              importRowNo: 99,
+              supersedesRecordId: pending.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      // the foreign key holds
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'blue',
+              levelId: level.id,
+              harmonisation: 'harmonised',
+              primaryReferenceId: ref.id,
+              origin: 'manual',
+              createdBy: user.id,
+              supersedesRecordId: '00000000-0000-7000-8000-000000000000',
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23503' });
+    });
+  });
+
+  it('R2 a level or a number implies harmonised (converse check)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'flower_color');
+      const level = await levelByKey(tx, trait.id, 'blue');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'blue',
+              levelId: level.id,
+              harmonisation: 'unknown_level',
+              primaryReferenceId: ref.id,
+              origin: 'import',
+              importBatchId: batch.id,
+              importRowNo: 1,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+    });
+  });
 });
 
 describe('RFC-63 R4 append-only records and curation tables', () => {
