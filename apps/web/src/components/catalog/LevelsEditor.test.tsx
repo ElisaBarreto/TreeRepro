@@ -138,6 +138,18 @@ describe('RFC-62 R6 LevelsEditor', () => {
     expect(catalog.updateLevel).toHaveBeenCalledWith(tied.id, tied.levels[1]?.id, { sortOrder: 1 });
   });
 
+  it('moving up across a tie at sortOrder 0 pushes the neighbour down instead', async () => {
+    catalog.updateLevel.mockResolvedValue(SEXUAL_SYSTEM_TRAIT);
+    const tied = {
+      ...SEXUAL_SYSTEM_TRAIT,
+      levels: SEXUAL_SYSTEM_TRAIT.levels.map((l) => ({ ...l, sortOrder: 0 })),
+    };
+    renderWithProviders(<LevelsEditor trait={tied} canManage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Move dioecious up' }));
+    await waitFor(() => expect(catalog.updateLevel).toHaveBeenCalledTimes(1));
+    expect(catalog.updateLevel).toHaveBeenCalledWith(tied.id, tied.levels[0]?.id, { sortOrder: 1 });
+  });
+
   it('deactivates and activates with one patch each', async () => {
     catalog.updateLevel.mockResolvedValue(SEXUAL_SYSTEM_TRAIT);
     renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);

@@ -145,7 +145,7 @@ function CategorySection({
             <Th>Description</Th>
             <Th>Status</Th>
             <Th>
-              <span className="sr-only">Levels</span>
+              <span className="sr-only">Actions</span>
             </Th>
           </Tr>
         </Thead>

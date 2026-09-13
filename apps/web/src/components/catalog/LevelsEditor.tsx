@@ -132,7 +132,9 @@ function LevelKeyDialog({
  * level and its neighbour in one `mutationFn`, moved level first, unless
  * the two are already equal (only possible in a dictionary seeded before
  * `sortOrder` existed), in which case a single patch shifts the moved
- * level's `sortOrder` past the neighbour's.
+ * level's `sortOrder` past the neighbour's — except moving up across a tie
+ * at 0, where the moved level cannot go negative, so the neighbour is
+ * patched down past it instead.
  * @rfc RFC-62 R6
  * @rfc RFC-13 R3, R6
  */
@@ -151,9 +153,14 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
       const neighbour = trait.levels[direction === 'down' ? index + 1 : index - 1];
       if (!level || !neighbour) return;
       if (level.sortOrder === neighbour.sortOrder) {
-        const sortOrder =
-          direction === 'down' ? neighbour.sortOrder + 1 : Math.max(0, neighbour.sortOrder - 1);
-        await updateLevel(trait.id, level.id, { sortOrder });
+        if (direction === 'down') {
+          await updateLevel(trait.id, level.id, { sortOrder: neighbour.sortOrder + 1 });
+        } else if (neighbour.sortOrder > 0) {
+          await updateLevel(trait.id, level.id, { sortOrder: neighbour.sortOrder - 1 });
+        } else {
+          // The moved level cannot go below 0, so the neighbour moves down instead.
+          await updateLevel(trait.id, neighbour.id, { sortOrder: level.sortOrder + 1 });
+        }
         return;
       }
       await updateLevel(trait.id, level.id, { sortOrder: neighbour.sortOrder });
