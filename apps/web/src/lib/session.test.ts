@@ -41,4 +41,27 @@ describe('RFC-13 R4 session loss', () => {
     handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
     expect(navigate).not.toHaveBeenCalled();
   });
+
+  it('coalesces concurrent 401s into one navigation and re-arms afterwards', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(ME_QUERY_KEY, ME);
+    let resolve!: () => void;
+    const navigate = vi.fn<(to: '/') => Promise<void>>(
+      () =>
+        new Promise<void>((r) => {
+          resolve = r;
+        }),
+    );
+    const handle = createSessionErrorHandler({ queryClient, navigate, pathname: () => '/app' });
+
+    handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    expect(navigate).toHaveBeenCalledTimes(1);
+
+    resolve();
+    await vi.waitFor(() => expect(queryClient.getQueryData(ME_QUERY_KEY)).toBeUndefined());
+
+    handle(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    expect(navigate).toHaveBeenCalledTimes(2);
+  });
 });
