@@ -7,6 +7,7 @@ import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches } from '../db/schema/imports.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
+import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import { decodeCursor, encodeCursor } from '../http/cursor.ts';
 
@@ -32,6 +33,7 @@ export function reviewStatusSql(recordId: SQL | typeof traitRecords.id): SQL<Rev
 
 const itemColumns = {
   record: traitRecords,
+  speciesName: species.canonicalName,
   traitKey: traits.key,
   traitValueType: traits.valueType,
   traitUnit: traits.unit,
@@ -43,6 +45,7 @@ const itemColumns = {
 
 type ItemRow = {
   record: typeof traitRecords.$inferSelect;
+  speciesName: string;
   traitKey: string;
   traitValueType: RecordItem['trait']['valueType'];
   traitUnit: string | null;
@@ -58,6 +61,7 @@ function toItem(r: ItemRow): RecordItem {
   return {
     id: rec.id,
     speciesId: rec.speciesId,
+    species: { id: rec.speciesId, canonicalName: r.speciesName },
     trait: { id: rec.traitId, key: r.traitKey, valueType: r.traitValueType, unit: r.traitUnit },
     valueText: rec.valueText,
     level: rec.levelId && r.levelKey ? { id: rec.levelId, key: r.levelKey } : null,
@@ -82,6 +86,7 @@ function itemQuery(db: DbExecutor) {
   return db
     .select({ ...itemColumns, review: reviewStatusSql(traitRecords.id).as('review') })
     .from(traitRecords)
+    .innerJoin(species, eq(species.id, traitRecords.speciesId))
     .innerJoin(traits, eq(traits.id, traitRecords.traitId))
     .leftJoin(traitLevels, eq(traitLevels.id, traitRecords.levelId))
     .leftJoin(primaryRef, eq(primaryRef.id, traitRecords.primaryReferenceId))

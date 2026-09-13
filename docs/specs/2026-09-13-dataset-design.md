@@ -192,7 +192,7 @@ Against the dev stack, after `seed:traits`: `import:records --file docs/exemplos
 
 `traitSummary`: `{ trait: { id, key, valueType, unit }, recordCount, harmonisationCounts: { harmonised, unknownLevel, multiValue, notNumeric, empty }, levels: [{ levelId, key, count }] | null, numeric: { min, median, max, count } | null, accepted: { recordId, valueText, decidedAt } | null }` (`levels` for categorical traits, `numeric` for quantitative ones); grouped as `{ category: { key, label }, traits: [traitSummary] }[]`.
 
-`record` (list item): `{ id, speciesId, trait: { id, key, valueType, unit }, valueText, level: { id, key } | null, numericValue, harmonisation, review, primaryReference: { id, citationKey } | null, secondaryReference, origin, createdAt, createdBy: { id, name } | null }`.
+`record` (list item): `{ id, speciesId, species: { id, canonicalName }, trait: { id, key, valueType, unit }, valueText, level: { id, key } | null, numericValue, harmonisation, review, primaryReference: { id, citationKey } | null, secondaryReference, origin, createdAt, createdBy: { id, name } | null }`.
 
 `record` (detail): list item plus `rawValue, originalTraitName, originalSpeciesName, secondarySourceSpeciesName, rawCategory, note, importBatch: { id, fileName, startedAt } | null, importRowNo, annotations: [{ id, kind, note, actor: { id, name }, createdAt }], acceptedHistory: [{ id, decision, recordId, actor, note, createdAt }]`.
 
