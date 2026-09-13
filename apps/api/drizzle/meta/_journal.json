@@ -78,6 +78,20 @@
       "when": 1789258538870,
       "tag": "0010_dataset_catalogs",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789259501967,
+      "tag": "0011_dataset_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789259515789,
+      "tag": "0012_dataset_append_only",
+      "breakpoints": true
     }
   ]
 }

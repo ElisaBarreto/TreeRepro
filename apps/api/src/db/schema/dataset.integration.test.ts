@@ -1,7 +1,19 @@
-import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { eq, sql } from 'drizzle-orm';
+import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  createImportBatch,
+  createRecord,
+  createReference,
+  createSpecies,
+  levelByKey,
+  traitByKey,
+} from '../../../test/helpers/dataset.ts';
 import { unwrapDbError, useTestDb, withRollback } from '../../../test/helpers/db.ts';
+import { createUser } from '../../../test/helpers/users.ts';
+import { acceptedValues, recordAnnotations } from './curation.ts';
 import { traitCategories, traitLevels, traits } from './dictionary.ts';
+import { importBatches } from './imports.ts';
+import { traitRecords } from './records.ts';
 import { bibliographicReferences } from './references.ts';
 import { families, genera, species, speciesNames } from './taxa.ts';
 
@@ -196,6 +208,279 @@ describe('RFC-62 R1 dictionary tables', () => {
           tx.transaction((sp) => sp.execute(sql`delete from traits where id = ${trait?.id}`)),
         ),
       ).rejects.toMatchObject({ code: '23001' });
+    });
+  });
+});
+
+/**
+ * Task 6 seeds the dictionary in test/global-setup.ts; until then, each describe
+ * below that needs `flower_color` seeds it itself, idempotently.
+ */
+async function seedFlowerColorDictionary(db: Parameters<typeof withRollback>[0]) {
+  await db
+    .insert(traitCategories)
+    .values({ key: 'flower_color', label: 'Flower color', sortOrder: 0 })
+    .onConflictDoNothing();
+  await db
+    .insert(traits)
+    .values({ key: 'flower_color', categoryKey: 'flower_color', valueType: 'categorical' })
+    .onConflictDoNothing();
+  const trait = await traitByKey(db, 'flower_color');
+  await db.insert(traitLevels).values({ traitId: trait.id, key: 'blue' }).onConflictDoNothing();
+}
+
+describe('RFC-63 R1-R3 trait_records constraints', () => {
+  const t = useTestDb();
+  beforeAll(() => seedFlowerColorDictionary(t.db));
+
+  it('R2 requires a reference and the origin columns that match the origin', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'flower_color');
+      const batch = await createImportBatch(tx);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'blue',
+              harmonisation: 'unknown_level',
+              origin: 'import',
+              importBatchId: batch.id,
+              importRowNo: 1,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' }); // no reference
+      const ref = await createReference(tx);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'blue',
+              harmonisation: 'unknown_level',
+              origin: 'import',
+              primaryReferenceId: ref.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' }); // import without batch
+      const { user } = await createUser(tx);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'blue',
+              harmonisation: 'unknown_level',
+              origin: 'manual',
+              createdBy: user.id,
+              secondaryReferenceId: ref.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' }); // manual needs the primary reference
+    });
+  });
+
+  it('R2 harmonised needs a level or a number, never both', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'flower_color');
+      const level = await levelByKey(tx, trait.id, 'blue');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const base = {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'blue',
+        origin: 'import' as const,
+        importBatchId: batch.id,
+        importRowNo: 1,
+        primaryReferenceId: ref.id,
+      };
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({ ...base, harmonisation: 'harmonised' }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              ...base,
+              harmonisation: 'harmonised',
+              levelId: level.id,
+              numericValue: 1,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      const [ok] = await tx
+        .insert(traitRecords)
+        .values({ ...base, harmonisation: 'harmonised', levelId: level.id })
+        .returning();
+      expect(ok?.levelId).toBe(level.id);
+    });
+  });
+
+  it('R3 an identical claim is refused, nulls not distinct', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'flower_color');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const claim = {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'blueish',
+        harmonisation: 'unknown_level' as const,
+        origin: 'import' as const,
+        importBatchId: batch.id,
+        importRowNo: 1,
+        primaryReferenceId: ref.id,
+      };
+      await tx.insert(traitRecords).values(claim);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) => sp.insert(traitRecords).values({ ...claim, importRowNo: 2 })),
+        ),
+      ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
+      // a different raw value is a different claim
+      await tx.insert(traitRecords).values({ ...claim, importRowNo: 3, rawValue: 'Blueish' });
+    });
+  });
+});
+
+describe('RFC-63 R4 append-only records and curation tables', () => {
+  const t = useTestDb();
+  const su = useTestDb({ role: 'superuser' });
+  beforeAll(() => seedFlowerColorDictionary(t.db));
+
+  it('treerepro_app holds SELECT and INSERT but neither UPDATE, DELETE nor TRUNCATE', async () => {
+    for (const table of ['trait_records', 'record_annotations', 'accepted_values']) {
+      const rows = await t.db.execute(sql`
+        select privilege_type, has_table_privilege('treerepro_app', ${table}, privilege_type) as granted
+        from unnest(array['SELECT', 'INSERT', 'DELETE', 'UPDATE', 'TRUNCATE']) as privilege_type
+      `);
+      expect(Object.fromEntries(rows.map((r) => [r.privilege_type, r.granted])), table).toEqual({
+        SELECT: true,
+        INSERT: true,
+        DELETE: false,
+        UPDATE: false,
+        TRUNCATE: false,
+      });
+    }
+  });
+
+  it('the trigger refuses UPDATE and DELETE even for the owner', async () => {
+    await withRollback(su.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'flower_color');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const record = await createRecord(tx, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'x',
+        harmonisation: 'unknown_level',
+        primaryReferenceId: ref.id,
+        importBatchId: batch.id,
+      });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.update(traitRecords).set({ valueText: 'y' }).where(eq(traitRecords.id, record.id)),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '42501', message: 'trait_records is append-only' });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) => sp.delete(traitRecords).where(eq(traitRecords.id, record.id))),
+        ),
+      ).rejects.toMatchObject({ code: '42501' });
+    });
+  });
+
+  it('R7 an accepted value must point at a record of the same species and trait', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const sp2 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'flower_color');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const { user } = await createUser(tx);
+      const record = await createRecord(tx, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'x',
+        harmonisation: 'unknown_level',
+        primaryReferenceId: ref.id,
+        importBatchId: batch.id,
+      });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(acceptedValues).values({
+              speciesId: sp2.id,
+              traitId: trait.id,
+              recordId: record.id,
+              decision: 'accepted',
+              actorId: user.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(acceptedValues).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              decision: 'accepted',
+              actorId: user.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' }); // accepted without a record
+      const [ok] = await tx
+        .insert(acceptedValues)
+        .values({
+          speciesId: sp1.id,
+          traitId: trait.id,
+          recordId: record.id,
+          decision: 'accepted',
+          actorId: user.id,
+        })
+        .returning();
+      expect(ok?.id).toBeDefined();
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp
+              .insert(recordAnnotations)
+              .values({ recordId: record.id, actorId: user.id, kind: 'dispute' }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' }); // dispute needs a note
+    });
+  });
+
+  it('RFC-64 R3 import batches default to running with zero counts', async () => {
+    await withRollback(t.db, async (tx) => {
+      const [batch] = await tx
+        .insert(importBatches)
+        .values({ fileName: 'x.csv', fileSha256: 'a'.repeat(64) })
+        .returning();
+      expect(batch?.status).toBe('running');
+      expect(batch?.rowsTotal).toBe(0);
+      expect(batch?.unknownLevels).toEqual([]);
     });
   });
 });
