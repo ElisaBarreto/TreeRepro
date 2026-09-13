@@ -10,6 +10,8 @@ import {
   CURATED_RECORD_DETAIL,
   DICTIONARY,
   EMPTY_ACCEPTED,
+  FAMILIES,
+  GENERA,
   PENDING_RECORD,
   PRIMARY_REFERENCE,
   RECORD,
@@ -42,7 +44,10 @@ const dataset = vi.hoisted(() => ({
   fetchRecord: vi.fn(),
   fetchDictionary: vi.fn(),
   searchReferences: vi.fn(),
+  fetchFamilies: vi.fn(),
+  fetchGenera: vi.fn(),
 }));
+const catalog = vi.hoisted(() => ({ updateSpecies: vi.fn(), addSpeciesName: vi.fn() }));
 // TraitPanel renders AcceptedSection, which calls fetchAccepted; mocked so
 // the panel tests below do not hit the real apiFetch.
 // `invalidateAfterRecordWrite` keeps the real signature so one test can
@@ -64,8 +69,13 @@ vi.mock('../../api/curation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/curation.ts')>()),
   ...curation,
 }));
+vi.mock('../../api/catalog.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
+  ...catalog,
+}));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
+const CURATOR_TAXA: MeResponse = { ...ME, permissions: ['dataset.read', 'taxa.manage'] };
 const page = (data: RecordItem[], nextCursor: string | null = null) => ({
   data,
   meta: { nextCursor },
@@ -80,9 +90,13 @@ beforeEach(() => {
   curation.fetchAccepted.mockReset().mockResolvedValue(EMPTY_ACCEPTED);
   dataset.fetchDictionary.mockReset();
   dataset.searchReferences.mockReset();
+  dataset.fetchFamilies.mockReset().mockResolvedValue(FAMILIES);
+  dataset.fetchGenera.mockReset().mockResolvedValue({ data: GENERA, meta: { nextCursor: null } });
   curation.createRecord.mockReset();
   curation.setAccepted.mockReset();
   curation.invalidateAfterRecordWrite.mockReset().mockResolvedValue(undefined);
+  catalog.updateSpecies.mockReset();
+  catalog.addSpeciesName.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchSpecies.mockResolvedValue(SPECIES);
   dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS);
@@ -493,5 +507,58 @@ describe('RFC-65 R1 Add value from the species page', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));
     expect(await screen.findByRole('dialog', { name: 'Record' })).toHaveTextContent('dioecious');
     expect(dataset.fetchRecord).toHaveBeenCalledWith(RECORD_DETAIL.id);
+  });
+});
+
+describe('RFC-60 R9 SpeciesPage taxa editing', () => {
+  it('hides "Edit species" and "Add name" from a reader', async () => {
+    renderAt(`/app/species/${SPECIES.id}`);
+    await screen.findByText('Adenanthera pavonina');
+    expect(screen.queryByRole('button', { name: 'Edit species' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add name' })).not.toBeInTheDocument();
+  });
+
+  it('edits the species and re-renders the header from the refetched detail', async () => {
+    auth.fetchMe.mockResolvedValue(CURATOR_TAXA);
+    dataset.fetchSpecies
+      .mockResolvedValueOnce(SPECIES)
+      .mockResolvedValue({ ...SPECIES, nameSource: 'original' });
+    dataset.fetchFamilies.mockResolvedValue(FAMILIES);
+    catalog.updateSpecies.mockResolvedValue({ ...SPECIES, nameSource: 'original' });
+    renderAt(`/app/species/${SPECIES.id}`);
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit species' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit species' });
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: /name source/i }),
+      'original',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(catalog.updateSpecies).toHaveBeenCalledWith(SPECIES.id, { nameSource: 'original' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(dataset.fetchSpecies).toHaveBeenCalledTimes(2));
+  });
+
+  it('adds an alternative name and shows it in the header', async () => {
+    auth.fetchMe.mockResolvedValue(CURATOR_TAXA);
+    const withName = {
+      ...SPECIES,
+      names: [
+        ...SPECIES.names,
+        { name: 'Adenanthera polita', source: 'gbif' as const, gbifUsageKey: null },
+      ],
+    };
+    dataset.fetchSpecies.mockResolvedValueOnce(SPECIES).mockResolvedValue(withName);
+    catalog.addSpeciesName.mockResolvedValue(withName);
+    renderAt(`/app/species/${SPECIES.id}`);
+    await userEvent.click(await screen.findByRole('button', { name: 'Add name' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add alternative name' });
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /^name/i }),
+      'Adenanthera polita',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add name' }));
+    expect(await screen.findByText(/Adenanthera polita/)).toBeInTheDocument();
   });
 });
