@@ -66,10 +66,9 @@ describe('RFC-62 R2 seedDictionary', () => {
     // /api/traits ahead of nearly every real category for the rest of the
     // test run. The real file is CRLF-terminated; COPY's CSV reader commits
     // to whatever line ending the first line uses, so appending plain-LF
-    // rows after it as-is makes it see an "unquoted newline" and (per the
-    // postgres.js COPY-hang gotcha, since seedDictionary's pipeline has no
-    // idle guard) the import hangs instead of erroring — normalise to LF
-    // throughout before appending.
+    // rows after it as-is makes it see an "unquoted newline" and fail (per
+    // the postgres.js COPY-hang gotcha, only after the idle guard fires) —
+    // normalise to LF throughout before appending.
     const realDictionary = (await readFile(dictionaryPath(), 'utf8'))
       .replace(/\r\n/g, '\n')
       .replace(/\n$/, '');
@@ -87,5 +86,22 @@ describe('RFC-62 R2 seedDictionary', () => {
     expect(flowerColor?.description).not.toBe('CHANGED DESCRIPTION');
     const again = await seedDictionary(t.db, file);
     expect(again).toEqual({ categories: 0, traits: 0, levels: 0 });
+  });
+
+  it('RFC-64 R9 a malformed row fails within the idle timeout instead of hanging', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dict-'));
+    const file = join(dir, 'broken.csv');
+    // Seven fields where COPY expects six: the same driver hang the importer
+    // guards against (docs/gotchas/import.md); the seed must not hang either.
+    await writeFile(
+      file,
+      'final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels\nzz_broken,zz_cat,categorical,,desc,a;b,EXTRA\n',
+    );
+    const started = Date.now();
+    await expect(seedDictionary(t.db, file, { copyIdleTimeoutMs: 2000 })).rejects.toThrow(
+      /COPY made no progress|extra data after last expected column/i,
+    );
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(await t.db.select().from(traits).where(eq(traits.key, 'zz_broken'))).toEqual([]);
   });
 });

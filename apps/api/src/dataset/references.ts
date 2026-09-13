@@ -1,5 +1,5 @@
 import type { Reference, ReferenceDetail } from '@treerepro/contracts';
-import { and, count, desc, eq, ilike, isNotNull, or, type SQL, sql } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/client.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
@@ -12,13 +12,8 @@ import {
 } from '../http/cursor.ts';
 import { likePattern } from './taxa.ts';
 
-interface Usage {
-  primaryCount: number;
-  secondaryCount: number;
-}
-
 /** @rfc RFC-61 R4 */
-export function toReference(row: ReferenceRow, usage: Usage): Reference {
+export function toReference(row: ReferenceRow): Reference {
   return {
     id: row.id,
     citationKey: row.citationKey,
@@ -29,51 +24,27 @@ export function toReference(row: ReferenceRow, usage: Usage): Reference {
     doi: row.doi,
     url: row.url,
     createdAt: row.createdAt.toISOString(),
-    primaryCount: usage.primaryCount,
-    secondaryCount: usage.secondaryCount,
+    primaryCount: row.primaryCount,
+    secondaryCount: row.secondaryCount,
   };
-}
-
-/**
- * Usage per role, aggregated on demand: one grouped subquery per role over
- * `trait_records`, left-joined to the references, so a record naming the same
- * reference in both roles counts once in each. There are ~1.8k references on
- * the sample and tens of thousands at most on the full dataset, so the two
- * index scans (`trait_records_primary_reference_idx`,
- * `trait_records_secondary_reference_idx`) plus the group-by are cheap enough
- * without a dedicated usage index or a maintained counter.
- */
-function usageSubqueries(db: DbExecutor) {
-  // Distinct column aliases: an aliased subquery field interpolated into a
-  // `sql` template is emitted unqualified, so two `n` columns would be ambiguous.
-  const primaryUses = db
-    .select({ refId: traitRecords.primaryReferenceId, n: count().as('as_primary') })
-    .from(traitRecords)
-    .where(isNotNull(traitRecords.primaryReferenceId))
-    .groupBy(traitRecords.primaryReferenceId)
-    .as('primary_uses');
-  const secondaryUses = db
-    .select({ refId: traitRecords.secondaryReferenceId, n: count().as('as_secondary') })
-    .from(traitRecords)
-    .where(isNotNull(traitRecords.secondaryReferenceId))
-    .groupBy(traitRecords.secondaryReferenceId)
-    .as('secondary_uses');
-  const primaryCount = sql<number>`coalesce(${primaryUses.n}, 0)::int`;
-  const secondaryCount = sql<number>`coalesce(${secondaryUses.n}, 0)::int`;
-  const total = sql<number>`(${primaryCount} + ${secondaryCount})`;
-  return { primaryUses, secondaryUses, primaryCount, secondaryCount, total };
 }
 
 // A usage total in a cursor: digits that still fit a JS integer, so the bigint
 // cast below never sees `Infinity`.
 const isUsageCount = (part: string) => isDigits(part) && Number.isSafeInteger(Number(part));
 
-/** Most used first (`primaryCount + secondaryCount` desc, then id desc); composite cursor `[total, id]`. @rfc RFC-61 R4 */
+/**
+ * Most used first (`usage_count` = `primaryCount + secondaryCount` desc, then
+ * id desc); composite cursor `[total, id]`. The counters are stored on the row
+ * and maintained by the `trait_records` insert trigger (schema/references.ts),
+ * so a page is one index-ordered scan of `bibliographic_references_usage_idx`
+ * whatever the size of `trait_records`.
+ * @rfc RFC-61 R4
+ */
 export async function searchReferences(
   db: DbExecutor,
   input: { q?: string; cursor?: string; limit: number },
 ): Promise<{ data: Reference[]; nextCursor: string | null }> {
-  const usage = usageSubqueries(db);
   const conditions: SQL[] = [];
   if (input.q) {
     const pattern = likePattern(input.q, 'substring');
@@ -90,30 +61,23 @@ export async function searchReferences(
       string,
     ];
     conditions.push(
-      sql`(${usage.total}, ${bibliographicReferences.id}) < (${Number(total)}::bigint, ${id}::uuid)`,
+      sql`(${bibliographicReferences.usageCount}, ${bibliographicReferences.id}) < (${Number(total)}::int, ${id}::uuid)`,
     );
   }
   const rows = await db
-    .select({
-      reference: bibliographicReferences,
-      primaryCount: usage.primaryCount.as('primary_count'),
-      secondaryCount: usage.secondaryCount.as('secondary_count'),
-      total: usage.total.as('total'),
-    })
+    .select()
     .from(bibliographicReferences)
-    .leftJoin(usage.primaryUses, eq(usage.primaryUses.refId, bibliographicReferences.id))
-    .leftJoin(usage.secondaryUses, eq(usage.secondaryUses.refId, bibliographicReferences.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     // The sort key (usage count) is mutable: pages stay stable between
-    // imports, but a concurrent `import:records` can shift a reference
-    // between two page fetches (acceptable — imports are batch,
-    // administrative operations).
-    .orderBy(desc(usage.total), desc(bibliographicReferences.id))
+    // writes, but a concurrent import or manual record can shift a reference
+    // between two page fetches (acceptable — a reference that gained a use
+    // moves up, nothing is lost from the pages still to come).
+    .orderBy(desc(bibliographicReferences.usageCount), desc(bibliographicReferences.id))
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    encodeCompositeCursor([String(r.total), r.reference.id]),
+    encodeCompositeCursor([String(r.usageCount), r.id]),
   );
-  return { data: page.map((r) => toReference(r.reference, r)), nextCursor };
+  return { data: page.map(toReference), nextCursor };
 }
 
 /** @rfc RFC-61 R4 */
@@ -124,27 +88,12 @@ export async function getReference(db: DbExecutor, id: string): Promise<Referenc
     .where(eq(bibliographicReferences.id, id))
     .limit(1);
   if (!row) return null;
-  // One pass over the records naming it: each role counted on its own, and
-  // the record itself once even when it names the reference in both roles.
+  // Records naming it in either role, counted once even when both roles name
+  // it — the one figure the stored counters cannot give (one indexed lookup
+  // per role, a single reference).
   const [counts] = await db
-    .select({
-      recordCount: count(),
-      primaryCount:
-        sql<number>`count(*) filter (where ${traitRecords.primaryReferenceId} = ${id}::uuid)`.mapWith(
-          Number,
-        ),
-      secondaryCount:
-        sql<number>`count(*) filter (where ${traitRecords.secondaryReferenceId} = ${id}::uuid)`.mapWith(
-          Number,
-        ),
-    })
+    .select({ recordCount: count() })
     .from(traitRecords)
     .where(or(eq(traitRecords.primaryReferenceId, id), eq(traitRecords.secondaryReferenceId, id)));
-  return {
-    ...toReference(row, {
-      primaryCount: counts?.primaryCount ?? 0,
-      secondaryCount: counts?.secondaryCount ?? 0,
-    }),
-    recordCount: counts?.recordCount ?? 0,
-  };
+  return { ...toReference(row), recordCount: counts?.recordCount ?? 0 };
 }
