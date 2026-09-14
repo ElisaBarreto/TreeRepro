@@ -83,6 +83,7 @@
 ## An `http://` site address in `Caddyfile.prod`
 **Symptom:** The e2e Caddy answers on plain HTTP at 8080 instead of trying to provision a TLS certificate.
 **Cause:** `DOMAIN=http://localhost:8080` turns automatic HTTPS off and makes Caddy listen on 8080 inside the container (the port in the address is the listener), hence `127.0.0.1:8080:8080` in `compose.e2e.yml`; production keeps `DOMAIN=<host>` and 80/443.
+**Fix:** `DOMAIN=http://localhost:8080` + `127.0.0.1:8080:8080` in `compose.e2e.yml` for the e2e stack; production keeps `DOMAIN=<host>` (no scheme, no port) so Caddy serves 80/443 with automatic HTTPS.
 
 ## A binary with a file capability needs `cap_add` even on an unprivileged port
 **Symptom:** The e2e Caddy (`DOMAIN=http://localhost:8080`) crash-loops with `exec /usr/bin/caddy: operation not permitted` under `cap_drop: [ALL]` + `no-new-privileges`.

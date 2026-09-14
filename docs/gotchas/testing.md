@@ -11,7 +11,7 @@
 **Fix:** Reproduce it deterministically with the printed seed and path, `fc.assert(fc.property(...), { seed: <seed>, path: '<path>' })`, then fix the code or, when the property was stated too broadly, narrow the arbitrary and say why in a comment. Keep the guarded invariants in the property file and the exact shapes (formats, error classes) in the sibling example file.
 
 ## The e2e stack is a separate Compose project on its own ports
-**Symptom:** Worry that `pnpm test:e2e` might collide with, or tear down, the development stack.
+**Symptom:** `pnpm test:e2e` while the dev stack is up — port 80/8025 already in use, or `down -v` wiping the dev database.
 **Cause:** `-p treerepro-e2e`, 8080 / 8026; explicit `-f` flags override the `.env` `COMPOSE_FILE`, so the dev overlay never leaks in.
 **Fix:** Nothing to do — the two stacks are isolated by project name and port; `down -v` at the end drops the e2e project's volumes, the dev stack's stay untouched.
 
