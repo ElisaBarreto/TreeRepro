@@ -9,23 +9,10 @@ import {
 import { type FormEvent, useId, useState } from 'react';
 import { createTrait, invalidateAfterCatalogWrite } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError } from '../../lib/errors.ts';
+import { TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
 import { Alert, Button, Dialog, Field, Input, Select, Textarea } from '../ui/index.ts';
-
-/** @rfc RFC-13 R6 */
-export function traitErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'TRAIT_KEY_TAKEN':
-        return 'A trait with this key already exists.';
-      case 'TRAIT_NOT_FOUND':
-        return 'This trait no longer exists. Reload the page.';
-      case 'VALIDATION_FAILED':
-        return 'Check the highlighted fields.';
-    }
-  }
-  return pageErrorMessage(error);
-}
+import { traitErrorMessage } from './errors.ts';
 
 const LOCAL: Record<string, string> = { key: 'Enter a key.', categoryKey: 'Choose a category.' };
 
@@ -149,7 +136,7 @@ export function NewTraitDialog({
           >
             {TRAIT_VALUE_TYPES.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {TRAIT_VALUE_TYPE_LABELS[t]}
               </option>
             ))}
           </Select>

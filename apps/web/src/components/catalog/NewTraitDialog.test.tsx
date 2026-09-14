@@ -40,9 +40,10 @@ describe('RFC-62 R6 NewTraitDialog', () => {
       within(dialog).getByRole('combobox', { name: /category/i }),
       'seed',
     );
+    // The option reads as a label, not the wire code.
     await userEvent.selectOptions(
       within(dialog).getByRole('combobox', { name: /value type/i }),
-      'quantitative',
+      within(dialog).getByRole('option', { name: 'Quantitative' }),
     );
     await userEvent.type(within(dialog).getByRole('textbox', { name: /unit/i }), 'mm');
     await userEvent.type(

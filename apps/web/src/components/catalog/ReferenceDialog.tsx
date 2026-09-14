@@ -13,8 +13,13 @@ import {
   updateReference,
 } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError } from '../../lib/errors.ts';
 import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
+import {
+  REFERENCE_DOI_TAKEN_MESSAGE,
+  REFERENCE_KEY_TAKEN_MESSAGE,
+  referenceErrorMessage,
+} from './errors.ts';
 
 const OPTIONAL = ['title', 'authors', 'journal', 'doi', 'url'] as const;
 
@@ -50,9 +55,6 @@ function updateBody(v: FormValues, r: ReferenceDetail): UpdateReferenceBody {
   return body;
 }
 
-const KEY_TAKEN_MESSAGE = 'A reference with this citation key already exists.';
-const DOI_TAKEN_MESSAGE = 'Another reference has this DOI.';
-
 /**
  * The taken-citation-key and taken-DOI conflicts point at the field they
  * refer to instead of the generic Alert, so they never duplicate the same
@@ -61,27 +63,10 @@ const DOI_TAKEN_MESSAGE = 'Another reference has this DOI.';
  */
 function takenErrors(error: unknown): Record<string, string> {
   if (error instanceof ApiError) {
-    if (error.code === 'REFERENCE_KEY_TAKEN') return { citationKey: KEY_TAKEN_MESSAGE };
-    if (error.code === 'REFERENCE_DOI_TAKEN') return { doi: DOI_TAKEN_MESSAGE };
+    if (error.code === 'REFERENCE_KEY_TAKEN') return { citationKey: REFERENCE_KEY_TAKEN_MESSAGE };
+    if (error.code === 'REFERENCE_DOI_TAKEN') return { doi: REFERENCE_DOI_TAKEN_MESSAGE };
   }
   return {};
-}
-
-/** @rfc RFC-13 R6 */
-export function referenceErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'REFERENCE_KEY_TAKEN':
-        return KEY_TAKEN_MESSAGE;
-      case 'REFERENCE_DOI_TAKEN':
-        return DOI_TAKEN_MESSAGE;
-      case 'REFERENCE_NOT_FOUND':
-        return 'This reference no longer exists. Reload the page.';
-      case 'VALIDATION_FAILED':
-        return 'Check the highlighted fields.';
-    }
-  }
-  return pageErrorMessage(error);
 }
 
 /**
@@ -139,7 +124,10 @@ export function ReferenceDialog({
     event.preventDefault();
     const values: FormValues = { citationKey, title, authors, year, journal, doi, url };
 
+    // A local error replaces the previous attempt's answer: without the
+    // reset, a stale API Alert would sit beside the fresh field message.
     if (values.citationKey.trim() === '') {
+      save.reset();
       setLocal({ citationKey: 'Enter a citation key.' });
       return;
     }
@@ -152,6 +140,7 @@ export function ReferenceDialog({
     const schema = reference ? updateReferenceBodySchema : createReferenceBodySchema;
     const parsed = schema.safeParse(candidate);
     if (!parsed.success) {
+      save.reset();
       const next: Record<string, string> = {};
       for (const issue of parsed.error.issues) next[issue.path.join('.')] = issue.message;
       setLocal(next);

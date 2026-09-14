@@ -1,3 +1,18 @@
+import type { NameSource, TraitValueType } from '@treerepro/contracts';
+
+/** How each species name source reads (RFC-60 R3); the wire code stays the value. @rfc RFC-13 R9 */
+export const NAME_SOURCE_LABELS: Record<NameSource, string> = {
+  wcvp: 'WCVP',
+  gbif: 'GBIF',
+  original: 'Original source',
+};
+
+/** How each trait value type reads (RFC-62 R2); the wire code stays the value. @rfc RFC-13 R9 */
+export const TRAIT_VALUE_TYPE_LABELS: Record<TraitValueType, string> = {
+  categorical: 'Categorical',
+  quantitative: 'Quantitative',
+};
+
 /**
  * A dictionary key as words: `sexual_system` → `sexual system`. The key
  * itself stays as the dictionary spells it (RFC-62 R2); only the display changes.

@@ -3,28 +3,9 @@ import { catalogNameSchema } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
 import { invalidateAfterCatalogWrite } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { fieldErrors, GENERIC_MESSAGE, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors } from '../../lib/errors.ts';
 import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
-
-/**
- * The form-level sentence of a family or genus write. A `*_NAME_TAKEN`
- * answer is the caller's own sentence under the name field, and a
- * `VALIDATION_FAILED` detail lands under the field its `path` names; this
- * covers what is left — a taxon the API can no longer find, a detail on a
- * field the form has no control for, and the generic fallback.
- * @rfc RFC-13 R6
- */
-export function taxonErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === 'FAMILY_NOT_FOUND' || error.code === 'GENUS_NOT_FOUND') {
-      return 'The chosen taxon no longer exists. Reload the page.';
-    }
-    if (error.code === 'VALIDATION_FAILED') {
-      return Object.values(fieldErrors(error))[0] ?? GENERIC_MESSAGE;
-    }
-  }
-  return pageErrorMessage(error);
-}
+import { taxonErrorMessage } from './errors.ts';
 
 function isNameTaken(error: unknown): boolean {
   return error instanceof ApiError && error.code.endsWith('_NAME_TAKEN');

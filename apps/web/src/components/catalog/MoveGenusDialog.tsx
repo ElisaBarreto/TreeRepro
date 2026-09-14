@@ -4,7 +4,7 @@ import { type FormEvent, useId, useState } from 'react';
 import { invalidateAfterCatalogWrite, updateGenus } from '../../api/catalog.ts';
 import { fieldErrors } from '../../lib/errors.ts';
 import { Alert, Button, Dialog, Field, Select } from '../ui/index.ts';
-import { taxonErrorMessage } from './TaxonNameDialog.tsx';
+import { taxonErrorMessage } from './errors.ts';
 
 /**
  * Moves a genus to another family, or to none ("No family" sends

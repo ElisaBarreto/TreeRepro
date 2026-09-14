@@ -8,7 +8,7 @@ import { Field } from './Field.tsx';
 
 const OPTIONS: ComboboxOption[] = [
   { id: '1', label: 'Alfaro 2023', hint: 'GEB' },
-  { id: '2', label: 'Alvarez 2020' },
+  { id: '2', label: 'Alvarez 2020', description: 'mm' },
 ];
 
 const filterOptions = async (term: string) =>
@@ -26,11 +26,13 @@ function deferred<T>() {
 // straight inside it, the way the dialogs do.
 function Harness({
   onCreate,
+  createErrorMessage,
   onChange,
   search = filterOptions,
   hint,
 }: {
   onCreate?: (text: string) => Promise<ComboboxOption>;
+  createErrorMessage?: (error: unknown) => string;
   onChange?: (next: ComboboxOption | null) => void;
   search?: (term: string) => Promise<ComboboxOption[]>;
   hint?: string;
@@ -50,6 +52,7 @@ function Harness({
       listLabel="Reference suggestions"
       placeholder="Type to search"
       onCreate={onCreate}
+      createErrorMessage={createErrorMessage}
     />
   );
   return hint ? (
@@ -73,7 +76,7 @@ describe('RFC-13 R5 Combobox', () => {
     expect(list).toHaveTextContent('Alfaro 2023');
     expect(list).toHaveTextContent('GEB');
     await userEvent.click(screen.getByRole('option', { name: /Alvarez 2020/ }));
-    expect(onChange).toHaveBeenCalledWith({ id: '2', label: 'Alvarez 2020' });
+    expect(onChange).toHaveBeenCalledWith(OPTIONS[1]);
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.getByText('Alvarez 2020')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /clear/i }));
@@ -177,6 +180,31 @@ describe('RFC-13 R5 Combobox', () => {
     expect(screen.queryByRole('option', { name: /^Create/ })).not.toBeInTheDocument();
     pending.resolve([]);
     expect(await screen.findByRole('option', { name: 'Create "alz"' })).toBeInTheDocument();
+  });
+
+  it('shows a description on the suggestion row only, never next to the chosen value', async () => {
+    renderWithProviders(<Harness />);
+    await userEvent.type(screen.getByRole('combobox'), 'alv');
+    const option = await screen.findByRole('option', { name: /Alvarez 2020/ });
+    expect(option).toHaveTextContent('mm');
+    await userEvent.click(option);
+    expect(screen.getByText('Alvarez 2020')).toBeInTheDocument();
+    expect(screen.queryByText('mm')).not.toBeInTheDocument();
+  });
+
+  it('shows the sentence createErrorMessage derives from a failed create, and the generic one without it', async () => {
+    const taken = new Error('taken');
+    const onCreate = vi.fn(async () => Promise.reject(taken));
+    const createErrorMessage = vi.fn((error: unknown) =>
+      error === taken ? 'A genus with this name already exists.' : 'Other',
+    );
+    renderWithProviders(<Harness onCreate={onCreate} createErrorMessage={createErrorMessage} />);
+    const input = screen.getByRole('combobox');
+    await userEvent.type(input, 'alv');
+    await userEvent.click(await screen.findByRole('option', { name: 'Create "alv"' }));
+    expect(await screen.findByText('A genus with this name already exists.')).toBeInTheDocument();
+    expect(createErrorMessage).toHaveBeenCalledWith(taken);
+    expect(input).toHaveAccessibleDescription('A genus with this name already exists.');
   });
 
   it('clears a failed create once an option is chosen', async () => {

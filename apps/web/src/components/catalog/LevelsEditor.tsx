@@ -3,25 +3,10 @@ import { createLevelBodySchema, type Trait, type TraitLevel } from '@treerepro/c
 import { type FormEvent, useId, useState } from 'react';
 import { createLevel, invalidateAfterCatalogWrite, updateLevel } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { Alert, Badge, Button, Dialog, Field, Input } from '../ui/index.ts';
-
-/** @rfc RFC-13 R6 */
-export function levelErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'LEVEL_KEY_TAKEN':
-        return 'A level with this key already exists.';
-      case 'LEVEL_NOT_FOUND':
-      case 'TRAIT_NOT_FOUND':
-        return 'This level no longer exists. Reload the page.';
-      case 'VALIDATION_FAILED':
-        return 'Check the highlighted fields.';
-    }
-  }
-  return pageErrorMessage(error);
-}
+import { levelErrorMessage } from './errors.ts';
 
 /**
  * The single-field form behind Add level / Rename level: a rename prefills
@@ -198,23 +183,25 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
                 >
                   Rename
                 </Button>
+                {/* The visible text stays a prefix of the accessible name
+                    (WCAG 2.5.3 label-in-name): the level key follows it
+                    for assistive technology instead of an aria-label that
+                    interleaves it. */}
                 <Button
                   size="sm"
                   variant="secondary"
-                  aria-label={`Move ${level.key} up`}
                   disabled={index === 0 || move.isPending || toggle.isPending}
                   onClick={() => move.mutate({ index, direction: 'up' })}
                 >
-                  Move up
+                  Move up <span className="sr-only">{level.key}</span>
                 </Button>
                 <Button
                   size="sm"
                   variant="secondary"
-                  aria-label={`Move ${level.key} down`}
                   disabled={index === trait.levels.length - 1 || move.isPending || toggle.isPending}
                   onClick={() => move.mutate({ index, direction: 'down' })}
                 >
-                  Move down
+                  Move down <span className="sr-only">{level.key}</span>
                 </Button>
                 <Button
                   size="sm"

@@ -112,6 +112,9 @@ describe('RFC-60 R9 TaxaPage', () => {
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Create' }),
     );
     await waitFor(() => expect(catalog.createFamily).toHaveBeenCalledWith({ name: 'Novaceae' }));
+    // Each dialog unmounts on success; waiting for that makes the intent
+    // explicit and keeps the next `getByRole('dialog')` from racing it.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await userEvent.click(await screen.findByRole('button', { name: 'Rename family' }));
     const rename = within(screen.getByRole('dialog', { name: 'Rename family' })).getByRole(
       'textbox',
@@ -122,6 +125,7 @@ describe('RFC-60 R9 TaxaPage', () => {
     await waitFor(() =>
       expect(catalog.updateFamily).toHaveBeenCalledWith(FAMILY.id, { name: 'Fabaceae s.l.' }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await userEvent.click(await screen.findByRole('button', { name: 'New genus' }));
     await userEvent.type(
       within(screen.getByRole('dialog')).getByRole('textbox', { name: 'Genus name' }),
@@ -133,6 +137,7 @@ describe('RFC-60 R9 TaxaPage', () => {
     await waitFor(() =>
       expect(catalog.createGenus).toHaveBeenCalledWith({ name: 'Novus', familyId: FAMILY.id }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await userEvent.click(await screen.findByRole('button', { name: 'Rename Adenanthera' }));
     const renameGenus = within(screen.getByRole('dialog', { name: 'Rename genus' })).getByRole(
       'textbox',
@@ -144,6 +149,7 @@ describe('RFC-60 R9 TaxaPage', () => {
     await waitFor(() =>
       expect(catalog.updateGenus).toHaveBeenCalledWith(GENUS.id, { name: 'Adenantherum' }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await userEvent.click(await screen.findByRole('button', { name: 'Move Adenanthera' }));
     await userEvent.selectOptions(
       within(screen.getByRole('dialog')).getByRole('combobox', { name: /family/i }),
@@ -153,6 +159,7 @@ describe('RFC-60 R9 TaxaPage', () => {
     await waitFor(() =>
       expect(catalog.updateGenus).toHaveBeenCalledWith(GENUS.id, { familyId: MALVACEAE.id }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('says so when there is no family yet, and still offers New family', async () => {

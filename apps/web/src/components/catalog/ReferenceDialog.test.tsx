@@ -149,6 +149,18 @@ describe('RFC-61 R6 ReferenceDialog', () => {
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('a local validation error clears a stale API Alert from the previous attempt', async () => {
+    catalog.createReference.mockRejectedValue(new ApiError(500, 'INTERNAL', 'boom'));
+    const { dialog } = mount();
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /citation key/i }), 'Key');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create reference' }));
+    expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: /citation key/i }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create reference' }));
+    expect(within(dialog).getByText('Enter a citation key.')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('a year outside 1500–2100 is refused locally with the schema message', async () => {
     const { dialog } = mount();
     await userEvent.type(within(dialog).getByRole('textbox', { name: /citation key/i }), 'X');

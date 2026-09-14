@@ -5,6 +5,8 @@ export interface FieldProps {
   label: string;
   hint?: string;
   error?: string;
+  /** An action beside the control (a "New family" button); not part of the described control. */
+  trailing?: ReactNode;
   children: ReactNode;
 }
 
@@ -13,10 +15,12 @@ export interface FieldProps {
  * and the descriptions attach to it. Pass `invalid` to the control yourself.
  * The single child is cloned with `aria-describedby` so the hint/error ids
  * land on the control itself, not a wrapper — that is what makes them count
- * as the control's accessible description.
+ * as the control's accessible description. `trailing` renders in a row
+ * beside the control, outside the clone, so a button next to a select
+ * neither steals the description nor hides the control behind a wrapper.
  * @rfc RFC-13 R5, R6
  */
-export function Field({ id, label, hint, error, children }: FieldProps) {
+export function Field({ id, label, hint, error, trailing, children }: FieldProps) {
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined;
@@ -37,7 +41,14 @@ export function Field({ id, label, hint, error, children }: FieldProps) {
       >
         {label}
       </label>
-      {control}
+      {trailing === undefined ? (
+        control
+      ) : (
+        <div className="flex items-center gap-2">
+          <div className="grow">{control}</div>
+          {trailing}
+        </div>
+      )}
       {hint ? (
         <p id={hintId} className="text-meta text-mist-500">
           {hint}

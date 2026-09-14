@@ -3,8 +3,9 @@ import { type Trait, type UpdateTraitBody, updateTraitBodySchema } from '@treere
 import { type FormEvent, useId, useState } from 'react';
 import { invalidateAfterCatalogWrite, updateTrait } from '../../api/catalog.ts';
 import { fieldErrors, isValidationError } from '../../lib/errors.ts';
+import { TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
 import { Alert, Button, Dialog, Field, Select, Textarea } from '../ui/index.ts';
-import { traitErrorMessage } from './NewTraitDialog.tsx';
+import { traitErrorMessage } from './errors.ts';
 
 /**
  * The form of RFC-62 R6 `PATCH /api/traits/:id`: key, value type and unit
@@ -76,7 +77,7 @@ export function EditTraitDialog({
           {trait.key}
           <span className="text-mist-500">
             {' '}
-            · {trait.valueType}
+            · {TRAIT_VALUE_TYPE_LABELS[trait.valueType]}
             {trait.unit ? ` · ${trait.unit}` : ''}
           </span>
         </p>

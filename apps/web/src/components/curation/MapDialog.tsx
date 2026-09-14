@@ -1,4 +1,3 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   type MapPendingBody,
   type MapResult,
@@ -9,9 +8,10 @@ import {
 } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
-import { curationKeys, invalidateAfterRecordWrite, mapPending } from '../../api/curation.ts';
+import { mapPending } from '../../api/curation.ts';
 import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
+import { useRecordWrite } from '../../lib/use-record-write.ts';
 import { Alert, Button, Dialog, Field, Input, Textarea } from '../ui/index.ts';
 
 /** @rfc RFC-13 R6 */
@@ -27,41 +27,42 @@ export function mapErrorMessage(error: unknown): string {
  * Bulk mapping of one pending group (RFC-65 R9): the active levels to map
  * to (one or several, so `a;b` becomes two records per row) or the number
  * for a quantitative trait, and an optional note copied to every record.
- * Mounted only while open.
+ * The levels come from the dictionary the page loads: while it is still
+ * loading (`levels` undefined) the dialog says so and keeps Map disabled,
+ * instead of reading as a trait without levels; `levelsError` says the
+ * dictionary failed. Mounted only while open.
  * @rfc RFC-13 R6
  * @rfc RFC-65 R9
  */
 export function MapDialog({
   trait,
   levels,
+  levelsError = false,
   group,
   onClose,
   onMapped,
 }: {
   trait: TraitRef;
-  levels: TraitLevel[];
+  /** The trait's levels; `undefined` while the dictionary loads. */
+  levels: TraitLevel[] | undefined;
+  levelsError?: boolean;
   group: PendingGroup;
   onClose: () => void;
   onMapped: (result: MapResult) => void;
 }) {
-  const queryClient = useQueryClient();
   const ids = { numeric: useId(), note: useId() };
   const [chosen, setChosen] = useState<string[]>([]);
   const [numeric, setNumeric] = useState('');
   const [note, setNote] = useState('');
   const [local, setLocal] = useState<Record<string, string>>({});
-  const active = levels.filter((l) => l.active);
-  const map = useMutation({
-    mutationFn: (body: MapPendingBody) => mapPending(body),
-    onSuccess: async (result) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: curationKeys.pendingTraits }),
-        queryClient.invalidateQueries({ queryKey: curationKeys.pendingGroups(trait.id) }),
-        invalidateAfterRecordWrite(queryClient),
-      ]);
-      onMapped(result);
-    },
+  const active = levels?.filter((l) => l.active);
+  // The pending queues live under `['records', …]`, which the write's
+  // invalidation covers; no species id, a mapping touches every species.
+  const map = useRecordWrite<MapPendingBody, MapResult>({
+    write: mapPending,
+    onInvalidated: onMapped,
   });
+  const levelsReady = trait.valueType !== 'categorical' || active !== undefined;
   const errors = { ...fieldErrors(map.error), ...local };
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -116,7 +117,12 @@ export function MapDialog({
             <legend className="text-label font-bold uppercase tracking-[0.08em] text-canopy-800">
               Levels
             </legend>
-            {active.map((level) => (
+            {levelsError ? (
+              <p className="text-meta text-red-700">Could not load the levels. Reload the page.</p>
+            ) : active === undefined ? (
+              <p className="text-meta text-mist-500">Loading levels…</p>
+            ) : null}
+            {(active ?? []).map((level) => (
               <label key={level.id} className="flex items-center gap-2 text-body text-canopy-950">
                 <input
                   type="checkbox"
@@ -131,7 +137,7 @@ export function MapDialog({
                 {level.key}
               </label>
             ))}
-            {active.length === 0 ? (
+            {active?.length === 0 ? (
               <p className="text-meta text-mist-500">This trait has no active levels.</p>
             ) : null}
             {valueError ? (
@@ -170,7 +176,7 @@ export function MapDialog({
           <Button variant="secondary" onClick={onClose} disabled={map.isPending}>
             Cancel
           </Button>
-          <Button type="submit" pending={map.isPending}>
+          <Button type="submit" pending={map.isPending} disabled={!levelsReady || levelsError}>
             Map records
           </Button>
         </div>
