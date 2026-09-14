@@ -58,8 +58,11 @@ export function PendingPage({
   const [mapping, setMapping] = useState<PendingGroup | null>(null);
   const [sample, setSample] = useState<string | null>(null);
   const [result, setResult] = useState<MapResult | null>(null);
-  // `undefined` while the dictionary loads, so the Map dialog can say so.
-  const levels = dictionary.data?.flatMap((c) => c.traits).find((t) => t.id === traitId)?.levels;
+  // `undefined` while the dictionary loads, so the Map dialog can say so;
+  // once loaded, a trait the dictionary does not list has no levels.
+  const levels = dictionary.data
+    ? (dictionary.data.flatMap((c) => c.traits).find((t) => t.id === traitId)?.levels ?? [])
+    : undefined;
 
   return (
     <>
