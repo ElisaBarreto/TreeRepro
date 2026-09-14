@@ -1,0 +1,62 @@
+# The end-to-end stack (plan 05c): compose.yml with the production web image
+# on plain HTTP, Mailpit, loopback ports that do not collide with the dev
+# stack, and secrets generated into a temp directory by scripts/e2e.sh.
+#   docker compose -p treerepro-e2e -f compose.yml -f compose.e2e.yml up -d --build
+services:
+  api:
+    environment:
+      APP_ORIGIN: http://localhost:8080
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    depends_on:
+      mailpit:
+        condition: service_started
+
+  caddy:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    image: treerepro-web
+    environment:
+      # An http:// site address turns automatic HTTPS off; the port is the
+      # listener inside the container.
+      DOMAIN: http://localhost:8080
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    # The upstream caddy:alpine image ships /usr/bin/caddy with the
+    # cap_net_bind_service file capability regardless of the port Caddy
+    # actually binds; with no-new-privileges and every other capability
+    # dropped, the kernel refuses to exec a binary carrying a file
+    # capability it cannot grant (docs/gotchas/docker.md "Caddy binds
+    # 80/443 without root") — exec fails even on the unprivileged 8080.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+
+  mailpit:
+    image: axllent/mailpit:v1.31@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
+    ports:
+      - "127.0.0.1:8026:8025"
+    networks: [internal]
+
+secrets:
+  db_superuser_password:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/db_superuser_password
+  db_app_password:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/db_app_password
+  db_migrator_password:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/db_migrator_password
+  db_backup_password:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/db_backup_password
+  redis_password:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/redis_password
+  pii_encryption_key_v1:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/pii_encryption_key_v1
+  pii_hmac_key:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/pii_hmac_key
+  session_secret:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/session_secret
+  smtp_password:
+    file: ${E2E_SECRETS_DIR:?set by scripts/e2e.sh}/smtp_password

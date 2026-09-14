@@ -6,6 +6,12 @@ import { defineConfig } from 'vitest/config';
 const hmrClientPort = process.env.VITE_HMR_CLIENT_PORT;
 
 export default defineConfig({
+  build: {
+    // Vite inlines assets under 4 KiB as `data:` URIs inside the CSS; the
+    // production CSP (`font-src 'self'`, RFC-02 R5, RFC-13 R5) forbids them,
+    // so every asset stays a file.
+    assetsInlineLimit: 0,
+  },
   plugins: [
     // Tests live next to the routes they cover (e.g. routes/app.test.tsx).
     tanstackRouter({

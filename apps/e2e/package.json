@@ -1,0 +1,17 @@
+{
+  "name": "@treerepro/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@treerepro/config": "workspace:*",
+    "@types/node": "24.13.4",
+    "otpauth": "9.5.2",
+    "typescript": "7.0.2"
+  }
+}

@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "sh scripts/e2e.sh",
     "build": "pnpm -r build",
     "rfc:check": "pnpm --filter @treerepro/rfc-lint check",
     "seed:admin": "pnpm --filter @treerepro/api seed:admin",

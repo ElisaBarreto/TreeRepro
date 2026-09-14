@@ -66,6 +66,37 @@ describe('RFC-11 R3 error envelope handling', () => {
     expect(error.status).toBe(502);
   });
 
+  it('surfaces a code outside the catalog verbatim (read structurally, not against the zod enum)', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, { error: { code: 'NEW_CODE', message: 'Something new' } }),
+    );
+    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    expect(error.code).toBe('NEW_CODE');
+    expect(error.message).toBe('Something new');
+    expect(error.details).toBeUndefined();
+  });
+
+  it('maps a malformed envelope to UNKNOWN_ERROR', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: { code: 1 } }));
+    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    expect(error.code).toBe('UNKNOWN_ERROR');
+    expect(error.status).toBe(400);
+  });
+
+  it('carries details through when present', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, {
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Request validation failed',
+          details: [{ path: 'name', message: 'Required' }],
+        },
+      }),
+    );
+    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    expect(error.details).toEqual([{ path: 'name', message: 'Required' }]);
+  });
+
   it('maps a network failure to NETWORK_ERROR with status 0', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
     const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;

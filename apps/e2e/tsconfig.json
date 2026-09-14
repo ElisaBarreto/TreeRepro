@@ -1,0 +1,5 @@
+{
+  "extends": "@treerepro/config/tsconfig.base.json",
+  "compilerOptions": { "lib": ["es2024", "dom"], "types": ["node"] },
+  "include": ["tests", "playwright.config.ts"]
+}

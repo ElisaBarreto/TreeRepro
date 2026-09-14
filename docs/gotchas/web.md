@@ -94,3 +94,13 @@ The catalog `PATCH` bodies are `nonEmpty` (400 `VALIDATION_FAILED` on `{}`) and 
 **Symptom:** After a save (or another section's write) the checked boxes still show the old roles.
 **Cause:** `useState(initial)` reads the prop once; later prop values are ignored.
 **Fix:** Keep a derived key next to the state and reset during render when it changes (`UserRolesSection.tsx`) — the adjust-state-during-render pattern `usePagedList` uses.
+
+## Vite inlines small assets as `data:` URIs, which the CSP forbids
+**Symptom:** The e2e CSP spec reports a `font-src` violation on every page although no code references a data URI.
+**Cause:** Vite base64-inlines assets under 4 KiB into the CSS; `Caddyfile.prod`'s `font-src 'self'` has no `data:`.
+**Fix:** `build.assetsInlineLimit: 0` in `apps/web/vite.config.ts`; verify with `grep -c "url(data:" apps/web/dist/assets/*.css` → 0.
+
+## zod 4 probes `Function('')` and trips `script-src` without `unsafe-eval`
+**Symptom:** `securitypolicyviolation` (`script-src` … `eval`) on every page load; zod catches its own error so nothing breaks, but the CSP report is real (#9).
+**Cause:** zod caches the eval probe at the first object-schema construction; a static schema import anywhere in the entry's synchronous graph runs before app code can configure zod, because a chunk's static imports evaluate before its inlined modules.
+**Fix:** `lib/zod-jitless.ts` first in `main.tsx`; keep the entry graph free of runtime `@treerepro/contracts` imports (`api/client.ts` reads the envelope structurally); `apps/e2e/tests/csp.spec.ts` fails on any regression.

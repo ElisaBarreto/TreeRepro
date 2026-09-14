@@ -1,4 +1,4 @@
-import { type ErrorDetail, errorEnvelopeSchema } from '@treerepro/contracts';
+import type { ErrorDetail } from '@treerepro/contracts';
 
 /**
  * @rfc RFC-13 R1
@@ -61,14 +61,42 @@ export async function apiFetch<T = unknown>(
   if (response.ok) return (await response.json()) as T;
 
   const body: unknown = await response.json().catch(() => null);
-  const parsed = errorEnvelopeSchema.safeParse(body);
-  if (parsed.success) {
-    const { code, message, details } = parsed.data.error;
-    throw new ApiError(response.status, code, message, details);
+  // The envelope is read structurally, not parsed with a zod schema: this
+  // module sits on main.tsx's synchronous import path, so constructing a
+  // schema here would run before lib/zod-jitless.ts can configure zod
+  // (RFC-13 R5: the production CSP forbids zod's eval probe). Every actual
+  // schema lives in the lazily loaded route chunks, which zod-jitless.ts covers.
+  const parsedError = parseErrorEnvelope(body);
+  if (parsedError) {
+    throw new ApiError(response.status, parsedError.code, parsedError.message, parsedError.details);
   }
   throw new ApiError(
     response.status,
     'UNKNOWN_ERROR',
     `Request failed with status ${response.status}`,
   );
+}
+
+function isErrorDetail(value: unknown): value is ErrorDetail {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).path === 'string' &&
+    typeof (value as Record<string, unknown>).message === 'string'
+  );
+}
+
+/** @rfc RFC-11 R3 */
+function parseErrorEnvelope(
+  body: unknown,
+): { code: string; message: string; details?: ErrorDetail[] } | undefined {
+  if (typeof body !== 'object' || body === null || !('error' in body)) return undefined;
+  const error = (body as { error: unknown }).error;
+  if (typeof error !== 'object' || error === null) return undefined;
+  const { code, message, details } = error as Record<string, unknown>;
+  if (typeof code !== 'string' || typeof message !== 'string') return undefined;
+  if (details !== undefined && !(Array.isArray(details) && details.every(isErrorDetail))) {
+    return undefined;
+  }
+  return { code, message, details: details as ErrorDetail[] | undefined };
 }
