@@ -61,11 +61,10 @@ export async function apiFetch<T = unknown>(
   if (response.ok) return (await response.json()) as T;
 
   const body: unknown = await response.json().catch(() => null);
-  // The envelope is read structurally, not parsed with a zod schema: this
-  // module sits on main.tsx's synchronous import path, so constructing a
-  // schema here would run before lib/zod-jitless.ts can configure zod
-  // (RFC-13 R5: the production CSP forbids zod's eval probe). Every actual
-  // schema lives in the lazily loaded route chunks, which zod-jitless.ts covers.
+  // The envelope is read structurally: this module sits on main.tsx's synchronous
+  // import path, so reading it without a schema keeps the entry bundle lean;
+  // all schemas in @treerepro/contracts configure zod with jitless: true
+  // structurally upon import (RFC-02 R5, RFC-13 R5, issue #63).
   const parsedError = parseErrorEnvelope(body);
   if (parsedError) {
     throw new ApiError(response.status, parsedError.code, parsedError.message, parsedError.details);
