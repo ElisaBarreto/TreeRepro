@@ -66,9 +66,10 @@ describe('RFC-60 R9 SpeciesDialog', () => {
       within(dialog).getByRole('textbox', { name: /canonical name/i }),
       'Adenanthera pavonina',
     );
+    // The option reads as a label, not the wire code.
     await userEvent.selectOptions(
       within(dialog).getByRole('combobox', { name: /name source/i }),
-      'wcvp',
+      within(dialog).getByRole('option', { name: 'WCVP' }),
     );
     await userEvent.type(within(dialog).getByRole('combobox', { name: /^genus/i }), 'Aden');
     await userEvent.click(await screen.findByRole('option', { name: /Adenanthera/ }));
@@ -105,6 +106,34 @@ describe('RFC-60 R9 SpeciesDialog', () => {
       expect(catalog.createGenus).toHaveBeenCalledWith({ name: 'Novus', familyId: MALVACEAE.id }),
     );
     expect(within(dialog).getByText('Novus')).toBeInTheDocument();
+  });
+
+  it('an inline genus create that answers GENUS_NAME_TAKEN says so under the genus field', async () => {
+    catalog.createGenus.mockRejectedValue(new ApiError(409, 'GENUS_NAME_TAKEN', 'taken'));
+    dataset.fetchGenera.mockResolvedValue({ data: [], meta: { nextCursor: null } });
+    const { dialog } = mount();
+    const genus = within(dialog).getByRole('combobox', { name: /^genus/i });
+    await userEvent.type(genus, 'Adansonia');
+    await userEvent.click(await screen.findByRole('option', { name: /Create "Adansonia"/ }));
+    expect(
+      await within(dialog).findByText('A genus with this name already exists.'),
+    ).toBeInTheDocument();
+    expect(genus).toHaveAccessibleDescription('A genus with this name already exists.');
+  });
+
+  it('the family select is the described control, and the inline family row keeps one Cancel', async () => {
+    dataset.fetchFamilies.mockRejectedValue(new Error('down'));
+    const { dialog } = mount();
+    const family = await within(dialog).findByRole('combobox', { name: /^family/i });
+    expect(family).toHaveAccessibleDescription(expect.stringContaining('Could not load families.'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'New family' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
+    const name = within(dialog).getByRole('textbox', { name: /new family name/i });
+    expect(name).toHaveAccessibleDescription('Enter a family name.');
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(within(dialog).getAllByRole('button', { name: 'Cancel' })).toHaveLength(1);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+    expect(within(dialog).getByRole('combobox', { name: /^family/i })).toBeInTheDocument();
   });
 
   it('creates a family inline, invalidates taxa and selects the created family', async () => {

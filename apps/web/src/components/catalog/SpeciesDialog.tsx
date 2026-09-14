@@ -20,7 +20,8 @@ import {
 } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
-import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
+import { fieldErrors, isValidationError } from '../../lib/errors.ts';
+import { NAME_SOURCE_LABELS } from '../../lib/format.ts';
 import {
   Alert,
   Button,
@@ -31,31 +32,11 @@ import {
   Input,
   Select,
 } from '../ui/index.ts';
-
-/** @rfc RFC-13 R6 */
-export function speciesErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'SPECIES_NAME_TAKEN':
-        return 'A species with this name already exists.';
-      case 'GENUS_NOT_FOUND':
-      case 'FAMILY_NOT_FOUND':
-        return 'The chosen taxon no longer exists. Reload the page.';
-      case 'SPECIES_NOT_FOUND':
-        return 'This species no longer exists. Reload the page.';
-      case 'VALIDATION_FAILED':
-        return 'Check the highlighted fields.';
-    }
-  }
-  return pageErrorMessage(error);
-}
-
-function familyErrorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.code === 'FAMILY_NAME_TAKEN') {
-    return 'A family with this name already exists.';
-  }
-  return pageErrorMessage(error);
-}
+import {
+  familyCreateErrorMessage,
+  genusCreateErrorMessage,
+  speciesErrorMessage,
+} from './errors.ts';
 
 const LOCAL_MESSAGES: Record<string, string> = { canonicalName: 'Enter the canonical name.' };
 
@@ -148,7 +129,7 @@ export function SpeciesDialog({
   const errors: Record<string, string> = { ...fieldErrors(save.error), ...local };
   if (nameTaken) errors.canonicalName = speciesErrorMessage(save.error);
   const inlineFamilyError =
-    familyError ?? (addFamily.isError ? familyErrorMessage(addFamily.error) : undefined);
+    familyError ?? (addFamily.isError ? familyCreateErrorMessage(addFamily.error) : undefined);
 
   const searchGenera = async (term: string) => {
     const page = await fetchGenera({ familyId: family || undefined, q: term, limit: 20 });
@@ -239,71 +220,61 @@ export function SpeciesDialog({
           >
             {NAME_SOURCES.map((source) => (
               <option key={source} value={source}>
-                {source}
+                {NAME_SOURCE_LABELS[source]}
               </option>
             ))}
           </Select>
         </Field>
-        <div className="flex flex-col gap-2">
-          {newFamily === null ? (
-            <Field
-              id={ids.family}
-              label="Family"
-              hint="Narrows the genus search; a genus created here belongs to it."
-              error={errors.familyId ?? (families.isError ? 'Could not load families.' : undefined)}
-            >
-              <div className="flex items-center gap-2">
-                {families.isPending ? (
-                  // The select appears with its options, so an edit never
-                  // shows "No family" for a species that has one.
-                  <p className="grow text-meta text-mist-500">Loading families…</p>
-                ) : (
-                  <Select
-                    id={ids.family}
-                    value={family}
-                    onChange={(e) => chooseFamily(e.target.value)}
-                  >
-                    <option value="">No family</option>
-                    {(families.data ?? []).map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    addFamily.reset();
-                    setNewFamily('');
-                  }}
-                >
-                  New family
-                </Button>
-              </div>
-            </Field>
-          ) : (
-            <Field id={ids.newFamily} label="New family name" error={inlineFamilyError}>
-              <div className="flex items-center gap-2">
-                <Input
-                  id={ids.newFamily}
-                  value={newFamily}
-                  maxLength={200}
-                  onChange={(e) => setNewFamily(e.target.value)}
-                  onKeyDown={(e) => {
-                    // Enter here creates the family; the form's default
-                    // button would submit the species instead.
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      submitFamily();
-                    }
-                  }}
-                  invalid={Boolean(inlineFamilyError)}
-                />
+        {newFamily === null ? (
+          <Field
+            id={ids.family}
+            label="Family"
+            hint="Narrows the genus search; a genus created here belongs to it."
+            error={errors.familyId ?? (families.isError ? 'Could not load families.' : undefined)}
+            trailing={
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  addFamily.reset();
+                  setNewFamily('');
+                }}
+              >
+                New family
+              </Button>
+            }
+          >
+            {families.isPending ? (
+              // The select appears with its options, so an edit never
+              // shows "No family" for a species that has one.
+              <p className="text-meta text-mist-500">Loading families…</p>
+            ) : (
+              <Select
+                id={ids.family}
+                value={family}
+                onChange={(e) => chooseFamily(e.target.value)}
+                invalid={Boolean(errors.familyId) || families.isError}
+              >
+                <option value="">No family</option>
+                {(families.data ?? []).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        ) : (
+          <Field
+            id={ids.newFamily}
+            label="New family name"
+            error={inlineFamilyError}
+            trailing={
+              <>
                 <Button size="sm" pending={addFamily.isPending} onClick={submitFamily}>
                   Create
                 </Button>
+                {/* Not "Cancel": the form's own Cancel sits below, and two would read as one. */}
                 <Button
                   size="sm"
                   variant="secondary"
@@ -314,12 +285,28 @@ export function SpeciesDialog({
                   }}
                   disabled={addFamily.isPending}
                 >
-                  Cancel
+                  Discard
                 </Button>
-              </div>
-            </Field>
-          )}
-        </div>
+              </>
+            }
+          >
+            <Input
+              id={ids.newFamily}
+              value={newFamily}
+              maxLength={200}
+              onChange={(e) => setNewFamily(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter here creates the family; the form's default
+                // button would submit the species instead.
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitFamily();
+                }
+              }}
+              invalid={Boolean(inlineFamilyError)}
+            />
+          </Field>
+        )}
         <Field id={ids.genus} label="Genus" error={errors.genusId}>
           <Combobox
             id={ids.genus}
@@ -334,6 +321,7 @@ export function SpeciesDialog({
             listLabel="Genus suggestions"
             placeholder="Type to search genera"
             onCreate={createGenusInline}
+            createErrorMessage={genusCreateErrorMessage}
             invalid={Boolean(errors.genusId)}
           />
         </Field>

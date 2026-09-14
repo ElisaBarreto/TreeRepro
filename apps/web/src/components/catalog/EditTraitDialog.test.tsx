@@ -42,6 +42,7 @@ describe('RFC-62 R6 EditTraitDialog', () => {
     catalog.updateTrait.mockResolvedValue({ ...SEXUAL_SYSTEM_TRAIT, active: false });
     const { dialog, onSaved } = mount(SEXUAL_SYSTEM_TRAIT, 'reproductive_system');
     expect(within(dialog).getByText('sexual_system')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Categorical/)).toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: /^key/i })).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('checkbox', { name: /active/i }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));

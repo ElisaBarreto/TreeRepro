@@ -21,7 +21,7 @@ import {
   Tr,
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
-import { humaniseKey } from '../../lib/format.ts';
+import { humaniseKey, TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
@@ -182,7 +182,7 @@ function TraitRows({
     <>
       <Tr>
         <Td className="font-medium text-canopy-900">{name}</Td>
-        <Td>{trait.valueType}</Td>
+        <Td>{TRAIT_VALUE_TYPE_LABELS[trait.valueType]}</Td>
         <Td>{trait.unit ?? DASH}</Td>
         <Td className="text-canopy-800">{trait.description}</Td>
         <Td>{trait.active ? <Badge tone="green">active</Badge> : <Badge>inactive</Badge>}</Td>

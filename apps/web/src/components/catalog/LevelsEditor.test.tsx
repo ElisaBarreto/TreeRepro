@@ -90,9 +90,9 @@ describe('RFC-62 R6 LevelsEditor', () => {
   it('moves a level down by swapping the two sortOrders, moved level first; the ends are disabled', async () => {
     catalog.updateLevel.mockResolvedValue(SEXUAL_SYSTEM_TRAIT);
     renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
-    expect(screen.getByRole('button', { name: 'Move hermaphrodite up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move polygamous down' })).toBeDisabled();
-    await userEvent.click(screen.getByRole('button', { name: 'Move hermaphrodite down' }));
+    expect(screen.getByRole('button', { name: 'Move up hermaphrodite' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move down polygamous' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Move down hermaphrodite' }));
     const [first, second] = SEXUAL_SYSTEM_TRAIT.levels;
     await waitFor(() => expect(catalog.updateLevel).toHaveBeenCalledTimes(2));
     expect(catalog.updateLevel.mock.calls[0]).toEqual([
@@ -112,7 +112,7 @@ describe('RFC-62 R6 LevelsEditor', () => {
       .mockResolvedValueOnce(SEXUAL_SYSTEM_TRAIT)
       .mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'boom'));
     renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Move hermaphrodite down' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Move down hermaphrodite' }));
     await waitFor(() => expect(catalog.updateLevel).toHaveBeenCalledTimes(2));
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
     expect(catalog.invalidateAfterCatalogWrite).toHaveBeenCalledWith(expect.anything(), 'traits');
@@ -121,8 +121,8 @@ describe('RFC-62 R6 LevelsEditor', () => {
   it('disables the row buttons while a move or toggle is pending', async () => {
     catalog.updateLevel.mockReturnValueOnce(new Promise(() => {}));
     renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Move hermaphrodite down' }));
-    expect(screen.getByRole('button', { name: 'Move dioecious up' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Move down hermaphrodite' }));
+    expect(screen.getByRole('button', { name: 'Move up dioecious' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Rename dioecious' })).toBeDisabled();
   });
 
@@ -133,7 +133,7 @@ describe('RFC-62 R6 LevelsEditor', () => {
       levels: SEXUAL_SYSTEM_TRAIT.levels.map((l) => ({ ...l, sortOrder: 0 })),
     };
     renderWithProviders(<LevelsEditor trait={tied} canManage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Move dioecious down' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Move down dioecious' }));
     await waitFor(() => expect(catalog.updateLevel).toHaveBeenCalledTimes(1));
     expect(catalog.updateLevel).toHaveBeenCalledWith(tied.id, tied.levels[1]?.id, { sortOrder: 1 });
   });
@@ -145,7 +145,7 @@ describe('RFC-62 R6 LevelsEditor', () => {
       levels: SEXUAL_SYSTEM_TRAIT.levels.map((l) => ({ ...l, sortOrder: 0 })),
     };
     renderWithProviders(<LevelsEditor trait={tied} canManage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Move dioecious up' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Move up dioecious' }));
     await waitFor(() => expect(catalog.updateLevel).toHaveBeenCalledTimes(1));
     expect(catalog.updateLevel).toHaveBeenCalledWith(tied.id, tied.levels[0]?.id, { sortOrder: 1 });
   });

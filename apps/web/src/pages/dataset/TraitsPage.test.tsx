@@ -63,14 +63,14 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     const [reproductive, seed] = screen.getAllByRole('table');
     const sexual = within(reproductive as HTMLElement).getAllByRole('row')[1] as HTMLElement;
     expect(sexual).toHaveTextContent('sexual system');
-    expect(sexual).toHaveTextContent('categorical');
+    expect(sexual).toHaveTextContent('Categorical');
     expect(sexual).toHaveTextContent('Distribution of male and female function');
     expect(within(sexual).getByText('active')).toBeInTheDocument();
     expect(within(sexual).getByText('—')).toBeInTheDocument();
 
     const rows = within(seed as HTMLElement).getAllByRole('row');
     expect(rows[1]).toHaveTextContent('seed mass');
-    expect(rows[1]).toHaveTextContent('quantitative');
+    expect(rows[1]).toHaveTextContent('Quantitative');
     expect(rows[1]).toHaveTextContent('mg');
     expect(within(rows[1] as HTMLElement).queryByRole('button')).not.toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText('inactive')).toBeInTheDocument();
