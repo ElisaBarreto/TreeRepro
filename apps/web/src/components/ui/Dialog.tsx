@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon.tsx';
+import { pushModal } from './modal-stack.ts';
 
 export interface DialogProps {
   open: boolean;
@@ -18,6 +20,14 @@ export interface DialogProps {
  * onClose={onClose}>` handler is the only thing that ever invokes the prop —
  * each user action (button, backdrop, or Escape) closes exactly once.
  *
+ * Rendered through a portal at the end of `document.body` and registered in
+ * the modal stack of `modal-stack.ts` while open, alongside `Drawer`: a
+ * dialog opened from inside a drawer marks the drawer `inert` (the drawer's
+ * own mark on the page would otherwise cover the dialog too), and focus
+ * returns to the element that opened the dialog whether it closed through
+ * the native `close` event or was unmounted still open — a parent unmounting
+ * it on a successful save, where the browser restores nothing (RFC-13 R10).
+ *
  * `closeDisabled` means the dialog cannot be dismissed at all while it is
  * set, not just that the Close button is inert: a backdrop click is ignored,
  * Escape's `cancel` event is prevented (browsers that honour that keep the
@@ -25,11 +35,19 @@ export interface DialogProps {
  * implementations close before `cancel` can be prevented — the native
  * `close` handler reopens it immediately and swallows the event instead of
  * calling `onClose`.
- * @rfc RFC-13 R5
+ * @rfc RFC-13 R5, R10
  */
 export function Dialog({ open, title, onClose, closeDisabled, children }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+
+  // Registered before `showModal` moves focus, so the element focused now is
+  // the opener; the returned pop runs on close (`open` false) and on unmount.
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!open || !dialog) return;
+    return pushModal(dialog);
+  }, [open]);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -38,7 +56,7 @@ export function Dialog({ open, title, onClose, closeDisabled, children }: Dialog
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  return (
+  return createPortal(
     // biome-ignore lint/a11y/useKeyWithClickEvents: closes on a backdrop click as a pointer-only convenience; Escape and the Close button are the keyboard paths
     <dialog
       ref={ref}
@@ -76,6 +94,7 @@ export function Dialog({ open, title, onClose, closeDisabled, children }: Dialog
         </header>
         {children}
       </div>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
