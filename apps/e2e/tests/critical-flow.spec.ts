@@ -121,8 +121,16 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     await page.getByRole('link', { name: 'Roles' }).click();
     await page.getByRole('button', { name: 'New role' }).click();
     const dialog = page.getByRole('dialog', { name: 'New role' });
-    await dialog.getByLabel('Name').fill(ROLE_NAME);
-    await dialog.getByLabel('Description').fill('May list users');
+    // The permission catalog loads asynchronously; wait for a group to render
+    // (fieldset legends name them) before touching the form, so the fill
+    // below is deterministic rather than racing the fetch — a warm local run
+    // usually wins that race, CI does not. exact: true on every getByLabel in
+    // this dialog: getByLabel does a case-insensitive substring match, and
+    // once the catalog is in, one permission's label reads "…genera, species
+    // and names", which contains "Name" as a substring.
+    await dialog.getByRole('group', { name: 'users' }).waitFor();
+    await dialog.getByLabel('Name', { exact: true }).fill(ROLE_NAME);
+    await dialog.getByLabel('Description', { exact: true }).fill('May list users');
     await dialog.getByRole('checkbox', { name: /List and view users/ }).check();
     await dialog.getByRole('button', { name: 'Create role' }).click();
     await expect(dialog).toBeHidden();
@@ -134,8 +142,9 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     await page.getByRole('link', { name: 'Users' }).click();
     await page.getByRole('button', { name: 'Invite user' }).click();
     const invite = page.getByRole('dialog', { name: 'Invite user' });
-    await invite.getByLabel('Email').fill(B_EMAIL);
-    await invite.getByLabel('Name').fill(B_NAME);
+    // exact: true for the same reason as the New role dialog above.
+    await invite.getByLabel('Email', { exact: true }).fill(B_EMAIL);
+    await invite.getByLabel('Name', { exact: true }).fill(B_NAME);
     await invite.getByRole('button', { name: 'Send invitation' }).click();
     await expect(page.getByRole('status')).toHaveText(`Invitation sent to ${B_EMAIL}.`);
 
