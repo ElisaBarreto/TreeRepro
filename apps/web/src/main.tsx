@@ -1,4 +1,3 @@
-import './lib/zod-jitless.ts';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';

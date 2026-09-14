@@ -1,3 +1,5 @@
+import './zod-jitless.ts';
+
 export * from './audit.ts';
 export * from './auth.ts';
 export * from './curation.ts';
