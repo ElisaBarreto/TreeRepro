@@ -1,7 +1,7 @@
 # TreeRepro — Foundation Design
 
 **Date:** 2026-09-12
-**Status:** approved (design), pending implementation plan
+**Status:** implemented (plan 01, PR #1; the prerequisites of #5–#8 in PR #21); implementation plan `docs/plans/2026-09-12-foundation-01-scaffold.md`
 **Scope:** infrastructure, authentication, authorization, data protection, admin area, security baseline, development process, testing strategy. Business features (scientific data collection) are out of scope and will be designed separately on top of this foundation.
 
 ## 1. Context

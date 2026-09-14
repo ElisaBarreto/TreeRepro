@@ -128,7 +128,7 @@ export function Combobox({
       listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? [],
     );
     if (buttons.length === 0) return;
-    const index = buttons.findIndex((b) => b === document.activeElement);
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
     const next = buttons[Math.min(buttons.length - 1, Math.max(0, index + offset))];
     next?.focus();
   }
