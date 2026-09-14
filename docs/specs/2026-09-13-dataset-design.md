@@ -1,7 +1,7 @@
 # TreeRepro — Scientific Dataset Design (plans 06–07)
 
 **Date:** 2026-09-13
-**Status:** approved design; plan 06 implements sections 3–9 except the curation tables' write paths (plan 07)
+**Status:** implemented (plan 06: API PR #43, web PR #44, UX follow-ups PRs #46 and #48; the curation tables' write paths in plan 07); implementation plan `docs/plans/2026-09-13-dataset-06.md`
 **Scope:** the scientific domain the platform exists for — a unified database of plant reproductive traits compiled from hundreds of publications, curated by specialist scientists. Taxonomy, bibliographic references and trait dictionary catalogs; immutable trait records with full provenance; bulk import of the compiled dataset; read API; the dataset pages of the web application (species search, species page, dictionary, references, imports). RFCs 60–64 and the amendments they force. Curation (confirm, dispute, accepted values, catalog editing) is designed here as the data model and delivered by plan 07 (RFC-65). The authenticated `/app` shell, the invitation-acceptance and password-reset screens and the admin UI are plan 05 (issue #20, `feat/ui-05`), built in parallel; the dataset pages mount inside that shell. Dataset export comes with plan 07.
 
 ## 1. Context

@@ -1,7 +1,7 @@
 # TreeRepro — Curation Design (plan 07)
 
 **Date:** 2026-09-13
-**Status:** approved design; plan 07a implements the API, plan 07b the curation pages, plan 07c the catalog editors
+**Status:** implemented (07a API PR #51, 07b curation pages PR #57, 07c catalog editors PR #60; web follow-ups #59 in PR #65); section 10 says what changed on the way
 **Scope:** the write side of the scientific dataset — manual trait records, confirm / dispute / withdraw annotations, the accepted value per species and trait, the harmonisation queue with bulk mapping, the disputed queue, catalog editing (taxa, references, traits and levels), and the CSV export of accepted values. RFC-65 (curation), RFC-66 (export) and the amendments they force on RFC-30, RFC-12, RFC-41, RFC-60–64. Builds on `docs/specs/2026-09-13-dataset-design.md` (plan 06), which already fixed the data model this plan writes to. Issue #45.
 
 ## 1. Context
