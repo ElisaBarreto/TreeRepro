@@ -79,3 +79,12 @@
 **Symptom:** Per-IP rate limits can be dodged and audit IPs are wrong.
 **Cause:** The API trusts the last `X-Forwarded-For` entry (RFC-22 R12) because Caddy sanitizes it, so a client that reaches the API without Caddy chooses its own IP.
 **Fix:** Only Caddy publishes ports in production; in development the API port is bound to loopback (`127.0.0.1:3000:3000` in `compose.dev.yml`).
+
+## An `http://` site address in `Caddyfile.prod`
+**Symptom:** The e2e Caddy answers on plain HTTP at 8080 instead of trying to provision a TLS certificate.
+**Cause:** `DOMAIN=http://localhost:8080` turns automatic HTTPS off and makes Caddy listen on 8080 inside the container (the port in the address is the listener), hence `127.0.0.1:8080:8080` in `compose.e2e.yml`; production keeps `DOMAIN=<host>` and 80/443.
+
+## A binary with a file capability needs `cap_add` even on an unprivileged port
+**Symptom:** The e2e Caddy (`DOMAIN=http://localhost:8080`) crash-loops with `exec /usr/bin/caddy: operation not permitted` under `cap_drop: [ALL]` + `no-new-privileges`.
+**Cause:** The upstream image sets `cap_net_bind_service=ep` on the caddy binary; with `no-new-privileges` the kernel refuses to exec a binary whose file capabilities are not in the bounding set, whatever port it will bind.
+**Fix:** `cap_add: [NET_BIND_SERVICE]` in `compose.e2e.yml`, as `compose.prod.yml` already has.

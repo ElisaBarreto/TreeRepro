@@ -11,6 +11,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `apps/api` — the only process that touches Postgres, Redis and secrets.
 - `apps/api/seed` — the trait dictionary (versioned vocabulary).
 - `apps/web` — UI only. Calls `/api/*` on the same origin. Contains no business rules. The workspace lives under `/app` (settings, admin pages at `/app/admin/users`, `/app/admin/users/$id`, `/app/admin/roles` and `/app/admin/audit` (plan 05b, `admin.access`); dataset search and species detail at `/app/species` and `/app/species/$id` from plan 06); public pages are `/`, `/invite/:token`, `/forgot-password`, `/reset-password/:token` (RFC-13). Curation pages (plan 07b): `/app/curation/pending` (harmonisation queue) and `/app/curation/disputed`, plus an Unresolved taxa entry on `/app/species?unresolved=true`; the species page gains an Add value action and, on the record drawer, confirm / dispute / withdraw / set as accepted, with the accepted value shown on the trait panel; an Export accepted values (CSV) link (`dataset.export`) sits on the species search header. Catalog editors (plan 07c): `/app/traits` with `traits.manage` — new trait, edit trait, add / rename / reorder / activate levels; `/app/references` and `/app/references/$id` with `references.manage` — new and edit reference; `/app/species` and `/app/species/$id` with `taxa.manage` — new species, edit species (genus and family created inline), add alternative name; `/app/taxa` with `taxa.manage` — families and genera (create, rename, move).
+- `apps/e2e` — Playwright end-to-end tests (no `src`; not part of `rfc:check` or Vitest).
 - `packages/contracts` — Zod schemas and constants shared by API and web.
 - `packages/config` — shared tsconfig bases.
 - `tools/rfc-lint` — enforces `@rfc` linkage in code.
@@ -25,6 +26,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `pnpm lint` / `pnpm lint:fix` — Biome.
 - `pnpm typecheck` — `tsc --noEmit` in every package.
 - `pnpm test` — unit + integration + API tests. Needs Docker running (testcontainers).
+- `pnpm test:e2e` — end-to-end suite (Playwright, Chromium) against the production images on an isolated Compose stack (`compose.e2e.yml`, ports 8080 / 8026, project `treerepro-e2e`, secrets in a temp dir). Needs Docker and `pnpm --filter @treerepro/e2e exec playwright install chromium` once. `E2E_KEEP=1` leaves the stack up (extra arguments go to Playwright, `pnpm test:e2e -- --headed`); tear it down afterwards with `E2E_SECRETS_DIR=<dir> docker compose -p treerepro-e2e -f compose.yml -f compose.e2e.yml down -v --remove-orphans` (any existing directory satisfies the interpolation).
 - `pnpm rfc:check` — verify every export links to an existing RFC rule.
 - `pnpm build` — build contracts, api, web.
 - `docker compose up` — full dev stack. First time: `cp .env.example .env && ./scripts/gen-secrets.sh`.
@@ -42,7 +44,7 @@ PolyForm Noncommercial 1.0.0 (`LICENSE.md`): the project is public so the partic
 
 ## Security automation
 
-Every PR must pass `Verify`, `Images` (build + Trivy), `CodeQL`, `Dependency review`, `Gitleaks`, `Zizmor` and `Trivy config`; the `main` ruleset enforces it. All of them except `Dependency review` (PR-only) re-run weekly on `main`, Scorecard grades the repo weekly, and Dependabot proposes updates weekly after a 7-day release cooldown (`.github/dependabot.yml`); pnpm applies the same cooldown locally (`minimumReleaseAge` in `pnpm-workspace.yaml`). Actions are pinned by commit SHA. Report vulnerabilities per `SECURITY.md`. Details and admin-only settings: `docs/gotchas/github-security.md`.
+Every PR must pass `Verify`, `Images` (build + Trivy), `CodeQL`, `Dependency review`, `Gitleaks`, `Zizmor` and `Trivy config`; the `main` ruleset enforces it. `E2E` (Playwright against the production images) also runs on every PR but is not yet a required check — the owner adds it to the ruleset once it has run green on a few PRs (spec `docs/specs/2026-09-13-ui-design.md` §6). All of the required checks except `Dependency review` (PR-only) re-run weekly on `main`, Scorecard grades the repo weekly, and Dependabot proposes updates weekly after a 7-day release cooldown (`.github/dependabot.yml`); pnpm applies the same cooldown locally (`minimumReleaseAge` in `pnpm-workspace.yaml`). Actions are pinned by commit SHA. Report vulnerabilities per `SECURITY.md`. Details and admin-only settings: `docs/gotchas/github-security.md`.
 
 ## Non-negotiable rules
 
