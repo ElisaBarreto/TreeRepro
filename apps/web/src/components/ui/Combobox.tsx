@@ -8,8 +8,10 @@ import { Input } from './Input.tsx';
 export interface ComboboxOption {
   id: string;
   label: string;
-  /** Secondary text shown after the label (a family, a year). */
+  /** Secondary text shown after the label, on the suggestion row and next to the chosen value (a family, a year). */
   hint?: string;
+  /** Secondary text shown on the suggestion row only (a unit the form shows elsewhere once the option is chosen). */
+  description?: string;
 }
 
 export interface ComboboxProps {
@@ -25,11 +27,15 @@ export interface ComboboxProps {
   emptyMessage?: string;
   /** Adds a trailing `Create "<text>"` option; the created option is selected. */
   onCreate?: (text: string) => Promise<ComboboxOption>;
+  /** The sentence for a failed `onCreate` (its rejection); without it, a generic one. */
+  createErrorMessage?: (error: unknown) => string;
   disabled?: boolean;
   invalid?: boolean;
   /** Set by `Field` on its child; forwarded to the input and to the Clear button of a chosen value. */
   'aria-describedby'?: string;
 }
+
+const GENERIC_CREATE_MESSAGE = 'Could not create it. Try again.';
 
 /**
  * Text input with an asynchronous suggestion list. The list is a
@@ -42,8 +48,10 @@ export interface ComboboxProps {
  * a Clear button, as the genus filter of the species search does. When the
  * caller passes `onCreate` and the term's own results (not the previous
  * term's, kept on screen while they load) match it exactly nowhere, a last
- * option offers to create it. The search runs on the debounced term once it
- * reaches `minChars`.
+ * option offers to create it; a create that fails shows the sentence
+ * `createErrorMessage` derives from the rejection (a taken name says so)
+ * as the input's description, or a generic one. The search runs on the
+ * debounced term once it reaches `minChars`.
  * @rfc RFC-13 R5, R6
  */
 export function Combobox({
@@ -57,6 +65,7 @@ export function Combobox({
   listLabel,
   emptyMessage = 'No matches.',
   onCreate,
+  createErrorMessage,
   disabled,
   invalid,
   'aria-describedby': describedBy,
@@ -64,8 +73,9 @@ export function Combobox({
   const [text, setText] = useState('');
   const [closed, setClosed] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const listId = useId();
+  const createErrorId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const term = useDebouncedValue(text.trim(), 300);
@@ -93,7 +103,7 @@ export function Combobox({
   function choose(option: ComboboxOption) {
     onChange(option);
     setText('');
-    setCreateError(false);
+    setCreateError(null);
     // Keeps the list closed until the next keystroke, so the debounced term
     // (still the previous search for up to 300 ms) cannot reopen it with
     // stale results once the caller clears the chosen value.
@@ -103,11 +113,11 @@ export function Combobox({
   async function create() {
     if (!onCreate) return;
     setCreating(true);
-    setCreateError(false);
+    setCreateError(null);
     try {
       choose(await onCreate(term));
-    } catch {
-      setCreateError(true);
+    } catch (error) {
+      setCreateError(createErrorMessage?.(error) ?? GENERIC_CREATE_MESSAGE);
     } finally {
       setCreating(false);
     }
@@ -187,7 +197,10 @@ export function Combobox({
         aria-autocomplete="list"
         aria-expanded={listOpen}
         aria-controls={listOpen ? listId : undefined}
-        aria-describedby={describedBy}
+        aria-describedby={
+          [describedBy, createError ? createErrorId : undefined].filter(Boolean).join(' ') ||
+          undefined
+        }
         placeholder={placeholder}
         disabled={disabled}
         invalid={invalid}
@@ -195,7 +208,7 @@ export function Combobox({
         onChange={(event) => {
           setText(event.target.value);
           setClosed(false);
-          setCreateError(false);
+          setCreateError(null);
         }}
         onKeyDown={onInputKeyDown}
       />
@@ -227,8 +240,10 @@ export function Combobox({
                 onClick={() => choose(option)}
               >
                 <span>{option.label}</span>
-                {option.hint ? (
-                  <span className="text-meta text-mist-500">{option.hint}</span>
+                {(option.hint ?? option.description) ? (
+                  <span className="text-meta text-mist-500">
+                    {[option.hint, option.description].filter(Boolean).join(' · ')}
+                  </span>
                 ) : null}
               </button>
             ))}
@@ -248,7 +263,9 @@ export function Combobox({
         )
       ) : null}
       {createError ? (
-        <p className="text-meta text-red-700">Could not create it. Try again.</p>
+        <p id={createErrorId} className="text-meta text-red-700">
+          {createError}
+        </p>
       ) : null}
     </div>
   );

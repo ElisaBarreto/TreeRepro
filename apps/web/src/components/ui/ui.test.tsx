@@ -69,6 +69,25 @@ describe('RFC-13 R5 UI kit renders with classes only', () => {
     expect(describedBy).toContain('x-hint');
   });
 
+  it('Field keeps the control as its described child when a trailing action sits beside it', () => {
+    render(
+      <Field
+        id="family"
+        label="Family"
+        error="Pick one"
+        trailing={<button type="button">New family</button>}
+      >
+        <Input id="family" invalid />
+      </Field>,
+    );
+    const input = screen.getByLabelText('Family');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAccessibleDescription('Pick one');
+    expect(screen.getByRole('button', { name: 'New family' })).not.toHaveAttribute(
+      'aria-describedby',
+    );
+  });
+
   it('Alert has role alert for errors and status otherwise', () => {
     render(
       <>
