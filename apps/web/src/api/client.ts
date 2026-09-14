@@ -61,22 +61,12 @@ export async function apiFetch<T = unknown>(
   if (response.ok) return (await response.json()) as T;
 
   const body: unknown = await response.json().catch(() => null);
-  // Dynamic: the entry chunk statically imports @treerepro/contracts, which
-  // imports zod internals back from the entry (a chunk cycle), so the
-  // contracts chunk — every schema — evaluates before the entry's own
-  // modules, lib/zod-jitless.ts included; a static import here would trip
-  // zod's JIT probe (RFC-13 R5) before the config runs. Guarded: apiFetch's
-  // contract is that every failure surfaces as ApiError (isSessionLoss,
-  // session.ts, only recognizes ApiError), so a failed chunk load must not
-  // reject with a raw module error.
-  let parsedError: { code: string; message: string; details?: ErrorDetail[] } | undefined;
-  try {
-    const { errorEnvelopeSchema } = await import('@treerepro/contracts');
-    const parsed = errorEnvelopeSchema.safeParse(body);
-    if (parsed.success) parsedError = parsed.data.error;
-  } catch {
-    // Falls through to the generic ApiError below.
-  }
+  // The envelope is read structurally, not parsed with a zod schema: this
+  // module sits on main.tsx's synchronous import path, so constructing a
+  // schema here would run before lib/zod-jitless.ts can configure zod
+  // (RFC-13 R5: the production CSP forbids zod's eval probe). Every actual
+  // schema lives in the lazily loaded route chunks, which zod-jitless.ts covers.
+  const parsedError = parseErrorEnvelope(body);
   if (parsedError) {
     throw new ApiError(response.status, parsedError.code, parsedError.message, parsedError.details);
   }
@@ -85,4 +75,28 @@ export async function apiFetch<T = unknown>(
     'UNKNOWN_ERROR',
     `Request failed with status ${response.status}`,
   );
+}
+
+function isErrorDetail(value: unknown): value is ErrorDetail {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).path === 'string' &&
+    typeof (value as Record<string, unknown>).message === 'string'
+  );
+}
+
+/** @rfc RFC-11 R3 */
+function parseErrorEnvelope(
+  body: unknown,
+): { code: string; message: string; details?: ErrorDetail[] } | undefined {
+  if (typeof body !== 'object' || body === null || !('error' in body)) return undefined;
+  const error = (body as { error: unknown }).error;
+  if (typeof error !== 'object' || error === null) return undefined;
+  const { code, message, details } = error as Record<string, unknown>;
+  if (typeof code !== 'string' || typeof message !== 'string') return undefined;
+  if (details !== undefined && !(Array.isArray(details) && details.every(isErrorDetail))) {
+    return undefined;
+  }
+  return { code, message, details: details as ErrorDetail[] | undefined };
 }

@@ -102,5 +102,5 @@ The catalog `PATCH` bodies are `nonEmpty` (400 `VALIDATION_FAILED` on `{}`) and 
 
 ## zod 4 probes `Function('')` and trips `script-src` without `unsafe-eval`
 **Symptom:** `securitypolicyviolation` (`script-src` … `eval`) on every page load; zod catches its own error so nothing breaks, but the CSP report is real (#9).
-**Cause:** zod caches an eval-availability probe the first time an object schema is constructed; the production bundle evaluates the `@treerepro/contracts` chunk before any app module (the chunk cycle described in `apps/web/src/lib/zod-jitless.ts`), so `z.config({ jitless: true })` in app code runs too late for schemas imported statically into the entry graph.
-**Fix:** `lib/zod-jitless.ts` first in `main.tsx` (covers the lazily loaded route chunks) and a lazy, guarded import of `errorEnvelopeSchema` in `api/client.ts` (the only schema the entry graph needs); the e2e CSP spec (`apps/e2e/tests/csp.spec.ts`) fails on any regression.
+**Cause:** zod caches the eval probe at the first object-schema construction; a static schema import anywhere in the entry's synchronous graph runs before app code can configure zod, because a chunk's static imports evaluate before its inlined modules.
+**Fix:** `lib/zod-jitless.ts` first in `main.tsx`; keep the entry graph free of runtime `@treerepro/contracts` imports (`api/client.ts` reads the envelope structurally); `apps/e2e/tests/csp.spec.ts` fails on any regression.
