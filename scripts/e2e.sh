@@ -10,8 +10,8 @@
 # E2E_KEEP=1 leaves the stack running after the tests (inspect at
 # http://localhost:8080, Mailpit at http://localhost:8026); tear it down with
 # `E2E_SECRETS_DIR=<dir> docker compose -p treerepro-e2e -f compose.yml -f compose.e2e.yml down -v --remove-orphans`
-# (any existing directory satisfies the interpolation — compose.e2e.yml only
-# needs the variable set, the secret files themselves are gone by then).
+# (pass the directory the script printed, or any non-empty value — `down`
+# only interpolates the path).
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -45,7 +45,9 @@ cleanup() {
     echo "e2e: stack logs in apps/e2e/test-results/stack.log" >&2
   fi
   if [ "${E2E_KEEP:-}" = "" ]; then
-    compose down -v --remove-orphans >/dev/null 2>&1 || true
+    if ! compose down -v --remove-orphans >/dev/null 2>&1; then
+      echo "e2e: teardown failed; run: E2E_SECRETS_DIR=$secrets_dir docker compose -p $project -f compose.yml -f compose.e2e.yml down -v --remove-orphans" >&2
+    fi
     rm -rf "$secrets_dir"
   else
     echo "e2e: E2E_KEEP set, stack left running as project $project" >&2

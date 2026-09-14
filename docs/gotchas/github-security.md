@@ -8,6 +8,7 @@ What runs, where it is configured, and what only a repository admin can change.
 |---|---|---|
 | Lint, typecheck, RFC links, build, tests, `pnpm audit` | `.github/workflows/ci.yml` (`Verify`) | PR, push main, weekly |
 | Image build + Trivy vulnerability scan (api, web) | `.github/workflows/ci.yml` (`Images`) | PR, push main, weekly |
+| End-to-end suite against the production images (`scripts/e2e.sh`) | `.github/workflows/ci.yml` (`E2E`) | PR, push main, weekly |
 | CodeQL (`javascript-typescript`, `actions`) | `.github/workflows/codeql.yml` | PR, push main, weekly |
 | Dependency review (new vulnerable deps in a PR) | `.github/workflows/security.yml` (`Dependency review`) | PR |
 | Gitleaks (secrets in git history) | `.github/workflows/security.yml` (`Gitleaks`) | PR, push main, weekly |
@@ -26,7 +27,7 @@ All actions are pinned to a commit SHA with the version in a trailing comment. D
 Source of truth: `infra/github/ruleset-main.json`, applied by `scripts/github-admin.sh` (creates or updates the ruleset named `main`); `./scripts/github-admin.sh --check` compares the live ruleset with the file and reports `matches` or `DRIFT: …` (edits made in the GitHub UI show up here; re-run the script to restore the file's state). `integration_id` 15368 is the GitHub Actions app, so only Actions can satisfy a required check. Rules:
 
 - Pull request required; no direct pushes, no force-push, no branch deletion.
-- Required status checks (branch must be up to date with `main`): `Verify`, `Images`, `CodeQL (javascript-typescript)`, `CodeQL (actions)`, `Dependency review`, `Gitleaks`, `Zizmor`, `Trivy config`.
+- Required status checks (branch must be up to date with `main`): `Verify`, `Images`, `E2E`, `CodeQL (javascript-typescript)`, `CodeQL (actions)`, `Dependency review`, `Gitleaks`, `Zizmor`, `Trivy config`. Until the owner applies the ruleset with `E2E` added, `./scripts/github-admin.sh --check` reports `DRIFT` on `required_status_checks` — expected; apply only once the job has proven stable on a few PRs.
 - Code scanning merge protection: CodeQL and zizmor alerts of severity high or higher (and any "error" level alert) block the merge. Trivy is not in this rule: its jobs already fail on HIGH/CRITICAL, and the `web` image carries unfixable-by-us findings inside the caddy binary.
 - No review count required — CodeRabbit reviews every PR; a second human is not mandatory.
 

@@ -109,6 +109,11 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     await expect(totp.getByText('Two-factor authentication is on.')).toBeVisible();
 
     await signOut(page);
+    // The enrolment claimed the step current at that moment and the API's
+    // guard is monotonic (`counter <= last` rejects), so the next step is
+    // always accepted and never collides; the +1 tolerates a container clock
+    // up to two steps ahead of the host, not behind across a boundary
+    // (irrelevant in CI, where the clock is shared).
     await signIn(page, ADMIN_EMAIL, adminPassword, codeFor(totpSecret, 1));
   });
 

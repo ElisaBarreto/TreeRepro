@@ -6,6 +6,8 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   workers: 1,
+  // A retry would replay "accept invitation" against a consumed token on the
+  // same database; the flow is one-shot per stack.
   retries: 0,
   timeout: 90_000,
   expect: { timeout: 10_000 },
