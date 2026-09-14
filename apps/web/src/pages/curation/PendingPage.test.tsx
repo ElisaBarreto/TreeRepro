@@ -96,6 +96,42 @@ describe('RFC-65 R7–R9 PendingPage', () => {
     expect(screen.queryByRole('button', { name: 'Map' })).not.toBeInTheDocument();
   });
 
+  it('RFC-65 R8 ?traitId= opens the queue on that trait, and choosing a trait writes it to the URL', async () => {
+    const seedMass = PENDING_TRAITS[1]?.trait.id ?? '';
+    const { router } = renderAt(`/app/curation/pending?traitId=${seedMass}`);
+    const traits = await screen.findByRole('list', { name: 'Traits with pending values' });
+    expect(within(traits).getByRole('button', { name: /seed mass/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await waitFor(() =>
+      expect(curation.fetchPendingGroups).toHaveBeenCalledWith(
+        expect.objectContaining({ traitId: seedMass }),
+      ),
+    );
+    expect(curation.fetchPendingGroups).not.toHaveBeenCalledWith(
+      expect.objectContaining({ traitId: PENDING_TRAITS[0]?.trait.id }),
+    );
+    await userEvent.click(within(traits).getByRole('button', { name: /sexual system/ }));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ traitId: PENDING_TRAITS[0]?.trait.id }),
+    );
+    expect(within(traits).getByRole('button', { name: /sexual system/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('RFC-65 R8 an unknown ?traitId= falls back to the first trait without touching the URL', async () => {
+    const { router } = renderAt('/app/curation/pending?traitId=nope');
+    const traits = await screen.findByRole('list', { name: 'Traits with pending values' });
+    expect(within(traits).getByRole('button', { name: /sexual system/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(router.state.location.search).toEqual({ traitId: 'nope' });
+  });
+
   it('offers "Manage levels" to a traits.manage holder as a link to /app/traits', async () => {
     auth.fetchMe.mockResolvedValue({
       ...ME,

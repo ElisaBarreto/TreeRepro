@@ -1,15 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AcceptedHistoryEntry } from '@treerepro/contracts';
+import { useQuery } from '@tanstack/react-query';
+import type { AcceptedHistoryEntry, AcceptedState } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
-import {
-  curationKeys,
-  fetchAccepted,
-  invalidateAfterRecordWrite,
-  setAccepted,
-} from '../../api/curation.ts';
+import { curationKeys, fetchAccepted, setAccepted } from '../../api/curation.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { useRecordWrite } from '../../lib/use-record-write.ts';
 import { Alert, Badge, Button, Field, Textarea } from '../ui/index.ts';
 
 function HistoryEntry({ entry }: { entry: AcceptedHistoryEntry }) {
@@ -39,7 +35,6 @@ function HistoryEntry({ entry }: { entry: AcceptedHistoryEntry }) {
  */
 export function AcceptedSection({ speciesId, traitId }: { speciesId: string; traitId: string }) {
   const me = useMe();
-  const queryClient = useQueryClient();
   const noteId = useId();
   const [clearing, setClearing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -58,13 +53,12 @@ export function AcceptedSection({ speciesId, traitId }: { speciesId: string; tra
     queryKey: curationKeys.accepted(speciesId, traitId),
     queryFn: () => fetchAccepted(speciesId, traitId),
   });
-  const clear = useMutation({
-    mutationFn: (text: string) =>
-      setAccepted(speciesId, traitId, { decision: 'cleared', note: text }),
-    onSuccess: async (next) => {
+  const clear = useRecordWrite<string, AcceptedState>({
+    write: (text) => setAccepted(speciesId, traitId, { decision: 'cleared', note: text }),
+    speciesId,
+    onWritten: (next, queryClient) => {
       queryClient.setQueryData(curationKeys.accepted(speciesId, traitId), next);
       toggleClearing(false);
-      await invalidateAfterRecordWrite(queryClient, speciesId);
     },
   });
 

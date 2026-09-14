@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   type CreateRecordBody,
   createRecordBodySchema,
@@ -10,11 +10,13 @@ import {
 import { type FormEvent, useId, useState } from 'react';
 import { createReference } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { createRecord, invalidateAfterRecordWrite } from '../../api/curation.ts';
+import { createRecord } from '../../api/curation.ts';
 import { datasetKeys, fetchDictionary, searchReferences } from '../../api/dataset.ts';
 import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { useRecordWrite } from '../../lib/use-record-write.ts';
+import { referenceErrorMessage } from '../catalog/errors.ts';
 import {
   Alert,
   Button,
@@ -55,11 +57,11 @@ const LOCAL_MESSAGES: Record<string, string> = {
 function activeTraits(dictionary: Dictionary | undefined): Trait[] {
   return dictionary?.flatMap((c) => c.traits).filter((t) => t.active) ?? [];
 }
-// No unit hint here: once chosen, the Combobox's own value badge would show
-// it a second time next to the unit the value field (or the preselected-
-// trait paragraph) already displays for the same trait.
+// The unit rides on the suggestion row only (`description`, not `hint`):
+// once chosen, the value field (or the preselected-trait paragraph) shows
+// it for the same trait, and a badge hint would repeat it.
 function traitOption(trait: Pick<TraitRef, 'id' | 'key' | 'unit'>): ComboboxOption {
-  return { id: trait.id, label: humaniseKey(trait.key) };
+  return { id: trait.id, label: humaniseKey(trait.key), description: trait.unit ?? undefined };
 }
 function referenceOption(reference: {
   id: string;
@@ -99,7 +101,6 @@ export function AddValueDialog({
   onOpenRecord: (id: string) => void;
 }) {
   const me = useMe();
-  const queryClient = useQueryClient();
   const ids = {
     trait: useId(),
     level: useId(),
@@ -127,12 +128,10 @@ export function AddValueDialog({
   const [local, setLocal] = useState<Record<string, string>>({});
   const canCreateReference = hasPermission(me, 'references.manage');
 
-  const save = useMutation({
-    mutationFn: (body: CreateRecordBody) => createRecord(body),
-    onSuccess: async (record) => {
-      await invalidateAfterRecordWrite(queryClient, speciesId);
-      onCreated(record);
-    },
+  const save = useRecordWrite<CreateRecordBody, RecordDetail>({
+    write: createRecord,
+    speciesId,
+    onInvalidated: onCreated,
   });
   const errors = { ...fieldErrors(save.error), ...local };
   const duplicateId =
@@ -288,6 +287,7 @@ export function AddValueDialog({
             listLabel="Reference suggestions"
             placeholder="Type to search references"
             onCreate={canCreateReference ? createRef : undefined}
+            createErrorMessage={referenceErrorMessage}
             invalid={Boolean(errors.primaryReferenceId)}
           />
         </Field>

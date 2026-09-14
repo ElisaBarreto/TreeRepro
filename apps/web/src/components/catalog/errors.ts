@@ -93,7 +93,9 @@ export function speciesErrorMessage(error: unknown): string {
   return pageErrorMessage(error);
 }
 
+/** The `REFERENCE_KEY_TAKEN` sentence, under the citation key field and in the form-level fallback. @rfc RFC-13 R6 */
 export const REFERENCE_KEY_TAKEN_MESSAGE = 'A reference with this citation key already exists.';
+/** The `REFERENCE_DOI_TAKEN` sentence, under the DOI field and in the form-level fallback. @rfc RFC-13 R6 */
 export const REFERENCE_DOI_TAKEN_MESSAGE = 'Another reference has this DOI.';
 
 /** @rfc RFC-13 R6 */

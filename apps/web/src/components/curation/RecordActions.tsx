@@ -1,16 +1,11 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { AnnotateRecordBody, RecordDetail } from '@treerepro/contracts';
+import type { AcceptedState, AnnotateRecordBody, RecordDetail } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
-import {
-  annotateRecord,
-  curationKeys,
-  invalidateAfterRecordWrite,
-  setAccepted,
-} from '../../api/curation.ts';
+import { annotateRecord, setAccepted } from '../../api/curation.ts';
 import { datasetKeys } from '../../api/dataset.ts';
 import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { useRecordWrite } from '../../lib/use-record-write.ts';
 import { DrawerSection } from '../dataset/DrawerSection.tsx';
 import { Alert, Badge, Button, Field, Textarea } from '../ui/index.ts';
 
@@ -51,42 +46,35 @@ const NOTE_LABELS: Record<NoteMode, { title: string; submit: string }> = {
  * Renders its own "Actions" section, and none at all for a viewer with
  * nothing to show, so the drawer never carries an empty heading. After a
  * write the drawer's record query is replaced with the answer and the lists
- * and summaries are invalidated.
+ * and summaries are invalidated (`useRecordWrite`; the accepted-value query
+ * sits under the species prefix that invalidation covers).
  * @rfc RFC-13 R3, R6
  * @rfc RFC-65 R3, R4, R6
  */
 export function RecordActions({ record }: { record: RecordDetail }) {
   const me = useMe();
-  const queryClient = useQueryClient();
   const noteId = useId();
   const [mode, setMode] = useState<NoteMode | null>(null);
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<string | null>(null);
 
-  const annotate = useMutation({
-    mutationFn: (body: AnnotateRecordBody) => annotateRecord(record.id, body),
-    onSuccess: async (detail) => {
+  const annotate = useRecordWrite<AnnotateRecordBody, RecordDetail>({
+    write: (body) => annotateRecord(record.id, body),
+    speciesId: record.speciesId,
+    onWritten: (detail, queryClient) => {
       queryClient.setQueryData(datasetKeys.record(record.id), detail);
       // Only the form state here — not `openMode(null)`: resetting a mutation
       // from inside its own onSuccess flips isPending before the invalidation
-      // below settles, and would detach an in-flight accept.
+      // settles, and would detach an in-flight accept.
       setMode(null);
       setNote('');
       setNoteError(null);
-      await invalidateAfterRecordWrite(queryClient, record.speciesId);
     },
   });
-  const accept = useMutation({
-    mutationFn: () =>
+  const accept = useRecordWrite<void, AcceptedState>({
+    write: () =>
       setAccepted(record.speciesId, record.trait.id, { decision: 'accepted', recordId: record.id }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: curationKeys.accepted(record.speciesId, record.trait.id),
-        }),
-        invalidateAfterRecordWrite(queryClient, record.speciesId),
-      ]);
-    },
+    speciesId: record.speciesId,
   });
 
   // Switching between Dispute and Withdraw, or cancelling either, must not

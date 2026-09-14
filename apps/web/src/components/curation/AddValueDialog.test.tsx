@@ -110,9 +110,13 @@ describe('RFC-65 R1 AddValueDialog', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Add value' });
     const trait = within(dialog).getByRole('combobox', { name: /trait/i });
     await userEvent.type(trait, 'seed');
-    await userEvent.click(await screen.findByRole('option', { name: /seed mass/ }));
+    // The suggestion row carries the unit; the chosen badge does not (the
+    // number field shows it), so the unit appears once at a time.
+    const option = await screen.findByRole('option', { name: /seed mass/ });
+    expect(option).toHaveTextContent('mg');
+    await userEvent.click(option);
     const number = await within(dialog).findByRole('spinbutton', { name: /number/i });
-    expect(within(dialog).getByText('mg')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('mg')).toHaveLength(1);
     await userEvent.type(number, '12.5');
     await pickPrimaryReference();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));
@@ -214,6 +218,22 @@ describe('RFC-65 R1 AddValueDialog', () => {
       expect(catalog.createReference).toHaveBeenCalledWith({ citationKey: 'Novo_2026' }),
     );
     expect(await within(dialog).findByText('Novo_2026')).toBeInTheDocument();
+  });
+
+  it('a reference create that answers REFERENCE_KEY_TAKEN says so under the field', async () => {
+    dataset.searchReferences.mockResolvedValue({ data: [], meta: { nextCursor: null } });
+    catalog.createReference.mockRejectedValue(new ApiError(409, 'REFERENCE_KEY_TAKEN', 'taken'));
+    mount({}, LIBRARIAN);
+    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
+    const primary = within(dialog).getByRole('combobox', { name: /primary reference/i });
+    await userEvent.type(primary, 'Novo_2026');
+    await userEvent.click(await screen.findByRole('option', { name: 'Create "Novo_2026"' }));
+    expect(
+      await within(dialog).findByText('A reference with this citation key already exists.'),
+    ).toBeInTheDocument();
+    expect(primary).toHaveAccessibleDescription(
+      expect.stringContaining('A reference with this citation key already exists.'),
+    );
   });
 
   it('without references.manage there is no create option', async () => {

@@ -1,5 +1,7 @@
+import { QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
@@ -62,6 +64,50 @@ describe('RFC-65 R9 MapDialog', () => {
     );
     expect(curation.invalidateAfterRecordWrite).toHaveBeenCalled();
     expect(onMapped).toHaveBeenCalledWith(MAP_RESULT);
+  });
+
+  it('says the levels are loading, with Map disabled, until the dictionary answers; and says so when it failed', async () => {
+    const { rerender: rerenderBare, queryClient } = renderWithProviders(
+      <MapDialog
+        trait={DICTIONARY_SEXUAL_SYSTEM}
+        levels={undefined}
+        group={GROUP}
+        onClose={() => undefined}
+        onMapped={() => undefined}
+      />,
+      { me },
+    );
+    const rerender = (ui: ReactElement) =>
+      rerenderBare(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+    const dialog = screen.getByRole('dialog', { name: /map/i });
+    expect(within(dialog).getByText('Loading levels…')).toBeInTheDocument();
+    expect(within(dialog).queryByText('This trait has no active levels.')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Map records' })).toBeDisabled();
+    rerender(
+      <MapDialog
+        trait={DICTIONARY_SEXUAL_SYSTEM}
+        levels={undefined}
+        levelsError
+        group={GROUP}
+        onClose={() => undefined}
+        onMapped={() => undefined}
+      />,
+    );
+    expect(
+      within(dialog).getByText('Could not load the levels. Reload the page.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Map records' })).toBeDisabled();
+    rerender(
+      <MapDialog
+        trait={DICTIONARY_SEXUAL_SYSTEM}
+        levels={LEVELS}
+        group={GROUP}
+        onClose={() => undefined}
+        onMapped={() => undefined}
+      />,
+    );
+    expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Map records' })).toBeEnabled();
   });
 
   it('shows a traitId API error under the summary line', async () => {
