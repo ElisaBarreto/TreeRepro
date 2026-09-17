@@ -57,6 +57,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `traits.created` | Trait created (RFC-62 R6). |
 | `traits.updated` | Trait or one of its levels changed, or a level added (RFC-62 R6). |
 | `dataset.exported` | Accepted values downloaded as a file (RFC-66 R6). |
+| `imports.completed` | A supplementary import batch completed (RFC-68 R5). |
 
 ## Open questions
 
@@ -72,3 +73,4 @@ None.
 - 2026-09-12 — R2, R6, R9: purge through audit_log_purge() (RFC-42); users.deleted and users.exported removed (RFC-50 R12).
 - 2026-09-13 — catalog and export actions (RFC-60–62, RFC-66, plan 07).
 - 2026-09-13 — R3: the catalog lives in packages/contracts (plan 05b).
+- 2026-09-17 — imports.completed (RFC-68, plan 08a).

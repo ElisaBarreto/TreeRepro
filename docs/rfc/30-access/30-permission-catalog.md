@@ -43,6 +43,8 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `references.manage` | Create and edit bibliographic references |
 | `traits.manage` | Create and edit traits and levels |
 | `dataset.export` | Download the accepted values |
+| `dataset.read_inactive` | See inactive species, traits and levels |
+| `records.review` | Work the harmonisation and disputed queues; neutralise or dispute any record with a note |
 
 ## Open questions
 
@@ -55,3 +57,4 @@ None.
 - 2026-09-12 — users.delete retired: users are never erased (RFC-50 R12).
 - 2026-09-13 — dataset.read, imports.read (RFC-60–64, plan 06).
 - 2026-09-13 — curation permissions (RFC-65, RFC-66, plan 07).
+- 2026-09-17 — dataset.read_inactive (RFC-33, plan 08a).
