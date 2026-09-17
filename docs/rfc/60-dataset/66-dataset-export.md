@@ -13,7 +13,7 @@ Curators need the current accepted values as a file for analysis and publication
 ## Rules
 
 - **R1** `GET /api/export/accepted.csv` requires `dataset.export`.
-- **R2** One row per species and trait whose newest `accepted_values` decision is `accepted`. Columns, in order: `family, genus, species, name_source, category, trait, value, unit, level, numeric_value, primary_reference, secondary_reference, decided_at, record_id`. `value` is the record's `value_text`; `level` the level key or empty; `numeric_value` the number or empty; `primary_reference` and `secondary_reference` are citation keys (empty when absent); `decided_at` is ISO 8601 UTC. No column names a person (RFC-40).
+- **R2** One row per species and trait whose newest `accepted_values` decision is `accepted`. Columns, in order: `family, genus, species, name_source, category, trait, value, unit, level, numeric_value, primary_reference, secondary_reference, decided_at, record_id`. `value` is the record's `value_text`; `level` the level key or empty; `numeric_value` the number or empty; `primary_reference` and `secondary_reference` are citation keys (empty when absent); `primary_reference` / `secondary_reference` print `Personal observation` for a reference of kind `personal_observation`. `decided_at` is ISO 8601 UTC. No column names a person (RFC-40).
 - **R3** Rows are ordered by `family` and `genus` (nulls last), then `species`, then trait key.
 - **R4** The body is RFC 4180 CSV: UTF-8 with a leading byte-order mark, CRLF row terminators, a header row, and a field quoted with `"` (inner quotes doubled) when it contains `"`, `,`, CR or LF. Headers: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="treerepro-accepted-<YYYY-MM-DD>.csv"`, `Cache-Control: no-store`. A field starting with `=`, `+`, `-`, `@`, tab or carriage return that is not a plain number is prefixed with `'` so spreadsheet software never evaluates it as a formula.
 - **R5** The response streams: rows are read through a server-side cursor in batches and written as they arrive; the file is never held in memory.
@@ -29,3 +29,4 @@ None.
 - 2026-09-13 — created.
 - 2026-09-13 — accepted.
 - 2026-09-13 — R4 amended: a field starting with `=`, `+`, `-`, `@`, tab or CR that is not a plain number is prefixed with `'` (CSV formula injection guard).
+- 2026-09-17 — Personal observation label in R2 (plan 09a).

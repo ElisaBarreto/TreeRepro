@@ -79,7 +79,7 @@ async function pickPrimaryReference() {
 
 describe('RFC-65 R1 AddValueDialog', () => {
   it('with a preselected categorical trait offers its active levels and posts the level', async () => {
-    curation.createRecord.mockResolvedValue(RECORD_DETAIL);
+    curation.createRecord.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
     const { onCreated } = mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
     const dialog = await screen.findByRole('dialog', { name: 'Add value' });
     expect(within(dialog).getByText('sexual system')).toBeInTheDocument();
@@ -97,7 +97,7 @@ describe('RFC-65 R1 AddValueDialog', () => {
       speciesId: SPECIES.id,
       traitId: DICTIONARY_SEXUAL_SYSTEM.id,
       value: { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e12' },
-      primaryReferenceId: PRIMARY_REFERENCE.id,
+      sources: { references: [{ id: PRIMARY_REFERENCE.id }] },
       rawValue: 'Dioecious',
     });
     expect(curation.invalidateAfterRecordWrite).toHaveBeenCalled();
@@ -105,7 +105,7 @@ describe('RFC-65 R1 AddValueDialog', () => {
   });
 
   it('lets the user pick a trait from the dictionary; a quantitative trait takes a number with its unit', async () => {
-    curation.createRecord.mockResolvedValue(RECORD_DETAIL);
+    curation.createRecord.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
     mount();
     const dialog = await screen.findByRole('dialog', { name: 'Add value' });
     const trait = within(dialog).getByRole('combobox', { name: /trait/i });
@@ -175,7 +175,7 @@ describe('RFC-65 R1 AddValueDialog', () => {
     expect(await within(dialog).findByText('Level is inactive')).toBeInTheDocument();
     curation.createRecord.mockRejectedValueOnce(
       new ApiError(409, 'RECORD_DUPLICATE', 'exists', [
-        { path: 'recordId', message: RECORD_DETAIL.id },
+        { path: 'sources.references.0', message: RECORD_DETAIL.id },
       ]),
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));

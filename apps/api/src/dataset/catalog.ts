@@ -387,6 +387,12 @@ export async function updateReference(
       .where(eq(bibliographicReferences.id, input.id))
       .limit(1);
     if (!current) throw new AppError('REFERENCE_NOT_FOUND', 'Reference not found');
+    if (current.kind === 'personal_observation') {
+      throw new AppError(
+        'REFERENCE_IS_PERSONAL',
+        'Personal observation references cannot be edited',
+      );
+    }
     const fields: string[] = [];
     const set: Partial<Pick<ReferenceRow, (typeof REFERENCE_FIELDS)[number]>> = {};
     for (const field of REFERENCE_FIELDS) {

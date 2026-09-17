@@ -71,6 +71,8 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `PLOT_NOT_FOUND` | 404 | Plot id does not exist (RFC-67 R3). |
 | `PLOT_CODE_TAKEN` | 409 | Another plot has this code, case-insensitively (RFC-67 R5). |
 | `PLOT_SPECIES_EXISTS` | 409 | The species is already in the plot (RFC-67 R5). |
+| `DOI_LOOKUP_FAILED` | 502 | The DOI registry could not be reached (RFC-80 R3). |
+| `REFERENCE_IS_PERSONAL` | 409 | A personal-observation reference cannot be edited (RFC-61 R7). |
 
 ## Open questions
 
@@ -87,3 +89,4 @@ None.
 - 2026-09-13 — curation and catalog codes (RFC-60–62, RFC-65, plan 07).
 - 2026-09-17 — ROLE_IS_SYSTEM reworded: manager and contributor system roles (RFC-31, plan 08a).
 - 2026-09-17 — PLOT_NOT_FOUND, PLOT_CODE_TAKEN, PLOT_SPECIES_EXISTS (RFC-67, plan 08b).
+- 2026-09-17 — DOI_LOOKUP_FAILED, REFERENCE_IS_PERSONAL (plan 09a).

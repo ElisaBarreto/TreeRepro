@@ -17,10 +17,12 @@ import { createSessionStore } from '../auth/sessions.ts';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
+import { createDoiClient } from '../integrations/doi.ts';
 import { createLogger } from '../logger.ts';
 import { createMailer, createSmtpTransport } from '../mail/mailer.ts';
 import { createRedis } from '../redis/client.ts';
 import { configurePii } from '../security/pii.ts';
+import { APP_VERSION } from '../version.ts';
 
 const { values } = parseArgs({
   options: { email: { type: 'string' }, name: { type: 'string' } },
@@ -47,6 +49,7 @@ const ctx: AuthContext = {
   breachChecker: createHibpChecker({ logger }),
   permissionCache: createPermissionCache(redis),
   logger,
+  doi: createDoiClient({ contactEmail: config.doiContactEmail, version: APP_VERSION }),
   appOrigin: config.appOrigin,
   now: Date.now,
 };

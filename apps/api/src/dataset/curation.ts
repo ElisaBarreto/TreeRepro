@@ -3,6 +3,7 @@ import type {
   AcceptedState,
   AnnotationKind,
   RecordDetail,
+  RecordIntent,
   RecordValue,
   TraitValueType,
 } from '@treerepro/contracts';
@@ -15,7 +16,6 @@ import {
   type Visibility,
 } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { isUniqueViolation } from '../db/errors.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
@@ -140,90 +140,189 @@ export function numericText(n: number): SQL<string> {
   return sql<string>`(${String(n)}::numeric)::text`;
 }
 
-export interface CreateRecordInput {
+/** The note of the dispute a contest generates on the record it answers. @rfc RFC-70 R3 */
+export const CONTEST_NOTE = (ids: string[]) => `Contested by record ${ids.join(', ')}`;
+
+/** The note of the neutral that a withdrawn contest leaves behind. @rfc RFC-70 R5 */
+export const CONTEST_WITHDRAWN_NOTE = (id: string) => `Contest withdrawn (record ${id})`;
+
+export interface CreateRecordsInput {
   actorId: string;
   speciesId: string;
   traitId: string;
   value: RecordValue;
-  primaryReferenceId: string;
-  secondaryReferenceId?: string;
+  referenceIds: string[];
+  intent?: RecordIntent;
+  respondsToRecordId?: string;
   rawValue?: string;
   note?: string;
+  secondaryReferenceId?: string;
+}
+
+export interface CreateRecordsResult {
+  created: RecordDetail[];
+  duplicates: { recordId: string; referenceId: string }[];
 }
 
 /**
- * One manual, harmonised claim. A single INSERT: on a claim-key collision the
- * existing record is looked up afterwards (nothing is left aborted) and named
- * in the 409.
- * @rfc RFC-65 R1, R2
- * @rfc RFC-33 R2, R5
+ * Creates records across multiple primary references with optional intent and response.
+ * @rfc RFC-70 R2, R3
  */
-export async function createRecord(
+export async function createRecords(
   db: DbExecutor,
   visibility: Visibility,
-  input: CreateRecordInput,
-): Promise<RecordDetail> {
+  input: CreateRecordsInput,
+): Promise<CreateRecordsResult> {
   await requireSpecies(db, visibility, input.speciesId);
   const trait = await requireTrait(db, visibility, input.traitId);
   if (!trait.active) throw validation('traitId', 'Trait is inactive');
-  await requireReference(db, input.primaryReferenceId, 'primaryReferenceId');
-  if (input.secondaryReferenceId !== undefined)
+  if (input.secondaryReferenceId !== undefined) {
     await requireReference(db, input.secondaryReferenceId, 'secondaryReferenceId');
+  }
   const value = await resolveValue(db, visibility, trait, input.value);
-  const valueText: string | SQL<string> =
-    value.levelKey !== null ? value.levelKey : numericText(value.numericValue);
-  const claim = {
-    speciesId: input.speciesId,
-    traitId: input.traitId,
-    rawValue: input.rawValue ?? null,
-    primaryReferenceId: input.primaryReferenceId,
-    secondaryReferenceId: input.secondaryReferenceId ?? null,
-  };
-  let inserted: { id: string } | undefined;
-  try {
-    [inserted] = await db
-      .insert(traitRecords)
-      .values({
-        ...claim,
-        levelId: value.levelId,
-        numericValue: value.numericValue,
-        valueText,
-        harmonisation: 'harmonised',
-        origin: 'manual',
-        createdBy: input.actorId,
-        note: input.note ?? null,
+
+  if (input.respondsToRecordId) {
+    const [target] = await db
+      .select({
+        id: traitRecords.id,
+        speciesId: traitRecords.speciesId,
+        traitId: traitRecords.traitId,
+        levelId: traitRecords.levelId,
+        numericValue: traitRecords.numericValue,
+        review: reviewStatusSql(traitRecords.id).as('review'),
       })
-      .returning({ id: traitRecords.id });
-  } catch (err) {
-    if (!isUniqueViolation(err)) throw err;
-    const [existing] = await db
-      .select({ id: traitRecords.id })
       .from(traitRecords)
+      .innerJoin(species, eq(species.id, traitRecords.speciesId))
+      .innerJoin(traits, eq(traits.id, traitRecords.traitId))
       .where(
         and(
-          eq(traitRecords.speciesId, claim.speciesId),
-          eq(traitRecords.traitId, claim.traitId),
-          eq(traitRecords.valueText, valueText),
-          claim.rawValue === null
-            ? isNull(traitRecords.rawValue)
-            : eq(traitRecords.rawValue, claim.rawValue),
-          eq(traitRecords.primaryReferenceId, claim.primaryReferenceId),
-          claim.secondaryReferenceId === null
-            ? isNull(traitRecords.secondaryReferenceId)
-            : eq(traitRecords.secondaryReferenceId, claim.secondaryReferenceId),
+          eq(traitRecords.id, input.respondsToRecordId),
+          speciesVisible(visibility),
+          traitVisible(visibility),
         ),
       )
       .limit(1);
-    throw new AppError(
-      'RECORD_DUPLICATE',
-      'This claim already exists; confirm it instead',
-      existing ? [{ path: 'recordId', message: existing.id }] : undefined,
-    );
+    if (!target) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
+    if (target.speciesId !== input.speciesId || target.traitId !== input.traitId) {
+      throw validation(
+        'respondsToRecordId',
+        'A response must share the species and trait of the record it responds to',
+      );
+    }
+    if (target.review === 'withdrawn') {
+      throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
+    }
+    if (input.intent === 'contest') {
+      const sameValue =
+        (value.levelId !== null && value.levelId === target.levelId) ||
+        (value.numericValue !== null &&
+          target.numericValue !== null &&
+          Number(value.numericValue) === Number(target.numericValue));
+      if (sameValue) {
+        throw validation('value', 'A contest carries a different value');
+      }
+    }
   }
-  if (!inserted) throw new Error('createRecord: insert returned no row');
-  const detail = await getRecord(db, visibility, inserted.id);
-  if (!detail) throw new Error('createRecord: record vanished');
-  return detail;
+
+  const valueText: string | SQL<string> =
+    value.levelKey !== null ? value.levelKey : numericText(value.numericValue);
+
+  return db.transaction(async (tx) => {
+    if (input.intent === 'contest' && input.respondsToRecordId) {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${input.respondsToRecordId}, 0))`,
+      );
+    }
+
+    const rowsToInsert = input.referenceIds.map((refId) => ({
+      speciesId: input.speciesId,
+      traitId: input.traitId,
+      valueText,
+      levelId: value.levelId,
+      numericValue: value.numericValue,
+      harmonisation: 'harmonised' as const,
+      rawValue: input.rawValue ?? null,
+      primaryReferenceId: refId,
+      secondaryReferenceId: input.secondaryReferenceId ?? null,
+      origin: 'manual' as const,
+      createdBy: input.actorId,
+      note: input.note ?? null,
+      intent: input.intent ?? null,
+      respondsToRecordId: input.respondsToRecordId ?? null,
+    }));
+
+    const inserted = await tx
+      .insert(traitRecords)
+      .values(rowsToInsert)
+      .onConflictDoNothing()
+      .returning({ id: traitRecords.id, primaryReferenceId: traitRecords.primaryReferenceId });
+
+    // `INSERT … RETURNING` makes no promise about row order, so the response
+    // and the contest note are put back in the order the sources arrived in
+    // rather than in the order the rows came back (RFC-70 R3).
+    const insertedByRef = new Map(inserted.map((r) => [r.primaryReferenceId, r.id]));
+    const insertedIds = input.referenceIds
+      .map((refId) => insertedByRef.get(refId))
+      .filter((id) => id !== undefined);
+    const missingRefIds = input.referenceIds.filter((id) => !insertedByRef.has(id));
+    const duplicates: { recordId: string; referenceId: string }[] = [];
+
+    if (missingRefIds.length > 0) {
+      for (const refId of missingRefIds) {
+        const [existing] = await tx
+          .select({ id: traitRecords.id })
+          .from(traitRecords)
+          .where(
+            and(
+              eq(traitRecords.speciesId, input.speciesId),
+              eq(traitRecords.traitId, input.traitId),
+              eq(traitRecords.valueText, valueText),
+              input.rawValue == null
+                ? isNull(traitRecords.rawValue)
+                : eq(traitRecords.rawValue, input.rawValue),
+              eq(traitRecords.primaryReferenceId, refId),
+              input.secondaryReferenceId == null
+                ? isNull(traitRecords.secondaryReferenceId)
+                : eq(traitRecords.secondaryReferenceId, input.secondaryReferenceId),
+            ),
+          )
+          .limit(1);
+        if (existing) {
+          duplicates.push({ recordId: existing.id, referenceId: refId });
+        }
+      }
+    }
+
+    if (inserted.length === 0) {
+      const details = input.referenceIds.map((refId, i) => {
+        const dup = duplicates.find((d) => d.referenceId === refId);
+        return { path: `sources.references.${i}`, message: dup?.recordId ?? '' };
+      });
+      throw new AppError(
+        'RECORD_DUPLICATE',
+        'This claim already exists; confirm it instead',
+        details,
+      );
+    }
+
+    if (input.intent === 'contest' && input.respondsToRecordId) {
+      await tx.insert(recordAnnotations).values({
+        recordId: input.respondsToRecordId,
+        actorId: input.actorId,
+        kind: 'dispute',
+        note: CONTEST_NOTE(insertedIds),
+        generated: true,
+      });
+    }
+
+    const created: RecordDetail[] = [];
+    for (const id of insertedIds) {
+      const detail = await getRecord(tx, UNRESTRICTED, id);
+      if (detail) created.push(detail);
+    }
+
+    return { created, duplicates };
+  });
 }
 
 /** The newest accepted-value decision of a species and trait, or null. @rfc RFC-65 R4, R6 */
@@ -246,8 +345,11 @@ export interface AnnotateRecordInput {
   actorId: string;
   kind: AnnotationKind;
   note?: string;
+  referenceId?: string;
   /** The actor holds `records.withdraw` (RFC-65 R4). */
   canWithdrawAny: boolean;
+  /** The actor holds `records.review` (RFC-70 R4). */
+  canReview: boolean;
 }
 
 /**
@@ -260,6 +362,7 @@ export interface AnnotateRecordInput {
  * functions lock the same key, so whichever gets there first finishes (and
  * releases the lock) before the other re-reads the now-current state.
  * @rfc RFC-65 R3, R4
+ * @rfc RFC-70 R4, R5
  * @rfc RFC-33 R2, R5
  */
 export async function annotateRecord(
@@ -276,6 +379,8 @@ export async function annotateRecord(
         createdBy: traitRecords.createdBy,
         speciesId: traitRecords.speciesId,
         traitId: traitRecords.traitId,
+        intent: traitRecords.intent,
+        respondsToRecordId: traitRecords.respondsToRecordId,
         review: reviewStatusSql(traitRecords.id).as('review'),
       })
       .from(traitRecords)
@@ -292,6 +397,11 @@ export async function annotateRecord(
     if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
     if (rec.review === 'withdrawn')
       throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
+
+    if ((input.kind === 'dispute' || input.kind === 'neutral') && !input.canReview) {
+      throw new AppError('PERMISSION_DENIED', 'You do not have permission to review records');
+    }
+
     if (input.kind === 'withdraw') {
       if (rec.origin !== 'manual')
         throw new AppError('RECORD_NOT_WITHDRAWABLE', 'Only manual records can be withdrawn');
@@ -309,7 +419,58 @@ export async function annotateRecord(
       actorId: input.actorId,
       kind: input.kind,
       note: input.note ?? null,
+      referenceId: input.referenceId ?? null,
     });
+
+    if (input.kind === 'withdraw' && rec.intent === 'contest' && rec.respondsToRecordId) {
+      const [base] = await tx
+        .select({
+          id: traitRecords.id,
+          review: reviewStatusSql(traitRecords.id).as('review'),
+        })
+        .from(traitRecords)
+        .where(eq(traitRecords.id, rec.respondsToRecordId))
+        .limit(1);
+      if (base && base.review !== 'withdrawn') {
+        const [latestStance] = await tx
+          .select({ kind: recordAnnotations.kind })
+          .from(recordAnnotations)
+          .where(
+            and(
+              eq(recordAnnotations.recordId, rec.respondsToRecordId),
+              eq(recordAnnotations.actorId, input.actorId),
+              sql`${recordAnnotations.kind} <> 'withdraw'`,
+            ),
+          )
+          .orderBy(desc(recordAnnotations.id))
+          .limit(1);
+        // Only when this was the actor's last live contest: another contest
+        // of theirs on the same record still carries the dispute (RFC-70 R5).
+        const [otherContest] = await tx
+          .select({ id: traitRecords.id })
+          .from(traitRecords)
+          .where(
+            and(
+              eq(traitRecords.respondsToRecordId, rec.respondsToRecordId),
+              eq(traitRecords.intent, 'contest'),
+              eq(traitRecords.createdBy, input.actorId),
+              sql`${traitRecords.id} <> ${rec.id}`,
+              sql`${reviewStatusSql(traitRecords.id)} <> 'withdrawn'`,
+            ),
+          )
+          .limit(1);
+        if (latestStance?.kind === 'dispute' && !otherContest) {
+          await tx.insert(recordAnnotations).values({
+            recordId: rec.respondsToRecordId,
+            actorId: input.actorId,
+            kind: 'neutral',
+            note: CONTEST_WITHDRAWN_NOTE(rec.id),
+            generated: true,
+          });
+        }
+      }
+    }
+
     const detail = await getRecord(tx, visibility, rec.id);
     if (!detail) throw new Error('annotateRecord: record vanished');
     return detail;

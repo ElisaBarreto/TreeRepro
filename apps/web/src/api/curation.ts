@@ -3,6 +3,7 @@ import type {
   AcceptedState,
   AnnotateRecordBody,
   CreateRecordBody,
+  CreateRecordsResult,
   DataEnvelope,
   DisputedRecord,
   MapPendingBody,
@@ -29,9 +30,10 @@ export const curationKeys = {
 export const EXPORT_ACCEPTED_URL = '/api/export/accepted.csv';
 
 /** @rfc RFC-65 R1 */
-export async function createRecord(body: CreateRecordBody): Promise<RecordDetail> {
-  return (await apiFetch<DataEnvelope<RecordDetail>>('/records', { method: 'POST', json: body }))
-    .data;
+export async function createRecord(body: CreateRecordBody): Promise<CreateRecordsResult> {
+  return (
+    await apiFetch<DataEnvelope<CreateRecordsResult>>('/records', { method: 'POST', json: body })
+  ).data;
 }
 /** @rfc RFC-65 R3 */
 export async function annotateRecord(id: string, body: AnnotateRecordBody): Promise<RecordDetail> {

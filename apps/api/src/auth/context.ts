@@ -1,5 +1,6 @@
 import type { PermissionCache } from '../access/permissions.ts';
 import type { Db } from '../db/client.ts';
+import type { DoiClient } from '../integrations/doi.ts';
 import type { Logger } from '../logger.ts';
 import type { Mailer } from '../mail/mailer.ts';
 import type { PasswordBreachChecker } from './breach-check.ts';
@@ -17,6 +18,7 @@ export interface AuthContext {
   breachChecker: PasswordBreachChecker;
   permissionCache: PermissionCache;
   logger: Logger;
+  doi: DoiClient;
   appOrigin: string;
   now: () => number;
 }

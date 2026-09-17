@@ -64,11 +64,13 @@ describe('RFC-63 R8 recordSchema', () => {
       numericValue: null,
       harmonisation: 'harmonised',
       review: 'unreviewed',
-      primaryReference: { id: uuid, citationKey: 'A_2020' },
+      primaryReference: { id: uuid, citationKey: 'A_2020', kind: 'publication' },
       secondaryReference: null,
       origin: 'import',
       createdAt: '2026-09-13T00:00:00.000Z',
       createdBy: null,
+      intent: null,
+      respondsTo: null,
     };
     expect(recordSchema.parse(record)).toEqual(record);
     expect(recordSchema.safeParse({ ...record, extra: true }).success).toBe(false);
@@ -142,6 +144,8 @@ describe('RFC-61 R4 referenceSchema', () => {
     createdAt: '2026-09-13T00:00:00.000Z',
     primaryCount: 2,
     secondaryCount: 0,
+    kind: 'publication',
+    observer: null,
   };
 
   it('every item carries its usage per role as non-negative integers', () => {

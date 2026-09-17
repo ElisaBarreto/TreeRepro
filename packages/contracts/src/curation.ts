@@ -4,7 +4,10 @@ import {
   acceptedDecisionSchema,
   HARMONISATION_STATUSES,
   NAME_SOURCES,
+  RECORD_INTENTS,
+  recordDetailSchema,
   recordSchema,
+  referenceSchema,
   TRAIT_VALUE_TYPES,
   traitRefSchema,
   userRefSchema,
@@ -32,24 +35,79 @@ export const recordValueSchema = z.union([
   z.strictObject({ numeric: numericValueSchema }),
 ]);
 
+/** @rfc RFC-80 R1 */
+export const doiSchema = z.string().trim().min(7).max(300);
+/** One source of a claim: a local reference or a DOI to resolve. @rfc RFC-80 R5 */
+export const sourceRefSchema = z.union([
+  z.strictObject({ id: z.uuid() }),
+  z.strictObject({ doi: doiSchema }),
+]);
+/** @rfc RFC-70 R1 */
+export const sourcesSchema = z.union([
+  z.strictObject({ personalObservation: z.literal(true) }),
+  z.strictObject({ references: z.array(sourceRefSchema).min(1).max(10) }),
+]);
+
 /** @rfc RFC-65 R1 */
-export const createRecordBodySchema = z.strictObject({
-  speciesId: z.uuid(),
-  traitId: z.uuid(),
-  value: recordValueSchema,
-  primaryReferenceId: z.uuid(),
-  secondaryReferenceId: z.uuid().optional(),
-  rawValue: curationNoteSchema.optional(),
-  note: curationNoteSchema.optional(),
+export const createRecordBodySchema = z
+  .strictObject({
+    speciesId: z.uuid(),
+    traitId: z.uuid(),
+    value: recordValueSchema,
+    sources: sourcesSchema,
+    intent: z.enum(RECORD_INTENTS).optional(),
+    respondsToRecordId: z.uuid().optional(),
+    rawValue: curationNoteSchema.optional(),
+    note: curationNoteSchema.optional(),
+    secondaryReferenceId: z.uuid().optional(),
+  })
+  .refine((b) => (b.intent === undefined) === (b.respondsToRecordId === undefined), {
+    path: ['intent'],
+    message: 'intent and respondsToRecordId come together',
+  });
+
+/** @rfc RFC-70 R3 */
+export const createRecordsResultSchema = z.strictObject({
+  created: z.array(recordDetailSchema),
+  duplicates: z.array(z.strictObject({ recordId: z.uuid(), referenceId: z.uuid() })),
 });
 
 /** @rfc RFC-65 R3 */
 export const annotateRecordBodySchema = z
-  .strictObject({ kind: z.enum(ANNOTATION_KINDS), note: curationNoteSchema.optional() })
+  .strictObject({
+    kind: z.enum(ANNOTATION_KINDS),
+    note: curationNoteSchema.optional(),
+    reference: sourceRefSchema.optional(),
+  })
   .refine((b) => b.note !== undefined || (b.kind !== 'dispute' && b.kind !== 'withdraw'), {
     message: 'A note is required to dispute or withdraw',
     path: ['note'],
+  })
+  .refine((b) => b.reference === undefined || b.kind === 'confirm', {
+    path: ['reference'],
+    message: 'Only a confirmation carries a reference',
   });
+
+/** @rfc RFC-80 R4 */
+export const resolveDoiQuerySchema = z.strictObject({ doi: doiSchema });
+
+/** @rfc RFC-80 R4 */
+export const resolveDoiResultSchema = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.literal('known'), reference: referenceSchema }),
+  z.strictObject({
+    status: z.literal('resolvable'),
+    reference: z.null(),
+    preview: z
+      .strictObject({
+        title: z.string().nullable(),
+        authors: z.string().nullable(),
+        year: z.number().int().nullable(),
+        journal: z.string().nullable(),
+      })
+      .nullable(),
+  }),
+  z.strictObject({ status: z.literal('not_found'), reference: z.null() }),
+]);
 
 /** @rfc RFC-65 R6 */
 export const setAcceptedBodySchema = z.discriminatedUnion('decision', [
@@ -236,9 +294,15 @@ export const updateLevelBodySchema = nonEmpty(
   'key',
 );
 
+export type Doi = z.infer<typeof doiSchema>;
+export type SourceRef = z.infer<typeof sourceRefSchema>;
+export type Sources = z.infer<typeof sourcesSchema>;
 export type RecordValue = z.infer<typeof recordValueSchema>;
 export type CreateRecordBody = z.infer<typeof createRecordBodySchema>;
+export type CreateRecordsResult = z.infer<typeof createRecordsResultSchema>;
 export type AnnotateRecordBody = z.infer<typeof annotateRecordBodySchema>;
+export type ResolveDoiQuery = z.infer<typeof resolveDoiQuerySchema>;
+export type ResolveDoiResult = z.infer<typeof resolveDoiResultSchema>;
 export type SetAcceptedBody = z.infer<typeof setAcceptedBodySchema>;
 export type AcceptedCurrent = z.infer<typeof acceptedCurrentSchema>;
 export type AcceptedHistoryEntry = z.infer<typeof acceptedHistoryEntrySchema>;

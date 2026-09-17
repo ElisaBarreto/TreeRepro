@@ -5,6 +5,7 @@ import {
   setAcceptedBodySchema,
   speciesNameBodySchema,
   speciesTraitParamSchema,
+  speciesTraitsQuerySchema,
   updateSpeciesBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
@@ -108,10 +109,14 @@ export function speciesRoutes(ctx: AuthContext) {
       '/:id/traits',
       requirePermission(ctx, 'dataset.read'),
       validate('param', idParamSchema),
+      validate('query', speciesTraitsQuerySchema),
       async (c) => {
         const { id } = c.req.valid('param');
+        const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
-        const summary = await speciesTraitSummary(ctx.db, visibility, id);
+        const summary = await speciesTraitSummary(ctx.db, visibility, id, {
+          includeMissing: q.includeMissing === 'true',
+        });
         if (!summary) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
         return c.json({ data: summary });
       },

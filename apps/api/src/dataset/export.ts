@@ -79,7 +79,8 @@ export function acceptedCsv(db: Db, options: { batch?: number } = {}): ReadableS
     select f.name as family, g.name as genus, s.canonical_name as species, s.name_source,
       c.key as category, t.key as trait, r.value_text as value, t.unit, l.key as level,
       r.numeric_value::text as numeric_value,
-      pr.citation_key as primary_reference, sr.citation_key as secondary_reference,
+      case when pr.kind = 'personal_observation' then 'Personal observation' else pr.citation_key end as primary_reference,
+      case when sr.kind = 'personal_observation' then 'Personal observation' else sr.citation_key end as secondary_reference,
       cur.created_at as decided_at, r.id as record_id
     from current cur
     join trait_records r on r.id = cur.record_id

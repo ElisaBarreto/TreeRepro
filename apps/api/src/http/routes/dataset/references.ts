@@ -2,20 +2,31 @@ import {
   createReferenceBodySchema,
   idParamSchema,
   listReferencesQuerySchema,
+  resolveDoiQuerySchema,
   updateReferenceBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
 import { createReference, updateReference } from '../../../dataset/catalog.ts';
 import { getReference, searchReferences } from '../../../dataset/references.ts';
+import { resolveDoi } from '../../../dataset/sources.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
+import { rateLimit } from '../../middleware/rate-limit.ts';
 import { requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 
 /** @rfc RFC-61 R4, R6 */
 export function referenceRoutes(ctx: AuthContext) {
+  const doiLimit = rateLimit(ctx.limiter, [
+    {
+      scope: 'doi',
+      rule: { limit: 60, windowMs: 60_000 },
+      key: (c) => currentUser(c).id,
+    },
+  ]);
+
   return new Hono<AppEnv>()
     .get(
       '/',
@@ -27,8 +38,20 @@ export function referenceRoutes(ctx: AuthContext) {
           q: q.q,
           cursor: q.cursor,
           limit: q.limit,
+          kind: q.kind,
         });
         return c.json({ data, meta: { nextCursor } });
+      },
+    )
+    .get(
+      '/resolve',
+      requirePermission(ctx, 'records.create'),
+      doiLimit,
+      validate('query', resolveDoiQuerySchema),
+      async (c) => {
+        const { doi } = c.req.valid('query');
+        const data = await resolveDoi({ db: ctx.db, doi: ctx.doi }, doi);
+        return c.json({ data });
       },
     )
     .post(

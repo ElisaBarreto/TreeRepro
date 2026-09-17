@@ -501,7 +501,7 @@ describe('RFC-65 R1 Add value from the species page', () => {
 
   it('opens the created record in the drawer', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
-    curation.createRecord.mockResolvedValue(RECORD_DETAIL);
+    curation.createRecord.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
     dataset.fetchRecord.mockResolvedValue(RECORD_DETAIL);
     await openPage();
     await userEvent.click(screen.getByRole('button', { name: 'Add value' }));

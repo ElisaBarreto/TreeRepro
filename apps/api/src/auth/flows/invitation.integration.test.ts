@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, cookieFrom, randomIp, useTestApp } from '../../../test/helpers/app.ts';
+import { call, cookieFrom, ctxOf, randomIp, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { createUser, randomEmail } from '../../../test/helpers/users.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
@@ -8,21 +8,6 @@ import { findUserByEmail, findUserById, UserEmailTakenError } from '../users.ts'
 import { InvitationMailError, inviteUser } from './invitation.ts';
 
 const GOOD_PASSWORD = 'a perfectly fine passphrase';
-
-function ctxOf(t: ReturnType<typeof useTestApp>) {
-  return {
-    db: t.db,
-    sessions: t.sessions,
-    mfa: t.mfa,
-    limiter: t.limiter,
-    mailer: t.mail.mailer,
-    breachChecker: t.deps.breachChecker,
-    permissionCache: t.permissionCache,
-    logger: t.deps.logger,
-    appOrigin: 'http://localhost',
-    now: () => t.clock.now,
-  };
-}
 
 describe('RFC-20 R4 inviteUser', () => {
   const t = useTestApp();

@@ -1,5 +1,7 @@
+import { REFERENCE_KINDS } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   pgTable,
@@ -42,15 +44,34 @@ export const bibliographicReferences = pgTable(
     usageCount: integer('usage_count')
       .notNull()
       .generatedAlwaysAs(sql`primary_count + secondary_count`),
+    kind: text('kind', { enum: REFERENCE_KINDS }).notNull().default('publication'),
+    observerUserId: uuid('observer_user_id').references(() => users.id),
   },
   (t) => [
     uniqueIndex('bibliographic_references_citation_key_idx').on(t.citationKey),
     index('bibliographic_references_usage_idx').on(t.usageCount.desc(), t.id.desc()),
-    uniqueIndex('bibliographic_references_doi_idx').on(t.doi).where(sql`${t.doi} is not null`),
+    // On `lower(doi)`: a DOI is case-insensitive, so `10.1/X` and `10.1/x`
+    // are the same reference. The same index serves the `lower(doi)` lookup
+    // `findReferenceByDoi` makes and the collision `createReferenceFromDoi`
+    // relies on (RFC-80 R5). `catalog.ts` maps the violation by this name.
+    uniqueIndex('bibliographic_references_doi_idx')
+      .on(sql`lower(${t.doi})`)
+      .where(sql`${t.doi} is not null`),
     index('bibliographic_references_citation_key_trgm_idx').using(
       'gin',
       sql`${t.citationKey} gin_trgm_ops`,
     ),
+    check(
+      'bibliographic_references_kind_check',
+      sql`${t.kind} in ('publication', 'personal_observation')`,
+    ),
+    check(
+      'bibliographic_references_observer_check',
+      sql`(${t.kind} = 'personal_observation') = (${t.observerUserId} is not null)`,
+    ),
+    uniqueIndex('bibliographic_references_observer_idx')
+      .on(t.observerUserId)
+      .where(sql`${t.kind} = 'personal_observation'`),
   ],
 );
 

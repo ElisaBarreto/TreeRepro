@@ -1,6 +1,6 @@
 import { userSchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
-import { useTestApp } from '../../test/helpers/app.ts';
+import { ctxOf, useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
 import { createPlot } from '../../test/helpers/dataset.ts';
 import { adminRoleId, createRole } from '../../test/helpers/roles.ts';
@@ -17,21 +17,6 @@ import {
   suspendUser,
   updateUser,
 } from './users.ts';
-
-function ctxOf(t: ReturnType<typeof useTestApp>) {
-  return {
-    db: t.db,
-    sessions: t.sessions,
-    mfa: t.mfa,
-    limiter: t.limiter,
-    mailer: t.mail.mailer,
-    breachChecker: t.deps.breachChecker,
-    permissionCache: t.permissionCache,
-    logger: t.deps.logger,
-    appOrigin: 'http://localhost',
-    now: () => t.clock.now,
-  };
-}
 
 async function code(p: Promise<unknown>): Promise<string> {
   try {

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   type CreateRecordBody,
+  type CreateRecordsResult,
   createRecordBodySchema,
   type Dictionary,
   type RecordDetail,
@@ -128,15 +129,32 @@ export function AddValueDialog({
   const [local, setLocal] = useState<Record<string, string>>({});
   const canCreateReference = hasPermission(me, 'references.manage');
 
-  const save = useRecordWrite<CreateRecordBody, RecordDetail>({
+  const save = useRecordWrite<CreateRecordBody, CreateRecordsResult>({
     write: createRecord,
     speciesId,
-    onInvalidated: onCreated,
+    onInvalidated: (result) => {
+      const [first] = result.created;
+      if (first) onCreated?.(first);
+    },
   });
-  const errors = { ...fieldErrors(save.error), ...local };
+  // The API names a source by its position (`sources.references.<i>`, RFC-70
+  // R3); this form still has the two fixed slots, so index 0 is the primary
+  // reference field and index 1 the secondary one.
+  const serverErrors = fieldErrors(save.error);
+  const sourceError = (index: number) =>
+    Object.entries(serverErrors).find(([path]) =>
+      path.startsWith(`sources.references.${index}`),
+    )?.[1] ?? (index === 0 ? serverErrors.sources : undefined);
+  const errors: Record<string, string | undefined> = {
+    ...serverErrors,
+    primaryReferenceId: sourceError(0),
+    secondaryReferenceId: sourceError(1),
+    ...local,
+  };
   const duplicateId =
     save.error instanceof ApiError && save.error.code === 'RECORD_DUPLICATE'
-      ? save.error.details?.find((d) => d.path === 'recordId')?.message
+      ? save.error.details?.find((d) => d.path.startsWith('sources.references.') && d.message)
+          ?.message
       : undefined;
 
   const searchTraits = async (term: string) => {
@@ -175,12 +193,15 @@ export function AddValueDialog({
       return;
     }
 
+    const refs = secondary
+      ? [{ id: primary?.id ?? '' }, { id: secondary.id }]
+      : [{ id: primary?.id ?? '' }];
+
     const candidate = {
       speciesId,
       traitId: trait?.id ?? '',
       value: valueType === 'quantitative' ? { numeric: Number(numeric) } : { levelId },
-      primaryReferenceId: primary?.id ?? '',
-      secondaryReferenceId: secondary?.id,
+      sources: { references: refs },
       rawValue: rawValue.trim() || undefined,
       note: note.trim() || undefined,
     };
