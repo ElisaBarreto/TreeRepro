@@ -9,6 +9,7 @@ import { createDb, type Db } from '../../src/db/client.ts';
 import { createRedis, type Redis } from '../../src/redis/client.ts';
 import { captureLogger } from './logger.ts';
 import { createFakeMailer, type FakeMailer } from './mail.ts';
+import { fakeDoiClient } from './doi.ts';
 
 export const TEST_ORIGIN = 'http://localhost';
 export const TEST_SESSION_SECRET = Buffer.alloc(32, 3);
@@ -23,6 +24,7 @@ export interface TestApp {
   readonly limiter: RateLimiter;
   readonly permissionCache: PermissionCache;
   readonly mail: FakeMailer;
+  readonly doi: ReturnType<typeof fakeDoiClient>;
   /** Passwords the fake breach checker reports as breached. */
   readonly breached: Set<string>;
   /** Captured log lines of the default app. */
@@ -42,6 +44,7 @@ export function useTestApp(): TestApp {
   const breached = new Set<string>();
   const clock = { now: Date.now() };
   const mail = createFakeMailer();
+  const doi = fakeDoiClient();
 
   function build(db: Db, r: Redis, overrides: Partial<AppDeps> = {}) {
     const { logger, lines } = captureLogger();
@@ -58,6 +61,7 @@ export function useTestApp(): TestApp {
       mfa,
       limiter,
       mailer: mail.mailer,
+      doi,
       breachChecker: { isBreached: async (p) => breached.has(p) },
       permissionCache,
       now: () => clock.now,
@@ -81,6 +85,7 @@ export function useTestApp(): TestApp {
       limiter: built.limiter,
       permissionCache: built.permissionCache,
       mail,
+      doi,
       breached,
       lines: built.lines,
       clock,
@@ -121,6 +126,9 @@ export function useTestApp(): TestApp {
     },
     get mail() {
       return get('mail');
+    },
+    get doi() {
+      return get('doi');
     },
     get breached() {
       return get('breached');

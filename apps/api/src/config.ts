@@ -49,6 +49,11 @@ const envSchema = z.object({
       const user = v?.trim();
       return user || undefined;
     }),
+  DOI_CONTACT_EMAIL: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined)
+    .pipe(z.string().email().optional()),
 });
 
 const migratorEnvSchema = z.object({
@@ -107,6 +112,7 @@ export interface AppConfig {
   pii: { keyring: Secret<PiiKeyring>; hmacKey: Secret<Buffer> };
   sessionSecret: Secret<Buffer>;
   smtp: SmtpSettings;
+  doiContactEmail?: string;
 }
 
 export interface MigratorConfig {
@@ -224,6 +230,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     pii: { keyring: new Secret(keyring), hmacKey: new Secret(hmacKey) },
     sessionSecret: new Secret(sessionSecret),
     smtp,
+    doiContactEmail: e.DOI_CONTACT_EMAIL,
   };
 }
 

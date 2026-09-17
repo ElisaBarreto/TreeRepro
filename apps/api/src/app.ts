@@ -23,10 +23,12 @@ import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import { meRoutes } from './http/routes/me.ts';
 import type { Logger } from './logger.ts';
 import type { Mailer } from './mail/mailer.ts';
+import type { DoiClient } from './integrations/doi.ts';
 
 export interface AppDeps {
   config: Pick<AppConfig, 'appOrigin'>;
   logger: Logger;
+  doi: DoiClient;
   health: HealthChecks;
   db: Db;
   sessions: SessionStore;
@@ -59,6 +61,7 @@ export function createApp(deps: AppDeps) {
     breachChecker: deps.breachChecker,
     permissionCache: deps.permissionCache,
     logger: deps.logger,
+    doi: deps.doi,
     appOrigin: deps.config.appOrigin,
     now: deps.now ?? Date.now,
   };
