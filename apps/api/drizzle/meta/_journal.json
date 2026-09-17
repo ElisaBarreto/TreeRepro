@@ -127,6 +127,20 @@
       "when": 1789651901502,
       "tag": "0017_species_active",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789661408729,
+      "tag": "0018_permissions_plots",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789661419317,
+      "tag": "0019_plots",
+      "breakpoints": true
     }
   ]
 }

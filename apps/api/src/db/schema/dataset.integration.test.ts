@@ -13,6 +13,7 @@ import { createUser } from '../../../test/helpers/users.ts';
 import { acceptedValues, recordAnnotations } from './curation.ts';
 import { traitCategories, traitLevels, traits } from './dictionary.ts';
 import { importBatches } from './imports.ts';
+import { plotSpecies, plots, userPlots } from './plots.ts';
 import { traitRecords } from './records.ts';
 import { bibliographicReferences } from './references.ts';
 import { families, genera, species, speciesNames } from './taxa.ts';
@@ -609,6 +610,42 @@ describe('RFC-63 R4 append-only records and curation tables', () => {
       expect(batch?.status).toBe('running');
       expect(batch?.rowsTotal).toBe(0);
       expect(batch?.unknownLevels).toEqual([]);
+    });
+  });
+});
+
+describe('RFC-67 R1 plot tables', () => {
+  const t = useTestDb();
+
+  it('code is unique case-insensitively; coordinates are checked; memberships are keyed', async () => {
+    await withRollback(t.db, async (tx) => {
+      const code = `P-${rand()}`;
+      const [plot] = await tx.insert(plots).values({ code, name: 'Plot' }).returning();
+      expect(plot?.description).toBe('');
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) => sp.insert(plots).values({ code: code.toLowerCase(), name: 'x' })),
+        ),
+      ).rejects.toMatchObject({ code: '23505' });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(plots).values({ code: `Q-${rand()}`, name: 'x', latitude: 91 }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      const sp1 = await createSpecies(tx);
+      await tx.insert(plotSpecies).values({ plotId: plot?.id as string, speciesId: sp1.id });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(plotSpecies).values({ plotId: plot?.id as string, speciesId: sp1.id }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23505' });
+      const { user } = await createUser(tx);
+      await tx.insert(userPlots).values({ userId: user.id, plotId: plot?.id as string });
+      expect(user.restrictToAssignedPlots).toBe(false);
     });
   });
 });

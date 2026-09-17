@@ -1,6 +1,6 @@
 import { USER_STATUSES } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
-import { check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { encryptedText } from '../types/encrypted-text.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -8,6 +8,7 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' 
 /**
  * @rfc RFC-20 R1, R3
  * @rfc RFC-40 R1
+ * @rfc RFC-67 R1
  */
 export const users = pgTable(
   'users',
@@ -20,6 +21,7 @@ export const users = pgTable(
     status: text('status', { enum: USER_STATUSES }).notNull().default('invited'),
     totpSecret: encryptedText('users', 'totp_secret'),
     totpEnabledAt: ts('totp_enabled_at'),
+    restrictToAssignedPlots: boolean('restrict_to_assigned_plots').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
     suspendedAt: ts('suspended_at'),
