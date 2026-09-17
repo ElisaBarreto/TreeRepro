@@ -1,4 +1,4 @@
-import { HARMONISATION_STATUSES, RECORD_ORIGINS } from '@treerepro/contracts';
+import { HARMONISATION_STATUSES, RECORD_INTENTS, RECORD_ORIGINS } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -65,6 +65,13 @@ export const traitRecords = pgTable(
         onDelete: 'restrict',
       },
     ),
+    /** The intent of this response record (RFC-70 R1). */
+    intent: text('intent', { enum: RECORD_INTENTS }),
+    /** The record this row responds to (RFC-70 R1). */
+    respondsToRecordId: uuid('responds_to_record_id').references(
+      (): AnyPgColumn => traitRecords.id,
+      { onDelete: 'restrict' },
+    ),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
@@ -89,6 +96,10 @@ export const traitRecords = pgTable(
     index('trait_records_supersedes_idx')
       .on(t.supersedesRecordId)
       .where(sql`${t.supersedesRecordId} is not null`),
+    index('trait_records_responds_to_idx')
+      .on(t.respondsToRecordId)
+      .where(sql`${t.respondsToRecordId} is not null`),
+    check('trait_records_intent_check', sql`(${t.intent} is null) = (${t.respondsToRecordId} is null)`),
     check(
       'trait_records_reference_check',
       sql`${t.primaryReferenceId} is not null or ${t.secondaryReferenceId} is not null`,

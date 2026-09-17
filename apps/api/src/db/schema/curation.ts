@@ -1,7 +1,8 @@
 import { ACCEPTED_DECISIONS, ANNOTATION_KINDS } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { traits } from './dictionary.ts';
+import { bibliographicReferences } from './references.ts';
 import { traitRecords } from './records.ts';
 import { species } from './taxa.ts';
 import { users } from './users.ts';
@@ -21,6 +22,10 @@ export const recordAnnotations = pgTable(
       .references(() => users.id),
     kind: text('kind', { enum: ANNOTATION_KINDS }).notNull(),
     note: text('note'),
+    /** Reference supplied on a confirmation (RFC-70 R6). Null for all other kinds. */
+    referenceId: uuid('reference_id').references(() => bibliographicReferences.id, { onDelete: 'restrict' }),
+    /** True when generated automatically by the service (e.g. a contest auto-dispute). */
+    generated: boolean('generated').notNull().default(false),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
@@ -28,6 +33,10 @@ export const recordAnnotations = pgTable(
     check(
       'record_annotations_note_check',
       sql`${t.kind} not in ('dispute', 'withdraw') or ${t.note} is not null`,
+    ),
+    check(
+      'record_annotations_reference_check',
+      sql`${t.referenceId} is null or ${t.kind} = 'confirm'`,
     ),
   ],
 );

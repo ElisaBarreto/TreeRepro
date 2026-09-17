@@ -5,6 +5,7 @@ import {
   createRecord,
   createReference,
   createSpecies,
+  createTrait,
   levelByKey,
   traitByKey,
 } from '../../../test/helpers/dataset.ts';
@@ -646,6 +647,149 @@ describe('RFC-67 R1 plot tables', () => {
       const { user } = await createUser(tx);
       await tx.insert(userPlots).values({ userId: user.id, plotId: plot?.id as string });
       expect(user.restrictToAssignedPlots).toBe(false);
+    });
+  });
+});
+
+describe('RFC-61 R1, R7 reference kinds', () => {
+  const t = useTestDb();
+  it('personal observation needs an observer, one per user; a publication has none', async () => {
+    await withRollback(t.db, async (tx) => {
+      const { user } = await createUser(tx);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(bibliographicReferences).values({ citationKey: `po-${rand()}`, kind: 'personal_observation' }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      await tx.insert(bibliographicReferences).values({
+        citationKey: `personal-observation:${user.id}`,
+        kind: 'personal_observation',
+        observerUserId: user.id,
+      });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(bibliographicReferences).values({
+              citationKey: `po2-${rand()}`,
+              kind: 'personal_observation',
+              observerUserId: user.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23505' });
+    });
+  });
+});
+
+describe('RFC-63 R1, R2 intent and responses', () => {
+  const t = useTestDb();
+  it('intent and responds_to come together; a response must share species and trait', async () => {
+    await withRollback(t.db, async (tx) => {
+      const { user } = await createUser(tx);
+      const ref = await createReference(tx);
+      const trait = await createTrait(tx);
+      const other = await createTrait(tx);
+      const sp1 = await createSpecies(tx);
+      const level = trait.levels[0]?.id as string;
+      const base = await createRecord(tx, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'alpha',
+        levelId: level,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+      // intent without respondsToRecordId violates the check
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: trait.id,
+              valueText: 'beta',
+              levelId: trait.levels[1]?.id,
+              harmonisation: 'harmonised',
+              origin: 'manual',
+              createdBy: user.id,
+              primaryReferenceId: ref.id,
+              intent: 'contest',
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      // response targeting a different trait is rejected by trigger
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              speciesId: sp1.id,
+              traitId: other.id,
+              valueText: 'alpha',
+              levelId: other.levels[0]?.id,
+              harmonisation: 'harmonised',
+              origin: 'manual',
+              createdBy: user.id,
+              primaryReferenceId: ref.id,
+              intent: 'contest',
+              respondsToRecordId: base.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: 'P0001' });
+      const [ok] = await tx
+        .insert(traitRecords)
+        .values({
+          speciesId: sp1.id,
+          traitId: trait.id,
+          valueText: 'beta',
+          levelId: trait.levels[1]?.id,
+          harmonisation: 'harmonised',
+          origin: 'manual',
+          createdBy: user.id,
+          primaryReferenceId: ref.id,
+          intent: 'complement',
+          respondsToRecordId: base.id,
+        })
+        .returning();
+      expect(ok?.intent).toBe('complement');
+    });
+  });
+  it('R7 an annotation reference is allowed on confirm only; generated defaults to false', async () => {
+    await withRollback(t.db, async (tx) => {
+      const { user } = await createUser(tx);
+      const ref = await createReference(tx);
+      const trait = await createTrait(tx);
+      const sp1 = await createSpecies(tx);
+      const rec = await createRecord(tx, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'alpha',
+        levelId: trait.levels[0]?.id,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+      const [a] = await tx
+        .insert(recordAnnotations)
+        .values({ recordId: rec.id, actorId: user.id, kind: 'confirm', referenceId: ref.id })
+        .returning();
+      expect(a?.generated).toBe(false);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(recordAnnotations).values({
+              recordId: rec.id,
+              actorId: user.id,
+              kind: 'dispute',
+              note: 'n',
+              referenceId: ref.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
     });
   });
 });

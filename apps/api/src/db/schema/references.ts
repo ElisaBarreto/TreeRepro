@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   pgTable,
@@ -9,6 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { REFERENCE_KINDS } from '@treerepro/contracts';
 import { users } from './users.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -42,6 +44,8 @@ export const bibliographicReferences = pgTable(
     usageCount: integer('usage_count')
       .notNull()
       .generatedAlwaysAs(sql`primary_count + secondary_count`),
+    kind: text('kind', { enum: REFERENCE_KINDS }).notNull().default('publication'),
+    observerUserId: uuid('observer_user_id').references(() => users.id),
   },
   (t) => [
     uniqueIndex('bibliographic_references_citation_key_idx').on(t.citationKey),
@@ -51,6 +55,10 @@ export const bibliographicReferences = pgTable(
       'gin',
       sql`${t.citationKey} gin_trgm_ops`,
     ),
+    check('bibliographic_references_kind_check', sql`${t.kind} in ('publication', 'personal_observation')`),
+    check('bibliographic_references_observer_check', sql`(${t.kind} = 'personal_observation') = (${t.observerUserId} is not null)`),
+    uniqueIndex('bibliographic_references_observer_idx').on(t.observerUserId).where(sql`${t.kind} = 'personal_observation'`),
+    index('bibliographic_references_doi_lower_idx').on(sql`lower(${t.doi})`).where(sql`${t.doi} is not null`),
   ],
 );
 
