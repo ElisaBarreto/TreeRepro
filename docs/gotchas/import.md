@@ -49,3 +49,9 @@
 **Symptom:** `import_batches.finished_at` equals `started_at` (or predates it) even though the import ran for over a second.
 **Cause:** Postgres's `now()` (and `current_timestamp`, `transaction_timestamp()`) returns the time the *transaction* started, not the current statement — the same value on every call for the whole `sql.begin` block, no matter how long the transaction runs.
 **Fix:** Use `clock_timestamp()` for any timestamp that must reflect when a statement actually executed, not when the transaction began. The batch's final `UPDATE … SET finished_at = clock_timestamp()` in `importRecords` relies on this.
+
+## `user_plots` stages the file untouched and hashes the distinct e-mails in Node
+**Symptom:** Temptation to write a pre-processed or sanitized copy of the `user_plots` CSV to disk before loading.
+**Cause:** GDPR applies strictly to user data. The `user_plots` import file contains raw emails (PII).
+**Fix:** `user_plots` stages the file untouched and hashes the distinct e-mails in Node inside the transaction (`update … from (values …)`); never write a temporary copy of a file with PII.
+
