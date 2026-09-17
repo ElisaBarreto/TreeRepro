@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   type CreateRecordBody,
+  type CreateRecordsResult,
   createRecordBodySchema,
   type Dictionary,
   type RecordDetail,
@@ -128,10 +129,10 @@ export function AddValueDialog({
   const [local, setLocal] = useState<Record<string, string>>({});
   const canCreateReference = hasPermission(me, 'references.manage');
 
-  const save = useRecordWrite<CreateRecordBody, RecordDetail>({
+  const save = useRecordWrite<CreateRecordBody, CreateRecordsResult>({
     write: createRecord,
     speciesId,
-    onInvalidated: onCreated,
+    onInvalidated: (result) => onCreated?.(result.created[0]),
   });
   const errors = { ...fieldErrors(save.error), ...local };
   const duplicateId =
@@ -168,19 +169,22 @@ export function AddValueDialog({
     if (valueType === 'quantitative' && (numeric.trim() === '' || Number.isNaN(Number(numeric)))) {
       required['value.numeric'] = LOCAL_MESSAGES['value.numeric'] ?? '';
     }
-    if (!primary) required.primaryReferenceId = LOCAL_MESSAGES.primaryReferenceId ?? '';
+    if (!primary) required['sources'] = LOCAL_MESSAGES.primaryReferenceId ?? '';
     if (Object.keys(required).length > 0) {
       save.reset();
       setLocal(required);
       return;
     }
 
+    const refs = secondary
+      ? [{ id: primary?.id ?? '' }, { id: secondary.id }]
+      : [{ id: primary?.id ?? '' }];
+
     const candidate = {
       speciesId,
       traitId: trait?.id ?? '',
       value: valueType === 'quantitative' ? { numeric: Number(numeric) } : { levelId },
-      primaryReferenceId: primary?.id ?? '',
-      secondaryReferenceId: secondary?.id,
+      sources: { references: refs },
       rawValue: rawValue.trim() || undefined,
       note: note.trim() || undefined,
     };

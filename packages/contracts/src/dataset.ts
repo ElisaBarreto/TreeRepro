@@ -142,8 +142,14 @@ export const listGeneraQuerySchema = cursorQuerySchema.extend({
 /** @rfc RFC-60 R8 */
 export const genusSchema = taxonRefSchema.extend({ family: taxonRefSchema.nullable() });
 
-/** @rfc RFC-61 R4 */
-export const referenceRefSchema = z.strictObject({ id: z.uuid(), citationKey: z.string() });
+/** @rfc RFC-63 R8 */
+export const userRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
+
+export const REFERENCE_KINDS = ['publication', 'personal_observation'] as const;
+export const RECORD_INTENTS = ['contest', 'complement'] as const;
+
+/** @rfc RFC-61 R1, R7 */
+export const referenceRefSchema = z.strictObject({ id: z.uuid(), citationKey: z.string(), kind: z.enum(REFERENCE_KINDS) });
 
 /**
  * `primaryCount` / `secondaryCount`: records naming the reference in that
@@ -162,6 +168,8 @@ export const referenceSchema = z.strictObject({
   createdAt: z.iso.datetime(),
   primaryCount: z.number().int().nonnegative(),
   secondaryCount: z.number().int().nonnegative(),
+  kind: z.enum(REFERENCE_KINDS),
+  observer: userRefSchema.nullable(),
 });
 
 /** `recordCount`: records naming the reference in either role, counted once. @rfc RFC-61 R4 */
@@ -172,6 +180,7 @@ export const referenceDetailSchema = referenceSchema.extend({
 /** @rfc RFC-61 R4 */
 export const listReferencesQuerySchema = cursorQuerySchema.extend({
   q: searchTermSchema.optional(),
+  kind: z.enum([...REFERENCE_KINDS, 'all']).optional(),
 });
 
 /** @rfc RFC-62 R5 */
@@ -202,8 +211,6 @@ export const dictionarySchema = z.array(
   z.strictObject({ key: z.string(), label: z.string(), traits: z.array(traitSchema) }),
 );
 
-/** @rfc RFC-63 R8 */
-export const userRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 
 /** @rfc RFC-63 R8 */
 export const recordSchema = z.strictObject({
@@ -221,6 +228,8 @@ export const recordSchema = z.strictObject({
   origin: z.enum(RECORD_ORIGINS),
   createdAt: z.iso.datetime(),
   createdBy: userRefSchema.nullable(),
+  intent: z.enum(RECORD_INTENTS).nullable(),
+  respondsTo: z.strictObject({ id: z.uuid() }).nullable(),
 });
 
 /** @rfc RFC-63 R8 */
@@ -230,6 +239,8 @@ export const annotationSchema = z.strictObject({
   note: z.string().nullable(),
   actor: userRefSchema,
   createdAt: z.iso.datetime(),
+  reference: referenceRefSchema.nullable(),
+  generated: z.boolean(),
 });
 
 /** @rfc RFC-63 R8 */
@@ -258,6 +269,14 @@ export const recordDetailSchema = recordSchema.extend({
   acceptedHistory: z.array(acceptedDecisionSchema),
   supersedes: z.strictObject({ id: z.uuid() }).nullable(),
   supersededBy: z.array(z.strictObject({ id: z.uuid() })),
+  responses: z.array(
+    z.strictObject({
+      id: z.uuid(),
+      intent: z.enum(RECORD_INTENTS),
+      createdBy: userRefSchema.nullable(),
+      createdAt: z.iso.datetime(),
+    }),
+  ),
 });
 
 /** @rfc RFC-63 R9 */
@@ -304,6 +323,10 @@ export const traitSummarySchema = z.strictObject({
   accepted: z
     .strictObject({ recordId: z.uuid(), valueText: z.string(), decidedAt: z.iso.datetime() })
     .nullable(),
+});
+
+export const speciesTraitsQuerySchema = z.strictObject({
+  includeMissing: z.enum(['true', 'false']).optional(),
 });
 
 /** @rfc RFC-63 R10 */

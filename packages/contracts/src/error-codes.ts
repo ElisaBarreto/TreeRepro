@@ -53,6 +53,8 @@ export const ERROR_CODES = {
   PLOT_NOT_FOUND: 404,
   PLOT_CODE_TAKEN: 409,
   PLOT_SPECIES_EXISTS: 409,
+  DOI_LOOKUP_FAILED: 502,
+  REFERENCE_IS_PERSONAL: 409,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

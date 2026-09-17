@@ -6,6 +6,7 @@ import {
   createReferenceBodySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
+  resolveDoiResultSchema,
   setAcceptedBodySchema,
   updateGenusBodySchema,
   updateReferenceBodySchema,
@@ -17,7 +18,7 @@ const uuid = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
 const other = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
 
 describe('RFC-65 R1 createRecordBodySchema', () => {
-  const base = { speciesId: uuid, traitId: uuid, primaryReferenceId: uuid };
+  const base = { speciesId: uuid, traitId: uuid, sources: { references: [{ id: uuid }] } };
   it('accepts a level or a finite number below 1e308; trims rawValue and note', () => {
     expect(
       createRecordBodySchema.parse({ ...base, value: { levelId: uuid }, rawValue: ' Aug ' }),
@@ -51,6 +52,17 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
       createRecordBodySchema.safeParse({ ...base, value: { levelId: uuid }, extra: 1 }).success,
     ).toBe(false);
   });
+
+  it('refuses intent without respondsToRecordId', () => {
+    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, intent: 'contest' }).success).toBe(false);
+    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, respondsToRecordId: uuid }).success).toBe(false);
+    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, intent: 'contest', respondsToRecordId: uuid }).success).toBe(true);
+  });
+
+  it('refuses 11 references; accepts { personalObservation: true }', () => {
+    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, sources: { references: Array(11).fill({ id: uuid }) } }).success).toBe(false);
+    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, sources: { personalObservation: true } }).success).toBe(true);
+  });
 });
 
 describe('RFC-65 R3 annotateRecordBodySchema', () => {
@@ -69,6 +81,24 @@ describe('RFC-65 R3 annotateRecordBodySchema', () => {
     expect(missing.success ? [] : missing.error.issues.map((i) => i.path.join('.'))).toContain(
       'note',
     );
+  });
+
+  it('refuses reference with kind: dispute', () => {
+    expect(annotateRecordBodySchema.safeParse({ kind: 'dispute', note: 'Wrong', reference: { id: uuid } }).success).toBe(false);
+    expect(annotateRecordBodySchema.safeParse({ kind: 'confirm', reference: { id: uuid } }).success).toBe(true);
+  });
+});
+
+describe('RFC-80 resolveDoiResultSchema', () => {
+  it('parses each variant', () => {
+    expect(resolveDoiResultSchema.safeParse({ status: 'not_found', reference: null }).success).toBe(true);
+    expect(resolveDoiResultSchema.safeParse({
+      status: 'resolvable', reference: null, preview: { title: 'T', authors: 'A', year: 2020, journal: 'J' }
+    }).success).toBe(true);
+    expect(resolveDoiResultSchema.safeParse({
+      status: 'known',
+      reference: { id: uuid, citationKey: 'K', kind: 'publication', createdAt: new Date().toISOString(), primaryCount: 0, secondaryCount: 0, title: null, authors: null, year: null, journal: null, doi: null, url: null, observer: null }
+    }).success).toBe(true);
   });
 });
 
