@@ -8,7 +8,7 @@ describe('RFC-30 R2 permission catalog', () => {
       new URL('../../../docs/rfc/30-access/30-permission-catalog.md', import.meta.url),
       'utf8',
     );
-    const rows = [...doc.matchAll(/^\|\s*`([a-z]+\.[a-z]+)`\s*\|\s*([^|]+?)\s*\|$/gm)].map((m) => [
+    const rows = [...doc.matchAll(/^\|\s*`([a-z]+\.[a-z_]+)`\s*\|\s*([^|]+?)\s*\|$/gm)].map((m) => [
       m[1],
       m[2],
     ]);
@@ -17,7 +17,7 @@ describe('RFC-30 R2 permission catalog', () => {
   });
 
   it('R1 keys are <resource>.<action> and PERMISSION_KEYS lists them in catalog order', () => {
-    for (const key of PERMISSION_KEYS) expect(key).toMatch(/^[a-z]+\.[a-z]+$/);
+    for (const key of PERMISSION_KEYS) expect(key).toMatch(/^[a-z]+\.[a-z_]+$/);
     expect(PERMISSION_KEYS).toEqual(Object.keys(PERMISSIONS));
     expect(new Set(PERMISSION_KEYS).size).toBe(PERMISSION_KEYS.length);
   });

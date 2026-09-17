@@ -30,7 +30,9 @@ vi.mock('../../api/curation.ts', async (importOriginal) => ({
 }));
 
 beforeEach(() => {
-  auth.fetchMe.mockReset().mockResolvedValue({ ...ME, permissions: ['dataset.read'] });
+  auth.fetchMe
+    .mockReset()
+    .mockResolvedValue({ ...ME, permissions: ['dataset.read', 'records.review'] });
   dataset.fetchRecord.mockReset().mockResolvedValue(CURATED_RECORD_DETAIL);
   curation.fetchDisputed
     .mockReset()

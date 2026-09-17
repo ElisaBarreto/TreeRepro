@@ -7,6 +7,7 @@ import {
   updateGenusBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
+import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { createFamily, createGenus, updateFamily, updateGenus } from '../../../dataset/catalog.ts';
 import { listFamilies, listGenera } from '../../../dataset/taxa.ts';
@@ -24,7 +25,8 @@ export function familyRoutes(ctx: AuthContext) {
       validate('query', cursorQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
-        const { data, nextCursor } = await listFamilies(ctx.db, {
+        const visibility = await visibilityOf(ctx, c);
+        const { data, nextCursor } = await listFamilies(ctx.db, visibility, {
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -71,7 +73,8 @@ export function genusRoutes(ctx: AuthContext) {
       validate('query', listGeneraQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
-        const { data, nextCursor } = await listGenera(ctx.db, {
+        const visibility = await visibilityOf(ctx, c);
+        const { data, nextCursor } = await listGenera(ctx.db, visibility, {
           familyId: q.familyId,
           q: q.q,
           cursor: q.cursor,

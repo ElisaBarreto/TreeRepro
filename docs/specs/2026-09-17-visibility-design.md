@@ -1,7 +1,7 @@
 # TreeRepro — Visibility Design (plans 08a, 08b)
 
 **Date:** 2026-09-17
-**Status:** approved design; plans `2026-09-17-visibility-08a-roles.md` and `2026-09-17-visibility-08b-plots.md`
+**Status:** 08a implemented (PR pending, issue #69); 08b planned (`2026-09-17-visibility-08b-plots.md`)
 **Scope:** who sees which species and traits. The three roles of the scientific workflow as seeded system roles; an `active` flag on species with API-level enforcement; field plots with a per-user home scope and an optional hard restriction; the supplementary import conventions every later dataset reuses. RFC-33 (data visibility), RFC-67 (field plots), RFC-68 (supplementary imports), and amendments to RFC-22, RFC-30, RFC-31, RFC-32, RFC-41, RFC-50, RFC-60, RFC-62, RFC-64. Programme index: `2026-09-17-contributor-launch-overview.md`.
 
 ## 1. Context

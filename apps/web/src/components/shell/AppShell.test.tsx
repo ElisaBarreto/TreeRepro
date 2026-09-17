@@ -114,9 +114,9 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
   });
 
-  it('RFC-13 R3 shows the Curation group with dataset.read, linking Unresolved taxa to the species search with the toggle on', async () => {
+  it('RFC-31 R11 shows the Curation group with records.review, linking Unresolved taxa to the species search with the toggle on', async () => {
     renderWithProviders(<AppShell>content</AppShell>, {
-      me: { ...ME, permissions: ['dataset.read'] },
+      me: { ...ME, permissions: ['dataset.read', 'records.review'] },
     });
     const nav = screen.getByRole('navigation', { name: 'Curation' });
     expect(within(nav).getByRole('link', { name: 'Pending' })).toHaveAttribute(
@@ -131,6 +131,13 @@ describe('RFC-13 R3 AppShell navigation', () => {
       'href',
       '/app/species?unresolved=true',
     );
+  });
+
+  it('RFC-31 R11 a contributor session (dataset.read, records.create, records.annotate) renders no Curation group', () => {
+    renderWithProviders(<AppShell>content</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read', 'records.create', 'records.annotate'] },
+    });
+    expect(screen.queryByRole('navigation', { name: 'Curation' })).not.toBeInTheDocument();
   });
 
   it('hides the Curation group without dataset.read', () => {
@@ -178,7 +185,7 @@ describe('RFC-13 R3 AppShell chrome', () => {
     location.pathname = '/app/species';
     location.search = { unresolved: true };
     const { unmount } = renderWithProviders(<AppShell>child</AppShell>, {
-      me: { ...ME, permissions: ['dataset.read'] },
+      me: { ...ME, permissions: ['dataset.read', 'records.review'] },
     });
     expect(screen.getByRole('link', { name: 'Unresolved taxa' })).toHaveAttribute(
       'aria-current',
@@ -192,7 +199,7 @@ describe('RFC-13 R3 AppShell chrome', () => {
 
     location.search = {};
     renderWithProviders(<AppShell>child</AppShell>, {
-      me: { ...ME, permissions: ['dataset.read'] },
+      me: { ...ME, permissions: ['dataset.read', 'records.review'] },
     });
     expect(screen.getByRole('link', { name: 'Species' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Unresolved taxa' })).not.toHaveAttribute(

@@ -214,7 +214,11 @@ describe('RFC-64 importRecords', () => {
       not_numeric: 4,
       empty: 1,
     });
-    expect(report.rejectReasons).toEqual({ no_species_name: 1, unknown_trait: 1, no_reference: 1 });
+    expect(report.rejectReasons).toMatchObject({
+      no_species_name: 1,
+      unknown_trait: 1,
+      no_reference: 1,
+    });
 
     // R3 same file again is refused; --force imports zero new rows
     await expect(importRecords(t.db, { filePath: FIXTURE })).rejects.toMatchObject({

@@ -43,6 +43,7 @@ const ADENANTHERA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d03',
   canonicalName: 'Adenanthera pavonina',
   nameSource: 'wcvp',
+  active: true,
   genus: { id: GENUS.id, name: GENUS.name },
   family: FAMILY,
   matchedName: null,
@@ -52,6 +53,7 @@ const ADANSONIA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04',
   canonicalName: 'Adansonia digitata',
   nameSource: 'gbif',
+  active: true,
   genus: null,
   family: null,
   matchedName: 'Adansonia baobab',
@@ -215,6 +217,25 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     );
   });
 
+  it('RFC-33 R7 filters by status with dataset.read_inactive, and hides the select without it', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const first = await openPage();
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument();
+    first.unmount();
+
+    auth.fetchMe.mockResolvedValue({
+      ...READER,
+      permissions: ['dataset.read', 'dataset.read_inactive'],
+    });
+    await openPage();
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'inactive');
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'inactive' }),
+      ),
+    );
+  });
+
   it('suggests genera for the typed prefix, filters by the chosen one and clears it', async () => {
     dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
     await openPage();
@@ -301,6 +322,7 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
 
   it('RFC-60 R6 switches between Species and Unresolved taxa through the navigation while already on the page', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.review'] });
     await openPage();
     const checkbox = screen.getByRole('checkbox', { name: /unresolved/i });
     expect(checkbox).not.toBeChecked();

@@ -76,7 +76,8 @@ describe('RFC-13 R2, RFC-64 R11 ImportsPage', () => {
     const cells = within(completed)
       .getAllByRole('cell')
       .map((cell) => cell.textContent);
-    expect(cells.slice(4)).toEqual(['12,345', '12,000', '300', '45', '210']);
+    expect(cells[1]).toBe('records');
+    expect(cells.slice(5)).toEqual(['12,345', '12,000', '300', '45', '210']);
 
     const failed = rows[2] as HTMLElement;
     expect(within(failed).getByText('failed')).toBeInTheDocument();
@@ -111,6 +112,22 @@ describe('RFC-13 R2, RFC-64 R11 ImportsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
     expect(await screen.findByRole('link', { name: 'records-2026-09.csv' })).toBeInTheDocument();
     expect(screen.getByText('Page 1')).toBeInTheDocument();
+  });
+
+  it('RFC-68 R7 shows the Kind column and filters by kind', async () => {
+    const speciesStatusBatch: ImportBatch = { ...IMPORT_BATCH, kind: 'species_status' };
+    dataset.fetchImports.mockResolvedValue(page([speciesStatusBatch]));
+    renderAt('/app/imports');
+    await screen.findByRole('link', { name: 'records-2026-09.csv' });
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    expect(within(rows[1] as HTMLElement).getByText('species status')).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('Kind'), 'species_status');
+    await waitFor(() =>
+      expect(dataset.fetchImports).toHaveBeenLastCalledWith(
+        expect.objectContaining({ kind: 'species_status' }),
+      ),
+    );
   });
 
   it('RFC-13 R3 without imports.read the route shows NoPermission and the nav hides Imports', async () => {

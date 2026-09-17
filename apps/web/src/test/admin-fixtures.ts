@@ -23,6 +23,25 @@ export const ROLE_ADMIN: Role = {
   updatedAt: AT,
 };
 
+/** The system `manager` role with its stored permissions. @rfc RFC-31 R2, R11 */
+export const ROLE_MANAGER: Role = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8a04',
+  name: 'manager',
+  description: 'Runs imports and curation',
+  isSystem: true,
+  permissions: [
+    'dataset.read',
+    'dataset.read_inactive',
+    'imports.read',
+    'records.annotate',
+    'records.create',
+    'records.review',
+    'records.withdraw',
+  ],
+  createdAt: AT,
+  updatedAt: AT,
+};
+
 /** @rfc RFC-01 R2 */
 export const ROLE_READERS: Role = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8a02',

@@ -8,6 +8,7 @@ import type {
   TraitValueType,
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
+import { UNRESTRICTED } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation, violatedConstraint } from '../db/errors.ts';
@@ -45,6 +46,7 @@ async function requireSpeciesRow(db: DbExecutor, id: string) {
       canonicalName: species.canonicalName,
       nameSource: species.nameSource,
       genusId: species.genusId,
+      active: species.active,
     })
     .from(species)
     .where(eq(species.id, id))
@@ -206,7 +208,7 @@ export async function createSpecies(
     }
     if (!row) throw new Error('createSpecies: insert returned no row');
     await taxaAudit(tx, input.actorId, 'taxa.created', 'species', row.id, { kind: 'species' });
-    const created = await getSpecies(tx, row.id);
+    const created = await getSpecies(tx, UNRESTRICTED, row.id);
     if (!created) throw new Error('createSpecies: species vanished');
     return created;
   });
@@ -220,6 +222,7 @@ export async function updateSpecies(
     canonicalName?: string;
     nameSource?: NameSource;
     genusId?: string | null;
+    active?: boolean;
     actorId: string;
   },
 ): Promise<Species> {
@@ -228,7 +231,12 @@ export async function updateSpecies(
   return db.transaction(async (tx) => {
     const current = await requireSpeciesRow(tx, input.id);
     const fields: string[] = [];
-    const set: { canonicalName?: string; nameSource?: NameSource; genusId?: string | null } = {};
+    const set: {
+      canonicalName?: string;
+      nameSource?: NameSource;
+      genusId?: string | null;
+      active?: boolean;
+    } = {};
     if (canonicalName !== undefined && canonicalName !== current.canonicalName) {
       fields.push('canonicalName');
       set.canonicalName = canonicalName;
@@ -241,6 +249,10 @@ export async function updateSpecies(
       if (input.genusId !== null) await requireGenusRow(tx, input.genusId);
       fields.push('genusId');
       set.genusId = input.genusId;
+    }
+    if (input.active !== undefined && input.active !== current.active) {
+      fields.push('active');
+      set.active = input.active;
     }
     if (fields.length > 0) {
       try {
@@ -258,7 +270,7 @@ export async function updateSpecies(
         fields,
       });
     }
-    const updated = await getSpecies(tx, input.id);
+    const updated = await getSpecies(tx, UNRESTRICTED, input.id);
     if (!updated) throw new Error('updateSpecies: species vanished');
     return updated;
   });
@@ -290,7 +302,7 @@ export async function addSpeciesName(
       kind: 'species_name',
       speciesId: input.speciesId,
     });
-    const updated = await getSpecies(tx, input.speciesId);
+    const updated = await getSpecies(tx, UNRESTRICTED, input.speciesId);
     if (!updated) throw new Error('addSpeciesName: species vanished');
     return updated;
   });
@@ -442,7 +454,7 @@ async function traitAudit(
 }
 
 async function traitOrThrow(db: DbExecutor, id: string, where: string): Promise<Trait> {
-  const trait = await getTrait(db, id);
+  const trait = await getTrait(db, UNRESTRICTED, id);
   if (!trait) throw new Error(`${where}: trait vanished`);
   return trait;
 }

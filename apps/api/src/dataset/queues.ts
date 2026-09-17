@@ -6,6 +6,7 @@ import type {
   PendingTrait,
 } from '@treerepro/contracts';
 import { inArray, type SQL, sql } from 'drizzle-orm';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { users } from '../db/schema/users.ts';
@@ -40,12 +41,22 @@ interface PendingTraitRow {
   count: number;
 }
 
-/** @rfc RFC-65 R8 */
-export async function pendingTraits(db: DbExecutor): Promise<PendingTrait[]> {
+/**
+ * @rfc RFC-65 R8
+ * @rfc RFC-33 R2, R3
+ */
+export async function pendingTraits(
+  db: DbExecutor,
+  visibility: Visibility,
+): Promise<PendingTrait[]> {
   const rows = (await db.execute(sql`
     select t.id as trait_id, t.key as trait_key, t.value_type, t.unit, count(*)::int as count
-    from trait_records r join traits t on t.id = r.trait_id
+    from trait_records r
+    join traits t on t.id = r.trait_id
+    join species s on s.id = r.species_id
     where ${PENDING}
+      and ${traitVisible(visibility, sql`t.active`)}
+      and ${speciesVisible(visibility, sql`s.active`)}
     group by t.id, t.key, t.value_type, t.unit
     order by count desc, t.key`)) as unknown as PendingTraitRow[];
   return rows.map((r) => ({
@@ -70,12 +81,14 @@ const isCount = (part: string) => isDigits(part) && Number.isSafeInteger(Number(
  * carrying the text itself, which can run to 4000 characters and would push
  * the base64url-encoded cursor past `cursorQuerySchema`'s 4096-character cap.
  * @rfc RFC-65 R8
+ * @rfc RFC-33 R2, R3
  */
 export async function pendingGroups(
   db: DbExecutor,
+  visibility: Visibility,
   input: { traitId: string; cursor?: string; limit: number },
 ): Promise<{ data: PendingGroup[]; nextCursor: string | null }> {
-  await requireTrait(db, input.traitId);
+  await requireTrait(db, visibility, input.traitId);
   let after: SQL = sql`true`;
   if (input.cursor) {
     const [count, sampleRecordId] = decodeCompositeCursor(input.cursor, 2, [isCount, isUuid]) as [
@@ -94,7 +107,8 @@ export async function pendingGroups(
     select r.value_text, min(r.harmonisation) as harmonisation, count(*)::int as count,
       (array_agg(r.id order by r.id desc))[1] as sample_record_id
     from trait_records r
-    where r.trait_id = ${input.traitId} and ${PENDING}
+    join species s on s.id = r.species_id
+    where r.trait_id = ${input.traitId} and ${PENDING} and ${speciesVisible(visibility, sql`s.active`)}
     group by r.value_text
     having ${after}
     order by count desc, r.value_text asc
@@ -127,9 +141,14 @@ export interface MapPendingInput {
  * its original, in one INSERT … SELECT. Claims that already exist are left
  * alone and counted as skipped.
  * @rfc RFC-65 R7, R9
+ * @rfc RFC-33 R5
  */
-export async function mapPending(db: DbExecutor, input: MapPendingInput): Promise<MapResult> {
-  const trait = await requireTrait(db, input.traitId);
+export async function mapPending(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: MapPendingInput,
+): Promise<MapResult> {
+  const trait = await requireTrait(db, visibility, input.traitId);
   if (!trait.active)
     throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
       { path: 'traitId', message: 'Trait is inactive' },
@@ -138,11 +157,11 @@ export async function mapPending(db: DbExecutor, input: MapPendingInput): Promis
   let numeric: string | null = null;
   if ('levelIds' in input.value) {
     for (const levelId of input.value.levelIds) {
-      const resolved = await resolveValue(db, trait, { levelId });
+      const resolved = await resolveValue(db, visibility, trait, { levelId });
       if (resolved.levelId !== null) levels.push({ id: resolved.levelId, key: resolved.levelKey });
     }
   } else {
-    const resolved = await resolveValue(db, trait, { numeric: input.value.numeric });
+    const resolved = await resolveValue(db, visibility, trait, { numeric: input.value.numeric });
     numeric = String(resolved.numericValue);
   }
   const chosenCount = levels.length === 0 ? 1 : levels.length;
@@ -163,7 +182,9 @@ export async function mapPending(db: DbExecutor, input: MapPendingInput): Promis
       with pending as (
         select r.id, r.species_id, r.primary_reference_id, r.secondary_reference_id,
           coalesce(r.raw_value, r.value_text) as raw_value
-        from trait_records r where ${group}),
+        from trait_records r
+        join species s on s.id = r.species_id
+        where ${group} and ${speciesVisible(visibility, sql`s.active`)}),
       chosen as (${chosen}),
       ins as (
         insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
@@ -198,9 +219,11 @@ interface DisputeRow {
  * the page of dispute rows, then the record items through the shared join and
  * the actors through Drizzle so their names are decrypted (RFC-40).
  * @rfc RFC-65 R10
+ * @rfc RFC-33 R2, R3
  */
 export async function listDisputed(
   db: DbExecutor,
+  visibility: Visibility,
   input: { cursor?: string; limit: number },
 ): Promise<{ data: DisputedRecord[]; nextCursor: string | null }> {
   const after = input.cursor ? decodeCursor(input.cursor) : null;
@@ -214,11 +237,16 @@ export async function listDisputed(
       from stances s where s.kind = 'dispute'
       order by s.record_id, s.id desc)
     select d.record_id, d.annotation_id, d.actor_id, d.note, d.created_at
-    from standing d join trait_records r on r.id = d.record_id
+    from standing d
+    join trait_records r on r.id = d.record_id
+    join species sp on sp.id = r.species_id
+    join traits tr on tr.id = r.trait_id
     where not exists (select 1 from record_annotations w where w.record_id = d.record_id and w.kind = 'withdraw')
       and not exists (select 1 from accepted_values v
         where v.species_id = r.species_id and v.trait_id = r.trait_id and v.created_at > d.created_at)
       and (${after}::uuid is null or d.annotation_id < ${after}::uuid)
+      and ${speciesVisible(visibility, sql`sp.active`)}
+      and ${traitVisible(visibility, sql`tr.active`)}
     order by d.annotation_id desc
     limit ${input.limit + 1}`)) as unknown as DisputeRow[];
   const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.annotation_id));

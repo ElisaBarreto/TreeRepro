@@ -31,6 +31,7 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-30 | Permission catalog | accepted |
 | RFC-31 | Roles | accepted |
 | RFC-32 | Authorization enforcement | accepted |
+| RFC-33 | Data visibility | accepted |
 | RFC-42 | Audit retention | accepted |
 | RFC-50 | User administration | accepted |
 | RFC-51 | Audit query | accepted |
@@ -41,3 +42,4 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-64 | Bulk import | accepted |
 | RFC-65 | Curation | accepted |
 | RFC-66 | Dataset export | accepted |
+| RFC-68 | Supplementary imports | accepted |

@@ -4,6 +4,7 @@ import {
   datasetKeys,
   fetchFamilies,
   fetchGenera,
+  fetchImports,
   fetchRecords,
   fetchSpecies,
   searchSpecies,
@@ -17,6 +18,7 @@ const SPECIES = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d03',
   canonicalName: 'Adenanthera pavonina',
   nameSource: 'wcvp',
+  active: true,
   genus: { id: GENUS.id, name: GENUS.name },
   family: FAMILY,
   matchedName: null,
@@ -46,6 +48,12 @@ describe('RFC-60 R6 searchSpecies', () => {
     mockJson(200, { data: [], meta: { nextCursor: null } });
     await searchSpecies({ q: '', familyId: undefined });
     expect(lastRequest().url).toBe('/api/species');
+  });
+
+  it('RFC-33 R7 sends the status filter', async () => {
+    mockJson(200, { data: [], meta: { nextCursor: null } });
+    await searchSpecies({ status: 'inactive' });
+    expect(lastRequest().url).toBe('/api/species?status=inactive');
   });
 });
 
@@ -85,6 +93,14 @@ describe('RFC-60 R8 fetchFamilies and fetchGenera', () => {
   });
 });
 
+describe('RFC-68 R7 fetchImports', () => {
+  it('sends the kind filter', async () => {
+    mockJson(200, { data: [], meta: { nextCursor: null } });
+    await fetchImports({ kind: 'species_status' });
+    expect(lastRequest().url).toBe('/api/imports?kind=species_status');
+  });
+});
+
 describe('RFC-60 R6 datasetKeys', () => {
   it('keys lists by their parameters and details by id', () => {
     expect(datasetKeys.species({ q: 'ad' })).toEqual(['species', { q: 'ad' }]);
@@ -92,5 +108,9 @@ describe('RFC-60 R6 datasetKeys', () => {
     expect(datasetKeys.speciesTraits('x')).toEqual(['species', 'x', 'traits']);
     expect(datasetKeys.families).toEqual(['families']);
     expect(datasetKeys.importRejects('b')).toEqual(['imports', 'b', 'rejects']);
+    expect(datasetKeys.imports({ kind: 'species_status' })).toEqual([
+      'imports',
+      { kind: 'species_status' },
+    ]);
   });
 });

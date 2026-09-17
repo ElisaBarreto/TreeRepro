@@ -34,6 +34,7 @@ export const AUDIT_ACTIONS = [
   'traits.created',
   'traits.updated',
   'dataset.exported',
+  'imports.completed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

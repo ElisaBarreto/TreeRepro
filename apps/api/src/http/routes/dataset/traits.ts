@@ -7,6 +7,7 @@ import {
   updateTraitBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
+import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { createLevel, createTrait, updateLevel, updateTrait } from '../../../dataset/catalog.ts';
 import { getDictionary } from '../../../dataset/dictionary.ts';
@@ -15,12 +16,16 @@ import { requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 
-/** @rfc RFC-62 R5, R6 */
+/**
+ * @rfc RFC-62 R5, R6
+ * @rfc RFC-33 R2, R3
+ */
 export function traitRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
-    .get('/', requirePermission(ctx, 'dataset.read'), async (c) =>
-      c.json({ data: await getDictionary(ctx.db) }),
-    )
+    .get('/', requirePermission(ctx, 'dataset.read'), async (c) => {
+      const visibility = await visibilityOf(ctx, c);
+      return c.json({ data: await getDictionary(ctx.db, visibility) });
+    })
     .post(
       '/',
       requirePermission(ctx, 'traits.manage'),

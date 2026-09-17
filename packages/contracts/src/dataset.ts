@@ -35,9 +35,42 @@ export type AcceptedDecision = (typeof ACCEPTED_DECISIONS)[number];
 export const IMPORT_BATCH_STATUSES = ['running', 'completed', 'failed'] as const;
 export type ImportBatchStatus = (typeof IMPORT_BATCH_STATUSES)[number];
 
-/** @rfc RFC-64 R7 */
-export const IMPORT_REJECT_REASONS = ['no_species_name', 'unknown_trait', 'no_reference'] as const;
+/**
+ * @rfc RFC-64 R7
+ * @rfc RFC-68 R4
+ */
+export const IMPORT_REJECT_REASONS = [
+  'no_species_name',
+  'unknown_trait',
+  'no_reference',
+  'unknown_species',
+  'unknown_plot',
+  'unknown_user',
+  'unknown_reference',
+  'doi_taken',
+  'invalid_value',
+] as const;
 export type ImportRejectReason = (typeof IMPORT_REJECT_REASONS)[number];
+
+/** @rfc RFC-68 R1 */
+export const IMPORT_BATCH_KINDS = [
+  'records',
+  'species_status',
+  'plots',
+  'plot_species',
+  'user_plots',
+  'synonyms',
+  'references',
+  'distribution',
+] as const;
+export type ImportBatchKind = (typeof IMPORT_BATCH_KINDS)[number];
+
+/**
+ * @rfc RFC-60 R6
+ * @rfc RFC-33 R7
+ */
+export const SPECIES_STATUSES = ['active', 'inactive', 'all'] as const;
+export type SpeciesStatus = (typeof SPECIES_STATUSES)[number];
 
 /** @rfc RFC-63 R6 */
 export const REVIEW_STATUSES = ['unreviewed', 'confirmed', 'disputed', 'withdrawn'] as const;
@@ -52,19 +85,27 @@ export const searchTermSchema = z.string().trim().min(2).max(100);
 /** @rfc RFC-60 R1 */
 export const taxonRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 
-/** @rfc RFC-60 R6 */
+/**
+ * @rfc RFC-60 R6
+ * @rfc RFC-33 R7
+ */
 export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   q: searchTermSchema.optional(),
   familyId: z.uuid().optional(),
   genusId: z.uuid().optional(),
   unresolved: z.enum(['true', 'false']).optional(),
+  status: z.enum(SPECIES_STATUSES).optional(),
 });
 
-/** @rfc RFC-60 R3, R6 */
+/**
+ * @rfc RFC-60 R3, R6
+ * @rfc RFC-33 R7
+ */
 export const speciesListItemSchema = z.strictObject({
   id: z.uuid(),
   canonicalName: z.string(),
   nameSource: z.enum(NAME_SOURCES),
+  active: z.boolean(),
   genus: taxonRefSchema.nullable(),
   family: taxonRefSchema.nullable(),
   matchedName: z.string().nullable(),
@@ -273,11 +314,15 @@ export const unknownLevelSchema = z.strictObject({
   count: z.number().int().nonnegative(),
 });
 
-/** @rfc RFC-64 R11 */
+/**
+ * @rfc RFC-64 R11
+ * @rfc RFC-68 R1
+ */
 export const importBatchSchema = z.strictObject({
   id: z.uuid(),
   fileName: z.string(),
   fileSha256: z.string(),
+  kind: z.enum(IMPORT_BATCH_KINDS),
   status: z.enum(IMPORT_BATCH_STATUSES),
   runBy: userRefSchema.nullable(),
   startedAt: z.iso.datetime(),
@@ -297,6 +342,11 @@ export const importRejectSchema = z.strictObject({
   rowNo: z.number().int(),
   reason: z.enum(IMPORT_REJECT_REASONS),
   rawRow: z.record(z.string(), z.string()),
+});
+
+/** @rfc RFC-68 R7 */
+export const listImportsQuerySchema = cursorQuerySchema.extend({
+  kind: z.enum(IMPORT_BATCH_KINDS).optional(),
 });
 
 export type TaxonRef = z.infer<typeof taxonRefSchema>;
@@ -326,3 +376,4 @@ export type SpeciesTraits = z.infer<typeof speciesTraitsSchema>;
 export type UnknownLevel = z.infer<typeof unknownLevelSchema>;
 export type ImportBatch = z.infer<typeof importBatchSchema>;
 export type ImportReject = z.infer<typeof importRejectSchema>;
+export type ListImportsQuery = z.infer<typeof listImportsQuerySchema>;

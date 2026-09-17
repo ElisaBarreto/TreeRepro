@@ -3,6 +3,7 @@ import type {
   AcceptedDecision,
   AnnotationKind,
   HarmonisationStatus,
+  ImportBatchKind,
   NameSource,
   TraitValueType,
 } from '@treerepro/contracts';
@@ -84,12 +85,16 @@ export async function createReference(
   return row;
 }
 
-export async function createImportBatch(db: DbExecutor, options: { fileName?: string } = {}) {
+export async function createImportBatch(
+  db: DbExecutor,
+  options: { fileName?: string; kind?: ImportBatchKind } = {},
+) {
   const [row] = await db
     .insert(importBatches)
     .values({
       fileName: options.fileName ?? `test-${suffix()}.csv`,
       fileSha256: randomBytes(32).toString('hex'),
+      kind: options.kind ?? 'records',
       status: 'completed',
       finishedAt: new Date(),
     })
@@ -267,4 +272,56 @@ export async function createAcceptedValue(
     .returning({ id: acceptedValues.id });
   if (!row) throw new Error('createAcceptedValue: no row');
   return row;
+}
+
+/**
+ * RFC-33 R9 fixture: an inactive species with a record on an active trait, and
+ * an active species with a record on an inactive trait. Both records are
+ * invisible to a restricted viewer; `visible` is a control record.
+ */
+export async function createVisibilityFixture(db: DbExecutor, actorId: string) {
+  const reference = await createReference(db);
+  const activeTrait = await createTrait(db, { levels: ['one'] });
+  const inactiveTrait = await createTrait(db, { levels: ['one'], active: false });
+  const hiddenSpecies = await createSpecies(db);
+  await db.update(species).set({ active: false }).where(eq(species.id, hiddenSpecies.id));
+  const shownSpecies = await createSpecies(db);
+  const level = (t: { levels: { id: string; key: string }[] }) => t.levels[0]?.id as string;
+  const onHiddenSpecies = await createRecord(db, {
+    speciesId: hiddenSpecies.id,
+    traitId: activeTrait.id,
+    valueText: 'one',
+    levelId: level(activeTrait),
+    primaryReferenceId: reference.id,
+    origin: 'manual',
+    createdBy: actorId,
+  });
+  const onInactiveTrait = await createRecord(db, {
+    speciesId: shownSpecies.id,
+    traitId: inactiveTrait.id,
+    valueText: 'one',
+    levelId: level(inactiveTrait),
+    primaryReferenceId: reference.id,
+    origin: 'manual',
+    createdBy: actorId,
+  });
+  const visible = await createRecord(db, {
+    speciesId: shownSpecies.id,
+    traitId: activeTrait.id,
+    valueText: 'one',
+    levelId: level(activeTrait),
+    primaryReferenceId: reference.id,
+    origin: 'manual',
+    createdBy: actorId,
+  });
+  return {
+    reference,
+    activeTrait,
+    inactiveTrait,
+    hiddenSpecies,
+    shownSpecies,
+    onHiddenSpecies,
+    onInactiveTrait,
+    visible,
+  };
 }

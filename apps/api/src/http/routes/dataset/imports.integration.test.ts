@@ -74,4 +74,25 @@ describe('RFC-64 R11 import routes', () => {
     );
     expect(missingRejects.status).toBe(404);
   });
+
+  it('RFC-68 R7 ?kind= lists only batches of that kind', async () => {
+    const importsRole = await createRole(t.db, { permissions: ['imports.read'] });
+    const auditor = (await loginAs(t, (await createUser(t.db, { roles: [importsRole.id] })).user))
+      .cookie;
+    const recordsBatch = await createImportBatch(t.db, {
+      fileName: 'records.csv',
+      kind: 'records',
+    });
+    const statusBatch = await createImportBatch(t.db, {
+      fileName: 'status.csv',
+      kind: 'species_status',
+    });
+    const list = await call(t.app, 'GET', '/api/imports?kind=species_status&limit=200', {
+      cookie: auditor,
+    });
+    expect(list.status).toBe(200);
+    const ids = (await list.json()).data.map((b: { id: string }) => b.id);
+    expect(ids).toContain(statusBatch.id);
+    expect(ids).not.toContain(recordsBatch.id);
+  });
 });

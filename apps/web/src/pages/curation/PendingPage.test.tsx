@@ -41,9 +41,10 @@ vi.mock('../../api/curation.ts', async (importOriginal) => ({
 }));
 
 beforeEach(() => {
-  auth.fetchMe
-    .mockReset()
-    .mockResolvedValue({ ...ME, permissions: ['dataset.read', 'records.create'] });
+  auth.fetchMe.mockReset().mockResolvedValue({
+    ...ME,
+    permissions: ['dataset.read', 'records.review', 'records.create'],
+  });
   dataset.fetchDictionary.mockReset().mockResolvedValue(DICTIONARY);
   dataset.fetchRecord.mockReset().mockResolvedValue(CURATED_RECORD_DETAIL);
   curation.fetchPendingTraits.mockReset().mockResolvedValue(PENDING_TRAITS);
@@ -83,7 +84,7 @@ describe('RFC-65 R7–R9 PendingPage', () => {
   });
 
   it('switches trait on click and hides Map without records.create', async () => {
-    auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read'] });
+    auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'records.review'] });
     renderAt('/app/curation/pending');
     const traits = await screen.findByRole('list', { name: 'Traits with pending values' });
     await userEvent.click(within(traits).getByRole('button', { name: /seed mass/ }));
@@ -135,7 +136,7 @@ describe('RFC-65 R7–R9 PendingPage', () => {
   it('offers "Manage levels" to a traits.manage holder as a link to /app/traits', async () => {
     auth.fetchMe.mockResolvedValue({
       ...ME,
-      permissions: ['dataset.read', 'records.create', 'traits.manage'],
+      permissions: ['dataset.read', 'records.review', 'records.create', 'traits.manage'],
     });
     renderAt('/app/curation/pending');
     await userEvent.click(await screen.findByRole('button', { name: /sexual system/i }));

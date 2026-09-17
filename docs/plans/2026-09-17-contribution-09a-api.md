@@ -54,7 +54,7 @@ apps/web/src/test/dataset-fixtures.ts                       # schema changes (we
 - [ ] **Step 2: RFC-80** — file `docs/rfc/80-integrations/80-doi-resolution.md`, status `draft`, category integrations; Context: two sentences from the spec §5; Rules R1–R6 verbatim from the spec §5.
 - [ ] **Step 3: RFC-70** — file `docs/rfc/70-workspace/70-contribution-workflow.md`, status `draft`, category workspace; Context from the spec §1; Rules R1–R8 verbatim from the spec §6, with R3's response shape and R4's `generated` flag.
 - [ ] **Step 4: Amendments**
-  - RFC-30: `records.review` already exists (plan 08a); its description stays. RFC-70 R4 is what widens its meaning to `neutral` / `dispute` annotations.
+  - RFC-30: `records.review` exists since plan 08a; this plan changes its description to "Work the harmonisation and disputed queues; neutralise or dispute any record with a note" (RFC-30 table, `PERMISSIONS`, and a custom migration `UPDATE permissions SET description = … WHERE key = 'records.review'` — one change set per RFC-30 R3).
   - RFC-24 R3 scope table: a row for the DOI check — `GET /api/references/resolve`, keyed by user id (RFC-24 R7), 60 per 60 s, 429 `RATE_LIMITED`.
   - RFC-12: `| \`DOI_LOOKUP_FAILED\` | 502 | The DOI registry could not be reached (RFC-80 R3). |`, `| \`REFERENCE_IS_PERSONAL\` | 409 | A personal-observation reference cannot be edited (RFC-61 R7). |`.
   - RFC-61: R1 columns `kind`, `observer_user_id`; R4 `kind=` filter and item fields `kind`, `observer`; R7, R8 new (spec §4).

@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { PERMISSION_ENTRIES, ROLE_ADMIN, ROLE_READERS } from '../../test/admin-fixtures.ts';
+import {
+  PERMISSION_ENTRIES,
+  ROLE_ADMIN,
+  ROLE_MANAGER,
+  ROLE_READERS,
+} from '../../test/admin-fixtures.ts';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -82,6 +87,21 @@ describe('RFC-13 R2, RFC-50 R10 RolesPage', () => {
     // "Sign out" button, unrelated to this page's actions.
     expect(within(screen.getByRole('main')).queryByRole('button')).not.toBeInTheDocument();
     expect(admin.listPermissions).not.toHaveBeenCalled();
+  });
+
+  it('RFC-31 R11 a manager system role shows the system badge, its permission count, and no Edit / Delete buttons', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_MANAGER, ROLE_READERS]);
+    await openPage();
+    const rows = within(await screen.findByRole('table')).getAllByRole('row');
+    expect(rows).toHaveLength(4);
+    const managerCells = within(rows[2] as HTMLElement).getAllByRole('cell');
+    expect(managerCells[0]).toHaveTextContent('manager');
+    expect(within(managerCells[0] as HTMLElement).getByText('system')).toBeInTheDocument();
+    expect(managerCells[2]).toHaveTextContent(String(ROLE_MANAGER.permissions.length));
+    expect(within(rows[2] as HTMLElement).queryByRole('button')).not.toBeInTheDocument();
+    // The admin row still reads "all", not a raw (empty) count.
+    expect(within(rows[1] as HTMLElement).getAllByRole('cell')[2]).toHaveTextContent('all');
   });
 
   it('RFC-31 R3 creates a role from the grouped catalog, hiding retired keys', async () => {

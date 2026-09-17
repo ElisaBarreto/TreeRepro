@@ -1,11 +1,15 @@
 import { Link } from '@tanstack/react-router';
+import { IMPORT_BATCH_KINDS, type ImportBatchKind } from '@treerepro/contracts';
+import { useId, useState } from 'react';
 import { datasetKeys, fetchImports } from '../../api/dataset.ts';
 import { ImportStatusBadge } from '../../components/dataset/ImportStatusBadge.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import {
   Alert,
   EmptyState,
+  Field,
   PageHeader,
+  Select,
   Table,
   Tbody,
   Td,
@@ -14,7 +18,7 @@ import {
   Tr,
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
-import { formatDateTime, formatNumber } from '../../lib/format.ts';
+import { formatDateTime, formatNumber, humaniseKey } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
@@ -22,20 +26,43 @@ const NUMBER = 'text-right tabular-nums';
 
 /**
  * Import batches, newest first and one page at a time, with the counts the
- * import computed. Requires `imports.read`; the route shows `NoPermission`
+ * import computed and the kind of each batch; a Kind select filters the list
+ * (RFC-68 R7). Requires `imports.read`; the route shows `NoPermission`
  * otherwise.
  * @rfc RFC-13 R2, R4
  * @rfc RFC-64 R11
+ * @rfc RFC-68 R7
  */
 export function ImportsPage() {
-  const list = usePagedList(datasetKeys.imports, (cursor, limit) =>
-    fetchImports({ cursor, limit }),
+  const ids = { kind: useId() };
+  const [kind, setKind] = useState<ImportBatchKind | undefined>(undefined);
+  const params = { kind };
+  const list = usePagedList(datasetKeys.imports(params), (cursor, limit) =>
+    fetchImports({ ...params, cursor, limit }),
   );
 
   return (
     <>
       <PageHeader title="Imports" description="Every run of the bulk import and its outcome." />
       <div className="flex flex-col gap-6">
+        <div className="max-w-xs">
+          <Field id={ids.kind} label="Kind">
+            <Select
+              id={ids.kind}
+              value={kind ?? ''}
+              onChange={(event) =>
+                setKind((event.target.value || undefined) as ImportBatchKind | undefined)
+              }
+            >
+              <option value="">All kinds</option>
+              {IMPORT_BATCH_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {humaniseKey(k)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading ? <p className="text-body text-mist-500">Loading…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (
@@ -46,6 +73,7 @@ export function ImportsPage() {
             <Thead>
               <Tr>
                 <Th>File</Th>
+                <Th>Kind</Th>
                 <Th>Status</Th>
                 <Th>Started</Th>
                 <Th>Run by</Th>
@@ -68,6 +96,7 @@ export function ImportsPage() {
                       {batch.fileName}
                     </Link>
                   </Td>
+                  <Td>{humaniseKey(batch.kind)}</Td>
                   <Td>
                     <ImportStatusBadge status={batch.status} />
                   </Td>

@@ -49,3 +49,15 @@ export async function adminRoleId(db: DbExecutor): Promise<string> {
   if (!row) throw new Error('admin role missing: is migration 0004 applied?');
   return row.id;
 }
+
+export async function systemRoleId(
+  db: DbExecutor,
+  name: 'admin' | 'manager' | 'contributor',
+): Promise<string> {
+  const [row] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, name));
+  if (!row)
+    throw new Error(
+      `system role ${name} missing: is the permissions_visibility migration applied?`,
+    );
+  return row.id;
+}

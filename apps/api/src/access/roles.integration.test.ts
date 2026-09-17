@@ -4,7 +4,7 @@ import { describe, expect, inject, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
 import { withRollback } from '../../test/helpers/db.ts';
-import { adminRoleId, createRole as insertRole } from '../../test/helpers/roles.ts';
+import { adminRoleId, createRole as insertRole, systemRoleId } from '../../test/helpers/roles.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { createDb, type DbExecutor } from '../db/client.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
@@ -141,6 +141,41 @@ describe('RFC-31 R3, R4, R5 role services', () => {
     expect(await code(deleteRole(ctx(), { id, actorUserId: null }))).toBe('ROLE_IS_SYSTEM');
     const admin = await getRole(t.db, id);
     expect(admin?.isSystem).toBe(true);
+    expect(admin?.permissions).toEqual([...PERMISSION_KEYS].sort());
+  });
+
+  it('RFC-31 R2, R11 manager and contributor cannot be edited or deleted and list their permissions', async () => {
+    const id = await systemRoleId(t.db, 'contributor');
+    await expect(
+      updateRole(ctx(), { id, description: 'x', actorUserId: null }),
+    ).rejects.toMatchObject({ code: 'ROLE_IS_SYSTEM' });
+    await expect(deleteRole(ctx(), { id, actorUserId: null })).rejects.toMatchObject({
+      code: 'ROLE_IS_SYSTEM',
+    });
+    const listed = (await listRoles(t.db)).find((r) => r.id === id);
+    expect(listed?.isSystem).toBe(true);
+    expect(listed?.permissions.sort()).toEqual([
+      'dataset.read',
+      'records.annotate',
+      'records.create',
+    ]);
+
+    const managerId = await systemRoleId(t.db, 'manager');
+    const manager = await getRole(t.db, managerId);
+    expect(manager?.permissions).toEqual(
+      [
+        'dataset.read',
+        'dataset.read_inactive',
+        'imports.read',
+        'records.annotate',
+        'records.create',
+        'records.review',
+        'records.withdraw',
+      ].sort(),
+    );
+
+    const adminId = await systemRoleId(t.db, 'admin');
+    const admin = await getRole(t.db, adminId);
     expect(admin?.permissions).toEqual([...PERMISSION_KEYS].sort());
   });
 

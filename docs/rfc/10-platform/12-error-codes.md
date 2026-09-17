@@ -43,7 +43,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `PERMISSION_UNKNOWN` | 400 | A permission key is not in the catalog; `details` lists them (RFC-31 R3). |
 | `ROLE_NOT_FOUND` | 404 | Role id does not exist (RFC-31 R4, R6). |
 | `ROLE_NAME_TAKEN` | 409 | Another role has this name, case-insensitively (RFC-31 R3). |
-| `ROLE_IS_SYSTEM` | 409 | The `admin` system role cannot be changed or deleted (RFC-31 R2). |
+| `ROLE_IS_SYSTEM` | 409 | A system role (`admin`, `manager`, `contributor`) cannot be changed or deleted (RFC-31 R2). |
 | `ROLE_LAST_ADMIN` | 409 | The change would leave no active administrator (RFC-31 R7). |
 | `USER_NOT_FOUND` | 404 | User id does not exist (RFC-50 R4). |
 | `USER_INVALID_STATUS` | 409 | The action is not allowed in the user's current status (RFC-50 R6–R8). |
@@ -82,3 +82,4 @@ None.
 - 2026-09-12 — USER_NOT_FOUND, USER_INVALID_STATUS, MAIL_SEND_FAILED (RFC-50).
 - 2026-09-13 — dataset codes SPECIES_NOT_FOUND, TRAIT_NOT_FOUND, REFERENCE_NOT_FOUND, RECORD_NOT_FOUND, IMPORT_NOT_FOUND (plan 06).
 - 2026-09-13 — curation and catalog codes (RFC-60–62, RFC-65, plan 07).
+- 2026-09-17 — ROLE_IS_SYSTEM reworded: manager and contributor system roles (RFC-31, plan 08a).

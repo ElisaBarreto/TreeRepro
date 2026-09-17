@@ -1,14 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createAnnotation,
   createRecord,
   createReference,
   createSpecies,
   createTrait,
+  createVisibilityFixture,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { AppError } from '../http/errors.ts';
-import { annotateRecord, currentAccepted, getAccepted, setAccepted } from './curation.ts';
+import {
+  annotateRecord,
+  createRecord as createRecordService,
+  currentAccepted,
+  getAccepted,
+  setAccepted,
+} from './curation.ts';
+import { listDisputed, mapPending, pendingTraits } from './queues.ts';
 import { getRecord } from './records.ts';
 
 /** Swallows the `AppError` the losing side of the race legitimately throws once the other side has committed. */
@@ -52,7 +62,7 @@ describe('RFC-65 R4, R6 the withdraw-vs-accept race is serialised by an advisory
           ['RECORD_WITHDRAWN'],
         ),
         settled(
-          annotateRecord(t.db, {
+          annotateRecord(t.db, UNRESTRICTED, {
             recordId: rec.id,
             actorId: user.id,
             kind: 'withdraw',
@@ -62,7 +72,7 @@ describe('RFC-65 R4, R6 the withdraw-vs-accept race is serialised by an advisory
           ['RECORD_IS_ACCEPTED'],
         ),
       ]);
-      const review = (await getRecord(t.db, rec.id))?.review;
+      const review = (await getRecord(t.db, UNRESTRICTED, rec.id))?.review;
       const current = await currentAccepted(t.db, sp1.id, trait.id);
       expect(
         review === 'withdrawn' && current?.recordId === rec.id,
@@ -109,5 +119,121 @@ describe('RFC-65 R6 setAccepted clearing branch locks before deciding', () => {
     );
     const { history } = await getAccepted(t.db, sp.id, trait.id);
     expect(history.filter((h) => h.decision === 'cleared')).toHaveLength(1);
+  });
+});
+
+describe('RFC-33 R5 createRecord and annotateRecord by viewer', () => {
+  const t = useTestDb();
+
+  it('treat a hidden species or a record on it as not found for a restricted viewer', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    await expect(
+      createRecordService(t.db, RESTRICTED, {
+        actorId: user.id,
+        speciesId: f.hiddenSpecies.id,
+        traitId: f.activeTrait.id,
+        value: { levelId: f.activeTrait.levels[0]?.id as string },
+        primaryReferenceId: f.reference.id,
+      }),
+    ).rejects.toMatchObject({ code: 'SPECIES_NOT_FOUND' });
+    const created = await createRecordService(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      speciesId: f.hiddenSpecies.id,
+      traitId: f.activeTrait.id,
+      value: { levelId: f.activeTrait.levels[0]?.id as string },
+      primaryReferenceId: f.reference.id,
+      rawValue: 'a second, distinct claim',
+    });
+    expect(created.speciesId).toBe(f.hiddenSpecies.id);
+    await expect(
+      annotateRecord(t.db, RESTRICTED, {
+        recordId: f.onHiddenSpecies.id,
+        actorId: user.id,
+        kind: 'confirm',
+        canWithdrawAny: false,
+      }),
+    ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
+  });
+});
+
+describe('RFC-33 R3 queues by viewer', () => {
+  const t = useTestDb();
+
+  it('omits a pending trait and a disputed record on a hidden species from a restricted viewer', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    await createRecord(t.db, {
+      speciesId: f.hiddenSpecies.id,
+      traitId: f.activeTrait.id,
+      valueText: 'unmapped',
+      primaryReferenceId: f.reference.id,
+      harmonisation: 'unknown_level',
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const restrictedTraits = await pendingTraits(t.db, RESTRICTED);
+    expect(restrictedTraits.find((x) => x.trait.id === f.activeTrait.id)).toBeUndefined();
+    const unrestrictedTraits = await pendingTraits(t.db, UNRESTRICTED);
+    expect(unrestrictedTraits.find((x) => x.trait.id === f.activeTrait.id)).toMatchObject({
+      count: 1,
+    });
+
+    const disputed = await createRecord(t.db, {
+      speciesId: f.hiddenSpecies.id,
+      traitId: f.activeTrait.id,
+      valueText: 'one',
+      levelId: f.activeTrait.levels[0]?.id,
+      rawValue: 'a second, distinct claim',
+      primaryReferenceId: f.reference.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await createAnnotation(t.db, {
+      recordId: disputed.id,
+      actorId: user.id,
+      kind: 'dispute',
+      note: 'Disputed on a hidden species',
+    });
+    const restrictedDisputed = await listDisputed(t.db, RESTRICTED, { limit: 10 });
+    expect(restrictedDisputed.data.map((r) => r.id)).not.toContain(disputed.id);
+    const unrestrictedDisputed = await listDisputed(t.db, UNRESTRICTED, { limit: 10 });
+    expect(unrestrictedDisputed.data.map((r) => r.id)).toContain(disputed.id);
+  });
+});
+
+describe('RFC-33 R5 mapPending by viewer', () => {
+  const t = useTestDb();
+
+  it('never maps a pending row of a hidden species for a restricted viewer', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    await createRecord(t.db, {
+      speciesId: f.hiddenSpecies.id,
+      traitId: f.activeTrait.id,
+      valueText: 'unmapped',
+      primaryReferenceId: f.reference.id,
+      harmonisation: 'unknown_level',
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const restricted = await mapPending(t.db, RESTRICTED, {
+      actorId: user.id,
+      traitId: f.activeTrait.id,
+      valueText: 'unmapped',
+      value: { levelIds: [f.activeTrait.levels[0]?.id as string] },
+    });
+    expect(restricted).toEqual({ created: 0, skipped: 0 });
+    const stillPending = await pendingTraits(t.db, UNRESTRICTED);
+    expect(stillPending.find((x) => x.trait.id === f.activeTrait.id)).toMatchObject({ count: 1 });
+
+    const unrestricted = await mapPending(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      traitId: f.activeTrait.id,
+      valueText: 'unmapped',
+      value: { levelIds: [f.activeTrait.levels[0]?.id as string] },
+    });
+    expect(unrestricted).toEqual({ created: 1, skipped: 0 });
   });
 });

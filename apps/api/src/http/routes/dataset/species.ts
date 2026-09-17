@@ -7,8 +7,8 @@ import {
   speciesTraitParamSchema,
   updateSpeciesBodySchema,
 } from '@treerepro/contracts';
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
 import {
@@ -19,7 +19,6 @@ import {
 } from '../../../dataset/curation.ts';
 import { speciesTraitSummary } from '../../../dataset/summary.ts';
 import { getSpecies, searchSpecies } from '../../../dataset/taxa.ts';
-import { species } from '../../../db/schema/taxa.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { requirePermission } from '../../middleware/require-permission.ts';
@@ -39,11 +38,13 @@ export function speciesRoutes(ctx: AuthContext) {
       validate('query', listSpeciesQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
-        const { data, nextCursor } = await searchSpecies(ctx.db, {
+        const visibility = await visibilityOf(ctx, c);
+        const { data, nextCursor } = await searchSpecies(ctx.db, visibility, {
           q: q.q,
           familyId: q.familyId,
           genusId: q.genusId,
           unresolved: q.unresolved === 'true',
+          status: q.status,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -70,7 +71,8 @@ export function speciesRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'dataset.read'),
       validate('param', idParamSchema),
       async (c) => {
-        const found = await getSpecies(ctx.db, c.req.valid('param').id);
+        const visibility = await visibilityOf(ctx, c);
+        const found = await getSpecies(ctx.db, visibility, c.req.valid('param').id);
         if (!found) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
         return c.json({ data: found });
       },
@@ -95,13 +97,10 @@ export function speciesRoutes(ctx: AuthContext) {
       validate('param', idParamSchema),
       async (c) => {
         const { id } = c.req.valid('param');
-        const [exists] = await ctx.db
-          .select({ id: species.id })
-          .from(species)
-          .where(eq(species.id, id))
-          .limit(1);
-        if (!exists) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
-        return c.json({ data: await speciesTraitSummary(ctx.db, id) });
+        const visibility = await visibilityOf(ctx, c);
+        const summary = await speciesTraitSummary(ctx.db, visibility, id);
+        if (!summary) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
+        return c.json({ data: summary });
       },
     )
     .post(
@@ -127,8 +126,9 @@ export function speciesRoutes(ctx: AuthContext) {
       validate('param', speciesTraitParamSchema),
       async (c) => {
         const { id, traitId } = c.req.valid('param');
-        await requireSpecies(ctx.db, id);
-        await requireTrait(ctx.db, traitId);
+        const visibility = await visibilityOf(ctx, c);
+        await requireSpecies(ctx.db, visibility, id);
+        await requireTrait(ctx.db, visibility, traitId);
         return c.json({ data: await getAccepted(ctx.db, id, traitId) });
       },
     )

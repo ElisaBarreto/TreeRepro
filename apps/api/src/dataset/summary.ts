@@ -1,6 +1,8 @@
 import type { SpeciesTraits, TraitSummary } from '@treerepro/contracts';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { species } from '../db/schema/taxa.ts';
 
 interface TraitAggregate {
   trait_id: string;
@@ -39,12 +41,21 @@ interface AcceptedCurrent {
 /**
  * One call for the species page: per category and trait, counts on both axes,
  * level distribution or numeric spread, and the current accepted value.
+ * `null` when the species itself is invisible to `visibility`.
  * @rfc RFC-63 R10
+ * @rfc RFC-33 R2, R3
  */
 export async function speciesTraitSummary(
   db: DbExecutor,
+  visibility: Visibility,
   speciesId: string,
-): Promise<SpeciesTraits> {
+): Promise<SpeciesTraits | null> {
+  const [exists] = await db
+    .select({ id: species.id })
+    .from(species)
+    .where(and(eq(species.id, speciesId), speciesVisible(visibility)))
+    .limit(1);
+  if (!exists) return null;
   const [aggregates, levels, accepted] = await Promise.all([
     db.execute(sql`
       select t.id as trait_id, t.key as trait_key, t.value_type, t.unit,
@@ -62,19 +73,23 @@ export async function speciesTraitSummary(
       from trait_records r
       join traits t on t.id = r.trait_id
       join trait_categories c on c.key = t.category_key
-      where r.species_id = ${speciesId}
+      where r.species_id = ${speciesId} and ${traitVisible(visibility, sql`t.active`)}
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
     db.execute(sql`
       select r.trait_id, l.id as level_id, l.key as level_key, count(*)::int as count
-      from trait_records r join trait_levels l on l.id = r.level_id
-      where r.species_id = ${speciesId}
+      from trait_records r
+      join trait_levels l on l.id = r.level_id
+      join traits t on t.id = r.trait_id
+      where r.species_id = ${speciesId} and ${traitVisible(visibility, sql`t.active`)}
       group by r.trait_id, l.id, l.key
       order by count desc, l.key`) as unknown as Promise<LevelAggregate[]>,
     db.execute(sql`
       select distinct on (a.trait_id) a.trait_id, a.decision, a.record_id, r.value_text, a.created_at
-      from accepted_values a left join trait_records r on r.id = a.record_id
-      where a.species_id = ${speciesId}
+      from accepted_values a
+      join traits t on t.id = a.trait_id
+      left join trait_records r on r.id = a.record_id
+      where a.species_id = ${speciesId} and ${traitVisible(visibility, sql`t.active`)}
       order by a.trait_id, a.id desc`) as unknown as Promise<AcceptedCurrent[]>,
   ]);
   const levelsByTrait = new Map<string, NonNullable<TraitSummary['levels']>>();

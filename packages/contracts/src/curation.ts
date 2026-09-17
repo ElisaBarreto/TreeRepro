@@ -168,6 +168,7 @@ export const updateSpeciesBodySchema = nonEmpty(
     canonicalName: catalogNameSchema.optional(),
     nameSource: z.enum(NAME_SOURCES).optional(),
     genusId: z.uuid().nullable().optional(),
+    active: z.boolean().optional(),
   },
   'canonicalName',
 );

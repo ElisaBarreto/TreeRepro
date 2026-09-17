@@ -25,12 +25,14 @@ type Editing = Role | 'new' | null;
 
 /**
  * Every role: name (with a "system" badge for the built-in ones),
- * description, permission count (`'all'` for a system role), and — with
- * `roles.manage` on a non-system role — Edit/Delete. "New role" opens the
- * same dialog with no role. Deleting asks for confirmation first.
+ * description, permission count (`'all'` only for `admin`; `manager` and
+ * `contributor` are system roles too but show their stored permission count,
+ * RFC-31 R11), and — with `roles.manage` on a non-system role — Edit/Delete.
+ * "New role" opens the same dialog with no role. Deleting asks for
+ * confirmation first.
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-50 R10
- * @rfc RFC-31 R5
+ * @rfc RFC-31 R5, R11
  */
 export function RolesPage() {
   const me = useMe();
@@ -77,7 +79,7 @@ export function RolesPage() {
                   {role.isSystem ? <Badge>system</Badge> : null}
                 </Td>
                 <Td>{role.description || DASH}</Td>
-                <Td>{role.isSystem ? 'all' : role.permissions.length}</Td>
+                <Td>{role.name === 'admin' ? 'all' : role.permissions.length}</Td>
                 <Td>
                   {canManage && !role.isSystem ? (
                     <div className="flex gap-2">

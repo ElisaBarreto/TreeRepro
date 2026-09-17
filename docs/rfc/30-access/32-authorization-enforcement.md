@@ -18,7 +18,7 @@ The backend is the only authority (RFC-02 R1). Every route that is not public an
 - **R4** `requirePermission(key, options?)`: without a session user, 401 `AUTH_UNAUTHENTICATED`; without the permission, 403 `PERMISSION_DENIED` with the fixed message "You do not have permission to do this" (the required key is not disclosed); when `options.resource` is given it is awaited after the permission check and `false` answers 403 `PERMISSION_DENIED`. On success the resolved set is available to the handler as `permissions`.
 - **R5** Guard classes. Every registered route is exactly one of: public (RFC-22 R1), self-service — behind `requireSession` only —, or permission-guarded — behind `requirePermission`. The self-service list: `POST /api/auth/logout`, `POST /api/auth/logout-all`, `GET /api/auth/me`, `POST /api/auth/password/change`, `POST /api/auth/totp/setup`, `POST /api/auth/totp/confirm`, `POST /api/auth/totp/disable`, `GET /api/me/sessions`, `DELETE /api/me/sessions/:id`, `PATCH /api/me` (RFC-50 R11). Every route that is neither public nor in the self-service list is permission-guarded, wherever its path lives (`/api/admin/*`, `/api/species`, …). A test enumerates the registered routes and fails on any route outside its class.
 - **R6** `GET /api/auth/me` returns the user's effective permissions, sorted, in `permissions` (RFC-22 R10).
-- **R7** Resource-level rules (row-level scoping) are not implemented; `options.resource` is the hook they will use.
+- **R7** Resource-level rules are the visibility rules of RFC-33, applied inside the services with the `Visibility` value the route derives; `options.resource` stays available for future per-row checks.
 
 ## Open questions
 
@@ -30,3 +30,4 @@ None.
 - 2026-09-12 — accepted.
 - 2026-09-12 — R1, R5: PATCH /api/me; no deleted status (RFC-50).
 - 2026-09-13 — R5 wording: guard class is decided by the guard, not by the path prefix (plan 06).
+- 2026-09-17 — R7: visibility rules live in RFC-33 (plan 08a).

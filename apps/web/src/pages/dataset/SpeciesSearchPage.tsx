@@ -28,10 +28,12 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  * seeds the toggle from the route's `?unresolved=true` (the unresolved-taxa
  * nav entry); the export link is a plain download, gated by dataset.export.
  * With `taxa.manage`, "New species" opens the species editor and a created
- * species opens its own page (RFC-60 R9).
+ * species opens its own page (RFC-60 R9). The form's status filter is
+ * carried through to the search and the query key (RFC-33 R7).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-60 R6, R9
  * @rfc RFC-66 R1
+ * @rfc RFC-33 R7
  */
 export function SpeciesSearchPage({ initialUnresolved = false }: { initialUnresolved?: boolean }) {
   const me = useMe();
@@ -44,6 +46,7 @@ export function SpeciesSearchPage({ initialUnresolved = false }: { initialUnreso
     familyId: form.familyId,
     genusId: form.genusId,
     unresolved: form.unresolved,
+    status: form.status,
   };
   const list = usePagedList(datasetKeys.species(params), (cursor, limit) =>
     searchSpecies({ ...params, cursor, limit }),

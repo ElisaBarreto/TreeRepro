@@ -233,6 +233,24 @@ describe('RFC-60 R9 SpeciesDialog', () => {
     );
   });
 
+  it('RFC-33 R7 edit shows the active checkbox checked; unchecking sends active: false; create has no checkbox', async () => {
+    catalog.updateSpecies.mockResolvedValue({ ...SPECIES, active: false });
+    const created = mount();
+    expect(within(created.dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    cleanup();
+
+    const { dialog } = mount(SPECIES);
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: 'Active — visible to contributors',
+    });
+    expect(checkbox).toBeChecked();
+    await userEvent.click(checkbox);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(catalog.updateSpecies).toHaveBeenCalledWith(SPECIES.id, { active: false }),
+    );
+  });
+
   it('maps SPECIES_NAME_TAKEN under the name and GENUS_NOT_FOUND to its sentence', async () => {
     catalog.updateSpecies
       .mockRejectedValueOnce(new ApiError(409, 'SPECIES_NAME_TAKEN', 'taken'))
