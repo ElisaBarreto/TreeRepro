@@ -26,9 +26,9 @@ import {
   Dialog,
   Field,
   Input,
-  Select,
   Textarea,
 } from '../ui/index.ts';
+import { ValueField } from './ValueField.tsx';
 
 /** @rfc RFC-13 R6 */
 export function addValueErrorMessage(error: unknown): string {
@@ -151,6 +151,13 @@ export function AddValueDialog({
     secondaryReferenceId: sourceError(1),
     ...local,
   };
+  // `ValueField` takes the messages that are actually there; this dialog's own
+  // map keeps the empty slots its two fixed reference fields read.
+  const valueErrors: Record<string, string> = {};
+  for (const key of ['value', 'value.levelId', 'value.numeric']) {
+    const message = errors[key];
+    if (message !== undefined) valueErrors[key] = message;
+  }
   const duplicateId =
     save.error instanceof ApiError && save.error.code === 'RECORD_DUPLICATE'
       ? save.error.details?.find((d) => d.path.startsWith('sources.references.') && d.message)
@@ -255,42 +262,16 @@ export function AddValueDialog({
             />
           </Field>
         )}
-        {valueType === 'categorical' ? (
-          <Field id={ids.level} label="Level" error={errors['value.levelId'] ?? errors.value}>
-            <Select
-              id={ids.level}
-              value={levelId}
-              onChange={(e) => setLevelId(e.target.value)}
-              invalid={Boolean(errors['value.levelId'] ?? errors.value)}
-            >
-              <option value="">Choose a level</option>
-              {levels.map((level) => (
-                <option key={level.id} value={level.id}>
-                  {level.key}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : null}
-        {valueType === 'quantitative' ? (
-          <Field
-            id={ids.numeric}
-            label={unit ? `Number (${unit})` : 'Number'}
-            error={errors['value.numeric'] ?? errors.value}
-          >
-            <div className="flex items-center gap-2">
-              <Input
-                id={ids.numeric}
-                type="number"
-                step="any"
-                inputMode="decimal"
-                value={numeric}
-                onChange={(e) => setNumeric(e.target.value)}
-                invalid={Boolean(errors['value.numeric'] ?? errors.value)}
-              />
-              {unit ? <span className="text-meta text-mist-500">{unit}</span> : null}
-            </div>
-          </Field>
+        {valueType ? (
+          <ValueField
+            trait={{ valueType, unit, levels }}
+            levelId={levelId}
+            numeric={numeric}
+            onLevel={setLevelId}
+            onNumeric={setNumeric}
+            errors={valueErrors}
+            ids={{ level: ids.level, numeric: ids.numeric }}
+          />
         ) : null}
         <Field
           id={ids.primary}
