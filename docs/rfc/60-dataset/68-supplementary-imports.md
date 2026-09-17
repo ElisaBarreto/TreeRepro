@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -29,3 +29,4 @@ None.
 
 - 2026-09-17 — created (plan 08a).
 - 2026-09-17 — R8: the last-row-wins rule for a repeated species, and that earlier rows count as duplicate (plan 08a review).
+- 2026-09-17 — accepted.

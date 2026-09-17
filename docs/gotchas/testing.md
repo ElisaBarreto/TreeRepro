@@ -25,6 +25,11 @@
 **Cause:** The first account has no mailbox to read from; only later invitations go through SMTP.
 **Fix:** `scripts/e2e.sh` reads `seed-admin`'s stdout for `Link (expires …): …` and passes it to Playwright as `E2E_ADMIN_INVITE_LINK`. User B's invitation, sent by the admin through the app, has no such log line — its link comes from Mailpit's REST API (`/api/v1/search?query=to:<email>`, then `/api/v1/message/<ID>`, text body).
 
+## `critical-flow.spec.ts` spends the whole admin login rate-limit budget
+**Symptom:** A second admin sign-in added to `critical-flow.spec.ts` intermittently answers `AUTH_RATE_LIMITED` (or starves a later test's login).
+**Cause:** RFC-24 R3 limits `login` to 5 attempts per 15 minutes; `critical-flow.spec.ts` already spends that budget on its own admin sign-in.
+**Fix:** Never add an admin sign-in to that file. Every other E2E spec authenticates as admin through `adminContext()` (saved storage state) and provisions other users with `inviteAndActivate()`.
+
 ## `getByText` / `getByRole` name matching is substring by default in Playwright
 **Symptom:** Strict-mode violations ("resolved to 2 elements") for `getByText('suspended')` (a status badge reading "suspended" and a caption reading "Suspended 2026-…") or `getByRole('button', { name: 'Sign out' })` on the settings page ("Sign out everywhere", "Sign out <agent>").
 **Cause:** Playwright's string `name`/text locators match by substring by default; Testing Library's string `name` matcher is exact by default — the opposite convention — so instincts carried over from component tests pick the wrong default here.
