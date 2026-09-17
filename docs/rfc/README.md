@@ -11,6 +11,8 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | 40–49 | data protection | `40-data-protection/` |
 | 50–59 | admin | `50-admin/` |
 | 60–69 | dataset | `60-dataset/` |
+| 70–79 | workspace | `70-workspace/` |
+| 80–89 | integrations | `80-integrations/` |
 
 | RFC | Title | Status |
 |---|---|---|
@@ -44,3 +46,5 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-66 | Dataset export | accepted |
 | RFC-67 | Field plots | accepted |
 | RFC-68 | Supplementary imports | accepted |
+| RFC-70 | Contribution workflow | draft |
+| RFC-80 | DOI resolution | draft |

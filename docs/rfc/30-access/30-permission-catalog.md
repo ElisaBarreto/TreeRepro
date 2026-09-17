@@ -44,7 +44,7 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `traits.manage` | Create and edit traits and levels |
 | `dataset.export` | Download the accepted values |
 | `dataset.read_inactive` | See inactive species, traits and levels |
-| `records.review` | Work the harmonisation and disputed queues |
+| `records.review` | Work the harmonisation and disputed queues; neutralise or dispute any record with a note |
 | `plots.manage` | Create and edit field plots and their species |
 
 ## Open questions
@@ -61,3 +61,4 @@ None.
 - 2026-09-17 — dataset.read_inactive, records.review (RFC-33, RFC-65 R8–R10, plan 08a).
 - 2026-09-17 — plots.manage (RFC-67, plan 08b).
 - 2026-09-17 — R1: an underscore inside the action segment (plan 08a).
+- 2026-09-17 — records.review: meaning widened by RFC-70 R4 (plan 09a).

@@ -25,7 +25,7 @@ export const PERMISSIONS = {
   'traits.manage': 'Create and edit traits and levels',
   'dataset.export': 'Download the accepted values',
   'dataset.read_inactive': 'See inactive species, traits and levels',
-  'records.review': 'Work the harmonisation and disputed queues',
+  'records.review': 'Work the harmonisation and disputed queues; neutralise or dispute any record with a note',
   'plots.manage': 'Create and edit field plots and their species',
 } as const;
 
