@@ -24,6 +24,8 @@ export const PERMISSIONS = {
   'references.manage': 'Create and edit bibliographic references',
   'traits.manage': 'Create and edit traits and levels',
   'dataset.export': 'Download the accepted values',
+  'dataset.read_inactive': 'See inactive species, traits and levels',
+  'records.review': 'Work the harmonisation and disputed queues',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

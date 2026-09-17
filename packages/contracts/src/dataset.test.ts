@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   HARMONISATION_STATUSES,
+  IMPORT_BATCH_KINDS,
   importBatchSchema,
   listGeneraQuerySchema,
   listRecordsQuerySchema,
@@ -9,6 +10,7 @@ import {
   recordSchema,
   referenceDetailSchema,
   referenceSchema,
+  speciesListItemSchema,
   speciesTraitsSchema,
 } from './dataset.ts';
 
@@ -164,6 +166,7 @@ describe('RFC-64 R11 importBatchSchema', () => {
       fileName: 'sample.csv',
       fileSha256: 'a'.repeat(64),
       status: 'completed',
+      kind: 'records',
       runBy: { id: uuid, name: 'Ada' },
       startedAt: '2026-09-13T00:00:00.000Z',
       finishedAt: '2026-09-13T00:01:00.000Z',
@@ -176,5 +179,59 @@ describe('RFC-64 R11 importBatchSchema', () => {
       error: null,
     };
     expect(importBatchSchema.parse(batch)).toEqual(batch);
+  });
+});
+
+describe('RFC-68 R1 import batch kinds', () => {
+  it('lists every kind of RFC-68 and the batch schema requires one', () => {
+    const BATCH = {
+      id: uuid,
+      fileName: 'sample.csv',
+      fileSha256: 'a'.repeat(64),
+      status: 'completed',
+      kind: 'records',
+      runBy: { id: uuid, name: 'Ada' },
+      startedAt: '2026-09-13T00:00:00.000Z',
+      finishedAt: '2026-09-13T00:01:00.000Z',
+      rowsTotal: 10,
+      rowsInserted: 8,
+      rowsDuplicate: 1,
+      rowsRejected: 1,
+      rowsPending: 2,
+      unknownLevels: [{ trait: 'pollinator_group', value: 'bees', count: 2 }],
+      error: null,
+    };
+    expect(IMPORT_BATCH_KINDS).toEqual([
+      'records',
+      'species_status',
+      'plots',
+      'plot_species',
+      'user_plots',
+      'synonyms',
+      'references',
+      'distribution',
+    ]);
+    expect(importBatchSchema.safeParse({ ...BATCH, kind: 'species_status' }).success).toBe(true);
+    expect(importBatchSchema.safeParse({ ...BATCH, kind: 'nope' }).success).toBe(false);
+  });
+});
+
+describe('RFC-60 R6 species item carries active; status filter', () => {
+  it('requires active and accepts status=inactive', () => {
+    const ITEM = {
+      id: uuid,
+      canonicalName: 'Adenanthera pavonina',
+      nameSource: 'wcvp',
+      genus: null,
+      family: null,
+      matchedName: null,
+      unresolvedTaxon: false,
+      active: true,
+    };
+    expect(speciesListItemSchema.safeParse({ ...ITEM, active: false }).success).toBe(true);
+    const { active: _a, ...without } = { ...ITEM, active: true };
+    expect(speciesListItemSchema.safeParse(without).success).toBe(false);
+    expect(listSpeciesQuerySchema.safeParse({ status: 'inactive' }).success).toBe(true);
+    expect(listSpeciesQuerySchema.safeParse({ status: 'x' }).success).toBe(false);
   });
 });
