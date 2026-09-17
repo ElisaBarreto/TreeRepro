@@ -100,6 +100,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     section: 'admin',
   },
   {
+    to: '/app/admin/plots',
+    label: 'Plots',
+    icon: 'map',
+    permission: 'plots.manage',
+    section: 'admin',
+  },
+  {
     to: '/app/admin/audit',
     label: 'Audit',
     icon: 'clipboard',

@@ -59,3 +59,60 @@ describe('RFC-60 R6 SpeciesSearchForm status filter', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'inactive' }));
   });
 });
+
+describe('RFC-33 R6, RFC-67 R8 SpeciesSearchForm plot scope & filter', () => {
+  const PLOT_A = { id: 'p-1', code: 'PLT-A', name: 'Plot Alpha' };
+  const PLOT_B = { id: 'p-2', code: 'PLT-B', name: 'Plot Beta' };
+
+  it('renders no scope group when user has no plots and no plots.manage', () => {
+    renderWithProviders(
+      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />,
+      { me: READER },
+    );
+    expect(screen.queryByLabelText('Plot')).toBeNull();
+    expect(screen.queryByLabelText(/show species outside my plots/i)).toBeNull();
+  });
+
+  it('renders outside-plots checkbox and plot select when user has plots and is not restricted', async () => {
+    const onChange = vi.fn();
+    const meWithPlots: MeResponse = {
+      ...READER,
+      scope: { plots: [PLOT_A, PLOT_B], restricted: false },
+    };
+
+    renderWithProviders(
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, scope: 'plots' }}
+        onChange={onChange}
+      />,
+      { me: meWithPlots },
+    );
+
+    const checkbox = screen.getByLabelText(/show species outside my plots/i);
+    expect(checkbox).toBeInTheDocument();
+    expect(checkbox).not.toBeChecked();
+
+    await userEvent.click(checkbox);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ scope: 'all' }));
+
+    const plotSelect = screen.getByLabelText('Plot');
+    expect(plotSelect).toBeInTheDocument();
+    await userEvent.selectOptions(plotSelect, PLOT_A.id);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ plotId: PLOT_A.id }));
+  });
+
+  it('hides outside-plots checkbox when user is restricted', () => {
+    const meRestricted: MeResponse = {
+      ...READER,
+      scope: { plots: [PLOT_A], restricted: true },
+    };
+
+    renderWithProviders(
+      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />,
+      { me: meRestricted },
+    );
+
+    expect(screen.getByLabelText('Plot')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/show species outside my plots/i)).toBeNull();
+  });
+});

@@ -37,6 +37,11 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
       description={
         <>
           <span className="block">{taxonomyLine(species)}</span>
+          {species.plots && species.plots.length > 0 ? (
+            <span className="block">
+              In your plots: {species.plots.map((p) => p.name).join(', ')}
+            </span>
+          ) : null}
           {names.length > 0 ? (
             <span className="block">
               Also known as <span className="italic">{names.join(', ')}</span>

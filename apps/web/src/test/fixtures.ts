@@ -11,7 +11,15 @@ export const USER = {
 } as const satisfies AuthUser;
 
 /** A signed-in user without any permission. @rfc RFC-01 R2 */
-export const ME: MeResponse = { user: USER, permissions: [] };
+export const ME: MeResponse = {
+  user: USER,
+  permissions: [],
+  scope: { plots: [], restricted: false },
+};
 
 /** A signed-in administrator (every catalog key). @rfc RFC-01 R2 */
-export const ADMIN_ME: MeResponse = { user: USER, permissions: [...PERMISSION_KEYS] };
+export const ADMIN_ME: MeResponse = {
+  user: USER,
+  permissions: [...PERMISSION_KEYS],
+  scope: { plots: [], restricted: false },
+};

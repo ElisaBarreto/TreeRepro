@@ -9,6 +9,7 @@ import {
   suspendUser,
 } from '../../api/admin.ts';
 import { UserNameSection } from '../../components/admin/UserNameSection.tsx';
+import { UserPlotsSection } from '../../components/admin/UserPlotsSection.tsx';
 import { UserRolesSection } from '../../components/admin/UserRolesSection.tsx';
 import { UserSessionsSection } from '../../components/admin/UserSessionsSection.tsx';
 import { UserStatusBadge } from '../../components/admin/UserStatusBadge.tsx';
@@ -104,6 +105,7 @@ export function UserPage({ id }: { id: string }) {
       {resend.isError ? <Alert tone="error">{userErrorMessage(resend.error)}</Alert> : null}
       {canUpdate ? <UserNameSection user={u} /> : null}
       <UserRolesSection user={u} canEdit={canUpdate} />
+      <UserPlotsSection user={u} canEdit={canUpdate} />
       {hasPermission(me, 'sessions.read') ? (
         <UserSessionsSection userId={u.id} canRevoke={hasPermission(me, 'sessions.revoke')} />
       ) : null}

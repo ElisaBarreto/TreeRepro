@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { Genus, SpeciesStatus, TaxonRef } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
+import { listPlots, plotKeys } from '../../api/plots.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { Badge, Button, Field, Input, Select } from '../ui/index.ts';
@@ -12,6 +13,8 @@ export interface SpeciesSearchValue {
   genusId?: string;
   unresolved: boolean;
   status?: SpeciesStatus;
+  scope?: 'plots' | 'all';
+  plotId?: string;
 }
 
 /**
@@ -22,9 +25,11 @@ export interface SpeciesSearchValue {
  * With `dataset.read_inactive`, a Status select (All / Active / Inactive)
  * also renders (RFC-33 R7); without it the filter is neither shown nor
  * reachable, so the value simply never carries a status.
+ * With assigned plots or `plots.manage`, a Plot filter and an outside-plots
+ * toggle render (RFC-33 R6, RFC-67 R8).
  * @rfc RFC-13 R2
  * @rfc RFC-60 R6, R8
- * @rfc RFC-33 R7
+ * @rfc RFC-33 R6, R7, R8
  */
 export function SpeciesSearchForm({
   value,
@@ -34,8 +39,28 @@ export function SpeciesSearchForm({
   onChange: (next: SpeciesSearchValue) => void;
 }) {
   const me = useMe();
-  const ids = { q: useId(), family: useId(), genus: useId(), genera: useId(), status: useId() };
+  const ids = {
+    q: useId(),
+    family: useId(),
+    genus: useId(),
+    genera: useId(),
+    status: useId(),
+    plot: useId(),
+  };
   const families = useQuery({ queryKey: datasetKeys.families, queryFn: fetchFamilies });
+
+  const hasPlots = Boolean(me.scope?.plots && me.scope.plots.length > 0);
+  const canManagePlots = hasPermission(me, 'plots.manage');
+  const showScopeGroup = hasPlots || canManagePlots;
+
+  const allPlotsQuery = useQuery({
+    queryKey: plotKeys.list({ limit: 100 }),
+    queryFn: () => listPlots({ limit: 100 }),
+    enabled: canManagePlots,
+  });
+  const availablePlots = canManagePlots
+    ? (allPlotsQuery.data?.data ?? me.scope?.plots ?? [])
+    : (me.scope?.plots ?? []);
 
   const [genusText, setGenusText] = useState('');
   const [chosenGenus, setChosenGenus] = useState<TaxonRef | null>(null);
@@ -64,7 +89,13 @@ export function SpeciesSearchForm({
 
   return (
     <div
-      className={`grid gap-4 md:items-start ${canReadInactive ? 'md:grid-cols-[2fr_1fr_1fr_1fr]' : 'md:grid-cols-[2fr_1fr_1fr]'}`}
+      className={`grid gap-4 md:items-start ${
+        canReadInactive && showScopeGroup
+          ? 'md:grid-cols-[2fr_1fr_1fr_1fr_1fr]'
+          : canReadInactive || showScopeGroup
+            ? 'md:grid-cols-[2fr_1fr_1fr_1fr]'
+            : 'md:grid-cols-[2fr_1fr_1fr]'
+      }`}
     >
       <Field id={ids.q} label="Search species">
         <Input
@@ -126,8 +157,6 @@ export function SpeciesSearchForm({
               className="max-h-64 overflow-y-auto rounded-[10px] border border-canopy-700/15 bg-white py-1 text-cell shadow-sm"
             >
               {suggestions.map((genus) => (
-                // The option is the button itself: it is what a keyboard
-                // reaches and what an assistive technology activates.
                 <button
                   key={genus.id}
                   type="button"
@@ -158,6 +187,22 @@ export function SpeciesSearchForm({
           </div>
         ) : null}
       </div>
+      {showScopeGroup ? (
+        <Field id={ids.plot} label="Plot">
+          <Select
+            id={ids.plot}
+            value={value.plotId ?? ''}
+            onChange={(event) => onChange({ ...value, plotId: event.target.value || undefined })}
+          >
+            <option value="">All plots</option>
+            {availablePlots.map((plot) => (
+              <option key={plot.id} value={plot.id}>
+                {plot.code} — {plot.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
       {canReadInactive ? (
         <Field id={ids.status} label="Status">
           <Select
@@ -173,17 +218,38 @@ export function SpeciesSearchForm({
           </Select>
         </Field>
       ) : null}
-      <label
-        className={`flex h-11 items-center gap-2.5 text-body text-canopy-900 ${canReadInactive ? 'md:col-span-4' : 'md:col-span-3'}`}
+      <div
+        className={`flex flex-wrap items-center gap-6 ${
+          canReadInactive && showScopeGroup
+            ? 'md:col-span-5'
+            : canReadInactive || showScopeGroup
+              ? 'md:col-span-4'
+              : 'md:col-span-3'
+        }`}
       >
-        <input
-          type="checkbox"
-          className="size-5 accent-canopy-700"
-          checked={value.unresolved}
-          onChange={(event) => onChange({ ...value, unresolved: event.target.checked })}
-        />
-        Unresolved taxa only
-      </label>
+        <label className="flex h-11 items-center gap-2.5 text-body text-canopy-900">
+          <input
+            type="checkbox"
+            className="size-5 accent-canopy-700"
+            checked={value.unresolved}
+            onChange={(event) => onChange({ ...value, unresolved: event.target.checked })}
+          />
+          Unresolved taxa only
+        </label>
+        {hasPlots && !me.scope.restricted ? (
+          <label className="flex h-11 items-center gap-2.5 text-body text-canopy-900">
+            <input
+              type="checkbox"
+              className="size-5 accent-canopy-700"
+              checked={value.scope === 'all'}
+              onChange={(event) =>
+                onChange({ ...value, scope: event.target.checked ? 'all' : 'plots' })
+              }
+            />
+            Show species outside my plots
+          </label>
+        ) : null}
+      </div>
     </div>
   );
 }

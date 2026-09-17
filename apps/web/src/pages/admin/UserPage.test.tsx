@@ -32,6 +32,7 @@ const admin = vi.hoisted(() => ({
   fetchUser: vi.fn(),
   inviteUser: vi.fn(),
   updateUser: vi.fn(),
+  setUserPlots: vi.fn(),
   suspendUser: vi.fn(),
   reactivateUser: vi.fn(),
   resendInvite: vi.fn(),
@@ -50,12 +51,22 @@ vi.mock('../../api/admin.ts', async (importOriginal) => ({
   ...admin,
 }));
 
+const plotsApi = vi.hoisted(() => ({
+  listPlots: vi.fn(),
+}));
+vi.mock('../../api/plots.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/plots.ts')>()),
+  ...plotsApi,
+}));
+
 const VIEWER: MeResponse = { ...ME, permissions: ['admin.access', 'users.read'] };
 
 beforeEach(() => {
   for (const fn of Object.values(admin))
     if (typeof fn === 'function' && 'mockReset' in fn) fn.mockReset();
   auth.fetchMe.mockReset();
+  plotsApi.listPlots.mockReset();
+  plotsApi.listPlots.mockResolvedValue({ data: [], meta: { nextCursor: null, hasMore: false } });
   admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_READERS]);
   admin.listUserSessions.mockResolvedValue([ADMIN_SESSION]);
 });

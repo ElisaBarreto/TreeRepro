@@ -55,6 +55,7 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Users' })).toHaveAttribute('href', '/app/admin/users');
     expect(screen.getByRole('link', { name: 'Roles' })).toHaveAttribute('href', '/app/admin/roles');
+    expect(screen.getByRole('link', { name: 'Plots' })).toHaveAttribute('href', '/app/admin/plots');
     expect(screen.getByRole('link', { name: 'Audit' })).toHaveAttribute('href', '/app/admin/audit');
   });
 
@@ -65,6 +66,7 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Roles' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Plots' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Audit' })).not.toBeInTheDocument();
     unmount();
 

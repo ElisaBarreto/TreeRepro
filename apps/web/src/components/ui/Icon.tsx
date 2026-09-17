@@ -22,6 +22,7 @@ const PATHS = {
   alert: 'M10 3.5 17.5 16.5h-15zM10 8.5v3.5M10 14.5v.5',
   branch:
     'M6 4v12M6 8c0 3 8 1 8 5M7.5 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM15.5 13a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM7.5 16a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z',
+  map: 'M2.5 5.5l5-2 5 2 5-2v11l-5 2-5-2-5 2zM7.5 3.5v11M12.5 5.5v11',
 } as const;
 
 export type IconName = keyof typeof PATHS;
