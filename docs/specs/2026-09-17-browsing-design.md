@@ -1,0 +1,119 @@
+# TreeRepro — Browsing Design (plans 10a–10e)
+
+**Date:** 2026-09-17
+**Status:** approved design; plans `2026-09-17-browsing-10a-species.md`, `-10b-synonyms.md`, `-10c-traits.md`, `-10d-references.md`, `-10e-distribution.md`
+**Scope:** the Data section tab by tab. Species: trait filters, order by completeness, a coverage table maintained by trigger, hierarchical breadcrumbs. Synonyms and common names with a three-tier search. Traits: filters, level chips, a trait page listing species with and without data. References: enriched citations, DOI links, filters by trait. Species distribution by country and state. RFC-69 (coverage summary) and amendments to RFC-60, RFC-61, RFC-62, RFC-63, RFC-68, RFC-13. Programme index: `2026-09-17-contributor-launch-overview.md`. Depends on plan 08a (visibility, import kinds) and 08b (scope toggle shares the filter panel).
+
+## 1. Context
+
+The species search (name, genus, family) and the reference page (click a reference → its species and records) are the parts contributors already like. The owner wants the same directness for traits — click a trait, see the species that have it and the ones that lack it — and wants the species list to answer "where is data missing?" so a trait expert can go straight to work. Researchers also know species by other names, references need to be readable citations rather than keys, and a geographic filter is planned once the distribution dataset exists.
+
+Scale constraints: eight million records, ~100k species, ~100 traits. Anything a list sorts or filters by must be an indexed column or a small maintained table, never an aggregate over `trait_records` per request.
+
+## 2. Decisions summary
+
+| Topic | Decision |
+|---|---|
+| Coverage table | `species_trait_coverage(species_id, trait_id, record_count, harmonised_count, first_record_at, last_record_at)` and `species.trait_count`, both maintained by the `trait_records` insert trigger (append-only ⇒ monotonic). Backfilled by the migration. Serves completeness order, with/missing filters, the dashboard (plan 11b) and coverage metrics (plan 11c). |
+| Trait filters | `categoryKey`, `traitId`, `traitData=with\|missing` on `GET /api/species`; combinable with taxonomy, scope, status and (10e) geography. |
+| Completeness | `sort=name\|completeness`; completeness orders by `trait_count` ascending (most incomplete first), then name, then id; the cursor is a three-key keyset. Counts include every trait a species has data for, active or not — the number is a coarse guide, not a metric shown to contributors. |
+| Breadcrumb | A `BreadcrumbProvider` in the shell; a page registers trailing crumbs (`useBreadcrumb([{ label, to? }])`). Group and entry stay from `nav.ts`. |
+| Names | `species_names` gains `name_type in ('gbif', 'synonym', 'common')`, `language` (ISO 639-1, required for common), `source` widened to free text. Existing rows: `gbif` / `null` / `gbif`. |
+| Search tiers | Tier 1: canonical name equals `q` (case-insensitive) → only that species. Tier 2: today's search — substring of the canonical name or of any alternative name. The first non-empty tier is the result; the cursor carries the tier. `matchedName` + `matchedNameType` say how a row matched. (The owner's "only if no exact match" priority is tier 1; tier 2 keeps the current behaviour so a GBIF-name hit never disappears behind a canonical substring hit.) |
+| Trait page | `/app/traits/$id`: header, tabs *Species with data* / *Species missing data*, each a paginated species table with the taxonomy filters; the with-data table shows record count, accepted value and source; a summary block shows level distribution or numeric spread across species. |
+| Reference labels | `short_citation` (display label) and `full_citation` (expanded), imported or filled by hand; DOI-created references derive a short citation from Crossref (`Surname et al. (Year)`). Label everywhere = `shortCitation ?? citationKey`. |
+| Reference × trait | `reference_traits(reference_id, trait_id, record_count)` maintained by the same trigger; `GET /api/references?traitId=&categoryKey=`; the detail lists the reference's traits. |
+| Distribution | `species_distribution(species_id, country char(2), state text null, source text null)`; filters `country=&state=`; dropdown data from `GET /api/distribution/countries` and `/states`. Country codes ISO 3166-1 alpha-2; the owner's file may carry names — the import maps a small table of accepted names to codes and rejects the rest. |
+
+## 3. Coverage summary (RFC-69, new; plan 10a)
+
+Category dataset, file `docs/rfc/60-dataset/69-coverage-summary.md`.
+
+- **R1** Table `species_trait_coverage(species_id uuid references species restrict, trait_id uuid references traits restrict, record_count integer not null, harmonised_count integer not null, first_record_at timestamptz not null, last_record_at timestamptz not null; primary key (species_id, trait_id); index (trait_id, species_id))`. One row per species × trait with at least one record. `species.trait_count integer not null default 0` is the number of such rows for the species (RFC-60 R1 amended).
+- **R2** Maintenance: the statement trigger on `trait_records` insert (the one that maintains RFC-61 R4's counters) also upserts `species_trait_coverage` from the inserted rows (`on conflict (species_id, trait_id) do update set record_count = record_count + excluded.record_count, harmonised_count = …, last_record_at = greatest(…)`) and increments `species.trait_count` by the number of pairs newly inserted. Records are append-only (RFC-63 R4), so nothing ever decrements. Withdrawn records still count: coverage answers "is there a record", not "is there a good record".
+- **R3** The migration backfills both from `trait_records` in one statement each (`insert … select species_id, trait_id, count(*), count(*) filter (where harmonisation = 'harmonised'), min(created_at), max(created_at) group by 1, 2`, then `update species set trait_count = (select count(*) …)`), and the `treerepro_app` role gets `SELECT` only on the table. The trigger function (`trait_records_reference_usage()`, migration 0015, plain `plpgsql` today) becomes `SECURITY DEFINER` with `SET search_path = public` (the `audit_log_purge` pattern of migration 0007): it is owned by the migrator role that owns the tables, so the app role's inserts into `trait_records` can maintain a table the app role only reads. The function keeps its name (renaming would need `DROP TRIGGER` / `CREATE TRIGGER`).
+- **R4** The table is read by: species filters and order (RFC-60 R6 amended), the missing-traits mode of the trait page (RFC-62 R8), the dashboard (RFC-72) and the coverage metrics (R5–R7, plan 11c). Visibility (RFC-33) is applied by joining `species` and `traits` and filtering on their `active` flags; the table itself has no flags.
+
+R5–R7 (coverage metrics) are specified in `2026-09-17-workspace-design.md` §5.
+
+## 4. Species list (RFC-60 R6 amendments, plan 10a)
+
+`GET /api/species?q=&familyId=&genusId=&unresolved=&status=&scope=&plotId=&categoryKey=&traitId=&traitData=&sort=&cursor=&limit=` (`dataset.read`, visibility RFC-33):
+
+- `traitId` (uuid of a visible trait; unknown or invisible → 404 `TRAIT_NOT_FOUND`) with `traitData=with` (default) keeps species that have a coverage row for the trait; `traitData=missing` keeps species with none.
+- `categoryKey` (existing category; unknown → 400, path `categoryKey`) without `traitId`: `with` keeps species with a coverage row for any visible trait of the category; `missing` keeps species with none. With `traitId`, `categoryKey` must be the trait's category (400 otherwise).
+- `sort=name` (default) is the current order; `sort=completeness` orders by `trait_count asc, canonical_name asc, id asc` with the composite cursor `[trait_count, canonical_name, id]`.
+- The item gains `traitCount: number` and, when `traitId` is given, `traitRecordCount: number | null` (the coverage `record_count`, 0 in missing mode).
+
+Web (plan 10a):
+
+- `SpeciesSearchForm` becomes three groups: **Taxonomy** (species name, genus, family — unchanged), **Traits** (category select → trait select filtered by category → radio "Has data" / "Missing data", enabled once a trait or category is chosen), **Scope** (from plan 08b: plot select, "Show species outside my plots", status for unrestricted viewers). Below the groups: **Order by** select (Name / Most incomplete first) and the result count. Every control is a URL search param (`validateSearch` in `routes/app/species/index.tsx`), so `/app/species?traitId=…&traitData=missing` from the trait page or the dashboard opens the list pre-filtered.
+- `SpeciesList` shows the trait count column ("12 traits") and, when a trait filter is set, the records-for-trait column.
+- Breadcrumb: `Data › Species` on the list, `Data › Species › <canonical name>` on the detail (italic).
+
+## 5. Names (RFC-60 R4, R6, R9 amendments; RFC-68 R12; plan 10b)
+
+- **R1 amended.** `species_names(id, species_id, name, name_type text not null default 'gbif' check in ('gbif', 'synonym', 'common'), language char(2) null, source text not null default 'gbif', gbif_usage_key text null, created_at; unique (species_id, name); check (name_type = 'common') = (language is not null); check (gbif_usage_key is null or name_type = 'gbif'))`. The column formerly constrained to `'gbif'` becomes free text 1–200 characters naming the provider (`gbif`, `WCVP`, `Flora e Funga do Brasil`, a DOI…). Migration: drop the old check, add the columns and checks; existing rows keep `name_type = 'gbif'`, `source = 'gbif'`.
+- **R4 amended.** Alternative names are GBIF names (import), synonyms and common names (import or `taxa.manage`). A name is never stored twice for a species, whatever its type; a name equal to the canonical name is refused (409 `SPECIES_NAME_TAKEN`, as today).
+- **R6 amended — search tiers.** With `q`: tier 1 keeps the species whose canonical name equals `q` case-insensitively (`canonical_name ilike <q with %, _ and \ escaped>` — no wildcard, served by the trigram index); if none, tier 2 keeps today's matches — substring of the canonical name or of any alternative name (any type). The non-empty tier is answered, ordered as today; the cursor encodes the tier so a page never mixes tiers. `matchedName` (alternative name that matched, else null) gains `matchedNameType: 'gbif' | 'synonym' | 'common' | null`. Without `q` nothing changes.
+- **R7 amended.** `names` items carry `nameType`, `language`, `source`, `gbifUsageKey`, grouped by the web app.
+- **R9 amended.** `POST /api/species/:id/names { name, nameType, language?, source?, gbifUsageKey? }`; `source` defaults to `'manual'`; validation per R1's checks (400 with paths).
+- **RFC-68 R12** Kind `synonyms`. Header `wcvp_canonical_name,synonym_or_common_name,name_type,source` with `name_type` one of `synonym`, `common_<lang>` (`lang` two lowercase letters). Unknown species → `unknown_species`; bad `name_type` → `invalid_value`; a name equal to the canonical or already stored → duplicate. `source` empty → `'import'`.
+
+Web (plan 10b): the list row shows "found as: *name*" with a small badge (synonym / common · pt / GBIF) when `matchedName` is set (the row keeps showing it today; the badge is new); the species header groups names as **Synonyms** and **Common names** (with language chips) and keeps GBIF names in "Also known as"; `AddNameDialog` gains type, language and source fields.
+
+## 6. Traits (RFC-62 amendments, plan 10c)
+
+- **R5 amended.** `GET /api/traits?categoryKey=&valueType=&q=` filters the dictionary server-side (the page still loads it whole for selects; filtering is for deep links). The trait entry gains `speciesCount` (visible species with a coverage row) — `select trait_id, count(*) from species_trait_coverage c join species s … group by 1` is a scan of the coverage table (millions of rows), so it is cached 10 minutes per viewer class (`dictionary:species-counts:<u|r>`, `cachedJson`); a fresh number is not worth a scan per form select.
+- **R7 (new).** `GET /api/traits/:id` (`dataset.read`, visibility): the trait entry plus `category: { key, label }`, `speciesWithData`, `speciesMissing` (visible active species without a coverage row), `acceptedCount` (species whose current accepted value is on this trait), and `distribution`: for a categorical trait `levels: [{ level: { id, key }, speciesCount, recordCount }]` (harmonised records grouped by level, species counted distinct); for a quantitative trait `numeric: { min, median, max, speciesCount }` over harmonised records. Unknown or invisible → 404 `TRAIT_NOT_FOUND`. The distribution query runs over `trait_records` for one trait through `trait_records_trait_idx`; it is bounded by the largest trait (~1–2% of the records) and cached in Redis for 10 minutes per viewer class (`trait:<id>:distribution:<u|r>` — plot-bound viewers get the restricted class: the summary is global, not per plot), invalidated by nothing — a ten-minute lag on a summary is acceptable and the counts are monotonic.
+- **R8 (new).** `GET /api/traits/:id/species?mode=with|missing&q=&familyId=&genusId=&scope=&plotId=&cursor=&limit=` (`dataset.read`, visibility and plot scope as RFC-33 R6): species list items (RFC-60 R6) plus, in `with` mode, `recordCount`, `accepted: { recordId, valueText, reference: { id, citationKey, shortCitation, kind } } | null` and `summary: { levels: [{ key, count }] } | { numeric: { min, max } } | null` (from the species × trait records; computed per page of at most 200 species with one grouped query). `missing` mode is the anti-join on the coverage table. Order and cursor as the species list.
+- **R6 amended.** Nothing; the writes stay.
+
+Web (plan 10c):
+
+- `TraitsPage`: filter row (category select, trait select filtered by category, value type select), all URL search params; the table keeps name, description, unit and adds the species count; **levels render as chips** (`Chip` UI primitive: rounded, `text-label`, wraps in rows) inside the expanded row instead of the vertical list; an `inactive` badge only when `active === false`; the trait name links to the trait page; the editors of plan 07c stay where they are.
+- `TraitPage` (`/app/traits/$id`): `PageHeader` with name, category, unit, description, badges (inactive / value type), counts (species with data, missing, accepted); a **Distribution** section (chips with counts for levels; min / median / max for numbers); tabs **Species with data** / **Species missing data** with the taxonomy filters (reuse the taxonomy group of `SpeciesSearchForm`) and a paginated `Table` — with-data columns: species (link), family, records, accepted value, source; missing columns: species, family, and an **Add the first entry** link to `/app/species/$id?missing=true` (plan 09b). Breadcrumb `Data › Traits › <Category> › <trait>` (the category crumb links to `/app/traits?categoryKey=`).
+- The pending queue keeps `?traitId=`.
+
+## 7. References (RFC-61 amendments; RFC-68 R13; plan 10d)
+
+- **R1 amended.** `short_citation text null` (1–200) and `full_citation text null` (1–2,000).
+- **R4 amended.** Items carry `shortCitation`, `fullCitation`, `kind`; `GET /api/references?q=&kind=&traitId=&categoryKey=` — `q` also matches `short_citation`; `traitId` keeps references with a `reference_traits` row for the trait; `categoryKey` keeps references with a row for any visible trait of the category. `GET /api/references/:id` adds `traits: [{ trait: { id, key, valueType, unit }, recordCount }]` ordered by count (visible traits only).
+- **R6 amended.** `POST` / `PATCH` accept `shortCitation?`, `fullCitation?`.
+- **R8 amended** (DOI-created references, plan 09a): `short_citation` is derived when Crossref answers — first author's family name; "and Surname" for two authors; "et al." for more; then ` (year)`; nothing when there is no author or year. `full_citation` = `authors (year). title. journal. https://doi.org/doi` when title is present.
+- **R9 (new).** Table `reference_traits(reference_id uuid references bibliographic_references restrict, trait_id uuid references traits restrict, record_count integer not null; primary key (reference_id, trait_id); index (trait_id))` — records naming the reference in either role, counted once per record — maintained by the `trait_records` insert trigger and backfilled by the migration (RFC-69 R2–R3 pattern).
+- **RFC-68 R13** Kind `references`. Header `reference_key,short_citation,full_citation,doi,url`. Matches `citation_key`; unknown → `unknown_reference`. Fills each of the four fields **only when the stored value is null** (this is the second kind that changes an existing row); a row that fills nothing is duplicate; a DOI already held by another reference → `doi_taken`; a malformed DOI (RFC-80 R1) → `invalid_value`. DOIs are normalised before storage.
+
+Web (plan 10d): every place that prints a citation key (record table, drawer, trait panel, species trait cards, reference list and page, export stays keys) uses `referenceLabel(ref)` = `shortCitation ?? citationKey` (or "Personal observation (Name)"); the reference page shows the full citation and a DOI link (`https://doi.org/<doi>`, `target="_blank" rel="noopener noreferrer"`) and a **Traits** section (chips with counts linking to the trait page); the references list gains category / trait filters (URL params) and a DOI column with the link; `ReferenceDialog` gains short and full citation fields.
+
+## 8. Distribution (RFC-60 R11–R12 new; RFC-68 R14; plan 10e)
+
+- **R11 (new).** Table `species_distribution(id uuid default uuidv7(), species_id uuid references species restrict, country char(2) not null, state text null, source text null, created_at; unique (species_id, country, coalesce(state, '')) via unique index on the expression; index (country, state))`. `country` is an ISO 3166-1 alpha-2 code (uppercase, checked against the list in `packages/contracts/src/countries.ts` — code → English name); `state` is 1–100 characters normalised per R2. Nothing deletes a row; `taxa.manage` may add one (`POST /api/species/:id/distribution { country, state? }`, 409 `DISTRIBUTION_EXISTS`, audit `taxa.updated` with `fields: ['distribution']`).
+- **R12 (new).** `GET /api/species?country=&state=` keeps species with a distribution row for the country (and state when given; `state` requires `country`, 400 otherwise). `GET /api/distribution/countries` (`dataset.read`) answers `[{ code, name, speciesCount }]` for countries with at least one visible species, by name; `GET /api/distribution/states?country=` answers `[{ state, speciesCount }]`. Both cached in Redis for 10 minutes. `GET /api/species/:id` adds `distribution: [{ country, state }]` ordered by country then state.
+- **RFC-68 R14** Kind `distribution`. Header `wcvp_species,country,state`. Unknown species → `unknown_species`; `country` accepts an alpha-2 code or an English country name from the contracts table (case-insensitive), anything else → `invalid_value`; empty `state` → null; existing triple → duplicate.
+
+Web (plan 10e): a **Geography** group in `SpeciesSearchForm` (country select, state select fed by the country; URL params); the species header lists countries (and states) as chips; `SpeciesDialog` is untouched — distribution rows are added through a small "Add distribution" dialog with `taxa.manage`.
+
+This plan is blocked until the owner confirms the dataset and its resolution; the spec fixes the contract so the import and filters can be built when the file exists.
+
+## 9. Breadcrumb (RFC-13 R3 amendment, plan 10a)
+
+The shell renders `Group › Entry › crumbs…` where `crumbs` come from a `BreadcrumbContext` the layout provides; a page calls `useBreadcrumb(items)` in an effect (cleared on unmount). Items `{ label: ReactNode, to?: string, search? }`; the last item is not a link. Pages that set crumbs in this programme: species detail, trait page, reference page (retrofit), plot detail (plan 08b lands before, retrofit here), help pages (plan 12a). `AppShell.test.tsx` covers the rendering; each page test asserts its crumbs.
+
+## 10. Error codes, audit actions, permissions
+
+RFC-12: `DISTRIBUTION_EXISTS` 409. RFC-41: none new (taxa/references audit actions reused). RFC-30: none new.
+
+## 11. Testing
+
+- Trigger tests: inserting records updates `species_trait_coverage`, `species.trait_count`, `reference_traits` (single insert, multi-row insert, duplicate pair); migration backfill test on synthetic rows (the migration test harness runs migrations on an empty database, then inserts, then asserts; the backfill statement is also exercised by calling the function it is written in).
+- Search tiers: exact canonical returns only that species even when substrings match others; synonym-only match; cursor stays in tier.
+- Trait routes: counts and distributions on synthetic data with visibility; the species-with-data page summary; missing mode anti-join; plot scope.
+- References: filters by trait and category; import kind fills only nulls; DOI conflicts.
+- Distribution: import mapping of names to codes; filters; caches.
+- Web: search form groups and URL round-trip; species list columns; trait page tabs; chips; reference labels everywhere (one shared helper test); breadcrumb per page.
+- E2E: species list filtered by a trait in missing mode; open a trait page and jump to a species; search a species by synonym.
+
+## 12. Out of scope
+
+Trait categories stay seed-only (no create / edit route). Species merges; a map view; ordering species by "records awaiting validation" (dashboard covers it per user); per-level counts on the species list; a references export.

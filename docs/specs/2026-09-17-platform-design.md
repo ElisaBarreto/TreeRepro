@@ -1,0 +1,100 @@
+# TreeRepro — Platform Design (plans 12a–12d)
+
+**Date:** 2026-09-17
+**Status:** approved design; plans `2026-09-17-platform-12a-help.md`, `-12b-digest.md`, `-12c-proposals.md`, `-12d-health.md`
+**Scope:** the pieces around the scientific workflow: help pages and a getting-started card for new contributors; a daily e-mail digest for managers and admins; species proposals with an external taxonomy lookup and an approval queue; a platform health page for the admin. RFC-73 (help and onboarding), RFC-74 (daily digest), RFC-75 (species proposals), RFC-81 (taxonomy lookup), RFC-52 (platform health), amendments to RFC-13, RFC-30, RFC-31, RFC-41, RFC-42, RFC-12. Programme index: `2026-09-17-contributor-launch-overview.md`.
+
+## 1. Context
+
+Contributors will meet a vocabulary (validate, contest, complement, personal observation, plot scope) that the interface explains in tooltips but that deserves a place to read in full. The admin and the managers need to know when disputes and contests appear without opening the queues every day. A contributor who cannot find a species has no way to say so. And the admin has no single screen saying whether the platform is healthy.
+
+## 2. Decisions summary
+
+| Topic | Decision |
+|---|---|
+| Help | TSX pages under `/app/help` (no markdown pipeline, no dependency, no HTML injection); one file per topic under `apps/web/src/content/help/`; a shared `Prose` layout; anchors the `HelpTip`s link to. |
+| Getting started | A card on the home page with a checklist (read the workflow, open your plots, validate a record, add an entry) that hides once the viewer's contribution summary is non-zero; a "Hide" control remembered in `localStorage` (presentation preference, no API). |
+| Digest | An hourly timer checks `job_runs`; when the last successful digest is 24 h old or absent it computes the last window's counts and sends one e-mail to every active user holding `records.review` or the admin role — only when the window had activity. Transactional mail to staff, no unsubscribe. |
+| Job runs | Table `job_runs(kind, started_at, finished_at, status, detail jsonb, error)`; the audit purge (RFC-42) starts recording its runs here too; the health page reads it. |
+| Proposals | Table `species_proposals`; contributors (`taxa.propose`) submit a name with an optional note; the API queries GBIF (backbone match and the WCVP checklist match) at submission and stores the best matches; admins (`taxa.manage`) approve — creating the species with genus and family from the match or from the form — or reject with a note. |
+| Lookup | GBIF **v2** species match API only (`https://api.gbif.org/v2/species/match?scientificName=` and `…&checklistKey=` — v1 ignores `datasetKey`), two calls per proposal (backbone, WCVP checklist), fixed host, `redirect: 'manual'`, 5 s timeout, injected client (RFC-80 pattern), best effort: a failed lookup stores `null` and never blocks the proposal. |
+| Health | `GET /api/admin/health` (`health.read`, admin) composes counts from users, sessions, the coverage table, the queues, `job_runs`, `import_batches`. Cached one minute. |
+
+## 3. Help and onboarding (RFC-73, new; plan 12a)
+
+Category workspace, file `docs/rfc/70-workspace/73-help-and-onboarding.md`.
+
+- **R1** Routes `/app/help` (index) and `/app/help/$topic` under the `/app` layout (RFC-13 R2 amended), available to every signed-in user (no permission). Topics: `getting-started`, `workflow` (validate / contest / complement, what each button does and records), `vocabulary` (traits, categories, levels, units, why no free text), `references` (DOIs, personal observation, several references), `scope` (plots, the toggle, inactive species and traits), `contributions` (the My contributions page, withdrawal), `faq`, `contact`. An unknown topic renders the index.
+- **R2** Content is TSX under `apps/web/src/content/help/<topic>.tsx`, exporting `{ slug, title, summary, body }`; the index lists every topic; headings carry ids so `HelpTip`s can link `#anchor`s (`/app/help/workflow#contest`).
+- **R3** The home page shows a **Getting started** card to a viewer whose contribution summary (RFC-71 R4) is all zeros: a checklist linking to the help topics and to the species page, and a "Hide this card" button remembered under `localStorage['treerepro.gettingStarted.hidden']`. The card never shows for a viewer with any contribution.
+- **R4** Every `HelpTip` of plan 09b gains a "Learn more" link to its topic anchor.
+- **R5** Copy is English, reviewed by the owner before the plan merges (the plan lists the paragraphs; the owner edits the TSX later without a release process).
+
+Web: `HelpIndexPage`, `HelpTopicPage`, `Prose` layout (typography classes only), nav entry **Help** (section account, icon `help`), breadcrumb `Help › <Topic>`.
+
+## 4. Daily digest (RFC-74, new; RFC-42 amendment; plan 12b)
+
+Category workspace, file `docs/rfc/70-workspace/74-daily-digest.md`.
+
+- **R1** Table `job_runs(id uuid default uuidv7(), kind text not null check in ('audit_purge', 'digest'), started_at timestamptz not null default now(), finished_at timestamptz null, status text not null check in ('running', 'completed', 'failed', 'skipped'), detail jsonb not null default '{}', error text null; index (kind, started_at desc))`. `audit_purge` runs record `{ purged }` (RFC-42 R4 amended: `purgeAudit` writes its run). `skipped` means the job decided there was nothing to do.
+- **R2** Schedule: `startDigestTimer` ticks every hour (first tick 60 s after start, `unref`); a tick runs the digest when no `digest` run with status `completed` or `skipped` finished in the last 23 h 30 min (so an hourly tick lands once a day and a restart never doubles it). The window is `(last completed-or-skipped run's window end, now]`, or the last 24 h for the first run.
+- **R3** Content, over the window and RFC-33 unrestricted: `records` (manual records created), `contests`, `complements` (by intent), `validations` (`confirm` annotations), `disputes` (`dispute` annotations with `generated = false`), `withdrawals`, `proposals` (RFC-75, 0 until plan 12c), `pendingGroups` (current, RFC-65 R8), `disputedNow` (current, RFC-65 R10), plus the 10 newest contests and 10 newest disputes as `{ species canonical name, trait key, value, actor name }`.
+- **R4** Recipients: `active` users holding `records.review` through any role or holding `admin`, resolved by one query over `user_roles` / `role_permissions`. When the window's `records + contests + complements + validations + disputes + withdrawals + proposals` is 0 the run is `skipped` and nothing is sent.
+- **R5** One e-mail per recipient (`digestEmail` template: plain text (the mailer sends `{ subject, text }`), subject `TreeRepro digest — <date>`, the counts, the two lists with links to the record drawer URLs, the queue sizes) sent through the mailer of RFC-20 with the 5 s timeout; a failed send is logged and counted in `detail.failed`; the run completes when every send was attempted. Audit `digest.sent` with `metadata: { recipients, failed, windowStart, windowEnd }` (no addresses).
+- **R6** Configuration: `DIGEST_ENABLED` (default `true`; `false` skips every tick with a `skipped` run and `detail.reason = 'disabled'`). The E2E stack sets it `false`.
+- **R7** `job_runs` is append-only in practice (the runtime role holds `INSERT` and `UPDATE` of its own row by id, no `DELETE`); the health page (RFC-52) reads it; rows older than one year are removed by `audit_log_purge()`'s companion `job_runs_purge()` on the same schedule (RFC-42 R6 amended).
+
+Implementation: `apps/api/src/jobs/runs.ts` (`startRun`, `finishRun`), `apps/api/src/jobs/digest.ts` (`computeDigest`, `runDigest`, `startDigestTimer`), `apps/api/src/mail/templates.ts` gains `digestEmail`; `server.ts` starts the timer beside the retention one; `audit/retention.ts` records its run. Actor names in the e-mail are decrypted (RFC-40 R8) — the recipients hold `dataset.read`.
+
+## 5. Species proposals (RFC-75, new; plan 12c)
+
+Category workspace, file `docs/rfc/70-workspace/75-species-proposals.md`.
+
+- **R1** Table `species_proposals(id uuid default uuidv7(), proposed_name text not null, note text null, proposer_id uuid not null references users, status text not null default 'open' check in ('open', 'approved', 'rejected'), lookup jsonb null, lookup_at timestamptz null, species_id uuid null references species restrict, decided_by uuid null references users, decided_at timestamptz null, decision_note text null, created_at timestamptz not null default now(); check (status = 'open') = (decided_at is null); check (status = 'approved') = (species_id is not null); unique partial index (lower(proposed_name)) where status = 'open'; index (status, id desc); index (proposer_id, id desc))`.
+- **R2** `POST /api/species/proposals { name, note? }` (`taxa.propose`): `name` 3–200 characters normalised per RFC-60 R2; `note` 1–2,000. A visible species with that canonical or alternative name → 409 `SPECIES_NAME_TAKEN` with `details: [{ path: 'name', message: <species id> }]` (the web app links to it); an open proposal with the same name (case-insensitive) → 409 `PROPOSAL_EXISTS` with the proposal id. Otherwise insert with `status = 'open'`, run the lookup (RFC-81) and store its result (or `null` on failure) — the lookup runs before the insert so the row is written once; a lookup failure never fails the request. Answer 201 with the proposal (R6). Audit `proposals.created` (target `species_proposals`, no name in metadata).
+- **R3** `GET /api/species/proposals?status=&cursor=&limit=` (`taxa.manage`) lists proposals newest first (keyset on `id`), `status` default `open`. `GET /api/species/proposals/:id` (`taxa.manage`, or the proposer through `GET /api/me/proposals` — R5). Unknown → 404 `PROPOSAL_NOT_FOUND`.
+- **R4** Decisions (`taxa.manage`, one transaction, audited): `POST /api/species/proposals/:id/approve { canonicalName, nameSource, genusName?, familyName?, alternativeNames?: [{ name, nameType, language?, source? }] }` creates the species as `POST /api/species` would (RFC-60 R9; genus and family created when missing, as `SpeciesDialog` does today), sets `status = 'approved'`, `species_id`, `decided_by`, `decided_at`; a name collision answers 409 `SPECIES_NAME_TAKEN`. `POST /api/species/proposals/:id/reject { note }` sets `rejected` with `decision_note`. A decided proposal refuses another decision (409 `PROPOSAL_DECIDED`). Audit `taxa.created` for the species (as today) and `proposals.decided` with `metadata: { decision, speciesId }`.
+- **R5** `GET /api/me/proposals?cursor=&limit=` (`taxa.propose`) lists the viewer's proposals newest first, any status. The proposer is never e-mailed; the status shows in My contributions (plan 11a gains a **Proposals** tab in this plan).
+- **R6** Representation: `{ id, proposedName, note, status, proposer: { id, name }, lookup: <RFC-81 R3> | null, lookupAt, species: { id, canonicalName } | null, decidedBy: { id, name } | null, decidedAt, decisionNote, createdAt }`.
+- **R7** The dashboard's `queues.proposals` (RFC-72) and the digest's `proposals` (RFC-74) count open proposals / proposals created in the window.
+
+Web (plan 12c): on the species list, when a search returns nothing and the viewer holds `taxa.propose`, an empty state "No species matches *q*" with **Propose this species** opening `ProposeSpeciesDialog` (name prefilled, note); the dialog maps 409s to "This species exists — open it" / "Already proposed". Queue `/app/curation/proposals` (nav **Proposals**, `taxa.manage`): table (name, proposer, date, lookup verdict badge: *exact match*, *fuzzy*, *not found*, *lookup failed*), a detail drawer with the GBIF and WCVP match cards (scientific name, rank, status, family, genus, confidence, link to the GBIF page), **Approve** (opens `SpeciesDialog` prefilled from the match: canonical name, `nameSource` `wcvp` when the WCVP match is exact, else `gbif` or `original`, genus, family) and **Reject** (note). My contributions gains the Proposals tab (status badge, decision note, link to the created species).
+
+## 6. Taxonomy lookup (RFC-81, new; plan 12c)
+
+Category integrations, file `docs/rfc/80-integrations/81-taxonomy-lookup.md`.
+
+- **R1** Client `ctx.taxonomy` (`TaxonomyClient.match(name)`) calls the GBIF **v2** match API twice: `GET https://api.gbif.org/v2/species/match?scientificName=<encoded>` (the backbone) and `GET https://api.gbif.org/v2/species/match?scientificName=<encoded>&checklistKey=<WCVP_GBIF_CHECKLIST_KEY>` (the WCVP checklist hosted by GBIF; key from configuration — the v1 endpoint ignores `datasetKey`, verified 2026-09-17, so v1 cannot tell the two sources apart). The plan records the current key and a start-up check (`GET https://api.gbif.org/v1/dataset/<key>` whose `title` contains "World Checklist of Vascular Plants"; a failed check logs a warning and disables the WCVP call). Transport as RFC-80 R3 (fixed host, `redirect: 'manual'`, 5 s, 1 MiB streamed cap, no retry); a fake client in tests.
+- **R2** Mapping of one v2 answer (`{ usage: { key, name, canonicalName, rank, status }, acceptedUsage?, classification: [{ key, name, rank }], diagnostics: { matchType, confidence, note } }`): `{ matchType: diagnostics.matchType ('EXACT' | 'FUZZY' | 'HIGHERRANK' | 'NONE'), confidence, usageKey: usage.key (a string in v2), scientificName: usage.name, canonicalName: usage.canonicalName, rank: usage.rank, status: usage.status, family: classification[rank = FAMILY].name, genus: classification[rank = GENUS].name, acceptedUsageKey: acceptedUsage?.key, note: diagnostics.note }`; `HIGHERRANK` and `NONE` are reported as `none` with the higher rank named. The GBIF page link is `https://www.gbif.org/species/<usageKey>` for the backbone; checklist usages link to `https://www.gbif.org/species/<usageKey>?checklistKey=<key>`.
+- **R3** Stored `lookup`: `{ backbone: <R2> | null, wcvp: <R2> | null, verdict: 'exact' | 'fuzzy' | 'none' | 'failed' }` where `verdict` is `exact` when either source is `EXACT` at species rank, `fuzzy` when either is `FUZZY`, `none` when both answered without a match, `failed` when both calls failed.
+- **R4** The lookup is called only by proposals (RFC-75 R2) and by `GET /api/taxonomy/match?name=` (`taxa.manage`; the species dialog's **Look up** button in plan 12c fills the form from the answer; rate limit 30 per minute per user). It never writes.
+
+## 7. Platform health (RFC-52, new; plan 12d)
+
+Category admin, file `docs/rfc/50-admin/52-platform-health.md`.
+
+- **R1** `GET /api/admin/health` (`health.read`) answers `{ users: { active, invited, suspended, signedInLast7d, signedInLast30d }, dataset: { species, activeSpecies, traits, activeTraits, references, records, coverageCells, acceptedCells }, activity: { records7d, annotations7d, proposals7d, byDay: [{ day, records, annotations }] (14 days) }, queues: { pendingGroups, disputed, contested, proposals }, jobs: { auditPurge: <run>, digest: <run> } (the newest `job_runs` row per kind as `{ startedAt, finishedAt, status, detail, error } | null`), imports: [<RFC-64 R11 item> … 5 newest], computedAt }`. `imports` items are `healthImportSchema` — the RFC-64 R11 item without `runBy` (a name is PII, R2). `signedInLast7d` and `signedInLast30d` count distinct `actor_user_id` over the audit log's `auth.login.success` entries in the window (one indexed query; the audit log exists for this). Cached one minute in Redis (`health`).
+- **R2** No PII: counts, ids and timestamps only; a test walks the schema's key paths and refuses `name`, `email`, `ip`, `userAgent`. The route emits no audit entry.
+
+Web (plan 12d): route `/app/admin/health` (nav **Health**, section Admin, permission `health.read`, icon `pulse`): tiles per group, a 14-day activity table, the two job rows (with an amber badge when the digest's newest run is older than 26 h or failed, red when the purge failed), the imports table linking to `/app/imports/$id`. Breadcrumb `Admin › Health`.
+
+## 8. Error codes, audit actions, permissions
+
+RFC-12: `PROPOSAL_EXISTS` 409, `PROPOSAL_NOT_FOUND` 404, `PROPOSAL_DECIDED` 409, `TAXONOMY_LOOKUP_FAILED` 502 (only from `GET /api/taxonomy/match`; proposals swallow failures).
+RFC-41: `digest.sent`, `proposals.created`, `proposals.decided`.
+RFC-30: `taxa.propose` "Propose a species for the catalog" (contributor, manager), `health.read` "View platform health" (admin only — no role row; admin holds everything).
+RFC-13 R2: routes `/app/help`, `/app/help/$topic`, `/app/curation/proposals`, `/app/admin/health`.
+
+## 9. Testing
+
+- Help: every topic renders, anchors exist for every `HelpTip` link (a test imports the link list and the topics), index lists all, nav entry, getting-started card by summary and by `localStorage`.
+- Digest: window computation and the 23 h 30 min rule with a fake clock; counts on synthetic activity; recipients by role; skipped when idle; one mail per recipient with a fake mailer; failure counting; `DIGEST_ENABLED=false`; `job_runs` rows for both jobs; purge of old runs.
+- Proposals: create with the fake taxonomy client (exact / fuzzy / none / failed); collisions with species names and open proposals; list by status; approve creates the species and links; reject; decided refusal; `me/proposals`; permissions; the queue counts in the dashboard and the digest.
+- Lookup: response mapping from fixture JSON of both datasets; transport errors; rate limit.
+- Health: every number on synthetic data; cache; permission; no PII field in the schema (a test asserts the schema's keys).
+- Web: pages by permission, badges, links, the propose flow from the empty search state.
+- E2E: a contributor proposes a species, an admin approves it from the queue, the species appears in the contributor's list.
+
+## 10. Out of scope
+
+Interactive tour; in-app notifications; per-user digest preferences; POWO direct API (WCVP comes through GBIF's copy); automatic approval; uptime probes or external monitoring (Compose health checks cover liveness).
