@@ -94,6 +94,15 @@ export const plotSpeciesBodySchema = z.strictObject({
 });
 
 /**
+ * Route params for plot species operations.
+ * @rfc RFC-67 R5
+ */
+export const plotSpeciesMemberParamSchema = z.strictObject({
+  id: z.uuid(),
+  speciesId: z.uuid(),
+});
+
+/**
  * User membership representation on a field plot.
  * @rfc RFC-67 R4
  */

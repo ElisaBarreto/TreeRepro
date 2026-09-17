@@ -3,6 +3,7 @@ import type { AuthContext } from '../../../auth/context.ts';
 import type { AppEnv } from '../../env.ts';
 import { exportRoutes } from './export.ts';
 import { importRoutes } from './imports.ts';
+import { plotRoutes } from './plots.ts';
 import { recordRoutes } from './records.ts';
 import { referenceRoutes } from './references.ts';
 import { speciesRoutes } from './species.ts';
@@ -17,9 +18,11 @@ import { traitRoutes } from './traits.ts';
  * @rfc RFC-63 R9, R10
  * @rfc RFC-64 R11
  * @rfc RFC-66 R1
+ * @rfc RFC-67 R3-R5
  */
 export function datasetRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
+    .route('/plots', plotRoutes(ctx))
     .route('/species', speciesRoutes(ctx))
     .route('/families', familyRoutes(ctx))
     .route('/genera', genusRoutes(ctx))

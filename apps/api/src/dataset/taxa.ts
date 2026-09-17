@@ -9,6 +9,7 @@ import { and, asc, count, countDistinct, eq, ilike, type SQL, sql } from 'drizzl
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { speciesVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { plotSpecies } from '../db/schema/plots.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
 import { decodeCompositeCursor, encodeCompositeCursor, isUuid, pageOf } from '../http/cursor.ts';
@@ -76,9 +77,15 @@ export async function searchSpecies(
     status?: SpeciesStatus;
     cursor?: string;
     limit: number;
+    plotId?: string;
   },
 ): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
   const conditions: SQL[] = [speciesVisible(visibility)];
+  if (input.plotId) {
+    conditions.push(
+      sql`exists (select 1 from ${plotSpecies} ps where ps.plot_id = ${input.plotId} and ps.species_id = ${species.id})`,
+    );
+  }
   // RFC-60 R6: a restricted viewer's `status` is ignored — the predicate above already
   // keeps only active rows.
   const status = visibility.inactive ? (input.status ?? 'all') : 'active';

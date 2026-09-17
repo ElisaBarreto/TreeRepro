@@ -72,7 +72,7 @@ describe('RFC-33 R2 predicates', () => {
     await addPlotSpecies(t.db, plot.id, [inside.id]);
 
     const boundVisibility = { inactive: false, plotIds: [plot.id] };
-    const rows = async (v: typeof boundVisibility) =>
+    const rows = async (v: Visibility) =>
       (
         await t.db
           .select({ id: species.id })
