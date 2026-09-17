@@ -12,7 +12,7 @@ import {
   createSpecies,
   createTrait,
 } from '../../../../test/helpers/dataset.ts';
-import { createRole } from '../../../../test/helpers/roles.ts';
+import { adminRoleId, createRole, systemRoleId } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
 import { encodeCompositeCursor } from '../../cursor.ts';
@@ -99,7 +99,10 @@ describe('RFC-60 R6-R8 species, families and genera routes', () => {
     const cookie = await reader();
     const k = tag();
     const family = await createFamily(t.db, { name: `Famroute-${k}` });
-    await createGenus(t.db, { name: `Genroute-${k}`, familyId: family.id });
+    const genus = await createGenus(t.db, { name: `Genroute-${k}`, familyId: family.id });
+    // RFC-33 R3: a family or genus with no visible species is omitted for a
+    // restricted viewer, so this fixture needs at least one active species.
+    await createSpecies(t.db, { canonicalName: `Sproute-${k}`, genusId: genus.id });
     const families = await call(t.app, 'GET', '/api/families?limit=200', { cookie });
     expect(families.status).toBe(200);
     expect((await families.json()).data).toEqual(
@@ -356,5 +359,52 @@ describe('RFC-65 R6 accepted value per species and trait', () => {
     });
     const history = (await got.json()).data.history as { decision: string }[];
     expect(history.filter((h) => h.decision === 'accepted')).toHaveLength(1);
+  });
+});
+
+describe('RFC-33 R4, RFC-60 R6 species routes by viewer', () => {
+  const t = useTestApp();
+
+  it('404 for a contributor, 200 with active=false for a manager; status filter; PATCH active', async () => {
+    const contributorRole = await systemRoleId(t.db, 'contributor');
+    const managerRole = await systemRoleId(t.db, 'manager');
+    const { user: reader } = await createUser(t.db, { roles: [contributorRole] });
+    const { user: manager } = await createUser(t.db, { roles: [managerRole] });
+    const admin = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const sp = await createSpecies(t.db);
+    const [r, m, a] = await Promise.all([
+      loginAs(t, reader),
+      loginAs(t, manager),
+      loginAs(t, admin.user),
+    ]);
+
+    const off = await call(t.app, 'PATCH', `/api/species/${sp.id}`, {
+      cookie: a.cookie,
+      body: { active: false },
+    });
+    expect(off.status).toBe(200);
+    expect((await off.json()).data.active).toBe(false);
+
+    expect((await call(t.app, 'GET', `/api/species/${sp.id}`, { cookie: r.cookie })).status).toBe(
+      404,
+    );
+    const seen = await call(t.app, 'GET', `/api/species/${sp.id}`, { cookie: m.cookie });
+    expect(seen.status).toBe(200);
+    expect((await seen.json()).data.active).toBe(false);
+
+    const list = await call(
+      t.app,
+      'GET',
+      `/api/species?q=${encodeURIComponent(sp.canonicalName)}&status=inactive`,
+      { cookie: m.cookie },
+    );
+    expect((await list.json()).data.map((s: { id: string }) => s.id)).toEqual([sp.id]);
+    const forced = await call(
+      t.app,
+      'GET',
+      `/api/species?q=${encodeURIComponent(sp.canonicalName)}&status=all`,
+      { cookie: r.cookie },
+    );
+    expect((await forced.json()).data).toEqual([]);
   });
 });

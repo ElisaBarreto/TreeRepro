@@ -9,6 +9,7 @@ import {
 } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
 import {
@@ -39,11 +40,13 @@ export function speciesRoutes(ctx: AuthContext) {
       validate('query', listSpeciesQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
-        const { data, nextCursor } = await searchSpecies(ctx.db, {
+        const visibility = await visibilityOf(ctx, c);
+        const { data, nextCursor } = await searchSpecies(ctx.db, visibility, {
           q: q.q,
           familyId: q.familyId,
           genusId: q.genusId,
           unresolved: q.unresolved === 'true',
+          status: q.status,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -70,7 +73,8 @@ export function speciesRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'dataset.read'),
       validate('param', idParamSchema),
       async (c) => {
-        const found = await getSpecies(ctx.db, c.req.valid('param').id);
+        const visibility = await visibilityOf(ctx, c);
+        const found = await getSpecies(ctx.db, visibility, c.req.valid('param').id);
         if (!found) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
         return c.json({ data: found });
       },

@@ -1,6 +1,13 @@
-import type { Genus, Species, SpeciesListItem, TaxonRef } from '@treerepro/contracts';
+import type {
+  Genus,
+  Species,
+  SpeciesListItem,
+  SpeciesStatus,
+  TaxonRef,
+} from '@treerepro/contracts';
 import { and, asc, count, countDistinct, eq, ilike, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { speciesVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
@@ -22,6 +29,7 @@ interface SpeciesJoinedRow {
   id: string;
   canonicalName: string;
   nameSource: SpeciesListItem['nameSource'];
+  active: boolean;
   genusId: string | null;
   genusName: string | null;
   familyId: string | null;
@@ -34,6 +42,7 @@ function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
     id: r.id,
     canonicalName: r.canonicalName,
     nameSource: r.nameSource,
+    active: r.active,
     genus: r.genusId && r.genusName ? { id: r.genusId, name: r.genusName } : null,
     family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
     matchedName: r.matchedName ?? null,
@@ -45,25 +54,36 @@ const speciesColumns = {
   id: species.id,
   canonicalName: species.canonicalName,
   nameSource: species.nameSource,
+  active: species.active,
   genusId: genera.id,
   genusName: genera.name,
   familyId: families.id,
   familyName: families.name,
 };
 
-/** @rfc RFC-60 R3, R4, R6 */
+/**
+ * @rfc RFC-60 R3, R4, R6
+ * @rfc RFC-33 R2, R3
+ */
 export async function searchSpecies(
   db: DbExecutor,
+  visibility: Visibility,
   input: {
     q?: string;
     familyId?: string;
     genusId?: string;
     unresolved?: boolean;
+    status?: SpeciesStatus;
     cursor?: string;
     limit: number;
   },
 ): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [speciesVisible(visibility)];
+  // RFC-60 R6: a restricted viewer's `status` is ignored — the predicate above already
+  // keeps only active rows.
+  const status = visibility.inactive ? (input.status ?? 'all') : 'active';
+  if (status === 'active') conditions.push(eq(species.active, true));
+  if (status === 'inactive') conditions.push(eq(species.active, false));
   const pattern = input.q ? likePattern(input.q, 'substring') : undefined;
   if (pattern) {
     // A single `or(ilike, exists(...))` forces a full scan of `species` (the planner
@@ -94,7 +114,7 @@ export async function searchSpecies(
     .from(species)
     .leftJoin(genera, eq(genera.id, species.genusId))
     .leftJoin(families, eq(families.id, genera.familyId))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(asc(species.canonicalName), asc(species.id))
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
@@ -103,14 +123,21 @@ export async function searchSpecies(
   return { data: page.map(toListItem), nextCursor };
 }
 
-/** @rfc RFC-60 R3, R7 */
-export async function getSpecies(db: DbExecutor, id: string): Promise<Species | null> {
+/**
+ * @rfc RFC-60 R3, R7
+ * @rfc RFC-33 R2, R4
+ */
+export async function getSpecies(
+  db: DbExecutor,
+  visibility: Visibility,
+  id: string,
+): Promise<Species | null> {
   const [row] = await db
     .select(speciesColumns)
     .from(species)
     .leftJoin(genera, eq(genera.id, species.genusId))
     .leftJoin(families, eq(families.id, genera.familyId))
-    .where(eq(species.id, id))
+    .where(and(eq(species.id, id), speciesVisible(visibility)))
     .limit(1);
   if (!row) return null;
   const [names, [counts]] = await Promise.all([
@@ -136,15 +163,28 @@ export async function getSpecies(db: DbExecutor, id: string): Promise<Species | 
   };
 }
 
-/** @rfc RFC-60 R8 */
+/**
+ * @rfc RFC-60 R8
+ * @rfc RFC-33 R3
+ */
 export async function listFamilies(
   db: DbExecutor,
+  visibility: Visibility,
   input: { cursor?: string; limit: number },
 ): Promise<{ data: TaxonRef[]; nextCursor: string | null }> {
+  const conditions: SQL[] = [];
+  if (input.cursor) conditions.push(afterNameCursor(input.cursor, families.name, families.id));
+  // For an unrestricted viewer `speciesVisible` is `true`, so this `exists` would become
+  // "has any species" — a family without species would vanish for admins too.
+  if (!visibility.inactive) {
+    conditions.push(
+      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, sql`s.active`)})`,
+    );
+  }
   const rows = await db
     .select({ id: families.id, name: families.name })
     .from(families)
-    .where(input.cursor ? afterNameCursor(input.cursor, families.name, families.id) : undefined)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(asc(families.name), asc(families.id))
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
@@ -153,15 +193,25 @@ export async function listFamilies(
   return { data: page, nextCursor };
 }
 
-/** @rfc RFC-60 R8 */
+/**
+ * @rfc RFC-60 R8
+ * @rfc RFC-33 R3
+ */
 export async function listGenera(
   db: DbExecutor,
+  visibility: Visibility,
   input: { familyId?: string; q?: string; cursor?: string; limit: number },
 ): Promise<{ data: Genus[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
   if (input.familyId) conditions.push(eq(genera.familyId, input.familyId));
   if (input.q) conditions.push(ilike(genera.name, likePattern(input.q, 'prefix')));
   if (input.cursor) conditions.push(afterNameCursor(input.cursor, genera.name, genera.id));
+  // Same guard as listFamilies: only push for a restricted viewer.
+  if (!visibility.inactive) {
+    conditions.push(
+      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, sql`s.active`)})`,
+    );
+  }
   const rows = await db
     .select({ id: genera.id, name: genera.name, familyId: families.id, familyName: families.name })
     .from(genera)
