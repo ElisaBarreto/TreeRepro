@@ -331,7 +331,9 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     const disputeAnn = updatedBase?.annotations.find((a) => a.kind === 'dispute');
     expect(disputeAnn).toBeDefined();
     expect(disputeAnn?.generated).toBe(true);
-    expect(disputeAnn?.note).toBe(`Contested by record ${contestRes.created[0]?.id}, ${contestRes.created[1]?.id}`);
+    expect(disputeAnn?.note).toBe(
+      `Contested by record ${contestRes.created[0]?.id}, ${contestRes.created[1]?.id}`,
+    );
 
     // Check responses on base record
     expect(updatedBase?.responses).toHaveLength(2);
@@ -405,6 +407,7 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       recordId: base.id,
       actorId: user.id,
       kind: 'withdraw',
+      note: 'Withdrawn by the author',
       canWithdrawAny: true,
       canReview: true,
     });
@@ -483,13 +486,15 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       intent: 'contest',
       respondsToRecordId: base.id,
     });
-    const contestRec = contestRes.created[0]!;
+    const contestRec = contestRes.created[0];
+    if (!contestRec) throw new Error('contest record was not created');
 
     // Now withdraw the contest record: should insert neutral on base because actor's latest stance on base is dispute
     await annotateRecord(t.db, UNRESTRICTED, {
       recordId: contestRec.id,
       actorId: user.id,
       kind: 'withdraw',
+      note: 'Withdrawn by the author',
       canWithdrawAny: false,
       canReview: false,
     });
@@ -499,5 +504,70 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     expect(neutralAnn).toBeDefined();
     expect(neutralAnn?.generated).toBe(true);
     expect(neutralAnn?.note).toBe(`Contest withdrawn (record ${contestRec.id})`);
+  });
+
+  it('RFC-70 R5 withdrawing one contest leaves the dispute of another live contest standing', async () => {
+    const { user } = await createUser(t.db);
+    const sp = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a', 'b', 'c'] });
+    const refOne = await createReference(t.db);
+    const refTwo = await createReference(t.db);
+    const base = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: refOne.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const contests = [];
+    for (const [level, ref] of [
+      [trait.levels[1]?.id, refOne.id],
+      [trait.levels[2]?.id, refTwo.id],
+    ] as const) {
+      const res = await createRecords(t.db, UNRESTRICTED, {
+        actorId: user.id,
+        speciesId: sp.id,
+        traitId: trait.id,
+        value: { levelId: level as string },
+        referenceIds: [ref],
+        intent: 'contest',
+        respondsToRecordId: base.id,
+      });
+      const created = res.created[0];
+      if (!created) throw new Error('contest record was not created');
+      contests.push(created);
+    }
+    const [first, second] = contests;
+    if (!first || !second) throw new Error('both contests are needed');
+
+    await annotateRecord(t.db, UNRESTRICTED, {
+      recordId: first.id,
+      actorId: user.id,
+      kind: 'withdraw',
+      note: 'Withdrawn by the author',
+      canWithdrawAny: false,
+      canReview: false,
+    });
+    // The second contest is still live, so the dispute must stand.
+    const afterFirst = await getRecord(t.db, UNRESTRICTED, base.id);
+    expect(afterFirst?.annotations.some((a) => a.kind === 'neutral')).toBe(false);
+    expect(afterFirst?.review).toBe('disputed');
+
+    await annotateRecord(t.db, UNRESTRICTED, {
+      recordId: second.id,
+      actorId: user.id,
+      kind: 'withdraw',
+      note: 'Withdrawn by the author',
+      canWithdrawAny: false,
+      canReview: false,
+    });
+    const afterSecond = await getRecord(t.db, UNRESTRICTED, base.id);
+    expect(afterSecond?.annotations.find((a) => a.kind === 'neutral')?.note).toBe(
+      `Contest withdrawn (record ${second.id})`,
+    );
+    expect(afterSecond?.review).not.toBe('disputed');
   });
 });

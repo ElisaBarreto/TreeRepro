@@ -54,14 +54,39 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
   });
 
   it('refuses intent without respondsToRecordId', () => {
-    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, intent: 'contest' }).success).toBe(false);
-    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, respondsToRecordId: uuid }).success).toBe(false);
-    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, intent: 'contest', respondsToRecordId: uuid }).success).toBe(true);
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, intent: 'contest' })
+        .success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, respondsToRecordId: uuid })
+        .success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { numeric: 1 },
+        intent: 'contest',
+        respondsToRecordId: uuid,
+      }).success,
+    ).toBe(true);
   });
 
   it('refuses 11 references; accepts { personalObservation: true }', () => {
-    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, sources: { references: Array(11).fill({ id: uuid }) } }).success).toBe(false);
-    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, sources: { personalObservation: true } }).success).toBe(true);
+    expect(
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { numeric: 1 },
+        sources: { references: Array(11).fill({ id: uuid }) },
+      }).success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { numeric: 1 },
+        sources: { personalObservation: true },
+      }).success,
+    ).toBe(true);
   });
 });
 
@@ -84,21 +109,51 @@ describe('RFC-65 R3 annotateRecordBodySchema', () => {
   });
 
   it('refuses reference with kind: dispute', () => {
-    expect(annotateRecordBodySchema.safeParse({ kind: 'dispute', note: 'Wrong', reference: { id: uuid } }).success).toBe(false);
-    expect(annotateRecordBodySchema.safeParse({ kind: 'confirm', reference: { id: uuid } }).success).toBe(true);
+    expect(
+      annotateRecordBodySchema.safeParse({
+        kind: 'dispute',
+        note: 'Wrong',
+        reference: { id: uuid },
+      }).success,
+    ).toBe(false);
+    expect(
+      annotateRecordBodySchema.safeParse({ kind: 'confirm', reference: { id: uuid } }).success,
+    ).toBe(true);
   });
 });
 
 describe('RFC-80 resolveDoiResultSchema', () => {
   it('parses each variant', () => {
-    expect(resolveDoiResultSchema.safeParse({ status: 'not_found', reference: null }).success).toBe(true);
-    expect(resolveDoiResultSchema.safeParse({
-      status: 'resolvable', reference: null, preview: { title: 'T', authors: 'A', year: 2020, journal: 'J' }
-    }).success).toBe(true);
-    expect(resolveDoiResultSchema.safeParse({
-      status: 'known',
-      reference: { id: uuid, citationKey: 'K', kind: 'publication', createdAt: new Date().toISOString(), primaryCount: 0, secondaryCount: 0, title: null, authors: null, year: null, journal: null, doi: null, url: null, observer: null }
-    }).success).toBe(true);
+    expect(resolveDoiResultSchema.safeParse({ status: 'not_found', reference: null }).success).toBe(
+      true,
+    );
+    expect(
+      resolveDoiResultSchema.safeParse({
+        status: 'resolvable',
+        reference: null,
+        preview: { title: 'T', authors: 'A', year: 2020, journal: 'J' },
+      }).success,
+    ).toBe(true);
+    expect(
+      resolveDoiResultSchema.safeParse({
+        status: 'known',
+        reference: {
+          id: uuid,
+          citationKey: 'K',
+          kind: 'publication',
+          createdAt: new Date().toISOString(),
+          primaryCount: 0,
+          secondaryCount: 0,
+          title: null,
+          authors: null,
+          year: null,
+          journal: null,
+          doi: null,
+          url: null,
+          observer: null,
+        },
+      }).success,
+    ).toBe(true);
   });
 });
 

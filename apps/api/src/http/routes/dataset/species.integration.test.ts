@@ -272,8 +272,12 @@ describe('RFC-65 R6 accepted value per species and trait', () => {
     expect(summaryWithMissing.status).toBe(200);
     const withMissingBody = await summaryWithMissing.json();
     expect(withMissingBody.data.length).toBeGreaterThanOrEqual(1);
-    const allTraits = withMissingBody.data.flatMap((c: { traits: Array<{ trait: { id: string }; recordCount: number }> }) => c.traits);
-    const existingTrait = allTraits.find((tr: { trait: { id: string } }) => tr.trait.id === trait.id);
+    const allTraits = withMissingBody.data.flatMap(
+      (c: { traits: Array<{ trait: { id: string }; recordCount: number }> }) => c.traits,
+    );
+    const existingTrait = allTraits.find(
+      (tr: { trait: { id: string } }) => tr.trait.id === trait.id,
+    );
     expect(existingTrait?.recordCount).toBe(2);
 
     const same = await put(cookie, sp1.id, trait.id, { decision: 'accepted', recordId: recA.id });

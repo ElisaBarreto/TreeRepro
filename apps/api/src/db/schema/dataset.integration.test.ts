@@ -659,7 +659,9 @@ describe('RFC-61 R1, R7 reference kinds', () => {
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
-            sp.insert(bibliographicReferences).values({ citationKey: `po-${rand()}`, kind: 'personal_observation' }),
+            sp
+              .insert(bibliographicReferences)
+              .values({ citationKey: `po-${rand()}`, kind: 'personal_observation' }),
           ),
         ),
       ).rejects.toMatchObject({ code: '23514' });

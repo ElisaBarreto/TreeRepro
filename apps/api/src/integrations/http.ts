@@ -31,9 +31,20 @@ export async function fetchJsonFixedHost(o: FixedHostFetchOptions): Promise<Fixe
       redirect: 'manual',
       signal: controller.signal,
     });
-    if (res.status >= 300 && res.status < 400) return { ok: false, error: 'redirect' };
+    // Every early return drops the body: an unread stream holds the socket
+    // open until the agent times it out.
+    const discard = async () => {
+      await res.body?.cancel().catch(() => {});
+    };
+    if (res.status >= 300 && res.status < 400) {
+      await discard();
+      return { ok: false, error: 'redirect' };
+    }
     const max = o.maxBytes ?? 1024 * 1024;
-    if (Number(res.headers.get('content-length') ?? 0) > max) return { ok: false, error: 'too_large' };
+    if (Number(res.headers.get('content-length') ?? 0) > max) {
+      await discard();
+      return { ok: false, error: 'too_large' };
+    }
     const chunks: Uint8Array[] = [];
     let received = 0;
     const reader = res.body?.getReader();

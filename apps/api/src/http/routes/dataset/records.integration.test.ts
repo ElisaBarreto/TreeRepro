@@ -760,7 +760,9 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
 
   it('R3 stances drive the review axis of RFC-63 R6 and answer the detail', async () => {
     const a = await scientist(t, ['records.annotate', 'dataset.read']);
-    const b = await scientist(t, ['records.annotate', 'dataset.read']);
+    // `b` also reviews: a dispute and a neutral need `records.review`
+    // (RFC-70 R4), a confirmation does not.
+    const b = await scientist(t, ['records.annotate', 'records.review', 'dataset.read']);
     const { rec } = await manualRecord(a.user.id);
     const confirmed = await annotate(a.cookie, rec.id, { kind: 'confirm' });
     expect(confirmed.status).toBe(201);
@@ -925,6 +927,7 @@ describe('RFC-70 contribution route tests', () => {
       valueText: 'red',
       levelId: trait.levels[0]?.id,
       primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
     });
 
     // neutral by contributor without records.review -> 403

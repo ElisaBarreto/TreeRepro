@@ -132,12 +132,14 @@ export const SPECIES_TRAITS: SpeciesTraits = [
 /** @rfc RFC-61 R4 */
 export const PRIMARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d40',
-  citationKey: 'Renner2014', kind: 'publication' as const,
+  citationKey: 'Renner2014',
+  kind: 'publication' as const,
 };
 /** @rfc RFC-61 R4 */
 export const SECONDARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d41',
-  citationKey: 'TRY-6.0', kind: 'publication' as const,
+  citationKey: 'TRY-6.0',
+  kind: 'publication' as const,
 };
 
 /** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
@@ -157,7 +159,7 @@ export const RECORD: RecordItem = {
   createdAt: '2026-09-01T10:30:00.000Z',
   createdBy: null,
   intent: null,
-  respondsTo: null
+  respondsTo: null,
 };
 
 /** A manual quantitative record still pending harmonisation and disputed. @rfc RFC-63 R8 */
@@ -177,7 +179,7 @@ export const PENDING_RECORD: RecordItem = {
   createdAt: '2026-09-02T08:00:00.000Z',
   createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e', name: 'Ada' },
   intent: null,
-  respondsTo: null
+  respondsTo: null,
 };
 
 /** The detail of RECORD: raw columns from the import, no curation yet. @rfc RFC-63 R8 */
@@ -199,7 +201,7 @@ export const RECORD_DETAIL: RecordDetail = {
   acceptedHistory: [],
   supersedes: null,
   supersededBy: [],
-  responses: []
+  responses: [],
 };
 
 /** The detail of PENDING_RECORD: manual, annotated and accepted once. @rfc RFC-63 R8 */
@@ -236,7 +238,7 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
   ],
   supersedes: null,
   supersededBy: [],
-  responses: []
+  responses: [],
 };
 
 /**
@@ -348,7 +350,7 @@ export const REFERENCE: Reference = {
   primaryCount: 1,
   secondaryCount: 1,
   kind: 'publication',
-  observer: null
+  observer: null,
 };
 
 /** REFERENCE with the count `GET /api/references/:id` adds: two records, one per role. @rfc RFC-61 R4 */
@@ -473,7 +475,5 @@ export const DISPUTED_RECORD: DisputedRecord = {
     actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
     note: 'Value is not a number.',
     createdAt: '2026-09-03T12:00:00.000Z',
-    reference: null,
-      generated: false,
-    },
+  },
 };

@@ -388,7 +388,10 @@ export async function updateReference(
       .limit(1);
     if (!current) throw new AppError('REFERENCE_NOT_FOUND', 'Reference not found');
     if (current.kind === 'personal_observation') {
-      throw new AppError('REFERENCE_IS_PERSONAL', 'Personal observation references cannot be edited');
+      throw new AppError(
+        'REFERENCE_IS_PERSONAL',
+        'Personal observation references cannot be edited',
+      );
     }
     const fields: string[] = [];
     const set: Partial<Pick<ReferenceRow, (typeof REFERENCE_FIELDS)[number]>> = {};

@@ -99,7 +99,10 @@ export const traitRecords = pgTable(
     index('trait_records_responds_to_idx')
       .on(t.respondsToRecordId)
       .where(sql`${t.respondsToRecordId} is not null`),
-    check('trait_records_intent_check', sql`(${t.intent} is null) = (${t.respondsToRecordId} is null)`),
+    check(
+      'trait_records_intent_check',
+      sql`(${t.intent} is null) = (${t.respondsToRecordId} is null)`,
+    ),
     check(
       'trait_records_reference_check',
       sql`${t.primaryReferenceId} is not null or ${t.secondaryReferenceId} is not null`,

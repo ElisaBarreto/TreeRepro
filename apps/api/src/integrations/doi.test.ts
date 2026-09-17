@@ -26,7 +26,12 @@ describe('RFC-61 R8 crossrefToMetadata', () => {
           'container-title': ['Global Ecology'],
         },
       }),
-    ).toEqual({ title: 'Seed size', authors: 'Alfaro, A; Diaz, B', year: 2023, journal: 'Global Ecology' });
+    ).toEqual({
+      title: 'Seed size',
+      authors: 'Alfaro, A; Diaz, B',
+      year: 2023,
+      journal: 'Global Ecology',
+    });
     expect(crossrefToMetadata({ message: {} })).toEqual({
       title: null,
       authors: null,
@@ -45,7 +50,7 @@ describe('RFC-80 R2, R3 createDoiClient', () => {
         headers: { 'content-type': 'application/json', ...headers },
       });
 
-  it('exists: responseCode 1 → resolvable; 100 or 404 → not_found; redirect or network → failed', async () => {
+  it('exists: 1 → resolvable; 100 or 404 → not_found; any other code, redirect or network → failed', async () => {
     expect(
       await createDoiClient({
         version: 't',
@@ -61,6 +66,16 @@ describe('RFC-80 R2, R3 createDoiClient', () => {
     expect(
       await createDoiClient({ version: 't', fetchImpl: respond(404, {}) }).exists('10.1/x'),
     ).toBe('not_found');
+    // Any other Handle code (2 "error", 200 "values not found", none at all)
+    // says nothing about the DOI, so it is a failure, not an absence.
+    expect(
+      await createDoiClient({ version: 't', fetchImpl: respond(200, { responseCode: 2 }) }).exists(
+        '10.1/x',
+      ),
+    ).toBe('failed');
+    expect(
+      await createDoiClient({ version: 't', fetchImpl: respond(200, {}) }).exists('10.1/x'),
+    ).toBe('failed');
     expect(
       await createDoiClient({
         version: 't',
@@ -85,7 +100,7 @@ describe('RFC-80 R2, R3 createDoiClient', () => {
       fetchImpl: async (input, init) => {
         calls.push({
           url: String(input),
-          ua: new Headers(init?.headers as HeadersInit).get('user-agent'),
+          ua: new Headers(init?.headers as Record<string, string> | undefined).get('user-agent'),
         });
         return new Response('{"responseCode":1,"message":{}}', { status: 200 });
       },

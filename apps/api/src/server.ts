@@ -9,11 +9,11 @@ import { createSessionStore } from './auth/sessions.ts';
 import { loadConfig } from './config.ts';
 import { createDb } from './db/client.ts';
 import { createHealthChecks } from './http/health-checks.ts';
+import { createDoiClient } from './integrations/doi.ts';
 import { createLogger } from './logger.ts';
 import { createMailer, createSmtpTransport } from './mail/mailer.ts';
 import { createRedis } from './redis/client.ts';
 import { configurePii } from './security/pii.ts';
-import { createDoiClient } from './integrations/doi.ts';
 import { APP_VERSION } from './version.ts';
 
 const config = loadConfig();

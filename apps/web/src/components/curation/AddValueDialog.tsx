@@ -132,12 +132,29 @@ export function AddValueDialog({
   const save = useRecordWrite<CreateRecordBody, CreateRecordsResult>({
     write: createRecord,
     speciesId,
-    onInvalidated: (result) => onCreated?.(result.created[0]),
+    onInvalidated: (result) => {
+      const [first] = result.created;
+      if (first) onCreated?.(first);
+    },
   });
-  const errors = { ...fieldErrors(save.error), ...local };
+  // The API names a source by its position (`sources.references.<i>`, RFC-70
+  // R3); this form still has the two fixed slots, so index 0 is the primary
+  // reference field and index 1 the secondary one.
+  const serverErrors = fieldErrors(save.error);
+  const sourceError = (index: number) =>
+    Object.entries(serverErrors).find(([path]) =>
+      path.startsWith(`sources.references.${index}`),
+    )?.[1] ?? (index === 0 ? serverErrors.sources : undefined);
+  const errors: Record<string, string | undefined> = {
+    ...serverErrors,
+    primaryReferenceId: sourceError(0),
+    secondaryReferenceId: sourceError(1),
+    ...local,
+  };
   const duplicateId =
     save.error instanceof ApiError && save.error.code === 'RECORD_DUPLICATE'
-      ? save.error.details?.find((d) => d.path === 'recordId')?.message
+      ? save.error.details?.find((d) => d.path.startsWith('sources.references.') && d.message)
+          ?.message
       : undefined;
 
   const searchTraits = async (term: string) => {
@@ -169,7 +186,7 @@ export function AddValueDialog({
     if (valueType === 'quantitative' && (numeric.trim() === '' || Number.isNaN(Number(numeric)))) {
       required['value.numeric'] = LOCAL_MESSAGES['value.numeric'] ?? '';
     }
-    if (!primary) required['sources'] = LOCAL_MESSAGES.primaryReferenceId ?? '';
+    if (!primary) required.primaryReferenceId = LOCAL_MESSAGES.primaryReferenceId ?? '';
     if (Object.keys(required).length > 0) {
       save.reset();
       setLocal(required);

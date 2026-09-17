@@ -12,3 +12,5 @@
 - **Every dataset read service takes a `Visibility` second.** Pass `UNRESTRICTED` from a CLI, a migration-like script or a test that is not about visibility; never build `{ inactive: true, plotIds: null }` literals — that hides an accidental restriction and drifts from the constant if `Visibility`'s shape ever changes (RFC-33 R1).
 - **Supplementary imports stage into `import_staging`.** The `apply` callback inserts its own rejects into `import_rejects`; when a key repeats, the last row wins and the earlier rows count as duplicate, so `rows_total = inserted + duplicate + rejected` always holds (RFC-68 R4, R8).
 - **`POST /api/records` resolves DOIs before its transaction:** a reference may exist after a failed record write — that is intended (RFC-80 R5).
+- **A personal observation is never a named source.** `resolveSources` refuses `{ references: [{ id }] }` pointing at a `personal_observation` row (409 `REFERENCE_IS_PERSONAL`) and `GET /api/references` hides them unless `kind` asks for them: the only way to claim one is `{ personalObservation: true }`, which resolves to the *actor's* own row (RFC-61 R7).
+

@@ -4,9 +4,9 @@ import { createReference } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { fakeDoiClient } from '../../test/helpers/doi.ts';
 import { createUser } from '../../test/helpers/users.ts';
-import { auditEvents } from '../db/schema/audit.ts';
+import { auditLog } from '../db/schema/audit-log.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
-import { ensurePersonalObservation, findReferenceByDoi } from './references.ts';
+import { ensurePersonalObservation } from './references.ts';
 import { resolveDoi, resolveSources } from './sources.ts';
 
 describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
@@ -18,10 +18,7 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     const second = await ensurePersonalObservation(t.db, user.id);
     expect(first.id).toBe(second.id);
 
-    const audits = await t.db
-      .select()
-      .from(auditEvents)
-      .where(eq(auditEvents.targetId, first.id));
+    const audits = await t.db.select().from(auditLog).where(eq(auditLog.targetId, first.id));
     expect(audits).toHaveLength(1);
     expect(audits[0]?.action).toBe('references.created');
   });
@@ -46,6 +43,38 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     });
   });
 
+  it('RFC-61 R7 refuses a personal observation named by id, whoever the observer is', async () => {
+    const { user } = await createUser(t.db);
+    const { user: other } = await createUser(t.db);
+    const doi = fakeDoiClient();
+    const ctx = { db: t.db, doi };
+    const mine = await ensurePersonalObservation(t.db, user.id);
+    const theirs = await ensurePersonalObservation(t.db, other.id);
+
+    for (const id of [mine.id, theirs.id]) {
+      await expect(resolveSources(ctx, user.id, { references: [{ id }] })).rejects.toMatchObject({
+        code: 'REFERENCE_IS_PERSONAL',
+        details: [{ path: 'sources.references.0.id' }],
+      });
+    }
+  });
+
+  it('RFC-80 R5 an id and the DOI of that same reference count once', async () => {
+    const { user } = await createUser(t.db);
+    const doiClient = fakeDoiClient();
+    const ctx = { db: t.db, doi: doiClient };
+    const doi = '10.3333/same';
+    doiClient.known.set(doi, { title: 'Same', authors: null, year: null, journal: null });
+    const [id] = await resolveSources(ctx, user.id, { references: [{ doi }] });
+
+    await expect(
+      resolveSources(ctx, user.id, { references: [{ id: id ?? '' }, { doi }] }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.1.doi' }],
+    });
+  });
+
   it('resolveSources handles DOI lookup, creation, idempotency, and failures', async () => {
     const { user } = await createUser(t.db);
     const doiClient = fakeDoiClient();
@@ -62,11 +91,12 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     // Resolves and creates reference
     const ids = await resolveSources(ctx, user.id, { references: [{ doi: '10.1111/X' }] });
     expect(ids).toHaveLength(1);
+    const createdId = ids[0] ?? '';
 
     const [createdRef] = await t.db
       .select()
       .from(bibliographicReferences)
-      .where(eq(bibliographicReferences.id, ids[0]!));
+      .where(eq(bibliographicReferences.id, createdId));
     expect(createdRef).toMatchObject({
       citationKey: 'doi:10.1111/x',
       title: 'Title X',
@@ -80,10 +110,7 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     // Calling again returns the same id without a second audit event
     const ids2 = await resolveSources(ctx, user.id, { references: [{ doi }] });
     expect(ids2).toEqual(ids);
-    const audits = await t.db
-      .select()
-      .from(auditEvents)
-      .where(eq(auditEvents.targetId, ids[0]!));
+    const audits = await t.db.select().from(auditLog).where(eq(auditLog.targetId, createdId));
     expect(audits).toHaveLength(1);
     expect(audits[0]?.metadata).toMatchObject({ source: 'doi' });
 
@@ -161,6 +188,8 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     await resolveSources(ctx, user.id, { references: [{ doi }] });
     const known = await resolveDoi(ctx, doi);
     expect(known.status).toBe('known');
-    expect((known as { reference: { citationKey: string } }).reference.citationKey).toBe('doi:10.2222/y');
+    expect((known as { reference: { citationKey: string } }).reference.citationKey).toBe(
+      'doi:10.2222/y',
+    );
   });
 });

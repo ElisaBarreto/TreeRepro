@@ -145,11 +145,20 @@ export const genusSchema = taxonRefSchema.extend({ family: taxonRefSchema.nullab
 /** @rfc RFC-63 R8 */
 export const userRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 
+/** @rfc RFC-61 R7 */
 export const REFERENCE_KINDS = ['publication', 'personal_observation'] as const;
+export type ReferenceKind = (typeof REFERENCE_KINDS)[number];
+
+/** @rfc RFC-70 R1 */
 export const RECORD_INTENTS = ['contest', 'complement'] as const;
+export type RecordIntent = (typeof RECORD_INTENTS)[number];
 
 /** @rfc RFC-61 R1, R7 */
-export const referenceRefSchema = z.strictObject({ id: z.uuid(), citationKey: z.string(), kind: z.enum(REFERENCE_KINDS) });
+export const referenceRefSchema = z.strictObject({
+  id: z.uuid(),
+  citationKey: z.string(),
+  kind: z.enum(REFERENCE_KINDS),
+});
 
 /**
  * `primaryCount` / `secondaryCount`: records naming the reference in that
@@ -210,7 +219,6 @@ export const traitSchema = traitRefSchema.extend({
 export const dictionarySchema = z.array(
   z.strictObject({ key: z.string(), label: z.string(), traits: z.array(traitSchema) }),
 );
-
 
 /** @rfc RFC-63 R8 */
 export const recordSchema = z.strictObject({
@@ -325,6 +333,7 @@ export const traitSummarySchema = z.strictObject({
     .nullable(),
 });
 
+/** @rfc RFC-70 R7 */
 export const speciesTraitsQuerySchema = z.strictObject({
   includeMissing: z.enum(['true', 'false']).optional(),
 });

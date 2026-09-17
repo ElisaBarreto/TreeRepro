@@ -74,14 +74,19 @@ export async function createSpecies(
 
 export async function createReference(
   db: DbExecutor,
-  options: { citationKey?: string; title?: string } = {},
+  options: { citationKey?: string; title?: string; doi?: string } = {},
 ) {
   const [row] = await db
     .insert(bibliographicReferences)
-    .values({ citationKey: options.citationKey ?? `Test_et_al_${suffix()}`, title: options.title })
+    .values({
+      citationKey: options.citationKey ?? `Test_et_al_${suffix()}`,
+      title: options.title,
+      doi: options.doi,
+    })
     .returning({
       id: bibliographicReferences.id,
       citationKey: bibliographicReferences.citationKey,
+      doi: bibliographicReferences.doi,
     });
   if (!row) throw new Error('createReference: no row');
   return row;

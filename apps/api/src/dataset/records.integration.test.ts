@@ -69,15 +69,18 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       numericValue: null,
       harmonisation: 'harmonised',
       review: 'unreviewed',
-      primaryReference: { id: ref.id, citationKey: ref.citationKey },
+      primaryReference: { id: ref.id, citationKey: ref.citationKey, kind: 'publication' },
       secondaryReference: null,
       origin: 'import',
       createdAt: expect.any(String),
       createdBy: null,
+      intent: null,
+      respondsTo: null,
     });
     expect(byTrait.data[0]?.secondaryReference).toEqual({
       id: ref.id,
       citationKey: ref.citationKey,
+      kind: 'publication',
     });
 
     const byRef = await listRecords(t.db, UNRESTRICTED, { referenceId: ref.id, limit: 2 });

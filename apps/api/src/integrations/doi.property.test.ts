@@ -9,17 +9,12 @@ describe('RFC-80 R1 normaliseDoi property tests', () => {
 
   it('strips known prefixes and lowercases a valid DOI', () => {
     fc.assert(
-      fc.property(
-        fc.constantFrom(...prefixes),
-        registrantArb,
-        suffixArb,
-        (prefix, reg, suffix) => {
-          const canonical = `10.${reg}/${suffix}`;
-          const input = prefix + canonical;
-          const result = normaliseDoi(input);
-          expect(result).toBe(canonical.toLowerCase());
-        },
-      ),
+      fc.property(fc.constantFrom(...prefixes), registrantArb, suffixArb, (prefix, reg, suffix) => {
+        const canonical = `10.${reg}/${suffix}`;
+        const input = prefix + canonical;
+        const result = normaliseDoi(input);
+        expect(result).toBe(canonical.toLowerCase());
+      }),
     );
   });
 

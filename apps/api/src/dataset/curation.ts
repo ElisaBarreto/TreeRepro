@@ -16,7 +16,6 @@ import {
   type Visibility,
 } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { isUniqueViolation } from '../db/errors.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
@@ -141,7 +140,10 @@ export function numericText(n: number): SQL<string> {
   return sql<string>`(${String(n)}::numeric)::text`;
 }
 
+/** The note of the dispute a contest generates on the record it answers. @rfc RFC-70 R3 */
 export const CONTEST_NOTE = (ids: string[]) => `Contested by record ${ids.join(', ')}`;
+
+/** The note of the neutral that a withdrawn contest leaves behind. @rfc RFC-70 R5 */
 export const CONTEST_WITHDRAWN_NOTE = (id: string) => `Contest withdrawn (record ${id})`;
 
 export interface CreateRecordsInput {
@@ -308,13 +310,11 @@ export async function createRecords(
       });
     }
 
+    // `inserted` keeps the order of `rowsToInsert`, i.e. of `referenceIds`.
     const created: RecordDetail[] = [];
-    for (const refId of input.referenceIds) {
-      const ins = inserted.find((r) => r.primaryReferenceId === refId);
-      if (ins) {
-        const detail = await getRecord(tx, UNRESTRICTED, ins.id);
-        if (detail) created.push(detail);
-      }
+    for (const ins of inserted) {
+      const detail = await getRecord(tx, UNRESTRICTED, ins.id);
+      if (detail) created.push(detail);
     }
 
     return { created, duplicates };
@@ -440,7 +440,22 @@ export async function annotateRecord(
           )
           .orderBy(desc(recordAnnotations.id))
           .limit(1);
-        if (latestStance?.kind === 'dispute') {
+        // Only when this was the actor's last live contest: another contest
+        // of theirs on the same record still carries the dispute (RFC-70 R5).
+        const [otherContest] = await tx
+          .select({ id: traitRecords.id })
+          .from(traitRecords)
+          .where(
+            and(
+              eq(traitRecords.respondsToRecordId, rec.respondsToRecordId),
+              eq(traitRecords.intent, 'contest'),
+              eq(traitRecords.createdBy, input.actorId),
+              sql`${traitRecords.id} <> ${rec.id}`,
+              sql`${reviewStatusSql(traitRecords.id)} <> 'withdrawn'`,
+            ),
+          )
+          .limit(1);
+        if (latestStance?.kind === 'dispute' && !otherContest) {
           await tx.insert(recordAnnotations).values({
             recordId: rec.respondsToRecordId,
             actorId: input.actorId,

@@ -125,7 +125,7 @@ describe('RFC-80 R4 GET /api/references/resolve', () => {
     const resKnown = await call(
       t.app,
       'GET',
-      `/api/references/resolve?doi=${encodeURIComponent(existing.doi!)}`,
+      `/api/references/resolve?doi=${encodeURIComponent(existing.doi ?? '')}`,
       { cookie },
     );
     expect(resKnown.status).toBe(200);
@@ -162,12 +162,9 @@ describe('RFC-80 R4 GET /api/references/resolve', () => {
     });
 
     // Not found
-    const resNotFound = await call(
-      t.app,
-      'GET',
-      '/api/references/resolve?doi=10.1111/notfound',
-      { cookie },
-    );
+    const resNotFound = await call(t.app, 'GET', '/api/references/resolve?doi=10.1111/notfound', {
+      cookie,
+    });
     expect(resNotFound.status).toBe(200);
     expect(await resNotFound.json()).toEqual({
       data: { status: 'not_found', reference: null },
@@ -177,12 +174,17 @@ describe('RFC-80 R4 GET /api/references/resolve', () => {
     const resBad = await call(t.app, 'GET', '/api/references/resolve?doi=bad', { cookie });
     expect(resBad.status).toBe(400);
 
-    // Rate limit: 60 calls allowed, 61st rejected with 429
-    // (Already made 3 valid calls with this cookie: resKnown, resResolvable, resNotFound)
-    for (let i = 0; i < 57; i++) {
-      await call(t.app, 'GET', '/api/references/resolve?doi=10.1111/notfound', { cookie });
+    // Rate limit: 60 calls per user per minute. The limiter runs before the
+    // query validation, so the malformed call above counts too — four so far.
+    for (let i = 0; i < 56; i++) {
+      const spent = await call(t.app, 'GET', '/api/references/resolve?doi=10.1111/notfound', {
+        cookie,
+      });
+      expect(spent.status).toBe(200);
     }
-    const limited = await call(t.app, 'GET', '/api/references/resolve?doi=10.1111/notfound', { cookie });
+    const limited = await call(t.app, 'GET', '/api/references/resolve?doi=10.1111/notfound', {
+      cookie,
+    });
     expect(limited.status).toBe(429);
   });
 });

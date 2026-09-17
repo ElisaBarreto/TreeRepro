@@ -269,12 +269,23 @@ export async function getRecord(
     })),
     supersedes: rec.supersedesRecordId ? { id: rec.supersedesRecordId } : null,
     supersededBy: supersededBy.map((r) => ({ id: r.id })),
-    responses: responses.map((res) => ({
-      id: res.id,
-      intent: res.intent!,
-      createdBy:
-        res.creatorId && res.creatorName ? { id: res.creatorId, name: res.creatorName } : null,
-      createdAt: res.createdAt.toISOString(),
-    })),
+    // `trait_records_intent_check` keeps `intent` and `responds_to_record_id`
+    // together, so a row selected by `responds_to_record_id` always has one;
+    // the guard is what tells the compiler, not a runtime expectation.
+    responses: responses.flatMap((res) =>
+      res.intent === null
+        ? []
+        : [
+            {
+              id: res.id,
+              intent: res.intent,
+              createdBy:
+                res.creatorId && res.creatorName
+                  ? { id: res.creatorId, name: res.creatorName }
+                  : null,
+              createdAt: res.createdAt.toISOString(),
+            },
+          ],
+    ),
   };
 }

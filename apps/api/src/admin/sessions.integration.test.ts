@@ -1,26 +1,11 @@
 import { sessionSummarySchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
-import { useTestApp } from '../../test/helpers/app.ts';
+import { ctxOf, useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { AppError } from '../http/errors.ts';
 import { listUserSessions, revokeAllUserSessions, revokeUserSession } from './sessions.ts';
-
-function ctxOf(t: ReturnType<typeof useTestApp>) {
-  return {
-    db: t.db,
-    sessions: t.sessions,
-    mfa: t.mfa,
-    limiter: t.limiter,
-    mailer: t.mail.mailer,
-    breachChecker: t.deps.breachChecker,
-    permissionCache: t.permissionCache,
-    logger: t.deps.logger,
-    appOrigin: 'http://localhost',
-    now: () => t.clock.now,
-  };
-}
 
 const meta = (actorUserId: string) => ({ actorUserId, ip: '203.0.113.9', userAgent: 'admin-ua' });
 

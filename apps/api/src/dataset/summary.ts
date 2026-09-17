@@ -124,89 +124,25 @@ export async function speciesTraitSummary(
         : null,
     );
   }
-  if (options?.includeMissing) {
-    const dictionary = await getDictionary(db, visibility);
-    const aggregatesByTrait = new Map<string, TraitAggregate>();
-    for (const row of aggregates) {
-      aggregatesByTrait.set(row.trait_id, row);
-    }
-    const result: SpeciesTraits = [];
-    for (const cat of dictionary) {
-      const traits: TraitSummary[] = cat.traits.map((t) => {
-        const row = aggregatesByTrait.get(t.id);
-        if (row) {
-          const quantitative = row.value_type === 'quantitative';
-          return {
-            trait: { id: row.trait_id, key: row.trait_key, valueType: row.value_type, unit: row.unit },
-            recordCount: row.record_count,
-            harmonisationCounts: {
-              harmonised: row.harmonised,
-              unknownLevel: row.unknown_level,
-              multiValue: row.multi_value,
-              notNumeric: row.not_numeric,
-              empty: row.empty,
-            },
-            levels: quantitative ? null : (levelsByTrait.get(row.trait_id) ?? []),
-            numeric:
-              quantitative &&
-              row.numeric_count > 0 &&
-              row.numeric_min !== null &&
-              row.numeric_median !== null &&
-              row.numeric_max !== null
-                ? {
-                    min: row.numeric_min,
-                    median: row.numeric_median,
-                    max: row.numeric_max,
-                    count: row.numeric_count,
-                  }
-                : null,
-            accepted: acceptedByTrait.get(row.trait_id) ?? null,
-          };
-        }
-        return {
-          trait: { id: t.id, key: t.key, valueType: t.valueType, unit: t.unit },
-          recordCount: 0,
-          harmonisationCounts: {
-            harmonised: 0,
-            unknownLevel: 0,
-            multiValue: 0,
-            notNumeric: 0,
-            empty: 0,
-          },
-          levels: null,
-          numeric: null,
-          accepted: null,
-        };
-      });
-      result.push({
-        category: { key: cat.key, label: cat.label },
-        traits,
-      });
-    }
-    return result;
-  }
-
-  const result: SpeciesTraits = [];
-  for (const row of aggregates) {
-    let category = result[result.length - 1];
-    if (!category || category.category.key !== row.category_key) {
-      category = { category: { key: row.category_key, label: row.category_label }, traits: [] };
-      result.push(category);
-    }
-    const quantitative = row.value_type === 'quantitative';
-    category.traits.push({
-      trait: { id: row.trait_id, key: row.trait_key, valueType: row.value_type, unit: row.unit },
-      recordCount: row.record_count,
+  const summaryOf = (
+    trait: TraitSummary['trait'],
+    row: TraitAggregate | undefined,
+  ): TraitSummary => {
+    const quantitative = trait.valueType === 'quantitative';
+    return {
+      trait,
+      recordCount: row?.record_count ?? 0,
       harmonisationCounts: {
-        harmonised: row.harmonised,
-        unknownLevel: row.unknown_level,
-        multiValue: row.multi_value,
-        notNumeric: row.not_numeric,
-        empty: row.empty,
+        harmonised: row?.harmonised ?? 0,
+        unknownLevel: row?.unknown_level ?? 0,
+        multiValue: row?.multi_value ?? 0,
+        notNumeric: row?.not_numeric ?? 0,
+        empty: row?.empty ?? 0,
       },
-      levels: quantitative ? null : (levelsByTrait.get(row.trait_id) ?? []),
+      levels: quantitative ? null : (levelsByTrait.get(trait.id) ?? []),
       numeric:
         quantitative &&
+        row !== undefined &&
         row.numeric_count > 0 &&
         row.numeric_min !== null &&
         row.numeric_median !== null &&
@@ -218,8 +154,40 @@ export async function speciesTraitSummary(
               count: row.numeric_count,
             }
           : null,
-      accepted: acceptedByTrait.get(row.trait_id) ?? null,
-    });
+      accepted: acceptedByTrait.get(trait.id) ?? null,
+    };
+  };
+
+  // `includeMissing` walks the dictionary instead of the aggregates, so a
+  // trait the species has no record for still gets a row — an empty summary
+  // in dictionary order (RFC-70 R7).
+  if (options?.includeMissing) {
+    const aggregatesByTrait = new Map(aggregates.map((row) => [row.trait_id, row]));
+    const dictionary = await getDictionary(db, visibility);
+    return dictionary.map((cat) => ({
+      category: { key: cat.key, label: cat.label },
+      traits: cat.traits.map((t) =>
+        summaryOf(
+          { id: t.id, key: t.key, valueType: t.valueType, unit: t.unit },
+          aggregatesByTrait.get(t.id),
+        ),
+      ),
+    }));
+  }
+
+  const result: SpeciesTraits = [];
+  for (const row of aggregates) {
+    let category = result[result.length - 1];
+    if (!category || category.category.key !== row.category_key) {
+      category = { category: { key: row.category_key, label: row.category_label }, traits: [] };
+      result.push(category);
+    }
+    category.traits.push(
+      summaryOf(
+        { id: row.trait_id, key: row.trait_key, valueType: row.value_type, unit: row.unit },
+        row,
+      ),
+    );
   }
   return result;
 }

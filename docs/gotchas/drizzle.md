@@ -19,3 +19,9 @@
 **Symptom:** `db:generate` fails to resolve `@treerepro/contracts` in a fresh checkout (`Cannot find module '…/@treerepro/contracts/dist/index.js'`).
 **Cause:** drizzle-kit loads the schema through the package's `exports` (pointing at `dist/`, gitignored), not the `development` condition.
 **Fix:** Run `pnpm --filter @treerepro/contracts build` first.
+
+## A caught unique violation leaves the transaction unusable
+**Symptom:** a `catch (isUniqueViolation(err))` branch inside `db.transaction` re-reads the row the race created and fails with `25P02 current transaction is aborted`.
+**Cause:** PostgreSQL aborts the whole transaction on any statement error; only a `ROLLBACK` (or a savepoint taken before the statement) makes it usable again. Catching the error in JavaScript does not undo that.
+**Fix:** Insert with `.onConflictDoNothing().returning(...)` and re-read when nothing came back — no error is raised, so the transaction stays open (`createReferenceFromDoi`, `ensurePersonalObservation`). Where an error really must be caught, take the savepoint explicitly with a nested `tx.transaction(...)`, as the schema tests do.
+

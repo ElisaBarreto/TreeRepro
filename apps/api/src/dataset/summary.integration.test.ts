@@ -136,49 +136,55 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
 
   it('RFC-70 R7 includeMissing lists every visible trait, with empty summaries for missing ones', async () => {
     const { user } = await createUser(t.db);
+    // The fixture already carries one visible record on the active trait of
+    // the shown species, and one on its inactive trait.
     const f = await createVisibilityFixture(t.db, user.id);
-    const ref = await createReference(t.db);
-    const batch = await createImportBatch(t.db);
 
-    await createRecord(t.db, {
-      speciesId: f.shownSpecies.id,
-      traitId: f.activeTrait.id,
-      valueText: 'test',
-      primaryReferenceId: ref.id,
-      importBatchId: batch.id,
-    });
+    // Without `includeMissing` only the traits with records show up: both of
+    // the fixture's traits to an unrestricted viewer, the active one alone to
+    // a restricted one (RFC-33 R3).
+    const defaultSum = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id);
+    expect(
+      defaultSum
+        ?.flatMap((c) => c.traits)
+        .map((x) => x.trait.id)
+        .sort(),
+    ).toEqual([f.activeTrait.id, f.inactiveTrait.id].sort());
+    const defaultRestricted = await speciesTraitSummary(t.db, RESTRICTED, f.shownSpecies.id);
+    expect(defaultRestricted?.flatMap((c) => c.traits).map((x) => x.trait.id)).toEqual([
+      f.activeTrait.id,
+    ]);
 
-    // RESTRICTED viewer with includeMissing: true
+    // `includeMissing` walks the whole dictionary instead, so every trait the
+    // viewer may see appears, with an empty summary when it has no record.
     const restricted = await speciesTraitSummary(t.db, RESTRICTED, f.shownSpecies.id, {
       includeMissing: true,
     });
-    expect(restricted).not.toBeNull();
-    // Inactive trait is omitted for RESTRICTED
-    const restrictedTraits = restricted!.flatMap((c) => c.traits);
-    expect(restrictedTraits.map((x) => x.trait.id)).toEqual([f.activeTrait.id]);
-    expect(restrictedTraits[0]?.recordCount).toBe(1);
+    const restrictedTraits = restricted?.flatMap((c) => c.traits) ?? [];
+    const restrictedIds = restrictedTraits.map((x) => x.trait.id);
+    expect(restrictedIds).toContain(f.activeTrait.id);
+    // RFC-33 R3: the inactive trait stays hidden from a restricted viewer.
+    expect(restrictedIds).not.toContain(f.inactiveTrait.id);
+    expect(restrictedIds.length).toBeGreaterThan(1);
+    expect(restrictedTraits.find((x) => x.trait.id === f.activeTrait.id)?.recordCount).toBe(1);
+    // Dictionary order: categories keep the order `getDictionary` answers in.
+    expect(restricted?.map((c) => c.category.key)).toEqual([
+      ...new Set(restricted?.map((c) => c.category.key)),
+    ]);
 
-    // UNRESTRICTED viewer with includeMissing: true
     const unrestricted = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id, {
       includeMissing: true,
     });
-    expect(unrestricted).not.toBeNull();
-    const unrestrictedTraits = unrestricted!.flatMap((c) => c.traits);
-    // Both active and inactive traits appear
-    expect(unrestrictedTraits.map((x) => x.trait.id)).toContain(f.activeTrait.id);
+    const unrestrictedTraits = unrestricted?.flatMap((c) => c.traits) ?? [];
     expect(unrestrictedTraits.map((x) => x.trait.id)).toContain(f.inactiveTrait.id);
+    expect(unrestrictedTraits.find((x) => x.trait.id === f.activeTrait.id)?.recordCount).toBe(1);
 
-    const activeSum = unrestrictedTraits.find((x) => x.trait.id === f.activeTrait.id);
-    expect(activeSum?.recordCount).toBe(1);
-
-    const inactiveSum = unrestrictedTraits.find((x) => x.trait.id === f.inactiveTrait.id);
-    expect(inactiveSum).toEqual({
-      trait: {
-        id: f.inactiveTrait.id,
-        key: f.inactiveTrait.key,
-        valueType: f.inactiveTrait.valueType,
-        unit: f.inactiveTrait.unit,
-      },
+    // A trait the species has no record for: zeroed counts, no accepted
+    // value, and — being categorical — an empty level distribution rather
+    // than `null`, which stays the marker of a quantitative trait (RFC-63 R10).
+    const colour = await traitByKey(t.db, 'flower_color');
+    expect(unrestrictedTraits.find((x) => x.trait.id === colour.id)).toEqual({
+      trait: { id: colour.id, key: 'flower_color', valueType: 'categorical', unit: null },
       recordCount: 0,
       harmonisationCounts: {
         harmonised: 0,
@@ -187,13 +193,11 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
         notNumeric: 0,
         empty: 0,
       },
-      levels: null,
+      levels: [],
       numeric: null,
       accepted: null,
     });
-
-    // Without includeMissing: false or omitted
-    const defaultSum = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id);
-    expect(defaultSum?.flatMap((c) => c.traits).map((x) => x.trait.id)).toEqual([f.activeTrait.id]);
+    const petal = await traitByKey(t.db, 'petal_length');
+    expect(unrestrictedTraits.find((x) => x.trait.id === petal.id)?.levels).toBeNull();
   });
 });

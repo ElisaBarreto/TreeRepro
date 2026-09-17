@@ -2,14 +2,15 @@ import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, inject } from 'vitest';
 import { createPermissionCache, type PermissionCache } from '../../src/access/permissions.ts';
 import { type App, type AppDeps, createApp } from '../../src/app.ts';
+import type { AuthContext } from '../../src/auth/context.ts';
 import { createMfaStore, type MfaStore } from '../../src/auth/mfa.ts';
 import { createRateLimiter, type RateLimiter } from '../../src/auth/rate-limit.ts';
 import { createSessionStore, type SessionStore } from '../../src/auth/sessions.ts';
 import { createDb, type Db } from '../../src/db/client.ts';
 import { createRedis, type Redis } from '../../src/redis/client.ts';
+import { fakeDoiClient } from './doi.ts';
 import { captureLogger } from './logger.ts';
 import { createFakeMailer, type FakeMailer } from './mail.ts';
-import { fakeDoiClient } from './doi.ts';
 
 export const TEST_ORIGIN = 'http://localhost';
 export const TEST_SESSION_SECRET = Buffer.alloc(32, 3);
@@ -144,6 +145,26 @@ export function useTestApp(): TestApp {
       const built = build(handle.db, redis, overrides);
       return { app: built.app, lines: built.lines };
     },
+  };
+}
+
+/**
+ * The `AuthContext` of a test app, for the flows and services that take one
+ * instead of going through a route.
+ */
+export function ctxOf(t: TestApp): AuthContext {
+  return {
+    db: t.db,
+    sessions: t.sessions,
+    mfa: t.mfa,
+    limiter: t.limiter,
+    mailer: t.mail.mailer,
+    breachChecker: t.deps.breachChecker,
+    permissionCache: t.permissionCache,
+    logger: t.deps.logger,
+    doi: t.doi,
+    appOrigin: TEST_ORIGIN,
+    now: () => t.clock.now,
   };
 }
 

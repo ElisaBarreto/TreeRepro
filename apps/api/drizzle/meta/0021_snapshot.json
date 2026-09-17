@@ -1,6 +1,6 @@
 {
-  "id": "110bd013-732c-46d0-970c-e162991158b8",
-  "prevId": "4e6147ff-634b-4856-a23c-ae25fe2de429",
+  "id": "bc6abf03-2caa-4a0c-b88b-8b4648578633",
+  "prevId": "a1b7c3d9-2f44-4e18-9c0a-6d5e8f7a1b20",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -422,6 +422,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reference_id": {
+          "name": "reference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "generated": {
+          "name": "generated",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -479,6 +492,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "record_annotations_reference_id_bibliographic_references_id_fk": {
+          "name": "record_annotations_reference_id_bibliographic_references_id_fk",
+          "tableFrom": "record_annotations",
+          "tableTo": "bibliographic_references",
+          "columnsFrom": [
+            "reference_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -488,6 +514,10 @@
         "record_annotations_note_check": {
           "name": "record_annotations_note_check",
           "value": "\"record_annotations\".\"kind\" not in ('dispute', 'withdraw') or \"record_annotations\".\"note\" is not null"
+        },
+        "record_annotations_reference_check": {
+          "name": "record_annotations_reference_check",
+          "value": "\"record_annotations\".\"reference_id\" is null or \"record_annotations\".\"kind\" = 'confirm'"
         }
       },
       "isRLSEnabled": false
@@ -1446,6 +1476,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "intent": {
+          "name": "intent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "responds_to_record_id": {
+          "name": "responds_to_record_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1579,6 +1621,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "trait_records_responds_to_idx": {
+          "name": "trait_records_responds_to_idx",
+          "columns": [
+            {
+              "expression": "responds_to_record_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"trait_records\".\"responds_to_record_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1685,6 +1743,19 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "trait_records_responds_to_record_id_trait_records_id_fk": {
+          "name": "trait_records_responds_to_record_id_trait_records_id_fk",
+          "tableFrom": "trait_records",
+          "tableTo": "trait_records",
+          "columnsFrom": [
+            "responds_to_record_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1704,6 +1775,10 @@
       },
       "policies": {},
       "checkConstraints": {
+        "trait_records_intent_check": {
+          "name": "trait_records_intent_check",
+          "value": "(\"trait_records\".\"intent\" is null) = (\"trait_records\".\"responds_to_record_id\" is null)"
+        },
         "trait_records_reference_check": {
           "name": "trait_records_reference_check",
           "value": "\"trait_records\".\"primary_reference_id\" is not null or \"trait_records\".\"secondary_reference_id\" is not null"
@@ -1816,6 +1891,19 @@
             "as": "primary_count + secondary_count",
             "type": "stored"
           }
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'publication'"
+        },
+        "observer_user_id": {
+          "name": "observer_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -1859,9 +1947,9 @@
           "name": "bibliographic_references_doi_idx",
           "columns": [
             {
-              "expression": "doi",
-              "isExpression": false,
+              "expression": "lower(\"doi\")",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
@@ -1885,6 +1973,22 @@
           "concurrently": false,
           "method": "gin",
           "with": {}
+        },
+        "bibliographic_references_observer_idx": {
+          "name": "bibliographic_references_observer_idx",
+          "columns": [
+            {
+              "expression": "observer_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"bibliographic_references\".\"kind\" = 'personal_observation'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1900,12 +2004,34 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "bibliographic_references_observer_user_id_users_id_fk": {
+          "name": "bibliographic_references_observer_user_id_users_id_fk",
+          "tableFrom": "bibliographic_references",
+          "tableTo": "users",
+          "columnsFrom": [
+            "observer_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "bibliographic_references_kind_check": {
+          "name": "bibliographic_references_kind_check",
+          "value": "\"bibliographic_references\".\"kind\" in ('publication', 'personal_observation')"
+        },
+        "bibliographic_references_observer_check": {
+          "name": "bibliographic_references_observer_check",
+          "value": "(\"bibliographic_references\".\"kind\" = 'personal_observation') = (\"bibliographic_references\".\"observer_user_id\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.role_permissions": {

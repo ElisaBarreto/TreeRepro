@@ -7,7 +7,7 @@ import {
   createReferenceFromDoi,
   ensurePersonalObservation,
   findReferenceByDoi,
-  getReference,
+  findReferenceKind,
 } from './references.ts';
 
 const validation = (path: string, message: string) =>
@@ -27,29 +27,43 @@ export async function resolveSources(
   if ('personalObservation' in sources) {
     return [(await ensurePersonalObservation(ctx.db, actorId)).id];
   }
+  // Distinct after resolution: two sources that end on the same reference —
+  // an id and the DOI of that same reference — would otherwise ask for the
+  // same claim twice.
   const seen = new Set<string>();
   const ids: string[] = [];
+  const take = (id: string, path: string, message: string) => {
+    if (seen.has(id)) throw validation(path, message);
+    seen.add(id);
+    ids.push(id);
+  };
   for (const [i, s] of sources.references.entries()) {
     const p = `${path}.references.${i}`;
     if ('id' in s) {
-      const found = await getReference(ctx.db, s.id);
-      if (!found) {
+      const kind = await findReferenceKind(ctx.db, s.id);
+      if (kind === null) {
         throw new AppError('REFERENCE_NOT_FOUND', 'Reference not found', [
           { path: `${p}.id`, message: 'Reference not found' },
         ]);
       }
-      if (seen.has(found.id)) throw validation(`${p}.id`, 'Duplicate reference');
-      seen.add(found.id);
-      ids.push(found.id);
+      // A personal observation belongs to its observer: it is only ever
+      // reached through `{ personalObservation: true }`, never by naming
+      // someone else's id (RFC-61 R7).
+      if (kind === 'personal_observation') {
+        throw new AppError(
+          'REFERENCE_IS_PERSONAL',
+          'A personal observation cannot be named as a reference',
+          [{ path: `${p}.id`, message: 'A personal observation cannot be named as a reference' }],
+        );
+      }
+      take(s.id, `${p}.id`, 'Duplicate reference');
       continue;
     }
     const doi = normaliseDoi(s.doi);
     if (!doi) throw validation(`${p}.doi`, 'Malformed DOI');
-    if (seen.has(`doi:${doi}`)) throw validation(`${p}.doi`, 'Duplicate DOI');
-    seen.add(`doi:${doi}`);
     const known = await findReferenceByDoi(ctx.db, doi);
     if (known) {
-      ids.push(known.id);
+      take(known.id, `${p}.doi`, 'Duplicate DOI');
       continue;
     }
     const status = await ctx.doi.exists(doi);
@@ -65,7 +79,7 @@ export async function resolveSources(
       metadata: meta,
       actorId,
     });
-    ids.push(created.id);
+    take(created.id, `${p}.doi`, 'Duplicate DOI');
   }
   return ids;
 }

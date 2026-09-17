@@ -30,18 +30,22 @@ installFetchMock();
 const body = () => JSON.parse(String(lastRequest().init?.body));
 
 describe('RFC-65 R1 createRecord', () => {
-  it('posts the body and unwraps the detail', async () => {
-    mockJson(201, { data: RECORD_DETAIL });
-    const record = await createRecord({
+  it('posts the body and unwraps the created records', async () => {
+    mockJson(201, { data: { created: [RECORD_DETAIL], duplicates: [] } });
+    const result = await createRecord({
       speciesId: SPECIES.id,
       traitId: SEXUAL_SYSTEM.id,
       value: { levelId: RECORD_DETAIL.level?.id ?? '' },
-      primaryReferenceId: RECORD_DETAIL.primaryReference?.id ?? '',
+      sources: { references: [{ id: RECORD_DETAIL.primaryReference?.id ?? '' }] },
     });
     expect(lastRequest().url).toBe('/api/records');
     expect(lastRequest().init?.method).toBe('POST');
     expect(body().value).toEqual({ levelId: RECORD_DETAIL.level?.id });
-    expect(record.id).toBe(RECORD_DETAIL.id);
+    expect(body().sources).toEqual({
+      references: [{ id: RECORD_DETAIL.primaryReference?.id }],
+    });
+    expect(result.created[0]?.id).toBe(RECORD_DETAIL.id);
+    expect(result.duplicates).toEqual([]);
   });
 });
 

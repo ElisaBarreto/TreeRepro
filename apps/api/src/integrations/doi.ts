@@ -51,9 +51,7 @@ export function crossrefToMetadata(work: unknown): DoiMetadata {
         .join('; ')
         .slice(0, 1000) || null
     : null;
-  const parts = (
-    m.issued as { 'date-parts'?: number[][] } | undefined
-  )?.['date-parts']?.[0];
+  const parts = (m.issued as { 'date-parts'?: number[][] } | undefined)?.['date-parts']?.[0];
   const year = parts && Number.isInteger(parts[0]) ? (parts[0] as number) : null;
   const journal =
     Array.isArray(m['container-title']) && typeof m['container-title'][0] === 'string'
@@ -79,7 +77,13 @@ export function createDoiClient(options: {
         fetchImpl: options.fetchImpl,
       });
       if (r.ok) {
-        return (r.json as { responseCode?: number }).responseCode === 1 ? 'resolvable' : 'not_found';
+        // Handle API response codes: 1 resolved, 100 handle not found. Any
+        // other code (2 "error", 200 "values not found", or none at all) says
+        // nothing about the DOI, so it is a failure, not an absence.
+        const code = (r.json as { responseCode?: number }).responseCode;
+        if (code === 1) return 'resolvable';
+        if (code === 100) return 'not_found';
+        return 'failed';
       }
       if ('status' in r && r.status === 404) return 'not_found';
       return 'failed';
