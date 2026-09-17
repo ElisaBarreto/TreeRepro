@@ -8,7 +8,7 @@ import {
   updateSpeciesBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
-import { userScope, visibilityOf } from '../../../access/visibility.ts';
+import { userScopeOf, visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
 import {
@@ -39,8 +39,7 @@ export function speciesRoutes(ctx: AuthContext) {
       async (c) => {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
-        const user = c.get('user');
-        const scope = user ? await userScope(ctx.db, user.id) : { plots: [], restricted: false };
+        const scope = await userScopeOf(ctx.db, c);
         const viewerPlotIds = scope.plots.map((p) => p.id);
 
         const { data, nextCursor } = await searchSpecies(ctx.db, visibility, {
@@ -79,8 +78,7 @@ export function speciesRoutes(ctx: AuthContext) {
       validate('param', idParamSchema),
       async (c) => {
         const visibility = await visibilityOf(ctx, c);
-        const user = c.get('user');
-        const scope = user ? await userScope(ctx.db, user.id) : { plots: [], restricted: false };
+        const scope = await userScopeOf(ctx.db, c);
         const viewerPlotIds = scope.plots.map((p) => p.id);
         const allPlots = currentPermissions(c).has('plots.manage');
 

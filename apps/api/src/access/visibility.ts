@@ -71,6 +71,25 @@ export async function userScope(
 }
 
 /**
+ * Resolves the user's assigned plots and restriction flag for the current request,
+ * cached on the request context.
+ * @rfc RFC-22 R10
+ * @rfc RFC-67 R6
+ */
+export async function userScopeOf(
+  db: DbExecutor,
+  c: Context<AppEnv>,
+): Promise<{ plots: PlotRef[]; restricted: boolean }> {
+  const cached = c.get('userScope');
+  if (cached) return cached;
+  const user = c.get('user');
+  if (!user) return { plots: [], restricted: false };
+  const scope = await userScope(db, user.id);
+  c.set('userScope', scope);
+  return scope;
+}
+
+/**
  * The viewer of the current request; computed once and kept on the context.
  * @rfc RFC-33 R1
  * @rfc RFC-67 R6
@@ -81,7 +100,7 @@ export async function visibilityOf(ctx: AccessContext, c: Context<AppEnv>): Prom
   const user = c.get('user');
   let plotIds: string[] | null = null;
   if (user) {
-    const scope = await userScope(ctx.db, user.id);
+    const scope = await userScopeOf(ctx.db, c);
     if (scope.restricted) {
       plotIds = scope.plots.map((p) => p.id);
     }
