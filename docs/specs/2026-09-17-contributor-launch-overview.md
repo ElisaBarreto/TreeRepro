@@ -10,7 +10,7 @@ This file is the index. Each track has its own design spec; each issue has its o
 
 | Track | Spec | Issue (plan) | Summary |
 |---|---|---|---|
-| 1 Visibility | `2026-09-17-visibility-design.md` | **08a** roles + species activation (`plans/2026-09-17-visibility-08a-roles.md`) | `species.active`; permission `dataset.read_inactive`; system roles `manager` and `contributor`; API hides inactive species and traits from restricted viewers; `seed:traits` `active` column; generic supplementary import batches; `import:species-status`. |
+| 1 Visibility | `2026-09-17-visibility-design.md` | **08a** roles + species activation (`plans/2026-09-17-visibility-08a-roles.md`) | E2E harness (admin storage state, seeded dictionary, `apiCall`); `species.active`; permissions `dataset.read_inactive` and `records.review` (the queues become manager work); system roles `manager` and `contributor`; API hides inactive species and traits from restricted viewers; `seed:traits` `active` column; generic supplementary import batches; `import:species-status`. |
 | | | **08b** plots (`plans/2026-09-17-visibility-08b-plots.md`) | `plots`, `plot_species`, `user_plots`, `users.restrict_to_assigned_plots`; `import:plots`, `import:plot-species`, `import:user-plots`; Admin › Plots; species `scope` and `plotId`; "Show species outside my plots". |
 | 2 Contribution | `2026-09-17-contribution-design.md` | **09a** contribution API (`plans/2026-09-17-contribution-09a-api.md`) | Personal-observation references; DOI resolution through the Handle and Crossref APIs; `POST /api/records` with several references (one record each) and an intent (contest / complement); automatic dispute on contest; `records.review` permission; confirm with a supporting DOI; species trait summary with missing traits. |
 | | | **09b** contribution web (`plans/2026-09-17-contribution-09b-web.md`) | Validate / Add different record; the two-step contest dialog; "Add entries for another trait"; live DOI check; `?` trait tooltips; "Show traits with no data". |
@@ -30,21 +30,22 @@ This file is the index. Each track has its own design spec; each issue has its o
 ## 2. Order and dependencies
 
 ```
-08a ─▶ 08b ─▶ 09a ─▶ 09b ─▶ 10a ─▶ 11b ─▶ 11a ─▶ 12a      (contributor launch)
-                 │             │
-                 │             ├─▶ 10c ─▶ 10b
-                 │             ├─▶ 11c
-                 │             └─▶ 10e
-                 ├─▶ 10d
-                 ├─▶ 12b ─▶ 12d
-                 └─▶ 12c
+08a ─▶ 08b ─▶ 09a ─▶ 09b ─▶ 10a ─▶ 11a ─▶ 11b ─▶ 12a      (contributor launch)
+                               │             │
+                               ├─▶ 10c ─▶ 10b        (10c ─▶ 10d, 10c ─▶ 10e)
+                               │                     │
+                               └─────────────────────┼─▶ 11c
+                                                     ├─▶ 12b ─▶ 12d
+                                                     └─▶ 12c  (also needs 11a, 12b)
 ```
 
-- **Short term (must ship before contributors are invited):** 08a, 08b, 09a, 09b, 10a, 11b, 11a, 12a.
+Read the arrows as "must be merged before"; every plan's header repeats its own dependencies, and the header wins if the two ever disagree.
+
+- **Short term (must ship before contributors are invited):** 08a, 08b, 09a, 09b, 10a, 11a, 11b, 12a. Plan 08a starts with the E2E harness task (admin `storageState`, seeded dictionary, `apiCall` helper) every later E2E spec relies on.
 - **Medium term:** 10b, 10c, 10d, 12b.
 - **Long term:** 10e (waits for the distribution dataset), 12c, 11c, 12d.
 
-Hard dependencies: 08b needs 08a (visibility rules, `import_batches.kind`); 09b needs 09a; 10a needs 08b (scope toggle sits in the same filter panel); 11b needs 08b (plot scope) and 10a (coverage table); 11c needs 10a; 10c needs 10a (coverage anti-joins) and the breadcrumb from 10a; 10b, 10d, 10e need 08a (import batch kinds); 12b needs 09a (contest counts); 12d needs 12b (`job_runs`); 12c needs 09a (permission migration pattern) and 11a (the proposals tab).
+Hard dependencies: 08b needs 08a (visibility rules, `import_batches.kind`); 09b needs 09a; 10a needs 08b (scope toggle sits in the same filter panel) and 09b (search params on the species detail route); 11a needs 09a and 08b; 11b needs 11a (contribution summary), 10a (coverage table, `cachedJson`, Redis on the context) and 09a (contest counts); 12a needs 09b (`HelpTip`) and 11b (summary for the card); 10c needs 10a; 10b needs 10c (`speciesListConditions`); 10d needs 10a and 10c (`Chip`, trigger shape); 10e needs 10c (`cachedJson`, `Chip`); 11c needs 11b (`coverageTotals`, `Meter`); 12b needs 11b (queue counts); 12d needs 12b (`job_runs`), 12c (proposal counts) and 11b; 12c needs 11a (proposals tab), 11b (dashboard queue) and 12b (digest count).
 
 ## 3. Cross-cutting decisions
 
@@ -57,6 +58,8 @@ Hard dependencies: 08b needs 08a (visibility rules, `import_batches.kind`); 09b 
 | DOI | `GET /api/references/resolve?doi=` checks a DOI without writing; the record write resolves and creates the references it needs. Outbound calls go to two fixed hosts only (`doi.org` Handle API, `api.crossref.org`), with `redirect: 'manual'`, a 5 s timeout and a fake client in tests. |
 | Contest / complement | A new record carries `intent` and `responds_to_record_id`. A contest also inserts a `dispute` annotation on the contested record by the same actor (generated note), so the disputed queue keeps working; withdrawing the contest inserts a `neutral`. A complement inserts nothing on the older record. |
 | Buttons | Everyone with `records.annotate` sees Validate and Add different record. Neutral and Dispute-with-note need `records.review` (manager+); Withdraw stays with the author or `records.withdraw`; Set as accepted stays `accepted.manage` (admin). |
+| Queues | The harmonisation queue (`GET /api/records/pending*`, `POST /api/records/pending/map`), the disputed queue and the unresolved-taxa entry are manager work: they move behind `records.review` (plan 08a amends RFC-65 R8–R10). A contributor never maps pending values — which also closes the hole where a restricted viewer could map rows of species they cannot see. Managers do not hold `traits.manage`: a missing level is escalated to the admin (conceptual plan §2.1). Managers keep `records.withdraw` so they can retract a bad manual record while handling disputes. |
+| Plot import | `user_plots.csv` carries `user_email,plot_id` only; the restriction flag is set on the user page, never imported (the owner's second settings file is not needed). |
 | Trait detail | A dedicated page `/app/traits/$id` (option B), mirroring the reference page. |
 | `species.active` default | `true` for every existing row; the owner's status file deactivates the species outside the current phase. |
 | Notifications | A daily e-mail digest to managers and admins; no in-app notifications. |
@@ -66,6 +69,7 @@ Hard dependencies: 08b needs 08a (visibility rules, `import_batches.kind`); 09b 
 | Breadcrumb | The shell breadcrumb becomes hierarchical (`Data › Species › Anathallis funerea`) through a breadcrumb context that pages extend. |
 | Counters | Aggregates that a page needs at scale are stored and maintained by the existing `trait_records` insert trigger (records are append-only, so counters never go down): `species_trait_coverage`, `species.trait_count`, `reference_traits`. |
 | Hosted content | No dataset file is ever committed; fixtures in tests are synthetic. |
+| E-mail to staff | The daily digest names the scientists who contested or disputed (their names are already visible to every `dataset.read` holder); it is plain text (the mailer sends `{ subject, text }`). |
 | Migration numbers | The numbers the plans quote (`0016`–`0030`) assume the plans run in the order they are numbered; the recommended order (§2) differs, so `db:generate` assigns the actual next number at implementation time and the RFC changelog cites that one. |
 
 ## 4. RFC allocation
@@ -102,4 +106,4 @@ System role permission sets (RFC-31):
 
 ## 5. Out of scope
 
-Species and reference merges; in-app notifications; contributor exports; an interactive tour; web uploads of any dataset; per-record e-mail alerts; resource-level permissions beyond RFC-33.
+Trait categories stay seed-only (no route creates or edits a category; RFC-62 R2 — the admin edits `trait-dictionary.csv` and re-runs `seed:traits`). Species and reference merges; in-app notifications; contributor exports; an interactive tour; web uploads of any dataset; per-record e-mail alerts; resource-level permissions beyond RFC-33.

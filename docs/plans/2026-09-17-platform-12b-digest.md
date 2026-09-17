@@ -6,7 +6,7 @@
 
 **Architecture:** `apps/api/src/jobs/runs.ts` (`startRun`, `finishRun`, `latestRun`); `apps/api/src/jobs/digest.ts` (`isDigestDue`, `computeDigest`, `renderDigest` via `mail/templates.ts`, `runDigest`, `startDigestTimer`); `server.ts` starts it beside the retention timer; `audit/retention.ts` records its runs. `job_runs_purge()` removes runs older than a year on the retention schedule.
 
-**Spec:** `docs/specs/2026-09-17-platform-design.md` §4, §9. Depends on plan 09a (intent, `generated`), 11b (queue counts). Plan 12c later adds proposal counts (until then 0).
+**Spec:** `docs/specs/2026-09-17-platform-design.md` §4, §9. Depends on plans 09a (intent, `generated`) and 11b (queue counts, `ctx.redis` unused here). The mailer sends `{ subject, text }` (plain text only). Plan 12c later adds proposal counts (until then 0).
 
 ## Global Constraints
 
@@ -62,7 +62,13 @@ Migration `db:generate --name job_runs`, then append:
 
 ```sql
 --> statement-breakpoint
-REVOKE DELETE, TRUNCATE ON job_runs FROM treerepro_app;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'treerepro_app') THEN
+    REVOKE DELETE, TRUNCATE ON job_runs FROM treerepro_app;
+  END IF;
+END;
+$$;
 --> statement-breakpoint
 CREATE FUNCTION job_runs_purge() RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE n integer;
@@ -91,14 +97,15 @@ export interface DigestWindow { start: Date; end: Date }
 export interface DigestCounts { records: number; contests: number; complements: number; validations: number; disputes: number; withdrawals: number; proposals: number; pendingGroups: number; disputedNow: number }
 export interface DigestItem { speciesName: string; traitKey: string; valueText: string; actorName: string; recordId: string; createdAt: Date }
 export interface Digest { window: DigestWindow; counts: DigestCounts; contests: DigestItem[]; disputes: DigestItem[] }
-export function isDigestDue(latest: { status: string; finishedAt: Date | null; detail: { windowEnd?: string } } | null, now: Date): { due: boolean; windowStart: Date }
+export function isDigestDue(lastSuccess: { finishedAt: Date; detail: { windowEnd?: string } } | null, now: Date): { due: boolean; windowStart: Date }
+// `lastSuccess` = the newest `digest` run with status `completed` or `skipped` (from `latestRun(db, 'digest', ['completed', 'skipped'])`); a `failed` or `running` run never postpones
 export async function computeDigest(db, window: DigestWindow): Promise<Digest>
 export function hasActivity(counts: DigestCounts): boolean      // records + contests + complements + validations + disputes + withdrawals + proposals > 0
 export async function digestRecipients(db): Promise<{ id: string; email: string; name: string }[]>
 export function digestEmail(input: { digest: Digest; appOrigin: string; date: string }): MailContent   // in mail/templates.ts
 ```
 
-- [ ] **Step 1: Failing unit tests** — `isDigestDue(null, now)` → due, window start `now − 24 h`; latest `completed` finished 23 h ago → not due; 24 h ago → due with `windowStart = latest.detail.windowEnd`; latest `failed` 1 h ago → due (a failure does not postpone), window start from the last completed/skipped run (pass both through a `latestSuccessful` argument — adjust the signature: `isDigestDue(lastSuccess, now)`); `hasActivity` on zeros → false. `digestEmail` text contains the subject `TreeRepro digest — 2026-09-17`, each count line, the two lists with record links `${appOrigin}/app/species/<speciesId>?record=<id>` (the species page opens the drawer from `?record=` — add that search param to the species route in this plan, web side), and no e-mail addresses.
+- [ ] **Step 1: Failing unit tests** — `isDigestDue(null, now)` → due, window start `now − 24 h`; latest `completed` finished 23 h ago → not due; 24 h ago → due with `windowStart = latest.detail.windowEnd`; a `failed` run 1 h ago is not `lastSuccess`, so with the last success 24 h ago the digest is due and the window starts at that success's `windowEnd`; `hasActivity` on zeros → false. `digestEmail` text contains the subject `TreeRepro digest — 2026-09-17`, each count line, the two lists with record links `${appOrigin}/app/species/<speciesId>?record=<id>` (the species page opens the drawer from `?record=` — add that search param to the species route in this plan, web side), and no e-mail addresses.
 - [ ] **Step 2: Failing integration tests** — `computeDigest` over a window with 2 manual records (1 contest, 1 complement), 3 confirms, 1 human dispute, 1 generated dispute (not counted), 1 withdrawal; `pendingGroups` and `disputedNow` current; the items carry decrypted actor names; `digestRecipients` returns active users holding `records.review` through any role or `admin`, not a suspended manager, not a contributor.
 - [ ] **Step 3: Implement; commit** — `feat(api): digest computation, recipients and template (RFC-74 R2-R5)`.
 

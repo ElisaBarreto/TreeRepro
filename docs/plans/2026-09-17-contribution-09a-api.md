@@ -21,13 +21,11 @@ docs/rfc/70-workspace/70-contribution-workflow.md           # new
 docs/rfc/80-integrations/80-doi-resolution.md               # new
 docs/rfc/README.md                                          # categories 70–79, 80–89; rows
 docs/rfc/10-platform/12-error-codes.md                      # DOI_LOOKUP_FAILED, REFERENCE_IS_PERSONAL
-docs/rfc/30-access/30-permission-catalog.md                 # records.review
-docs/rfc/30-access/31-roles.md                              # R10 manager += records.review
+docs/rfc/20-auth/24-rate-limiting.md                        # R3: DOI check limiter
 docs/rfc/60-dataset/61-bibliographic-references.md          # R1, R4 amended; R7, R8 new
 docs/rfc/60-dataset/63-trait-records.md                     # R1, R2, R7, R8, R10 amended
 docs/rfc/60-dataset/65-curation.md                          # R1–R4 amended
 docs/rfc/60-dataset/66-dataset-export.md                    # personal observation label
-apps/api/drizzle/0020_permissions_review.sql                # custom
 apps/api/drizzle/0021_contribution.sql                      # generated + trigger
 apps/api/src/db/schema/references.ts, records.ts, curation.ts
 apps/api/src/config.ts                                      # doiContactEmail
@@ -56,8 +54,8 @@ apps/web/src/test/dataset-fixtures.ts                       # schema changes (we
 - [ ] **Step 2: RFC-80** — file `docs/rfc/80-integrations/80-doi-resolution.md`, status `draft`, category integrations; Context: two sentences from the spec §5; Rules R1–R6 verbatim from the spec §5.
 - [ ] **Step 3: RFC-70** — file `docs/rfc/70-workspace/70-contribution-workflow.md`, status `draft`, category workspace; Context from the spec §1; Rules R1–R8 verbatim from the spec §6, with R3's response shape and R4's `generated` flag.
 - [ ] **Step 4: Amendments**
-  - RFC-30: `| \`records.review\` | Neutralise or dispute any record with a note |`.
-  - RFC-31 R10: `manager` gains `records.review` (plan 09a).
+  - RFC-30: `records.review` already exists (plan 08a); its description stays. RFC-70 R4 is what widens its meaning to `neutral` / `dispute` annotations.
+  - RFC-24 R3 scope table: a row for the DOI check — `GET /api/references/resolve`, keyed by user id (RFC-24 R7), 60 per 60 s, 429 `RATE_LIMITED`.
   - RFC-12: `| \`DOI_LOOKUP_FAILED\` | 502 | The DOI registry could not be reached (RFC-80 R3). |`, `| \`REFERENCE_IS_PERSONAL\` | 409 | A personal-observation reference cannot be edited (RFC-61 R7). |`.
   - RFC-61: R1 columns `kind`, `observer_user_id`; R4 `kind=` filter and item fields `kind`, `observer`; R7, R8 new (spec §4).
   - RFC-63: R1 `intent`, `responds_to_record_id`; R2 check "`intent` null iff `responds_to_record_id` null; a trigger refuses a response to a record of another species or trait"; R7 `record_annotations.reference_id`, `generated`; R8 item `intent`, `respondsTo`; detail `responses`; annotation `reference`, `generated`; R10 `includeMissing`.
@@ -70,7 +68,7 @@ apps/web/src/test/dataset-fixtures.ts                       # schema changes (we
 
 ### Task 2: Contracts
 
-**Files:** `packages/contracts/src/dataset.ts`, `curation.ts`, `permissions.ts`, `error-codes.ts`, tests.
+**Files:** `packages/contracts/src/dataset.ts`, `curation.ts`, `error-codes.ts`, tests.
 
 **Interfaces (produces):**
 
@@ -95,10 +93,10 @@ export const sourcesSchema = z.union([
 export const createRecordBodySchema = z.strictObject({
   speciesId: z.uuid(), traitId: z.uuid(), value: recordValueSchema, sources: sourcesSchema,
   intent: z.enum(RECORD_INTENTS).optional(), respondsToRecordId: z.uuid().optional(),
-  rawValue: noteSchema.optional(), note: noteSchema.optional(), secondaryReferenceId: z.uuid().optional(),
+  rawValue: curationNoteSchema.optional(), note: curationNoteSchema.optional(), secondaryReferenceId: z.uuid().optional(),
 }).refine((b) => (b.intent === undefined) === (b.respondsToRecordId === undefined), { path: ['intent'], message: 'intent and respondsToRecordId come together' });
 export const createRecordsResultSchema = z.strictObject({ created: z.array(recordDetailSchema), duplicates: z.array(z.strictObject({ recordId: z.uuid(), referenceId: z.uuid() })) });
-export const annotateRecordBodySchema = z.strictObject({ kind: z.enum(ANNOTATION_KINDS), note: noteSchema.optional(), reference: sourceRefSchema.optional() })
+export const annotateRecordBodySchema = z.strictObject({ kind: z.enum(ANNOTATION_KINDS), note: curationNoteSchema.optional(), reference: sourceRefSchema.optional() })
   .refine((b) => b.reference === undefined || b.kind === 'confirm', { path: ['reference'], message: 'Only a confirmation carries a reference' });
 export const resolveDoiQuerySchema = z.strictObject({ doi: doiSchema });
 export const resolveDoiResultSchema = z.discriminatedUnion('status', [
@@ -106,10 +104,10 @@ export const resolveDoiResultSchema = z.discriminatedUnion('status', [
   z.strictObject({ status: z.literal('resolvable'), reference: z.null(), preview: z.strictObject({ title: z.string().nullable(), authors: z.string().nullable(), year: z.number().int().nullable(), journal: z.string().nullable() }).nullable() }),
   z.strictObject({ status: z.literal('not_found'), reference: z.null() }),
 ]);
-// permissions.ts: 'records.review'; error-codes.ts: DOI_LOOKUP_FAILED 502, REFERENCE_IS_PERSONAL 409
+// error-codes.ts: DOI_LOOKUP_FAILED 502, REFERENCE_IS_PERSONAL 409 (records.review exists since plan 08a)
 ```
 
-(`recordValueSchema` and `noteSchema` are the existing names in `curation.ts` — verify and reuse.)
+(`recordValueSchema` and `curationNoteSchema` are the existing names in `packages/contracts/src/curation.ts`; the `nonEmpty` helper there is module-private — export it, or move it to `packages/contracts/src/schema-helpers.ts`, the first time another module needs it.)
 
 - [ ] **Step 1: Failing tests** in `curation.test.ts`: the body refuses `intent` without `respondsToRecordId`; refuses 11 references; accepts `{ personalObservation: true }`; the annotate body refuses `reference` with `kind: 'dispute'`; `resolveDoiResultSchema` parses each variant.
 - [ ] **Step 2: Implement; update `apps/web/src/test/dataset-fixtures.ts`** (every `RecordItem` gains `intent: null, respondsTo: null`; every `RecordDetail` gains `responses: []`; every annotation gains `reference: null, generated: false`; every `Reference` gains `kind: 'publication', observer: null`; every `referenceRef` gains `kind`) and the web's `createRecord` call site (`AddValueDialog` sends `sources: { references: [{ id: primary.id }] }` for now — plan 09b replaces the dialog; the web tests must pass at the end of this plan) and `RecordActions`/`useRecordWrite` types for the new `POST /api/records` answer (`created[0]`).
@@ -119,7 +117,7 @@ export const resolveDoiResultSchema = z.discriminatedUnion('status', [
 
 ### Task 3: Schema and migrations
 
-**Files:** `apps/api/src/db/schema/references.ts`, `records.ts`, `curation.ts`; migrations `0020_permissions_review.sql` (custom), `0021_contribution.sql` (generated, then hand-append the trigger); tests in `dataset.integration.test.ts`.
+**Files:** `apps/api/src/db/schema/references.ts`, `records.ts`, `curation.ts`; migration `contribution` (generated, then hand-append the trigger); tests in `dataset.integration.test.ts`.
 
 - [ ] **Step 1: Failing schema tests**
 
@@ -188,7 +186,7 @@ describe('RFC-63 R1, R2 intent and responses', () => {
 
 `curation.ts` — `referenceId: uuid('reference_id').references(() => bibliographicReferences.id, { onDelete: 'restrict' })`, `generated: boolean('generated').notNull().default(false)`, check `record_annotations_reference_check`: `${t.referenceId} is null or ${t.kind} = 'confirm'`.
 
-- [ ] **Step 3: Migrations** — `0020_permissions_review.sql`: insert `records.review` and `INSERT INTO role_permissions … WHERE r.name = 'manager' AND p.key = 'records.review'`. `db:generate --name contribution`, then append to the generated file:
+- [ ] **Step 3: Migration** — `records.review` and its manager row already exist (plan 08a). `db:generate --name contribution`, then append to the generated file:
 
 ```sql
 --> statement-breakpoint
@@ -292,11 +290,22 @@ export async function fetchJsonFixedHost(o: FixedHostFetchOptions): Promise<Fixe
   try {
     const res = await fetchImpl(o.url, { headers: { accept: 'application/json', ...o.headers }, redirect: 'manual', signal: controller.signal });
     if (res.status >= 300 && res.status < 400) return { ok: false, error: 'redirect' };
-    const length = Number(res.headers.get('content-length') ?? 0);
     const max = o.maxBytes ?? 1024 * 1024;
-    if (length > max) return { ok: false, error: 'too_large' };
-    const text = await res.text();
-    if (text.length > max) return { ok: false, error: 'too_large' };
+    if (Number(res.headers.get('content-length') ?? 0) > max) return { ok: false, error: 'too_large' };
+    // Read the body in chunks and abort past the cap: a response bomb is never buffered whole.
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    const reader = res.body?.getReader();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > max) { await reader.cancel(); controller.abort(); return { ok: false, error: 'too_large' }; }
+        chunks.push(value);
+      }
+    }
+    const text = new TextDecoder().decode(Buffer.concat(chunks));
     if (!res.ok) return { ok: false, status: res.status };
     try { return { ok: true, status: res.status, json: JSON.parse(text) as unknown }; } catch { return { ok: false, error: 'invalid_json' }; }
   } catch (err) {
@@ -352,7 +361,7 @@ export function createDoiClient(options: { contactEmail?: string; version: strin
 }
 ```
 
-Wiring: `AuthContext.doi: DoiClient`; `AppDeps.doi`; `server.ts` builds `createDoiClient({ contactEmail: config.doiContactEmail, version: <package version read from package.json or a constant> })`; `config.ts` reads `DOI_CONTACT_EMAIL` (optional, e-mail format); `test/helpers/app.ts` injects `fakeDoiClient()` and exposes it as `t.doi`.
+Wiring: `AuthContext.doi: DoiClient`; `AppDeps.doi: DoiClient` (required); `server.ts` builds `createDoiClient({ contactEmail: config.doiContactEmail, version: APP_VERSION })` where `APP_VERSION` is a new constant in `apps/api/src/version.ts` read once from `apps/api/package.json` (`createRequire(import.meta.url)('../package.json').version`); `config.ts` reads `DOI_CONTACT_EMAIL` (optional, e-mail format); `test/helpers/app.ts`: `build()` creates one `fakeDoiClient()` per app, passes it as `deps.doi` and the `TestApp` interface exposes it as `t.doi` (the same pattern as `mail`).
 
 - [ ] **Step 3: Run unit + property tests; commit** — `feat(api): DOI client over the Handle and Crossref APIs (RFC-80 R1-R3, R6)`.
 
@@ -414,9 +423,9 @@ export async function resolveSources(ctx, actorId, sources, path = 'sources'): P
 }
 ```
 
-`createReferenceFromDoi`: transaction — insert with `citationKey: \`doi:${doi}\``, `doi`, `url`, metadata fields, `shortCitation` derivation is plan 10d (leave null), `createdBy: actorId`, audit `references.created` `{ source: 'doi' }`; on `isUniqueViolation` (a race on `doi` or `citation_key`) re-read by `findReferenceByDoi`.
+`createReferenceFromDoi`: transaction — insert with `citationKey: \`doi:${doi}\``, `doi`, `url`, metadata fields, `shortCitation` derivation is plan 10d (leave null), `createdBy: actorId`, audit `references.created` `{ source: 'doi' }`; on `isUniqueViolation` (a race on `doi` or `citation_key`) re-read by `findReferenceByDoi`. `ensurePersonalObservation` handles the same race on `bibliographic_references_observer_idx`: `isUniqueViolation` → re-read by `observer_user_id`.
 
-Route: `.get('/resolve', requirePermission(ctx, 'dataset.read'), doiLimit, validate('query', resolveDoiQuerySchema), …)` — the permission is `records.create` per the spec §5 R4; use `records.create`. Rate limit: build with `createRateLimiter` keyed `doi:<userId>`, 60 per 60 s (look at how `forgotLimit` is built in `auth.ts` and copy the shape).
+Route: `.get('/resolve', requirePermission(ctx, 'records.create'), doiLimit, validate('query', resolveDoiQuerySchema), …)`, registered **before** `.get('/:id', …)` in `references.ts` (Hono matches in registration order; `/resolve` would otherwise be swallowed by `/:id` and fail its uuid validation). `doiLimit`: a middleware built like `forgotLimit` in `auth.ts` but keyed by the session user — `ctx.limiter.hit(\`doi:${currentUser(c).id}\`, { limit: 60, windowMs: 60_000 })` (RFC-24 R7 allows per-user keys; the login limiters key by e-mail blind index + IP, which is wrong here) — answering 429 `RATE_LIMITED` with `Retry-After`.
 
 `export.ts`: in the CSV query, `case when r.kind = 'personal_observation' then 'Personal observation' else r.citation_key end` for both reference columns.
 
@@ -440,7 +449,7 @@ export const CONTEST_NOTE = (ids: string[]) => `Contested by record ${ids.join('
 export const CONTEST_WITHDRAWN_NOTE = (id: string) => `Contest withdrawn (record ${id})`;
 ```
 
-The old `createRecord` is removed (its only caller was the route); `mapPending` keeps its own insert.
+The old `createRecord` is removed (its only caller was the route); the plan 08a visibility tests that called `createRecord(db, RESTRICTED, …)` move to `createRecords` with `referenceIds: [ref.id]`; `mapPending` keeps its own insert.
 
 - [ ] **Step 1: Failing service tests** (`curation.integration.test.ts`):
   - two references → two records, identical except `primary_reference_id`; both in `created` in input order; `duplicates` empty.
@@ -450,7 +459,7 @@ The old `createRecord` is removed (its only caller was the route); `mapPending` 
   - respondsTo of another trait → 400 path `respondsToRecordId`; withdrawn base → 409 `RECORD_WITHDRAWN`; invisible base (inactive species, `RESTRICTED`) → 404.
   - `annotateRecord` `neutral` with `canReview: false` → 403; `dispute` with `canReview: false` → 403; `confirm` with `referenceId` stores it and the detail's annotation carries `reference.kind`.
   - withdrawing a contest record inserts a generated `neutral` on the base when the actor's latest stance there is `dispute`; not when the actor had since confirmed; withdrawing a complement inserts nothing.
-- [ ] **Step 2: Implement** — `createRecords`: `requireSpecies`, `requireTrait` (visibility), inactive trait check, `resolveValue`, optional `requireReference(secondary)`; when `respondsToRecordId`: read the record joined with species/traits + visibility (404), compare species/trait (400), `reviewStatusSql` withdrawn (409); then `db.transaction`: `pg_advisory_xact_lock` on the responded record id when contesting (the same key `annotateRecord` uses); `insert … values(referenceIds.map(…)) on conflict on constraint trait_records_claim_key do nothing returning id, primary_reference_id`; for references missing from `returning`, select the existing record by the claim key → `duplicates`; if `created` is empty → 409 with details; if contest and created non-empty → insert the dispute annotation (`generated: true`); load details with `getRecord(tx, UNRESTRICTED, id)` for each created id (the actor just wrote them). `annotateRecord`: add the `canReview` gate before the withdraw block; store `referenceId`; after inserting a `withdraw` on a record with `intent = 'contest'`, check the actor's latest non-withdraw annotation on `responds_to_record_id` — when it is `dispute`, insert `neutral` with `generated: true` and the note.
+- [ ] **Step 2: Implement** — `createRecords`: `requireSpecies`, `requireTrait` (visibility), inactive trait check, `resolveValue`, optional `requireReference(secondary)`; when `respondsToRecordId`: read the record joined with species/traits + visibility (404), compare species/trait (400), `reviewStatusSql` withdrawn (409), and for `intent = 'contest'` refuse a value equal to the contested record's (`level_id` equal, or `numeric_value` equal — 400 `VALIDATION_FAILED`, path `value`, "A contest carries a different value"; RFC-70 R2); then `db.transaction`: `pg_advisory_xact_lock` on the responded record id when contesting (the same key `annotateRecord` uses); `insert … values(referenceIds.map(…)) on conflict on constraint trait_records_claim_key do nothing returning id, primary_reference_id`; for references missing from `returning`, select the existing record by the claim key → `duplicates`; if `created` is empty → 409 with details; if contest and created non-empty → insert the dispute annotation (`generated: true`); load details with `getRecord(tx, UNRESTRICTED, id)` for each created id (the actor just wrote them). `annotateRecord`: add the `canReview` gate before the withdraw block; store `referenceId`; after inserting a `withdraw` on a record with `intent = 'contest'`, check that the responded record is not withdrawn (`reviewStatusSql`) and that the actor's latest non-withdraw annotation on it is `dispute` — then insert `neutral` with `generated: true` and the note; otherwise nothing (RFC-70 R5).
 
   `records.ts`: `toItem` adds `intent`, `respondsTo`; `getRecord` adds `responses` (select from `trait_records where responds_to_record_id = id order by id desc`, join author) and annotation `reference` (join `bibliographic_references`) and `generated`.
 

@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Before the pull request, review the branch with CodeRabbit only (`coderabbit:code-review`).
 
-**Goal:** `species_names` carries `name_type` (`gbif` | `synonym` | `common`), `language` and a free-text `source`; `import:synonyms` loads the owner's file; the species search answers the first non-empty tier (exact canonical → canonical substring → alternative-name substring) with `matchedNameType`; the web app shows "found as" badges, grouped names on the species header and a richer Add name dialog.
+**Goal:** `species_names` carries `name_type` (`gbif` | `synonym` | `common`), `language` and a free-text `source`; `import:synonyms` loads the owner's file; the species search answers an exact canonical match alone, else today's substring search over canonical and alternative names, with `matchedNameType`; the web app shows "found as" badges, grouped names on the species header and a richer Add name dialog.
 
-**Architecture:** One generated migration widens `species_names`. `searchSpecies` computes the tier once (three cheap `exists` queries) and encodes it into the cursor so pages never mix tiers. The import is the fourth supplementary kind on the plan 08a framework.
+**Architecture:** One generated migration widens `species_names`. `searchSpecies` computes the tier once (one cheap `exists` for tier 1) and encodes it into the cursor so pages never mix tiers; tier 2 is today's search (canonical or alternative substring), so nothing that matches today stops matching. The predicates extend `speciesListConditions` (plan 10c) so the trait page inherits the tiers. The import is the fourth supplementary kind on the plan 08a framework.
 
 **Tech Stack:** unchanged.
 
-**Spec:** `docs/specs/2026-09-17-browsing-design.md` §5, §11. Depends on plans 08a (import framework) and 10a (search parameters).
+**Spec:** `docs/specs/2026-09-17-browsing-design.md` §5, §11. Depends on plans 08a (import framework), 10a (search parameters) and 10c (`speciesListConditions`, which the tiers extend).
 
 ## Global Constraints
 
@@ -37,7 +37,7 @@ README.md
 
 ### Task 1: RFC amendments
 
-- [ ] **Step 1: RFC-60** — R1 `species_names` line becomes `species_names(id, species_id uuid references species restrict, name text, name_type text not null default 'gbif' check in ('gbif', 'synonym', 'common'), language char(2) null, source text not null default 'gbif', gbif_usage_key text null, created_at; unique (species_id, name); check ((name_type = 'common') = (language is not null)); check (gbif_usage_key is null or name_type = 'gbif'))`; R4, R6 (tiers, `matchedNameType`), R7 (`names` items: `{ name, nameType, language, source, gbifUsageKey }`), R9 (`POST /api/species/:id/names { name, nameType, language?, source?, gbifUsageKey? }`, `source` default `manual`) per the spec §5. Changelog.
+- [ ] **Step 1: RFC-60** — R1 `species_names` line becomes `species_names(id, species_id uuid references species restrict, name text, name_type text not null default 'gbif' check in ('gbif', 'synonym', 'common'), language char(2) null, source text not null default 'gbif', gbif_usage_key text null, created_at; unique (species_id, name); check ((name_type = 'common') = (language is not null)); check (gbif_usage_key is null or name_type = 'gbif'))`; R4, R6 (tiers: 1 exact canonical, 2 today's substring search over canonical and alternative names; `matchedNameType`), R7 (`names` items: `{ name, nameType, language, source, gbifUsageKey }`), R9 (`POST /api/species/:id/names { name, nameType, language?, source?, gbifUsageKey? }`, `source` default `manual`) per the spec §5. Changelog.
 - [ ] **Step 2: RFC-68 R12** — verbatim from the spec §5 (kind `synonyms`).
 - [ ] **Step 3: Commit** — `docs(rfc): synonyms and common names, three-tier species search, import kind synonyms (plan 10b)`.
 
@@ -68,7 +68,7 @@ export const speciesNameBodySchema = z.strictObject({ name: catalogNameSchema, n
 
 ---
 
-### Task 4: Three-tier search and `matchedNameType`
+### Task 4: Two-tier search and `matchedNameType`
 
 **Files:** `apps/api/src/dataset/taxa.ts` (+ test), `http/cursor.ts` (nothing new; composite cursor of 3 keys), `catalog.ts` (`addSpeciesName`), route test.
 
@@ -77,27 +77,26 @@ export const speciesNameBodySchema = z.strictObject({ name: catalogNameSchema, n
 ```ts
 describe('RFC-60 R6 search tiers', () => {
   const t = useTestDb();
-  it('exact canonical wins alone; substring next; alternative names last, with the type', async () => {
+  it('an exact canonical match answers alone (case-insensitive); otherwise canonical and alternative substrings match together, with the type', async () => {
     const stem = `Tier${rand()}`;
     const exact = await createSpecies(t.db, { canonicalName: `${stem} robur` });
     const longer = await createSpecies(t.db, { canonicalName: `${stem} robur var. alba` });
     const bySyn = await createSpecies(t.db, { canonicalName: `Other ${rand()}`, names: [{ name: `${stem} robur old`, nameType: 'synonym' }] });
-    const q1 = await searchSpecies(t.db, UNRESTRICTED, { q: `${stem} robur`, limit: 10 });
-    expect(q1.data.map((s) => s.id)).toEqual([exact.id]);
+    const q1 = await searchSpecies(t.db, UNRESTRICTED, { q: `${stem} ROBUR`, limit: 10 });
+    expect(q1.data.map((s) => s.id)).toEqual([exact.id]);                       // tier 1: the synonym holder and the longer name are not listed
     const q2 = await searchSpecies(t.db, UNRESTRICTED, { q: `${stem} rob`, limit: 10 });
-    expect(q2.data.map((s) => s.id).sort()).toEqual([exact.id, longer.id].sort());
+    expect(q2.data.map((s) => s.id).sort()).toEqual([exact.id, longer.id, bySyn.id].sort());   // tier 2 = today's search
+    expect(q2.data.find((s) => s.id === bySyn.id)?.matchedNameType).toBe('synonym');
     const q3 = await searchSpecies(t.db, UNRESTRICTED, { q: `robur old`, limit: 10 });
     expect(q3.data.map((s) => [s.id, s.matchedName, s.matchedNameType])).toEqual([[bySyn.id, `${stem} robur old`, 'synonym']]);
   });
   it('the cursor stays within the tier', async () => {
     const stem = `Page${rand()}`;
-    const a = await createSpecies(t.db, { canonicalName: `${stem} a` });
-    const b = await createSpecies(t.db, { canonicalName: `${stem} b` });
-    await createSpecies(t.db, { canonicalName: `Zz ${rand()}`, names: [{ name: `${stem} c syn`, nameType: 'synonym' }] });
+    const exact = await createSpecies(t.db, { canonicalName: stem });
+    await createSpecies(t.db, { canonicalName: `${stem} b` });
     const p1 = await searchSpecies(t.db, UNRESTRICTED, { q: stem, limit: 1 });
-    const p2 = await searchSpecies(t.db, UNRESTRICTED, { q: stem, limit: 1, cursor: p1.nextCursor ?? undefined });
-    expect([...p1.data, ...p2.data].map((s) => s.id)).toEqual([a.id, b.id]);
-    expect(p2.nextCursor).toBeNull();   // the synonym-only species is tier 3, never reached
+    expect(p1.data.map((s) => s.id)).toEqual([exact.id]);
+    expect(p1.nextCursor).toBeNull();   // tier 1 holds one row; the substring match of tier 2 is never paged into
   });
 });
 ```
@@ -108,12 +107,11 @@ describe('RFC-60 R6 search tiers', () => {
 
 ```ts
 const tier = input.cursor ? tierFromCursor(input.cursor) : await firstTier(db, visibility, input.q, baseConditions);
-// tier 1: eq(sql`lower(${species.canonicalName})`, q.toLowerCase())
-// tier 2: ilike(species.canonicalName, pattern)
-// tier 3: sql`${species.id} in (select sn.species_id from ${speciesNames} sn where sn.name ilike ${pattern})`
+// tier 1: ilike(species.canonicalName, likePattern(q, 'exact'))   — no wildcard: `likePattern` gains an 'exact' mode that only escapes % _ and backslash, so the trigram index serves the case-insensitive equality (a `lower(canonical_name) = …` predicate has no index)
+// tier 2: the existing predicate (canonical substring OR alternative-name substring through the UNION semi-join)
 ```
 
-`firstTier` runs `exists` for tiers 1 and 2 with the same base conditions (visibility, family, genus, status, scope, trait filters) and answers 1, 2 or 3. The cursor becomes `[tier, …existing keys]`; `encodeCompositeCursor([String(tier), name, id])` (and `[tier, traitCount, name, id]` for completeness); `decodeCompositeCursor` gains the leading tier key (`isDigits`). Without `q` the tier key is `'0'`. `matchedName` for tier 3 selects `sn.name, sn.name_type` (`matchedNameType`); tiers 1–2 answer `null, null`.
+`firstTier` runs one `exists` for tier 1 with the same base conditions (visibility, family, genus, status, scope, trait filters) and answers 1 or 2. The predicates live in `speciesListConditions` (plan 10c), which `searchSpecies` and `listTraitSpecies` both call, so the trait page pages by tier too. The cursor becomes `[tier, …existing keys]` (`'1'` or `'2'`); `encodeCompositeCursor([String(tier), name, id])` (and `[tier, traitCount, name, id]` for completeness); `decodeCompositeCursor` gains the leading tier key (`isDigits`). Without `q` the tier key is `'0'`. `matchedName` keeps today's rule (null when the canonical name matched, else the first matching alternative name) and adds `matchedNameType` from the same row; tier 1 answers `null, null`.
 
 `getSpecies`: `names` items carry `nameType`, `language`, `source`, `gbifUsageKey`, ordered by type (`gbif`, `synonym`, `common`) then name.
 

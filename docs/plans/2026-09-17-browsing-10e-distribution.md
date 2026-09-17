@@ -71,7 +71,7 @@ export const speciesDistribution = pgTable('species_distribution', {
 
 ### Task 3: `import:distribution`
 
-- [ ] Failing test — header `wcvp_species,country,state`; `country` as `BR` or `Brazil` (both → `BR`), `Narnia` → `invalid_value`; unknown species → `unknown_species`; empty state → null; duplicate triple → duplicate; `source` stored as `'import'`. The name → code mapping is computed in Node before staging (the file is copied with an extra `country_code` column, as plan 08b did for e-mail hashes). Implement; CLI + script; commit — `feat(api): import:distribution (RFC-68 R14)`.
+- [ ] Failing test — header `wcvp_species,country,state`; `country` as `BR` or `Brazil` (both → `BR`), `Narnia` → `invalid_value`; unknown species → `unknown_species`; empty state → null; duplicate triple → duplicate; `source` stored as `'import'`. The name → code mapping happens inside `apply`, after staging the file untouched: `update import_staging s set country_code = v.code from (values …) as v(name_lower, code) where lower(trim(s.country)) = v.name_lower or upper(trim(s.country)) = v.code` with the 249 pairs of `COUNTRIES` passed through `sql.join` (no temporary file — plan 08b's `user_plots` uses the same shape for e-mail hashes). Implement; CLI + script; commit — `feat(api): import:distribution (RFC-68 R14)`.
 
 ---
 

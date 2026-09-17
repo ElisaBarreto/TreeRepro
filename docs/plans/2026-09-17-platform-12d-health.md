@@ -43,12 +43,12 @@ export const platformHealthSchema = z.strictObject({
   activity: z.strictObject({ records7d: n, annotations7d: n, proposals7d: n, byDay: z.array(z.strictObject({ day: z.iso.date(), records: n, annotations: n })).length(14) }),
   queues: z.strictObject({ pendingGroups: n, disputed: n, contested: n, proposals: n }),
   jobs: z.strictObject({ auditPurge: jobRunSummarySchema.nullable(), digest: jobRunSummarySchema.nullable() }),
-  imports: z.array(importBatchSchema).max(5),
+  imports: z.array(healthImportSchema).max(5),   // importBatchSchema minus runBy: a name is PII (R2)
   computedAt: z.iso.datetime(),
 });
 ```
 
-(`JOB_STATUSES` moves to contracts in this task; `apps/api/src/db/schema/job-runs.ts` imports it.) A test asserts the schema's key paths contain none of `email`, `name`, `ip`, `userAgent` (walk `platformHealthSchema.shape` recursively). Commit — `docs+feat(contracts): platform health (RFC-52)`.
+(`healthImportSchema = importBatchSchema.omit({ runBy: true })`; `JOB_STATUSES` moves to contracts in this task; `apps/api/src/db/schema/job-runs.ts` imports it.) A test asserts the schema's key paths contain none of `email`, `name`, `ip`, `userAgent` (walk `platformHealthSchema.shape` recursively). Commit — `docs+feat(contracts): platform health (RFC-52)`.
 
 ---
 

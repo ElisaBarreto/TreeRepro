@@ -76,7 +76,7 @@ export const referenceTraits = pgTable('reference_traits', {
   ON CONFLICT (reference_id, trait_id) DO UPDATE SET record_count = reference_traits.record_count + EXCLUDED.record_count;
 ```
 
-then the grants (`REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON reference_traits FROM treerepro_app; GRANT SELECT …`) and the backfill (the same `UNION` over `trait_records` grouped, `ON CONFLICT DO NOTHING`).
+then the grants inside the same `DO $$ … IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'treerepro_app') …` guard plan 10a uses (`REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON reference_traits FROM treerepro_app; GRANT SELECT …`) and the backfill (the same `UNION` over `trait_records` grouped, `ON CONFLICT DO NOTHING`).
 
 - [ ] **Step 4: Run; commit** — `feat(db): short and full citations; reference_traits maintained by the insert trigger (RFC-61 R1, R9)`.
 

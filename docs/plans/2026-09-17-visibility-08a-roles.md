@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Before the pull request, review the branch with CodeRabbit only (`coderabbit:code-review`).
 
-**Goal:** Seed the `manager` and `contributor` system roles; add `species.active`; hide inactive species, traits and levels from every viewer without `dataset.read_inactive` at the API level; let `seed:traits` load a trait deactivated; introduce the supplementary-import framework (`import_batches.kind`) with its first command, `import:species-status`; show the status in the web app.
+**Goal:** Land the E2E harness every later plan relies on; seed the `manager` and `contributor` system roles (with `records.review`, which moves the curation queues to manager work); add `species.active`; hide inactive species, traits and levels from every viewer without `dataset.read_inactive` at the API level; let `seed:traits` load a trait deactivated; introduce the supplementary-import framework (`import_batches.kind`) with its first command, `import:species-status`; show the status in the web app.
 
 **Architecture:** A `Visibility` value (`apps/api/src/access/visibility.ts`) is derived once per request from the viewer's permissions and passed into every dataset read service, which folds `speciesVisible(v)` / `traitVisible(v)` / `levelVisible(v)` predicates into its SQL. Detail routes answer the resource's 404 for an invisible row. System roles are rows with `is_system = true` and stored permissions; the existing `requireEditable` already refuses every system role. Supplementary imports share `runSupplementaryImport` (`apps/api/src/dataset/imports/framework.ts`): stage with COPY, apply a per-kind SQL function, store rejects, finalise the batch and audit `imports.completed`.
 
@@ -90,9 +90,37 @@ apps/web/src/pages/dataset/SpeciesPage.tsx                  # inactive badge
 apps/web/src/pages/dataset/ImportsPage.tsx                  # kind column + filter
 apps/web/src/pages/admin/RolesPage.tsx                      # system roles read-only with counts
 apps/web/src/test/dataset-fixtures.ts                       # active, kind
+apps/e2e/tests/global-setup.ts, api.ts, users.ts             # new (Task 0); playwright.config.ts, scripts/e2e.sh, critical-flow.spec.ts adjusted
 apps/e2e/tests/visibility.spec.ts                           # new
 README.md                                                   # commands
 ```
+
+---
+
+### Task 0: E2E harness — admin storage state, seeded dictionary, `apiCall`
+
+Every later E2E spec of the programme (this plan's Task 11, plans 08b–12d) needs an admin session, a seeded trait dictionary and a way to call the API. Today `apps/e2e/tests/critical-flow.spec.ts` consumes the one-shot `E2E_ADMIN_INVITE_LINK` itself with a module-local random password, `scripts/e2e.sh` never runs `seed:traits`, and spec files run alphabetically — so no other file can sign in as admin. This task fixes that first.
+
+**Files:**
+- Create: `apps/e2e/tests/global-setup.ts`, `apps/e2e/tests/api.ts`, `apps/e2e/tests/users.ts`
+- Modify: `apps/e2e/playwright.config.ts` (`globalSetup`, `use.storageState` for the admin project), `scripts/e2e.sh` (seed the dictionary, pass `E2E_ADMIN_PASSWORD`), `apps/e2e/tests/critical-flow.spec.ts` (signs in with the env password instead of accepting the invite; the accept step moves to global setup), `apps/e2e/tests/env.ts`
+
+**Interfaces (produces):**
+```ts
+// env.ts
+export const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? '';          // set by scripts/e2e.sh (random per run)
+export const ADMIN_STATE = 'test-results/admin-state.json';                   // storageState written by global setup
+// api.ts — the browser context's cookies + Origin, the way Caddy sees the app
+export async function apiCall<T = unknown>(context: BrowserContext, method: string, path: string, body?: unknown): Promise<{ status: number; json: T }>
+// users.ts
+export async function inviteAndActivate(browser: Browser, admin: BrowserContext, input: { role: 'contributor' | 'manager'; name?: string }): Promise<{ context: BrowserContext; page: Page; email: string; password: string; userId: string }>
+  // POST /api/admin/users → invite link from Mailpit (waitForLink) → accept in a new context → PATCH /api/admin/users/:id { roles: [<id from GET /api/admin/roles by name>] } → sign in → return the context
+export async function adminContext(browser: Browser): Promise<BrowserContext>   // browser.newContext({ storageState: ADMIN_STATE })
+```
+
+- [ ] **Step 1:** `global-setup.ts`: open the invite link (`adminInviteLink()`), set `ADMIN_PASSWORD`, sign in, save `storageState` to `ADMIN_STATE`. `scripts/e2e.sh`: after `seed-admin`, run `compose run --rm --no-deps -T api node dist/cli/seed-traits.js`; export `E2E_ADMIN_PASSWORD="$(openssl rand -hex 16)"` into the Playwright environment. `critical-flow.spec.ts`: replace the accept-invite block with a sign-in using `ADMIN_EMAIL` / `ADMIN_PASSWORD`; the password-reset test keeps changing it and restores it at the end (or runs last with its own context).
+- [ ] **Step 2:** `apiCall`: `context.request.fetch(BASE_URL + path, { method, data: body, headers: { origin: BASE_URL } })` — the context's cookies ride along; answer `{ status, json }`.
+- [ ] **Step 3:** Run `pnpm test:e2e` — the existing suite passes with the harness; commit `test(e2e): admin storage state, seeded dictionary, apiCall and inviteAndActivate helpers`.
 
 ---
 
@@ -179,11 +207,16 @@ None.
 
 - [ ] **Step 3: Amend the accepted RFCs**
 
-RFC-30 catalog table — append the row and a changelog line:
+RFC-30 catalog table — append the rows and a changelog line:
 
 ```markdown
 | `dataset.read_inactive` | See inactive species, traits and levels |
+| `records.review` | Work the harmonisation and disputed queues; neutralise or dispute any record with a note |
 ```
+
+RFC-65 — R8, R9 and R10 change their permission: `GET /api/records/pending/traits`, `GET /api/records/pending` and `GET /api/records/disputed` require `records.review` (was `dataset.read`); `POST /api/records/pending/map` requires `records.review` (was `records.create`). Changelog: `- 2026-09-17 — R8–R10: the queues are manager work, behind records.review (RFC-31 R10, plan 08a).`
+
+RFC-12 — the `ROLE_IS_SYSTEM` row reads "A system role (`admin`, `manager`, `contributor`) cannot be changed or deleted (RFC-31 R2)."
 ```markdown
 - 2026-09-17 — dataset.read_inactive (RFC-33, plan 08a).
 ```
@@ -191,10 +224,10 @@ RFC-30 catalog table — append the row and a changelog line:
 RFC-31 — replace R2 and append R10, R11 and a changelog line:
 
 ```markdown
-- **R2** System roles (`is_system = true`): `admin`, inserted by migration 0004 with no `role_permissions` rows — a user holding it has every permission of the catalog, including permissions added later; `manager` and `contributor`, inserted by migration 0016 with the stored permissions of R10. A system role cannot be renamed, edited or deleted (409 `ROLE_IS_SYSTEM`). A later migration that grants a system role a new permission inserts the `role_permissions` row, and R10 lists the change.
+- **R2** System roles (`is_system = true`): `admin`, inserted by migration 0004 with no `role_permissions` rows — a user holding it has every permission of the catalog, including permissions added later; `manager` and `contributor`, inserted by the migration the changelog names with the stored permissions of R10. A system role cannot be renamed, edited or deleted (409 `ROLE_IS_SYSTEM`). A later migration that grants a system role a new permission inserts the `role_permissions` row, and R10 lists the change.
 ```
 ```markdown
-- **R10** Permission sets of the seeded roles. `contributor`: `dataset.read`, `records.create`, `records.annotate`. `manager`: the contributor set plus `dataset.read_inactive`, `records.withdraw`, `imports.read`. Later plans append: `taxa.propose` (contributor and manager, RFC-75), `records.review` (manager, RFC-70), `contributions.read` (manager, RFC-71), `coverage.read` (manager, RFC-69).
+- **R10** Permission sets of the seeded roles. `contributor`: `dataset.read`, `records.create`, `records.annotate`. `manager`: the contributor set plus `dataset.read_inactive`, `records.review`, `records.withdraw`, `imports.read`. Managers do not hold `traits.manage`: a missing level is escalated to the admin. Later plans append: `taxa.propose` (contributor and manager, RFC-75), `contributions.read` (manager, RFC-71), `coverage.read` (manager, RFC-69).
 - **R11** `GET /api/admin/roles` items carry `isSystem` and, for a system role with stored permissions, its permission keys; the web role list renders system roles read-only.
 ```
 ```markdown
@@ -311,6 +344,7 @@ Expected: FAIL — `IMPORT_BATCH_KINDS` is not exported.
 
 ```ts
   'dataset.read_inactive': 'See inactive species, traits and levels',
+  'records.review': 'Work the harmonisation and disputed queues; neutralise or dispute any record with a note',
 ```
 
 `audit.ts` — append `'imports.completed'` to `AUDIT_ACTIONS` (after `'dataset.exported'`).
@@ -451,6 +485,7 @@ In `access.integration.test.ts`, inside `describe('RFC-31 R1, R2 roles tables')`
       'imports.read',
       'records.annotate',
       'records.create',
+      'records.review',
       'records.withdraw',
     ]);
   });
@@ -497,14 +532,15 @@ export const CONTRIBUTOR_ROLE_NAME = 'contributor';
 export const SYSTEM_ROLE_NAMES = [ADMIN_ROLE_NAME, MANAGER_ROLE_NAME, CONTRIBUTOR_ROLE_NAME] as const;
 ```
 
-- [ ] **Step 4: Custom migration 0016**
+- [ ] **Step 4: Custom migration (permissions + system roles; the number is whatever `db:generate` assigns)**
 
 Run: `PATH=/Users/rafael/.asdf/installs/nodejs/24.21.0/bin:$PATH pnpm --filter @treerepro/api db:generate --custom --name permissions_visibility` and fill the file:
 
 ```sql
 -- RFC-30 R3: dataset.read_inactive (RFC-33, plan 08a).
 INSERT INTO permissions (key, description) VALUES
-  ('dataset.read_inactive', 'See inactive species, traits and levels')
+  ('dataset.read_inactive', 'See inactive species, traits and levels'),
+  ('records.review', 'Work the harmonisation and disputed queues; neutralise or dispute any record with a note')
 ON CONFLICT (key) DO NOTHING;
 --> statement-breakpoint
 -- RFC-31 R2, R10: the manager and contributor system roles with their stored permissions.
@@ -520,7 +556,7 @@ ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 INSERT INTO role_permissions (role_id, permission_key)
 SELECT r.id, p.key FROM roles r, permissions p
-WHERE r.name = 'manager' AND p.key IN ('dataset.read', 'records.create', 'records.annotate', 'dataset.read_inactive', 'records.withdraw', 'imports.read')
+WHERE r.name = 'manager' AND p.key IN ('dataset.read', 'records.create', 'records.annotate', 'dataset.read_inactive', 'records.review', 'records.withdraw', 'imports.read')
 ON CONFLICT DO NOTHING;
 ```
 
@@ -696,7 +732,7 @@ export const RESTRICTED: Visibility = { inactive: false, plotIds: null };
 ```ts
 export async function systemRoleId(db: DbExecutor, name: 'admin' | 'manager' | 'contributor'): Promise<string> {
   const [row] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, name));
-  if (!row) throw new Error(`system role ${name} missing: is migration 0016 applied?`);
+  if (!row) throw new Error(`system role ${name} missing: is the permissions_visibility migration applied?`);
   return row.id;
 }
 ```
@@ -751,8 +787,19 @@ describe('RFC-33 R2, R3 species visibility', () => {
     // a genus and family whose only species is hidden disappear for the restricted viewer
     const genera = await listGenera(t.db, RESTRICTED, { familyId: family.id, limit: 10 });
     expect(genera.data.map((g) => g.id)).not.toContain(genus.id);
-    const families = await listFamilies(t.db, RESTRICTED, { limit: 200 });
-    expect(families.data.map((f) => f.id)).not.toContain(family.id);
+    // Walk the family list to the page that would hold this family (names sort; the
+    // random suffix can land anywhere), then assert absence vs presence on that page.
+    const pageHolding = async (v: typeof RESTRICTED) => {
+      let cursor: string | undefined;
+      for (;;) {
+        const page = await listFamilies(t.db, v, { limit: 200, cursor });
+        const last = page.data[page.data.length - 1];
+        if (!page.nextCursor || !last || last.name >= family.name) return page.data.map((f) => f.id);
+        cursor = page.nextCursor;
+      }
+    };
+    expect(await pageHolding(RESTRICTED)).not.toContain(family.id);
+    expect(await pageHolding(UNRESTRICTED)).toContain(family.id);
     expect((await listGenera(t.db, UNRESTRICTED, { familyId: family.id, limit: 10 })).data.map((g) => g.id)).toContain(genus.id);
   });
 });
@@ -975,7 +1022,7 @@ export async function getDictionary(db: DbExecutor, visibility: Visibility): Pro
 
 `curation.ts`: `requireSpecies(db, visibility, id)` and `requireTrait(db, visibility, id)` add the predicate; `createRecord(db, visibility, input)` and `annotateRecord(db, visibility, input)` (the record read inside the transaction joins `species` and `traits` for the predicates; `mapPending(db, visibility, input)` in `queues.ts` uses `requireTrait`); `resolveValue` adds `levelVisible` to the level lookup.
 
-Routes: every handler in `traits.ts`, `records.ts`, `species.ts` (`GET /:id/traits` answers 404 `SPECIES_NOT_FOUND` on `null`), `references.ts` (only if it lists records) computes `const visibility = await visibilityOf(ctx, c)` and passes it.
+Routes: every handler in `traits.ts`, `records.ts`, `species.ts` (`GET /:id/traits` answers 404 `SPECIES_NOT_FOUND` on `null`), `references.ts` (only if it lists records) computes `const visibility = await visibilityOf(ctx, c)` and passes it. In `records.ts` the four queue routes (`GET /pending/traits`, `GET /pending`, `POST /pending/map`, `GET /disputed`) switch to `requirePermission(ctx, 'records.review')` (RFC-65 R8–R10 amended in Task 1); their existing tests create the caller with the `manager` system role (`systemRoleId(t.db, 'manager')`) and add one case: a contributor gets 403 on each.
 
 - [ ] **Step 4: Run the whole api:integration project** — Expected: PASS after every call site is updated (`grep -rn "getDictionary(\|getTrait(\|speciesTraitSummary(\|listRecords(\|getRecord(\|pendingTraits(\|pendingGroups(\|listDisputed(\|requireSpecies(\|requireTrait(\|createRecord(\|annotateRecord(\|mapPending(" apps/api/src`).
 
@@ -1061,7 +1108,7 @@ git commit -m "feat(api): seed:traits reads an optional active column (RFC-62 R2
     apply(tx: postgres.TransactionSql, batchId: string): Promise<SupplementaryApplyResult> }
   export async function runSupplementaryImport(db: Db, input: SupplementaryImportInput): Promise<ImportBatch>
   export async function importSpeciesStatus(db: Db, input: { filePath: string; runBy: string | null; copyIdleTimeoutMs?: number }): Promise<ImportBatch>
-  export function supplementaryReport(batch: ImportBatch, rejects: ImportReject[]): string
+  export function supplementaryReport(batch: ImportBatch, report: { rejectReasons: Record<string, number> }, rejects: ImportReject[], seconds: string): string
   ```
   Staging table name is always `import_staging` with columns named after the header plus `row_no bigserial`; `apply` reads it and inserts its rejects into `import_rejects (batch_id, row_no, reason, raw_row)` itself (`raw_row` = `to_jsonb(s) - 'row_no'`).
 
@@ -1181,10 +1228,10 @@ export async function runSupplementaryImport(
   db: Db,
   input: SupplementaryImportInput,
 ): Promise<ImportBatch> {
-  const first = await readFirstLine(input.filePath);
-  const expected = input.header.join(',');
-  if (first.trim() !== expected) {
-    throw new ImportRefusedError('bad_header', `Expected header "${expected}", got "${first.trim()}"`);
+  const first = parseCsvLine(await readFirstLine(input.filePath));   // RFC-64 R2: the header is a CSV record, quotes allowed
+  const expected = [...input.header];
+  if (first.length !== expected.length || first.some((c, i) => c !== expected[i])) {
+    throw new ImportRefusedError('bad_header', `Expected header "${expected.join(',')}", got "${first.join(',')}"`);
   }
   const fileSha256 = await sha256File(input.filePath);
   const [batch] = await db
@@ -1216,22 +1263,20 @@ export async function runSupplementaryImport(
           rows_total = ${total}, rows_inserted = ${counts.inserted}, rows_duplicate = ${counts.duplicate},
           rows_rejected = ${counts.rejected}, rows_pending = 0
         where id = ${batch.id}`;
-      // RFC-68 R5 — same transaction (RFC-41 R5). The Drizzle executor over this
-      // postgres.js transaction: `db` can't see `tx`, so recordAudit is given a
-      // Drizzle instance bound to the same connection.
-      await recordAudit(drizzleOver(tx), {
-        actorUserId: input.runBy,
-        action: 'imports.completed',
-        targetType: 'import_batches',
-        targetId: batch.id,
-        metadata: {
-          kind: input.kind,
-          rowsTotal: total,
-          rowsInserted: counts.inserted,
-          rowsDuplicate: counts.duplicate,
-          rowsRejected: counts.rejected,
-        },
-      });
+      // RFC-68 R5 — same transaction (RFC-41 R5). `recordAudit` takes a Drizzle
+      // executor and this is a postgres.js transaction, so the row is written
+      // with `tx` directly after the same RFC-41 R7 key check `recordAudit` runs.
+      const metadata = {
+        kind: input.kind,
+        rowsTotal: total,
+        rowsInserted: counts.inserted,
+        rowsDuplicate: counts.duplicate,
+        rowsRejected: counts.rejected,
+      };
+      assertSafeMetadata(metadata);
+      await tx`
+        insert into audit_log (actor_user_id, action, target_type, target_id, metadata)
+        values (${input.runBy}, 'imports.completed', 'import_batches', ${batch.id}, ${JSON.stringify(metadata)}::jsonb)`;
     });
   } catch (err) {
     try {
@@ -1250,21 +1295,24 @@ export async function runSupplementaryImport(
 }
 ```
 
-`drizzleOver(tx)`: `import { drizzle } from 'drizzle-orm/postgres-js'` and `drizzle(tx as unknown as postgres.Sql)` — the same construction `createDb` uses (check `apps/api/src/db/client.ts` for the schema argument and reuse it). If `recordAudit` cannot accept it, write the audit row with `tx` directly in SQL (`insert into audit_log (actor_user_id, action, target_type, target_id, metadata) values (...)`) after `assertMetadata` (export the metadata check from `audit.ts` if it is not already) — RFC-41 R7 must still hold.
+`assertSafeMetadata` is the RFC-41 R7 check `apps/api/src/audit/audit.ts` already exports (used by `recordAudit`); `parseCsvLine` is exported by `apps/api/src/dataset/import.ts`. The audit `action` literal must be in `AUDIT_ACTIONS` (Task 2 added it); `audit/actions.ts` re-exports the contracts list, so the actions test covers it.
 
 Report:
 
 ```ts
 /** @rfc RFC-68 R6 */
-export function supplementaryReport(batch: ImportBatch, rejects: ImportReject[], seconds: string): string {
-  const byReason = new Map<string, number>();
-  for (const r of rejects) byReason.set(r.reason, (byReason.get(r.reason) ?? 0) + 1);
+export function supplementaryReport(
+  batch: ImportBatch,
+  report: { rejectReasons: Record<string, number> },   // batchReport(db, batch.id) — totals over every reject, not the first 30
+  rejects: ImportReject[],                              // the first 30, for the row numbers
+  seconds: string,
+): string {
   return [
     `File ${batch.fileName} (sha256 ${batch.fileSha256})`,
     `Batch ${batch.id} (${batch.kind}) completed in ${seconds}s`,
     `Rows: ${batch.rowsTotal} total, ${batch.rowsInserted} applied, ${batch.rowsDuplicate} duplicate, ${batch.rowsRejected} rejected`,
-    `Rejections: ${[...byReason].map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}`,
-    ...rejects.slice(0, 30).map((r) => `  row ${r.rowNo}: ${r.reason}`),
+    `Rejections: ${Object.entries(report.rejectReasons).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}`,
+    ...rejects.map((r) => `  row ${r.rowNo}: ${r.reason}`),
   ].join('\n');
 }
 ```
@@ -1325,9 +1373,9 @@ export async function importSpeciesStatus(
 
 (`rows_total = inserted + duplicate + rejected` holds when a species is not repeated; a repeated species with conflicting flags counts its earlier rows as duplicate or applied by the last one — document in the RFC-68 R8 wording: "the last row for a species wins".)
 
-`cli/import-species-status.ts` — a copy of `import-records.ts` without `--force`, calling `importSpeciesStatus`, printing `supplementaryReport(batch, rejects, seconds)` where `rejects` comes from `listImportRejects(db, batch.id, { limit: 30 })` (existing function in `import.ts`; check its name). `package.json`: `"import:species-status": "node --conditions=development src/cli/import-species-status.ts"`.
+`cli/import-species-status.ts` — a copy of `import-records.ts` without `--force`, calling `importSpeciesStatus`, printing `supplementaryReport(batch, await batchReport(db, batch.id), (await listImportRejects(db, { batchId: batch.id, limit: 30 })).data, seconds)` (`batchReport` and `listImportRejects` exist in `import.ts`; `listImportRejects` takes an object). `package.json`: `"import:species-status": "node --conditions=development src/cli/import-species-status.ts"`.
 
-`import.ts`: `toBatch` adds `kind: row.kind`; `listImportBatches(db, { kind?, cursor, limit })` adds `eq(importBatches.kind, kind)` when given; the imports route validates with `listImportsQuerySchema`.
+`import.ts`: `toImportBatch` adds `kind: row.kind`; `listImportBatches(db, { kind?, cursor, limit })` adds `eq(importBatches.kind, kind)` when given; the imports route validates with `listImportsQuerySchema`.
 
 - [ ] **Step 4: Run the tests** — Expected: PASS. Also `pnpm --filter @treerepro/api exec vitest run --config ../../vitest.config.ts --project api:unit src/audit/actions.test.ts` (catalog matches the RFC table).
 
@@ -1389,14 +1437,14 @@ git commit -m "feat(api): system roles are read-only and list their stored permi
 `SpeciesSearchForm.test.tsx`:
 ```ts
   it('RFC-60 R6 shows the status select only with dataset.read_inactive', () => {
-    renderWithMe(READER, <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />);
+    renderWithProviders(<SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />, { me: READER });
     expect(screen.queryByLabelText('Status')).toBeNull();
-    renderWithMe({ ...READER, permissions: ['dataset.read', 'dataset.read_inactive'] }, <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={onChange} />);
+    renderWithProviders(<SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={onChange} />, { me: { ...READER, permissions: ['dataset.read', 'dataset.read_inactive'] } });
     await userEvent.selectOptions(screen.getByLabelText('Status'), 'inactive');
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'inactive' }));
   });
 ```
-(`renderWithMe` is whatever helper the file already uses to seed the `me` query — see `apps/web/src/test/render.tsx`.)
+(`renderWithProviders(ui, { me })` is the helper in `apps/web/src/test/render.tsx`; `renderAt(path)` in `test/router.tsx` mounts the shell for page tests.)
 
 `SpeciesDialog.test.tsx`: editing a species shows the checkbox "Active — visible to contributors" checked for `active: true`; unchecking and saving calls `updateSpecies(id, { active: false })`.
 
@@ -1412,6 +1460,7 @@ git commit -m "feat(api): system roles are read-only and list their stored permi
 - `SpeciesDialog`: a checkbox bound to `active` (edit mode only; create keeps the default), sent only when changed.
 - `ImportsPage`: Kind column (`humaniseKey(batch.kind)`), a Kind select over `IMPORT_BATCH_KINDS` (from contracts) filtering the query.
 - `RolesPage`: `role.isSystem` hides Edit / Delete for every system role; the permission cell shows `role.name === 'admin' ? 'all' : role.permissions.length`.
+- `nav.ts`: the three Curation entries (Pending, Disputed, Unresolved taxa) switch to `permission: 'records.review'`; `PendingPage` / `DisputedPage` tests use a `me` with `records.review`; `AppShell.test.tsx` asserts a contributor session (`dataset.read`, `records.create`, `records.annotate`) sees no Curation group.
 
 - [ ] **Step 4: Run web tests, lint, typecheck** — Expected: PASS.
 
@@ -1434,28 +1483,30 @@ git commit -m "feat(web): species status filter and inactive badge, active check
 
 ```ts
 import { expect, test } from '@playwright/test';
-import { adminSession, inviteAndActivate, apiCall } from './helpers.ts';
+import { apiCall } from './api.ts';
+import { adminContext, inviteAndActivate } from './users.ts';
 
 test('RFC-33 an inactive species disappears for a contributor and stays, labelled, for the admin', async ({ browser }) => {
-  const admin = await adminSession(browser);
+  const admin = await adminContext(browser);
+  const adminPage = await admin.newPage();
   const name = `E2E hidden ${Date.now()}`;
-  const created = await apiCall(admin, 'POST', '/api/species', { canonicalName: name, nameSource: 'wcvp' });
-  await apiCall(admin, 'PATCH', `/api/species/${created.data.id}`, { active: false });
+  const created = await apiCall<{ data: { id: string } }>(admin, 'POST', '/api/species', { canonicalName: name, nameSource: 'wcvp' });
+  await apiCall(admin, 'PATCH', `/api/species/${created.json.data.id}`, { active: false });
   const contributor = await inviteAndActivate(browser, admin, { role: 'contributor' });
 
   await contributor.page.goto('/app/species');
   await contributor.page.getByLabel('Species name').fill(name);
   await expect(contributor.page.getByText('No species match')).toBeVisible();
 
-  await admin.page.goto('/app/species');
-  await admin.page.getByLabel('Species name').fill(name);
-  await admin.page.getByLabel('Status').selectOption('inactive');
-  await expect(admin.page.getByRole('link', { name })).toBeVisible();
-  await expect(admin.page.getByText('inactive')).toBeVisible();
+  await adminPage.goto('/app/species');
+  await adminPage.getByLabel('Species name').fill(name);
+  await adminPage.getByLabel('Status').selectOption('inactive');
+  await expect(adminPage.getByRole('link', { name })).toBeVisible();
+  await expect(adminPage.getByText('inactive', { exact: true })).toBeVisible();
 });
 ```
 
-Adapt helper names to the ones `apps/e2e/tests` already exports (`helpers.ts` or a fixture file); if `inviteAndActivate` does not exist, add it: invite through `POST /api/admin/users`, read the invitation link from Mailpit (`http://localhost:8026/api/v1/messages`), accept it in a new context, then `PATCH /api/admin/users/:id { roles: [<contributor role id from GET /api/admin/roles>] }`.
+The helpers come from Task 0. Playwright `getByText` is a substring match: pass `{ exact: true }` where a longer sibling text exists (`docs/gotchas/testing.md`).
 
 - [ ] **Step 2: Run** — `PATH=… pnpm test:e2e -- tests/visibility.spec.ts` (builds the images; several minutes). Expected: PASS.
 
@@ -1479,5 +1530,5 @@ git commit -m "test(e2e): inactive species hidden from a contributor, labelled f
 
 ## Self-review
 
-- Spec coverage: §3 roles (Tasks 1, 3, 9, 10), §4 visibility R1–R5, R7, R9 (Tasks 4–6; R6, R8 are 08b), §5 species activation (Tasks 3, 5, 10), §6 dictionary (Tasks 6, 7), §7 imports R1–R8 (Task 8), §9 codes/actions/permissions (Tasks 1–3), §10 tests (each task; E2E Task 11).
+- Spec coverage: E2E harness prerequisite (Task 0); §3 roles incl. `records.review` and the queue gate (Tasks 1, 3, 6, 9, 10), §4 visibility R1–R5, R7, R9 (Tasks 4–6; R6, R8 are 08b), §5 species activation (Tasks 3, 5, 10), §6 dictionary (Tasks 6, 7), §7 imports R1–R8 (Task 8), §9 codes/actions/permissions (Tasks 1–3), §10 tests (each task; E2E Task 11).
 - Types: `searchSpecies(db, visibility, input)`, `getSpecies(db, visibility, id)`, `speciesTraitSummary(db, visibility, id): Promise<SpeciesTraits | null>` used consistently in Tasks 5, 6, 10 (web unchanged); `importSpeciesStatus(db, { filePath, runBy })` in Tasks 8 and 12.

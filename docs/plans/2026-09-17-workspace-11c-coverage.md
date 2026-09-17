@@ -6,7 +6,7 @@
 
 **Architecture:** `coverageMetrics` in `apps/api/src/dataset/coverage.ts` generalises plan 11b's `coverageTotals` with a species selection (`family`, `plot`) and a trait selection (`category`), grouped by category and trait in two queries over `species_trait_coverage` plus one over the current accepted values; cached per filter combination.
 
-**Spec:** `docs/specs/2026-09-17-workspace-design.md` §5–§7. Depends on plan 11b.
+**Spec:** `docs/specs/2026-09-17-workspace-design.md` §5–§7. Depends on plan 11b (`coverageTotals`, `Meter`) and, through it, 10a (`cachedJson`).
 
 ## Global Constraints
 

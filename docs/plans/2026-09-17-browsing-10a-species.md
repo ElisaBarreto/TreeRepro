@@ -4,7 +4,7 @@
 
 **Goal:** `species_trait_coverage` and `species.trait_count` maintained by the `trait_records` insert trigger and backfilled; `GET /api/species` filters by trait category / trait / with-or-missing data and orders by completeness; the species search form gains the Traits group and the Order select, all in the URL; the shell breadcrumb becomes hierarchical.
 
-**Architecture:** One migration adds the table, the column, extends the existing statement trigger function `trait_records_reference_usage` (renamed `trait_records_after_insert` to say what it now does) and backfills. `searchSpecies` gains `categoryKey`, `traitId`, `traitData`, `sort` with a three-key keyset for completeness. The web shell gets a `BreadcrumbContext`; pages register trailing crumbs with `useBreadcrumb`.
+**Architecture:** One migration adds the table, the column, extends the existing statement trigger function `trait_records_reference_usage` (the name stays — renaming would need `DROP TRIGGER` / `CREATE TRIGGER`; it becomes `SECURITY DEFINER`) and backfills. This plan also lands the `cachedJson` Redis helper and puts the Redis client on `AppDeps` / `AuthContext` (`ctx.redis`), because plan 11b (short term) needs both and plan 10c (medium term) was where they first appeared. `searchSpecies` gains `categoryKey`, `traitId`, `traitData`, `sort` with a three-key keyset for completeness. The web shell gets a `BreadcrumbContext`; pages register trailing crumbs with `useBreadcrumb`.
 
 **Tech Stack:** unchanged. No new dependencies.
 
@@ -43,7 +43,7 @@ docs/gotchas/postgres.md                                  # backfill duration no
 
 ### Task 1: RFC-69 and the amendments
 
-- [ ] **Step 1: RFC-69** — `docs/rfc/60-dataset/69-coverage-summary.md`, `draft`, category dataset; Context: "Lists that filter or sort by 'has data for this trait' cannot aggregate eight million records per request; this table is the maintained answer"; R1–R4 verbatim from the spec §3 (R2 names the trigger function `trait_records_after_insert`).
+- [ ] **Step 1: RFC-69** — `docs/rfc/60-dataset/69-coverage-summary.md`, `draft`, category dataset; Context: "Lists that filter or sort by 'has data for this trait' cannot aggregate eight million records per request; this table is the maintained answer"; R1–R4 verbatim from the spec §3 (R2 names the trigger function `trait_records_reference_usage`; R3 states it becomes `SECURITY DEFINER` with `SET search_path = public`, owned by the migrator role that owns the tables — the `audit_log_purge` pattern of migration 0007).
 - [ ] **Step 2: RFC-60** — R1 `species` gains `trait_count integer not null default 0` (RFC-69 R1); R6: the query gains `categoryKey=&traitId=&traitData=&sort=` with the rules of the spec §4 (bullets 1–4 verbatim), the item gains `traitCount` and `traitRecordCount`; the cursor for `sort=completeness` is `[trait_count, canonical_name, id]`. Changelog line.
 - [ ] **Step 3: RFC-13 R3** — append: "The breadcrumb reads `Group › Entry › crumbs…`, where the trailing crumbs are registered by the page through `useBreadcrumb`; the last crumb is text, the others link." Changelog line.
 - [ ] **Step 4: README row RFC-69 draft; commit** — `docs(rfc): RFC-69 coverage summary; RFC-60 trait filters and completeness; RFC-13 breadcrumb (plan 10a)`.
@@ -179,9 +179,15 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION trait_records_reference_usage() FROM PUBLIC;
 --> statement-breakpoint
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON species_trait_coverage FROM treerepro_app;
---> statement-breakpoint
-GRANT SELECT ON species_trait_coverage TO treerepro_app;
+-- Guarded like 0007 / 0012: the role exists in every real database (01-roles.sh) but not in a bare drizzle-kit check.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'treerepro_app') THEN
+    REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON species_trait_coverage FROM treerepro_app;
+    GRANT SELECT ON species_trait_coverage TO treerepro_app;
+  END IF;
+END;
+$$;
 --> statement-breakpoint
 -- RFC-69 R3 backfill (minutes on the full dataset; the migrator's statement timeout is unlimited).
 INSERT INTO species_trait_coverage (species_id, trait_id, record_count, harmonised_count, first_record_at, last_record_at)
@@ -194,7 +200,7 @@ FROM (SELECT species_id, count(*) AS n FROM species_trait_coverage GROUP BY 1) c
 WHERE s.id = c.species_id;
 ```
 
-(`xmax = 0` in `RETURNING` is the standard way to tell an inserted row from an updated one in an upsert; the migrator runs as the table owner, so `SECURITY DEFINER` makes the function write the table the app role can only read. Check whether `trait_records_reference_usage` is already `SECURITY DEFINER` in 0015; if the app role is the owner of `species_trait_coverage` through the migrator's role, adjust the `REVOKE` to the actual runtime role name in `infra/postgres/init/01-roles.sh`.)
+(`xmax = 0` in `RETURNING` is the standard way to tell an inserted row from an updated one in an upsert. Migration 0015 defines the function as plain `LANGUAGE plpgsql` — no `SECURITY DEFINER`; `CREATE OR REPLACE` with the clause above changes that. The function is owned by the migrator role (`treerepro_migrator`, which owns every table — `infra/postgres/init/01-roles.sh`), a trigger fires without re-checking `EXECUTE`, and inside the function the writes run as the owner, so the app role's inserts into `trait_records` maintain a table the app role can only read.)
 
 - [ ] **Step 4: Run; commit** — `feat(db): species_trait_coverage and species.trait_count maintained by the insert trigger, backfilled (RFC-69 R1-R3)`.
 
@@ -243,7 +249,7 @@ describe('RFC-60 R6 trait filters and completeness', () => {
 });
 ```
 
-- [ ] **Step 2: Implement** — in `searchSpecies`: resolve `traitId` through `requireTrait(db, visibility, id)` (import from `curation.ts`; it applies `traitVisible`); when `categoryKey` is given without `traitId`, check the category exists (400 path `categoryKey`); with both, the trait's `categoryKey` must equal (400). Predicates:
+- [ ] **Step 2: Implement** — in `searchSpecies`: resolve `traitId` through `requireTrait(db, visibility, id)` — move that function from `curation.ts` to `dictionary.ts` (and re-export it from `curation.ts` so its callers stay put): `catalog.ts` already imports `getSpecies` from `taxa.ts`, so `taxa.ts` importing `curation.ts` would close an import cycle; `dictionary.ts` imports neither; when `categoryKey` is given without `traitId`, check the category exists (400 path `categoryKey`); with both, the trait's `categoryKey` must equal (400). Predicates:
 
 ```ts
 const coverageExists = (traitFilter: SQL) =>
@@ -261,6 +267,22 @@ Sort: `sort === 'completeness'` → `orderBy(asc(species.traitCount), asc(specie
 
 - [ ] **Step 3: Route** — the query schema already carries the fields; pass them through; route test: `?traitId=&traitData=missing` and `?sort=completeness` round-trip.
 - [ ] **Step 4: Run; commit** — `feat(api): species trait filters, missing mode and completeness order (RFC-60 R6, RFC-69 R4)`.
+
+---
+
+### Task 4b: `cachedJson` and Redis on the context
+
+**Files:** `apps/api/src/redis/cache.ts` (+ `cache.integration.test.ts`), `apps/api/src/app.ts` (`AppDeps.redis: Redis`), `apps/api/src/auth/context.ts` (`redis`), `apps/api/src/server.ts` (pass the client it already creates for the session store), `apps/api/test/helpers/app.ts` (`build()` passes `redis`)
+
+**Interfaces (produces):**
+```ts
+export async function cachedJson<T>(redis: Redis, key: string, ttlSeconds: number, compute: () => Promise<T>): Promise<{ value: T; computedAt: string }>
+// stores { value, computedAt } as JSON with EX ttlSeconds; answers the stored entry while present
+export async function forgetCached(redis: Redis, ...keys: string[]): Promise<void>   // DEL; used by 11b's per-user dashboard invalidation
+```
+
+- [ ] **Step 1: Failing test** — `compute` runs once for two calls on one key; a different key computes again; `redis.ttl(key)` is between 1 and the ttl; `forgetCached` makes the next call compute.
+- [ ] **Step 2: Implement; wire `redis` through `AppDeps` → `AuthContext` (`ctx.redis`) → `useTestApp` (the helper already opens a Redis connection: pass it); commit** — `feat(api): cachedJson helper; Redis on the app context (RFC-69 R4)`.
 
 ---
 

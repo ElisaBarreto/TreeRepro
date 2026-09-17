@@ -6,7 +6,7 @@
 
 **Architecture:** `apps/api/src/dataset/contributions.ts` builds on `itemQuery` (records) and a new annotation query; two indexes make the per-user reads cheap. The page is `ContributionsPage` reused for `?userId=`.
 
-**Spec:** `docs/specs/2026-09-17-workspace-design.md` §3, §6, §7. Depends on plans 09a (intent, annotation reference) and 08b (visibility).
+**Spec:** `docs/specs/2026-09-17-workspace-design.md` §3, §6, §7. Depends on plans 09a (intent, annotation reference), 08b (visibility) and 10a (`ctx.redis` is not needed here, but the coverage table's indexes are).
 
 ## Global Constraints
 
@@ -21,7 +21,7 @@ docs/rfc/10-platform/13-presentation-layer.md            # route
 apps/api/drizzle/0026_contributions.sql                  # custom: permission + manager row + two indexes
 apps/api/src/db/schema/curation.ts, records.ts           # indexes
 apps/api/src/dataset/contributions.ts (+ test)
-apps/api/src/http/routes/contributions.ts (+ test), app.ts
+apps/api/src/http/routes/contributions.ts (+ test), app.ts   # /api/me/contributions*; /api/admin/users/:id/contributions* is added to routes/admin/users.ts
 packages/contracts/src/contributions.ts (+ test), index.ts, permissions.ts
 apps/web/src/api/contributions.ts
 apps/web/src/pages/workspace/ContributionsPage.tsx (+ test)
@@ -74,10 +74,10 @@ export async function listContributions(db, visibility, userId, input: ListContr
 export async function contributionSummary(db, userId): Promise<ContributionSummary>
 ```
 
-Routes (`apps/api/src/http/routes/contributions.ts`, mounted at `/api`): `GET /me/contributions`, `GET /me/contributions/summary` (`dataset.read`), `GET /users/:id/contributions`, `GET /users/:id/contributions/summary` (`contributions.read`; 404 `USER_NOT_FOUND`). Append to the meta-test list.
+Routes: `apps/api/src/http/routes/contributions.ts` mounted with `app.route('/me', contributionRoutes(ctx))` in `app.ts` (Hono accepts several routers on one prefix; `meRoutes` keeps its self-service routes) — `GET /me/contributions`, `GET /me/contributions/summary` (`dataset.read`); and, in `routes/admin/users.ts`, `GET /:id/contributions`, `GET /:id/contributions/summary` (`contributions.read`; 404 `USER_NOT_FOUND`) — the per-user routes live under `/api/admin/users/:id` like every other one (RFC-50). Append the four to the meta-test list.
 
 - [ ] **Step 1: Failing tests** — records of user A only (B's absent), newest first, keyset; filters `traitId`, `speciesId`, `review: 'disputed'`, `intent: 'contest'`, `intent: 'none'`, `from`/`to` (UTC day bounds inclusive); `isAccepted` true after `createAcceptedValue`; `responseCount`; annotations with `record` items and `reference`; summary counts on a synthetic set (2 records, 1 contest, 1 complement, 3 confirms, 1 dispute, 1 withdrawn, 1 accepted); visibility: A's record on an inactive species omitted for `RESTRICTED` but counted in the summary; the other-user route by permission.
-- [ ] **Step 2: Implement** — records: `itemQuery(db).where(and(eq(traitRecords.createdBy, userId), eq(traitRecords.origin, 'manual'), speciesVisible, traitVisible, …filters))` with `isAccepted` as a correlated `exists (select 1 from accepted_values a where a.species_id = r.species_id and a.trait_id = r.trait_id and a.id = (select max(id) …) and a.decision = 'accepted' and a.record_id = r.id)` and `responseCount` as `(select count(*) from trait_records x where x.responds_to_record_id = r.id)`; annotations: `select` from `record_annotations` joined to the `itemQuery` select (use it as a subquery `.as('rec')`); summary: seven small counts.
+- [ ] **Step 2: Implement** — records: `itemQuery(db).where(and(eq(traitRecords.createdBy, userId), eq(traitRecords.origin, 'manual'), speciesVisible, traitVisible, …filters))` with `isAccepted` as a correlated `exists (select 1 from (select decision, record_id from accepted_values a where a.species_id = r.species_id and a.trait_id = r.trait_id order by a.id desc limit 1) cur where cur.decision = 'accepted' and cur.record_id = r.id)` — never `max(id)`: there is no `max(uuid)` in PostgreSQL (`docs/gotchas/dataset.md`) and `responseCount` as `(select count(*) from trait_records x where x.responds_to_record_id = r.id)`; annotations: `select` from `record_annotations` joined to the `itemQuery` select (use it as a subquery `.as('rec')`); summary: seven small counts.
 - [ ] **Step 3: Commit** — `feat(api): my contributions and summary; any user's with contributions.read (RFC-71 R1-R5)`.
 
 ---

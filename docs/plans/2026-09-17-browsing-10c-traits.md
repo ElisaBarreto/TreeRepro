@@ -6,9 +6,9 @@
 
 **Architecture:** `apps/api/src/dataset/trait-page.ts` holds the two reads; the distribution query runs over `trait_records` for one trait (bounded) and is cached in Redis for 10 minutes; the species lists reuse `searchSpecies` predicates through a shared `speciesListQuery` builder extracted from `taxa.ts` (so visibility, scope, taxonomy filters and cursors are one implementation). The web adds a `Chip` primitive, `TraitPage`, and tabs.
 
-**Tech Stack:** unchanged; Redis through the existing `ctx.redis`-style client (check how `permissionCache` reaches Redis and add a small `cache.ts` helper `cachedJson(redis, key, ttlSeconds, compute)`).
+**Tech Stack:** unchanged; Redis through `ctx.redis` and `cachedJson` (both from plan 10a, Task 4b).
 
-**Spec:** `docs/specs/2026-09-17-browsing-design.md` §6, §11. Depends on plan 10a (coverage table, breadcrumb, URL-backed search form).
+**Spec:** `docs/specs/2026-09-17-browsing-design.md` §6, §11. Depends on plan 10a (coverage table, breadcrumb, URL-backed search form, `cachedJson`, `ctx.redis`).
 
 ## Global Constraints
 
@@ -19,7 +19,6 @@ Same as plan 08a. Branch `feat/browsing-10c` in worktree `../Elisa-10c`.
 ```
 docs/rfc/60-dataset/62-trait-dictionary.md               # R5 amended; R7, R8 new
 docs/rfc/10-platform/13-presentation-layer.md            # route /app/traits/$id
-apps/api/src/redis/cache.ts (+ .integration.test.ts)     # cachedJson
 apps/api/src/dataset/trait-page.ts (+ .integration.test.ts)
 apps/api/src/dataset/taxa.ts                             # speciesListQuery extraction; speciesCount per trait in dictionary
 apps/api/src/dataset/dictionary.ts                       # speciesCount, filters
@@ -75,16 +74,6 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
 
 ---
 
-### Task 3: `cachedJson`
-
-**Files:** `apps/api/src/redis/cache.ts` (+ test)
-
-**Interfaces:** `cachedJson<T>(redis: Redis, key: string, ttlSeconds: number, compute: () => Promise<T>): Promise<{ value: T; computedAt: string }>` — stores `{ value, computedAt }` as JSON with `EX`; returns the stored one when present.
-
-- [ ] Failing test (compute called once for two calls; a different key computes again; TTL set: `redis.ttl(key)` between 1 and `ttl`); implement; commit — `feat(api): cachedJson helper (RFC-62 R7)`.
-
----
-
 ### Task 4: Trait page reads
 
 **Files:** `apps/api/src/dataset/trait-page.ts` (+ test), `taxa.ts` (extract `speciesListQuery`), `dictionary.ts` (`speciesCount`, filters), `http/routes/dataset/traits.ts` (+ test), meta-test list (`GET /api/traits/:id`, `GET /api/traits/:id/species`).
@@ -93,24 +82,24 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
 
 ```ts
 export async function getTraitDetail(ctx: { db; redis }, visibility, id: string): Promise<TraitDetail | null>
-export async function listTraitSpecies(db, visibility, traitId: string, input: { mode: 'with' | 'missing'; q?; familyId?; genusId?; scope?; plotId?; viewerPlotIds: string[]; cursor?; limit }): Promise<{ data: TraitSpeciesItem[]; nextCursor }>
+export async function listTraitSpecies(db, visibility, traitId: string, input: { mode: 'with' | 'missing'; q?; familyId?; genusId?; scope?; plotId?; viewerPlotIds?: string[]; cursor?; limit }): Promise<{ data: TraitSpeciesItem[]; nextCursor }>
 // taxa.ts
-export interface SpeciesListFilters { q?; familyId?; genusId?; unresolved?; status?; scope?; plotId?; viewerPlotIds: string[]; categoryKey?; traitId?; traitData?; sort? }
-export function speciesListConditions(visibility, filters): Promise<SQL[]>          // every predicate searchSpecies applies (tiers included)
+export interface SpeciesListFilters { q?; familyId?; genusId?; unresolved?; status?; scope?; plotId?; viewerPlotIds?: string[]; categoryKey?; traitId?; traitData?; sort? }
+export function speciesListConditions(visibility, filters): Promise<SQL[]>          // every predicate searchSpecies applies today; plan 10b adds the search tiers here
 ```
 
 - [ ] **Step 1: Failing tests**
   - `getTraitDetail`: a categorical trait with records on three species (two levels) answers `speciesWithData 3`, `speciesMissing = visible species − 3` (assert `speciesMissing >= 0` and that it decreases by one after adding a record to a fourth species and clearing the cache key), `levels` sorted by `speciesCount` desc with the right counts, `acceptedCount` after `createAcceptedValue`; a quantitative trait answers `numeric { min, median, max, speciesCount }`; the second call within the TTL returns the same `computedAt`; `RESTRICTED` gets `null` for an inactive trait and does not count records on inactive species.
   - `listTraitSpecies` `with`: items with `recordCount`, `accepted` (value and reference), `summary.levels`; `missing`: species without a coverage row, `recordCount 0`, `accepted null`, `summary null`; scope: a plot-bound viewer sees only their plot's species in both modes.
   - Routes: 404 on an unknown / invisible id; `mode` default `with`.
-- [ ] **Step 2: Implement** — `speciesListConditions` extracted from `searchSpecies` (the function keeps its signature and calls it); `listTraitSpecies` = base species select + `exists`/`not exists` on coverage for the trait + per-page enrichment: one query `select species_id, count(*), …` over `trait_records` for the page's species ids (≤ 200) grouped by species and level (categorical) or min/max (quantitative), and one `distinct on (species_id)` over `accepted_values` joined to `trait_records` and `bibliographic_references`. `getTraitDetail`: `getTrait` (visibility) → null; counts from coverage joined to visible species; distribution through `cachedJson(redis, \`trait:${id}:distribution:${visibility.inactive ? 'u' : 'r'}\`, 600, …)` (two cache entries per trait — the numbers differ by viewer class; plot-bound viewers get the class-`r` numbers, which is a global summary, acceptable and documented in R7).
+- [ ] **Step 2: Implement** — `speciesListConditions` extracted from `searchSpecies` (the function keeps its signature and calls it); `listTraitSpecies` = base species select + `exists`/`not exists` on coverage for the trait + per-page enrichment: one query `select species_id, count(*), …` over `trait_records` for the page's species ids (≤ 200) grouped by species and level (categorical) or min/max (quantitative), and one `distinct on (species_id)` over `accepted_values` joined to `trait_records` and `bibliographic_references`. `getTraitDetail`: `getTrait` (visibility) → null; counts from coverage joined to visible species; distribution through `cachedJson(ctx.redis, \`trait:${id}:distribution:${visibility.inactive ? 'u' : 'r'}\`, 600, …)` (two cache entries per trait — the numbers differ by viewer class; plot-bound viewers get the class-`r` numbers, which is a global summary, documented in RFC-62 R7).
 - [ ] **Step 3: Commit** — `feat(api): trait detail and trait species lists (RFC-62 R7, R8)`.
 
 ---
 
 ### Task 5: Dictionary filters and `speciesCount`
 
-- [ ] `getDictionary(db, visibility, filters?)` applies `categoryKey`, `valueType`, `q` (case-insensitive substring of `key` or `description`) and attaches `speciesCount` from `select trait_id, count(*) from species_trait_coverage c join species s … where <speciesVisible on s> group by 1`; route validates `listTraitsQuerySchema`; test; commit — `feat(api): dictionary filters and species counts (RFC-62 R5)`.
+- [ ] `getDictionary(db, visibility, filters?)` applies `categoryKey`, `valueType`, `q` (case-insensitive substring of `key` or `description`) and attaches `speciesCount` from `select trait_id, count(*) from species_trait_coverage c join species s … where <speciesVisible on s> group by 1` — a scan of the coverage table, so the map is served through `cachedJson(ctx.redis, \`dictionary:species-counts:${visibility.inactive ? 'u' : 'r'}\`, 600, …)` (RFC-62 R5); route validates `listTraitsQuerySchema`; test; commit — `feat(api): dictionary filters and species counts (RFC-62 R5)`.
 
 ---
 
