@@ -24,6 +24,8 @@ function taxonomyLine(species: Species): string {
 }
 
 function SpeciesHeader({ species, actions }: { species: Species; actions?: ReactNode }) {
+  const me = useMe();
+  const canManagePlots = hasPermission(me, 'plots.manage');
   const names = species.names.map((n) => n.name);
   return (
     <PageHeader
@@ -39,7 +41,8 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
           <span className="block">{taxonomyLine(species)}</span>
           {species.plots && species.plots.length > 0 ? (
             <span className="block">
-              In your plots: {species.plots.map((p) => p.name).join(', ')}
+              {canManagePlots ? 'Plots: ' : 'In your plots: '}
+              {species.plots.map((p) => p.name).join(', ')}
             </span>
           ) : null}
           {names.length > 0 ? (

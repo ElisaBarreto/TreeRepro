@@ -54,8 +54,8 @@ export function SpeciesSearchForm({
   const showScopeGroup = hasPlots || canManagePlots;
 
   const allPlotsQuery = useQuery({
-    queryKey: plotKeys.list({ limit: 100 }),
-    queryFn: () => listPlots({ limit: 100 }),
+    queryKey: plotKeys.list({ limit: 200 }),
+    queryFn: () => listPlots({ limit: 200 }),
     enabled: canManagePlots,
   });
   const availablePlots = canManagePlots
@@ -241,7 +241,7 @@ export function SpeciesSearchForm({
             <input
               type="checkbox"
               className="size-5 accent-canopy-700"
-              checked={value.scope === 'all'}
+              checked={value.scope ? value.scope === 'all' : canReadInactive}
               onChange={(event) =>
                 onChange({ ...value, scope: event.target.checked ? 'all' : 'plots' })
               }

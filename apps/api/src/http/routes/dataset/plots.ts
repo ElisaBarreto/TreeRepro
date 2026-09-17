@@ -2,6 +2,7 @@ import {
   createPlotBodySchema,
   cursorQuerySchema,
   idParamSchema,
+  listPlotSpeciesQuerySchema,
   listPlotsQuerySchema,
   plotSpeciesBodySchema,
   plotSpeciesMemberParamSchema,
@@ -90,7 +91,7 @@ export function plotRoutes(ctx: AuthContext) {
       '/:id/species',
       requirePermission(ctx, 'dataset.read'),
       validate('param', idParamSchema),
-      validate('query', listPlotsQuerySchema),
+      validate('query', listPlotSpeciesQuerySchema),
       async (c) => {
         const { id } = c.req.valid('param');
         const q = c.req.valid('query');

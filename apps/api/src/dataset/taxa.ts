@@ -105,7 +105,9 @@ export async function searchSpecies(
     );
   } else {
     const defaultScope: SpeciesScope =
-      viewerPlotIds.length > 0 && !visibility.inactive ? 'plots' : 'all';
+      visibility.plotIds !== null || (viewerPlotIds.length > 0 && !visibility.inactive)
+        ? 'plots'
+        : 'all';
     const resolvedScope = input.scope ?? defaultScope;
 
     if (resolvedScope === 'all') {

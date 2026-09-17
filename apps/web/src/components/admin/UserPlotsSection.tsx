@@ -15,8 +15,8 @@ import { userErrorMessage } from './user-errors.ts';
 export function UserPlotsSection({ user, canEdit }: { user: User; canEdit: boolean }) {
   const queryClient = useQueryClient();
   const plotsQuery = useQuery({
-    queryKey: plotKeys.list({ limit: 100 }),
-    queryFn: () => listPlots({ limit: 100 }),
+    queryKey: plotKeys.list({ limit: 200 }),
+    queryFn: () => listPlots({ limit: 200 }),
     enabled: canEdit,
   });
 

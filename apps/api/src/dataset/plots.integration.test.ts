@@ -239,7 +239,7 @@ describe('RFC-67 R3, R5 plots service', () => {
 
     // Unrestricted sees both
     const unres = await listPlotSpecies(t.db, UNRESTRICTED, plot.id, { limit: 10 });
-    expect(unres.data.map((s) => s.id)).toEqual([activeSp.id, inactiveSp.id].sort());
+    expect(unres.data.map((s) => s.id)).toEqual([activeSp.id, inactiveSp.id]);
 
     // Restricted viewer (only active species) sees only activeSp
     const restricted = await listPlotSpecies(t.db, RESTRICTED, plot.id, { limit: 10 });

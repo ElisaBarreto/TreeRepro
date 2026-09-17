@@ -55,6 +55,15 @@ export const listPlotsQuerySchema = cursorQuerySchema.extend({
 });
 
 /**
+ * Query schema for listing species within a plot.
+ * @rfc RFC-67 R4
+ * @rfc RFC-60 R6
+ */
+export const listPlotSpeciesQuerySchema = cursorQuerySchema.extend({
+  q: z.string().trim().min(2).max(100).optional(),
+});
+
+/**
  * Body schema for creating a field plot.
  * @rfc RFC-67 R5
  */
@@ -126,6 +135,7 @@ export type PlotRef = z.infer<typeof plotRefSchema>;
 export type Plot = z.infer<typeof plotSchema>;
 export type PlotDetail = z.infer<typeof plotDetailSchema>;
 export type ListPlotsQuery = z.infer<typeof listPlotsQuerySchema>;
+export type ListPlotSpeciesQuery = z.infer<typeof listPlotSpeciesQuerySchema>;
 export type CreatePlotBody = z.infer<typeof createPlotBodySchema>;
 export type UpdatePlotBody = z.infer<typeof updatePlotBodySchema>;
 export type PlotSpeciesBody = z.infer<typeof plotSpeciesBodySchema>;

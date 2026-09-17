@@ -68,7 +68,7 @@ async function plotsOf(db: DbExecutor, userIds: string[]): Promise<Map<string, P
     .from(userPlots)
     .innerJoin(plots, eq(plots.id, userPlots.plotId))
     .where(inArray(userPlots.userId, userIds))
-    .orderBy(asc(plots.code), asc(plots.id));
+    .orderBy(asc(sql`lower(${plots.code})`), asc(plots.id));
   for (const r of rows) {
     byUser.set(r.userId, [
       ...(byUser.get(r.userId) ?? []),
@@ -140,14 +140,15 @@ export async function setUserPlots(
 
   return ctx.db.transaction(async (tx) => {
     const user = await lockUser(tx, input.userId);
+    const plotIds = [...new Set(input.plotIds)];
 
     // Verify all target plots exist
-    if (input.plotIds.length > 0) {
+    if (plotIds.length > 0) {
       const existingPlots = await tx
         .select({ id: plots.id })
         .from(plots)
-        .where(inArray(plots.id, input.plotIds));
-      if (existingPlots.length !== new Set(input.plotIds).size) {
+        .where(inArray(plots.id, plotIds));
+      if (existingPlots.length !== plotIds.length) {
         throw new AppError('PLOT_NOT_FOUND', 'One or more plots not found');
       }
     }
@@ -158,9 +159,9 @@ export async function setUserPlots(
       .from(userPlots)
       .where(eq(userPlots.userId, input.userId));
     const currentPlotIds = new Set(currentAssignments.map((a) => a.plotId));
-    const newPlotIds = new Set(input.plotIds);
+    const newPlotIds = new Set(plotIds);
 
-    const added = input.plotIds.filter((id) => !currentPlotIds.has(id));
+    const added = plotIds.filter((id) => !currentPlotIds.has(id));
     const removed = [...currentPlotIds].filter((id) => !newPlotIds.has(id));
 
     // Delete removed
@@ -189,7 +190,7 @@ export async function setUserPlots(
     await recordAudit(tx, {
       actorUserId: input.actorUserId,
       action: 'users.plots_changed',
-      targetType: 'users',
+      targetType: 'user',
       targetId: input.userId,
       ip: input.ip,
       userAgent: input.userAgent,

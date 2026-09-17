@@ -87,15 +87,13 @@ export function PlotDialog({
   function parseNumber(val: string): number | undefined {
     const trimmed = val.trim();
     if (!trimmed) return undefined;
-    const num = Number(trimmed);
-    return Number.isNaN(num) ? undefined : num;
+    return Number(trimmed);
   }
 
   function parseNullableNumber(val: string): number | null | undefined {
     const trimmed = val.trim();
     if (!trimmed) return null;
-    const num = Number(trimmed);
-    return Number.isNaN(num) ? undefined : num;
+    return Number(trimmed);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {

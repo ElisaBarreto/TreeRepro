@@ -153,6 +153,13 @@ describe('RFC-68 R11 import:user-plots', () => {
       [5, 'unknown_plot'],
     ]);
 
+    // Verify rejects do NOT persist plaintext email (RFC-40 R1)
+    const unknownUserReject = rejects.find((r) => r.reason === 'unknown_user');
+    expect(unknownUserReject?.rawRow.user_email).not.toContain(`unknown-email-`);
+    expect(unknownUserReject?.rawRow.user_email).toMatch(/^u\*\*\*@example\.com$/);
+    const unknownPlotReject = rejects.find((r) => r.reason === 'unknown_plot');
+    expect(unknownPlotReject?.rawRow.user_email).not.toBe(regularUser.email);
+
     // Check assignments
     const regAssignments = await t.db
       .select()

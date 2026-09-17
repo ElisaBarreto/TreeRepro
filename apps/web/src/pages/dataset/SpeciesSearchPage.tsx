@@ -47,12 +47,10 @@ export function SpeciesSearchPage({
 }) {
   const me = useMe();
   const navigate = useNavigate();
-  const defaultScope =
-    initialScope ?? (me.scope?.plots && me.scope.plots.length > 0 ? 'plots' : undefined);
   const [form, setForm] = useState<SpeciesSearchValue>({
     q: '',
     unresolved: initialUnresolved,
-    scope: defaultScope,
+    scope: initialScope,
     plotId: initialPlotId,
   });
   const [creating, setCreating] = useState(false);

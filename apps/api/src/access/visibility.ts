@@ -62,7 +62,7 @@ export async function userScope(
     .from(userPlots)
     .innerJoin(plots, eq(plots.id, userPlots.plotId))
     .where(eq(userPlots.userId, userId))
-    .orderBy(asc(plots.code), asc(plots.id));
+    .orderBy(asc(sql`lower(${plots.code})`), asc(plots.id));
 
   return {
     plots: plotRows,

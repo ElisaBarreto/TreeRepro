@@ -179,19 +179,15 @@ export async function listPlotUsers(
 
   let sorted = rows;
   if (input.cursor) {
-    const [cursorName, cursorId] = decodeCompositeCursor(input.cursor, 2, [() => true, isUuid]) as [
-      string,
-      string,
-    ];
-    sorted = sorted.filter(
-      (u) => u.name.localeCompare(cursorName) > 0 || (u.name === cursorName && u.id > cursorId),
-    );
+    const cursorIdx = sorted.findIndex((u) => u.id === input.cursor);
+    if (cursorIdx >= 0) {
+      sorted = sorted.slice(cursorIdx + 1);
+    }
   }
 
   const page = sorted.slice(0, input.limit);
   const last = page[page.length - 1];
-  const nextCursor =
-    sorted.length > input.limit && last ? encodeCompositeCursor([last.name, last.id]) : null;
+  const nextCursor = sorted.length > input.limit && last ? last.id : null;
 
   return { data: page, nextCursor };
 }

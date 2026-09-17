@@ -535,6 +535,20 @@ describe('RFC-33 R6, RFC-67 R8 species scope and plot filter matrix', () => {
       spInsideA.id,
     ]);
 
+    // (d) Restricted viewer who also holds dataset.read_inactive:
+    const { user: restrictedManager } = await createUser(t.db, { roles: [managerRole.id] });
+    await assignPlots(t.db, restrictedManager.id, [plotA.id], true);
+    const restrictedManagerCookie = (await loginAs(t, restrictedManager)).cookie;
+
+    // Plain request with no params answers 200 with defaultScope 'plots' (not 403)
+    const restrictedManagerDefault = await call(t.app, 'GET', `/api/species?q=scopeus`, {
+      cookie: restrictedManagerCookie,
+    });
+    expect(restrictedManagerDefault.status).toBe(200);
+    expect((await restrictedManagerDefault.json()).data.map((s: { id: string }) => s.id)).toEqual([
+      spInsideA.id,
+    ]);
+
     // (d) plots on detail:
     // Add spInsideA to plotB as well
     await addPlotSpecies(t.db, plotB.id, [spInsideA.id]);

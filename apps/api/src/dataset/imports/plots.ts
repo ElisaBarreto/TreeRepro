@@ -199,7 +199,16 @@ export async function importUserPlots(
       await tx`
         insert into import_rejects (batch_id, row_no, reason, raw_row)
         select ${batchId}, row_no, outcome,
-          jsonb_build_object('user_email', coalesce(user_email, ''), 'plot_id', coalesce(plot_id, ''))
+          jsonb_build_object(
+            'user_email',
+            case
+              when nullif(trim(user_email), '') is null then ''
+              when position('@' in user_email) > 1 then
+                substr(trim(user_email), 1, 1) || '***@' || split_part(trim(user_email), '@', 2)
+              else '***'
+            end,
+            'plot_id', coalesce(plot_id, '')
+          )
         from import_staging where outcome <> 'apply' order by row_no`;
       const [{ apply_count: applyCount }] = (await tx`
         select count(*)::int as apply_count from import_staging where outcome = 'apply'`) as [

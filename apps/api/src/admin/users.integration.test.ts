@@ -242,12 +242,22 @@ describe('RFC-50 R13, RFC-67 R6 setUserPlots', () => {
     expect(audit1).toMatchObject({
       actorUserId: admin.id,
       targetId: user.id,
+      targetType: 'user',
       metadata: {
         added: expect.arrayContaining([p1.id, p2.id]),
         removed: [],
         restricted: true,
       },
     });
+
+    // Dedupes plotIds on input without throwing 500
+    const withDuplicates = await setUserPlots(ctxOf(t), {
+      ...meta(admin.id),
+      userId: user.id,
+      plotIds: [p1.id, p1.id, p2.id],
+      restrictToAssignedPlots: true,
+    });
+    expect(withDuplicates.plots.map((p) => p.id).sort()).toEqual([p1.id, p2.id].sort());
 
     // Replace: remove p1, keep p2, add p3, restricted: false
     const replaced = await setUserPlots(ctxOf(t), {

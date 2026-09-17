@@ -23,7 +23,7 @@ import {
   SPECIES_TRAITS,
   UNRESOLVED_SPECIES,
 } from '../../test/dataset-fixtures.ts';
-import { ME } from '../../test/fixtures.ts';
+import { ADMIN_ME, ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
 const auth = vi.hoisted(() => ({
@@ -575,7 +575,7 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
     expect(await screen.findByText(/Adenanthera polita/)).toBeInTheDocument();
   });
 
-  it('RFC-67 R8 shows In your plots: A, B when species.plots is non-empty', async () => {
+  it('RFC-67 R8 shows In your plots for contributor and Plots for plots.manage', async () => {
     auth.fetchMe.mockResolvedValue(READER);
     const withPlots = {
       ...SPECIES,
@@ -587,5 +587,9 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
     dataset.fetchSpecies.mockResolvedValue(withPlots);
     renderAt(`/app/species/${SPECIES.id}`);
     expect(await screen.findByText('In your plots: Plot A, Plot B')).toBeInTheDocument();
+
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    renderAt(`/app/species/${SPECIES.id}`);
+    expect(await screen.findByText('Plots: Plot A, Plot B')).toBeInTheDocument();
   });
 });
