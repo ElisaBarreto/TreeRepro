@@ -3,6 +3,7 @@ import type {
   AcceptedDecision,
   AnnotationKind,
   HarmonisationStatus,
+  ImportBatchKind,
   NameSource,
   TraitValueType,
 } from '@treerepro/contracts';
@@ -84,12 +85,16 @@ export async function createReference(
   return row;
 }
 
-export async function createImportBatch(db: DbExecutor, options: { fileName?: string } = {}) {
+export async function createImportBatch(
+  db: DbExecutor,
+  options: { fileName?: string; kind?: ImportBatchKind } = {},
+) {
   const [row] = await db
     .insert(importBatches)
     .values({
       fileName: options.fileName ?? `test-${suffix()}.csv`,
       fileSha256: randomBytes(32).toString('hex'),
+      kind: options.kind ?? 'records',
       status: 'completed',
       finishedAt: new Date(),
     })

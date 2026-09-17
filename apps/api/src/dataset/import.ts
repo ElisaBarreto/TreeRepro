@@ -4,6 +4,7 @@ import { basename } from 'node:path';
 import type {
   HarmonisationStatus,
   ImportBatch,
+  ImportBatchKind,
   ImportReject,
   ImportRejectReason,
   UserRef,
@@ -177,6 +178,7 @@ export function toImportBatch(row: ImportBatchRow, runBy: UserRef | null): Impor
     id: row.id,
     fileName: row.fileName,
     fileSha256: row.fileSha256,
+    kind: row.kind,
     status: row.status,
     runBy,
     startedAt: row.startedAt.toISOString(),
@@ -219,16 +221,24 @@ export async function getImportBatch(db: DbExecutor, id: string): Promise<Import
   return row ? fromJoined(row) : null;
 }
 
-/** Newest first by id (UUID v7). @rfc RFC-64 R11 */
+/**
+ * Newest first by id (UUID v7).
+ * @rfc RFC-64 R11
+ * @rfc RFC-68 R7
+ */
 export async function listImportBatches(
   db: DbExecutor,
-  input: { cursor?: string; limit: number },
+  input: { kind?: ImportBatchKind; cursor?: string; limit: number },
 ): Promise<{ data: ImportBatch[]; nextCursor: string | null }> {
+  const conditions = [
+    input.kind ? eq(importBatches.kind, input.kind) : undefined,
+    input.cursor ? lt(importBatches.id, decodeCursor(input.cursor)) : undefined,
+  ].filter((c) => c !== undefined);
   const rows = await db
     .select(batchWithRunBy)
     .from(importBatches)
     .leftJoin(users, eq(users.id, importBatches.runBy))
-    .where(input.cursor ? lt(importBatches.id, decodeCursor(input.cursor)) : undefined)
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(importBatches.id))
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.batch.id));
