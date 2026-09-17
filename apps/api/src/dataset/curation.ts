@@ -257,8 +257,14 @@ export async function createRecords(
       .onConflictDoNothing()
       .returning({ id: traitRecords.id, primaryReferenceId: traitRecords.primaryReferenceId });
 
-    const insertedRefIds = new Set(inserted.map((r) => r.primaryReferenceId));
-    const missingRefIds = input.referenceIds.filter((id) => !insertedRefIds.has(id));
+    // `INSERT … RETURNING` makes no promise about row order, so the response
+    // and the contest note are put back in the order the sources arrived in
+    // rather than in the order the rows came back (RFC-70 R3).
+    const insertedByRef = new Map(inserted.map((r) => [r.primaryReferenceId, r.id]));
+    const insertedIds = input.referenceIds
+      .map((refId) => insertedByRef.get(refId))
+      .filter((id) => id !== undefined);
+    const missingRefIds = input.referenceIds.filter((id) => !insertedByRef.has(id));
     const duplicates: { recordId: string; referenceId: string }[] = [];
 
     if (missingRefIds.length > 0) {
@@ -299,21 +305,19 @@ export async function createRecords(
       );
     }
 
-    if (input.intent === 'contest' && input.respondsToRecordId && inserted.length > 0) {
-      const createdIds = inserted.map((r) => r.id);
+    if (input.intent === 'contest' && input.respondsToRecordId) {
       await tx.insert(recordAnnotations).values({
         recordId: input.respondsToRecordId,
         actorId: input.actorId,
         kind: 'dispute',
-        note: CONTEST_NOTE(createdIds),
+        note: CONTEST_NOTE(insertedIds),
         generated: true,
       });
     }
 
-    // `inserted` keeps the order of `rowsToInsert`, i.e. of `referenceIds`.
     const created: RecordDetail[] = [];
-    for (const ins of inserted) {
-      const detail = await getRecord(tx, UNRESTRICTED, ins.id);
+    for (const id of insertedIds) {
+      const detail = await getRecord(tx, UNRESTRICTED, id);
       if (detail) created.push(detail);
     }
 
