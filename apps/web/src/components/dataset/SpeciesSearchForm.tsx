@@ -1,7 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type { Genus, TaxonRef } from '@treerepro/contracts';
+import type { Genus, SpeciesStatus, TaxonRef } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
+import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { Badge, Button, Field, Input, Select } from '../ui/index.ts';
 
@@ -10,6 +11,7 @@ export interface SpeciesSearchValue {
   familyId?: string;
   genusId?: string;
   unresolved: boolean;
+  status?: SpeciesStatus;
 }
 
 /**
@@ -17,8 +19,12 @@ export interface SpeciesSearchValue {
  * combobox fed by the genera prefix search, and the unresolved-taxa toggle.
  * Fully controlled — the page owns the value and the debounce of the name.
  * A genus belongs to a family, so changing the family drops the chosen genus.
+ * With `dataset.read_inactive`, a Status select (All / Active / Inactive)
+ * also renders (RFC-33 R7); without it the filter is neither shown nor
+ * reachable, so the value simply never carries a status.
  * @rfc RFC-13 R2
  * @rfc RFC-60 R6, R8
+ * @rfc RFC-33 R7
  */
 export function SpeciesSearchForm({
   value,
@@ -27,7 +33,8 @@ export function SpeciesSearchForm({
   value: SpeciesSearchValue;
   onChange: (next: SpeciesSearchValue) => void;
 }) {
-  const ids = { q: useId(), family: useId(), genus: useId(), genera: useId() };
+  const me = useMe();
+  const ids = { q: useId(), family: useId(), genus: useId(), genera: useId(), status: useId() };
   const families = useQuery({ queryKey: datasetKeys.families, queryFn: fetchFamilies });
 
   const [genusText, setGenusText] = useState('');
@@ -53,8 +60,12 @@ export function SpeciesSearchForm({
     onChange({ ...value, genusId: undefined });
   }
 
+  const canReadInactive = hasPermission(me, 'dataset.read_inactive');
+
   return (
-    <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr] md:items-start">
+    <div
+      className={`grid gap-4 md:items-start ${canReadInactive ? 'md:grid-cols-[2fr_1fr_1fr_1fr]' : 'md:grid-cols-[2fr_1fr_1fr]'}`}
+    >
       <Field id={ids.q} label="Search species">
         <Input
           id={ids.q}
@@ -147,7 +158,24 @@ export function SpeciesSearchForm({
           </div>
         ) : null}
       </div>
-      <label className="flex h-11 items-center gap-2.5 text-body text-canopy-900 md:col-span-3">
+      {canReadInactive ? (
+        <Field id={ids.status} label="Status">
+          <Select
+            id={ids.status}
+            value={value.status ?? 'all'}
+            onChange={(event) =>
+              onChange({ ...value, status: event.target.value as SpeciesStatus })
+            }
+          >
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </Select>
+        </Field>
+      ) : null}
+      <label
+        className={`flex h-11 items-center gap-2.5 text-body text-canopy-900 ${canReadInactive ? 'md:col-span-4' : 'md:col-span-3'}`}
+      >
         <input
           type="checkbox"
           className="size-5 accent-canopy-700"

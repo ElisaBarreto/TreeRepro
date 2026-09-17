@@ -58,8 +58,11 @@ function genusOption(genus: Genus): ComboboxOption {
  * select (Enter there creates it). Without `species` it creates; with one it
  * edits and sends only the fields that differ (`genusId: null` detaches),
  * closing without a request when nothing changed. Mounted only while open.
+ * Edit mode also shows an "Active — visible to contributors" checkbox
+ * (RFC-33 R7); create has none, the API defaulting a fresh species to active.
  * @rfc RFC-13 R3, R6
  * @rfc RFC-60 R9
+ * @rfc RFC-33 R7
  */
 export function SpeciesDialog({
   species,
@@ -80,6 +83,9 @@ export function SpeciesDialog({
   };
   const [canonicalName, setCanonicalName] = useState(species?.canonicalName ?? '');
   const [nameSource, setNameSource] = useState<NameSource>(species?.nameSource ?? 'original');
+  // Edit mode only: create has no `active` in its body, and a fresh species
+  // is always active by the API's default.
+  const [active, setActive] = useState(species?.active ?? true);
   const [family, setFamily] = useState(species?.family?.id ?? '');
   const [newFamily, setNewFamily] = useState<string | null>(null);
   const [familyError, setFamilyError] = useState<string | undefined>(undefined);
@@ -184,6 +190,7 @@ export function SpeciesDialog({
     if (name !== species.canonicalName) diff.canonicalName = name;
     if (nameSource !== species.nameSource) diff.nameSource = nameSource;
     if (genusId !== (species.genus?.id ?? null)) diff.genusId = genusId;
+    if (active !== species.active) diff.active = active;
     if (Object.keys(diff).length === 0) {
       onClose();
       return;
@@ -325,6 +332,17 @@ export function SpeciesDialog({
             invalid={Boolean(errors.genusId)}
           />
         </Field>
+        {species ? (
+          <label className="flex h-11 items-center gap-2.5 text-body text-canopy-900">
+            <input
+              type="checkbox"
+              className="size-5 accent-canopy-700"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+            />
+            Active — visible to contributors
+          </label>
+        ) : null}
         {save.isError && !nameTaken && !isValidationError(save.error) ? (
           <Alert tone="error">{speciesErrorMessage(save.error)}</Alert>
         ) : null}

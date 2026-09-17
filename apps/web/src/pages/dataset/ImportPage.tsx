@@ -16,6 +16,12 @@ const REASONS: Record<ImportRejectReason, string> = {
   no_species_name: 'No species name',
   unknown_trait: 'Unknown trait',
   no_reference: 'No reference',
+  unknown_species: 'Unknown species',
+  unknown_plot: 'Unknown plot',
+  unknown_user: 'Unknown user',
+  unknown_reference: 'Unknown reference',
+  doi_taken: 'DOI already taken',
+  invalid_value: 'Invalid value',
 };
 
 // The columns of the import file in file order (RFC-64 R2). A raw row is a

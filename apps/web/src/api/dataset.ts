@@ -3,6 +3,7 @@ import type {
   Dictionary,
   Genus,
   ImportBatch,
+  ImportBatchKind,
   ImportReject,
   ListMeta,
   RecordDetail,
@@ -11,6 +12,7 @@ import type {
   ReferenceDetail,
   Species,
   SpeciesListItem,
+  SpeciesStatus,
   SpeciesTraits,
   TaxonRef,
 } from '@treerepro/contracts';
@@ -34,17 +36,21 @@ export const datasetKeys = {
   reference: (id: string) => ['references', id] as const,
   families: ['families'] as const,
   genera: (params: Params) => ['genera', params] as const,
-  imports: ['imports'] as const,
+  imports: (params: Params) => ['imports', params] as const,
   importBatch: (id: string) => ['imports', id] as const,
   importRejects: (id: string) => ['imports', id, 'rejects'] as const,
 };
 
-/** @rfc RFC-60 R6 */
+/**
+ * @rfc RFC-60 R6
+ * @rfc RFC-33 R7
+ */
 export function searchSpecies(params: {
   q?: string;
   familyId?: string;
   genusId?: string;
   unresolved?: boolean;
+  status?: SpeciesStatus;
   cursor?: string;
   limit?: number;
 }) {
@@ -104,8 +110,11 @@ export function fetchGenera(params: {
 }) {
   return apiFetch<Page<Genus>>(withQuery('/genera', params));
 }
-/** @rfc RFC-64 R11 */
-export function fetchImports(params: { cursor?: string; limit?: number }) {
+/**
+ * @rfc RFC-64 R11
+ * @rfc RFC-68 R7
+ */
+export function fetchImports(params: { kind?: ImportBatchKind; cursor?: string; limit?: number }) {
   return apiFetch<Page<ImportBatch>>(withQuery('/imports', params));
 }
 /** @rfc RFC-64 R11 */

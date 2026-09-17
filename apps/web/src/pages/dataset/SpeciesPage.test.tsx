@@ -148,6 +148,19 @@ describe('RFC-60 R7 SpeciesPage header', () => {
     expect(screen.getByText('0 records · 0 traits')).toBeInTheDocument();
     expect(screen.getByText('No trait records for this species yet.')).toBeInTheDocument();
   });
+
+  it('RFC-33 R7 marks an inactive species after the unresolved taxon badge', async () => {
+    dataset.fetchSpecies.mockResolvedValue({ ...SPECIES, active: false });
+    await openPage({ ...SPECIES, active: false });
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(within(heading).getByText('inactive')).toBeInTheDocument();
+  });
+
+  it('shows no inactive badge for an active species', async () => {
+    await openPage();
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(within(heading).queryByText('inactive')).not.toBeInTheDocument();
+  });
 });
 
 describe('RFC-63 R10 SpeciesPage trait sections', () => {

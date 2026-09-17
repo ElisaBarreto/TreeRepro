@@ -31,7 +31,9 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
 
 /**
  * Every navigation entry of the workspace. Other plans append here; the
- * shell filters by permission (RFC-13 R3).
+ * shell filters by permission (RFC-13 R3). The three Curation entries
+ * require `records.review`: the queues are manager work (RFC-65 R8–R10,
+ * RFC-31 R10).
  * @rfc RFC-13 R3
  * @rfc RFC-60 R9
  * @rfc RFC-65 R8, R10
@@ -65,21 +67,21 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     to: '/app/curation/pending',
     label: 'Pending',
     icon: 'clipboard',
-    permission: 'dataset.read',
+    permission: 'records.review',
     section: 'curation',
   },
   {
     to: '/app/curation/disputed',
     label: 'Disputed',
     icon: 'alert',
-    permission: 'dataset.read',
+    permission: 'records.review',
     section: 'curation',
   },
   {
     to: '/app/species',
     label: 'Unresolved taxa',
     icon: 'leaf',
-    permission: 'dataset.read',
+    permission: 'records.review',
     section: 'curation',
     search: { unresolved: true },
   },

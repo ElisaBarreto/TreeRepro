@@ -31,6 +31,7 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
         <span className="flex flex-wrap items-center gap-3">
           <em>{species.canonicalName}</em>
           {species.unresolvedTaxon ? <Badge tone="amber">unresolved taxon</Badge> : null}
+          {species.active ? null : <Badge tone="neutral">inactive</Badge>}
         </span>
       }
       description={
@@ -67,9 +68,11 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
  * closes its panel. With `taxa.manage`, "Edit species" and "Add name" in the
  * header open the species editor and the alternative-name dialog (RFC-60
  * R9); their write invalidates the species detail, so the header re-renders
- * from the refetch.
+ * from the refetch. An inactive species is flagged after the unresolved-taxon
+ * badge (RFC-33 R7).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-60 R7, R9
+ * @rfc RFC-33 R7
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1, R6
  */
