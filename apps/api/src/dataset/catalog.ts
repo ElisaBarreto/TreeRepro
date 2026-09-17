@@ -214,10 +214,7 @@ export async function createSpecies(
   });
 }
 
-/**
- * `genusId: null` detaches the species. @rfc RFC-60 R9, R10
- * @rfc RFC-33 R2
- */
+/** `genusId: null` detaches the species. @rfc RFC-60 R9, R10 */
 export async function updateSpecies(
   db: DbExecutor,
   input: {

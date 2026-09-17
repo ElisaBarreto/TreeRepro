@@ -384,6 +384,18 @@ describe('RFC-33 R4, RFC-60 R6 species routes by viewer', () => {
     });
     expect(off.status).toBe(200);
     expect((await off.json()).data.active).toBe(false);
+    const firstAudit = await lastAudit(t.db, 'taxa.updated', { targetId: sp.id });
+    expect(firstAudit?.metadata).toEqual({ kind: 'species', fields: ['active'] });
+
+    // RFC-60 R9: a PATCH that changes nothing records nothing — the audit
+    // trail's newest `taxa.updated` entry for this species stays the same row.
+    const again = await call(t.app, 'PATCH', `/api/species/${sp.id}`, {
+      cookie: a.cookie,
+      body: { active: false },
+    });
+    expect(again.status).toBe(200);
+    const secondAudit = await lastAudit(t.db, 'taxa.updated', { targetId: sp.id });
+    expect(secondAudit?.id).toBe(firstAudit?.id);
 
     expect((await call(t.app, 'GET', `/api/species/${sp.id}`, { cookie: r.cookie })).status).toBe(
       404,
