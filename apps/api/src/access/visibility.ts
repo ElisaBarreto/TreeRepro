@@ -1,15 +1,18 @@
+import type { PlotRef } from '@treerepro/contracts';
 import type { SQL } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
+import type { DbExecutor } from '../db/client.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
+import { plotSpecies, plots, userPlots } from '../db/schema/plots.ts';
 import { species } from '../db/schema/taxa.ts';
+import { users } from '../db/schema/users.ts';
 import type { AppEnv } from '../http/env.ts';
 import { currentPermissions } from '../http/middleware/require-permission.ts';
 import type { AccessContext } from './context.ts';
 
 /**
- * What one viewer may see (RFC-33 R1). `plotIds` stays null until plan 08b
- * reads the viewer's plot settings.
+ * What one viewer may see (RFC-33 R1).
  * @rfc RFC-33 R1
  */
 export interface Visibility {
@@ -21,25 +24,114 @@ export interface Visibility {
 export const UNRESTRICTED: Visibility = { inactive: true, plotIds: null };
 
 /** @rfc RFC-33 R1 */
-export function visibilityFor(permissions: ReadonlySet<string>): Visibility {
-  return { inactive: permissions.has('dataset.read_inactive'), plotIds: null };
+export function visibilityFor(
+  permissions: ReadonlySet<string>,
+  plotSettings?: { restricted: boolean; plotIds: string[] },
+): Visibility {
+  return {
+    inactive: permissions.has('dataset.read_inactive'),
+    plotIds: plotSettings?.restricted ? plotSettings.plotIds : null,
+  };
 }
 
-/** The viewer of the current request; computed once and kept on the context. @rfc RFC-33 R1 */
-export async function visibilityOf(_ctx: AccessContext, c: Context<AppEnv>): Promise<Visibility> {
+/**
+ * Resolves a user's assigned plots and restriction flag.
+ * @rfc RFC-22 R10
+ * @rfc RFC-67 R6
+ */
+export async function userScope(
+  db: DbExecutor,
+  userId: string,
+): Promise<{ plots: PlotRef[]; restricted: boolean }> {
+  const [userRow] = await db
+    .select({
+      restricted: users.restrictToAssignedPlots,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!userRow) return { plots: [], restricted: false };
+
+  const plotRows = await db
+    .select({
+      id: plots.id,
+      code: plots.code,
+      name: plots.name,
+    })
+    .from(userPlots)
+    .innerJoin(plots, eq(plots.id, userPlots.plotId))
+    .where(eq(userPlots.userId, userId))
+    .orderBy(asc(sql`lower(${plots.code})`), asc(plots.id));
+
+  return {
+    plots: plotRows,
+    restricted: userRow.restricted,
+  };
+}
+
+/**
+ * Resolves the user's assigned plots and restriction flag for the current request,
+ * cached on the request context.
+ * @rfc RFC-22 R10
+ * @rfc RFC-67 R6
+ */
+export async function userScopeOf(
+  db: DbExecutor,
+  c: Context<AppEnv>,
+): Promise<{ plots: PlotRef[]; restricted: boolean }> {
+  const cached = c.get('userScope');
+  if (cached) return cached;
+  const user = c.get('user');
+  if (!user) return { plots: [], restricted: false };
+  const scope = await userScope(db, user.id);
+  c.set('userScope', scope);
+  return scope;
+}
+
+/**
+ * The viewer of the current request; computed once and kept on the context.
+ * @rfc RFC-33 R1
+ * @rfc RFC-67 R6
+ */
+export async function visibilityOf(ctx: AccessContext, c: Context<AppEnv>): Promise<Visibility> {
   const cached = c.get('visibility');
   if (cached) return cached;
-  const v = visibilityFor(currentPermissions(c));
+  const user = c.get('user');
+  let plotIds: string[] | null = null;
+  if (user) {
+    const scope = await userScopeOf(ctx.db, c);
+    if (scope.restricted) {
+      plotIds = scope.plots.map((p) => p.id);
+    }
+  }
+  const v = visibilityFor(currentPermissions(c), {
+    restricted: plotIds !== null,
+    plotIds: plotIds ?? [],
+  });
   c.set('visibility', v);
   return v;
 }
 
-/** `species` row predicate; `alias` lets a joined alias be used instead of the table. @rfc RFC-33 R2 */
+/**
+ * `species` row predicate; `activeCol` and `idCol` allow joined aliases to be used.
+ * @rfc RFC-33 R2
+ * @rfc RFC-67 R6
+ */
 export function speciesVisible(
   v: Visibility,
   activeCol: SQL | typeof species.active = species.active,
+  idCol: SQL | typeof species.id = species.id,
 ): SQL {
-  return v.inactive ? sql`true` : sql`${activeCol}`;
+  const activePred = v.inactive ? sql`true` : sql`${activeCol}`;
+  if (v.plotIds === null) {
+    return activePred;
+  }
+  if (v.plotIds.length === 0) {
+    return sql`false`;
+  }
+  const plotPred = sql`exists (select 1 from ${plotSpecies} ps where ps.species_id = ${idCol} and ps.plot_id = any(${sql.param(v.plotIds)}::uuid[]))`;
+  return sql`(${activePred}) and (${plotPred})`;
 }
 
 /** @rfc RFC-33 R2 */

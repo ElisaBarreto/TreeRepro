@@ -23,7 +23,7 @@ import {
   SPECIES_TRAITS,
   UNRESOLVED_SPECIES,
 } from '../../test/dataset-fixtures.ts';
-import { ME } from '../../test/fixtures.ts';
+import { ADMIN_ME, ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
 const auth = vi.hoisted(() => ({
@@ -573,5 +573,23 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add name' }));
     expect(await screen.findByText(/Adenanthera polita/)).toBeInTheDocument();
+  });
+
+  it('RFC-67 R8 shows In your plots for contributor and Plots for plots.manage', async () => {
+    auth.fetchMe.mockResolvedValue(READER);
+    const withPlots = {
+      ...SPECIES,
+      plots: [
+        { id: 'p-1', code: 'A', name: 'Plot A' },
+        { id: 'p-2', code: 'B', name: 'Plot B' },
+      ],
+    };
+    dataset.fetchSpecies.mockResolvedValue(withPlots);
+    renderAt(`/app/species/${SPECIES.id}`);
+    expect(await screen.findByText('In your plots: Plot A, Plot B')).toBeInTheDocument();
+
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    renderAt(`/app/species/${SPECIES.id}`);
+    expect(await screen.findByText('Plots: Plot A, Plot B')).toBeInTheDocument();
   });
 });

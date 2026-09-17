@@ -16,6 +16,8 @@ const user = {
   status: 'active',
   totpEnabled: false,
   roles: [{ id: '019a0000-0000-7000-8000-000000000002', name: 'admin' }],
+  plots: [],
+  restrictToAssignedPlots: false,
   createdAt: '2026-09-12T00:00:00.000Z',
   updatedAt: '2026-09-12T00:00:00.000Z',
   suspendedAt: null,

@@ -1,17 +1,21 @@
 import type {
   Genus,
+  PlotRef,
   Species,
   SpeciesListItem,
+  SpeciesScope,
   SpeciesStatus,
   TaxonRef,
 } from '@treerepro/contracts';
-import { and, asc, count, countDistinct, eq, ilike, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, countDistinct, eq, ilike, inArray, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { speciesVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { plotSpecies, plots } from '../db/schema/plots.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
 import { decodeCompositeCursor, encodeCompositeCursor, isUuid, pageOf } from '../http/cursor.ts';
+import { AppError } from '../http/errors.ts';
 
 /** Escapes `%`, `_` and `\` so a search term matches literally. @rfc RFC-60 R6 */
 export function likePattern(term: string, mode: 'substring' | 'prefix'): string {
@@ -76,9 +80,54 @@ export async function searchSpecies(
     status?: SpeciesStatus;
     cursor?: string;
     limit: number;
+    scope?: SpeciesScope;
+    plotId?: string;
+    viewerPlotIds?: string[];
   },
 ): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
   const conditions: SQL[] = [speciesVisible(visibility)];
+  const viewerPlotIds = input.viewerPlotIds ?? [];
+
+  if (input.plotId) {
+    const [plotRow] = await db
+      .select({ id: plots.id })
+      .from(plots)
+      .where(eq(plots.id, input.plotId))
+      .limit(1);
+    if (!plotRow) throw new AppError('PLOT_NOT_FOUND', 'Plot not found');
+
+    if (visibility.plotIds !== null && !visibility.plotIds.includes(input.plotId)) {
+      throw new AppError('PERMISSION_DENIED', 'Cannot view species outside assigned plots');
+    }
+
+    conditions.push(
+      sql`exists (select 1 from ${plotSpecies} ps where ps.plot_id = ${input.plotId} and ps.species_id = ${species.id})`,
+    );
+  } else {
+    const defaultScope: SpeciesScope =
+      visibility.plotIds !== null || (viewerPlotIds.length > 0 && !visibility.inactive)
+        ? 'plots'
+        : 'all';
+    const resolvedScope = input.scope ?? defaultScope;
+
+    if (resolvedScope === 'all') {
+      if (visibility.plotIds !== null) {
+        throw new AppError(
+          'PERMISSION_DENIED',
+          'Restricted user cannot view species outside assigned plots',
+        );
+      }
+    } else {
+      if (viewerPlotIds.length === 0) {
+        conditions.push(sql`false`);
+      } else {
+        conditions.push(
+          sql`exists (select 1 from ${plotSpecies} ps where ps.species_id = ${species.id} and ps.plot_id = any(${sql.param(viewerPlotIds)}::uuid[]))`,
+        );
+      }
+    }
+  }
+
   // RFC-60 R6: a restricted viewer's `status` is ignored — the predicate above already
   // keeps only active rows.
   const status = visibility.inactive ? (input.status ?? 'all') : 'active';
@@ -126,11 +175,13 @@ export async function searchSpecies(
 /**
  * @rfc RFC-60 R3, R7
  * @rfc RFC-33 R2, R4
+ * @rfc RFC-67 R8
  */
 export async function getSpecies(
   db: DbExecutor,
   visibility: Visibility,
   id: string,
+  opts: { viewerPlotIds?: string[]; allPlots?: boolean } = {},
 ): Promise<Species | null> {
   const [row] = await db
     .select(speciesColumns)
@@ -140,7 +191,27 @@ export async function getSpecies(
     .where(and(eq(species.id, id), speciesVisible(visibility)))
     .limit(1);
   if (!row) return null;
-  const [names, [counts]] = await Promise.all([
+
+  let speciesPlotsQuery: Promise<PlotRef[]>;
+  if (opts.allPlots) {
+    speciesPlotsQuery = db
+      .select({ id: plots.id, code: plots.code, name: plots.name })
+      .from(plotSpecies)
+      .innerJoin(plots, eq(plots.id, plotSpecies.plotId))
+      .where(eq(plotSpecies.speciesId, id))
+      .orderBy(asc(plots.code), asc(plots.id));
+  } else if (opts.viewerPlotIds && opts.viewerPlotIds.length > 0) {
+    speciesPlotsQuery = db
+      .select({ id: plots.id, code: plots.code, name: plots.name })
+      .from(plotSpecies)
+      .innerJoin(plots, eq(plots.id, plotSpecies.plotId))
+      .where(and(eq(plotSpecies.speciesId, id), inArray(plotSpecies.plotId, opts.viewerPlotIds)))
+      .orderBy(asc(plots.code), asc(plots.id));
+  } else {
+    speciesPlotsQuery = Promise.resolve([]);
+  }
+
+  const [names, [counts], speciesPlots] = await Promise.all([
     db
       .select({ name: speciesNames.name, gbifUsageKey: speciesNames.gbifUsageKey })
       .from(speciesNames)
@@ -150,9 +221,11 @@ export async function getSpecies(
       .select({ recordCount: count(), traitCount: countDistinct(traitRecords.traitId) })
       .from(traitRecords)
       .where(eq(traitRecords.speciesId, id)),
+    speciesPlotsQuery,
   ]);
   return {
     ...toListItem({ ...row, matchedName: null }),
+    plots: speciesPlots,
     names: names.map((n) => ({
       name: n.name,
       source: 'gbif' as const,
@@ -176,9 +249,9 @@ export async function listFamilies(
   if (input.cursor) conditions.push(afterNameCursor(input.cursor, families.name, families.id));
   // For an unrestricted viewer `speciesVisible` is `true`, so this `exists` would become
   // "has any species" — a family without species would vanish for admins too.
-  if (!visibility.inactive) {
+  if (!visibility.inactive || visibility.plotIds !== null) {
     conditions.push(
-      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, sql`s.active`)})`,
+      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
     );
   }
   const rows = await db
@@ -207,9 +280,9 @@ export async function listGenera(
   if (input.q) conditions.push(ilike(genera.name, likePattern(input.q, 'prefix')));
   if (input.cursor) conditions.push(afterNameCursor(input.cursor, genera.name, genera.id));
   // Same guard as listFamilies: only push for a restricted viewer.
-  if (!visibility.inactive) {
+  if (!visibility.inactive || visibility.plotIds !== null) {
     conditions.push(
-      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, sql`s.active`)})`,
+      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
     );
   }
   const rows = await db

@@ -44,6 +44,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     expect((await me.json()).data).toEqual({
       user: expect.objectContaining({ id: user.id }),
       permissions: [],
+      scope: { plots: [], restricted: false },
     });
   });
 

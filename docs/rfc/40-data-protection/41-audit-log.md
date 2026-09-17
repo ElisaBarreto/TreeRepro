@@ -58,6 +58,11 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `traits.updated` | Trait or one of its levels changed, or a level added (RFC-62 R6). |
 | `dataset.exported` | Accepted values downloaded as a file (RFC-66 R6). |
 | `imports.completed` | A supplementary import batch completed (RFC-68 R5). |
+| `plots.created` | Field plot created (RFC-67 R5). |
+| `plots.updated` | Field plot metadata changed (RFC-67 R5). |
+| `plots.species_added` | Species added to a field plot (RFC-67 R5). |
+| `plots.species_removed` | Species removed from a field plot (RFC-67 R5). |
+| `users.plots_changed` | Field plots assigned to or removed from a user, or restriction flag changed (RFC-67 R6). |
 
 ## Open questions
 
@@ -74,3 +79,4 @@ None.
 - 2026-09-13 — catalog and export actions (RFC-60–62, RFC-66, plan 07).
 - 2026-09-13 — R3: the catalog lives in packages/contracts (plan 05b).
 - 2026-09-17 — imports.completed (RFC-68, plan 08a).
+- 2026-09-17 — plots.*, users.plots_changed (RFC-67, plan 08b).

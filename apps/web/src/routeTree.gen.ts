@@ -30,6 +30,8 @@ import { Route as AppReferencesIndexRouteImport } from './routes/app/references/
 import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
 import { Route as AppSpeciesIdRouteImport } from './routes/app/species/$id'
+import { Route as AppAdminPlotsIndexRouteImport } from './routes/app/admin/plots/index'
+import { Route as AppAdminPlotsIdRouteImport } from './routes/app/admin/plots/$id'
 import { Route as AppAdminUsersIndexRouteImport } from './routes/app/admin/users/index'
 import { Route as AppAdminUsersIdRouteImport } from './routes/app/admin/users/$id'
 
@@ -138,6 +140,16 @@ const AppSpeciesIdRoute = AppSpeciesIdRouteImport.update({
   path: '/species/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminPlotsIndexRoute = AppAdminPlotsIndexRouteImport.update({
+  id: '/plots/',
+  path: '/plots/',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminPlotsIdRoute = AppAdminPlotsIdRouteImport.update({
+  id: '/plots/$id',
+  path: '/plots/$id',
+  getParentRoute: () => AppAdminRoute,
+} as any)
 const AppAdminUsersIndexRoute = AppAdminUsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
@@ -171,7 +183,9 @@ export interface FileRoutesByFullPath {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/plots/$id': typeof AppAdminPlotsIdRoute
   '/app/admin/users/$id': typeof AppAdminUsersIdRoute
+  '/app/admin/plots/': typeof AppAdminPlotsIndexRoute
   '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesByTo {
@@ -194,7 +208,9 @@ export interface FileRoutesByTo {
   '/app/imports': typeof AppImportsIndexRoute
   '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
+  '/app/admin/plots/$id': typeof AppAdminPlotsIdRoute
   '/app/admin/users/$id': typeof AppAdminUsersIdRoute
+  '/app/admin/plots': typeof AppAdminPlotsIndexRoute
   '/app/admin/users': typeof AppAdminUsersIndexRoute
 }
 export interface FileRoutesById {
@@ -220,7 +236,9 @@ export interface FileRoutesById {
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/admin/plots/$id': typeof AppAdminPlotsIdRoute
   '/app/admin/users/$id': typeof AppAdminUsersIdRoute
+  '/app/admin/plots/': typeof AppAdminPlotsIndexRoute
   '/app/admin/users/': typeof AppAdminUsersIndexRoute
 }
 export interface FileRouteTypes {
@@ -247,7 +265,9 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/plots/$id'
     | '/app/admin/users/$id'
+    | '/app/admin/plots/'
     | '/app/admin/users/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -270,7 +290,9 @@ export interface FileRouteTypes {
     | '/app/imports'
     | '/app/references'
     | '/app/species'
+    | '/app/admin/plots/$id'
     | '/app/admin/users/$id'
+    | '/app/admin/plots'
     | '/app/admin/users'
   id:
     | '__root__'
@@ -295,7 +317,9 @@ export interface FileRouteTypes {
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/admin/plots/$id'
     | '/app/admin/users/$id'
+    | '/app/admin/plots/'
     | '/app/admin/users/'
   fileRoutesById: FileRoutesById
 }
@@ -456,6 +480,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSpeciesIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/admin/plots/': {
+      id: '/app/admin/plots/'
+      path: '/plots'
+      fullPath: '/app/admin/plots/'
+      preLoaderRoute: typeof AppAdminPlotsIndexRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/app/admin/plots/$id': {
+      id: '/app/admin/plots/$id'
+      path: '/plots/$id'
+      fullPath: '/app/admin/plots/$id'
+      preLoaderRoute: typeof AppAdminPlotsIdRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
     '/app/admin/users/': {
       id: '/app/admin/users/'
       path: '/users'
@@ -476,14 +514,18 @@ declare module '@tanstack/react-router' {
 interface AppAdminRouteChildren {
   AppAdminAuditRoute: typeof AppAdminAuditRoute
   AppAdminRolesRoute: typeof AppAdminRolesRoute
+  AppAdminPlotsIdRoute: typeof AppAdminPlotsIdRoute
   AppAdminUsersIdRoute: typeof AppAdminUsersIdRoute
+  AppAdminPlotsIndexRoute: typeof AppAdminPlotsIndexRoute
   AppAdminUsersIndexRoute: typeof AppAdminUsersIndexRoute
 }
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
   AppAdminAuditRoute: AppAdminAuditRoute,
   AppAdminRolesRoute: AppAdminRolesRoute,
+  AppAdminPlotsIdRoute: AppAdminPlotsIdRoute,
   AppAdminUsersIdRoute: AppAdminUsersIdRoute,
+  AppAdminPlotsIndexRoute: AppAdminPlotsIndexRoute,
   AppAdminUsersIndexRoute: AppAdminUsersIndexRoute,
 }
 

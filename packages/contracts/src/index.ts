@@ -9,5 +9,6 @@ export * from './error-codes.ts';
 export * from './health.ts';
 export * from './pagination.ts';
 export * from './permissions.ts';
+export * from './plots.ts';
 export * from './roles.ts';
 export * from './users.ts';

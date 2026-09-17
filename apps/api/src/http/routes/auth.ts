@@ -10,6 +10,7 @@ import {
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { resolvePermissions } from '../../access/permissions.ts';
+import { userScope } from '../../access/visibility.ts';
 import type { AuthContext } from '../../auth/context.ts';
 import { acceptInvitation } from '../../auth/flows/invitation.ts';
 import { auditLoginFailure, login, loginTotp } from '../../auth/flows/login.ts';
@@ -125,7 +126,8 @@ export function authRoutes(ctx: AuthContext) {
     .get('/me', requireSession, async (c) => {
       const user = currentUser(c);
       const permissions = [...(await resolvePermissions(ctx, user.id))].sort();
-      return c.json({ data: { user: toAuthUser(user), permissions } });
+      const scope = await userScope(ctx.db, user.id);
+      return c.json({ data: { user: toAuthUser(user), permissions, scope } });
     })
     .post(
       '/password/forgot',

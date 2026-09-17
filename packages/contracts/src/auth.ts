@@ -1,8 +1,8 @@
 import { z } from 'zod';
+import { plotRefSchema } from './plots.ts';
+import { USER_STATUSES, type UserStatus } from './user-status.ts';
 
-/** @rfc RFC-20 R2 */
-export const USER_STATUSES = ['invited', 'active', 'suspended'] as const;
-export type UserStatus = (typeof USER_STATUSES)[number];
+export { USER_STATUSES, type UserStatus };
 
 /** @rfc RFC-20 R3 */
 export const emailSchema = z.email().max(254);
@@ -81,10 +81,18 @@ export const loginResponseSchema = z.union([
   z.strictObject({ status: z.literal('totp_required') }),
 ]);
 
-/** @rfc RFC-22 R10 */
+/**
+ * @rfc RFC-22 R10
+ * @rfc RFC-33 R8
+ * @rfc RFC-67 R7
+ */
 export const meResponseSchema = z.strictObject({
   user: authUserSchema,
   permissions: z.array(z.string()),
+  scope: z.strictObject({
+    plots: z.array(plotRefSchema),
+    restricted: z.boolean(),
+  }),
 });
 
 /** @rfc RFC-22 R11 */

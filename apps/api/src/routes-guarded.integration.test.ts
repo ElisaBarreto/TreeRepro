@@ -78,6 +78,7 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'POST /api/admin/users',
         'GET /api/admin/users/:id',
         'PATCH /api/admin/users/:id',
+        'PUT /api/admin/users/:id/plots',
         'POST /api/admin/users/:id/suspend',
         'POST /api/admin/users/:id/reactivate',
         'POST /api/admin/users/:id/resend-invite',
@@ -125,6 +126,14 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'GET /api/imports/:id',
         'GET /api/imports/:id/rejects',
         'GET /api/export/accepted.csv',
+        'GET /api/plots',
+        'POST /api/plots',
+        'GET /api/plots/:id',
+        'PATCH /api/plots/:id',
+        'GET /api/plots/:id/species',
+        'GET /api/plots/:id/users',
+        'POST /api/plots/:id/species',
+        'DELETE /api/plots/:id/species/:speciesId',
       ].sort(),
     );
   });
@@ -173,6 +182,7 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       'PATCH /api/me',
       'POST /api/admin/users',
       'PATCH /api/admin/users/:id',
+      'PUT /api/admin/users/:id/plots',
       'POST /api/admin/roles',
       'PATCH /api/admin/roles/:id',
       'POST /api/records',
@@ -192,6 +202,9 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       'POST /api/traits/:id/levels',
       'PATCH /api/traits/:id/levels/:levelId',
       'PUT /api/species/:id/traits/:traitId/accepted',
+      'POST /api/plots',
+      'PATCH /api/plots/:id',
+      'POST /api/plots/:id/species',
     ];
     for (const key of withBody) {
       const [method, path] = key.split(' ') as [string, string];

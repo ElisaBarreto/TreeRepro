@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
 import {
+  addPlotSpecies,
+  assignPlots,
   createAnnotation,
   createFamily,
   createGenus,
   createImportBatch,
+  createPlot,
   createRecord,
   createReference,
   createSpecies,
@@ -418,5 +421,154 @@ describe('RFC-33 R4, RFC-60 R6 species routes by viewer', () => {
       { cookie: r.cookie },
     );
     expect((await forced.json()).data).toEqual([]);
+  });
+});
+
+describe('RFC-33 R6, RFC-67 R8 species scope and plot filter matrix', () => {
+  const t = useTestApp();
+
+  it('enforces scope defaults, restrictions, and plot list on detail', async () => {
+    const k = tag();
+    const plotA = await createPlot(t.db, { code: `SPA-${k}`, name: 'Plot Alpha' });
+    const plotB = await createPlot(t.db, { code: `SPB-${k}`, name: 'Plot Beta' });
+
+    const spInsideA = await createSpecies(t.db, { canonicalName: `Scopeus insideA-${k}` });
+    const spInsideB = await createSpecies(t.db, { canonicalName: `Scopeus insideB-${k}` });
+    const spOutside = await createSpecies(t.db, { canonicalName: `Scopeus outside-${k}` });
+
+    await addPlotSpecies(t.db, plotA.id, [spInsideA.id]);
+    await addPlotSpecies(t.db, plotB.id, [spInsideB.id]);
+
+    const readRole = await createRole(t.db, { permissions: ['dataset.read'] });
+    const managerRole = await createRole(t.db, {
+      permissions: ['dataset.read', 'dataset.read_inactive', 'plots.manage'],
+    });
+
+    // (a) Contributor with plotA, unbound:
+    const { user: unboundUser } = await createUser(t.db, { roles: [readRole.id] });
+    await assignPlots(t.db, unboundUser.id, [plotA.id], false);
+    const unboundCookie = (await loginAs(t, unboundUser)).cookie;
+
+    // Default scope is 'plots' (only sees insideA)
+    const unboundDefault = await call(t.app, 'GET', `/api/species?q=scopeus`, {
+      cookie: unboundCookie,
+    });
+    expect(unboundDefault.status).toBe(200);
+    expect((await unboundDefault.json()).data.map((s: { id: string }) => s.id)).toEqual([
+      spInsideA.id,
+    ]);
+
+    // scope=all lists all species
+    const unboundAll = await call(t.app, 'GET', `/api/species?q=scopeus&scope=all`, {
+      cookie: unboundCookie,
+    });
+    expect(unboundAll.status).toBe(200);
+    const unboundAllIds = (await unboundAll.json()).data.map((s: { id: string }) => s.id);
+    expect(unboundAllIds).toContain(spInsideA.id);
+    expect(unboundAllIds).toContain(spInsideB.id);
+    expect(unboundAllIds).toContain(spOutside.id);
+
+    // plotId=plotB lists insideB
+    const unboundPlotB = await call(t.app, 'GET', `/api/species?plotId=${plotB.id}`, {
+      cookie: unboundCookie,
+    });
+    expect(unboundPlotB.status).toBe(200);
+    expect((await unboundPlotB.json()).data.map((s: { id: string }) => s.id)).toEqual([
+      spInsideB.id,
+    ]);
+
+    // (b) Bound contributor (restricted to plotA):
+    const { user: boundUser } = await createUser(t.db, { roles: [readRole.id] });
+    await assignPlots(t.db, boundUser.id, [plotA.id], true);
+    const boundCookie = (await loginAs(t, boundUser)).cookie;
+
+    // Default sees insideA
+    const boundDefault = await call(t.app, 'GET', `/api/species?q=scopeus`, {
+      cookie: boundCookie,
+    });
+    expect(boundDefault.status).toBe(200);
+    expect((await boundDefault.json()).data.map((s: { id: string }) => s.id)).toEqual([
+      spInsideA.id,
+    ]);
+
+    // scope=all returns 403 PERMISSION_DENIED
+    const boundScopeAll = await call(t.app, 'GET', `/api/species?scope=all`, {
+      cookie: boundCookie,
+    });
+    expect(boundScopeAll.status).toBe(403);
+    expect((await boundScopeAll.json()).error.code).toBe('PERMISSION_DENIED');
+
+    // plotId=plotB (outside assigned plots) returns 403 PERMISSION_DENIED
+    const boundOtherPlot = await call(t.app, 'GET', `/api/species?plotId=${plotB.id}`, {
+      cookie: boundCookie,
+    });
+    expect(boundOtherPlot.status).toBe(403);
+    expect((await boundOtherPlot.json()).error.code).toBe('PERMISSION_DENIED');
+
+    // Detail of outside species returns 404 SPECIES_NOT_FOUND
+    const boundOutsideDetail = await call(t.app, 'GET', `/api/species/${spOutside.id}`, {
+      cookie: boundCookie,
+    });
+    expect(boundOutsideDetail.status).toBe(404);
+    expect((await boundOutsideDetail.json()).error.code).toBe('SPECIES_NOT_FOUND');
+
+    // (c) Manager without plots:
+    const { user: managerUser } = await createUser(t.db, { roles: [managerRole.id] });
+    const managerCookie = (await loginAs(t, managerUser)).cookie;
+
+    // Default is 'all'
+    const managerDefault = await call(t.app, 'GET', `/api/species?q=scopeus`, {
+      cookie: managerCookie,
+    });
+    expect(managerDefault.status).toBe(200);
+    const managerAllIds = (await managerDefault.json()).data.map((s: { id: string }) => s.id);
+    expect(managerAllIds).toContain(spInsideA.id);
+    expect(managerAllIds).toContain(spInsideB.id);
+    expect(managerAllIds).toContain(spOutside.id);
+
+    // plotId=<any> works
+    const managerPlotA = await call(t.app, 'GET', `/api/species?plotId=${plotA.id}`, {
+      cookie: managerCookie,
+    });
+    expect(managerPlotA.status).toBe(200);
+    expect((await managerPlotA.json()).data.map((s: { id: string }) => s.id)).toEqual([
+      spInsideA.id,
+    ]);
+
+    // (d) Restricted viewer who also holds dataset.read_inactive:
+    const { user: restrictedManager } = await createUser(t.db, { roles: [managerRole.id] });
+    await assignPlots(t.db, restrictedManager.id, [plotA.id], true);
+    const restrictedManagerCookie = (await loginAs(t, restrictedManager)).cookie;
+
+    // Plain request with no params answers 200 with defaultScope 'plots' (not 403)
+    const restrictedManagerDefault = await call(t.app, 'GET', `/api/species?q=scopeus`, {
+      cookie: restrictedManagerCookie,
+    });
+    expect(restrictedManagerDefault.status).toBe(200);
+    expect((await restrictedManagerDefault.json()).data.map((s: { id: string }) => s.id)).toEqual([
+      spInsideA.id,
+    ]);
+
+    // (d) plots on detail:
+    // Add spInsideA to plotB as well
+    await addPlotSpecies(t.db, plotB.id, [spInsideA.id]);
+
+    // Unbound contributor assigned to plotA sees only plotA on spInsideA detail
+    const contributorDetail = await call(t.app, 'GET', `/api/species/${spInsideA.id}`, {
+      cookie: unboundCookie,
+    });
+    expect(contributorDetail.status).toBe(200);
+    const contributorPlots = (await contributorDetail.json()).data.plots;
+    expect(contributorPlots.map((p: { id: string }) => p.id)).toEqual([plotA.id]);
+
+    // Manager with plots.manage sees every plot (plotA and plotB)
+    const managerDetail = await call(t.app, 'GET', `/api/species/${spInsideA.id}`, {
+      cookie: managerCookie,
+    });
+    expect(managerDetail.status).toBe(200);
+    const managerPlots = (await managerDetail.json()).data.plots;
+    expect(managerPlots.map((p: { id: string }) => p.id).sort()).toEqual(
+      [plotA.id, plotB.id].sort(),
+    );
   });
 });

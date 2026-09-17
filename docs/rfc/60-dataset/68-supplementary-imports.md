@@ -20,6 +20,9 @@ Beyond the compiled dataset (RFC-64) the owner loads smaller files: which specie
 - **R6** The command prints: file and SHA-256, batch id, elapsed time, the four counts, and rejections by reason (the first 30 with their row numbers).
 - **R7** `GET /api/imports?kind=` filters by kind; the imports page shows the kind and the same reject table for every kind (RFC-64 R11 amended).
 - **R8** Kind `species_status`. Header `wcvp_species,active`. `active` is `true` or `false` (case-insensitive; anything else → `invalid_value`). The species is matched by `canonical_name` after normalisation; unknown → `unknown_species`. Sets `species.active`; a row whose value already matches is duplicate. This kind changes existing rows because its purpose is the flag. When a species appears more than once, the last row wins and the earlier rows count as duplicate.
+- **R9** Kind `plots`. Header `plot_id,name,description,latitude,longitude,country,biome`. Inserts missing plots (matched by `lower(code)`); an existing code is duplicate (metadata is not updated; use the UI). Empty numeric cells are null; a non-numeric or out-of-range coordinate → `invalid_value` (RFC-67 R9).
+- **R10** Kind `plot_species`. Header `plot_id,wcvp_species`. Unknown plot → `unknown_plot`; unknown species → `unknown_species`; existing pair → duplicate (RFC-67 R10).
+- **R11** Kind `user_plots`. Header `user_email,plot_id`. The user is matched by e-mail hash and must exist in any status (an invited user may be assigned before accepting); e-mails are matched through the blind index, computed by the command inside the import transaction; unknown → `unknown_user`; unknown plot → `unknown_plot`; existing pair → duplicate. To prevent persisting plaintext PII (RFC-40 R1), rejected rows record `raw_row` with a masked e-mail (`a***@domain.com`) in `user_email`. The restriction flag is not imported: the admin sets it on the user page (default `false`) (RFC-67 R11).
 
 ## Open questions
 
@@ -31,3 +34,4 @@ None.
 - 2026-09-17 — R8: the last-row-wins rule for a repeated species, and that earlier rows count as duplicate (plan 08a review).
 - 2026-09-17 — accepted.
 - 2026-09-17 — R4: repeated keys (CodeRabbit).
+- 2026-09-17 — R9–R11: kinds plots, plot_species, user_plots (RFC-67, plan 08b).

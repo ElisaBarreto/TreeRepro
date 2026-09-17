@@ -43,6 +43,7 @@ export const datasetKeys = {
 
 /**
  * @rfc RFC-60 R6
+ * @rfc RFC-33 R6
  * @rfc RFC-33 R7
  */
 export function searchSpecies(params: {
@@ -51,6 +52,8 @@ export function searchSpecies(params: {
   genusId?: string;
   unresolved?: boolean;
   status?: SpeciesStatus;
+  scope?: 'plots' | 'all';
+  plotId?: string;
   cursor?: string;
   limit?: number;
 }) {

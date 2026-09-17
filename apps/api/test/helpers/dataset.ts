@@ -12,9 +12,11 @@ import type { DbExecutor } from '../../src/db/client.ts';
 import { acceptedValues, recordAnnotations } from '../../src/db/schema/curation.ts';
 import { traitCategories, traitLevels, traits } from '../../src/db/schema/dictionary.ts';
 import { importBatches } from '../../src/db/schema/imports.ts';
+import { plotSpecies, plots, userPlots } from '../../src/db/schema/plots.ts';
 import { traitRecords } from '../../src/db/schema/records.ts';
 import { bibliographicReferences } from '../../src/db/schema/references.ts';
 import { families, genera, species, speciesNames } from '../../src/db/schema/taxa.ts';
+import { users } from '../../src/db/schema/users.ts';
 
 const suffix = () => randomBytes(4).toString('hex');
 
@@ -324,4 +326,52 @@ export async function createVisibilityFixture(db: DbExecutor, actorId: string) {
     onInactiveTrait,
     visible,
   };
+}
+
+export async function createPlot(
+  db: DbExecutor,
+  options: { code?: string; name?: string } = {},
+): Promise<{ id: string; code: string; name: string }> {
+  const code = options.code ?? `Plot-${suffix()}`;
+  const name = options.name ?? `Field Plot ${code}`;
+  const [row] = await db
+    .insert(plots)
+    .values({ code, name })
+    .returning({ id: plots.id, code: plots.code, name: plots.name });
+  if (!row) throw new Error('createPlot: no row');
+  return row;
+}
+
+export async function addPlotSpecies(
+  db: DbExecutor,
+  plotId: string,
+  speciesIds: string[],
+): Promise<void> {
+  if (speciesIds.length === 0) return;
+  await db.insert(plotSpecies).values(
+    speciesIds.map((speciesId) => ({
+      plotId,
+      speciesId,
+    })),
+  );
+}
+
+export async function assignPlots(
+  db: DbExecutor,
+  userId: string,
+  plotIds: string[],
+  restricted = false,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(userPlots).where(eq(userPlots.userId, userId));
+    if (plotIds.length > 0) {
+      await tx.insert(userPlots).values(
+        plotIds.map((plotId) => ({
+          userId,
+          plotId,
+        })),
+      );
+    }
+    await tx.update(users).set({ restrictToAssignedPlots: restricted }).where(eq(users.id, userId));
+  });
 }

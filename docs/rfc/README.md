@@ -42,4 +42,5 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-64 | Bulk import | accepted |
 | RFC-65 | Curation | accepted |
 | RFC-66 | Dataset export | accepted |
+| RFC-67 | Field plots | accepted |
 | RFC-68 | Supplementary imports | accepted |

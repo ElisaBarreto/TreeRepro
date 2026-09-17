@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { emailSchema, USER_STATUSES } from './auth.ts';
 import { cursorQuerySchema } from './pagination.ts';
+import { plotRefSchema } from './plots.ts';
 
 /** @rfc RFC-50 R1 */
 export const nameSchema = z.string().trim().min(1).max(120);
@@ -8,7 +9,10 @@ export const nameSchema = z.string().trim().min(1).max(120);
 /** @rfc RFC-50 R1 */
 export const userRoleRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 
-/** @rfc RFC-50 R1 */
+/**
+ * @rfc RFC-50 R1
+ * @rfc RFC-67 R6
+ */
 export const userSchema = z.strictObject({
   id: z.uuid(),
   email: z.string(),
@@ -16,6 +20,8 @@ export const userSchema = z.strictObject({
   status: z.enum(USER_STATUSES),
   totpEnabled: z.boolean(),
   roles: z.array(userRoleRefSchema),
+  plots: z.array(plotRefSchema),
+  restrictToAssignedPlots: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   suspendedAt: z.iso.datetime().nullable(),
@@ -42,6 +48,20 @@ export const updateUserBodySchema = z
     message: 'At least one of name and roles is required',
   });
 
+/**
+ * @rfc RFC-50 R13
+ * @rfc RFC-67 R6
+ */
+export const setUserPlotsBodySchema = z
+  .strictObject({
+    plotIds: z.array(z.uuid()).max(100),
+    restrictToAssignedPlots: z.boolean(),
+  })
+  .refine((b) => !b.restrictToAssignedPlots || b.plotIds.length > 0, {
+    path: ['plotIds'],
+    message: 'A restricted user needs at least one plot',
+  });
+
 /** @rfc RFC-50 R11 */
 export const updateMeBodySchema = z.strictObject({ name: nameSchema });
 
@@ -50,4 +70,5 @@ export type UserRoleRef = z.infer<typeof userRoleRefSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type CreateUserBody = z.infer<typeof createUserBodySchema>;
 export type UpdateUserBody = z.infer<typeof updateUserBodySchema>;
+export type SetUserPlotsBody = z.infer<typeof setUserPlotsBodySchema>;
 export type UpdateMeBody = z.infer<typeof updateMeBodySchema>;

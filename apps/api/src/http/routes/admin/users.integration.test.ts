@@ -2,6 +2,7 @@ import { userSchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
+import { createPlot } from '../../../../test/helpers/dataset.ts';
 import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser, randomEmail } from '../../../../test/helpers/users.ts';
@@ -228,5 +229,42 @@ describe('RFC-50 R9 session administration over HTTP', () => {
     expect(
       (await call(t.app, 'GET', `/api/admin/users/${UNKNOWN}/sessions`, { cookie })).status,
     ).toBe(404);
+  });
+});
+
+describe('RFC-50 R13, RFC-67 R6 PUT /api/admin/users/:id/plots', () => {
+  const t = useTestApp();
+
+  it('updates plot assignments and restriction flag, enforces users.update permission', async () => {
+    const { cookie } = await adminCookie(t);
+    const { user } = await createUser(t.db);
+    const p1 = await createPlot(t.db);
+
+    const res = await call(t.app, 'PUT', `/api/admin/users/${user.id}/plots`, {
+      cookie,
+      body: { plotIds: [p1.id], restrictToAssignedPlots: true },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.plots.map((p: { id: string }) => p.id)).toEqual([p1.id]);
+    expect(body.data.restrictToAssignedPlots).toBe(true);
+
+    // 400 when restricted with empty plotIds
+    const bad = await call(t.app, 'PUT', `/api/admin/users/${user.id}/plots`, {
+      cookie,
+      body: { plotIds: [], restrictToAssignedPlots: true },
+    });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error.code).toBe('VALIDATION_FAILED');
+
+    // 403 without users.update
+    const reader = await createUser(t.db, {
+      roles: [(await createRole(t.db, { permissions: ['users.read'] })).id],
+    });
+    const forbidden = await call(t.app, 'PUT', `/api/admin/users/${user.id}/plots`, {
+      cookie: (await loginAs(t, reader.user)).cookie,
+      body: { plotIds: [p1.id], restrictToAssignedPlots: false },
+    });
+    expect(forbidden.status).toBe(403);
   });
 });

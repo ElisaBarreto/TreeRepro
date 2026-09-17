@@ -6,6 +6,7 @@ import type {
   PermissionEntry,
   Role,
   SessionSummary,
+  SetUserPlotsBody,
   UpdateRoleBody,
   UpdateUserBody,
   User,
@@ -128,4 +129,13 @@ export function queryAudit(params: {
   limit?: number;
 }): Promise<Page<AuditLogEntry>> {
   return apiFetch<Page<AuditLogEntry>>(withQuery('/admin/audit', params));
+}
+
+/** @rfc RFC-67 R6 */
+export async function setUserPlots(id: string, body: SetUserPlotsBody): Promise<User> {
+  const { data } = await apiFetch<DataEnvelope<User>>(`/admin/users/${id}/plots`, {
+    method: 'PUT',
+    json: body,
+  });
+  return data;
 }

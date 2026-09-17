@@ -1,4 +1,4 @@
-import type { PermissionKey } from '@treerepro/contracts';
+import type { PermissionKey, PlotRef } from '@treerepro/contracts';
 import type { RequestIdVariables } from 'hono/request-id';
 import type { Visibility } from '../access/visibility.ts';
 import type { SessionRecord } from '../auth/sessions.ts';
@@ -12,5 +12,6 @@ export type AppEnv = {
     user?: UserRow;
     permissions?: ReadonlySet<PermissionKey>;
     visibility?: Visibility;
+    userScope?: { plots: PlotRef[]; restricted: boolean };
   };
 };

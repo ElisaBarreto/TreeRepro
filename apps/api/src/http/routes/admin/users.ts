@@ -1,6 +1,7 @@
 import {
   createUserBodySchema,
   listUsersQuerySchema,
+  setUserPlotsBodySchema,
   updateUserBodySchema,
   userIdParamSchema,
 } from '@treerepro/contracts';
@@ -17,6 +18,7 @@ import {
   listUsers,
   reactivateUser,
   resendInvite,
+  setUserPlots,
   suspendUser,
   updateUser,
 } from '../../../admin/users.ts';
@@ -103,6 +105,23 @@ export function adminUserRoutes(ctx: AuthContext) {
           id: c.req.valid('param').id,
           name,
           roleIds: roles,
+        });
+        return c.json({ data });
+      },
+    )
+    .put(
+      '/:id/plots',
+      requirePermission(ctx, 'users.update'),
+      validate('param', userIdParamSchema),
+      validate('json', setUserPlotsBodySchema),
+      async (c) => {
+        const { id } = c.req.valid('param');
+        const { plotIds, restrictToAssignedPlots } = c.req.valid('json');
+        const data = await setUserPlots(ctx, {
+          ...actor(c),
+          userId: id,
+          plotIds,
+          restrictToAssignedPlots,
         });
         return c.json({ data });
       },

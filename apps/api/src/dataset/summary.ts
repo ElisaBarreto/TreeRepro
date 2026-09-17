@@ -73,7 +73,10 @@ export async function speciesTraitSummary(
       from trait_records r
       join traits t on t.id = r.trait_id
       join trait_categories c on c.key = t.category_key
-      where r.species_id = ${speciesId} and ${traitVisible(visibility, sql`t.active`)}
+      join species s on s.id = r.species_id
+      where r.species_id = ${speciesId}
+        and ${traitVisible(visibility, sql`t.active`)}
+        and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
     db.execute(sql`
@@ -81,15 +84,21 @@ export async function speciesTraitSummary(
       from trait_records r
       join trait_levels l on l.id = r.level_id
       join traits t on t.id = r.trait_id
-      where r.species_id = ${speciesId} and ${traitVisible(visibility, sql`t.active`)}
+      join species s on s.id = r.species_id
+      where r.species_id = ${speciesId}
+        and ${traitVisible(visibility, sql`t.active`)}
+        and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       group by r.trait_id, l.id, l.key
       order by count desc, l.key`) as unknown as Promise<LevelAggregate[]>,
     db.execute(sql`
       select distinct on (a.trait_id) a.trait_id, a.decision, a.record_id, r.value_text, a.created_at
       from accepted_values a
       join traits t on t.id = a.trait_id
+      join species s on s.id = a.species_id
       left join trait_records r on r.id = a.record_id
-      where a.species_id = ${speciesId} and ${traitVisible(visibility, sql`t.active`)}
+      where a.species_id = ${speciesId}
+        and ${traitVisible(visibility, sql`t.active`)}
+        and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       order by a.trait_id, a.id desc`) as unknown as Promise<AcceptedCurrent[]>,
   ]);
   const levelsByTrait = new Map<string, NonNullable<TraitSummary['levels']>>();
