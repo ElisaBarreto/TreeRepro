@@ -44,7 +44,7 @@ PolyForm Noncommercial 1.0.0 (`LICENSE.md`): the project is public so the partic
 
 ## Security automation
 
-Every PR must pass `Verify`, `Images` (build + Trivy), `E2E` (Playwright against the production images), `CodeQL`, `Dependency review`, `Gitleaks`, `Zizmor` and `Trivy config`; the `main` ruleset (`infra/github/ruleset-main.json`, applied by the owner with `scripts/github-admin.sh`) enforces it — `E2E` joins the enforced list when the owner applies the current file (#64). All of the required checks except `Dependency review` (PR-only) re-run weekly on `main` (same `ci.yml` schedule trigger), Scorecard grades the repo weekly, and Dependabot proposes updates weekly after a 7-day release cooldown (`.github/dependabot.yml`); pnpm applies the same cooldown locally (`minimumReleaseAge` in `pnpm-workspace.yaml`). Actions are pinned by commit SHA. Report vulnerabilities per `SECURITY.md`. Details and admin-only settings: `docs/gotchas/github-security.md`.
+Every PR must pass `Verify`, `Images` (build + Trivy), `E2E` (Playwright against the production images), `CodeQL`, `Dependency review`, `Gitleaks`, `Zizmor` and `Trivy config`; the `main` ruleset (`infra/github/ruleset-main.json`, applied by the owner with `scripts/github-admin.sh`) enforces it. All of the required checks except `Dependency review` (PR-only) re-run weekly on `main` (same `ci.yml` schedule trigger), Scorecard grades the repo weekly, and Dependabot proposes updates weekly after a 7-day release cooldown (`.github/dependabot.yml`); pnpm applies the same cooldown locally (`minimumReleaseAge` in `pnpm-workspace.yaml`). Actions are pinned by commit SHA. Report vulnerabilities per `SECURITY.md`. Details and admin-only settings: `docs/gotchas/github-security.md`.
 
 ## Non-negotiable rules
 
