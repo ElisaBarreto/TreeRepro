@@ -1,4 +1,4 @@
-import type { User, UserRoleRef, UserStatus } from '@treerepro/contracts';
+import type { PlotRef, User, UserRoleRef, UserStatus } from '@treerepro/contracts';
 import { and, asc, desc, eq, inArray, lt, type SQL, sql } from 'drizzle-orm';
 import { assertNotLastAdmin, setUserRoles } from '../access/roles.ts';
 import { recordAudit } from '../audit/audit.ts';
@@ -6,6 +6,7 @@ import type { AuthContext, RequestMeta } from '../auth/context.ts';
 import { inviteUser } from '../auth/flows/invitation.ts';
 import { findUserById, updateName } from '../auth/users.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { plots, userPlots } from '../db/schema/plots.ts';
 import { roles } from '../db/schema/roles.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { type UserRow, users } from '../db/schema/users.ts';
@@ -21,7 +22,7 @@ const notFound = () => new AppError('USER_NOT_FOUND', 'User not found');
 const invalidStatus = (message: string) => new AppError('USER_INVALID_STATUS', message);
 
 /** @rfc RFC-50 R1 */
-export function toUser(row: UserRow, roleRefs: UserRoleRef[]): User {
+export function toUser(row: UserRow, roleRefs: UserRoleRef[], userPlotRefs: PlotRef[] = []): User {
   return {
     id: row.id,
     email: row.email,
@@ -29,6 +30,8 @@ export function toUser(row: UserRow, roleRefs: UserRoleRef[]): User {
     status: row.status,
     totpEnabled: row.totpEnabledAt !== null,
     roles: roleRefs,
+    plots: userPlotRefs,
+    restrictToAssignedPlots: row.restrictToAssignedPlots,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
@@ -51,8 +54,33 @@ async function rolesOf(db: DbExecutor, userIds: string[]): Promise<Map<string, U
   return byUser;
 }
 
+/** Plots of each user, by code then id. @rfc RFC-50 R1, RFC-67 R6 */
+async function plotsOf(db: DbExecutor, userIds: string[]): Promise<Map<string, PlotRef[]>> {
+  const byUser = new Map<string, PlotRef[]>();
+  if (userIds.length === 0) return byUser;
+  const rows = await db
+    .select({
+      userId: userPlots.userId,
+      id: plots.id,
+      code: plots.code,
+      name: plots.name,
+    })
+    .from(userPlots)
+    .innerJoin(plots, eq(plots.id, userPlots.plotId))
+    .where(inArray(userPlots.userId, userIds))
+    .orderBy(asc(plots.code), asc(plots.id));
+  for (const r of rows) {
+    byUser.set(r.userId, [
+      ...(byUser.get(r.userId) ?? []),
+      { id: r.id, code: r.code, name: r.name },
+    ]);
+  }
+  return byUser;
+}
+
 async function withRoles(db: DbExecutor, row: UserRow): Promise<User> {
-  return toUser(row, (await rolesOf(db, [row.id])).get(row.id) ?? []);
+  const [rolesMap, plotsMap] = await Promise.all([rolesOf(db, [row.id]), plotsOf(db, [row.id])]);
+  return toUser(row, rolesMap.get(row.id) ?? [], plotsMap.get(row.id) ?? []);
 }
 
 /** Loads the row locked for the rest of the transaction. */
@@ -85,11 +113,95 @@ export async function listUsers(
   const page = rows.slice(0, input.limit);
   const last = page[page.length - 1];
   const nextCursor = rows.length > input.limit && last ? encodeCursor(last.id) : null;
-  const byUser = await rolesOf(
-    db,
-    page.map((r) => r.id),
-  );
-  return { data: page.map((r) => toUser(r, byUser.get(r.id) ?? [])), nextCursor };
+  const userIds = page.map((r) => r.id);
+  const [byUser, byPlots] = await Promise.all([rolesOf(db, userIds), plotsOf(db, userIds)]);
+  return {
+    data: page.map((r) => toUser(r, byUser.get(r.id) ?? [], byPlots.get(r.id) ?? [])),
+    nextCursor,
+  };
+}
+
+/**
+ * Replaces a user's assigned plots and updates restrictToAssignedPlots.
+ * @rfc RFC-50 R13
+ * @rfc RFC-67 R6
+ */
+export async function setUserPlots(
+  ctx: AuthContext,
+  input: AdminActor & {
+    userId: string;
+    plotIds: string[];
+    restrictToAssignedPlots: boolean;
+  },
+): Promise<User> {
+  if (input.restrictToAssignedPlots && input.plotIds.length === 0) {
+    throw new AppError('VALIDATION_FAILED', 'A restricted user needs at least one plot');
+  }
+
+  return ctx.db.transaction(async (tx) => {
+    const user = await lockUser(tx, input.userId);
+
+    // Verify all target plots exist
+    if (input.plotIds.length > 0) {
+      const existingPlots = await tx
+        .select({ id: plots.id })
+        .from(plots)
+        .where(inArray(plots.id, input.plotIds));
+      if (existingPlots.length !== new Set(input.plotIds).size) {
+        throw new AppError('PLOT_NOT_FOUND', 'One or more plots not found');
+      }
+    }
+
+    // Get current plot IDs
+    const currentAssignments = await tx
+      .select({ plotId: userPlots.plotId })
+      .from(userPlots)
+      .where(eq(userPlots.userId, input.userId));
+    const currentPlotIds = new Set(currentAssignments.map((a) => a.plotId));
+    const newPlotIds = new Set(input.plotIds);
+
+    const added = input.plotIds.filter((id) => !currentPlotIds.has(id));
+    const removed = [...currentPlotIds].filter((id) => !newPlotIds.has(id));
+
+    // Delete removed
+    if (removed.length > 0) {
+      await tx
+        .delete(userPlots)
+        .where(and(eq(userPlots.userId, input.userId), inArray(userPlots.plotId, removed)));
+    }
+
+    // Insert added
+    if (added.length > 0) {
+      await tx.insert(userPlots).values(added.map((plotId) => ({ userId: input.userId, plotId })));
+    }
+
+    // Update user restriction flag
+    const [updatedUser] = await tx
+      .update(users)
+      .set({
+        restrictToAssignedPlots: input.restrictToAssignedPlots,
+        updatedAt: new Date(ctx.now()),
+      })
+      .where(eq(users.id, input.userId))
+      .returning();
+
+    // Audit users.plots_changed with metadata: { added, removed, restricted }
+    await recordAudit(tx, {
+      actorUserId: input.actorUserId,
+      action: 'users.plots_changed',
+      targetType: 'users',
+      targetId: input.userId,
+      ip: input.ip,
+      userAgent: input.userAgent,
+      metadata: {
+        added,
+        removed,
+        restricted: input.restrictToAssignedPlots,
+      },
+    });
+
+    return withRoles(tx, updatedUser ?? user);
+  });
 }
 
 /** @rfc RFC-50 R5 */

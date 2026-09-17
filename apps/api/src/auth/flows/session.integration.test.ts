@@ -2,6 +2,7 @@ import { PERMISSION_KEYS } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { call, setCookieLine, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
+import { assignPlots, createPlot } from '../../../test/helpers/dataset.ts';
 import { adminRoleId, createRole } from '../../../test/helpers/roles.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
@@ -24,6 +25,7 @@ describe('RFC-22 R9, R10 logout, logout-all, me', () => {
           createdAt: user.createdAt.toISOString(),
         },
         permissions: [],
+        scope: { plots: [], restricted: false },
       },
     });
     const anon = await call(t.app, 'GET', '/api/auth/me');
@@ -41,6 +43,25 @@ describe('RFC-22 R9, R10 logout, logout-all, me', () => {
     const adminCookie = (await loginAs(t, admin.user)).cookie;
     const adminRes = await call(t.app, 'GET', '/api/auth/me', { cookie: adminCookie });
     expect((await adminRes.json()).data.permissions).toEqual([...PERMISSION_KEYS].sort());
+  });
+
+  it('me returns scope with assigned plots and restriction flag (RFC-22 R10)', async () => {
+    const { user } = await createUser(t.db);
+    const p1 = await createPlot(t.db, { code: 'PLOT-A', name: 'Alpha' });
+    const p2 = await createPlot(t.db, { code: 'PLOT-B', name: 'Beta' });
+    await assignPlots(t.db, user.id, [p1.id, p2.id], true);
+
+    const { cookie } = await loginAs(t, user);
+    const res = await call(t.app, 'GET', '/api/auth/me', { cookie });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.scope).toEqual({
+      plots: [
+        { id: p1.id, code: 'PLOT-A', name: 'Alpha' },
+        { id: p2.id, code: 'PLOT-B', name: 'Beta' },
+      ],
+      restricted: true,
+    });
   });
 
   it('logout deletes the current session only and clears the cookie', async () => {

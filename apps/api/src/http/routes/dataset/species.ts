@@ -8,7 +8,7 @@ import {
   updateSpeciesBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
-import { visibilityOf } from '../../../access/visibility.ts';
+import { userScope, visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
 import {
@@ -21,7 +21,7 @@ import { speciesTraitSummary } from '../../../dataset/summary.ts';
 import { getSpecies, searchSpecies } from '../../../dataset/taxa.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
-import { requirePermission } from '../../middleware/require-permission.ts';
+import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 
@@ -39,12 +39,19 @@ export function speciesRoutes(ctx: AuthContext) {
       async (c) => {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
+        const user = c.get('user');
+        const scope = user ? await userScope(ctx.db, user.id) : { plots: [], restricted: false };
+        const viewerPlotIds = scope.plots.map((p) => p.id);
+
         const { data, nextCursor } = await searchSpecies(ctx.db, visibility, {
           q: q.q,
           familyId: q.familyId,
           genusId: q.genusId,
           unresolved: q.unresolved === 'true',
           status: q.status,
+          scope: q.scope,
+          plotId: q.plotId,
+          viewerPlotIds,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -72,7 +79,15 @@ export function speciesRoutes(ctx: AuthContext) {
       validate('param', idParamSchema),
       async (c) => {
         const visibility = await visibilityOf(ctx, c);
-        const found = await getSpecies(ctx.db, visibility, c.req.valid('param').id);
+        const user = c.get('user');
+        const scope = user ? await userScope(ctx.db, user.id) : { plots: [], restricted: false };
+        const viewerPlotIds = scope.plots.map((p) => p.id);
+        const allPlots = currentPermissions(c).has('plots.manage');
+
+        const found = await getSpecies(ctx.db, visibility, c.req.valid('param').id, {
+          viewerPlotIds,
+          allPlots,
+        });
         if (!found) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
         return c.json({ data: found });
       },

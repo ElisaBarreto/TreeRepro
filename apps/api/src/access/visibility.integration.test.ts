@@ -14,7 +14,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
-import { speciesVisible, traitVisible, visibilityFor } from './visibility.ts';
+import { speciesVisible, traitVisible, type Visibility, visibilityFor } from './visibility.ts';
 
 describe('RFC-33 R1 visibilityFor', () => {
   it('reads dataset.read_inactive and plot settings', () => {
@@ -117,7 +117,7 @@ describe('RFC-33 R2 predicates', () => {
     const unbQuery = await call(
       t.app,
       'GET',
-      `/api/species?q=${encodeURIComponent(outside.canonicalName)}`,
+      `/api/species?q=${encodeURIComponent(outside.canonicalName)}&scope=all`,
       { cookie },
     );
     expect(unbQuery.status).toBe(200);

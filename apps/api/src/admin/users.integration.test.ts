@@ -2,6 +2,7 @@ import { userSchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
+import { createPlot } from '../../test/helpers/dataset.ts';
 import { adminRoleId, createRole } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
@@ -12,6 +13,7 @@ import {
   listUsers,
   reactivateUser,
   resendInvite,
+  setUserPlots,
   suspendUser,
   updateUser,
 } from './users.ts';
@@ -212,5 +214,86 @@ describe('RFC-50 R8 resendInvite', () => {
     expect(await code(resendInvite(ctxOf(t), { ...meta(admin.id), id: active.id }))).toBe(
       'USER_INVALID_STATUS',
     );
+  });
+});
+
+describe('RFC-50 R13, RFC-67 R6 setUserPlots', () => {
+  const t = useTestApp();
+  const rand = () => Math.random().toString(16).slice(2);
+
+  it('replaces plot assignments, sets restriction flag, and audits users.plots_changed', async () => {
+    const { user: admin } = await createUser(t.db);
+    const { user } = await createUser(t.db);
+    const p1 = await createPlot(t.db, { code: `UPL-${rand()}`, name: 'Plot 1' });
+    const p2 = await createPlot(t.db, { code: `UPL-${rand()}`, name: 'Plot 2' });
+    const p3 = await createPlot(t.db, { code: `UPL-${rand()}`, name: 'Plot 3' });
+
+    // Initial assignment: p1 and p2, restricted: true
+    const assigned = await setUserPlots(ctxOf(t), {
+      ...meta(admin.id),
+      userId: user.id,
+      plotIds: [p1.id, p2.id],
+      restrictToAssignedPlots: true,
+    });
+    expect(assigned.plots.map((p) => p.id).sort()).toEqual([p1.id, p2.id].sort());
+    expect(assigned.restrictToAssignedPlots).toBe(true);
+
+    const audit1 = await lastAudit(t.db, 'users.plots_changed', { targetId: user.id });
+    expect(audit1).toMatchObject({
+      actorUserId: admin.id,
+      targetId: user.id,
+      metadata: {
+        added: expect.arrayContaining([p1.id, p2.id]),
+        removed: [],
+        restricted: true,
+      },
+    });
+
+    // Replace: remove p1, keep p2, add p3, restricted: false
+    const replaced = await setUserPlots(ctxOf(t), {
+      ...meta(admin.id),
+      userId: user.id,
+      plotIds: [p2.id, p3.id],
+      restrictToAssignedPlots: false,
+    });
+    expect(replaced.plots.map((p) => p.id).sort()).toEqual([p2.id, p3.id].sort());
+    expect(replaced.restrictToAssignedPlots).toBe(false);
+
+    const audit2 = await lastAudit(t.db, 'users.plots_changed', { targetId: user.id });
+    expect(audit2).toMatchObject({
+      actorUserId: admin.id,
+      targetId: user.id,
+      metadata: {
+        added: [p3.id],
+        removed: [p1.id],
+        restricted: false,
+      },
+    });
+
+    // Refuses restricted with empty plotIds
+    await expect(
+      setUserPlots(ctxOf(t), {
+        ...meta(admin.id),
+        userId: user.id,
+        plotIds: [],
+        restrictToAssignedPlots: true,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      status: 400,
+    });
+
+    // Unknown plot throws PLOT_NOT_FOUND
+    await expect(
+      setUserPlots(ctxOf(t), {
+        ...meta(admin.id),
+        userId: user.id,
+        plotIds: ['00000000-0000-0000-0000-000000000000'],
+        restrictToAssignedPlots: false,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PLOT_NOT_FOUND',
+      status: 404,
+    });
   });
 });
