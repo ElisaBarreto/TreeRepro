@@ -13,11 +13,64 @@ import {
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
 
-export type SourceInput =
-  | { personalObservation: true }
-  | { references: ({ id: string } | { doi: string })[] };
+export type SourceRefInput = { id: string } | { doi: string };
 
-/** @rfc RFC-80 R5 */
+export type SourceInput = { personalObservation: true } | { references: SourceRefInput[] };
+
+/**
+ * One source to a reference id. `path` names the field in the request, so the
+ * detail paths a client gets back are the ones it sent (`reference.doi` on an
+ * annotation, `sources.references.2.doi` on a record).
+ * @rfc RFC-80 R5
+ */
+export async function resolveSourceRef(
+  ctx: { db: DbExecutor; doi: DoiClient },
+  actorId: string,
+  source: SourceRefInput,
+  path: string,
+): Promise<string> {
+  if ('id' in source) {
+    const kind = await findReferenceKind(ctx.db, source.id);
+    if (kind === null) {
+      throw new AppError('REFERENCE_NOT_FOUND', 'Reference not found', [
+        { path: `${path}.id`, message: 'Reference not found' },
+      ]);
+    }
+    // A personal observation belongs to its observer: it is only ever reached
+    // through `{ personalObservation: true }`, never by naming someone else's
+    // id (RFC-61 R7).
+    if (kind === 'personal_observation') {
+      throw new AppError(
+        'REFERENCE_IS_PERSONAL',
+        'A personal observation cannot be named as a reference',
+        [{ path: `${path}.id`, message: 'A personal observation cannot be named as a reference' }],
+      );
+    }
+    return source.id;
+  }
+
+  const doi = normaliseDoi(source.doi);
+  if (!doi) throw validation(`${path}.doi`, 'Malformed DOI');
+  const known = await findReferenceByDoi(ctx.db, doi);
+  if (known) return known.id;
+
+  const status = await ctx.doi.exists(doi);
+  if (status === 'failed') {
+    throw new AppError('DOI_LOOKUP_FAILED', 'The DOI registry could not be reached');
+  }
+  if (status === 'not_found') throw validation(`${path}.doi`, 'DOI does not resolve');
+
+  const metadata = await ctx.doi.metadata(doi);
+  const created = await createReferenceFromDoi(ctx.db, { doi, metadata, actorId });
+  return created.id;
+}
+
+/**
+ * The sources of a claim to reference ids, in input order. Distinct after
+ * resolution: an id and the DOI of that same reference are one source, and
+ * the second occurrence is a validation error naming it.
+ * @rfc RFC-80 R5
+ */
 export async function resolveSources(
   ctx: { db: DbExecutor; doi: DoiClient },
   actorId: string,
@@ -27,59 +80,16 @@ export async function resolveSources(
   if ('personalObservation' in sources) {
     return [(await ensurePersonalObservation(ctx.db, actorId)).id];
   }
-  // Distinct after resolution: two sources that end on the same reference —
-  // an id and the DOI of that same reference — would otherwise ask for the
-  // same claim twice.
   const seen = new Set<string>();
   const ids: string[] = [];
-  const take = (id: string, path: string, message: string) => {
-    if (seen.has(id)) throw validation(path, message);
+  for (const [i, source] of sources.references.entries()) {
+    const p = `${path}.references.${i}`;
+    const id = await resolveSourceRef(ctx, actorId, source, p);
+    if (seen.has(id)) {
+      throw validation('id' in source ? `${p}.id` : `${p}.doi`, 'Duplicate reference');
+    }
     seen.add(id);
     ids.push(id);
-  };
-  for (const [i, s] of sources.references.entries()) {
-    const p = `${path}.references.${i}`;
-    if ('id' in s) {
-      const kind = await findReferenceKind(ctx.db, s.id);
-      if (kind === null) {
-        throw new AppError('REFERENCE_NOT_FOUND', 'Reference not found', [
-          { path: `${p}.id`, message: 'Reference not found' },
-        ]);
-      }
-      // A personal observation belongs to its observer: it is only ever
-      // reached through `{ personalObservation: true }`, never by naming
-      // someone else's id (RFC-61 R7).
-      if (kind === 'personal_observation') {
-        throw new AppError(
-          'REFERENCE_IS_PERSONAL',
-          'A personal observation cannot be named as a reference',
-          [{ path: `${p}.id`, message: 'A personal observation cannot be named as a reference' }],
-        );
-      }
-      take(s.id, `${p}.id`, 'Duplicate reference');
-      continue;
-    }
-    const doi = normaliseDoi(s.doi);
-    if (!doi) throw validation(`${p}.doi`, 'Malformed DOI');
-    const known = await findReferenceByDoi(ctx.db, doi);
-    if (known) {
-      take(known.id, `${p}.doi`, 'Duplicate DOI');
-      continue;
-    }
-    const status = await ctx.doi.exists(doi);
-    if (status === 'failed') {
-      throw new AppError('DOI_LOOKUP_FAILED', 'The DOI registry could not be reached');
-    }
-    if (status === 'not_found') {
-      throw validation(`${p}.doi`, 'DOI does not resolve');
-    }
-    const meta = await ctx.doi.metadata(doi);
-    const created = await createReferenceFromDoi(ctx.db, {
-      doi,
-      metadata: meta,
-      actorId,
-    });
-    take(created.id, `${p}.doi`, 'Duplicate DOI');
   }
   return ids;
 }

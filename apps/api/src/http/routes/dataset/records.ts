@@ -13,7 +13,7 @@ import type { AuthContext } from '../../../auth/context.ts';
 import { annotateRecord, createRecords } from '../../../dataset/curation.ts';
 import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
-import { resolveSources } from '../../../dataset/sources.ts';
+import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
@@ -66,16 +66,14 @@ export function recordRoutes(ctx: AuthContext) {
         const body = c.req.valid('json');
         const actor = currentUser(c);
         const visibility = await visibilityOf(ctx, c);
-        let referenceId: string | undefined;
-        if (body.reference) {
-          const resolved = await resolveSources(
-            { db: ctx.db, doi: ctx.doi },
-            actor.id,
-            { references: [body.reference] },
-            'reference',
-          );
-          referenceId = resolved[0];
-        }
+        const referenceId = body.reference
+          ? await resolveSourceRef(
+              { db: ctx.db, doi: ctx.doi },
+              actor.id,
+              body.reference,
+              'reference',
+            )
+          : undefined;
         const record = await annotateRecord(ctx.db, visibility, {
           recordId: c.req.valid('param').id,
           kind: body.kind,

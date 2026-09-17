@@ -965,5 +965,21 @@ describe('RFC-70 contribution route tests', () => {
       citationKey: 'doi:10.1111/confirm.doi',
       kind: 'publication',
     });
+
+    // A bad reference is reported under the field the request sent, not under
+    // the shape the resolver happens to use internally.
+    const malformed = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
+      cookie: contributorCookie,
+      body: { kind: 'confirm', reference: { doi: 'not-a-doi' } },
+    });
+    expect(malformed.status).toBe(400);
+    expect((await malformed.json()).error.details[0].path).toBe('reference.doi');
+
+    const unknown = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
+      cookie: contributorCookie,
+      body: { kind: 'confirm', reference: { id: '00000000-0000-7000-8000-000000000000' } },
+    });
+    expect(unknown.status).toBe(404);
+    expect((await unknown.json()).error.details[0].path).toBe('reference.id');
   });
 });
