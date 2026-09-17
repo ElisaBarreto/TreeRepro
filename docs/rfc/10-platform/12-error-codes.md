@@ -68,6 +68,9 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `LEVEL_KEY_TAKEN` | 409 | The trait already has this level, case-insensitively (RFC-62 R6). |
 | `REFERENCE_KEY_TAKEN` | 409 | Another reference has this citation key (RFC-61 R6). |
 | `REFERENCE_DOI_TAKEN` | 409 | Another reference has this DOI (RFC-61 R6). |
+| `PLOT_NOT_FOUND` | 404 | Plot id does not exist (RFC-67 R3). |
+| `PLOT_CODE_TAKEN` | 409 | Another plot has this code, case-insensitively (RFC-67 R5). |
+| `PLOT_SPECIES_EXISTS` | 409 | The species is already in the plot (RFC-67 R5). |
 
 ## Open questions
 
@@ -83,3 +86,4 @@ None.
 - 2026-09-13 — dataset codes SPECIES_NOT_FOUND, TRAIT_NOT_FOUND, REFERENCE_NOT_FOUND, RECORD_NOT_FOUND, IMPORT_NOT_FOUND (plan 06).
 - 2026-09-13 — curation and catalog codes (RFC-60–62, RFC-65, plan 07).
 - 2026-09-17 — ROLE_IS_SYSTEM reworded: manager and contributor system roles (RFC-31, plan 08a).
+- 2026-09-17 — PLOT_NOT_FOUND, PLOT_CODE_TAKEN, PLOT_SPECIES_EXISTS (RFC-67, plan 08b).

@@ -45,6 +45,7 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `dataset.export` | Download the accepted values |
 | `dataset.read_inactive` | See inactive species, traits and levels |
 | `records.review` | Work the harmonisation and disputed queues |
+| `plots.manage` | Create and edit field plots and their species |
 
 ## Open questions
 
@@ -58,4 +59,5 @@ None.
 - 2026-09-13 — dataset.read, imports.read (RFC-60–64, plan 06).
 - 2026-09-13 — curation permissions (RFC-65, RFC-66, plan 07).
 - 2026-09-17 — dataset.read_inactive, records.review (RFC-33, RFC-65 R8–R10, plan 08a).
+- 2026-09-17 — plots.manage (RFC-67, plan 08b).
 - 2026-09-17 — R1: an underscore inside the action segment (plan 08a).
