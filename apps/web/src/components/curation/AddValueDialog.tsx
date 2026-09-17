@@ -11,7 +11,7 @@ import {
 import { type FormEvent, useId, useState } from 'react';
 import { createReference } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
-import { createRecord } from '../../api/curation.ts';
+import { createRecords } from '../../api/curation.ts';
 import { datasetKeys, fetchDictionary, searchReferences } from '../../api/dataset.ts';
 import { fieldErrors, pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
@@ -130,7 +130,7 @@ export function AddValueDialog({
   const canCreateReference = hasPermission(me, 'references.manage');
 
   const save = useRecordWrite<CreateRecordBody, CreateRecordsResult>({
-    write: createRecord,
+    write: createRecords,
     speciesId,
     onInvalidated: (result) => {
       const [first] = result.created;
