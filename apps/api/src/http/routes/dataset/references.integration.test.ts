@@ -107,3 +107,82 @@ describe('RFC-61 R6 reference writes', () => {
     expect((await missing.json()).error.code).toBe('REFERENCE_NOT_FOUND');
   });
 });
+
+describe('RFC-80 R4 GET /api/references/resolve', () => {
+  const t = useTestApp();
+
+  async function contributor() {
+    const role = await createRole(t.db, { permissions: ['records.create', 'dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, cookie: (await loginAs(t, user)).cookie };
+  }
+
+  it('answers known, resolvable (with preview), not_found, 400 on malformed, and 429 after 60 calls', async () => {
+    const { cookie } = await contributor();
+    const existing = await createReference(t.db, { doi: '10.1111/known' });
+
+    // Known
+    const resKnown = await call(
+      t.app,
+      'GET',
+      `/api/references/resolve?doi=${encodeURIComponent(existing.doi!)}`,
+      { cookie },
+    );
+    expect(resKnown.status).toBe(200);
+    expect((await resKnown.json()).data).toMatchObject({
+      status: 'known',
+      reference: expect.objectContaining({ id: existing.id }),
+    });
+
+    // Resolvable
+    t.doi.known.set('10.1111/resolvable', {
+      title: 'Preview Title',
+      authors: 'Preview Authors',
+      year: 2024,
+      journal: 'Preview Journal',
+    });
+    const resResolvable = await call(
+      t.app,
+      'GET',
+      '/api/references/resolve?doi=10.1111/resolvable',
+      { cookie },
+    );
+    expect(resResolvable.status).toBe(200);
+    expect(await resResolvable.json()).toEqual({
+      data: {
+        status: 'resolvable',
+        reference: null,
+        preview: {
+          title: 'Preview Title',
+          authors: 'Preview Authors',
+          year: 2024,
+          journal: 'Preview Journal',
+        },
+      },
+    });
+
+    // Not found
+    const resNotFound = await call(
+      t.app,
+      'GET',
+      '/api/references/resolve?doi=10.1111/notfound',
+      { cookie },
+    );
+    expect(resNotFound.status).toBe(200);
+    expect(await resNotFound.json()).toEqual({
+      data: { status: 'not_found', reference: null },
+    });
+
+    // Malformed DOI
+    const resBad = await call(t.app, 'GET', '/api/references/resolve?doi=bad', { cookie });
+    expect(resBad.status).toBe(400);
+
+    // Rate limit: 60 calls allowed, 61st rejected with 429
+    // (Already made 3 valid calls with this cookie: resKnown, resResolvable, resNotFound)
+    for (let i = 0; i < 57; i++) {
+      await call(t.app, 'GET', '/api/references/resolve?doi=10.1111/notfound', { cookie });
+    }
+    const limited = await call(t.app, 'GET', '/api/references/resolve?doi=10.1111/notfound', { cookie });
+    expect(limited.status).toBe(429);
+  });
+});

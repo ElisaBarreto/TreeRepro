@@ -9,8 +9,10 @@ import {
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
+import { createUser } from '../../test/helpers/users.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
-import { getReference, searchReferences } from './references.ts';
+import { updateReference } from './catalog.ts';
+import { ensurePersonalObservation, getReference, searchReferences } from './references.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -187,5 +189,28 @@ describe('RFC-61 R4 references', () => {
       primaryCount: 4,
       secondaryCount: 2,
     });
+  });
+
+  it('searchReferences omits personal observations by default; kind=all includes them with observer', async () => {
+    const { user } = await createUser(t.db);
+    const po = await ensurePersonalObservation(t.db, user.id);
+    const pub = await createReference(t.db, { citationKey: `Pub_${tag()}` });
+    const def = await searchReferences(t.db, { limit: 100 });
+    expect(def.data.some((r) => r.id === po.id)).toBe(false);
+    expect(def.data.some((r) => r.id === pub.id)).toBe(true);
+
+    const all = await searchReferences(t.db, { limit: 100, kind: 'all' });
+    const foundPo = all.data.find((r) => r.id === po.id);
+    expect(foundPo).toBeDefined();
+    expect(foundPo?.kind).toBe('personal_observation');
+    expect(foundPo?.observer?.name).toBe(user.name);
+  });
+
+  it('updateReference on a personal observation throws REFERENCE_IS_PERSONAL', async () => {
+    const { user } = await createUser(t.db);
+    const po = await ensurePersonalObservation(t.db, user.id);
+    await expect(
+      updateReference(t.db, { id: po.id, title: 'new title', actorId: user.id }),
+    ).rejects.toMatchObject({ code: 'REFERENCE_IS_PERSONAL' });
   });
 });

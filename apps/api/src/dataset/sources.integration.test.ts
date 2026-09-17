@@ -1,0 +1,166 @@
+import { eq } from 'drizzle-orm';
+import { describe, expect, it } from 'vitest';
+import { createReference } from '../../test/helpers/dataset.ts';
+import { useTestDb } from '../../test/helpers/db.ts';
+import { fakeDoiClient } from '../../test/helpers/doi.ts';
+import { createUser } from '../../test/helpers/users.ts';
+import { auditEvents } from '../db/schema/audit.ts';
+import { bibliographicReferences } from '../db/schema/references.ts';
+import { ensurePersonalObservation, findReferenceByDoi } from './references.ts';
+import { resolveDoi, resolveSources } from './sources.ts';
+
+describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
+  const t = useTestDb();
+
+  it('ensurePersonalObservation twice for one user returns same id, one audit entry', async () => {
+    const { user } = await createUser(t.db);
+    const first = await ensurePersonalObservation(t.db, user.id);
+    const second = await ensurePersonalObservation(t.db, user.id);
+    expect(first.id).toBe(second.id);
+
+    const audits = await t.db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.targetId, first.id));
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.action).toBe('references.created');
+  });
+
+  it('resolveSources handles personal observation and existing references', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const doi = fakeDoiClient();
+    const ctx = { db: t.db, doi };
+
+    const poIds = await resolveSources(ctx, user.id, { personalObservation: true });
+    expect(poIds).toHaveLength(1);
+
+    const existingIds = await resolveSources(ctx, user.id, { references: [{ id: ref.id }] });
+    expect(existingIds).toEqual([ref.id]);
+
+    await expect(
+      resolveSources(ctx, user.id, { references: [{ id: ref.id }, { id: ref.id }] }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.1.id' }],
+    });
+  });
+
+  it('resolveSources handles DOI lookup, creation, idempotency, and failures', async () => {
+    const { user } = await createUser(t.db);
+    const doiClient = fakeDoiClient();
+    const ctx = { db: t.db, doi: doiClient };
+    const doi = '10.1111/x';
+
+    doiClient.known.set(doi, {
+      title: 'Title X',
+      authors: 'Author A',
+      year: 2024,
+      journal: 'Journal J',
+    });
+
+    // Resolves and creates reference
+    const ids = await resolveSources(ctx, user.id, { references: [{ doi: '10.1111/X' }] });
+    expect(ids).toHaveLength(1);
+
+    const [createdRef] = await t.db
+      .select()
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.id, ids[0]!));
+    expect(createdRef).toMatchObject({
+      citationKey: 'doi:10.1111/x',
+      title: 'Title X',
+      authors: 'Author A',
+      year: 2024,
+      journal: 'Journal J',
+      doi: '10.1111/x',
+      url: 'https://doi.org/10.1111/x',
+    });
+
+    // Calling again returns the same id without a second audit event
+    const ids2 = await resolveSources(ctx, user.id, { references: [{ doi }] });
+    expect(ids2).toEqual(ids);
+    const audits = await t.db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.targetId, ids[0]!));
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.metadata).toMatchObject({ source: 'doi' });
+
+    // Unknown DOI fails with VALIDATION_FAILED
+    await expect(
+      resolveSources(ctx, user.id, { references: [{ doi: '10.1111/unknown' }] }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.0.doi' }],
+    });
+
+    // Failing DOI client results in 502 DOI_LOOKUP_FAILED
+    doiClient.failing = true;
+    await expect(
+      resolveSources(ctx, user.id, { references: [{ doi: '10.1111/fail' }] }),
+    ).rejects.toMatchObject({
+      code: 'DOI_LOOKUP_FAILED',
+    });
+    doiClient.failing = false;
+
+    // Malformed DOI
+    await expect(
+      resolveSources(ctx, user.id, { references: [{ doi: 'not-a-doi' }] }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.0.doi' }],
+    });
+
+    // Duplicate DOIs in single request
+    await expect(
+      resolveSources(ctx, user.id, {
+        references: [{ doi: '10.1111/X' }, { doi: 'https://doi.org/10.1111/x' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.1.doi' }],
+    });
+  });
+
+  it('resolveDoi returns known, resolvable preview, not_found, or validation error', async () => {
+    const { user } = await createUser(t.db);
+    const doiClient = fakeDoiClient();
+    const ctx = { db: t.db, doi: doiClient };
+    const doi = '10.2222/y';
+
+    // Malformed
+    await expect(resolveDoi(ctx, 'invalid')).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    });
+
+    // Not found in registry or DB
+    const notFound = await resolveDoi(ctx, doi);
+    expect(notFound).toEqual({ status: 'not_found', reference: null });
+
+    // Resolvable in registry
+    doiClient.known.set(doi, {
+      title: 'Preview Title',
+      authors: 'Author B',
+      year: 2025,
+      journal: null,
+    });
+    const resolvable = await resolveDoi(ctx, doi);
+    expect(resolvable).toEqual({
+      status: 'resolvable',
+      reference: null,
+      preview: {
+        title: 'Preview Title',
+        authors: 'Author B',
+        year: 2025,
+        journal: null,
+      },
+    });
+
+    // Once created in DB, returns status: 'known'
+    await resolveSources(ctx, user.id, { references: [{ doi }] });
+    const known = await resolveDoi(ctx, doi);
+    expect(known.status).toBe('known');
+    expect((known as { reference: { citationKey: string } }).reference.citationKey).toBe('doi:10.2222/y');
+  });
+});
