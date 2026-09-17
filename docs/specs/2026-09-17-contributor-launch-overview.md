@@ -4,28 +4,28 @@
 **Status:** approved design; nothing implemented yet
 **Scope:** the map of the work that turns the curated dataset into a platform a community of ~50 specialist scientists can use: roles and data visibility, field plots, the redesigned contribution workflow, the browsing redesign (species, traits, references), personal views (home dashboard, my contributions, coverage), and the platform pieces (help pages, daily digest, species proposals, health page). Source: the owner's conceptual plan of 2026-09-16 (local document, not committed). Every decision below was confirmed with the owner on 2026-09-17.
 
-This file is the index. Each track has its own design spec; each issue has its own implementation plan under `docs/plans/`.
+This file is the index. Each track has its own design spec; each issue has its own implementation plan under `docs/plans/` (`2026-09-17-<track>-<NN><letter>-<slug>.md`, listed in §1).
 
 ## 1. Tracks, issues, plans
 
 | Track | Spec | Issue (plan) | Summary |
 |---|---|---|---|
-| 1 Visibility | `2026-09-17-visibility-design.md` | **08a** roles + species activation | `species.active`; permission `dataset.read_inactive`; system roles `manager` and `contributor`; API hides inactive species and traits from restricted viewers; `seed:traits` `active` column; generic supplementary import batches; `import:species-status`. |
-| | | **08b** plots | `plots`, `plot_species`, `user_plots`, `users.restrict_to_assigned_plots`; `import:plots`, `import:plot-species`, `import:user-plots`; Admin › Plots; species `scope` and `plotId`; "Show species outside my plots". |
-| 2 Contribution | `2026-09-17-contribution-design.md` | **09a** contribution API | Personal-observation references; DOI resolution through the Handle and Crossref APIs; `POST /api/records` with several references (one record each) and an intent (contest / complement); automatic dispute on contest; `records.review` permission; confirm with a supporting DOI; species trait summary with missing traits. |
-| | | **09b** contribution web | Validate / Add different record; the two-step contest dialog; "Add entries for another trait"; live DOI check; `?` trait tooltips; "Show traits with no data". |
-| 3 Browsing | `2026-09-17-browsing-design.md` | **10a** species tab + coverage | `species_trait_coverage` and `species.trait_count` maintained by trigger; trait filters (category → trait, with / missing data); order by completeness; hierarchical breadcrumb. |
-| | | **10b** synonyms | `species_names` with `name_type`, `language`, `source`; `import:synonyms`; three-tier search (exact canonical → canonical substring → alternative names); "found as". |
-| | | **10c** traits tab + trait page | Filters (category, trait, value type); levels as chips; `/app/traits/$id` with species with / missing data. |
-| | | **10d** references enriched | `short_citation`, `full_citation`; `import:references`; DOI links; `reference_traits` and filters by trait / category. |
-| | | **10e** distribution | `species_distribution`; `import:distribution`; country / state filters. Blocked until the dataset exists. |
-| 4 Workspace | `2026-09-17-workspace-design.md` | **11a** my contributions | `GET /api/me/contributions`; `/app/contributions`; any user's list with `contributions.read`. |
-| | | **11b** home dashboard | Project description; `GET /api/me/dashboard`; contributor cards and queues; manager / admin coverage and queue cards. |
-| | | **11c** coverage dashboard | `GET /api/coverage` with family / category / plot filters; `/app/curation/coverage`. |
-| 5 Platform | `2026-09-17-platform-design.md` | **12a** help + onboarding | `/app/help/*`; "Getting started" card until the first contribution. |
-| | | **12b** daily digest | `job_runs`; hourly timer sending a daily e-mail to managers and admins when there was activity. |
-| | | **12c** species proposals + lookup | `species_proposals`; GBIF backbone and WCVP checklist match; `/app/curation/proposals`; approve creates the species. |
-| | | **12d** platform health | `GET /api/admin/health`; `/app/admin/health`. |
+| 1 Visibility | `2026-09-17-visibility-design.md` | **08a** roles + species activation (`plans/2026-09-17-visibility-08a-roles.md`) | `species.active`; permission `dataset.read_inactive`; system roles `manager` and `contributor`; API hides inactive species and traits from restricted viewers; `seed:traits` `active` column; generic supplementary import batches; `import:species-status`. |
+| | | **08b** plots (`plans/2026-09-17-visibility-08b-plots.md`) | `plots`, `plot_species`, `user_plots`, `users.restrict_to_assigned_plots`; `import:plots`, `import:plot-species`, `import:user-plots`; Admin › Plots; species `scope` and `plotId`; "Show species outside my plots". |
+| 2 Contribution | `2026-09-17-contribution-design.md` | **09a** contribution API (`plans/2026-09-17-contribution-09a-api.md`) | Personal-observation references; DOI resolution through the Handle and Crossref APIs; `POST /api/records` with several references (one record each) and an intent (contest / complement); automatic dispute on contest; `records.review` permission; confirm with a supporting DOI; species trait summary with missing traits. |
+| | | **09b** contribution web (`plans/2026-09-17-contribution-09b-web.md`) | Validate / Add different record; the two-step contest dialog; "Add entries for another trait"; live DOI check; `?` trait tooltips; "Show traits with no data". |
+| 3 Browsing | `2026-09-17-browsing-design.md` | **10a** species tab + coverage (`plans/2026-09-17-browsing-10a-species.md`) | `species_trait_coverage` and `species.trait_count` maintained by trigger; trait filters (category → trait, with / missing data); order by completeness; hierarchical breadcrumb. |
+| | | **10b** synonyms (`plans/2026-09-17-browsing-10b-synonyms.md`) | `species_names` with `name_type`, `language`, `source`; `import:synonyms`; three-tier search (exact canonical → canonical substring → alternative names); "found as". |
+| | | **10c** traits tab + trait page (`plans/2026-09-17-browsing-10c-traits.md`) | Filters (category, trait, value type); levels as chips; `/app/traits/$id` with species with / missing data. |
+| | | **10d** references enriched (`plans/2026-09-17-browsing-10d-references.md`) | `short_citation`, `full_citation`; `import:references`; DOI links; `reference_traits` and filters by trait / category. |
+| | | **10e** distribution (`plans/2026-09-17-browsing-10e-distribution.md`) | `species_distribution`; `import:distribution`; country / state filters. Blocked until the dataset exists. |
+| 4 Workspace | `2026-09-17-workspace-design.md` | **11a** my contributions (`plans/2026-09-17-workspace-11a-contributions.md`) | `GET /api/me/contributions`; `/app/contributions`; any user's list with `contributions.read`. |
+| | | **11b** home dashboard (`plans/2026-09-17-workspace-11b-dashboard.md`) | Project description; `GET /api/me/dashboard`; contributor cards and queues; manager / admin coverage and queue cards. |
+| | | **11c** coverage dashboard (`plans/2026-09-17-workspace-11c-coverage.md`) | `GET /api/coverage` with family / category / plot filters; `/app/curation/coverage`. |
+| 5 Platform | `2026-09-17-platform-design.md` | **12a** help + onboarding (`plans/2026-09-17-platform-12a-help.md`) | `/app/help/*`; "Getting started" card until the first contribution. |
+| | | **12b** daily digest (`plans/2026-09-17-platform-12b-digest.md`) | `job_runs`; hourly timer sending a daily e-mail to managers and admins when there was activity. |
+| | | **12c** species proposals + lookup (`plans/2026-09-17-platform-12c-proposals.md`) | `species_proposals`; GBIF backbone and WCVP checklist match; `/app/curation/proposals`; approve creates the species. |
+| | | **12d** platform health (`plans/2026-09-17-platform-12d-health.md`) | `GET /api/admin/health`; `/app/admin/health`. |
 
 ## 2. Order and dependencies
 
@@ -66,6 +66,7 @@ Hard dependencies: 08b needs 08a (visibility rules, `import_batches.kind`); 09b 
 | Breadcrumb | The shell breadcrumb becomes hierarchical (`Data › Species › Anathallis funerea`) through a breadcrumb context that pages extend. |
 | Counters | Aggregates that a page needs at scale are stored and maintained by the existing `trait_records` insert trigger (records are append-only, so counters never go down): `species_trait_coverage`, `species.trait_count`, `reference_traits`. |
 | Hosted content | No dataset file is ever committed; fixtures in tests are synthetic. |
+| Migration numbers | The numbers the plans quote (`0016`–`0030`) assume the plans run in the order they are numbered; the recommended order (§2) differs, so `db:generate` assigns the actual next number at implementation time and the RFC changelog cites that one. |
 
 ## 4. RFC allocation
 
