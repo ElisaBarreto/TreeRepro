@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { basename } from 'node:path';
-import type {
-  HarmonisationStatus,
-  ImportBatch,
-  ImportBatchKind,
-  ImportReject,
-  ImportRejectReason,
-  UserRef,
+import {
+  type HarmonisationStatus,
+  IMPORT_REJECT_REASONS,
+  type ImportBatch,
+  type ImportBatchKind,
+  type ImportReject,
+  type ImportRejectReason,
+  type UserRef,
 } from '@treerepro/contracts';
 import { and, asc, count, desc, sql as dsql, eq, lt } from 'drizzle-orm';
 import postgres from 'postgres';
@@ -73,7 +74,7 @@ function toPostgresError(err: unknown): InstanceType<typeof postgres.PostgresErr
 }
 
 /** Keeps `detail` and `where` alongside the message — on an 8M-row file, `where` ("COPY import_staging, line 12345: ...") is often the only thing that pinpoints the bad row. @rfc RFC-64 R9 */
-function describeError(err: unknown): string {
+export function describeError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
   const pg = toPostgresError(err);
   return [message, pg?.detail, pg?.where].filter(Boolean).join(' — ').slice(0, 2000);
@@ -172,7 +173,10 @@ export async function sha256File(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
-/** @rfc RFC-64 R11 */
+/**
+ * @rfc RFC-64 R11
+ * @rfc RFC-68 R1
+ */
 export function toImportBatch(row: ImportBatchRow, runBy: UserRef | null): ImportBatch {
   return {
     id: row.id,
@@ -290,11 +294,10 @@ export async function batchReport(
     not_numeric: 0,
     empty: 0,
   };
-  const rejectReasons: Record<ImportRejectReason, number> = {
-    no_species_name: 0,
-    unknown_trait: 0,
-    no_reference: 0,
-  };
+  const rejectReasons = Object.fromEntries(IMPORT_REJECT_REASONS.map((r) => [r, 0])) as Record<
+    ImportRejectReason,
+    number
+  >;
   const h = await db
     .select({ status: traitRecords.harmonisation, n: count() })
     .from(traitRecords)

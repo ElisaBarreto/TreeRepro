@@ -11,10 +11,10 @@ import { importRejects } from '../../db/schema/imports.ts';
 import { species } from '../../db/schema/taxa.ts';
 import { importSpeciesStatus } from './species-status.ts';
 
-async function csv(lines: string[]): Promise<string> {
+async function csv(lines: string[], eol = '\n'): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'status-'));
   const file = join(dir, 'status.csv');
-  await writeFile(file, `${lines.join('\n')}\n`);
+  await writeFile(file, `${lines.join(eol)}${eol}`);
   return file;
 }
 
@@ -61,10 +61,66 @@ describe('RFC-68 R8 import:species-status', () => {
     expect([again.rowsInserted, again.rowsDuplicate, again.rowsRejected]).toEqual([0, 2, 2]);
   });
 
-  it('refuses a wrong header before creating a batch and fails the batch on a bad file', async () => {
+  it('refuses a wrong header before creating a batch', async () => {
     const bad = await csv(['species,active', 'x,true']);
     await expect(importSpeciesStatus(t.db, { filePath: bad, runBy: null })).rejects.toThrow(
       /header/i,
     );
+  });
+
+  it('a CRLF header is accepted', async () => {
+    const { user } = await createUser(t.db);
+    const a = await createSpecies(t.db);
+    const file = await csv(['wcvp_species,active', `${a.canonicalName},false`], '\r\n');
+    const batch = await importSpeciesStatus(t.db, { filePath: file, runBy: user.id });
+    expect(batch.status).toBe('completed');
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      1, 1, 0, 0,
+    ]);
+  });
+
+  it('a repeated species: the last row wins, every earlier row is a duplicate (RFC-68 R4, R8)', async () => {
+    const { user } = await createUser(t.db);
+    const a = await createSpecies(t.db); // active: true by default
+    const b = await createSpecies(t.db);
+
+    // last row keeps the species in its current state: 0 inserted, all 3 duplicate
+    const same = await csv([
+      'wcvp_species,active',
+      `${a.canonicalName},false`,
+      `${a.canonicalName},false`,
+      `${a.canonicalName},true`,
+    ]);
+    const batchSame = await importSpeciesStatus(t.db, { filePath: same, runBy: user.id });
+    expect([
+      batchSame.rowsTotal,
+      batchSame.rowsInserted,
+      batchSame.rowsDuplicate,
+      batchSame.rowsRejected,
+    ]).toEqual([3, 0, 3, 0]);
+    const [ra1] = await t.db
+      .select({ active: species.active })
+      .from(species)
+      .where(eq(species.id, a.id));
+    expect(ra1?.active).toBe(true);
+
+    // last row changes the species: 1 inserted, 1 duplicate (the earlier row)
+    const changes = await csv([
+      'wcvp_species,active',
+      `${b.canonicalName},true`,
+      `${b.canonicalName},false`,
+    ]);
+    const batchChanges = await importSpeciesStatus(t.db, { filePath: changes, runBy: user.id });
+    expect([
+      batchChanges.rowsTotal,
+      batchChanges.rowsInserted,
+      batchChanges.rowsDuplicate,
+      batchChanges.rowsRejected,
+    ]).toEqual([2, 1, 1, 0]);
+    const [rb] = await t.db
+      .select({ active: species.active })
+      .from(species)
+      .where(eq(species.id, b.id));
+    expect(rb?.active).toBe(false);
   });
 });

@@ -19,7 +19,7 @@ Beyond the compiled dataset (RFC-64) the owner loads smaller files: which specie
 - **R5** A completed batch records one audit entry `imports.completed` (RFC-41) with `target_type = 'import_batches'`, `target_id` the batch id and `metadata: { kind, rowsTotal, rowsInserted, rowsDuplicate, rowsRejected }`; `actor_user_id` is `run_by`.
 - **R6** The command prints: file and SHA-256, batch id, elapsed time, the four counts, and rejections by reason (the first 30 with their row numbers).
 - **R7** `GET /api/imports?kind=` filters by kind; the imports page shows the kind and the same reject table for every kind (RFC-64 R11 amended).
-- **R8** Kind `species_status`. Header `wcvp_species,active`. `active` is `true` or `false` (case-insensitive; anything else → `invalid_value`). The species is matched by `canonical_name` after normalisation; unknown → `unknown_species`. Sets `species.active`; a row whose value already matches is duplicate. This kind changes existing rows because its purpose is the flag.
+- **R8** Kind `species_status`. Header `wcvp_species,active`. `active` is `true` or `false` (case-insensitive; anything else → `invalid_value`). The species is matched by `canonical_name` after normalisation; unknown → `unknown_species`. Sets `species.active`; a row whose value already matches is duplicate. This kind changes existing rows because its purpose is the flag. When a species appears more than once, the last row wins and the earlier rows count as duplicate.
 
 ## Open questions
 
@@ -28,3 +28,4 @@ None.
 ## Changelog
 
 - 2026-09-17 — created (plan 08a).
+- 2026-09-17 — R8: the last-row-wins rule for a repeated species, and that earlier rows count as duplicate (plan 08a review).

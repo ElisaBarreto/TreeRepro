@@ -34,16 +34,20 @@ export async function importSpeciesStatus(
         insert into import_rejects (batch_id, row_no, reason, raw_row)
         select ${batchId}, row_no, outcome, jsonb_build_object('wcvp_species', coalesce(wcvp_species, ''), 'active', coalesce(active, ''))
         from import_staging where outcome <> 'apply' order by row_no`;
-      // duplicate: apply rows already in the requested state. When a species
-      // repeats across rows this counts every matching row, not just the
-      // winner (see the update below) — accepted per RFC-68 R8, documented
-      // there as a rows_total = inserted + duplicate + rejected edge case.
-      const [{ duplicate }] = (await tx`
-        select count(*)::int as duplicate from import_staging s join species sp on sp.id = s.species_id
-        where s.outcome = 'apply' and sp.active = s.flag`) as [{ duplicate: number }];
-      // The last row for a species wins: `distinct on (species_id) ... order
-      // by species_id, row_no desc` keeps only the highest row_no per
-      // species before writing `species.active`.
+      const [{ apply_count: applyCount }] = (await tx`
+        select count(*)::int as apply_count from import_staging where outcome = 'apply'`) as [
+        { apply_count: number },
+      ];
+      // The last row for a species wins; every other row for that species
+      // counts as duplicate. `distinct on (species_id) ... order by
+      // species_id, row_no desc` keeps only the highest row_no per species,
+      // so `sp.active <> s.flag` here (evaluated against the pre-update
+      // state) is exactly the species whose winning row changes something.
+      // `duplicate` is derived by subtraction, not its own query, so
+      // rows_total = inserted + duplicate + rejected always holds (RFC-68
+      // R4): every apply row is either the one applied change for its
+      // species or a duplicate — a non-winning row, or a winner already in
+      // the requested state.
       const applied = await tx`
         update species sp set active = s.flag
         from (select distinct on (species_id) species_id, flag from import_staging where outcome = 'apply' order by species_id, row_no desc) s
@@ -52,7 +56,7 @@ export async function importSpeciesStatus(
         (await tx`select count(*)::int as rejected from import_staging where outcome <> 'apply'`) as [
           { rejected: number },
         ];
-      return { inserted: applied.count, duplicate, rejected };
+      return { inserted: applied.count, duplicate: applyCount - applied.count, rejected };
     },
   });
 }

@@ -8,6 +8,7 @@ import type { Db } from '../../db/client.ts';
 import { DEFAULT_COPY_IDLE_TIMEOUT_MS, pipelineWithIdleGuard } from '../../db/copy.ts';
 import { importBatches } from '../../db/schema/imports.ts';
 import {
+  describeError,
   getImportBatch,
   ImportRefusedError,
   parseCsvLine,
@@ -51,7 +52,11 @@ export async function runSupplementaryImport(
   db: Db,
   input: SupplementaryImportInput,
 ): Promise<ImportBatch> {
-  const first = parseCsvLine(await readFirstLine(input.filePath)); // RFC-64 R2: the header is a CSV record, quotes allowed
+  // RFC-64 R2: the header is a CSV record, quotes allowed; strip a UTF-8 BOM
+  // and a trailing CR (CRLF line endings) the same way `validateHeader` does.
+  const first = parseCsvLine(
+    (await readFirstLine(input.filePath)).replace(/^﻿/, '').replace(/\r$/, ''),
+  ).map((c) => c.trim());
   const expected = [...input.header];
   if (first.length !== expected.length || first.some((c, i) => c !== expected[i])) {
     throw new ImportRefusedError(
@@ -120,7 +125,7 @@ export async function runSupplementaryImport(
         .set({
           status: 'failed',
           finishedAt: new Date(),
-          error: (err as Error).message.slice(0, 2000),
+          error: describeError(err),
         })
         .where(eq(importBatches.id, batch.id));
     } catch (updateErr) {
