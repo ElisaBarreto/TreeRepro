@@ -40,7 +40,7 @@ export async function inviteAndActivate(
     email,
     name,
   });
-  if (invited.status !== 201) {
+  if (invited.status !== 201 || !invited.json) {
     throw new Error(`POST /api/admin/users answered ${invited.status} for ${email}`);
   }
   const userId = invited.json.data.id;
@@ -56,6 +56,9 @@ export async function inviteAndActivate(
   await page.waitForURL(/\/app$/);
 
   const roles = await apiCall<{ data: Role[] }>(admin, 'GET', '/api/admin/roles');
+  if (roles.status !== 200 || !roles.json) {
+    throw new Error(`GET /api/admin/roles answered ${roles.status}`);
+  }
   const role = roles.json.data.find((candidate) => candidate.name === input.role);
   if (!role) throw new Error(`no role named ${input.role} (GET /api/admin/roles)`);
   const patched = await apiCall(admin, 'PATCH', `/api/admin/users/${userId}`, {

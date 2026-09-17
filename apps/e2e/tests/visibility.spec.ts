@@ -21,6 +21,7 @@ test.describe('RFC-33 species visibility (issue #69)', () => {
       nameSource: 'wcvp',
     });
     expect(created.status).toBe(201);
+    if (!created.json) throw new Error('POST /api/species answered an empty body');
     const speciesId = created.json.data.id;
     const deactivated = await apiCall(admin, 'PATCH', `/api/species/${speciesId}`, {
       active: false,
@@ -71,6 +72,7 @@ test.describe('RFC-33 species visibility (issue #69)', () => {
       nameSource: 'wcvp',
     });
     expect(created.status).toBe(201);
+    if (!created.json) throw new Error('POST /api/species answered an empty body');
     const speciesId = created.json.data.id;
     const deactivated = await apiCall(admin, 'PATCH', `/api/species/${speciesId}`, {
       active: false,
@@ -90,6 +92,7 @@ test.describe('RFC-33 species visibility (issue #69)', () => {
         `/api/species/${speciesId}`,
       );
       expect(asManager.status).toBe(200);
+      if (!asManager.json) throw new Error('GET /api/species/:id answered an empty body');
       expect(asManager.json.data.active).toBe(false);
     } finally {
       await contributor.context.close();

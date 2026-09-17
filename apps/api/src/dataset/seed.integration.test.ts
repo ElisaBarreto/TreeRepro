@@ -104,6 +104,18 @@ describe('RFC-62 R2 seedDictionary', () => {
     expect(row?.active).toBe(false);
   });
 
+  it('RFC-62 R2 refuses a seven-column file whose first six columns are not the dictionary header, inserting nothing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'seed-'));
+    const key = `seed_wrong_header_${Math.random().toString(16).slice(2)}`;
+    const file = join(dir, 'dict.csv');
+    await writeFile(
+      file,
+      `foo,broad_category,trait_value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,true\n`,
+    );
+    await expect(seedDictionary(t.db, file)).rejects.toThrow('Unexpected header');
+    expect(await t.db.select().from(traits).where(eq(traits.key, key))).toEqual([]);
+  });
+
   it('RFC-62 R2 refuses a seven-column file whose active value is neither true nor false, inserting nothing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'seed-'));
     const key = `seed_bad_${Math.random().toString(16).slice(2)}`;

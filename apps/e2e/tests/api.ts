@@ -12,7 +12,7 @@ export async function apiCall<T = unknown>(
   method: string,
   path: string,
   body?: unknown,
-): Promise<{ status: number; json: T }> {
+): Promise<{ status: number; json: T | null }> {
   const response = await context.request.fetch(BASE_URL + path, {
     method,
     data: body,
@@ -20,7 +20,7 @@ export async function apiCall<T = unknown>(
   });
   const status = response.status();
   const text = await response.text();
-  if (text.length === 0) return { status, json: null as T };
+  if (text.length === 0) return { status, json: null };
   try {
     return { status, json: JSON.parse(text) as T };
   } catch {

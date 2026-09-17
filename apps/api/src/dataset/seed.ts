@@ -31,15 +31,26 @@ const DICTIONARY_COLUMNS = [
 ] as const;
 
 /**
- * True when the header carries the optional seventh `active` column; any
- * other header (missing, extra or differently named columns) is left to the
+ * True when the header carries the optional seventh `active` column. A
+ * seven-column header has its first six positions checked against
+ * `DICTIONARY_COLUMNS` (case-sensitive, same as `validateHeader`, RFC-64 R2)
+ * and its seventh checked for `active` (case-insensitive); either mismatch
+ * is refused before any row reaches COPY, rather than silently loading each
+ * column under the wrong name. A plain six-column header is left to the
  * six-column COPY below and whatever error Postgres raises for it.
  * @rfc RFC-62 R2
  */
 async function hasActiveColumn(csvPath: string): Promise<boolean> {
   const header = await readFirstLine(csvPath);
   const columns = parseCsvLine(header.replace(/^﻿/, '').replace(/\r$/, '')).map((c) => c.trim());
-  return columns.length === DICTIONARY_COLUMNS.length + 1 && columns[6]?.toLowerCase() === 'active';
+  if (columns.length !== DICTIONARY_COLUMNS.length + 1) return false;
+  const sameFirstSix = DICTIONARY_COLUMNS.every((name, i) => columns[i] === name);
+  if (!sameFirstSix || columns[6]?.toLowerCase() !== 'active') {
+    throw new Error(
+      `Unexpected header. Expected: ${DICTIONARY_COLUMNS.join(',')},active. Got: ${columns.join(',')}`,
+    );
+  }
+  return true;
 }
 
 /**

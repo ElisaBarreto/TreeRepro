@@ -182,7 +182,9 @@ export async function mapPending(
       with pending as (
         select r.id, r.species_id, r.primary_reference_id, r.secondary_reference_id,
           coalesce(r.raw_value, r.value_text) as raw_value
-        from trait_records r where ${group}),
+        from trait_records r
+        join species s on s.id = r.species_id
+        where ${group} and ${speciesVisible(visibility, sql`s.active`)}),
       chosen as (${chosen}),
       ins as (
         insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
