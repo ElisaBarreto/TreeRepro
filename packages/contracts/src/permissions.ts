@@ -26,6 +26,7 @@ export const PERMISSIONS = {
   'dataset.export': 'Download the accepted values',
   'dataset.read_inactive': 'See inactive species, traits and levels',
   'records.review': 'Work the harmonisation and disputed queues',
+  'plots.manage': 'Create and edit field plots and their species',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

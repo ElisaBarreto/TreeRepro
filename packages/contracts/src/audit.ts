@@ -35,6 +35,11 @@ export const AUDIT_ACTIONS = [
   'traits.updated',
   'dataset.exported',
   'imports.completed',
+  'plots.created',
+  'plots.updated',
+  'plots.species_added',
+  'plots.species_removed',
+  'users.plots_changed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

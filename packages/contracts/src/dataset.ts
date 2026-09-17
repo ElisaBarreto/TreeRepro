@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { cursorQuerySchema } from './pagination.ts';
+import { plotRefSchema, SPECIES_SCOPES } from './plots.ts';
 
 /** @rfc RFC-60 R1, R3 */
 export const NAME_SOURCES = ['wcvp', 'gbif', 'original'] as const;
@@ -87,7 +88,7 @@ export const taxonRefSchema = z.strictObject({ id: z.uuid(), name: z.string() })
 
 /**
  * @rfc RFC-60 R6
- * @rfc RFC-33 R7
+ * @rfc RFC-33 R6, R7
  */
 export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   q: searchTermSchema.optional(),
@@ -95,6 +96,8 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   genusId: z.uuid().optional(),
   unresolved: z.enum(['true', 'false']).optional(),
   status: z.enum(SPECIES_STATUSES).optional(),
+  scope: z.enum(SPECIES_SCOPES).optional(),
+  plotId: z.uuid().optional(),
 });
 
 /**
@@ -119,9 +122,13 @@ export const speciesNameSchema = z.strictObject({
   gbifUsageKey: z.string().nullable(),
 });
 
-/** @rfc RFC-60 R7 */
+/**
+ * @rfc RFC-60 R7
+ * @rfc RFC-67 R8
+ */
 export const speciesSchema = speciesListItemSchema.extend({
   names: z.array(speciesNameSchema),
+  plots: z.array(plotRefSchema),
   recordCount: z.number().int().nonnegative(),
   traitCount: z.number().int().nonnegative(),
 });

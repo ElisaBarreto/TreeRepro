@@ -50,6 +50,9 @@ export const ERROR_CODES = {
   LEVEL_KEY_TAKEN: 409,
   REFERENCE_KEY_TAKEN: 409,
   REFERENCE_DOI_TAKEN: 409,
+  PLOT_NOT_FOUND: 404,
+  PLOT_CODE_TAKEN: 409,
+  PLOT_SPECIES_EXISTS: 409,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;
