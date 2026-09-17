@@ -133,4 +133,67 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     const unrestricted = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id);
     expect(unrestricted?.flatMap((c) => c.traits)).toHaveLength(2);
   });
+
+  it('RFC-70 R7 includeMissing lists every visible trait, with empty summaries for missing ones', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+
+    await createRecord(t.db, {
+      speciesId: f.shownSpecies.id,
+      traitId: f.activeTrait.id,
+      valueText: 'test',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+
+    // RESTRICTED viewer with includeMissing: true
+    const restricted = await speciesTraitSummary(t.db, RESTRICTED, f.shownSpecies.id, {
+      includeMissing: true,
+    });
+    expect(restricted).not.toBeNull();
+    // Inactive trait is omitted for RESTRICTED
+    const restrictedTraits = restricted!.flatMap((c) => c.traits);
+    expect(restrictedTraits.map((x) => x.trait.id)).toEqual([f.activeTrait.id]);
+    expect(restrictedTraits[0]?.recordCount).toBe(1);
+
+    // UNRESTRICTED viewer with includeMissing: true
+    const unrestricted = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id, {
+      includeMissing: true,
+    });
+    expect(unrestricted).not.toBeNull();
+    const unrestrictedTraits = unrestricted!.flatMap((c) => c.traits);
+    // Both active and inactive traits appear
+    expect(unrestrictedTraits.map((x) => x.trait.id)).toContain(f.activeTrait.id);
+    expect(unrestrictedTraits.map((x) => x.trait.id)).toContain(f.inactiveTrait.id);
+
+    const activeSum = unrestrictedTraits.find((x) => x.trait.id === f.activeTrait.id);
+    expect(activeSum?.recordCount).toBe(1);
+
+    const inactiveSum = unrestrictedTraits.find((x) => x.trait.id === f.inactiveTrait.id);
+    expect(inactiveSum).toEqual({
+      trait: {
+        id: f.inactiveTrait.id,
+        key: f.inactiveTrait.key,
+        valueType: f.inactiveTrait.valueType,
+        unit: f.inactiveTrait.unit,
+      },
+      recordCount: 0,
+      harmonisationCounts: {
+        harmonised: 0,
+        unknownLevel: 0,
+        multiValue: 0,
+        notNumeric: 0,
+        empty: 0,
+      },
+      levels: null,
+      numeric: null,
+      accepted: null,
+    });
+
+    // Without includeMissing: false or omitted
+    const defaultSum = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id);
+    expect(defaultSum?.flatMap((c) => c.traits).map((x) => x.trait.id)).toEqual([f.activeTrait.id]);
+  });
 });

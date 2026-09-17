@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { species } from '../db/schema/taxa.ts';
+import { getDictionary } from './dictionary.ts';
 
 interface TraitAggregate {
   trait_id: string;
@@ -43,12 +44,14 @@ interface AcceptedCurrent {
  * level distribution or numeric spread, and the current accepted value.
  * `null` when the species itself is invisible to `visibility`.
  * @rfc RFC-63 R10
+ * @rfc RFC-70 R7
  * @rfc RFC-33 R2, R3
  */
 export async function speciesTraitSummary(
   db: DbExecutor,
   visibility: Visibility,
   speciesId: string,
+  options?: { includeMissing?: boolean },
 ): Promise<SpeciesTraits | null> {
   const [exists] = await db
     .select({ id: species.id })
@@ -121,6 +124,68 @@ export async function speciesTraitSummary(
         : null,
     );
   }
+  if (options?.includeMissing) {
+    const dictionary = await getDictionary(db, visibility);
+    const aggregatesByTrait = new Map<string, TraitAggregate>();
+    for (const row of aggregates) {
+      aggregatesByTrait.set(row.trait_id, row);
+    }
+    const result: SpeciesTraits = [];
+    for (const cat of dictionary) {
+      const traits: TraitSummary[] = cat.traits.map((t) => {
+        const row = aggregatesByTrait.get(t.id);
+        if (row) {
+          const quantitative = row.value_type === 'quantitative';
+          return {
+            trait: { id: row.trait_id, key: row.trait_key, valueType: row.value_type, unit: row.unit },
+            recordCount: row.record_count,
+            harmonisationCounts: {
+              harmonised: row.harmonised,
+              unknownLevel: row.unknown_level,
+              multiValue: row.multi_value,
+              notNumeric: row.not_numeric,
+              empty: row.empty,
+            },
+            levels: quantitative ? null : (levelsByTrait.get(row.trait_id) ?? []),
+            numeric:
+              quantitative &&
+              row.numeric_count > 0 &&
+              row.numeric_min !== null &&
+              row.numeric_median !== null &&
+              row.numeric_max !== null
+                ? {
+                    min: row.numeric_min,
+                    median: row.numeric_median,
+                    max: row.numeric_max,
+                    count: row.numeric_count,
+                  }
+                : null,
+            accepted: acceptedByTrait.get(row.trait_id) ?? null,
+          };
+        }
+        return {
+          trait: { id: t.id, key: t.key, valueType: t.valueType, unit: t.unit },
+          recordCount: 0,
+          harmonisationCounts: {
+            harmonised: 0,
+            unknownLevel: 0,
+            multiValue: 0,
+            notNumeric: 0,
+            empty: 0,
+          },
+          levels: null,
+          numeric: null,
+          accepted: null,
+        };
+      });
+      result.push({
+        category: { key: cat.key, label: cat.label },
+        traits,
+      });
+    }
+    return result;
+  }
+
   const result: SpeciesTraits = [];
   for (const row of aggregates) {
     let category = result[result.length - 1];
