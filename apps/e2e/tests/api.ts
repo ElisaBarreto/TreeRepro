@@ -18,7 +18,14 @@ export async function apiCall<T = unknown>(
     data: body,
     headers: { origin: BASE_URL },
   });
+  const status = response.status();
   const text = await response.text();
-  const json = (text.length === 0 ? null : JSON.parse(text)) as T;
-  return { status: response.status(), json };
+  if (text.length === 0) return { status, json: null as T };
+  try {
+    return { status, json: JSON.parse(text) as T };
+  } catch {
+    throw new Error(
+      `apiCall ${method} ${path}: ${status} answered a non-JSON body: ${text.slice(0, 200)}`,
+    );
+  }
 }

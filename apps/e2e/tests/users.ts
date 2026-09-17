@@ -21,7 +21,7 @@ export async function adminContext(browser: Browser): Promise<BrowserContext> {
  * Invites a fresh user, accepts the invitation in a new context, grants
  * `role` (looked up by name through `GET /api/admin/roles`, since the roles
  * this invites into are created per plan rather than seeded) and signs in
- * again so the returned context reflects it. @rfc RFC-50 R3, R5
+ * again so the returned context reflects it. RFC-50 R3, R5.
  */
 export async function inviteAndActivate(
   browser: Browser,

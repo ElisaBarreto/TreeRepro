@@ -1,6 +1,7 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 import { type CspWatch, watchCsp } from './csp.ts';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_STATE, password } from './env.ts';
+import { ADMIN_EMAIL, adminPassword, password } from './env.ts';
+import { signInAndSaveState } from './global-setup.ts';
 import { waitForLink } from './mailpit.ts';
 import { codeFor } from './totp.ts';
 
@@ -16,7 +17,7 @@ const ROLE_NAME = 'Readers';
 let context: BrowserContext;
 let csp: CspWatch;
 let page: Page;
-let adminPassword = ADMIN_PASSWORD;
+let currentPassword = adminPassword();
 let totpSecret = '';
 
 test.beforeAll(async ({ browser }) => {
@@ -26,11 +27,18 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
-  // The password reset below revokes every session of the admin user
-  // (RFC-21 R6), including the one global-setup.ts saved to ADMIN_STATE;
-  // refresh it with this file's final, still-valid session so adminContext()
-  // keeps working for spec files that run after this one.
-  await context.storageState({ path: ADMIN_STATE });
+  // ADMIN_STATE is re-established inside the password-reset test below, not
+  // here: by the time this file's last test finishes, TOTP is enabled on
+  // the admin account (the third test turns it on), and a plain sign-in
+  // this late cannot succeed, while a TOTP-coded one cannot pick a step
+  // that is both unclaimed (RFC-23 R4's replay guard) and still inside the
+  // ±1-step verification window without an actual wait of up to ~60s for
+  // the next window to arrive. The reset test is the last point a plain
+  // ADMIN_EMAIL/ADMIN_PASSWORD sign-in still works, and — via
+  // signInAndSaveState()'s own, separate context — nothing after it ever
+  // signs that particular session out, so the state it saves stays valid
+  // through the rest of this file and every later spec file's
+  // adminContext().
   await context.close();
 });
 
@@ -90,23 +98,39 @@ async function resetPasswordByEmail(who: Page, email: string, next: string) {
 
 test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
   test('RFC-22 R2-R3 the seeded administrator signs in and lands in the workspace', async () => {
-    await signIn(page, ADMIN_EMAIL, adminPassword);
+    await signIn(page, ADMIN_EMAIL, currentPassword);
     await expect(page.getByRole('navigation', { name: 'Admin' })).toBeVisible();
     await signOut(page);
   });
 
-  test('RFC-21 R5-R6 password reset through Mailpit', async () => {
+  test('RFC-21 R5-R6 password reset through Mailpit', async ({ browser }) => {
     const next = password();
     await resetPasswordByEmail(page, ADMIN_EMAIL, next);
-    adminPassword = next;
-    await signIn(page, ADMIN_EMAIL, adminPassword);
+    currentPassword = next;
+    await signIn(page, ADMIN_EMAIL, currentPassword);
 
     // Restore ADMIN_PASSWORD: adminContext() and every later spec file sign
-    // in with the env password (afterAll refreshes ADMIN_STATE to match).
+    // in with the env password.
     await signOut(page);
-    await resetPasswordByEmail(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-    adminPassword = ADMIN_PASSWORD;
-    await signIn(page, ADMIN_EMAIL, adminPassword);
+    await resetPasswordByEmail(page, ADMIN_EMAIL, adminPassword());
+    currentPassword = adminPassword();
+    await signIn(page, ADMIN_EMAIL, currentPassword);
+
+    // The resets above each revoked every session of the admin user
+    // (RFC-21 R6), including the one global-setup.ts saved to ADMIN_STATE.
+    // Re-establish it now, through a *separate* context: `page`'s own
+    // session (just proven above) is not enough on its own, because the
+    // next test signs `page` out again — saving straight from `page`'s
+    // context here would leave ADMIN_STATE holding a cookie whose session
+    // record gets deleted minutes (or seconds) later, failing the same way
+    // as not refreshing it at all. signInAndSaveState() throws if the
+    // sign-in itself fails, which fails this test loudly instead of
+    // silently leaving ADMIN_STATE dead for every later spec file's
+    // adminContext(). This is also the *only* place in the file that calls
+    // it (not afterAll, not global-setup.ts) — the `login` route allows
+    // just 5 attempts per 15 minutes per email+IP (RFC-24 R3), and this
+    // file's sign-ins plus this one call already use exactly that budget.
+    await signInAndSaveState(browser);
   });
 
   test('RFC-23 R2-R3 enables two-factor from the shown secret and signs in again with the next code', async () => {
@@ -131,7 +155,7 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     // always accepted and never collides; the +1 tolerates a container clock
     // up to two steps ahead of the host, not behind across a boundary
     // (irrelevant in CI, where the clock is shared).
-    await signIn(page, ADMIN_EMAIL, adminPassword, codeFor(totpSecret, 1));
+    await signIn(page, ADMIN_EMAIL, currentPassword, codeFor(totpSecret, 1));
   });
 
   test('RFC-31 R3, RFC-50 R3, R5 creates the Readers role, invites B and gives B the role', async () => {
