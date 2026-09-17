@@ -4,7 +4,7 @@ import { type ReactNode, useState } from 'react';
 import { datasetKeys, fetchSpecies, fetchSpeciesTraits } from '../../api/dataset.ts';
 import { AddNameDialog } from '../../components/catalog/AddNameDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
-import { AddValueDialog } from '../../components/curation/AddValueDialog.tsx';
+import { AddEntriesDialog } from '../../components/curation/AddEntriesDialog.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
@@ -66,23 +66,25 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
  * dictionary order, a card per trait with the summary the API computed
  * (RFC-63 R10). A card opens the trait's records in a panel; a row there
  * opens the record's detail in a drawer on top. With `records.create`, an
- * "Add value" button in the header and one on each trait card open the
- * add-value dialog (RFC-65 R1) — the header button without a fixed trait,
- * a card's button with its trait. Both fetches fail together for an unknown
- * id, so one alert covers the page. The open panel is remembered by trait
- * id and its summary read from the traits query on every render, so the
- * accepted badge follows a Clear or a Set-as-accepted (which invalidate the
- * summary) instead of freezing at the click; a trait that leaves the summary
- * closes its panel. With `taxa.manage`, "Edit species" and "Add name" in the
- * header open the species editor and the alternative-name dialog (RFC-60
- * R9); their write invalidates the species detail, so the header re-renders
- * from the refetch. An inactive species is flagged after the unresolved-taxon
- * badge (RFC-33 R7).
+ * "Add entries for another trait" button in the header and one on each
+ * trait card open the add-entries dialog (RFC-70 R1) — the header button
+ * without a fixed trait, a card's button with its trait; the first record
+ * the API created opens in the drawer (RFC-70 R3). Both fetches fail
+ * together for an unknown id, so one alert covers the page. The open panel
+ * is remembered by trait id and its summary read from the traits query on
+ * every render, so the accepted badge follows a Clear or a Set-as-accepted
+ * (which invalidate the summary) instead of freezing at the click; a trait
+ * that leaves the summary closes its panel. With `taxa.manage`, "Edit
+ * species" and "Add name" in the header open the species editor and the
+ * alternative-name dialog (RFC-60 R9); their write invalidates the species
+ * detail, so the header re-renders from the refetch. An inactive species is
+ * flagged after the unresolved-taxon badge (RFC-33 R7).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-60 R7, R9
  * @rfc RFC-33 R7
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1, R6
+ * @rfc RFC-70 R1, R3
  */
 export function SpeciesPage({ id }: { id: string }) {
   const me = useMe();
@@ -119,7 +121,9 @@ export function SpeciesPage({ id }: { id: string }) {
             canAdd || canManageTaxa ? (
               <>
                 {canAdd ? (
-                  <Button onClick={() => setAdding({ trait: null })}>Add value</Button>
+                  <Button onClick={() => setAdding({ trait: null })}>
+                    Add entries for another trait
+                  </Button>
                 ) : null}
                 {canManageTaxa ? (
                   <>
@@ -179,13 +183,14 @@ export function SpeciesPage({ id }: { id: string }) {
         onOpenRecord={setOpenRecord}
       />
       {adding ? (
-        <AddValueDialog
+        <AddEntriesDialog
           speciesId={id}
           initialTrait={adding.trait}
           onClose={() => setAdding(null)}
-          onCreated={(record) => {
+          onCreated={(result) => {
             setAdding(null);
-            setOpenRecord(record.id);
+            const [first] = result.created;
+            if (first) setOpenRecord(first.id);
           }}
           onOpenRecord={(recordId) => {
             setAdding(null);

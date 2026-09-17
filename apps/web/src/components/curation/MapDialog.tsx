@@ -69,7 +69,7 @@ export function MapDialog({
     event.preventDefault();
     // The empty cases get a fixed sentence; anything else the schema rejects
     // (a number out of range, a note too long) shows the schema's own
-    // message under its field, as AddValueDialog does.
+    // message under its field, as AddEntriesDialog does.
     const empty = trait.valueType === 'categorical' ? chosen.length === 0 : numeric === '';
     if (empty) {
       map.reset();

@@ -117,6 +117,8 @@ async function openPage(species = SPECIES) {
   return utils;
 }
 
+const ADD_ENTRIES = 'Add entries for another trait';
+
 async function openTraitPanel() {
   await userEvent.click(screen.getByRole('button', { name: /^sexual system/ }));
   return screen.findByRole('dialog', { name: 'sexual system' });
@@ -470,10 +472,11 @@ describe('RFC-13 R2 SpeciesPage remounts per id', () => {
   });
 });
 
-describe('RFC-65 R1 Add value from the species page', () => {
-  it('shows the Add value buttons only with records.create; the header button opens the dialog without a trait, a card button with its trait', async () => {
+describe('RFC-70 R1 Add entries from the species page', () => {
+  it('shows the add buttons only with records.create; the header button opens the dialog without a trait, a card button with its trait', async () => {
     const first = await openPage();
-    expect(screen.queryByRole('button', { name: /^Add value/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ADD_ENTRIES })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Add value for/ })).not.toBeInTheDocument();
     // Unmount before remounting with the new permission: both renders show
     // the same species name, so a second `openPage()` without unmounting
     // would let its heading wait resolve against the still-mounted first
@@ -481,43 +484,45 @@ describe('RFC-65 R1 Add value from the species page', () => {
     first.unmount();
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
     await openPage();
-    const buttons = screen.getAllByRole('button', { name: /^Add value/ });
-    expect(buttons.length).toBeGreaterThan(1);
-    expect(buttons[0]).toHaveAccessibleName('Add value');
-    await userEvent.click(buttons[0] as HTMLElement);
-    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
-    expect(within(dialog).getByRole('combobox', { name: /trait/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: ADD_ENTRIES }));
+    const dialog = await screen.findByRole('dialog', { name: ADD_ENTRIES });
+    expect(
+      within(dialog).getByRole('combobox', { name: 'Broad trait category' }),
+    ).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Add value' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('dialog', { name: ADD_ENTRIES })).not.toBeInTheDocument(),
     );
     const card = screen.getByRole('button', { name: /^sexual system/ })
       .parentElement as HTMLElement;
     await userEvent.click(within(card).getByRole('button', { name: /^Add value for/ }));
-    const prefilled = await screen.findByRole('dialog', { name: 'Add value' });
+    const prefilled = await screen.findByRole('dialog', { name: ADD_ENTRIES });
     expect(within(prefilled).getByText('sexual system')).toBeInTheDocument();
-    expect(within(prefilled).queryByRole('combobox', { name: /trait/i })).not.toBeInTheDocument();
+    expect(within(prefilled).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
   });
 
-  it('opens the created record in the drawer', async () => {
+  it('RFC-70 R3 opens the first created record in the drawer', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
     curation.createRecords.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
     dataset.fetchRecord.mockResolvedValue(RECORD_DETAIL);
     await openPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Add value' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
-    await userEvent.type(within(dialog).getByRole('combobox', { name: /trait/i }), 'sexual');
-    await userEvent.click(await screen.findByRole('option', { name: /sexual system/ }));
+    await userEvent.click(screen.getByRole('button', { name: ADD_ENTRIES }));
+    const dialog = await screen.findByRole('dialog', { name: ADD_ENTRIES });
+    await within(dialog).findByRole('option', { name: 'Reproductive system' });
     await userEvent.selectOptions(
-      await within(dialog).findByRole('combobox', { name: /level/i }),
+      within(dialog).getByRole('combobox', { name: 'Broad trait category' }),
+      'Reproductive system',
+    );
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: 'Trait' }),
+      'sexual system',
+    );
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: 'Level' }),
       'dioecious',
     );
-    await userEvent.type(
-      within(dialog).getByRole('combobox', { name: /primary reference/i }),
-      'Re',
-    );
-    await userEvent.click(await screen.findByRole('option', { name: /Renner2014/ }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));
+    // No DOI: the claim is the contributor's own observation (RFC-80 R5).
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add record(s)' }));
     expect(await screen.findByRole('dialog', { name: 'Record' })).toHaveTextContent('dioecious');
     expect(dataset.fetchRecord).toHaveBeenCalledWith(RECORD_DETAIL.id);
   });
