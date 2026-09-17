@@ -113,6 +113,20 @@
       "when": 1789324548019,
       "tag": "0015_references_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789651876166,
+      "tag": "0016_permissions_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789651901502,
+      "tag": "0017_species_active",
+      "breakpoints": true
     }
   ]
 }

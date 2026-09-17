@@ -116,6 +116,39 @@ describe('RFC-60 R1 taxonomy tables', () => {
       'species_names_name_trgm_idx',
     ]);
   });
+
+  it('R1 species.active defaults to true', async () => {
+    await withRollback(t.db, async (tx) => {
+      const [sp1] = await tx
+        .insert(species)
+        .values({ canonicalName: `Act-${rand()}`, nameSource: 'wcvp' })
+        .returning();
+      expect(sp1?.active).toBe(true);
+    });
+  });
+});
+
+describe('RFC-68 R1 import batch kind', () => {
+  const t = useTestDb();
+
+  it('defaults to records and is checked', async () => {
+    await withRollback(t.db, async (tx) => {
+      const [b] = await tx
+        .insert(importBatches)
+        .values({ fileName: 'x.csv', fileSha256: 'a'.repeat(64) })
+        .returning();
+      expect(b?.kind).toBe('records');
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp
+              .insert(importBatches)
+              .values({ fileName: 'y.csv', fileSha256: 'b'.repeat(64), kind: 'nope' as never }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+    });
+  });
 });
 
 describe('RFC-61 R1 bibliographic_references', () => {

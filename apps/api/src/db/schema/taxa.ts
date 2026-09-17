@@ -1,6 +1,15 @@
 import { NAME_SOURCES } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './users.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -38,6 +47,7 @@ export const species = pgTable(
     genusId: uuid('genus_id').references(() => genera.id, { onDelete: 'restrict' }),
     canonicalName: text('canonical_name').notNull(),
     nameSource: text('name_source', { enum: NAME_SOURCES }).notNull(),
+    active: boolean('active').notNull().default(true),
     createdAt: ts('created_at').notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => users.id),
   },

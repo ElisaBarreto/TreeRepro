@@ -1,0 +1,3 @@
+ALTER TABLE "import_batches" ADD COLUMN "kind" text DEFAULT 'records' NOT NULL;--> statement-breakpoint
+ALTER TABLE "species" ADD COLUMN "active" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "import_batches" ADD CONSTRAINT "import_batches_kind_check" CHECK ("import_batches"."kind" in ('records', 'species_status', 'plots', 'plot_species', 'user_plots', 'synonyms', 'references', 'distribution'));

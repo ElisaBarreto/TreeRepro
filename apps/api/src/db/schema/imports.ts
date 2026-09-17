@@ -1,6 +1,10 @@
-import { IMPORT_BATCH_STATUSES, IMPORT_REJECT_REASONS } from '@treerepro/contracts';
+import {
+  IMPORT_BATCH_KINDS,
+  IMPORT_BATCH_STATUSES,
+  IMPORT_REJECT_REASONS,
+} from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
-import { bigint, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { users } from './users.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -19,6 +23,7 @@ export const importBatches = pgTable(
     id: uuid('id').primaryKey().default(sql`uuidv7()`),
     fileName: text('file_name').notNull(),
     fileSha256: text('file_sha256').notNull(),
+    kind: text('kind', { enum: IMPORT_BATCH_KINDS }).notNull().default('records'),
     runBy: uuid('run_by').references(() => users.id),
     startedAt: ts('started_at').notNull().defaultNow(),
     finishedAt: ts('finished_at'),
@@ -31,7 +36,13 @@ export const importBatches = pgTable(
     rowsPending: count('rows_pending'),
     unknownLevels: jsonb('unknown_levels').$type<UnknownLevelCount[]>().notNull().default([]),
   },
-  (t) => [index('import_batches_sha_idx').on(t.fileSha256)],
+  (t) => [
+    index('import_batches_sha_idx').on(t.fileSha256),
+    check(
+      'import_batches_kind_check',
+      sql`${t.kind} in ('records', 'species_status', 'plots', 'plot_species', 'user_plots', 'synonyms', 'references', 'distribution')`,
+    ),
+  ],
 );
 
 /** @rfc RFC-64 R7 */

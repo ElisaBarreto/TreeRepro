@@ -1,5 +1,5 @@
 import { PERMISSION_KEYS, PERMISSIONS } from '@treerepro/contracts';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { unwrapDbError, useTestDb, withRollback } from '../../../test/helpers/db.ts';
 import { createUser } from '../../../test/helpers/users.ts';
@@ -69,5 +69,37 @@ describe('RFC-31 R1, R2 roles tables', () => {
       expect(rp?.n).toBe(0);
       expect(ur?.n).toBe(0);
     });
+  });
+
+  it('R2, R10 manager and contributor are system roles with the seeded permissions', async () => {
+    const rows = await t.db
+      .select()
+      .from(roles)
+      .where(inArray(roles.name, ['manager', 'contributor']));
+    expect(rows.map((r) => r.isSystem)).toEqual([true, true]);
+    const byName = new Map(rows.map((r) => [r.name, r.id]));
+    const keys = async (name: string) =>
+      (
+        await t.db
+          .select({ key: rolePermissions.permissionKey })
+          .from(rolePermissions)
+          .where(eq(rolePermissions.roleId, byName.get(name) ?? ''))
+      )
+        .map((r) => r.key)
+        .sort();
+    expect(await keys('contributor')).toEqual([
+      'dataset.read',
+      'records.annotate',
+      'records.create',
+    ]);
+    expect(await keys('manager')).toEqual([
+      'dataset.read',
+      'dataset.read_inactive',
+      'imports.read',
+      'records.annotate',
+      'records.create',
+      'records.review',
+      'records.withdraw',
+    ]);
   });
 });
