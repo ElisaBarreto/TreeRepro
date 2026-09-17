@@ -88,6 +88,34 @@ describe('RFC-62 R2 seedDictionary', () => {
     expect(again).toEqual({ categories: 0, traits: 0, levels: 0 });
   });
 
+  it('RFC-62 R2 stores active=false from an optional seventh column; six-column files still load', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'seed-'));
+    const key = `seed_off_${Math.random().toString(16).slice(2)}`;
+    const file = join(dir, 'dict.csv');
+    await writeFile(
+      file,
+      `final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,false\n`,
+    );
+    await seedDictionary(t.db, file);
+    const [row] = await t.db
+      .select({ active: traits.active })
+      .from(traits)
+      .where(eq(traits.key, key));
+    expect(row?.active).toBe(false);
+  });
+
+  it('RFC-62 R2 refuses a seven-column file whose active value is neither true nor false, inserting nothing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'seed-'));
+    const key = `seed_bad_${Math.random().toString(16).slice(2)}`;
+    const file = join(dir, 'dict.csv');
+    await writeFile(
+      file,
+      `final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,maybe\n`,
+    );
+    await expect(seedDictionary(t.db, file)).rejects.toThrow('Invalid active value on line 2');
+    expect(await t.db.select().from(traits).where(eq(traits.key, key))).toEqual([]);
+  });
+
   it('RFC-64 R9 a malformed row fails within the idle timeout instead of hanging', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dict-'));
     const file = join(dir, 'broken.csv');
