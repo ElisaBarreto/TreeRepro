@@ -1,6 +1,6 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 import { type CspWatch, watchCsp } from './csp.ts';
-import { ADMIN_EMAIL, adminInviteLink, password } from './env.ts';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_STATE, password } from './env.ts';
 import { waitForLink } from './mailpit.ts';
 import { codeFor } from './totp.ts';
 
@@ -16,7 +16,7 @@ const ROLE_NAME = 'Readers';
 let context: BrowserContext;
 let csp: CspWatch;
 let page: Page;
-let adminPassword = password();
+let adminPassword = ADMIN_PASSWORD;
 let totpSecret = '';
 
 test.beforeAll(async ({ browser }) => {
@@ -26,6 +26,11 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
+  // The password reset below revokes every session of the admin user
+  // (RFC-21 R6), including the one global-setup.ts saved to ADMIN_STATE;
+  // refresh it with this file's final, still-valid session so adminContext()
+  // keeps working for spec files that run after this one.
+  await context.storageState({ path: ADMIN_STATE });
   await context.close();
 });
 
@@ -64,31 +69,43 @@ async function acceptInvitation(who: Page, link: string, pass: string) {
   await expect(who).toHaveURL(/\/app$/);
 }
 
+/** RFC-21 R5-R6: request a reset link by email and set `next` through it. Leaves `who` signed out (R6: reset creates no session). */
+async function resetPasswordByEmail(who: Page, email: string, next: string) {
+  await who.goto('/');
+  await who.getByRole('link', { name: 'Forgot your password?' }).click();
+  await expect(who).toHaveURL(/\/forgot-password$/);
+  await who.getByLabel('Email').fill(email);
+  await who.getByRole('button', { name: 'Send reset link' }).click();
+  await expect(
+    who.getByText('If that email has an account, a reset link is on its way.'),
+  ).toBeVisible();
+
+  const link = await waitForLink(who.request, email, 'reset-password');
+  await who.goto(link);
+  await who.getByLabel('New password').fill(next);
+  await who.getByLabel('Confirm password').fill(next);
+  await who.getByRole('button', { name: 'Change password' }).click();
+  await expect(who.getByRole('heading', { name: 'Your password is changed.' })).toBeVisible();
+}
+
 test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
-  test('RFC-20 R6 the seeded administrator accepts the printed invitation and lands in the workspace', async () => {
-    await acceptInvitation(page, adminInviteLink(), adminPassword);
+  test('RFC-22 R2-R3 the seeded administrator signs in and lands in the workspace', async () => {
+    await signIn(page, ADMIN_EMAIL, adminPassword);
     await expect(page.getByRole('navigation', { name: 'Admin' })).toBeVisible();
     await signOut(page);
   });
 
   test('RFC-21 R5-R6 password reset through Mailpit', async () => {
-    await page.goto('/');
-    await page.getByRole('link', { name: 'Forgot your password?' }).click();
-    await expect(page).toHaveURL(/\/forgot-password$/);
-    await page.getByLabel('Email').fill(ADMIN_EMAIL);
-    await page.getByRole('button', { name: 'Send reset link' }).click();
-    await expect(
-      page.getByText('If that email has an account, a reset link is on its way.'),
-    ).toBeVisible();
-
-    const link = await waitForLink(page.request, ADMIN_EMAIL, 'reset-password');
     const next = password();
-    await page.goto(link);
-    await page.getByLabel('New password').fill(next);
-    await page.getByLabel('Confirm password').fill(next);
-    await page.getByRole('button', { name: 'Change password' }).click();
-    await expect(page.getByRole('heading', { name: 'Your password is changed.' })).toBeVisible();
+    await resetPasswordByEmail(page, ADMIN_EMAIL, next);
     adminPassword = next;
+    await signIn(page, ADMIN_EMAIL, adminPassword);
+
+    // Restore ADMIN_PASSWORD: adminContext() and every later spec file sign
+    // in with the env password (afterAll refreshes ADMIN_STATE to match).
+    await signOut(page);
+    await resetPasswordByEmail(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    adminPassword = ADMIN_PASSWORD;
     await signIn(page, ADMIN_EMAIL, adminPassword);
   });
 

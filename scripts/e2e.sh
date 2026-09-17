@@ -2,10 +2,11 @@
 # Runs the end-to-end suite (plan 05c, RFC-01 R6): generates secrets into a
 # temp directory, builds the production images and starts them as the Compose
 # project "treerepro-e2e" on loopback ports (compose.e2e.yml), waits for the
-# site to answer through Caddy, seeds the first administrator, runs Playwright
-# with the invitation link in its environment, and tears everything down —
-# volumes included — whatever the outcome. Extra arguments go to Playwright
-# (`pnpm test:e2e -- --headed`, `pnpm test:e2e -- -g "CSP"`).
+# site to answer through Caddy, seeds the first administrator and the trait
+# dictionary, runs Playwright with the invitation link and a random admin
+# password in its environment, and tears everything down — volumes included —
+# whatever the outcome. Extra arguments go to Playwright (`pnpm test:e2e --
+# --headed`, `pnpm test:e2e -- -g "CSP"`).
 #
 # E2E_KEEP=1 leaves the stack running after the tests (inspect at
 # http://localhost:8080, Mailpit at http://localhost:8026); tear it down with
@@ -82,8 +83,15 @@ if [ -z "$link" ]; then
   exit 1
 fi
 
+echo "e2e: seeding the trait dictionary"
+compose run --rm --no-deps -T api node dist/cli/seed-traits.js
+
+# RFC-21 R2 needs 12+ characters; this shape (also password() in
+# tests/env.ts) clears it with room to spare.
+admin_password="Pw-$(openssl rand -hex 16)-Tree!"
+
 echo "e2e: running Playwright"
 cd "$root"
 E2E_BASE_URL="$base_url" E2E_MAILPIT_URL="$mailpit_url" E2E_ADMIN_EMAIL="$admin_email" \
-  E2E_ADMIN_INVITE_LINK="$link" \
+  E2E_ADMIN_INVITE_LINK="$link" E2E_ADMIN_PASSWORD="$admin_password" \
   pnpm --filter @treerepro/e2e --fail-if-no-match exec playwright test "$@"
