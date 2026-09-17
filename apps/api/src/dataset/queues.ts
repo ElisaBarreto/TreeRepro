@@ -56,7 +56,7 @@ export async function pendingTraits(
     join species s on s.id = r.species_id
     where ${PENDING}
       and ${traitVisible(visibility, sql`t.active`)}
-      and ${speciesVisible(visibility, sql`s.active`)}
+      and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
     group by t.id, t.key, t.value_type, t.unit
     order by count desc, t.key`)) as unknown as PendingTraitRow[];
   return rows.map((r) => ({
@@ -108,7 +108,7 @@ export async function pendingGroups(
       (array_agg(r.id order by r.id desc))[1] as sample_record_id
     from trait_records r
     join species s on s.id = r.species_id
-    where r.trait_id = ${input.traitId} and ${PENDING} and ${speciesVisible(visibility, sql`s.active`)}
+    where r.trait_id = ${input.traitId} and ${PENDING} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
     group by r.value_text
     having ${after}
     order by count desc, r.value_text asc
@@ -184,7 +184,7 @@ export async function mapPending(
           coalesce(r.raw_value, r.value_text) as raw_value
         from trait_records r
         join species s on s.id = r.species_id
-        where ${group} and ${speciesVisible(visibility, sql`s.active`)}),
+        where ${group} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}),
       chosen as (${chosen}),
       ins as (
         insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
@@ -245,7 +245,7 @@ export async function listDisputed(
       and not exists (select 1 from accepted_values v
         where v.species_id = r.species_id and v.trait_id = r.trait_id and v.created_at > d.created_at)
       and (${after}::uuid is null or d.annotation_id < ${after}::uuid)
-      and ${speciesVisible(visibility, sql`sp.active`)}
+      and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
       and ${traitVisible(visibility, sql`tr.active`)}
     order by d.annotation_id desc
     limit ${input.limit + 1}`)) as unknown as DisputeRow[];

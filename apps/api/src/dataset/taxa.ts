@@ -176,9 +176,9 @@ export async function listFamilies(
   if (input.cursor) conditions.push(afterNameCursor(input.cursor, families.name, families.id));
   // For an unrestricted viewer `speciesVisible` is `true`, so this `exists` would become
   // "has any species" — a family without species would vanish for admins too.
-  if (!visibility.inactive) {
+  if (!visibility.inactive || visibility.plotIds !== null) {
     conditions.push(
-      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, sql`s.active`)})`,
+      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
     );
   }
   const rows = await db
@@ -207,9 +207,9 @@ export async function listGenera(
   if (input.q) conditions.push(ilike(genera.name, likePattern(input.q, 'prefix')));
   if (input.cursor) conditions.push(afterNameCursor(input.cursor, genera.name, genera.id));
   // Same guard as listFamilies: only push for a restricted viewer.
-  if (!visibility.inactive) {
+  if (!visibility.inactive || visibility.plotIds !== null) {
     conditions.push(
-      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, sql`s.active`)})`,
+      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
     );
   }
   const rows = await db
