@@ -123,14 +123,14 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
         speciesId: sp1.id,
         traitId: trait.id,
         value: { levelId: trait.levels[0]?.id },
-        primaryReferenceId: ref.id,
+        sources: { references: [{ id: ref.id }] },
         rawValue: 'Reds',
         note: 'Table 2',
       },
     });
     expect(res.status).toBe(201);
     const { data } = await res.json();
-    expect(data).toMatchObject({
+    expect(data.created[0]).toMatchObject({
       speciesId: sp1.id,
       trait: { id: trait.id },
       valueText: 'red',
@@ -161,11 +161,11 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
         speciesId: sp1.id,
         traitId: trait.id,
         value: { numeric: 1e3 },
-        primaryReferenceId: ref.id,
+        sources: { references: [{ id: ref.id }] },
       },
     });
     expect(res.status).toBe(201);
-    expect((await res.json()).data).toMatchObject({
+    expect((await res.json()).data.created[0]).toMatchObject({
       valueText: '1000',
       numericValue: 1000,
       level: null,
@@ -193,7 +193,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
     const post = (body: Record<string, unknown>) =>
       call(t.app, 'POST', '/api/records', {
         cookie,
-        body: { speciesId: sp1.id, primaryReferenceId: ref.id, ...body },
+        body: { speciesId: sp1.id, sources: { references: [{ id: ref.id }] }, ...body },
       });
     const cases: [Record<string, unknown>, string][] = [
       [{ traitId: cat.id, value: { numeric: 1 } }, 'value'],
@@ -221,12 +221,12 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       speciesId: sp1.id,
       traitId: trait.id,
       value: { levelId: trait.levels[0]?.id },
-      primaryReferenceId: ref.id,
+      sources: { references: [{ id: ref.id }] },
     };
     for (const [body, code] of [
       [{ ...base, speciesId: zero }, 'SPECIES_NOT_FOUND'],
       [{ ...base, traitId: zero }, 'TRAIT_NOT_FOUND'],
-      [{ ...base, primaryReferenceId: zero }, 'REFERENCE_NOT_FOUND'],
+      [{ ...base, sources: { references: [{ id: zero }] } }, 'REFERENCE_NOT_FOUND'],
       [{ ...base, secondaryReferenceId: zero }, 'REFERENCE_NOT_FOUND'],
     ] as const) {
       const res = await call(t.app, 'POST', '/api/records', { cookie, body });
@@ -244,17 +244,17 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       speciesId: sp1.id,
       traitId: trait.id,
       value: { levelId: trait.levels[0]?.id },
-      primaryReferenceId: ref.id,
+      sources: { references: [{ id: ref.id }] },
       rawValue: 'A',
     };
     const first = await call(t.app, 'POST', '/api/records', { cookie, body });
     expect(first.status).toBe(201);
-    const firstId = (await first.json()).data.id;
+    const firstId = (await first.json()).data.created[0].id;
     const again = await call(t.app, 'POST', '/api/records', { cookie, body });
     expect(again.status).toBe(409);
     const err = (await again.json()).error;
     expect(err.code).toBe('RECORD_DUPLICATE');
-    expect(err.details).toEqual([{ path: 'recordId', message: firstId }]);
+    expect(err.details).toEqual([{ path: 'sources.references.0', message: firstId }]);
     // a different raw value is a different claim
     const other = await call(t.app, 'POST', '/api/records', {
       cookie,
@@ -883,5 +883,84 @@ describe('RFC-33 R4 record routes by viewer', () => {
       c.traits.map((x) => x.id),
     );
     expect(keys).not.toContain(f.inactiveTrait.id);
+  });
+});
+
+describe('RFC-70 contribution route tests', () => {
+  const t = useTestApp();
+
+  it('POST /api/records with personalObservation creates a record with kind personal_observation', async () => {
+    const { cookie } = await scientist(t, ['records.create', 'records.annotate', 'dataset.read']);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['red'] });
+
+    const res = await call(t.app, 'POST', '/api/records', {
+      cookie,
+      body: {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        value: { levelId: trait.levels[0]?.id },
+        sources: { personalObservation: true },
+      },
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.created).toHaveLength(1);
+    expect(data.created[0].primaryReference.kind).toBe('personal_observation');
+  });
+
+  it('POST /:id/annotations gates neutral by records.review and supports confirm with DOI reference', async () => {
+    const { cookie: contributorCookie } = await scientist(t, [
+      'records.create',
+      'records.annotate',
+      'dataset.read',
+    ]);
+    const { cookie: managerCookie } = await manager(t);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['red'] });
+    const ref = await createReference(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'red',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+    });
+
+    // neutral by contributor without records.review -> 403
+    const forbidden = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
+      cookie: contributorCookie,
+      body: { kind: 'neutral', note: 'just neutral' },
+    });
+    expect(forbidden.status).toBe(403);
+
+    // neutral by manager with records.review -> 201
+    const allowed = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
+      cookie: managerCookie,
+      body: { kind: 'neutral', note: 'just neutral' },
+    });
+    expect(allowed.status).toBe(201);
+
+    // confirm with DOI reference
+    const doi = '10.1111/confirm.doi';
+    t.doi.known.set(doi, {
+      title: 'Confirm Title',
+      authors: 'Author C',
+      year: 2023,
+      journal: 'Journal C',
+    });
+    const confirmed = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
+      cookie: contributorCookie,
+      body: {
+        kind: 'confirm',
+        reference: { doi },
+      },
+    });
+    expect(confirmed.status).toBe(201);
+    const body = await confirmed.json();
+    expect(body.data.annotations[0].reference).toMatchObject({
+      citationKey: 'doi:10.1111/confirm.doi',
+      kind: 'publication',
+    });
   });
 });

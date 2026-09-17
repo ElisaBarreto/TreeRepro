@@ -46,7 +46,9 @@ const itemColumns = {
   traitUnit: traits.unit,
   levelKey: traitLevels.key,
   primaryKey: primaryRef.citationKey,
+  primaryKind: primaryRef.kind,
   secondaryKey: secondaryRef.citationKey,
+  secondaryKind: secondaryRef.kind,
   authorName: author.name,
 };
 
@@ -58,7 +60,9 @@ export type ItemRow = {
   traitUnit: string | null;
   levelKey: string | null;
   primaryKey: string | null;
+  primaryKind: (typeof bibliographicReferences.$inferSelect)['kind'] | null;
   secondaryKey: string | null;
+  secondaryKind: (typeof bibliographicReferences.$inferSelect)['kind'] | null;
   authorName: string | null;
   review: ReviewStatus;
 };
@@ -77,16 +81,18 @@ export function toItem(r: ItemRow): RecordItem {
     harmonisation: rec.harmonisation,
     review: r.review,
     primaryReference:
-      rec.primaryReferenceId && r.primaryKey
-        ? { id: rec.primaryReferenceId, citationKey: r.primaryKey }
+      rec.primaryReferenceId && r.primaryKey && r.primaryKind
+        ? { id: rec.primaryReferenceId, citationKey: r.primaryKey, kind: r.primaryKind }
         : null,
     secondaryReference:
-      rec.secondaryReferenceId && r.secondaryKey
-        ? { id: rec.secondaryReferenceId, citationKey: r.secondaryKey }
+      rec.secondaryReferenceId && r.secondaryKey && r.secondaryKind
+        ? { id: rec.secondaryReferenceId, citationKey: r.secondaryKey, kind: r.secondaryKind }
         : null,
     origin: rec.origin,
     createdAt: rec.createdAt.toISOString(),
     createdBy: rec.createdBy && r.authorName ? { id: rec.createdBy, name: r.authorName } : null,
+    intent: rec.intent ?? null,
+    respondsTo: rec.respondsToRecordId ? { id: rec.respondsToRecordId } : null,
   };
 }
 
@@ -161,7 +167,7 @@ export async function getRecord(
     .limit(1);
   if (!row) return null;
   const rec = row.record;
-  const [batch, annotations, history, supersededBy] = await Promise.all([
+  const [batch, annotations, history, supersededBy, responses] = await Promise.all([
     rec.importBatchId
       ? db
           .select({
@@ -178,12 +184,20 @@ export async function getRecord(
         id: recordAnnotations.id,
         kind: recordAnnotations.kind,
         note: recordAnnotations.note,
+        generated: recordAnnotations.generated,
+        refId: bibliographicReferences.id,
+        refCitationKey: bibliographicReferences.citationKey,
+        refKind: bibliographicReferences.kind,
         actorId: users.id,
         actorName: users.name,
         createdAt: recordAnnotations.createdAt,
       })
       .from(recordAnnotations)
       .innerJoin(users, eq(users.id, recordAnnotations.actorId))
+      .leftJoin(
+        bibliographicReferences,
+        eq(bibliographicReferences.id, recordAnnotations.referenceId),
+      )
       .where(eq(recordAnnotations.recordId, id))
       .orderBy(desc(recordAnnotations.id)),
     db
@@ -207,6 +221,18 @@ export async function getRecord(
       .from(traitRecords)
       .where(eq(traitRecords.supersedesRecordId, id))
       .orderBy(desc(traitRecords.id)),
+    db
+      .select({
+        id: traitRecords.id,
+        intent: traitRecords.intent,
+        creatorId: users.id,
+        creatorName: users.name,
+        createdAt: traitRecords.createdAt,
+      })
+      .from(traitRecords)
+      .leftJoin(users, eq(users.id, traitRecords.createdBy))
+      .where(eq(traitRecords.respondsToRecordId, id))
+      .orderBy(desc(traitRecords.id)),
   ]);
   const b = batch[0];
   return {
@@ -226,6 +252,11 @@ export async function getRecord(
       kind: a.kind,
       note: a.note,
       actor: { id: a.actorId, name: a.actorName },
+      reference:
+        a.refId && a.refCitationKey && a.refKind
+          ? { id: a.refId, citationKey: a.refCitationKey, kind: a.refKind }
+          : null,
+      generated: a.generated,
       createdAt: a.createdAt.toISOString(),
     })),
     acceptedHistory: history.map((h) => ({
@@ -238,5 +269,12 @@ export async function getRecord(
     })),
     supersedes: rec.supersedesRecordId ? { id: rec.supersedesRecordId } : null,
     supersededBy: supersededBy.map((r) => ({ id: r.id })),
+    responses: responses.map((res) => ({
+      id: res.id,
+      intent: res.intent!,
+      createdBy:
+        res.creatorId && res.creatorName ? { id: res.creatorId, name: res.creatorName } : null,
+      createdAt: res.createdAt.toISOString(),
+    })),
   };
 }

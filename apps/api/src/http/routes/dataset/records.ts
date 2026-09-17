@@ -10,9 +10,10 @@ import {
 import { Hono } from 'hono';
 import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
-import { annotateRecord, createRecord } from '../../../dataset/curation.ts';
+import { annotateRecord, createRecords } from '../../../dataset/curation.ts';
 import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
+import { resolveSources } from '../../../dataset/sources.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
@@ -23,6 +24,7 @@ import { validate } from '../../validate.ts';
  * @rfc RFC-63 R8, R9
  * @rfc RFC-65 R1, R2, R3, R4
  * @rfc RFC-65 R7-R9
+ * @rfc RFC-70 R1-R6
  * @rfc RFC-33 R2-R5
  */
 export function recordRoutes(ctx: AuthContext) {
@@ -32,12 +34,27 @@ export function recordRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'records.create'),
       validate('json', createRecordBodySchema),
       async (c) => {
+        const body = c.req.valid('json');
+        const actor = currentUser(c);
         const visibility = await visibilityOf(ctx, c);
-        const record = await createRecord(ctx.db, visibility, {
-          ...c.req.valid('json'),
-          actorId: currentUser(c).id,
+        const referenceIds = await resolveSources(
+          { db: ctx.db, doi: ctx.doi },
+          actor.id,
+          body.sources,
+        );
+        const result = await createRecords(ctx.db, visibility, {
+          speciesId: body.speciesId,
+          traitId: body.traitId,
+          value: body.value,
+          referenceIds,
+          intent: body.intent,
+          respondsToRecordId: body.respondsToRecordId,
+          rawValue: body.rawValue,
+          note: body.note,
+          secondaryReferenceId: body.secondaryReferenceId,
+          actorId: actor.id,
         });
-        return c.json({ data: record }, 201);
+        return c.json({ data: result }, 201);
       },
     )
     .post(
@@ -46,12 +63,27 @@ export function recordRoutes(ctx: AuthContext) {
       validate('param', idParamSchema),
       validate('json', annotateRecordBodySchema),
       async (c) => {
+        const body = c.req.valid('json');
+        const actor = currentUser(c);
         const visibility = await visibilityOf(ctx, c);
+        let referenceId: string | undefined;
+        if (body.reference) {
+          const resolved = await resolveSources(
+            { db: ctx.db, doi: ctx.doi },
+            actor.id,
+            { references: [body.reference] },
+            'reference',
+          );
+          referenceId = resolved[0];
+        }
         const record = await annotateRecord(ctx.db, visibility, {
           recordId: c.req.valid('param').id,
-          ...c.req.valid('json'),
-          actorId: currentUser(c).id,
+          kind: body.kind,
+          note: body.note,
+          referenceId,
+          actorId: actor.id,
           canWithdrawAny: currentPermissions(c).has('records.withdraw'),
+          canReview: currentPermissions(c).has('records.review'),
         });
         return c.json({ data: record }, 201);
       },
