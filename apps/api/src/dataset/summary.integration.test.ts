@@ -4,11 +4,13 @@ import {
   createRecord,
   createReference,
   createSpecies,
+  createVisibilityFixture,
   levelByKey,
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { acceptedValues } from '../db/schema/curation.ts';
 import { speciesTraitSummary } from './summary.ts';
 
@@ -83,9 +85,9 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       actorId: user.id,
     });
 
-    const summary = await speciesTraitSummary(t.db, sp1.id);
-    expect(summary.map((c) => c.category.key)).toEqual(['flower', 'flower_color']);
-    const colorSummary = summary[1]?.traits[0];
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    expect(summary?.map((c) => c.category.key)).toEqual(['flower', 'flower_color']);
+    const colorSummary = summary?.[1]?.traits[0];
     expect(colorSummary).toEqual({
       trait: { id: color.id, key: 'flower_color', valueType: 'categorical', unit: null },
       recordCount: 4,
@@ -103,7 +105,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       numeric: null,
       accepted: { recordId: b1.id, valueText: 'blue', decidedAt: expect.any(String) },
     });
-    const petalSummary = summary[0]?.traits.find((tr) => tr.trait.key === 'petal_length');
+    const petalSummary = summary?.[0]?.traits.find((tr) => tr.trait.key === 'petal_length');
     expect(petalSummary).toMatchObject({
       recordCount: 4,
       harmonisationCounts: { harmonised: 3, notNumeric: 1 },
@@ -114,7 +116,21 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     await t.db
       .insert(acceptedValues)
       .values({ speciesId: sp1.id, traitId: color.id, decision: 'cleared', actorId: user.id });
-    expect((await speciesTraitSummary(t.db, sp1.id))[1]?.traits[0]?.accepted).toBeNull();
-    expect(await speciesTraitSummary(t.db, (await createSpecies(t.db)).id)).toEqual([]);
+    expect(
+      (await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id))?.[1]?.traits[0]?.accepted,
+    ).toBeNull();
+    expect(await speciesTraitSummary(t.db, UNRESTRICTED, (await createSpecies(t.db)).id)).toEqual(
+      [],
+    );
+  });
+
+  it('RFC-33 R3 omits the inactive trait and answers null for the hidden species to a restricted viewer', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    const restricted = await speciesTraitSummary(t.db, RESTRICTED, f.shownSpecies.id);
+    expect(restricted?.flatMap((c) => c.traits).map((x) => x.trait.id)).toEqual([f.activeTrait.id]);
+    expect(await speciesTraitSummary(t.db, RESTRICTED, f.hiddenSpecies.id)).toBeNull();
+    const unrestricted = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id);
+    expect(unrestricted?.flatMap((c) => c.traits)).toHaveLength(2);
   });
 });

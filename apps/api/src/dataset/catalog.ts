@@ -454,7 +454,7 @@ async function traitAudit(
 }
 
 async function traitOrThrow(db: DbExecutor, id: string, where: string): Promise<Trait> {
-  const trait = await getTrait(db, id);
+  const trait = await getTrait(db, UNRESTRICTED, id);
   if (!trait) throw new Error(`${where}: trait vanished`);
   return trait;
 }

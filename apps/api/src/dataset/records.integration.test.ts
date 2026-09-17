@@ -5,11 +5,13 @@ import {
   createRecord,
   createReference,
   createSpecies,
+  createVisibilityFixture,
   levelByKey,
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { getRecord, listRecords, reviewStatusSql } from './records.ts';
@@ -51,7 +53,11 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       importBatchId: batch.id,
     });
 
-    const byTrait = await listRecords(t.db, { speciesId: sp1.id, traitId: trait.id, limit: 10 });
+    const byTrait = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      limit: 10,
+    });
     expect(byTrait.data.map((r) => r.id)).toEqual([r2.id, r1.id]);
     expect(byTrait.data[1]).toEqual({
       id: r1.id,
@@ -74,10 +80,10 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       citationKey: ref.citationKey,
     });
 
-    const byRef = await listRecords(t.db, { referenceId: ref.id, limit: 2 });
+    const byRef = await listRecords(t.db, UNRESTRICTED, { referenceId: ref.id, limit: 2 });
     expect(byRef.data.map((r) => r.id)).toEqual([r3.id, r2.id]);
     expect(byRef.nextCursor).not.toBeNull();
-    const rest = await listRecords(t.db, {
+    const rest = await listRecords(t.db, UNRESTRICTED, {
       referenceId: ref.id,
       cursor: byRef.nextCursor as string,
       limit: 2,
@@ -85,8 +91,8 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     expect(rest.data.map((r) => r.id)).toEqual([r1.id]);
     expect(rest.nextCursor).toBeNull();
     expect(
-      (await listRecords(t.db, { speciesId: sp1.id, traitId: other.id, limit: 10 })).data[0]
-        ?.numericValue,
+      (await listRecords(t.db, UNRESTRICTED, { speciesId: sp1.id, traitId: other.id, limit: 10 }))
+        .data[0]?.numericValue,
     ).toBe(2.5);
   });
 
@@ -104,7 +110,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     });
     const ada = (await createUser(t.db, { name: 'Ada' })).user;
     const bob = (await createUser(t.db, { name: 'Bob' })).user;
-    const status = async () => (await getRecord(t.db, rec.id))?.review;
+    const status = async () => (await getRecord(t.db, UNRESTRICTED, rec.id))?.review;
 
     expect(await status()).toBe('unreviewed');
     await t.db
@@ -196,7 +202,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       note: 'Undecided',
     });
 
-    const detail = await getRecord(t.db, imported.id);
+    const detail = await getRecord(t.db, UNRESTRICTED, imported.id);
     expect(detail).toMatchObject({
       species: { id: sp1.id, canonicalName: sp1.canonicalName },
       rawValue: 'X',
@@ -219,7 +225,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       recordId: imported.id,
       actor: { name: 'Grace' },
     });
-    const manualDetail = await getRecord(t.db, manual.id);
+    const manualDetail = await getRecord(t.db, UNRESTRICTED, manual.id);
     expect(manualDetail).toMatchObject({
       origin: 'manual',
       createdBy: { id: user.id, name: 'Grace' },
@@ -227,6 +233,23 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       importBatch: null,
       importRowNo: null,
     });
-    expect(await getRecord(t.db, '00000000-0000-7000-8000-000000000000')).toBeNull();
+    expect(await getRecord(t.db, UNRESTRICTED, '00000000-0000-7000-8000-000000000000')).toBeNull();
+  });
+});
+
+describe('RFC-33 R3, R4 listRecords and getRecord by viewer', () => {
+  const t = useTestDb();
+
+  it('records on a hidden species or an inactive trait are invisible to a restricted viewer', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    const byRef = await listRecords(t.db, RESTRICTED, { referenceId: f.reference.id, limit: 10 });
+    expect(byRef.data.map((r) => r.id)).toEqual([f.visible.id]);
+    expect(
+      (await listRecords(t.db, UNRESTRICTED, { referenceId: f.reference.id, limit: 10 })).data,
+    ).toHaveLength(3);
+    expect(await getRecord(t.db, RESTRICTED, f.onHiddenSpecies.id)).toBeNull();
+    expect(await getRecord(t.db, RESTRICTED, f.onInactiveTrait.id)).toBeNull();
+    expect(await getRecord(t.db, UNRESTRICTED, f.onHiddenSpecies.id)).not.toBeNull();
   });
 });

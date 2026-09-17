@@ -7,6 +7,13 @@ import type {
   TraitValueType,
 } from '@treerepro/contracts';
 import { and, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
+import {
+  levelVisible,
+  speciesVisible,
+  traitVisible,
+  UNRESTRICTED,
+  type Visibility,
+} from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
@@ -30,8 +37,15 @@ export interface TraitBrief {
   active: boolean;
 }
 
-/** @rfc RFC-65 R1 */
-export async function requireTrait(db: DbExecutor, traitId: string): Promise<TraitBrief> {
+/**
+ * @rfc RFC-65 R1
+ * @rfc RFC-33 R2, R4
+ */
+export async function requireTrait(
+  db: DbExecutor,
+  visibility: Visibility,
+  traitId: string,
+): Promise<TraitBrief> {
   const [row] = await db
     .select({
       id: traits.id,
@@ -41,18 +55,25 @@ export async function requireTrait(db: DbExecutor, traitId: string): Promise<Tra
       active: traits.active,
     })
     .from(traits)
-    .where(eq(traits.id, traitId))
+    .where(and(eq(traits.id, traitId), traitVisible(visibility)))
     .limit(1);
   if (!row) throw new AppError('TRAIT_NOT_FOUND', 'Trait not found');
   return row;
 }
 
-/** @rfc RFC-65 R1 */
-export async function requireSpecies(db: DbExecutor, speciesId: string): Promise<{ id: string }> {
+/**
+ * @rfc RFC-65 R1
+ * @rfc RFC-33 R2, R4
+ */
+export async function requireSpecies(
+  db: DbExecutor,
+  visibility: Visibility,
+  speciesId: string,
+): Promise<{ id: string }> {
   const [row] = await db
     .select({ id: species.id })
     .from(species)
-    .where(eq(species.id, speciesId))
+    .where(and(eq(species.id, speciesId), speciesVisible(visibility)))
     .limit(1);
   if (!row) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
   return row;
@@ -75,13 +96,16 @@ export type ResolvedValue =
   | { levelId: null; levelKey: null; numericValue: number };
 
 /**
- * A manual value against its trait: the level must belong to the trait and be
- * active; the number must pass the RFC-64 R6 rule. `path` prefixes the detail
- * paths (`value` for a record, `value` for a mapping).
+ * A manual value against its trait: the level must belong to the trait,
+ * be visible to `visibility` and be active; the number must pass the RFC-64
+ * R6 rule. `path` prefixes the detail paths (`value` for a record, `value`
+ * for a mapping).
  * @rfc RFC-65 R1, R9
+ * @rfc RFC-33 R2, R5
  */
 export async function resolveValue(
   db: DbExecutor,
+  visibility: Visibility,
   trait: Pick<TraitBrief, 'id' | 'valueType'>,
   value: RecordValue,
   path = 'value',
@@ -92,7 +116,13 @@ export async function resolveValue(
     const [level] = await db
       .select({ id: traitLevels.id, key: traitLevels.key, active: traitLevels.active })
       .from(traitLevels)
-      .where(and(eq(traitLevels.id, value.levelId), eq(traitLevels.traitId, trait.id)))
+      .where(
+        and(
+          eq(traitLevels.id, value.levelId),
+          eq(traitLevels.traitId, trait.id),
+          levelVisible(visibility),
+        ),
+      )
       .limit(1);
     if (!level) throw validation(`${path}.levelId`, 'Level does not belong to this trait');
     if (!level.active) throw validation(`${path}.levelId`, 'Level is inactive');
@@ -126,18 +156,20 @@ export interface CreateRecordInput {
  * existing record is looked up afterwards (nothing is left aborted) and named
  * in the 409.
  * @rfc RFC-65 R1, R2
+ * @rfc RFC-33 R2, R5
  */
 export async function createRecord(
   db: DbExecutor,
+  visibility: Visibility,
   input: CreateRecordInput,
 ): Promise<RecordDetail> {
-  await requireSpecies(db, input.speciesId);
-  const trait = await requireTrait(db, input.traitId);
+  await requireSpecies(db, visibility, input.speciesId);
+  const trait = await requireTrait(db, visibility, input.traitId);
   if (!trait.active) throw validation('traitId', 'Trait is inactive');
   await requireReference(db, input.primaryReferenceId, 'primaryReferenceId');
   if (input.secondaryReferenceId !== undefined)
     await requireReference(db, input.secondaryReferenceId, 'secondaryReferenceId');
-  const value = await resolveValue(db, trait, input.value);
+  const value = await resolveValue(db, visibility, trait, input.value);
   const valueText: string | SQL<string> =
     value.levelKey !== null ? value.levelKey : numericText(value.numericValue);
   const claim = {
@@ -189,7 +221,7 @@ export async function createRecord(
     );
   }
   if (!inserted) throw new Error('createRecord: insert returned no row');
-  const detail = await getRecord(db, inserted.id);
+  const detail = await getRecord(db, visibility, inserted.id);
   if (!detail) throw new Error('createRecord: record vanished');
   return detail;
 }
@@ -228,9 +260,11 @@ export interface AnnotateRecordInput {
  * functions lock the same key, so whichever gets there first finishes (and
  * releases the lock) before the other re-reads the now-current state.
  * @rfc RFC-65 R3, R4
+ * @rfc RFC-33 R2, R5
  */
 export async function annotateRecord(
   db: DbExecutor,
+  visibility: Visibility,
   input: AnnotateRecordInput,
 ): Promise<RecordDetail> {
   return db.transaction(async (tx) => {
@@ -245,7 +279,15 @@ export async function annotateRecord(
         review: reviewStatusSql(traitRecords.id).as('review'),
       })
       .from(traitRecords)
-      .where(eq(traitRecords.id, input.recordId))
+      .innerJoin(species, eq(species.id, traitRecords.speciesId))
+      .innerJoin(traits, eq(traits.id, traitRecords.traitId))
+      .where(
+        and(
+          eq(traitRecords.id, input.recordId),
+          speciesVisible(visibility),
+          traitVisible(visibility),
+        ),
+      )
       .limit(1);
     if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
     if (rec.review === 'withdrawn')
@@ -268,7 +310,7 @@ export async function annotateRecord(
       kind: input.kind,
       note: input.note ?? null,
     });
-    const detail = await getRecord(tx, rec.id);
+    const detail = await getRecord(tx, visibility, rec.id);
     if (!detail) throw new Error('annotateRecord: record vanished');
     return detail;
   });
@@ -344,8 +386,8 @@ export interface SetAcceptedInput {
  */
 export async function setAccepted(db: DbExecutor, input: SetAcceptedInput): Promise<AcceptedState> {
   return db.transaction(async (tx) => {
-    await requireSpecies(tx, input.speciesId);
-    await requireTrait(tx, input.traitId);
+    await requireSpecies(tx, UNRESTRICTED, input.speciesId);
+    await requireTrait(tx, UNRESTRICTED, input.traitId);
     if (input.decision === 'accepted') {
       const recordId = input.recordId;
       if (!recordId) throw validation('recordId', 'Required');

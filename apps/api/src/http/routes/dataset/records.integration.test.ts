@@ -11,9 +11,10 @@ import {
   createReference,
   createSpecies,
   createTrait,
+  createVisibilityFixture,
   traitByKey,
 } from '../../../../test/helpers/dataset.ts';
-import { createRole } from '../../../../test/helpers/roles.ts';
+import { createRole, systemRoleId } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
 import { traitLevels } from '../../../db/schema/dictionary.ts';
@@ -100,6 +101,14 @@ async function scientist(
   return { user, cookie };
 }
 
+/** A signed-in user holding the manager system role: dataset.read_inactive, records.review among others. */
+async function manager(t: TestApp) {
+  const role = await systemRoleId(t.db, 'manager');
+  const { user } = await createUser(t.db, { roles: [role] });
+  const { cookie } = await loginAs(t, user);
+  return { user, cookie };
+}
+
 describe('RFC-65 R1, R2 POST /api/records', () => {
   const t = useTestApp();
 
@@ -164,7 +173,13 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
   });
 
   it('validates the value against the trait: shape, foreign level, inactive level, inactive trait', async () => {
-    const { cookie } = await scientist(t);
+    // dataset.read_inactive so the inactive trait and level stay visible: this test
+    // is about value-shape validation, not about RFC-33 visibility.
+    const { cookie } = await scientist(t, [
+      'records.create',
+      'dataset.read',
+      'dataset.read_inactive',
+    ]);
     const sp1 = await createSpecies(t.db);
     const cat = await createTrait(t.db, { levels: ['a'] });
     const other = await createTrait(t.db, { levels: ['b'] });
@@ -289,7 +304,7 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
 
   /** Two species, one reference, a categorical trait (red, blue) and a quantitative one; pending import rows on both. */
   async function queueFixture() {
-    const { user, cookie } = await scientist(t, ['records.create', 'dataset.read']);
+    const { user, cookie } = await manager(t);
     const s1 = await createSpecies(t.db);
     const s2 = await createSpecies(t.db);
     const ref = await createReference(t.db);
@@ -373,7 +388,7 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
   });
 
   it('R8 one group per distinct value_text, even when its rows disagree on harmonisation', async () => {
-    const { cookie } = await scientist(t);
+    const { cookie } = await manager(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a'] });
     const ref = await createReference(t.db);
@@ -404,7 +419,7 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
   });
 
   it('R8 the pending-group cursor stays well under the 4096-character cap even for a long value_text', async () => {
-    const { cookie } = await scientist(t);
+    const { cookie } = await manager(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a'] });
     const ref = await createReference(t.db);
@@ -586,6 +601,33 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
     });
     expect(unknown.status).toBe(404);
   });
+
+  it('RFC-31 R10 a contributor gets 403 on every queue route', async () => {
+    const f = await queueFixture();
+    const { user } = await createUser(t.db, { roles: [await systemRoleId(t.db, 'contributor')] });
+    const { cookie } = await loginAs(t, user);
+    const traitsRes = await call(t.app, 'GET', '/api/records/pending/traits', { cookie });
+    expect(traitsRes.status).toBe(403);
+    expect((await traitsRes.json()).error.code).toBe('PERMISSION_DENIED');
+    const groupsRes = await call(t.app, 'GET', `/api/records/pending?traitId=${f.cat.id}`, {
+      cookie,
+    });
+    expect(groupsRes.status).toBe(403);
+    expect((await groupsRes.json()).error.code).toBe('PERMISSION_DENIED');
+    const mapRes = await call(t.app, 'POST', '/api/records/pending/map', {
+      cookie,
+      body: {
+        traitId: f.cat.id,
+        valueText: 'reds',
+        value: { levelIds: [f.cat.levels[0]?.id] },
+      },
+    });
+    expect(mapRes.status).toBe(403);
+    expect((await mapRes.json()).error.code).toBe('PERMISSION_DENIED');
+    const disputedRes = await call(t.app, 'GET', '/api/records/disputed', { cookie });
+    expect(disputedRes.status).toBe(403);
+    expect((await disputedRes.json()).error.code).toBe('PERMISSION_DENIED');
+  });
 });
 
 describe('RFC-65 R10 GET /api/records/disputed', () => {
@@ -610,7 +652,7 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
   };
 
   it('lists standing disputes newest first, drops them after a later accepted decision for the species and trait or a changed stance, never withdrawn records', async () => {
-    const author = await scientist(t, ['records.annotate', 'dataset.read']);
+    const author = await manager(t);
     const b = await scientist(t, ['records.annotate']);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a', 'b'] });
@@ -809,5 +851,37 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     const accepted = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'x' });
     expect(accepted.status).toBe(409);
     expect((await accepted.json()).error.code).toBe('RECORD_IS_ACCEPTED');
+  });
+});
+
+describe('RFC-33 R4 record routes by viewer', () => {
+  const t = useTestApp();
+  it('a contributor gets 404 on a record of a hidden species; a manager reads it', async () => {
+    const { user: reader } = await createUser(t.db, {
+      roles: [await systemRoleId(t.db, 'contributor')],
+    });
+    const { user: manager } = await createUser(t.db, {
+      roles: [await systemRoleId(t.db, 'manager')],
+    });
+    const f = await createVisibilityFixture(t.db, manager.id);
+    const [r, m] = await Promise.all([loginAs(t, reader), loginAs(t, manager)]);
+    expect(
+      (await call(t.app, 'GET', `/api/records/${f.onHiddenSpecies.id}`, { cookie: r.cookie }))
+        .status,
+    ).toBe(404);
+    expect(
+      (await call(t.app, 'GET', `/api/records/${f.onHiddenSpecies.id}`, { cookie: m.cookie }))
+        .status,
+    ).toBe(200);
+    const annotate = await call(t.app, 'POST', `/api/records/${f.onHiddenSpecies.id}/annotations`, {
+      cookie: r.cookie,
+      body: { kind: 'confirm' },
+    });
+    expect(annotate.status).toBe(404);
+    const traitsRes = await call(t.app, 'GET', '/api/traits', { cookie: r.cookie });
+    const keys = (await traitsRes.json()).data.flatMap((c: { traits: { id: string }[] }) =>
+      c.traits.map((x) => x.id),
+    );
+    expect(keys).not.toContain(f.inactiveTrait.id);
   });
 });

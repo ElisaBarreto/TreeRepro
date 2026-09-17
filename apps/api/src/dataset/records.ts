@@ -1,6 +1,7 @@
 import type { RecordDetail, RecordItem, ReviewStatus } from '@treerepro/contracts';
 import { and, desc, eq, lt, or, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
@@ -106,9 +107,11 @@ export function itemQuery(db: DbExecutor) {
  * Either `speciesId` and `traitId` together, or `referenceId` alone (primary
  * or secondary); ordered `id` descending with a keyset cursor.
  * @rfc RFC-63 R9
+ * @rfc RFC-33 R2, R3
  */
 export async function listRecords(
   db: DbExecutor,
+  visibility: Visibility,
   input: {
     speciesId?: string;
     traitId?: string;
@@ -117,7 +120,7 @@ export async function listRecords(
     limit: number;
   },
 ): Promise<{ data: RecordItem[]; nextCursor: string | null }> {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [speciesVisible(visibility), traitVisible(visibility)];
   if (input.speciesId && input.traitId) {
     conditions.push(
       eq(traitRecords.speciesId, input.speciesId),
@@ -146,9 +149,16 @@ export async function listRecords(
  * The record detail: raw fields, its import batch (when imported), its
  * annotations and the accepted-value history of its species and trait.
  * @rfc RFC-63 R8
+ * @rfc RFC-33 R2, R4
  */
-export async function getRecord(db: DbExecutor, id: string): Promise<RecordDetail | null> {
-  const [row] = await itemQuery(db).where(eq(traitRecords.id, id)).limit(1);
+export async function getRecord(
+  db: DbExecutor,
+  visibility: Visibility,
+  id: string,
+): Promise<RecordDetail | null> {
+  const [row] = await itemQuery(db)
+    .where(and(eq(traitRecords.id, id), speciesVisible(visibility), traitVisible(visibility)))
+    .limit(1);
   if (!row) return null;
   const rec = row.record;
   const [batch, annotations, history, supersededBy] = await Promise.all([
