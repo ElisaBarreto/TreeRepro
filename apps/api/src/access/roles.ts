@@ -142,7 +142,7 @@ export async function createRole(
 async function requireEditable(db: DbExecutor, id: string): Promise<RoleRow> {
   const row = await findRow(db, id);
   if (!row) throw new AppError('ROLE_NOT_FOUND', 'Role not found');
-  if (row.isSystem) throw new AppError('ROLE_IS_SYSTEM', 'The admin role cannot be changed');
+  if (row.isSystem) throw new AppError('ROLE_IS_SYSTEM', 'A system role cannot be changed');
   return row;
 }
 
