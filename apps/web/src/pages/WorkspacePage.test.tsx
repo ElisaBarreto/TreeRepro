@@ -159,6 +159,30 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(withoutPlots.searchParams.has('scope')).toBe(false);
   });
 
+  it('shows the empty state when no trait is missing data', async () => {
+    dashboard.fetchDashboard.mockResolvedValue({
+      ...DASHBOARD,
+      contributor: {
+        ...DASHBOARD.contributor,
+        topMissingTraits: [],
+      },
+    });
+    renderAt('/app/');
+    expect(await screen.findByText('Every trait in your plots has data.')).toBeInTheDocument();
+  });
+
+  it('shows the empty state without plots when no trait is missing data', async () => {
+    dashboard.fetchDashboard.mockResolvedValue({
+      ...NO_PLOTS_DASHBOARD,
+      contributor: {
+        ...NO_PLOTS_DASHBOARD.contributor,
+        topMissingTraits: [],
+      },
+    });
+    renderAt('/app/');
+    expect(await screen.findByText('Every trait in the dataset has data.')).toBeInTheDocument();
+  });
+
   it('shows the contribution summary as tiles linking to /app/contributions', async () => {
     renderAt('/app/');
     const tiles = await screen.findByRole('list', { name: 'Your contributions' });

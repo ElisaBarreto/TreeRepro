@@ -83,7 +83,17 @@ export function WorkspacePage() {
                 ? 'Top traits missing data in your plots'
                 : 'Top traits missing data in the dataset'}
             </h2>
-            <MissingTraitsList traits={data.contributor.topMissingTraits} hasPlots={hasPlots} />
+            {data.contributor.topMissingTraits.length === 0 ? (
+              <EmptyState
+                title={
+                  hasPlots
+                    ? 'Every trait in your plots has data.'
+                    : 'Every trait in the dataset has data.'
+                }
+              />
+            ) : (
+              <MissingTraitsList traits={data.contributor.topMissingTraits} hasPlots={hasPlots} />
+            )}
           </section>
 
           <section aria-labelledby="contributions-heading" className={SECTION_CLASS}>
