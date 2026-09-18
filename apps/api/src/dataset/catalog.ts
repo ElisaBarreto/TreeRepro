@@ -1,6 +1,7 @@
 import type {
   Genus,
   NameSource,
+  NameType,
   ReferenceDetail,
   Species,
   TaxonRef,
@@ -276,10 +277,23 @@ export async function updateSpecies(
   });
 }
 
-/** @rfc RFC-60 R4, R9, R10 */
+/**
+ * `source` defaults to `'manual'` when the body omits it, while the column
+ * defaults to `'gbif'` for the rows the import writes (RFC-60 R1, R9): the two
+ * defaults differ on purpose.
+ * @rfc RFC-60 R4, R9, R10
+ */
 export async function addSpeciesName(
   db: DbExecutor,
-  input: { speciesId: string; name: string; gbifUsageKey?: string; actorId: string },
+  input: {
+    speciesId: string;
+    name: string;
+    nameType: NameType;
+    language?: string;
+    source?: string;
+    gbifUsageKey?: string;
+    actorId: string;
+  },
 ): Promise<Species> {
   const name = normaliseName(input.name);
   return db.transaction(async (tx) => {
@@ -290,7 +304,14 @@ export async function addSpeciesName(
     try {
       [row] = await tx
         .insert(speciesNames)
-        .values({ speciesId: input.speciesId, name, gbifUsageKey: input.gbifUsageKey ?? null })
+        .values({
+          speciesId: input.speciesId,
+          name,
+          nameType: input.nameType,
+          language: input.language ?? null,
+          source: input.source ?? 'manual',
+          gbifUsageKey: input.gbifUsageKey ?? null,
+        })
         .returning({ id: speciesNames.id });
     } catch (err) {
       if (isUniqueViolation(err))
@@ -325,6 +346,8 @@ export interface ReferenceFields {
   journal?: string | null;
   doi?: string | null;
   url?: string | null;
+  shortCitation?: string | null;
+  fullCitation?: string | null;
 }
 
 const REFERENCE_FIELDS = [
@@ -335,6 +358,8 @@ const REFERENCE_FIELDS = [
   'journal',
   'doi',
   'url',
+  'shortCitation',
+  'fullCitation',
 ] as const;
 
 /** @rfc RFC-61 R6 */
@@ -355,6 +380,8 @@ export async function createReference(
           journal: input.journal ?? null,
           doi: input.doi ?? null,
           url: input.url ?? null,
+          shortCitation: input.shortCitation ?? null,
+          fullCitation: input.fullCitation ?? null,
           createdBy: input.actorId,
         })
         .returning({ id: bibliographicReferences.id });
