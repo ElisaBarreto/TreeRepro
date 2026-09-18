@@ -14,6 +14,7 @@ import {
   COVERAGE_TRAIT_SEED_MASS,
   COVERAGE_TRAIT_SEXUAL_SYSTEM,
 } from '../../test/coverage-fixtures.ts';
+import { DASHBOARD_PLOT, MALVACEAE } from '../../test/dataset-fixtures.ts';
 import { CoverageTable } from './CoverageTable.tsx';
 
 function renderInRouter(ui: ReactElement) {
@@ -36,7 +37,9 @@ function hrefUrl(href: string | null) {
 
 describe('RFC-69 R5 CoverageTable', () => {
   it('lists a row per category with the API percentages, not a browser recomputation', async () => {
-    renderInRouter(<CoverageTable byCategory={COVERAGE.byCategory} byTrait={COVERAGE.byTrait} />);
+    renderInRouter(
+      <CoverageTable byCategory={COVERAGE.byCategory} byTrait={COVERAGE.byTrait} search={{}} />,
+    );
     expect(await screen.findByText('Reproductive system')).toBeInTheDocument();
     const meters = screen.getAllByRole('meter');
     expect(meters).toHaveLength(2);
@@ -47,7 +50,9 @@ describe('RFC-69 R5 CoverageTable', () => {
   });
 
   it('the chevron expands a category to its trait rows, each with two meters and both links', async () => {
-    renderInRouter(<CoverageTable byCategory={COVERAGE.byCategory} byTrait={COVERAGE.byTrait} />);
+    renderInRouter(
+      <CoverageTable byCategory={COVERAGE.byCategory} byTrait={COVERAGE.byTrait} search={{}} />,
+    );
     const toggle = await screen.findByRole('button', { name: /expand reproductive system/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('sexual system')).not.toBeInTheDocument();
@@ -73,7 +78,9 @@ describe('RFC-69 R5 CoverageTable', () => {
   });
 
   it('RFC-69 R2 a trait with no record anywhere in the selection reads "No record yet"', async () => {
-    renderInRouter(<CoverageTable byCategory={COVERAGE.byCategory} byTrait={COVERAGE.byTrait} />);
+    renderInRouter(
+      <CoverageTable byCategory={COVERAGE.byCategory} byTrait={COVERAGE.byTrait} search={{}} />,
+    );
     await userEvent.click(
       await screen.findByRole('button', { name: /expand reproductive system/i }),
     );
@@ -83,8 +90,59 @@ describe('RFC-69 R5 CoverageTable', () => {
     expect(COVERAGE_TRAIT_SEED_MASS.withData).toBe(0);
   });
 
+  /**
+   * The row is computed over the page's selection, so the list it opens must
+   * be too — and over the same species, which for a grid with no `plotId` is
+   * every visible species, not the viewer's plots (RFC-33 R6's default).
+   */
+  it('RFC-13 R2 the missing-species link carries the page filters and asks for the dataset-wide list', async () => {
+    renderInRouter(
+      <CoverageTable
+        byCategory={COVERAGE.byCategory}
+        byTrait={COVERAGE.byTrait}
+        search={{ familyId: MALVACEAE.id, categoryKey: 'reproductive_system' }}
+      />,
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /expand reproductive system/i }),
+    );
+    const row = (await screen.findByText('sexual system')).closest('tr') as HTMLElement;
+    const url = hrefUrl(
+      within(row)
+        .getByRole('link', { name: /no record yet/i })
+        .getAttribute('href'),
+    );
+    expect(url.searchParams.get('traitId')).toBe(COVERAGE_TRAIT_SEXUAL_SYSTEM.trait.id);
+    expect(url.searchParams.get('traitData')).toBe('missing');
+    expect(url.searchParams.get('familyId')).toBe(MALVACEAE.id);
+    expect(url.searchParams.get('categoryKey')).toBe('reproductive_system');
+    expect(url.searchParams.get('scope')).toBe('all');
+    expect(url.searchParams.get('plotId')).toBeNull();
+  });
+
+  it('RFC-33 R6 scopes that link to the plot the page filters by, and drops scope beside it', async () => {
+    renderInRouter(
+      <CoverageTable
+        byCategory={COVERAGE.byCategory}
+        byTrait={COVERAGE.byTrait}
+        search={{ plotId: DASHBOARD_PLOT.id }}
+      />,
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: /expand reproductive system/i }),
+    );
+    const row = (await screen.findByText('sexual system')).closest('tr') as HTMLElement;
+    const url = hrefUrl(
+      within(row)
+        .getByRole('link', { name: /no record yet/i })
+        .getAttribute('href'),
+    );
+    expect(url.searchParams.get('plotId')).toBe(DASHBOARD_PLOT.id);
+    expect(url.searchParams.get('scope')).toBeNull();
+  });
+
   it('shows the "No record yet" empty state when nothing is in scope', async () => {
-    renderInRouter(<CoverageTable byCategory={[]} byTrait={[]} />);
+    renderInRouter(<CoverageTable byCategory={[]} byTrait={[]} search={{}} />);
     expect(await screen.findByText('No record yet.')).toBeInTheDocument();
   });
 });

@@ -7,7 +7,7 @@ import { renderWithProviders } from '../../test/render.tsx';
 import { CoverageFilters } from './CoverageFilters.tsx';
 
 const dataset = vi.hoisted(() => ({ fetchFamilies: vi.fn(), fetchDictionary: vi.fn() }));
-const plots = vi.hoisted(() => ({ listPlots: vi.fn() }));
+const plots = vi.hoisted(() => ({ fetchAllPlots: vi.fn() }));
 
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -21,9 +21,7 @@ vi.mock('../../api/plots.ts', async (importOriginal) => ({
 beforeEach(() => {
   dataset.fetchFamilies.mockReset().mockResolvedValue(FAMILIES);
   dataset.fetchDictionary.mockReset().mockResolvedValue(DICTIONARY);
-  plots.listPlots
-    .mockReset()
-    .mockResolvedValue({ data: [DASHBOARD_PLOT], meta: { nextCursor: null } });
+  plots.fetchAllPlots.mockReset().mockResolvedValue([DASHBOARD_PLOT]);
 });
 
 describe('RFC-69 R5 CoverageFilters', () => {
@@ -39,7 +37,7 @@ describe('RFC-69 R5 CoverageFilters', () => {
       await within(category).findByRole('option', { name: DICTIONARY[0]?.label }),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Plot')).not.toBeInTheDocument();
-    expect(plots.listPlots).not.toHaveBeenCalled();
+    expect(plots.fetchAllPlots).not.toHaveBeenCalled();
   });
 
   it('shows the plot filter, fed by the session scope, for a viewer with an assigned plot', async () => {
@@ -52,15 +50,15 @@ describe('RFC-69 R5 CoverageFilters', () => {
     });
     const plot = await screen.findByLabelText('Plot');
     expect(within(plot).getByRole('option', { name: /Riverside plot/ })).toBeInTheDocument();
-    expect(plots.listPlots).not.toHaveBeenCalled();
+    expect(plots.fetchAllPlots).not.toHaveBeenCalled();
   });
 
-  it('shows the plot filter, fed by listPlots, for a plots.manage holder without assigned plots', async () => {
+  it('shows the plot filter, fed by every plot fetchAllPlots pages through, for a plots.manage holder without assigned plots', async () => {
     renderWithProviders(<CoverageFilters search={{}} onSearchChange={vi.fn()} />, {
       me: { ...ME, permissions: ['coverage.read', 'plots.manage'] },
     });
     const plot = await screen.findByLabelText('Plot');
-    await waitFor(() => expect(plots.listPlots).toHaveBeenCalled());
+    await waitFor(() => expect(plots.fetchAllPlots).toHaveBeenCalled());
     expect(await within(plot).findByRole('option', { name: /Riverside plot/ })).toBeInTheDocument();
   });
 

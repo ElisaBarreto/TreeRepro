@@ -3,6 +3,7 @@ import type { Coverage } from '@treerepro/contracts';
 import { useState } from 'react';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { EmptyState, Icon, Meter, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import type { CoverageSearch } from './CoverageFilters.tsx';
 
 const CHEVRON_BUTTON =
   'flex size-8 items-center justify-center rounded-full text-canopy-700 transition-transform hover:bg-mist-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 aria-expanded:rotate-90';
@@ -16,15 +17,21 @@ const CHEVRON_BUTTON =
  * with no record anywhere in the selection reads "No record yet" rather
  * than "0 of N species" — literally true, since a withdrawn record still
  * counts as a record here (RFC-69 R2), so a zero means none exists at all.
+ *
+ * `search` is the page's own filter state, carried into those species links
+ * by {@link missingSpeciesSearch} so the list a row opens counts the species
+ * the row counted.
  * @rfc RFC-69 R5
  * @rfc RFC-13 R2
  */
 export function CoverageTable({
   byCategory,
   byTrait,
+  search,
 }: {
   byCategory: Coverage['byCategory'];
   byTrait: Coverage['byTrait'];
+  search: CoverageSearch;
 }) {
   if (byCategory.length === 0) {
     return (
@@ -53,6 +60,7 @@ export function CoverageTable({
             key={category.category.key}
             category={category}
             traits={byTrait.filter((trait) => trait.category.key === category.category.key)}
+            search={search}
           />
         ))}
       </Tbody>
@@ -63,9 +71,11 @@ export function CoverageTable({
 function CategoryRows({
   category,
   traits,
+  search,
 }: {
   category: Coverage['byCategory'][number];
   traits: Coverage['byTrait'];
+  search: CoverageSearch;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -108,12 +118,47 @@ function CategoryRows({
           />
         </Td>
       </Tr>
-      {open ? traits.map((trait) => <TraitRow key={trait.trait.id} trait={trait} />) : null}
+      {open
+        ? traits.map((trait) => <TraitRow key={trait.trait.id} trait={trait} search={search} />)
+        : null}
     </>
   );
 }
 
-function TraitRow({ trait }: { trait: Coverage['byTrait'][number] }) {
+/**
+ * The search the row's "Species with no record yet" link carries: the trait
+ * and `traitData=missing`, plus the page's own filters, so the list opens over
+ * the same selection the row was computed over rather than over every species.
+ *
+ * `scope` is named rather than left to default, for the same reason
+ * `MissingTraitsList` names it. The coverage grid is plot-agnostic unless a
+ * `plotId` filter is given (RFC-69 R6), so the row is a dataset-wide number
+ * and its link must ask for the dataset-wide list — while `GET /api/species`
+ * defaults a viewer with assigned plots to `scope=plots` (RFC-33 R6), which
+ * would answer a smaller number than the row the viewer clicked. With a
+ * `plotId` filter the row is that plot's, and `plotId` scopes the list on its
+ * own (`scope` is ignored beside it, RFC-33 R6). A plot-bound viewer is
+ * refused `scope=all` and reads RFC-13 R4's message instead: their coverage
+ * row is dataset-wide and no species list they may open matches it, so an
+ * honest refusal beats a number that silently disagrees.
+ */
+function missingSpeciesSearch(traitId: string, search: CoverageSearch) {
+  const base = {
+    traitId,
+    traitData: 'missing',
+    familyId: search.familyId,
+    categoryKey: search.categoryKey,
+  } as const;
+  return search.plotId ? { ...base, plotId: search.plotId } : { ...base, scope: 'all' as const };
+}
+
+function TraitRow({
+  trait,
+  search,
+}: {
+  trait: Coverage['byTrait'][number];
+  search: CoverageSearch;
+}) {
   const name = humaniseKey(trait.trait.key);
   return (
     <Tr className="bg-mist-50">
@@ -132,7 +177,7 @@ function TraitRow({ trait }: { trait: Coverage['byTrait'][number] }) {
           </span>
           <Link
             to="/app/species"
-            search={{ traitId: trait.trait.id, traitData: 'missing' }}
+            search={missingSpeciesSearch(trait.trait.id, search)}
             className="text-meta font-medium text-canopy-700 underline-offset-2 hover:underline"
           >
             Species with no record yet

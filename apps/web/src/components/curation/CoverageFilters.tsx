@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useId } from 'react';
 import { datasetKeys, fetchDictionary, fetchFamilies } from '../../api/dataset.ts';
-import { listPlots, plotKeys } from '../../api/plots.ts';
+import { fetchAllPlots, plotKeys } from '../../api/plots.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { FilterGroup } from '../dataset/FilterGroup.tsx';
 import { Field, Select } from '../ui/index.ts';
@@ -25,11 +25,12 @@ export interface CoverageSearch {
  * The coverage page's three filters (spec §5), each a URL search param the
  * caller owns: family (`GET /api/families`), category (the trait
  * dictionary) and plot. The plot select renders only for a viewer who holds
- * `plots.manage` (fed by `listPlots`, every plot) or who has at least one
- * assigned plot (`me.scope.plots`, fed straight from the session, no extra
- * request) — the same rule `SpeciesSearchForm`'s scope group uses. Every
- * control writes straight through `onSearchChange`; there is no local echo
- * to debounce, since every filter here is a discrete choice, not free text.
+ * `plots.manage` (fed by `fetchAllPlots`, every plot, paged to exhaustion) or
+ * who has at least one assigned plot (`me.scope.plots`, fed straight from the
+ * session, no extra request) — the same rule `SpeciesSearchForm`'s scope
+ * group uses. Every control writes straight through `onSearchChange`; there
+ * is no local echo to debounce, since every filter here is a discrete choice,
+ * not free text.
  * @rfc RFC-13 R2
  * @rfc RFC-69 R5
  */
@@ -50,12 +51,15 @@ export function CoverageFilters({
     queryKey: datasetKeys.dictionary(),
     queryFn: () => fetchDictionary(),
   });
+  // Paged to exhaustion, like the `fetchFamilies` query above: a select that
+  // holds page one only drops every plot past the limit, and a filter the
+  // viewer cannot pick is a filter `/api/coverage` will never be asked for.
   const allPlots = useQuery({
-    queryKey: plotKeys.list({ limit: 200 }),
-    queryFn: () => listPlots({ limit: 200 }),
+    queryKey: plotKeys.fullList,
+    queryFn: fetchAllPlots,
     enabled: canManagePlots,
   });
-  const availablePlots = canManagePlots ? (allPlots.data?.data ?? me.scope.plots) : me.scope.plots;
+  const availablePlots = canManagePlots ? (allPlots.data ?? me.scope.plots) : me.scope.plots;
 
   return (
     <FilterGroup title="Filters" columns={showPlotFilter ? 'md:grid-cols-3' : 'md:grid-cols-2'}>

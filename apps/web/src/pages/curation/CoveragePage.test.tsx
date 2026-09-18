@@ -18,7 +18,7 @@ const auth = vi.hoisted(() => ({
   totpDisable: vi.fn(),
 }));
 const dataset = vi.hoisted(() => ({ fetchFamilies: vi.fn(), fetchDictionary: vi.fn() }));
-const plots = vi.hoisted(() => ({ listPlots: vi.fn() }));
+const plots = vi.hoisted(() => ({ fetchAllPlots: vi.fn() }));
 const coverage = vi.hoisted(() => ({ fetchCoverage: vi.fn(), fetchCoverageTop: vi.fn() }));
 
 vi.mock('../../api/auth.ts', () => auth);
@@ -39,9 +39,7 @@ beforeEach(() => {
   auth.fetchMe.mockReset().mockResolvedValue({ ...ME, permissions: ['coverage.read'] });
   dataset.fetchFamilies.mockReset().mockResolvedValue(FAMILIES);
   dataset.fetchDictionary.mockReset().mockResolvedValue(DICTIONARY);
-  plots.listPlots
-    .mockReset()
-    .mockResolvedValue({ data: [DASHBOARD_PLOT], meta: { nextCursor: null } });
+  plots.fetchAllPlots.mockReset().mockResolvedValue([DASHBOARD_PLOT]);
   coverage.fetchCoverage.mockReset().mockResolvedValue(COVERAGE);
   coverage.fetchCoverageTop.mockReset().mockResolvedValue(COVERAGE_TOP_MISSING);
 });

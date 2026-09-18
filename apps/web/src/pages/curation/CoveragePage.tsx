@@ -114,6 +114,7 @@ export function CoveragePage({
               <CoverageTable
                 byCategory={coverage.data.byCategory}
                 byTrait={coverage.data.byTrait}
+                search={search}
               />
             </section>
           </>
