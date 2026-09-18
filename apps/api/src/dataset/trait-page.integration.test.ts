@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   addPlotSpecies,
@@ -231,6 +231,60 @@ describe('RFC-62 R7 getTraitDetail', () => {
           const after = await getTraitDetail({ db: tx, redis }, UNRESTRICTED, trait.id);
           expect(after?.speciesWithData).toBe(1);
           expect(after?.speciesMissing).toBe((before?.speciesMissing ?? 0) - 1);
+        },
+        { isolationLevel: 'repeatable read' },
+      );
+    } finally {
+      await forgetCached(redis, ...cacheKeys(trait.id));
+    }
+  });
+
+  it('counts one population on both sides: with-data plus missing is every visible species, inactive ones included', async () => {
+    const { user } = await createUser(t.db);
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['alpha'] });
+    const alpha = levelOf(trait, 'alpha');
+    // One species with a record on the trait; one with no record at all that
+    // only a `dataset.read_inactive` viewer can see.
+    const covered = await createSpecies(t.db);
+    const hidden = await createSpecies(t.db);
+    await t.db.update(species).set({ active: false }).where(eq(species.id, hidden.id));
+    await record(t.db, {
+      actor: user,
+      speciesId: covered.id,
+      traitId: trait.id,
+      valueText: 'alpha',
+      levelId: alpha.id,
+      referenceId: reference.id,
+    });
+
+    try {
+      // Sibling test files create species continuously, so these totals are
+      // only comparable inside one repeatable-read snapshot.
+      await t.db.transaction(
+        async (tx) => {
+          const unrestricted = await getTraitDetail({ db: tx, redis }, UNRESTRICTED, trait.id);
+          const [all] = (await tx.execute(
+            sql`select count(*)::int as n from species`,
+          )) as unknown as { n: number }[];
+          // RFC-62 R7: both figures are over "visible species", so together
+          // they account for every species this viewer sees — an inactive
+          // species without a coverage row falls into neither otherwise.
+          expect((unrestricted?.speciesWithData ?? 0) + (unrestricted?.speciesMissing ?? 0)).toBe(
+            all?.n,
+          );
+
+          const [inactive] = (await tx.execute(
+            sql`select count(*)::int as n from species where not active`,
+          )) as unknown as { n: number }[];
+          expect(inactive?.n).toBeGreaterThan(0);
+          // A restricted viewer never sees an inactive species, so the whole
+          // difference between the two viewers' missing counts is exactly
+          // the inactive species — `hidden` among them.
+          const restricted = await getTraitDetail({ db: tx, redis }, RESTRICTED, trait.id);
+          expect((unrestricted?.speciesMissing ?? 0) - (restricted?.speciesMissing ?? 0)).toBe(
+            inactive?.n,
+          );
         },
         { isolationLevel: 'repeatable read' },
       );

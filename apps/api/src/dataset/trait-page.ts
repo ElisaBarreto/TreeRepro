@@ -134,10 +134,13 @@ export async function getTraitDetail(
       .limit(1),
     ctx.db.execute(sql`
       select
+        -- "Visible species without a coverage row" (RFC-62 R7), over exactly
+        -- the population speciesWithData counts: an inactive species with no
+        -- record must fall on this side for a viewer who can see it, rather
+        -- than out of both sides of a header a reader adds up.
         (select count(*)::int
            from species s
-          where s.active
-            and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+          where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
             and not exists (select 1 from species_trait_coverage c
                              where c.species_id = s.id and c.trait_id = ${id}::uuid)
         ) as species_missing,
