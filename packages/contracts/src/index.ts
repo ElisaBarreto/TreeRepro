@@ -4,6 +4,7 @@ export * from './audit.ts';
 export * from './auth.ts';
 export * from './contributions.ts';
 export * from './curation.ts';
+export * from './dashboard.ts';
 export * from './dataset.ts';
 export * from './envelope.ts';
 export * from './error-codes.ts';
