@@ -38,4 +38,4 @@ None.
 - 2026-09-17 — R2: /app/admin/plots, /app/admin/plots/$id (RFC-67, plan 08b).
 - 2026-09-17 — R11: `?` help tip added — a button-controlled `role="tooltip"` popover, not a dialog (`HelpTip`, plan 09b).
 - 2026-09-17 — R11 softened: the tip opens rather than toggles; a click cannot close what the hover before it opened (`HelpTip`, plan 09b).
-- 2026-09-18 — R3: breadcrumb reads `Group › Entry › crumbs…`, trailing crumbs registered by pages through `useBreadcrumb` (RFC-69, plan 10a).
+- 2026-09-18 — R3: breadcrumb reads `Group › Entry › crumbs…`, trailing crumbs registered by pages through `useBreadcrumb` (plan 10a).
