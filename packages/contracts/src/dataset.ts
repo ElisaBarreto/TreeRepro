@@ -275,8 +275,8 @@ export const traitDetailSchema = traitSchema.extend({
       levels: z.array(
         z.strictObject({
           level: z.strictObject({ id: z.uuid(), key: z.string() }),
-          speciesCount: z.number().int(),
-          recordCount: z.number().int(),
+          speciesCount: z.number().int().nonnegative(),
+          recordCount: z.number().int().nonnegative(),
         }),
       ),
     }),
@@ -328,7 +328,7 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
   summary: z
     .union([
       z.strictObject({
-        levels: z.array(z.strictObject({ key: z.string(), count: z.number().int() })),
+        levels: z.array(z.strictObject({ key: z.string(), count: z.number().int().nonnegative() })),
       }),
       z.strictObject({ numeric: z.strictObject({ min: z.number(), max: z.number() }) }),
     ])

@@ -379,6 +379,22 @@ describe('RFC-62 R7 traitDetailSchema distribution union', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('rejects a negative speciesCount or recordCount in a distribution level', () => {
+    const level = { level: { id: uuid, key: 'dioecious' }, speciesCount: 4, recordCount: 6 };
+    expect(
+      traitDetailSchema.safeParse({
+        ...DETAIL_BASE,
+        distribution: { levels: [{ ...level, speciesCount: -1 }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      traitDetailSchema.safeParse({
+        ...DETAIL_BASE,
+        distribution: { levels: [{ ...level, recordCount: -1 }] },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('RFC-62 R8 listTraitSpeciesQuerySchema', () => {
@@ -459,6 +475,16 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     expect(traitSpeciesItemSchema.safeParse({ ...numericItem, recordCount: -1 }).success).toBe(
       false,
     );
+  });
+
+  it('rejects a negative count in a summary level', () => {
+    const item = {
+      ...ITEM_BASE,
+      recordCount: 2,
+      accepted: null,
+      summary: { levels: [{ key: 'dioecious', count: -1 }] },
+    };
+    expect(traitSpeciesItemSchema.safeParse(item).success).toBe(false);
   });
 
   it('rejects an unknown key (strict)', () => {
