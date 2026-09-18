@@ -109,6 +109,33 @@ describe('RFC-68 R13 import:references', () => {
     expect(row.doi).toBeNull();
   });
 
+  it('two rows in the same file claiming the same new doi for different references: the earlier row wins by row_no, the later is doi_taken, and the batch completes rather than erroring (23505 guard)', async () => {
+    const { user } = await createUser(t.db);
+    const first = await createReference(t.db);
+    const second = await createReference(t.db);
+    const contested = `10.7000/contested-${Date.now()}`;
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${first.citationKey},,,${contested},`,
+      `${second.citationKey},,,${contested},`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect(batch.status).toBe('completed');
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      2, 1, 0, 1,
+    ]);
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.reason).toBe('doi_taken');
+    expect((reject?.rawRow as { reference_key?: string })?.reference_key).toBe(second.citationKey);
+    const firstRow = await referenceRow(t.db, first.id);
+    const secondRow = await referenceRow(t.db, second.id);
+    expect(firstRow.doi).toBe(contested);
+    expect(secondRow.doi).toBeNull();
+  });
+
   it('a malformed doi is rejected invalid_value (RFC-80 R1)', async () => {
     const { user } = await createUser(t.db);
     const ref = await createReference(t.db);

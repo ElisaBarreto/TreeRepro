@@ -94,9 +94,21 @@ export async function importReferences(
       // already held elsewhere — checked case-insensitively against
       // lower(doi), agreeing with bibliographic_references_doi_idx, and
       // excluding the row's own reference (which may already hold that
-      // exact DOI, case-varied — not a conflict). This is unconditional on
-      // whether the field would actually be filled: a malformed or taken
-      // DOI in the row is a data-quality problem in its own right.
+      // exact DOI, case-varied — not a conflict).
+      //
+      // Deliberate asymmetry: `short_citation`, `full_citation` and `url`
+      // are never validated (any non-empty text fills them), but `doi` is
+      // checked for malformed-ness and cross-row collision unconditionally
+      // — even when the target reference already has a stored doi and this
+      // field would never be written. That's intentional: unlike the other
+      // three fields, `doi_taken` is a cross-row uniqueness signal ("this
+      // row claims a DOI belonging to a *different* reference"), a genuine
+      // data conflict in the operator's source file that is worth surfacing
+      // on its own merits, whether or not the row would have used the
+      // value. Folding it into a bland "duplicate" would hide that conflict
+      // from the report. (RFC-68 R13 doesn't spell this out; recorded here
+      // so a future reader doesn't "fix" it back to matching the other
+      // fields.)
       await tx`
         update import_staging s set outcome = case
           when reference_id is null then 'unknown_reference'
@@ -105,7 +117,7 @@ export async function importReferences(
             select 1 from bibliographic_references r2
             where lower(r2.doi) = s.norm_doi and r2.id <> s.reference_id
           ) then 'doi_taken'
-          else 'candidate' end`;
+          else 'apply' end`;
 
       // RFC-68 R4: a repeated key — only the last row (highest row_no) for
       // a given reference is a candidate to apply; earlier candidate rows
@@ -113,7 +125,7 @@ export async function importReferences(
       await tx`
         update import_staging s set is_winner = true
         where s.row_no in (
-          select max(row_no) from import_staging where outcome = 'candidate' group by reference_id
+          select max(row_no) from import_staging where outcome = 'apply' group by reference_id
         )`;
 
       // Guard against two winning rows in the same file trying to give the
@@ -124,11 +136,11 @@ export async function importReferences(
       // rejecting the rest as doi_taken.
       await tx`
         update import_staging s set outcome = 'doi_taken', is_winner = false
-        where s.outcome = 'candidate' and s.is_winner and s.norm_doi is not null
+        where s.outcome = 'apply' and s.is_winner and s.norm_doi is not null
           and exists (select 1 from bibliographic_references r where r.id = s.reference_id and r.doi is null)
           and s.row_no > (
             select min(s2.row_no) from import_staging s2
-            where s2.outcome = 'candidate' and s2.is_winner and s2.norm_doi = s.norm_doi
+            where s2.outcome = 'apply' and s2.is_winner and s2.norm_doi = s.norm_doi
               and exists (
                 select 1 from bibliographic_references r2 where r2.id = s2.reference_id and r2.doi is null
               )
@@ -147,7 +159,7 @@ export async function importReferences(
         order by row_no`;
 
       const [{ candidate_count: candidateCount }] = (await tx`
-        select count(*)::int as candidate_count from import_staging where outcome = 'candidate'`) as [
+        select count(*)::int as candidate_count from import_staging where outcome = 'apply'`) as [
         { candidate_count: number },
       ];
 
@@ -162,7 +174,7 @@ export async function importReferences(
           doi = coalesce(r.doi, s.norm_doi),
           url = coalesce(r.url, s.s_url)
         from import_staging s
-        where r.id = s.reference_id and s.outcome = 'candidate' and s.is_winner
+        where r.id = s.reference_id and s.outcome = 'apply' and s.is_winner
           and (
             r.short_citation is distinct from coalesce(r.short_citation, s.s_short)
             or r.full_citation is distinct from coalesce(r.full_citation, s.s_full)
