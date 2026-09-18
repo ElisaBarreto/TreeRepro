@@ -28,7 +28,7 @@
 ## Bumping pnpm
 **Symptom:** A Dockerfile build fails with `Internal Error: Mismatch hashes` from corepack, or `pnpm --version` inside a container differs from `packageManager` in `package.json`.
 **Cause:** The three Dockerfiles install pnpm with `corepack prepare pnpm@<version>+sha512.<hex> --activate`; corepack compares the download with the hex sha512 of the npm tarball and refuses a mismatch. `npm install -g pnpm@<version>` would be simpler but OpenSSF Scorecard reports every `npm install` in a Dockerfile as an unpinned dependency.
-**Fix:** Bump the version in the same PR in `package.json` (`packageManager`), `.github/workflows/ci.yml` (`pnpm/action-setup`), `pnpm-workspace.yaml` (`minimumReleaseAgeExclude`, only while that list exists) and the `corepack prepare` line of `infra/docker/{api,web,dev}.Dockerfile`. The hex hash comes from the registry: `npm view pnpm@<version> dist.integrity | sed 's/^sha512-//' | base64 -d | xxd -p | tr -d '\n'`. Dependabot does not track this line.
+**Fix:** Bump the version in the same PR in `package.json` (`packageManager`), `.github/workflows/ci.yml` (`pnpm/action-setup`), `pnpm-workspace.yaml` (`minimumReleaseAgeExclude`, only if the new version is younger than `minimumReleaseAge`) and the `corepack prepare` line of `infra/docker/{api,web,dev}.Dockerfile`. The hex hash comes from the registry: `npm view pnpm@<version> dist.integrity | sed 's/^sha512-//' | base64 -d | xxd -p | tr -d '\n'`. Dependabot does not track this line.
 
 ## Caddy reorders directives
 **Symptom:** `/api/health/ready` returned 200 through Caddy although `respond @ready 404` was written first.
