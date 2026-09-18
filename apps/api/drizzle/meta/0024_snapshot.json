@@ -1,6 +1,6 @@
 {
-  "id": "877bdfff-79ff-41a2-a49c-ea712a3b8f2b",
-  "prevId": "fc60b283-28f7-4d7b-9ebf-f1b9a7efbff0",
+  "id": "178b5f66-5218-49b9-bda1-04c0b4e0253b",
+  "prevId": "877bdfff-79ff-41a2-a49c-ea712a3b8f2b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -78,9 +78,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "audit_log_actor_idx": {
           "name": "audit_log_actor_idx",
@@ -99,24 +99,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "audit_log_actor_user_id_users_id_fk": {
           "name": "audit_log_actor_user_id_users_id_fk",
           "tableFrom": "audit_log",
+          "tableTo": "users",
           "columnsFrom": [
             "actor_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -186,9 +186,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "auth_tokens_user_kind_idx": {
           "name": "auth_tokens_user_kind_idx",
@@ -207,24 +207,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "auth_tokens_user_id_users_id_fk": {
           "name": "auth_tokens_user_id_users_id_fk",
           "tableFrom": "auth_tokens",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -297,37 +297,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "species_trait_coverage_species_id_species_id_fk": {
           "name": "species_trait_coverage_species_id_species_id_fk",
           "tableFrom": "species_trait_coverage",
+          "tableTo": "species",
           "columnsFrom": [
             "species_id"
           ],
-          "tableTo": "species",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "species_trait_coverage_trait_id_traits_id_fk": {
           "name": "species_trait_coverage_trait_id_traits_id_fk",
           "tableFrom": "species_trait_coverage",
+          "tableTo": "traits",
           "columnsFrom": [
             "trait_id"
           ],
-          "tableTo": "traits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -423,63 +423,63 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "accepted_values_species_id_species_id_fk": {
           "name": "accepted_values_species_id_species_id_fk",
           "tableFrom": "accepted_values",
+          "tableTo": "species",
           "columnsFrom": [
             "species_id"
           ],
-          "tableTo": "species",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "accepted_values_trait_id_traits_id_fk": {
           "name": "accepted_values_trait_id_traits_id_fk",
           "tableFrom": "accepted_values",
+          "tableTo": "traits",
           "columnsFrom": [
             "trait_id"
           ],
-          "tableTo": "traits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "accepted_values_record_id_trait_records_id_fk": {
           "name": "accepted_values_record_id_trait_records_id_fk",
           "tableFrom": "accepted_values",
+          "tableTo": "trait_records",
           "columnsFrom": [
             "record_id"
           ],
-          "tableTo": "trait_records",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "accepted_values_actor_id_users_id_fk": {
           "name": "accepted_values_actor_id_users_id_fk",
           "tableFrom": "accepted_values",
+          "tableTo": "users",
           "columnsFrom": [
             "actor_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -567,50 +567,71 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
+        },
+        "record_annotations_actor_idx": {
+          "name": "record_annotations_actor_idx",
+          "columns": [
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "record_annotations_record_id_trait_records_id_fk": {
           "name": "record_annotations_record_id_trait_records_id_fk",
           "tableFrom": "record_annotations",
+          "tableTo": "trait_records",
           "columnsFrom": [
             "record_id"
           ],
-          "tableTo": "trait_records",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "record_annotations_actor_id_users_id_fk": {
           "name": "record_annotations_actor_id_users_id_fk",
           "tableFrom": "record_annotations",
+          "tableTo": "users",
           "columnsFrom": [
             "actor_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "record_annotations_reference_id_bibliographic_references_id_fk": {
           "name": "record_annotations_reference_id_bibliographic_references_id_fk",
           "tableFrom": "record_annotations",
+          "tableTo": "bibliographic_references",
           "columnsFrom": [
             "reference_id"
           ],
-          "tableTo": "bibliographic_references",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -723,43 +744,43 @@
             },
             {
               "expression": "lower(\"key\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "trait_levels_trait_id_traits_id_fk": {
           "name": "trait_levels_trait_id_traits_id_fk",
           "tableFrom": "trait_levels",
+          "tableTo": "traits",
           "columnsFrom": [
             "trait_id"
           ],
-          "tableTo": "traits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_levels_created_by_users_id_fk": {
           "name": "trait_levels_created_by_users_id_fk",
           "tableFrom": "trait_levels",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -843,9 +864,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "traits_category_idx": {
           "name": "traits_category_idx",
@@ -858,37 +879,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "traits_category_key_trait_categories_key_fk": {
           "name": "traits_category_key_trait_categories_key_fk",
           "tableFrom": "traits",
+          "tableTo": "trait_categories",
           "columnsFrom": [
             "category_key"
           ],
-          "tableTo": "trait_categories",
           "columnsTo": [
             "key"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "traits_created_by_users_id_fk": {
           "name": "traits_created_by_users_id_fk",
           "tableFrom": "traits",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1019,24 +1040,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "import_batches_run_by_users_id_fk": {
           "name": "import_batches_run_by_users_id_fk",
           "tableFrom": "import_batches",
+          "tableTo": "users",
           "columnsFrom": [
             "run_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1111,24 +1132,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "import_rejects_batch_id_import_batches_id_fk": {
           "name": "import_rejects_batch_id_import_batches_id_fk",
           "tableFrom": "import_rejects",
+          "tableTo": "import_batches",
           "columnsFrom": [
             "batch_id"
           ],
-          "tableTo": "import_batches",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1205,37 +1226,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "plot_species_plot_id_plots_id_fk": {
           "name": "plot_species_plot_id_plots_id_fk",
           "tableFrom": "plot_species",
+          "tableTo": "plots",
           "columnsFrom": [
             "plot_id"
           ],
-          "tableTo": "plots",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "plot_species_species_id_species_id_fk": {
           "name": "plot_species_species_id_species_id_fk",
           "tableFrom": "plot_species",
+          "tableTo": "species",
           "columnsFrom": [
             "species_id"
           ],
-          "tableTo": "species",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1333,30 +1354,30 @@
           "columns": [
             {
               "expression": "lower(\"code\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "plots_created_by_users_id_fk": {
           "name": "plots_created_by_users_id_fk",
           "tableFrom": "plots",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1410,37 +1431,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "user_plots_user_id_users_id_fk": {
           "name": "user_plots_user_id_users_id_fk",
           "tableFrom": "user_plots",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "user_plots_plot_id_plots_id_fk": {
           "name": "user_plots_plot_id_plots_id_fk",
           "tableFrom": "user_plots",
+          "tableTo": "plots",
           "columnsFrom": [
             "plot_id"
           ],
-          "tableTo": "plots",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1626,9 +1647,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "trait_records_trait_idx": {
           "name": "trait_records_trait_idx",
@@ -1641,9 +1662,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "trait_records_primary_reference_idx": {
           "name": "trait_records_primary_reference_idx",
@@ -1662,9 +1683,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "trait_records_secondary_reference_idx": {
           "name": "trait_records_secondary_reference_idx",
@@ -1677,9 +1698,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "trait_records_batch_idx": {
           "name": "trait_records_batch_idx",
@@ -1692,9 +1713,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "trait_records_pending_idx": {
           "name": "trait_records_pending_idx",
@@ -1707,10 +1728,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"trait_records\".\"harmonisation\" <> 'harmonised'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "trait_records_supersedes_idx": {
           "name": "trait_records_supersedes_idx",
@@ -1723,10 +1744,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"trait_records\".\"supersedes_record_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "trait_records_responds_to_idx": {
           "name": "trait_records_responds_to_idx",
@@ -1739,135 +1760,158 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"trait_records\".\"responds_to_record_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "trait_records_created_by_idx": {
+          "name": "trait_records_created_by_idx",
+          "columns": [
+            {
+              "expression": "created_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"trait_records\".\"created_by\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "trait_records_species_id_species_id_fk": {
           "name": "trait_records_species_id_species_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "species",
           "columnsFrom": [
             "species_id"
           ],
-          "tableTo": "species",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_records_trait_id_traits_id_fk": {
           "name": "trait_records_trait_id_traits_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "traits",
           "columnsFrom": [
             "trait_id"
           ],
-          "tableTo": "traits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_records_level_id_trait_levels_id_fk": {
           "name": "trait_records_level_id_trait_levels_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "trait_levels",
           "columnsFrom": [
             "level_id"
           ],
-          "tableTo": "trait_levels",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_records_primary_reference_id_bibliographic_references_id_fk": {
           "name": "trait_records_primary_reference_id_bibliographic_references_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "bibliographic_references",
           "columnsFrom": [
             "primary_reference_id"
           ],
-          "tableTo": "bibliographic_references",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_records_secondary_reference_id_bibliographic_references_id_fk": {
           "name": "trait_records_secondary_reference_id_bibliographic_references_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "bibliographic_references",
           "columnsFrom": [
             "secondary_reference_id"
           ],
-          "tableTo": "bibliographic_references",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_records_import_batch_id_import_batches_id_fk": {
           "name": "trait_records_import_batch_id_import_batches_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "import_batches",
           "columnsFrom": [
             "import_batch_id"
           ],
-          "tableTo": "import_batches",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_records_created_by_users_id_fk": {
           "name": "trait_records_created_by_users_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "trait_records_supersedes_record_id_trait_records_id_fk": {
           "name": "trait_records_supersedes_record_id_trait_records_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "trait_records",
           "columnsFrom": [
             "supersedes_record_id"
           ],
-          "tableTo": "trait_records",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "trait_records_responds_to_record_id_trait_records_id_fk": {
           "name": "trait_records_responds_to_record_id_trait_records_id_fk",
           "tableFrom": "trait_records",
+          "tableTo": "trait_records",
           "columnsFrom": [
             "responds_to_record_id"
           ],
-          "tableTo": "trait_records",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "trait_records_claim_key": {
           "name": "trait_records_claim_key",
+          "nullsNotDistinct": true,
           "columns": [
             "species_id",
             "trait_id",
@@ -1875,8 +1919,7 @@
             "raw_value",
             "primary_reference_id",
             "secondary_reference_id"
-          ],
-          "nullsNotDistinct": true
+          ]
         }
       },
       "policies": {},
@@ -1994,8 +2037,8 @@
           "primaryKey": false,
           "notNull": true,
           "generated": {
-            "type": "stored",
-            "as": "primary_count + secondary_count"
+            "as": "primary_count + secondary_count",
+            "type": "stored"
           }
         },
         "kind": {
@@ -2024,9 +2067,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "bibliographic_references_usage_idx": {
           "name": "bibliographic_references_usage_idx",
@@ -2045,40 +2088,40 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "bibliographic_references_doi_idx": {
           "name": "bibliographic_references_doi_idx",
           "columns": [
             {
               "expression": "lower(\"doi\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"bibliographic_references\".\"doi\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "bibliographic_references_citation_key_trgm_idx": {
           "name": "bibliographic_references_citation_key_trgm_idx",
           "columns": [
             {
               "expression": "\"citation_key\" gin_trgm_ops",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "gin",
-          "concurrently": false
+          "with": {}
         },
         "bibliographic_references_observer_idx": {
           "name": "bibliographic_references_observer_idx",
@@ -2091,38 +2134,38 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"bibliographic_references\".\"kind\" = 'personal_observation'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "bibliographic_references_created_by_users_id_fk": {
           "name": "bibliographic_references_created_by_users_id_fk",
           "tableFrom": "bibliographic_references",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "bibliographic_references_observer_user_id_users_id_fk": {
           "name": "bibliographic_references_observer_user_id_users_id_fk",
           "tableFrom": "bibliographic_references",
+          "tableTo": "users",
           "columnsFrom": [
             "observer_user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2162,28 +2205,28 @@
         "role_permissions_role_id_roles_id_fk": {
           "name": "role_permissions_role_id_roles_id_fk",
           "tableFrom": "role_permissions",
+          "tableTo": "roles",
           "columnsFrom": [
             "role_id"
           ],
-          "tableTo": "roles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "role_permissions_permission_key_permissions_key_fk": {
           "name": "role_permissions_permission_key_permissions_key_fk",
           "tableFrom": "role_permissions",
+          "tableTo": "permissions",
           "columnsFrom": [
             "permission_key"
           ],
-          "tableTo": "permissions",
           "columnsTo": [
             "key"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2252,15 +2295,15 @@
           "columns": [
             {
               "expression": "lower(\"name\")",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -2313,24 +2356,24 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "families_created_by_users_id_fk": {
           "name": "families_created_by_users_id_fk",
           "tableFrom": "families",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2388,9 +2431,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "genera_family_idx": {
           "name": "genera_family_idx",
@@ -2403,37 +2446,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "genera_family_id_families_id_fk": {
           "name": "genera_family_id_families_id_fk",
           "tableFrom": "genera",
+          "tableTo": "families",
           "columnsFrom": [
             "family_id"
           ],
-          "tableTo": "families",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "genera_created_by_users_id_fk": {
           "name": "genera_created_by_users_id_fk",
           "tableFrom": "genera",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2511,24 +2554,24 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "species_canonical_name_trgm_idx": {
           "name": "species_canonical_name_trgm_idx",
           "columns": [
             {
               "expression": "\"canonical_name\" gin_trgm_ops",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "gin",
-          "concurrently": false
+          "with": {}
         },
         "species_genus_idx": {
           "name": "species_genus_idx",
@@ -2541,9 +2584,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "species_trait_count_idx": {
           "name": "species_trait_count_idx",
@@ -2568,37 +2611,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "species_genus_id_genera_id_fk": {
           "name": "species_genus_id_genera_id_fk",
           "tableFrom": "species",
+          "tableTo": "genera",
           "columnsFrom": [
             "genus_id"
           ],
-          "tableTo": "genera",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         },
         "species_created_by_users_id_fk": {
           "name": "species_created_by_users_id_fk",
           "tableFrom": "species",
+          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2674,39 +2717,39 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "species_names_name_trgm_idx": {
           "name": "species_names_name_trgm_idx",
           "columns": [
             {
               "expression": "\"name\" gin_trgm_ops",
-              "isExpression": true,
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "gin",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "species_names_species_id_species_id_fk": {
           "name": "species_names_species_id_species_id_fk",
           "tableFrom": "species_names",
+          "tableTo": "species",
           "columnsFrom": [
             "species_id"
           ],
-          "tableTo": "species",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2764,9 +2807,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "totp_recovery_codes_user_idx": {
           "name": "totp_recovery_codes_user_idx",
@@ -2779,24 +2822,24 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "totp_recovery_codes_user_id_users_id_fk": {
           "name": "totp_recovery_codes_user_id_users_id_fk",
           "tableFrom": "totp_recovery_codes",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2834,28 +2877,28 @@
         "user_roles_user_id_users_id_fk": {
           "name": "user_roles_user_id_users_id_fk",
           "tableFrom": "user_roles",
+          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "user_roles_role_id_roles_id_fk": {
           "name": "user_roles_role_id_roles_id_fk",
           "tableFrom": "user_roles",
+          "tableTo": "roles",
           "columnsFrom": [
             "role_id"
           ],
-          "tableTo": "roles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2966,9 +3009,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -2986,10 +3029,10 @@
   },
   "enums": {},
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

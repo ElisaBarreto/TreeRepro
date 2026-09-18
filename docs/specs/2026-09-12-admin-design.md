@@ -43,7 +43,7 @@ Constraints inherited: backend is the only authority; every route belongs to exa
 
 ### `audit_log` (RFC-41, RFC-42)
 
-- Function `audit_log_purge() RETURNS bigint`, `LANGUAGE plpgsql`, `SECURITY DEFINER`, `SET search_path = public`, owned by `treerepro_migrator` (the migration runs as that role). Body: `PERFORM set_config('treerepro.allow_audit_purge', 'on', true); DELETE FROM audit_log WHERE at < now() - interval '2 years'; GET DIAGNOSTICS n = ROW_COUNT; RETURN n;`.
+- Function `audit_log_purge() RETURNS bigint`, `LANGUAGE plpgsql`, `SECURITY DEFINER`, `SET search_path = public, pg_temp`, owned by `treerepro_migrator` (the migration runs as that role). (Correction 2026-09-18, issue #93: this line and migration 0007 said `SET search_path = public`, which leaves the temporary schema searched first; migration 0023 re-creates the function with `pg_temp` named explicitly and last, matching RFC-42 R2 as amended. Not a design change.) Body: `PERFORM set_config('treerepro.allow_audit_purge', 'on', true); DELETE FROM audit_log WHERE at < now() - interval '2 years'; GET DIAGNOSTICS n = ROW_COUNT; RETURN n;`.
 - `REVOKE ALL ON FUNCTION audit_log_purge() FROM PUBLIC; GRANT EXECUTE ON FUNCTION audit_log_purge() TO treerepro_app;`
 - `REVOKE DELETE ON audit_log FROM treerepro_app;` guarded by `IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'treerepro_app')`, as migration 0001 does for `UPDATE`.
 - The trigger from migration 0001 stays as the second line of defense; the flag it checks is now set only inside the function.
