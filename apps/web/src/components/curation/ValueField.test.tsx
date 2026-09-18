@@ -46,9 +46,8 @@ describe('RFC-65 R1 ValueField', () => {
   it('shows the error the API named under the control', () => {
     mount({ trait: SEED_MASS_TRAIT, errors: { 'value.numeric': 'Enter a number.' } });
     expect(screen.getByText('Enter a number.')).toBeInTheDocument();
-    expect(screen.getByRole('spinbutton', { name: /number/i })).toHaveAttribute(
-      'aria-invalid',
-      'true',
-    );
+    const number = screen.getByRole('spinbutton', { name: /number/i });
+    expect(number).toHaveAttribute('aria-invalid', 'true');
+    expect(number).toHaveAccessibleDescription('Enter a number.');
   });
 });

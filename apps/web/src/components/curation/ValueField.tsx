@@ -55,19 +55,23 @@ export function ValueField({
   }
   const error = errors['value.numeric'] ?? errors.value;
   return (
-    <Field id={ids.numeric} label={trait.unit ? `Number (${trait.unit})` : 'Number'} error={error}>
-      <div className="flex items-center gap-2">
-        <Input
-          id={ids.numeric}
-          type="number"
-          step="any"
-          inputMode="decimal"
-          value={numeric}
-          onChange={(e) => onNumeric(e.target.value)}
-          invalid={Boolean(error)}
-        />
-        {trait.unit ? <span className="text-meta text-mist-500">{trait.unit}</span> : null}
-      </div>
+    <Field
+      id={ids.numeric}
+      label={trait.unit ? `Number (${trait.unit})` : 'Number'}
+      error={error}
+      trailing={
+        trait.unit ? <span className="text-meta text-mist-500">{trait.unit}</span> : undefined
+      }
+    >
+      <Input
+        id={ids.numeric}
+        type="number"
+        step="any"
+        inputMode="decimal"
+        value={numeric}
+        onChange={(e) => onNumeric(e.target.value)}
+        invalid={Boolean(error)}
+      />
     </Field>
   );
 }
