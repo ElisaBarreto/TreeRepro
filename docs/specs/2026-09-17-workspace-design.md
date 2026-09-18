@@ -1,7 +1,7 @@
 # TreeRepro — Workspace Design (plans 11a, 11b, 11c)
 
 **Date:** 2026-09-17
-**Status:** approved design; plans `2026-09-17-workspace-11a-contributions.md`, `-11b-dashboard.md`, `-11c-coverage.md`
+**Status:** 11a implemented (API and web); plans `-11b-dashboard.md`, `-11c-coverage.md` not yet started
 **Scope:** the personal and supervisory views: a contributor's own records and annotations in one place; the home page as a dashboard that says where help is needed; coverage metrics for managers and admins. RFC-71 (my contributions), RFC-72 (workspace dashboard), RFC-69 R5–R7 (coverage metrics), amendments to RFC-13, RFC-30, RFC-31. Programme index: `2026-09-17-contributor-launch-overview.md`. Depends on plans 08b (plots), 09a (intent, review permission) and 10a (coverage table).
 
 ## 1. Context

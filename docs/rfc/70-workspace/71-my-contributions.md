@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | workspace |
 | Supersedes | — |
 
@@ -28,3 +28,4 @@ None.
 ## Changelog
 
 - 2026-09-18 — created (plan 11a).
+- 2026-09-18 — accepted.
