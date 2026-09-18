@@ -95,18 +95,13 @@ function Facts({ trait }: { trait: TraitDetail }) {
  * categorical trait, the numeric spread for a quantitative one. Both shapes
  * can be empty — a categorical trait with no harmonised record has no level
  * to show, a quantitative one answers `numeric: null` — and then the section
- * says so rather than printing zeros.
+ * says so rather than printing zeros, and says nothing about when a summary
+ * that does not exist was computed.
  */
 function Distribution({ trait }: { trait: TraitDetail }) {
   const { distribution, unit } = trait;
-  const figures =
-    'numeric' in distribution && distribution.numeric !== null
-      ? [
-          { label: 'min', value: distribution.numeric.min },
-          { label: 'median', value: distribution.numeric.median },
-          { label: 'max', value: distribution.numeric.max },
-        ]
-      : [];
+  const counted =
+    'levels' in distribution ? distribution.levels.length > 0 : distribution.numeric !== null;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="font-display text-section font-semibold text-canopy-950">Distribution</h2>
@@ -130,7 +125,11 @@ function Distribution({ trait }: { trait: TraitDetail }) {
       ) : distribution.numeric !== null ? (
         <>
           <ul aria-label="Numeric distribution" className="flex flex-wrap gap-2">
-            {figures.map((figure) => (
+            {[
+              { label: 'min', value: distribution.numeric.min },
+              { label: 'median', value: distribution.numeric.median },
+              { label: 'max', value: distribution.numeric.max },
+            ].map((figure) => (
               <li key={figure.label}>
                 <Chip>
                   {figure.label}{' '}
@@ -149,10 +148,12 @@ function Distribution({ trait }: { trait: TraitDetail }) {
       ) : (
         <p className="text-body text-mist-500">{NO_RECORDS}</p>
       )}
-      <p className="text-meta text-mist-500">
-        Counted at {formatDateTime(trait.computedAt)} UTC; the summary lags a few minutes behind the
-        records.
-      </p>
+      {counted ? (
+        <p className="text-meta text-mist-500">
+          Counted at {formatDateTime(trait.computedAt)} UTC; the summary lags a few minutes behind
+          the records.
+        </p>
+      ) : null}
     </section>
   );
 }

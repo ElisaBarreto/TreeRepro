@@ -139,12 +139,16 @@ describe('RFC-62 R7 TraitPage distribution', () => {
         .map((item) => item.textContent),
     ).toEqual(['min 0.5 mg', 'median 1.25 mg', 'max 3 mg']);
     expect(screen.getByText('Across 3 species with harmonised records.')).toBeInTheDocument();
+    // RFC-62 R7 caches the summary for ten minutes, so the page says when it
+    // was counted — wherever there is something counted.
+    expect(screen.getByText(/^Counted at 2026-09-18 08:00 UTC/)).toBeInTheDocument();
   });
 
   it('says so instead when no record has been harmonised yet, whatever the value type', async () => {
     const quantitative = await openPage(SEED_LENGTH_DETAIL);
     expect(screen.getByText('No harmonised records yet.')).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Numeric distribution' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Counted at/)).not.toBeInTheDocument();
     quantitative.unmount();
 
     dataset.fetchTrait.mockResolvedValue({
@@ -154,6 +158,7 @@ describe('RFC-62 R7 TraitPage distribution', () => {
     renderAt(`/app/traits/${SEXUAL_SYSTEM_DETAIL.id}`);
     expect(await screen.findByText('No harmonised records yet.')).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Level distribution' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Counted at/)).not.toBeInTheDocument();
   });
 });
 
@@ -203,6 +208,28 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     expect(cells[2]).toHaveTextContent('0.5 – 3 mg');
     expect(cells[3]).toHaveTextContent('—');
     expect(cells[4]).toHaveTextContent('—');
+  });
+
+  it('counts and summaries are independent: no count still shows the summary, no summary just the count', async () => {
+    dataset.fetchTraitSpecies.mockResolvedValue(
+      page([
+        { ...TRAIT_SPECIES_WITH_DATA, summary: null },
+        {
+          ...TRAIT_SPECIES_WITH_DATA,
+          id: TRAIT_SPECIES_MISSING.id,
+          canonicalName: 'Ceiba pentandra',
+          recordCount: null,
+        },
+      ]),
+    );
+    await openPage();
+    const rows = within(await screen.findByRole('table')).getAllByRole('row');
+    const withoutSummary = within(rows[1] as HTMLElement).getAllByRole('cell')[2];
+    expect(withoutSummary).toHaveTextContent('4');
+    expect(withoutSummary).not.toHaveTextContent('dioecious');
+    const withoutCount = within(rows[2] as HTMLElement).getAllByRole('cell')[2];
+    expect(withoutCount).toHaveTextContent('—');
+    expect(withoutCount).toHaveTextContent('dioecious 3 · hermaphrodite 1');
   });
 
   it('switches to the species missing data, writes the mode into the URL and offers the first entry', async () => {

@@ -451,6 +451,8 @@ export const GENERA: Genus[] = [{ ...GENUS, family: FAMILY }, ADANSONIA_GENUS];
 export const SEXUAL_SYSTEM_TRAIT: Trait = DICTIONARY[0]?.traits[0] as Trait;
 /** @rfc RFC-62 R5 */
 export const SEED_MASS_TRAIT: Trait = DICTIONARY[1]?.traits[0] as Trait;
+/** The quantitative trait no summary gives a record. @rfc RFC-62 R5 */
+export const SEED_LENGTH_TRAIT: Trait = DICTIONARY[1]?.traits[2] as Trait;
 /** What `POST /api/traits` answers for a fresh categorical trait. @rfc RFC-62 R6 */
 export const NEW_TRAIT: Trait = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e04',
@@ -510,7 +512,7 @@ export const SEED_MASS_DETAIL: TraitDetail = {
  * @rfc RFC-62 R7
  */
 export const SEED_LENGTH_DETAIL: TraitDetail = {
-  ...(DICTIONARY[1]?.traits[2] as Trait),
+  ...SEED_LENGTH_TRAIT,
   speciesCount: 0,
   category: { key: 'seed', label: 'Seed' },
   speciesWithData: 0,

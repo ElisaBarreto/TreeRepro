@@ -78,17 +78,18 @@ export function TraitSpeciesTable({
               <Td>{item.family?.name ?? DASH}</Td>
               {withData ? (
                 <>
+                  {/* The count and the summary are nullable on their own
+                      (RFC-62 R8), so neither hides the other: a row can
+                      summarise records it has no count for. */}
                   <Td>
-                    {item.recordCount === null ? (
-                      DASH
-                    ) : (
-                      <span className="flex flex-col gap-0.5">
-                        <span>{formatNumber(item.recordCount)}</span>
-                        {summary ? (
-                          <span className="text-meta text-mist-500">{summary}</span>
-                        ) : null}
+                    <span className="flex flex-col gap-0.5">
+                      <span>
+                        {item.recordCount === null ? DASH : formatNumber(item.recordCount)}
                       </span>
-                    )}
+                      {summary === null ? null : (
+                        <span className="text-meta text-mist-500">{summary}</span>
+                      )}
+                    </span>
                   </Td>
                   <Td className="text-canopy-800">{item.accepted?.valueText ?? DASH}</Td>
                   <Td>
