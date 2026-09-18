@@ -245,6 +245,70 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ traitData: 'with' }));
   });
 
+  it("shows the trait's own category on a trait-only value and enables the radios", async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID, traitData: 'missing' }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    // What `/app/species?traitId=…&traitData=missing` opens with: no category
+    // in the value at all, the dictionary supplies it.
+    await screen.findByRole('option', { name: 'Seed' });
+    expect(screen.getByLabelText('Category')).toHaveValue('seed');
+    const trait = screen.getByLabelText('Trait');
+    expect(trait).toBeEnabled();
+    expect(trait).toHaveValue(SEED_MASS_ID);
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Has data' })).toBeEnabled();
+  });
+
+  it('enables the radios for a trait alone, before the dictionary has arrived', async () => {
+    // The other half of "a trait OR a category": the value names a trait,
+    // nothing has been derived yet, and the mode is still the user's to pick.
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    const missing = await screen.findByRole('radio', { name: 'Missing data' });
+    expect(missing).toBeEnabled();
+    expect(screen.getByRole('radio', { name: 'Has data' })).toBeChecked();
+
+    await userEvent.click(missing);
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ traitId: SEED_MASS_ID, traitData: 'missing' }),
+    );
+  });
+
+  it('clears the trait when the derived category is cleared', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID, traitData: 'missing' }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    await screen.findByRole('option', { name: 'Seed' });
+    await userEvent.selectOptions(screen.getByLabelText('Category'), '');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        categoryKey: undefined,
+        traitId: undefined,
+        traitData: undefined,
+      }),
+    );
+    expect(screen.getByLabelText('Trait')).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeDisabled();
+  });
+
   it('clears the trait filter entirely when the category goes back to all', async () => {
     const onChange = vi.fn();
     renderWithProviders(

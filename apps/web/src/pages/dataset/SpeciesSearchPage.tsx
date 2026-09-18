@@ -157,6 +157,12 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
 
   function update(next: SpeciesSearchValue) {
     setForm(next);
+    // Claim the filters being pushed as already seen, so the URL echo of
+    // this very change is not mistaken for an outside one. Without it the
+    // echo would adopt a search built a moment ago — and a letter typed
+    // between the push and the echo would be overwritten by the older `q`
+    // that push carried.
+    setSeenFilters(filtersOf(next));
     void navigate({ to: '/app/species', search: toSearch(next), replace: true });
   }
 

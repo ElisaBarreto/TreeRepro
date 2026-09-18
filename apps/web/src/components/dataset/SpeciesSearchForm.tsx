@@ -61,11 +61,14 @@ function Group({
  * **Traits** (RFC-60 R6 amendment) — a category select fed by the trait
  * dictionary, a trait select filtered to that category (disabled until a
  * category is chosen) and a "Has data" / "Missing data" radio pair (disabled
- * until a category or trait is chosen). Choosing another category drops the
- * trait, which belonged to the old one; going back to "All categories"
- * clears the whole group. The radio shows "Has data" while nothing is
- * chosen because that is the API's default mode; the value only carries
- * `traitData` once the contributor picks a side.
+ * until a category or trait is chosen). A value that names a trait and no
+ * category — what `/app/species?traitId=…` deep links carry — shows the
+ * trait's own category, read out of the dictionary, so the filter in force
+ * is visible and clearable. Choosing another category drops the trait, which
+ * belonged to the old one; going back to "All categories" clears the whole
+ * group, the derived category included. The radio shows "Has data" while
+ * nothing is chosen because that is the API's default mode; the value only
+ * carries `traitData` once the contributor picks a side.
  *
  * **Scope** — the plot select, the outside-plots toggle and, with
  * `dataset.read_inactive`, the Status select (RFC-33 R6, R7, RFC-67 R8);
@@ -139,11 +142,24 @@ export function SpeciesSearchForm({
     onChange({ ...value, genusId: undefined });
   }
 
+  // A deep link may name a trait and no category — `/app/species?traitId=…`
+  // is the link the trait page and the dashboard send people to (RFC-60 R6
+  // amendment). The category the trait belongs to is then read out of the
+  // dictionary, so the group shows the filter that is actually in force
+  // instead of "All categories / All traits", and the contributor can see it
+  // and clear it. Until the dictionary arrives there is nothing to derive
+  // from; the selects fill in once it does.
+  const derivedCategory = value.traitId
+    ? dictionary.data?.find((category) =>
+        category.traits.some((trait) => trait.id === value.traitId),
+      )?.key
+    : undefined;
+  const effectiveCategory = value.categoryKey ?? derivedCategory;
   const categoryTraits =
-    dictionary.data?.find((category) => category.key === value.categoryKey)?.traits ?? [];
+    dictionary.data?.find((category) => category.key === effectiveCategory)?.traits ?? [];
   // The API's default is `with`; the radio shows it before a side is picked.
   const traitData = value.traitData ?? 'with';
-  const traitFilterChosen = Boolean(value.categoryKey ?? value.traitId);
+  const traitFilterChosen = Boolean(effectiveCategory ?? value.traitId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -257,7 +273,7 @@ export function SpeciesSearchForm({
         >
           <Select
             id={ids.category}
-            value={value.categoryKey ?? ''}
+            value={effectiveCategory ?? ''}
             onChange={(event) => {
               const categoryKey = event.target.value || undefined;
               onChange({
@@ -281,7 +297,7 @@ export function SpeciesSearchForm({
         <Field id={ids.trait} label="Trait">
           <Select
             id={ids.trait}
-            disabled={!value.categoryKey}
+            disabled={!effectiveCategory}
             value={value.traitId ?? ''}
             onChange={(event) => onChange({ ...value, traitId: event.target.value || undefined })}
           >

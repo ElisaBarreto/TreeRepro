@@ -494,6 +494,35 @@ describe('RFC-60 R6 SpeciesSearchPage trait filters, order and the URL', () => {
     renderAt(`/app/species?traitId=${SEED_MASS_ID}`);
     expect(await screen.findByRole('columnheader', { name: 'Records' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '7' })).toBeInTheDocument();
+    // A trait-only deep link still shows which filter is in force: the
+    // category comes from the dictionary, not from the URL.
+    expect(screen.getByLabelText('Category')).toHaveValue('seed');
+    expect(screen.getByLabelText('Trait')).toHaveValue(SEED_MASS_ID);
+  });
+
+  it('clearing the category of a trait-only deep link takes the trait out of the URL', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = renderAt(`/app/species?traitId=${SEED_MASS_ID}&traitData=missing`);
+    await screen.findByRole('option', { name: 'Seed' });
+    await userEvent.selectOptions(screen.getByLabelText('Category'), '');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.not.objectContaining({ traitId: SEED_MASS_ID }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(
+      expect.not.objectContaining({ traitData: 'missing' }),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          traitId: undefined,
+          traitData: undefined,
+          categoryKey: undefined,
+        }),
+      ),
+    );
+    expect(screen.queryByRole('columnheader', { name: 'Records' })).not.toBeInTheDocument();
   });
 
   it('drops unknown and malformed search params', async () => {

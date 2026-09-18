@@ -81,6 +81,17 @@ describe('RFC-60 R6 SpeciesList coverage columns', () => {
     expect(within(row as HTMLElement).getByText('7')).toBeInTheDocument();
   });
 
+  it('prints a zero trait record count, the missing-mode value, as 0 and not as a dash', async () => {
+    renderInRouter(
+      <SpeciesList items={[{ ...ADENANTHERA, traitRecordCount: 0 }]} showTraitRecords />,
+    );
+    const table = await screen.findByRole('table');
+    const row = within(table).getAllByRole('row')[1] as HTMLElement;
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[4]).toHaveTextContent('0');
+    expect(cells[4]).not.toHaveTextContent('—');
+  });
+
   it('reads a null trait record count as a dash', async () => {
     renderInRouter(<SpeciesList items={[ADENANTHERA]} showTraitRecords />);
     const table = await screen.findByRole('table');
