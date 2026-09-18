@@ -31,12 +31,14 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
 
 /**
  * Every navigation entry of the workspace. Other plans append here; the
- * shell filters by permission (RFC-13 R3). The three Curation entries
+ * shell filters by permission (RFC-13 R3). Three of the Curation entries
  * require `records.review`: the queues are manager work (RFC-65 R8–R10,
- * RFC-31 R10).
+ * RFC-31 R10). Coverage requires `coverage.read` instead (RFC-69 R5,
+ * plan 11c) — a manager permission of its own, not the queues'.
  * @rfc RFC-13 R3
  * @rfc RFC-60 R9
  * @rfc RFC-65 R8, R10
+ * @rfc RFC-69 R5
  * @rfc RFC-71 R1
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
@@ -83,6 +85,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'Disputed',
     icon: 'alert',
     permission: 'records.review',
+    section: 'curation',
+  },
+  {
+    to: '/app/curation/coverage',
+    label: 'Coverage',
+    icon: 'check',
+    permission: 'coverage.read',
     section: 'curation',
   },
   {
