@@ -44,4 +44,4 @@ Merging two species rows (synonyms discovered later) and WCVP/GBIF lookups when 
 - 2026-09-17 — R6 scope, plotId; R7 plots on species detail (RFC-67 R8, RFC-33 R6, plan 08b).
 - 2026-09-18 — R1, R6: trait_count, trait filters and completeness order (RFC-69, plan 10a).
 - 2026-09-18 — R7: the detail's `traitCount` named as R6's field and its visibility-blindness stated, against a review reading that would have filtered it (CodeRabbit, plan 10a).
-- 2026-09-18 — R1, R4, R6, R7, R9 amended: synonyms and common names (`name_type`, `language`), two-tier species search (`matchedNameType`), the names writes and their validation — migration `species_names` (RFC-68 R12; plan 10b).
+- 2026-09-18 — R1, R4, R6, R7, R9 amended: synonyms and common names (`name_type`, `language`), two-tier species search (`matchedNameType`), the names writes and their validation — migration `0026_species_names` (RFC-68 R12; plan 10b).
