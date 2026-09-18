@@ -37,6 +37,25 @@ import {
 const PLOT_CASE_MISSING = 2;
 
 /**
+ * READ THIS BEFORE ASSERTING A DATASET COUNT FROM ANY SUITE.
+ *
+ * Several tests below call `getDashboard` on a rolled-back `repeatable read`
+ * transaction, and `getDashboard` reads `stats:dataset` — a fixed key, shared
+ * by every dashboard call in the run, with the longest ttl in the suite at one
+ * hour. Whichever caller finds that key cold fills it, and when that caller is
+ * one of these tests the entry it publishes counts rows from a frozen snapshot
+ * that were never committed, for the next 3600 seconds.
+ *
+ * Nothing asserts those values today — this file proves the dataset counts
+ * through the uncached `computeDatasetStats` as a delta, and proves the entry
+ * semantics on a random key — so it cannot fail now. But a later plan (11c's
+ * coverage page, 12a's getting-started card) that asserts `dataset.recordCount`
+ * or `dataset.speciesCount` against a fixture of its own will fail here, rarely
+ * and for an hour at a time, and the cause will not be in its own file. Assert
+ * the uncached function, or a delta, and leave the shared entry alone.
+ */
+
+/**
  * Freezes the transaction's snapshot so the dataset-wide denominators below
  * (the visible active trait count) cannot move under the assertions while a
  * sibling suite commits, and fails loudly if `withRollback` ever stops opening
@@ -54,13 +73,23 @@ const permissions = (...keys: PermissionKey[]): ReadonlySet<PermissionKey> => ne
 
 /**
  * Three species in one plot, three active traits and one inactive one; two
- * cells hold a record, one confirmed and one not. Everything is created here
- * with random names, so every assertion below is about this fixture alone.
+ * cells hold a record, one confirmed and one not. A third record sits on a
+ * cell that already holds one and is withdrawn, so both halves of the
+ * awaiting-validation predicate are exercised: an implementation that excluded
+ * only `confirm` would count it and fail. It shares its cell deliberately —
+ * a withdrawn record on a cell of its own would move the missing-cell and
+ * ranking numbers this fixture also pins.
+ *
+ * Everything is created here with random names, so every assertion below is
+ * about this fixture alone.
  */
 async function plotFixture(tx: DbTransaction) {
   const { user: viewer } = await createUser(tx);
   const { user: manager } = await createUser(tx);
   const reference = await createReference(tx);
+  // A second source: the claim key of RFC-63 is (species, trait, value, raw
+  // value, references), so a second record on one cell needs one.
+  const secondReference = await createReference(tx);
   const plot = await createPlot(tx);
   const one = await createSpecies(tx);
   const two = await createSpecies(tx);
@@ -75,13 +104,14 @@ async function plotFixture(tx: DbTransaction) {
     speciesId: string,
     trait: { id: string; levels: { id: string; key: string }[] },
     createdBy: string,
+    referenceId: string = reference.id,
   ) =>
     createRecord(tx, {
       speciesId,
       traitId: trait.id,
       valueText: 'alpha',
       levelId: trait.levels[0]?.id,
-      primaryReferenceId: reference.id,
+      primaryReferenceId: referenceId,
       origin: 'manual',
       createdBy,
     });
@@ -90,6 +120,10 @@ async function plotFixture(tx: DbTransaction) {
   await createAnnotation(tx, { recordId: confirmed.id, actorId: manager.id, kind: 'confirm' });
   // The one record awaiting validation.
   const awaiting = await record(one.id, traitB, viewer.id);
+  // Withdrawn: it shares `awaiting`'s cell, so it changes no count but the
+  // one it must change — the other half of the predicate (RFC-72 R1, spec §7).
+  const withdrawn = await record(one.id, traitB, manager.id, secondReference.id);
+  await createAnnotation(tx, { recordId: withdrawn.id, actorId: manager.id, kind: 'withdraw' });
   // Invisible to a restricted viewer: an inactive trait, and a species that is
   // in no plot of the viewer (RFC-33, RFC-72 R2).
   const onInactiveTrait = await record(one.id, traitOff, manager.id);
@@ -111,8 +145,10 @@ async function plotFixture(tx: DbTransaction) {
     traitC,
     traitOff,
     reference,
+    secondReference,
     confirmed,
     awaiting,
+    withdrawn,
     onInactiveTrait,
     onOutsideSpecies,
     viewerScope,
@@ -179,6 +215,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       expect(ids).not.toContain(f.onOutsideSpecies.id);
       expect(ids).not.toContain(f.onInactiveTrait.id);
       expect(ids).not.toContain(f.confirmed.id);
+      expect(ids).not.toContain(f.withdrawn.id);
       const speciesIds = (dashboard.contributor.awaitingValidation?.records ?? []).map(
         (r) => r.speciesId,
       );

@@ -53,6 +53,16 @@ interface StatsRow {
  * The three global counts, uncached: active species (RFC-72 R1 counts only
  * those), every bibliographic reference and every record.
  *
+ * The record count is `sum(record_count)` over `species_trait_coverage`
+ * (RFC-69 R1), the source `docs/specs/2026-09-17-workspace-design.md` §4
+ * names, and not `count(*)` over `trait_records`. The two are equal — the
+ * trigger of migration 0022 maintains the counter and records are append-only
+ * (RFC-63 R4) — but RFC-72's context is explicit that these numbers come from
+ * a stored counter or a small table and never from a scan of the whole
+ * dataset. The hourly entry does not excuse the scan: the counter is cheaper
+ * at exactly the same cadence. Being a sum of monotonic counters, it also
+ * never shows a smaller number than the hour before.
+ *
  * It is exported, and not folded into `datasetStats`, for the reason
  * `computeCoverageTotals` is: `stats:dataset` is one fixed key shared by every
  * caller in a test run, so a test reading the numbers through the cache would
@@ -65,9 +75,8 @@ export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats>
     select
       (select count(*)::int from species s where s.active) as species_count,
       (select count(*)::int from bibliographic_references) as reference_count,
-      (select count(*)::int from trait_records) as record_count`)) as unknown as [
-    StatsRow | undefined,
-  ];
+      (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
+        as record_count`)) as unknown as [StatsRow | undefined];
   return {
     speciesCount: row?.species_count ?? 0,
     referenceCount: row?.reference_count ?? 0,
@@ -215,6 +224,16 @@ const toMissingTrait = (r: RankRow, missing: number): MissingTrait => ({
  * writing one Redis key corrupt it the moment they diverge. That entry is
  * plot-blind, which is exactly what a viewer with no plots asks for; a viewer
  * restricted to no plots at all sees nothing, and is answered nothing.
+ *
+ * The two halves of that subtraction are of different ages: `visible` is
+ * counted live, `counts` comes from an entry up to ten minutes old. So a
+ * species committed inside that window is in the denominator but not yet in
+ * the per-trait count, and `missingSpeciesCount` overstates by at most the
+ * species added in ten minutes; a species deactivated in the same window
+ * understates it, which is why the subtraction is clamped at zero. The error
+ * is bounded and heals itself when the entry expires, and a ranking is the
+ * one consumer that can carry it: it orders traits, and a handful of species
+ * shared by every trait alike barely moves the order.
  *
  * It is exported for the reason `computeCoverageTotals` is: `getDashboard`
  * cuts the ranking to ten, and which traits make that cut depends on every
