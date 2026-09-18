@@ -83,6 +83,9 @@ function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
     genus: r.genusId && r.genusName ? { id: r.genusId, name: r.genusName } : null,
     family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
     matchedName: r.matchedName ?? null,
+    // Plan 10b's search tiers compute the real type; until the columns and the
+    // tiered search land, no row can name a matched alternative name's type.
+    matchedNameType: null,
     unresolvedTaxon: r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null,
     traitCount: r.traitCount,
     traitRecordCount: r.traitRecordCount ?? null,
@@ -384,9 +387,13 @@ export async function getSpecies(
   return {
     ...listItem,
     plots: speciesPlots,
+    // Plan 10b's `species_names` columns (`name_type`, `language`) do not
+    // exist yet: every stored name is a GBIF name until that migration lands.
     names: names.map((n) => ({
       name: n.name,
-      source: 'gbif' as const,
+      nameType: 'gbif' as const,
+      language: null,
+      source: 'gbif',
       gbifUsageKey: n.gbifUsageKey,
     })),
     recordCount: counts?.recordCount ?? 0,

@@ -61,6 +61,7 @@ export function AddNameDialog({
     const key = gbifUsageKey.trim();
     const parsed = speciesNameBodySchema.safeParse({
       name: name.trim(),
+      nameType: 'gbif',
       ...(key === '' ? {} : { gbifUsageKey: key }),
     });
     if (!parsed.success) {

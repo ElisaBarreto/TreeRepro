@@ -61,6 +61,7 @@ const SPECIES_ITEM: SpeciesListItem = {
   genus: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d00', name: 'Bowdichia' },
   family: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d01', name: 'Fabaceae' },
   matchedName: 'Bowdichia virgilioides Kunth',
+  matchedNameType: 'gbif',
   active: true,
   unresolvedTaxon: false,
   traitCount: 4,

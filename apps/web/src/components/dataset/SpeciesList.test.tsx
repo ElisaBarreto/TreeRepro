@@ -37,6 +37,7 @@ const ADENANTHERA: SpeciesListItem = {
   genus: GENUS,
   family: FAMILY,
   matchedName: null,
+  matchedNameType: null,
   unresolvedTaxon: false,
   traitCount: 12,
   traitRecordCount: null,

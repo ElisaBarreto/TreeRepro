@@ -44,6 +44,7 @@ describe('RFC-60 R9 AddNameDialog', () => {
     await waitFor(() =>
       expect(catalog.addSpeciesName).toHaveBeenCalledWith(SPECIES.id, {
         name: 'Adenanthera gersenii',
+        nameType: 'gbif',
         gbifUsageKey: '2969393',
       }),
     );
@@ -64,6 +65,7 @@ describe('RFC-60 R9 AddNameDialog', () => {
     await waitFor(() =>
       expect(catalog.addSpeciesName).toHaveBeenCalledWith(SPECIES.id, {
         name: 'Adenanthera pavonina',
+        nameType: 'gbif',
       }),
     );
     expect(

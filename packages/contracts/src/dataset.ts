@@ -6,6 +6,10 @@ import { plotRefSchema, SPECIES_SCOPES } from './plots.ts';
 export const NAME_SOURCES = ['wcvp', 'gbif', 'original'] as const;
 export type NameSource = (typeof NAME_SOURCES)[number];
 
+/** An alternative name is a GBIF name, a synonym or a common name. @rfc RFC-60 R1, R4 */
+export const NAME_TYPES = ['gbif', 'synonym', 'common'] as const;
+export type NameType = (typeof NAME_TYPES)[number];
+
 /** @rfc RFC-62 R1 */
 export const TRAIT_VALUE_TYPES = ['categorical', 'quantitative'] as const;
 export type TraitValueType = (typeof TRAIT_VALUE_TYPES)[number];
@@ -117,6 +121,8 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
 /**
  * `traitRecordCount` is `null` when no `traitId` filter was given, `0` in
  * missing mode, and the coverage row's `record_count` otherwise.
+ * `matchedNameType` is the type of the alternative name that matched
+ * (`matchedName`), else `null`.
  * @rfc RFC-60 R3, R6
  * @rfc RFC-33 R7
  * @rfc RFC-69 R1
@@ -129,15 +135,18 @@ export const speciesListItemSchema = z.strictObject({
   genus: taxonRefSchema.nullable(),
   family: taxonRefSchema.nullable(),
   matchedName: z.string().nullable(),
+  matchedNameType: z.enum(NAME_TYPES).nullable(),
   unresolvedTaxon: z.boolean(),
   traitCount: z.number().int().nonnegative(),
   traitRecordCount: z.number().int().nonnegative().nullable(),
 });
 
-/** @rfc RFC-60 R4, R7 */
+/** An alternative name of a species: type, language (common names only) and source. @rfc RFC-60 R1, R4, R7 */
 export const speciesNameSchema = z.strictObject({
   name: z.string(),
-  source: z.literal('gbif'),
+  nameType: z.enum(NAME_TYPES),
+  language: z.string().length(2).nullable(),
+  source: z.string(),
   gbifUsageKey: z.string().nullable(),
 });
 

@@ -626,7 +626,13 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
       ...SPECIES,
       names: [
         ...SPECIES.names,
-        { name: 'Adenanthera polita', source: 'gbif' as const, gbifUsageKey: null },
+        {
+          name: 'Adenanthera polita',
+          nameType: 'gbif' as const,
+          language: null,
+          source: 'gbif',
+          gbifUsageKey: null,
+        },
       ],
     };
     dataset.fetchSpecies.mockResolvedValueOnce(SPECIES).mockResolvedValue(withName);

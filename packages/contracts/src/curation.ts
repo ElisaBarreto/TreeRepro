@@ -4,6 +4,7 @@ import {
   acceptedDecisionSchema,
   HARMONISATION_STATUSES,
   NAME_SOURCES,
+  NAME_TYPES,
   RECORD_INTENTS,
   recordDetailSchema,
   recordSchema,
@@ -230,11 +231,30 @@ export const updateSpeciesBodySchema = nonEmpty(
   },
   'canonicalName',
 );
-/** @rfc RFC-60 R9 */
-export const speciesNameBodySchema = z.strictObject({
-  name: catalogNameSchema,
-  gbifUsageKey: z.string().trim().min(1).max(64).optional(),
-});
+/**
+ * `POST /api/species/:id/names`. A common name needs a `language`; every
+ * other type takes none; only a `gbif` name carries `gbifUsageKey`.
+ * @rfc RFC-60 R4, R9
+ */
+export const speciesNameBodySchema = z
+  .strictObject({
+    name: catalogNameSchema,
+    nameType: z.enum(NAME_TYPES),
+    language: z
+      .string()
+      .regex(/^[a-z]{2}$/)
+      .optional(),
+    source: z.string().trim().min(1).max(200).optional(),
+    gbifUsageKey: z.string().trim().min(1).max(64).optional(),
+  })
+  .refine((b) => (b.nameType === 'common') === (b.language !== undefined), {
+    path: ['language'],
+    message: 'A common name needs a language; other names take none',
+  })
+  .refine((b) => b.gbifUsageKey === undefined || b.nameType === 'gbif', {
+    path: ['gbifUsageKey'],
+    message: 'Only a GBIF name carries a usage key',
+  });
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 

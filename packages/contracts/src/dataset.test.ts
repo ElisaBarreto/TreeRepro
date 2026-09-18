@@ -8,12 +8,14 @@ import {
   listSpeciesQuerySchema,
   listTraitSpeciesQuerySchema,
   listTraitsQuerySchema,
+  NAME_TYPES,
   REVIEW_STATUSES,
   recordSchema,
   referenceDetailSchema,
   referenceSchema,
   SPECIES_SORTS,
   speciesListItemSchema,
+  speciesNameSchema,
   speciesTraitsSchema,
   TRAIT_DATA_MODES,
   TRAIT_SPECIES_MODES,
@@ -171,6 +173,31 @@ describe('RFC-61 R4 referenceSchema', () => {
   });
 });
 
+describe('RFC-60 R1, R4, R7 speciesNameSchema, NAME_TYPES', () => {
+  it('lists the three name types and requires nameType, language and source', () => {
+    expect(NAME_TYPES).toEqual(['gbif', 'synonym', 'common']);
+    const gbifName = {
+      name: 'Adenanthera gersenii',
+      nameType: 'gbif',
+      language: null,
+      source: 'gbif',
+      gbifUsageKey: '2969393',
+    };
+    expect(speciesNameSchema.parse(gbifName)).toEqual(gbifName);
+    const commonName = {
+      name: 'Coralwood',
+      nameType: 'common',
+      language: 'en',
+      source: 'manual',
+      gbifUsageKey: null,
+    };
+    expect(speciesNameSchema.parse(commonName)).toEqual(commonName);
+    const { nameType: _nt, ...withoutType } = gbifName;
+    expect(speciesNameSchema.safeParse(withoutType).success).toBe(false);
+    expect(speciesNameSchema.safeParse({ ...commonName, language: 'eng' }).success).toBe(false);
+  });
+});
+
 describe('RFC-64 R11 importBatchSchema', () => {
   it('parses a completed batch', () => {
     const batch = {
@@ -237,6 +264,7 @@ describe('RFC-60 R6 species item carries active; status filter', () => {
       genus: null,
       family: null,
       matchedName: null,
+      matchedNameType: null,
       unresolvedTaxon: false,
       active: true,
       traitCount: 3,
@@ -281,6 +309,7 @@ describe('RFC-60 R6, RFC-69 R1 speciesListItemSchema trait coverage fields', () 
       genus: null,
       family: null,
       matchedName: null,
+      matchedNameType: null,
       unresolvedTaxon: false,
       traitCount: 3,
       traitRecordCount: null,
@@ -426,6 +455,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     genus: null,
     family: null,
     matchedName: null,
+    matchedNameType: null,
     unresolvedTaxon: false,
     traitCount: 3,
     traitRecordCount: null,
