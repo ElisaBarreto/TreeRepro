@@ -25,6 +25,8 @@ Authentication routes are brute-force targets and every route can be flooded. Li
   | `invite/accept`, `password/reset` | IP | 10 per 15 minutes |
   | `references/resolve` | user id | 60 per minute |
 
+  The `invite/accept`/`password/reset` limit is configurable (`RATE_LIMIT_TOKEN_IP`), defaulting to 10 when unset.
+
 - **R4** The global limiter runs on every request after the session is resolved (RFC-22 R7); `GET /api/health` and `GET /api/health/ready` are exempt.
 - **R5** Route limiters run before request validation, so malformed bodies count. The email key is read from the raw body when present; a body without a usable email is limited by IP only.
 - **R6** A login rejected by a limiter is audited as `auth.login.failure` with `metadata.reason = "rate_limited"` and a null actor.
@@ -39,3 +41,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
 - 2026-09-17 — R3: DOI check limiter (plan 09a).
+- 2026-09-18 — R3: `invite/accept`/`password/reset` limit is configurable, 10 by default.
