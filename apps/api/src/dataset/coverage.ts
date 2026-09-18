@@ -1,6 +1,17 @@
-import { sql } from 'drizzle-orm';
+import type {
+  Coverage,
+  CoverageQuery,
+  CoverageRow,
+  CoverageTopQuery,
+  CoverageTraitRow,
+  TraitValueType,
+} from '@treerepro/contracts';
+import { eq, type SQL, sql } from 'drizzle-orm';
 import { globalSpeciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { plots } from '../db/schema/plots.ts';
+import { families } from '../db/schema/taxa.ts';
+import { AppError } from '../http/errors.ts';
 import { cachedJson } from '../redis/cache.ts';
 import type { Redis } from '../redis/client.ts';
 
@@ -102,4 +113,285 @@ export async function coverageTotals(
     computeCoverageTotals(ctx.db, visibility),
   );
   return value;
+}
+
+/** The ranking `GET /api/coverage/top` is asked for. @rfc RFC-69 R7 */
+export type CoverageTopMode = NonNullable<CoverageTopQuery['mode']>;
+
+/** What `coverageTop` answers when the caller names no `limit`, as RFC-72 R1's own top list does. */
+const TOP_LIMIT_DEFAULT = 10;
+
+/** The ten minutes of RFC-69 R6, in seconds. */
+const COVERAGE_TTL_SECONDS = 600;
+
+/**
+ * The two predicates a coverage answer is computed over: which species are in
+ * the grid and which traits are. Every count below is a join filtered by these
+ * two and nothing else, so the totals, the per-category rows and the per-trait
+ * rows can never disagree about what the selection is.
+ */
+interface CoverageSelection {
+  speciesSeen: SQL;
+  traitSeen: SQL;
+}
+
+const both = (parts: SQL[]): SQL => parts.reduce((left, right) => sql`(${left}) and (${right})`);
+
+/**
+ * Resolves {@link CoverageQuery} into the selection, refusing the filters that
+ * name nothing and the plot the viewer may not read.
+ *
+ * The base species predicate is `globalSpeciesVisible`, the same active-only
+ * dimension `computeCoverageTotals` uses: the plot dimension enters the grid
+ * only through an explicit `plotId`, which is part of the cache key (RFC-69
+ * R6). `familyId` and `plotId` are existence-checked before they are
+ * authorised and only then added as conjuncts, the order `speciesListConditions`
+ * uses (RFC-60 R6), so a viewer learns "no such plot" before "not yours".
+ * `categoryKey` is not existence-checked: an unknown key selects no trait,
+ * which is an empty grid rather than an error.
+ * @rfc RFC-69 R5
+ * @rfc RFC-33 R2, R6
+ */
+async function coverageSelection(
+  db: DbExecutor,
+  visibility: Visibility,
+  filters: CoverageQuery,
+): Promise<CoverageSelection> {
+  const speciesParts = [globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)];
+  if (filters.familyId) {
+    const [family] = await db
+      .select({ id: families.id })
+      .from(families)
+      .where(eq(families.id, filters.familyId))
+      .limit(1);
+    if (!family) throw new AppError('FAMILY_NOT_FOUND', 'Family not found');
+    speciesParts.push(
+      sql`exists (select 1 from genera g where g.id = s.genus_id and g.family_id = ${filters.familyId}::uuid)`,
+    );
+  }
+  if (filters.plotId) {
+    const [plot] = await db
+      .select({ id: plots.id })
+      .from(plots)
+      .where(eq(plots.id, filters.plotId))
+      .limit(1);
+    if (!plot) throw new AppError('PLOT_NOT_FOUND', 'Plot not found');
+    if (visibility.plotIds !== null && !visibility.plotIds.includes(filters.plotId)) {
+      throw new AppError('PERMISSION_DENIED', 'Cannot view coverage outside assigned plots');
+    }
+    speciesParts.push(
+      sql`exists (select 1 from plot_species ps where ps.species_id = s.id and ps.plot_id = ${filters.plotId}::uuid)`,
+    );
+  }
+  const traitParts = [traitVisible(visibility, sql`t.active`)];
+  if (filters.categoryKey) traitParts.push(sql`t.category_key = ${filters.categoryKey}`);
+  return { speciesSeen: both(speciesParts), traitSeen: both(traitParts) };
+}
+
+/** A grid and how much of it is filled, with RFC-69 R5's one percentage definition. */
+function coverageRow(cells: number, withData: number, accepted: number): CoverageRow {
+  return {
+    cells,
+    withData,
+    accepted,
+    percentWithData: percentHalfUp(withData, cells),
+    percentAccepted: percentHalfUp(accepted, cells),
+  };
+}
+
+interface TraitMetricRow {
+  trait_id: string;
+  trait_key: string;
+  value_type: TraitValueType;
+  unit: string | null;
+  category_key: string;
+  category_label: string;
+  category_sort: number;
+  with_data: number;
+  accepted: number;
+}
+
+/**
+ * The answer itself, from the selection: the selected species counted once,
+ * and every selected trait with the coverage rows (RFC-69 R1) and the accepted
+ * pairs it holds over those species. The totals and the `byCategory` rows are
+ * sums of those per-trait counts rather than counts of their own — the same
+ * joins aggregated at a coarser grain, which is what RFC-69 R5 asks for and
+ * what keeps a breakdown from ever contradicting the total above it.
+ *
+ * A trait with no data keeps its row (`withData` 0): the gaps are the point of
+ * the answer, and RFC-69 R7 ranks them.
+ */
+async function coverageGrid(
+  db: DbExecutor,
+  selection: CoverageSelection,
+): Promise<Omit<Coverage, 'computedAt'>> {
+  const selSpecies = sql`sel_species as (select s.id from species s where ${selection.speciesSeen})`;
+  const selTraits = sql`sel_traits as (
+    select t.id, t.key, t.value_type, t.unit, t.category_key from traits t where ${selection.traitSeen})`;
+  const [[speciesRow], traitRows] = await Promise.all([
+    db.execute(
+      sql`with ${selSpecies} select count(*)::int as n from sel_species`,
+    ) as unknown as Promise<[{ n: number } | undefined]>,
+    db.execute(sql`
+      with ${selSpecies}, ${selTraits}
+      select t.id as trait_id, t.key as trait_key, t.value_type as value_type, t.unit as unit,
+             tc.key as category_key, tc.label as category_label, tc.sort_order as category_sort,
+             coalesce(d.n, 0)::int as with_data,
+             coalesce(a.n, 0)::int as accepted
+      from sel_traits t
+      join trait_categories tc on tc.key = t.category_key
+      left join (select c.trait_id as trait_id, count(*)::int as n
+                 from species_trait_coverage c
+                 where c.species_id in (select id from sel_species)
+                   and c.trait_id in (select id from sel_traits)
+                 group by c.trait_id) d on d.trait_id = t.id
+      left join (select newest.trait_id as trait_id, count(*)::int as n
+                 from (select distinct on (v.species_id, v.trait_id) v.trait_id, v.decision
+                       from accepted_values v
+                       where v.species_id in (select id from sel_species)
+                         and v.trait_id in (select id from sel_traits)
+                       order by v.species_id, v.trait_id, v.id desc) newest
+                 where newest.decision = 'accepted'
+                 group by newest.trait_id) a on a.trait_id = t.id
+      order by t.key asc`) as unknown as Promise<TraitMetricRow[]>,
+  ]);
+
+  const species = speciesRow?.n ?? 0;
+  const byTrait: CoverageTraitRow[] = traitRows.map((r) => ({
+    trait: { id: r.trait_id, key: r.trait_key, valueType: r.value_type, unit: r.unit },
+    category: { key: r.category_key, label: r.category_label },
+    // A `byTrait` row is one trait over the selected species, not a grid, so
+    // its `cells` is the species count and its `species` is its own
+    // `withData` — not a tally of its own (RFC-69 R5).
+    species: r.with_data,
+    ...coverageRow(species, r.with_data, r.accepted),
+  }));
+
+  const categories = new Map<string, { sort: number; label: string; rows: TraitMetricRow[] }>();
+  for (const r of traitRows) {
+    const entry = categories.get(r.category_key) ?? {
+      sort: r.category_sort,
+      label: r.category_label,
+      rows: [],
+    };
+    entry.rows.push(r);
+    categories.set(r.category_key, entry);
+  }
+  const byCategory = [...categories.entries()]
+    .sort(([keyA, a], [keyB, b]) => a.sort - b.sort || (keyA < keyB ? -1 : keyA > keyB ? 1 : 0))
+    .map(([key, entry]) => ({
+      category: { key, label: entry.label },
+      traits: entry.rows.length,
+      ...coverageRow(
+        species * entry.rows.length,
+        entry.rows.reduce((n, r) => n + r.with_data, 0),
+        entry.rows.reduce((n, r) => n + r.accepted, 0),
+      ),
+    }));
+
+  return {
+    species,
+    traits: byTrait.length,
+    ...coverageRow(
+      species * byTrait.length,
+      traitRows.reduce((n, r) => n + r.with_data, 0),
+      traitRows.reduce((n, r) => n + r.accepted, 0),
+    ),
+    byCategory,
+    byTrait,
+  };
+}
+
+/**
+ * The filtered coverage metrics, uncached and without the `computedAt` of
+ * their entry. Exported for the reason {@link computeCoverageTotals} is: the
+ * cached form writes one Redis key per viewer class and filter combination,
+ * and a test asserting numbers through a key it shares with a sibling suite
+ * asserts on whichever caller happened to compute the entry.
+ * @rfc RFC-69 R5
+ */
+export async function computeCoverageMetrics(
+  db: DbExecutor,
+  visibility: Visibility,
+  filters: CoverageQuery,
+): Promise<Omit<Coverage, 'computedAt'>> {
+  return coverageGrid(db, await coverageSelection(db, visibility, filters));
+}
+
+/**
+ * `GET /api/coverage`: {@link computeCoverageMetrics} behind the ten-minute
+ * entry of RFC-69 R6, keyed by the viewer class and the explicit filters —
+ * `coverage:<u|r>:<familyId>:<categoryKey>:<plotId>`, an absent filter being
+ * `-`. The key is honest per viewer because the base selection never carries
+ * the plot dimension (see {@link coverageSelection}).
+ *
+ * The filters are resolved before the entry is read, not inside the
+ * computation the entry wraps: a plot a viewer may not read must be refused on
+ * a cache hit exactly as on a miss, and a hit is what a viewer allowed that
+ * same plot leaves behind.
+ *
+ * `familyId` and `plotId` reach the key only after they have been found in the
+ * database, so they are uuids and hold no separator. `categoryKey` is free
+ * text (`coverageQuerySchema`) and is not existence-checked, so it is the one
+ * segment that could carry a `:` and read back the entry of another filter
+ * combination — `x:<plot uuid>` as a category is otherwise the same key as
+ * category `x` scoped to that plot, which is exactly the plot-scoped number
+ * R6 keeps a viewer from reading. Percent-encoding that one segment leaves
+ * every real category key (`[a-z_]+` in the seeded dictionary) written as R6
+ * writes it.
+ * @rfc RFC-69 R5, R6
+ * @rfc RFC-33 R2, R6
+ */
+export async function coverageMetrics(
+  ctx: { db: DbExecutor; redis: Redis },
+  visibility: Visibility,
+  filters: CoverageQuery,
+): Promise<Coverage> {
+  const selection = await coverageSelection(ctx.db, visibility, filters);
+  const category =
+    filters.categoryKey === undefined ? '-' : encodeURIComponent(filters.categoryKey);
+  const key = `coverage:${visibility.inactive ? 'u' : 'r'}:${filters.familyId ?? '-'}:${category}:${filters.plotId ?? '-'}`;
+  const { value, computedAt } = await cachedJson(ctx.redis, key, COVERAGE_TTL_SECONDS, () =>
+    coverageGrid(ctx.db, selection),
+  );
+  return { ...value, computedAt };
+}
+
+/**
+ * RFC-69 R7's ranking of `byTrait` rows: ascending `withData` for `missing`
+ * (the trait the most selected species lack comes first) and ascending
+ * `percentAccepted` for `least_accepted`. The sort is stable and the rows
+ * arrive in trait-key order, so equals keep that order and the answer is the
+ * same on every call; the input is left alone.
+ * @rfc RFC-69 R7
+ */
+export function rankCoverageTraits(
+  rows: readonly CoverageTraitRow[],
+  mode: CoverageTopMode,
+): CoverageTraitRow[] {
+  const rank = (r: CoverageTraitRow) =>
+    mode === 'least_accepted' ? r.percentAccepted : r.withData;
+  return [...rows].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * `GET /api/coverage/top`: the traits with the most visible species lacking
+ * data, or with the lowest accepted share, as `byTrait` items. It is computed
+ * over the full unfiltered visible grid — the same base selection as
+ * {@link coverageTotals}, never {@link coverageMetrics}'s filters — and is not
+ * cached: RFC-69 R6 keys its entry by the filters, and this answer has none of
+ * them.
+ * @rfc RFC-69 R7
+ */
+export async function coverageTop(
+  ctx: { db: DbExecutor },
+  visibility: Visibility,
+  options: CoverageTopQuery,
+): Promise<CoverageTraitRow[]> {
+  const { byTrait } = await coverageGrid(ctx.db, await coverageSelection(ctx.db, visibility, {}));
+  return rankCoverageTraits(byTrait, options.mode ?? 'missing').slice(
+    0,
+    options.limit ?? TOP_LIMIT_DEFAULT,
+  );
 }

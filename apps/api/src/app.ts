@@ -19,6 +19,7 @@ import { requestLogger } from './http/request-logger.ts';
 import { adminRoutes } from './http/routes/admin/index.ts';
 import { authRoutes } from './http/routes/auth.ts';
 import { contributionRoutes } from './http/routes/contributions.ts';
+import { coverageRoutes } from './http/routes/coverage.ts';
 import { dashboardRoutes } from './http/routes/dashboard.ts';
 import { datasetRoutes } from './http/routes/dataset/index.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
@@ -102,6 +103,9 @@ export function createApp(deps: AppDeps) {
   // self-service (RFC-72 R1).
   app.route('/me', dashboardRoutes(ctx));
   app.route('/admin', adminRoutes(ctx));
+  // The coverage metrics read the dataset but carry their own permission
+  // (RFC-69 R5), so they sit beside the dataset router rather than inside it.
+  app.route('/coverage', coverageRoutes(ctx));
   app.route('/', datasetRoutes(ctx));
 
   return root;
