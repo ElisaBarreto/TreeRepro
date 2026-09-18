@@ -101,56 +101,74 @@ const speciesColumns = {
 };
 
 /**
+ * Every filter `GET /api/species` accepts (RFC-60 R6) plus the keyset cursor
+ * that pages it. `speciesListConditions` turns them into predicates;
+ * `searchSpecies` runs them, and so does `GET /api/traits/:id/species`
+ * (RFC-62 R8) through it, so visibility, plot scope, the taxonomy filters
+ * and the cursor have one implementation.
+ * @rfc RFC-60 R6
+ */
+export interface SpeciesListFilters {
+  q?: string;
+  familyId?: string;
+  genusId?: string;
+  unresolved?: boolean;
+  status?: SpeciesStatus;
+  scope?: SpeciesScope;
+  plotId?: string;
+  /** The plots the viewer is assigned to, whether or not they are restricted. */
+  viewerPlotIds?: string[];
+  categoryKey?: string;
+  traitId?: string;
+  traitData?: TraitDataMode;
+  sort?: SpeciesSort;
+  cursor?: string;
+}
+
+/**
+ * The `where` of the species list: visibility, plot scope, status, the search
+ * term, the taxonomy filters, the trait-coverage filter and the cursor — every
+ * predicate `searchSpecies` applies. The caller runs them over `species` left
+ * joined to `genera` and `families` (`familyId` and `unresolved` read
+ * `genera.family_id`) and orders the rows the way `filters.sort` names, since
+ * the cursor predicate decodes that keyset.
+ *
  * `traitData` without `traitId` or `categoryKey` is ignored: the spec names no
  * error for it, and the filter it would apply is undefined.
  * @rfc RFC-60 R3, R4, R6
- * @rfc RFC-33 R2, R3
+ * @rfc RFC-33 R2, R3, R6
+ * @rfc RFC-62 R8
  * @rfc RFC-69 R4
  */
-export async function searchSpecies(
+export async function speciesListConditions(
   db: DbExecutor,
   visibility: Visibility,
-  input: {
-    q?: string;
-    familyId?: string;
-    genusId?: string;
-    unresolved?: boolean;
-    status?: SpeciesStatus;
-    cursor?: string;
-    limit: number;
-    scope?: SpeciesScope;
-    plotId?: string;
-    viewerPlotIds?: string[];
-    categoryKey?: string;
-    traitId?: string;
-    traitData?: TraitDataMode;
-    sort?: SpeciesSort;
-  },
-): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
+  filters: SpeciesListFilters,
+): Promise<SQL[]> {
   const conditions: SQL[] = [speciesVisible(visibility)];
-  const viewerPlotIds = input.viewerPlotIds ?? [];
+  const viewerPlotIds = filters.viewerPlotIds ?? [];
 
-  if (input.plotId) {
+  if (filters.plotId) {
     const [plotRow] = await db
       .select({ id: plots.id })
       .from(plots)
-      .where(eq(plots.id, input.plotId))
+      .where(eq(plots.id, filters.plotId))
       .limit(1);
     if (!plotRow) throw new AppError('PLOT_NOT_FOUND', 'Plot not found');
 
-    if (visibility.plotIds !== null && !visibility.plotIds.includes(input.plotId)) {
+    if (visibility.plotIds !== null && !visibility.plotIds.includes(filters.plotId)) {
       throw new AppError('PERMISSION_DENIED', 'Cannot view species outside assigned plots');
     }
 
     conditions.push(
-      sql`exists (select 1 from ${plotSpecies} ps where ps.plot_id = ${input.plotId} and ps.species_id = ${species.id})`,
+      sql`exists (select 1 from ${plotSpecies} ps where ps.plot_id = ${filters.plotId} and ps.species_id = ${species.id})`,
     );
   } else {
     const defaultScope: SpeciesScope =
       visibility.plotIds !== null || (viewerPlotIds.length > 0 && !visibility.inactive)
         ? 'plots'
         : 'all';
-    const resolvedScope = input.scope ?? defaultScope;
+    const resolvedScope = filters.scope ?? defaultScope;
 
     if (resolvedScope === 'all') {
       if (visibility.plotIds !== null) {
@@ -172,10 +190,15 @@ export async function searchSpecies(
 
   // RFC-60 R6: a restricted viewer's `status` is ignored — the predicate above already
   // keeps only active rows.
-  const status = visibility.inactive ? (input.status ?? 'all') : 'active';
+  const status = visibility.inactive ? (filters.status ?? 'all') : 'active';
   if (status === 'active') conditions.push(eq(species.active, true));
   if (status === 'inactive') conditions.push(eq(species.active, false));
-  const pattern = input.q ? likePattern(input.q, 'substring') : undefined;
+  // `searchSpecies` computes this same pattern again for its `matchedName`
+  // highlight: the predicate here and the highlight there must always be the
+  // one pattern, so the two calls change together or not at all. Plan 10b
+  // replaces both with the search tiers, which is why they are not
+  // consolidated now.
+  const pattern = filters.q ? likePattern(filters.q, 'substring') : undefined;
   if (pattern) {
     // A single `or(ilike, exists(...))` forces a full scan of `species` (the planner
     // can't turn an OR across two tables into an index-only lookup); a semi-join over
@@ -187,9 +210,9 @@ export async function searchSpecies(
         select sn.species_id from ${speciesNames} sn where sn.name ilike ${pattern})`,
     );
   }
-  if (input.familyId) conditions.push(eq(genera.familyId, input.familyId));
-  if (input.genusId) conditions.push(eq(species.genusId, input.genusId));
-  if (input.unresolved) {
+  if (filters.familyId) conditions.push(eq(genera.familyId, filters.familyId));
+  if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
+  if (filters.unresolved) {
     conditions.push(
       sql`(${species.nameSource} <> 'wcvp' or ${species.genusId} is null or ${genera.familyId} is null)`,
     );
@@ -201,38 +224,60 @@ export async function searchSpecies(
   const coverageExists = (traitFilter: SQL) =>
     sql`exists (select 1 from ${speciesTraitCoverage} c join ${traits} t on t.id = c.trait_id
       where c.species_id = ${species.id} and ${traitFilter} and ${traitVisible(visibility, sql`t.active`)})`;
-  if (input.traitId) {
-    const trait = await requireTrait(db, visibility, input.traitId);
-    if (input.categoryKey && trait.categoryKey !== input.categoryKey) {
+  if (filters.traitId) {
+    const trait = await requireTrait(db, visibility, filters.traitId);
+    if (filters.categoryKey && trait.categoryKey !== filters.categoryKey) {
       throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
         { path: 'categoryKey', message: 'Trait is not in this category' },
       ]);
     }
-    const e = coverageExists(sql`c.trait_id = ${input.traitId}::uuid`);
-    conditions.push(input.traitData === 'missing' ? sql`not ${e}` : e);
-  } else if (input.categoryKey) {
+    const e = coverageExists(sql`c.trait_id = ${filters.traitId}::uuid`);
+    conditions.push(filters.traitData === 'missing' ? sql`not ${e}` : e);
+  } else if (filters.categoryKey) {
     const [category] = await db
       .select({ key: traitCategories.key })
       .from(traitCategories)
-      .where(eq(traitCategories.key, input.categoryKey))
+      .where(eq(traitCategories.key, filters.categoryKey))
       .limit(1);
     if (!category) {
       throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
         { path: 'categoryKey', message: 'Unknown trait category' },
       ]);
     }
-    const e = coverageExists(sql`t.category_key = ${input.categoryKey}`);
-    conditions.push(input.traitData === 'missing' ? sql`not ${e}` : e);
+    const e = coverageExists(sql`t.category_key = ${filters.categoryKey}`);
+    conditions.push(filters.traitData === 'missing' ? sql`not ${e}` : e);
   }
 
-  const sort: SpeciesSort = input.sort ?? 'name';
-  if (input.cursor) {
+  if (filters.cursor) {
     conditions.push(
-      sort === 'completeness'
-        ? afterCompletenessCursor(input.cursor)
-        : afterNameCursor(input.cursor, species.canonicalName, species.id),
+      (filters.sort ?? 'name') === 'completeness'
+        ? afterCompletenessCursor(filters.cursor)
+        : afterNameCursor(filters.cursor, species.canonicalName, species.id),
     );
   }
+  return conditions;
+}
+
+/**
+ * One page of the species list: the filters of {@link speciesListConditions}
+ * over the joined select every species row is built from.
+ * @rfc RFC-60 R3, R4, R6
+ * @rfc RFC-33 R2, R3
+ * @rfc RFC-69 R4
+ */
+export async function searchSpecies(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: SpeciesListFilters & { limit: number },
+): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
+  const conditions = await speciesListConditions(db, visibility, input);
+  // The twin of the call in `speciesListConditions`, which builds the
+  // predicate this highlight describes: if the two ever disagree, a row can
+  // match without a `matchedName` or the other way round. They change
+  // together, until plan 10b's search tiers replace both.
+  const pattern = input.q ? likePattern(input.q, 'substring') : undefined;
+  // The same choice the cursor predicate made in `speciesListConditions`.
+  const sort: SpeciesSort = input.sort ?? 'name';
   // `null` unless a trait was named; the coverage row's `record_count`
   // otherwise, and 0 in missing mode — where no row exists by construction.
   const traitRecordCount = input.traitId

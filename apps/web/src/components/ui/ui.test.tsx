@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   buttonClassName,
+  Chip,
   ConfirmDialog,
   Dialog,
   EmptyState,
@@ -285,6 +286,28 @@ describe('RFC-13 R5 UI kit — workspace pattern additions', () => {
     );
     expect(screen.getByRole('columnheader', { name: 'N' }).className).toContain('text-right');
     expect(screen.getByRole('cell', { name: '1' }).className).toContain('tabular-nums');
+  });
+
+  it('Chip: the default tone is the kit pill, verbatim; every tone brings exactly one surface', () => {
+    // The plan fixes this string; a chip that drifts from it stops matching
+    // the level chips of the trait pages.
+    const PILL =
+      'inline-flex items-center rounded-full border border-canopy-700/15 bg-mist-50 px-2.5 py-0.5 text-label';
+    const { rerender } = render(<Chip>dioecious</Chip>);
+    expect(screen.getByText('dioecious').className).toBe(PILL);
+    expect(screen.getByText('dioecious')).not.toHaveAttribute('style');
+
+    for (const tone of ['muted', 'amber'] as const) {
+      rerender(<Chip tone={tone}>dioecious</Chip>);
+      const chip = screen.getByText('dioecious');
+      expect(chip.className).not.toBe(PILL);
+      expect(chip.className).toContain('rounded-full');
+      expect(chip.className).toContain('text-label');
+      // One background utility per chip: two would have Tailwind pick the
+      // winner by stylesheet order rather than by what was written.
+      expect(chip.className.match(/(^|\s)bg-/g)).toHaveLength(1);
+    }
+    expect(screen.getByText('dioecious').className).toContain('pollen');
   });
 
   it('Alert keeps its text as the accessible content next to a decorative icon', () => {

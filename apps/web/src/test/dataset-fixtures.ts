@@ -20,7 +20,9 @@ import type {
   SpeciesTraits,
   TaxonRef,
   Trait,
+  TraitDetail,
   TraitRef,
+  TraitSpeciesItem,
   TraitSummary,
 } from '@treerepro/contracts';
 import { USER } from './fixtures.ts';
@@ -349,6 +351,7 @@ export const DICTIONARY: Dictionary = [
         unit: null,
         description: 'Distribution of male and female function among individuals.',
         active: true,
+        speciesCount: 12,
         levels: [
           {
             id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11',
@@ -377,6 +380,7 @@ export const DICTIONARY: Dictionary = [
         unit: null,
         description: 'Whether an individual sets seed with its own pollen.',
         active: true,
+        speciesCount: 0,
         levels: [
           {
             id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e15',
@@ -405,6 +409,7 @@ export const DICTIONARY: Dictionary = [
         unit: 'mg',
         description: 'Dry mass of one seed.',
         active: true,
+        speciesCount: 3,
         levels: [],
       },
       {
@@ -414,6 +419,7 @@ export const DICTIONARY: Dictionary = [
         unit: null,
         description: 'Colour of the mature seed coat.',
         active: false,
+        speciesCount: 1,
         levels: [
           { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e14', key: 'brown', sortOrder: 0, active: true },
         ],
@@ -425,6 +431,7 @@ export const DICTIONARY: Dictionary = [
         unit: 'mm',
         description: 'Length of the mature seed.',
         active: true,
+        speciesCount: 0,
         levels: [],
       },
     ],
@@ -447,6 +454,8 @@ export const GENERA: Genus[] = [{ ...GENUS, family: FAMILY }, ADANSONIA_GENUS];
 export const SEXUAL_SYSTEM_TRAIT: Trait = DICTIONARY[0]?.traits[0] as Trait;
 /** @rfc RFC-62 R5 */
 export const SEED_MASS_TRAIT: Trait = DICTIONARY[1]?.traits[0] as Trait;
+/** The quantitative trait no summary gives a record. @rfc RFC-62 R5 */
+export const SEED_LENGTH_TRAIT: Trait = DICTIONARY[1]?.traits[2] as Trait;
 /** What `POST /api/traits` answers for a fresh categorical trait. @rfc RFC-62 R6 */
 export const NEW_TRAIT: Trait = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e04',
@@ -455,7 +464,123 @@ export const NEW_TRAIT: Trait = {
   unit: null,
   description: '',
   active: true,
+  speciesCount: 0,
   levels: [],
+};
+
+/**
+ * The dictionary's categorical trait as `GET /api/traits/:id` answers it:
+ * two levels with harmonised records behind them.
+ * @rfc RFC-62 R7
+ */
+export const SEXUAL_SYSTEM_DETAIL: TraitDetail = {
+  ...SEXUAL_SYSTEM_TRAIT,
+  speciesCount: 12,
+  category: { key: 'reproductive_system', label: 'Reproductive system' },
+  speciesWithData: 12,
+  speciesMissing: 4,
+  acceptedCount: 7,
+  distribution: {
+    levels: [
+      {
+        level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11', key: 'hermaphrodite' },
+        speciesCount: 8,
+        recordCount: 19,
+      },
+      {
+        level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e12', key: 'dioecious' },
+        speciesCount: 4,
+        recordCount: 5,
+      },
+    ],
+  },
+  computedAt: '2026-09-18T08:00:00.000Z',
+};
+
+/** The dictionary's quantitative trait, with a numeric spread. @rfc RFC-62 R7 */
+export const SEED_MASS_DETAIL: TraitDetail = {
+  ...SEED_MASS_TRAIT,
+  speciesCount: 3,
+  category: { key: 'seed', label: 'Seed' },
+  speciesWithData: 3,
+  speciesMissing: 9,
+  acceptedCount: 1,
+  distribution: { numeric: { min: 0.5, median: 1.25, max: 3, speciesCount: 3 } },
+  computedAt: '2026-09-18T08:00:00.000Z',
+};
+
+/**
+ * A quantitative trait no record has been harmonised for yet: `numeric` is
+ * null, which is the shape the distribution section must survive.
+ * @rfc RFC-62 R7
+ */
+export const SEED_LENGTH_DETAIL: TraitDetail = {
+  ...SEED_LENGTH_TRAIT,
+  speciesCount: 0,
+  category: { key: 'seed', label: 'Seed' },
+  speciesWithData: 0,
+  speciesMissing: 12,
+  acceptedCount: 0,
+  distribution: { numeric: null },
+  computedAt: '2026-09-18T08:00:00.000Z',
+};
+
+/** A species row of `mode=with`: records, an accepted value and its summary. @rfc RFC-62 R8 */
+export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
+  id: SPECIES.id,
+  canonicalName: SPECIES.canonicalName,
+  nameSource: 'wcvp',
+  active: true,
+  genus: GENUS,
+  family: FAMILY,
+  matchedName: null,
+  unresolvedTaxon: false,
+  traitCount: 3,
+  traitRecordCount: 4,
+  recordCount: 4,
+  accepted: {
+    recordId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d30',
+    valueText: 'dioecious',
+    reference: { ...PRIMARY_REFERENCE, shortCitation: null },
+  },
+  summary: {
+    levels: [
+      { key: 'dioecious', count: 3 },
+      { key: 'hermaphrodite', count: 1 },
+    ],
+  },
+};
+
+/** A `mode=with` row whose records no curator has accepted a value from. @rfc RFC-62 R8 */
+export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
+  ...TRAIT_SPECIES_WITH_DATA,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d07',
+  canonicalName: 'Adansonia digitata',
+  genus: { id: ADANSONIA_GENUS.id, name: ADANSONIA_GENUS.name },
+  family: MALVACEAE,
+  recordCount: 1,
+  accepted: null,
+  summary: { numeric: { min: 0.5, max: 3 } },
+};
+
+/**
+ * A `mode=missing` row: no records, so no count, value or summary.
+ * `traitRecordCount` stays 0 — `searchSpecies` always supplies `traitId` here,
+ * so its coverage counter is never null, and the coverage row itself does not
+ * exist in missing mode by construction (RFC-60 R6, RFC-62 R8).
+ * @rfc RFC-62 R8
+ */
+export const TRAIT_SPECIES_MISSING: TraitSpeciesItem = {
+  ...TRAIT_SPECIES_WITH_DATA,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d08',
+  canonicalName: 'Ceiba pentandra',
+  genus: null,
+  family: MALVACEAE,
+  traitCount: 0,
+  traitRecordCount: 0,
+  recordCount: null,
+  accepted: null,
+  summary: null,
 };
 
 /** @rfc RFC-61 R4 */

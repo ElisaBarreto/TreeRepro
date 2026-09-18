@@ -62,7 +62,10 @@ export function ContributionFilters({
     from: useId(),
     to: useId(),
   };
-  const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
+  const dictionary = useQuery({
+    queryKey: datasetKeys.dictionary(),
+    queryFn: () => fetchDictionary(),
+  });
   // What the box last chose, so the chip can name the species; a species the
   // URL carried in on its own has only its id to show for itself.
   const [chosen, setChosen] = useState<ComboboxOption | null>(null);

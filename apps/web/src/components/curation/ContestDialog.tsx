@@ -104,7 +104,10 @@ export function ContestDialog({
   const [local, setLocal] = useState<Record<string, string>>({});
   const [answered, setAnswered] = useState<CreateRecordsResult | null>(null);
 
-  const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
+  const dictionary = useQuery({
+    queryKey: datasetKeys.dictionary(),
+    queryFn: () => fetchDictionary(),
+  });
   const levels =
     dictionary.data?.flatMap((c) => c.traits).find((t) => t.id === record.trait.id)?.levels ?? [];
   const valueType = record.trait.valueType;

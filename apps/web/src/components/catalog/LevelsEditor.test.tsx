@@ -34,6 +34,29 @@ describe('RFC-62 R6 LevelsEditor', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('wraps the levels in a row for a reader and gives each a line of its own to manage', () => {
+    // Spec §6 asks for chips wrapping in rows. With `traits.manage` each
+    // level also carries Rename, Move up, Move down and Deactivate, which do
+    // not fit beside a chip, so the row becomes a column — the one place the
+    // two viewers differ, pinned here so the divergence stays deliberate.
+    const label = `Levels of ${SEXUAL_SYSTEM_TRAIT.key.replaceAll('_', ' ')}`;
+    const reader = renderWithProviders(
+      <LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage={false} />,
+    );
+    const row = screen.getByRole('list', { name: label });
+    expect(row.className).toContain('flex-wrap');
+    expect(within(row).getByText('hermaphrodite').className).toContain('rounded-full');
+    // A fresh render, not a rerender: the editor needs its query provider,
+    // which `rerender` would drop.
+    reader.unmount();
+
+    renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);
+    const list = screen.getByRole('list', { name: label });
+    expect(list.className).toContain('flex-col');
+    expect(list.className).not.toContain('flex-wrap');
+    expect(within(list).getAllByRole('button', { name: /^Rename/ })).toHaveLength(3);
+  });
+
   it('adds a level through the dialog and invalidates the dictionary', async () => {
     catalog.createLevel.mockResolvedValue(SEXUAL_SYSTEM_TRAIT);
     renderWithProviders(<LevelsEditor trait={SEXUAL_SYSTEM_TRAIT} canManage />);

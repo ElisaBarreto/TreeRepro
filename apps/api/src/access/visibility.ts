@@ -134,6 +134,25 @@ export function speciesVisible(
   return sql`(${activePred}) and (${plotPred})`;
 }
 
+/**
+ * `speciesVisible` with the plot dimension dropped, for the counts that are
+ * global summaries rather than a viewer's own slice of the dataset: the
+ * trait dictionary's `speciesCount` (RFC-62 R5), the trait page's
+ * `speciesWithData`, `speciesMissing`, `acceptedCount` and `distribution`
+ * (RFC-62 R7), and RFC-60 R6's `species.trait_count`. Such a number varies
+ * only along the active/inactive dimension: a plot-bound viewer reads the
+ * restricted class and still counts species outside their plots. Scoping it
+ * to `plotIds` too would give every plot-bound viewer a private cache entry
+ * and a full scan each — exactly what those caches exist to avoid. The
+ * species *lists* are the other half of the contract and stay plot-scoped
+ * (RFC-62 R8, RFC-33 R6), so they keep `speciesVisible`.
+ * @rfc RFC-33 R2
+ * @rfc RFC-62 R5, R7
+ */
+export function globalSpeciesVisible(v: Visibility, activeCol: SQL, idCol: SQL): SQL {
+  return speciesVisible({ inactive: v.inactive, plotIds: null }, activeCol, idCol);
+}
+
 /** @rfc RFC-33 R2 */
 export function traitVisible(
   v: Visibility,

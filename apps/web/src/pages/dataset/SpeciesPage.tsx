@@ -150,7 +150,10 @@ export function SpeciesPage({
     queryKey: datasetKeys.speciesTraits(id, missing),
     queryFn: () => fetchSpeciesTraits(id, { includeMissing: missing }),
   });
-  const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
+  const dictionary = useQuery({
+    queryKey: datasetKeys.dictionary(),
+    queryFn: () => fetchDictionary(),
+  });
   useBreadcrumb(species.data ? [{ label: <em>{species.data.canonicalName}</em> }] : []);
   const [openTraitId, setOpenTraitId] = useState<string | null>(null);
   const openTrait =

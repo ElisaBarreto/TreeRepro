@@ -4,6 +4,7 @@ export type { ButtonProps, ButtonSize, ButtonVariant } from './Button.tsx';
 export { Button, buttonClassName } from './Button.tsx';
 export type { ButtonLinkProps } from './ButtonLink.tsx';
 export { ButtonLink } from './ButtonLink.tsx';
+export { Chip } from './Chip.tsx';
 export type { ComboboxOption, ComboboxProps } from './Combobox.tsx';
 export { Combobox } from './Combobox.tsx';
 export type { ConfirmDialogProps } from './ConfirmDialog.tsx';

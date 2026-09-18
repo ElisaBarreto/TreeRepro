@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse } from '@treerepro/contracts';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DICTIONARY } from '../../test/dataset-fixtures.ts';
+import { DICTIONARY, GENERA } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { SpeciesSearchForm, type SpeciesSearchValue } from './SpeciesSearchForm.tsx';
@@ -64,6 +64,32 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchForm genus chip', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Clear genus' }));
     expect(screen.queryByText('Selected genus')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear genus' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-13 R8 SpeciesSearchForm genus combobox ARIA', () => {
+  it('leaves aria-expanded false and drops aria-controls when the genus query matches nothing', async () => {
+    dataset.fetchGenera.mockResolvedValue({ data: [], meta: { nextCursor: null } });
+    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} />, { me: READER });
+
+    const combobox = screen.getByRole('combobox', { name: 'Genus' });
+    await userEvent.type(combobox, 'Zzz');
+    await screen.findByText('No genus matches.');
+
+    expect(combobox).toHaveAttribute('aria-expanded', 'false');
+    expect(combobox).not.toHaveAttribute('aria-controls');
+  });
+
+  it('sets aria-expanded true and points aria-controls at the listbox when suggestions exist', async () => {
+    dataset.fetchGenera.mockResolvedValue({ data: GENERA, meta: { nextCursor: null } });
+    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} />, { me: READER });
+
+    const combobox = screen.getByRole('combobox', { name: 'Genus' });
+    await userEvent.type(combobox, 'Aden');
+    const listbox = await screen.findByRole('listbox', { name: 'Genus suggestions' });
+
+    expect(combobox).toHaveAttribute('aria-expanded', 'true');
+    expect(combobox).toHaveAttribute('aria-controls', listbox.id);
   });
 });
 
