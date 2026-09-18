@@ -179,6 +179,18 @@ export function AddEntriesDialog({
     setNumeric('');
     setLocal(({ traitId: _traitId, ...rest }) => rest);
   }
+  // The value control shows `value.<branch>` or, for an issue the union
+  // reported at its own path, `value`; supplying a value answers both, so
+  // both go — leaving either would keep "Enter a number." and its red ring
+  // under a field that now holds one, until the next submit.
+  function chooseLevel(id: string) {
+    setLevelId(id);
+    setLocal(({ 'value.levelId': _levelId, value: _value, ...rest }) => rest);
+  }
+  function changeNumeric(text: string) {
+    setNumeric(text);
+    setLocal(({ 'value.numeric': _numeric, value: _value, ...rest }) => rest);
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -297,8 +309,8 @@ export function AddEntriesDialog({
             trait={{ valueType, unit, levels: trait?.levels ?? [] }}
             levelId={levelId}
             numeric={numeric}
-            onLevel={setLevelId}
-            onNumeric={setNumeric}
+            onLevel={chooseLevel}
+            onNumeric={changeNumeric}
             errors={valueErrors}
             ids={{ level: ids.level, numeric: ids.numeric }}
           />

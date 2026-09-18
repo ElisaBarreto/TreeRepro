@@ -132,12 +132,25 @@ export function ContestDialog({
     save.reset();
   }
 
+  // The value control shows `value.<branch>` or, for an issue the union
+  // reported at its own path, `value`; supplying a value answers both, so
+  // both go — leaving either would keep "Choose a level." and its red ring
+  // under a control that now holds one, until the next submit.
+  function chooseLevel(id: string) {
+    setLevelId(id);
+    setLocal(({ 'value.levelId': _levelId, value: _value, ...rest }) => rest);
+  }
+  function changeNumeric(text: string) {
+    setNumeric(text);
+    setLocal(({ 'value.numeric': _numeric, value: _value, ...rest }) => rest);
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!intent) return;
     // Required fields first: `value` is a union, so a missing level or a
     // `NaN` fails both branches and Zod reports one issue at `value`, never
-    // at the nested path the messages key on (as in `AddValueDialog`).
+    // at the nested path the messages key on (as in `AddEntriesDialog`).
     const required: Record<string, string> = {};
     if (valueType === 'categorical' && levelId === '') {
       required['value.levelId'] = LOCAL_MESSAGES['value.levelId'] ?? '';
@@ -241,8 +254,8 @@ export function ContestDialog({
             trait={{ valueType, unit: record.trait.unit, levels }}
             levelId={levelId}
             numeric={numeric}
-            onLevel={setLevelId}
-            onNumeric={setNumeric}
+            onLevel={chooseLevel}
+            onNumeric={changeNumeric}
             errors={valueErrors}
             ids={ids}
           />

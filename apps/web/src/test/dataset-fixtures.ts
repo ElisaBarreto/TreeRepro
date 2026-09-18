@@ -348,6 +348,28 @@ export const DICTIONARY: Dictionary = [
           },
         ],
       },
+      {
+        id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e05',
+        key: 'self_compatibility',
+        valueType: 'categorical',
+        unit: null,
+        description: 'Whether an individual sets seed with its own pollen.',
+        active: true,
+        levels: [
+          {
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e15',
+            key: 'self_compatible',
+            sortOrder: 0,
+            active: true,
+          },
+          {
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e16',
+            key: 'self_incompatible',
+            sortOrder: 1,
+            active: true,
+          },
+        ],
+      },
     ],
   },
   {
@@ -373,6 +395,15 @@ export const DICTIONARY: Dictionary = [
         levels: [
           { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e14', key: 'brown', sortOrder: 0, active: true },
         ],
+      },
+      {
+        id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e06',
+        key: 'seed_length',
+        valueType: 'quantitative',
+        unit: 'mm',
+        description: 'Length of the mature seed.',
+        active: true,
+        levels: [],
       },
     ],
   },
@@ -507,14 +538,32 @@ export const DICTIONARY_SEED_MASS: TraitRef = {
   unit: 'mg',
 };
 
+/** The dictionary's self_compatibility trait as a `TraitRef`; no summary gives it a record. @rfc RFC-62 R5 */
+export const DICTIONARY_SELF_COMPATIBILITY: TraitRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e05',
+  key: 'self_compatibility',
+  valueType: 'categorical',
+  unit: null,
+};
+
+/** The dictionary's seed_length trait as a `TraitRef`; no summary gives it a record. @rfc RFC-62 R5 */
+export const DICTIONARY_SEED_LENGTH: TraitRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e06',
+  key: 'seed_length',
+  valueType: 'quantitative',
+  unit: 'mm',
+};
+
 /**
  * A categorical trait `includeMissing` adds: no record at all, so
  * `levels: []` — never `null`, which stays reserved for a quantitative
- * trait, whatever its record count.
+ * trait, whatever its record count. Its trait is one no other summary
+ * names: the API lists a species' traits once each, so two cards on a page
+ * never share a key.
  * @rfc RFC-70 R7
  */
-export const SEXUAL_SYSTEM_MISSING_SUMMARY: TraitSummary = {
-  trait: DICTIONARY_SEXUAL_SYSTEM,
+export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
+  trait: DICTIONARY_SELF_COMPATIBILITY,
   recordCount: 0,
   harmonisationCounts: NO_PENDING,
   levels: [],
@@ -523,8 +572,8 @@ export const SEXUAL_SYSTEM_MISSING_SUMMARY: TraitSummary = {
 };
 
 /** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
-export const SEED_MASS_MISSING_SUMMARY: TraitSummary = {
-  trait: DICTIONARY_SEED_MASS,
+export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
+  trait: DICTIONARY_SEED_LENGTH,
   recordCount: 0,
   harmonisationCounts: NO_PENDING,
   levels: null,
@@ -536,11 +585,11 @@ export const SEED_MASS_MISSING_SUMMARY: TraitSummary = {
 export const SPECIES_TRAITS_WITH_MISSING: SpeciesTraits = [
   {
     category: { key: 'sexual_system', label: 'Sexual system' },
-    traits: [SEXUAL_SYSTEM_SUMMARY, SEXUAL_SYSTEM_MISSING_SUMMARY],
+    traits: [SEXUAL_SYSTEM_SUMMARY, SELF_COMPATIBILITY_MISSING_SUMMARY],
   },
   {
     category: { key: 'pollination', label: 'Pollination' },
-    traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_MASS_MISSING_SUMMARY],
+    traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_LENGTH_MISSING_SUMMARY],
   },
 ];
 

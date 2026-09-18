@@ -5,6 +5,7 @@ import { categoriesWithActiveTraits, traitDescription } from './dictionary.ts';
 
 const SEED_MASS = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e02';
 const SEED_COLOUR = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e03';
+const SEED_LENGTH = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e06';
 
 describe('RFC-62 R5 categoriesWithActiveTraits', () => {
   it('keeps the categories in dictionary order with their active traits only', () => {
@@ -12,7 +13,7 @@ describe('RFC-62 R5 categoriesWithActiveTraits', () => {
     expect(categories.map((c) => c.key)).toEqual(['reproductive_system', 'seed']);
     expect(categories.map((c) => c.label)).toEqual(['Reproductive system', 'Seed']);
     // seed_colour is inactive: the form must not offer it.
-    expect(categories[1]?.traits.map((t) => t.id)).toEqual([SEED_MASS]);
+    expect(categories[1]?.traits.map((t) => t.id)).toEqual([SEED_MASS, SEED_LENGTH]);
   });
 
   it('drops a category that has no active trait left', () => {

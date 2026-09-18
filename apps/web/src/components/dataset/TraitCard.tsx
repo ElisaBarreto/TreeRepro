@@ -1,8 +1,8 @@
 import type { Dictionary, TraitSummary } from '@treerepro/contracts';
-import { traitDescription } from '../../lib/dictionary.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { Badge, Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
+import { traitTip } from './trait-tip.ts';
 
 const MAX_BARS = 5;
 
@@ -33,14 +33,14 @@ function pendingCount(summary: TraitSummary): number {
 
 /**
  * One trait of a species, as a button that opens its records, plus a `?`
- * with the dictionary's description (RFC-13 R11) and an optional separate
- * "Add value for <trait>" button (RFC-65 R1) — both siblings, never nested
- * inside the main button, so a click on either never also opens the panel.
- * Shows the summary the API computed (RFC-63 R10): the top levels as bars
- * scaled against the most frequent one, or min · median · max for a
- * measurement, how many records still wait for harmonisation, and the
- * accepted value. Only spans inside the main button, so its content stays
- * phrasing content.
+ * explaining it from the dictionary ({@link traitTip}, RFC-13 R11) and an
+ * optional separate "Add value for <trait>" button (RFC-65 R1) — both
+ * siblings, never nested inside the main button, so a click on either never
+ * also opens the panel. Shows the summary the API computed (RFC-63 R10): the
+ * top levels as bars scaled against the most frequent one, or
+ * min · median · max for a measurement, how many records still wait for
+ * harmonisation, and the accepted value. Only spans inside the main button,
+ * so its content stays phrasing content.
  * @rfc RFC-13 R11
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1
@@ -61,7 +61,7 @@ export function TraitCard({
   const bars = levels?.slice(0, MAX_BARS) ?? [];
   const maxCount = Math.max(0, ...bars.map((level) => level.count));
   const name = humaniseKey(trait.key);
-  const description = traitDescription(dictionary, trait.id);
+  const tip = traitTip(dictionary, trait);
 
   return (
     <CardFrame>
@@ -118,7 +118,7 @@ export function TraitCard({
         ) : null}
       </button>
       <span className="flex shrink-0 items-center gap-1">
-        {description ? <HelpTip label={`What does ${name} mean?`}>{description}</HelpTip> : null}
+        {tip ? <HelpTip label={`What does ${name} mean?`}>{tip}</HelpTip> : null}
         {onAdd ? (
           <Button
             variant="secondary"

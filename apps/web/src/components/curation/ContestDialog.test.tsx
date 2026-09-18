@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
   DICTIONARY,
+  DICTIONARY_SEED_MASS,
   DICTIONARY_SEXUAL_SYSTEM,
   PENDING_RECORD,
   PRIMARY_REFERENCE,
@@ -40,6 +41,15 @@ const TARGET: RecordDetail = {
   trait: DICTIONARY_SEXUAL_SYSTEM,
   level: { id: HERMAPHRODITE, key: 'hermaphrodite' },
   valueText: 'hermaphrodite',
+};
+
+// The same, for a trait whose value is a number rather than a level.
+const QUANTITATIVE_TARGET: RecordDetail = {
+  ...RECORD_DETAIL,
+  trait: DICTIONARY_SEED_MASS,
+  level: null,
+  numericValue: 1.25,
+  valueText: '1.25',
 };
 
 const CONTEST_LABEL = 'Contest — The existing value is wrong; mine should replace it.';
@@ -160,13 +170,31 @@ describe('RFC-70 R1 ContestDialog submission', () => {
     );
   });
 
-  it('asks for a level before sending anything', async () => {
+  it('asks for a level before sending anything, and clears the message once one is chosen', async () => {
     mount();
     await screen.findByRole('combobox', { name: 'Level' });
     await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
     await userEvent.click(submit());
     expect(screen.getByText('Choose a level.')).toBeInTheDocument();
     expect(curation.createRecords).not.toHaveBeenCalled();
+
+    await userEvent.selectOptions(levelSelect(), DIOECIOUS);
+    expect(screen.queryByText('Choose a level.')).not.toBeInTheDocument();
+    expect(levelSelect()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('asks for a number before sending anything, and clears the message once one is typed', async () => {
+    mount(QUANTITATIVE_TARGET);
+    await screen.findByRole('spinbutton', { name: /number/i });
+    await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
+    await userEvent.click(submit());
+    expect(screen.getByText('Enter a number.')).toBeInTheDocument();
+    expect(curation.createRecords).not.toHaveBeenCalled();
+
+    const number = screen.getByRole('spinbutton', { name: /number/i });
+    await userEvent.type(number, '2.5');
+    expect(screen.queryByText('Enter a number.')).not.toBeInTheDocument();
+    expect(number).not.toHaveAttribute('aria-invalid', 'true');
   });
 });
 

@@ -190,12 +190,29 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(curation.createRecords).not.toHaveBeenCalled();
   });
 
-  it('RFC-13 R6 asks for a number before sending a quantitative claim with none', async () => {
+  it('RFC-13 R6 asks for a number before sending a quantitative claim with none, and clears the message once one is typed', async () => {
     mount();
     const dialog = await openWith('seed', SEED_MASS);
     await userEvent.click(submit(dialog));
     expect(within(dialog).getByText('Enter a number.')).toBeInTheDocument();
     expect(curation.createRecords).not.toHaveBeenCalled();
+
+    const number = await within(dialog).findByRole('spinbutton', { name: /number/i });
+    await userEvent.type(number, '12.5');
+    expect(within(dialog).queryByText('Enter a number.')).not.toBeInTheDocument();
+    expect(number).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('RFC-13 R6 clears "Choose a level." once a level is chosen, before any submit', async () => {
+    mount();
+    const dialog = await openWith('reproductive_system', DICTIONARY_SEXUAL_SYSTEM.id);
+    await userEvent.click(submit(dialog));
+    expect(within(dialog).getByText('Choose a level.')).toBeInTheDocument();
+
+    const level = await within(dialog).findByRole('combobox', { name: 'Level' });
+    await userEvent.selectOptions(level, DIOECIOUS);
+    expect(within(dialog).queryByText('Choose a level.')).not.toBeInTheDocument();
+    expect(level).not.toHaveAttribute('aria-invalid', 'true');
   });
 
   it('RFC-70 R1 clears "Choose a trait." once a trait is chosen, before any submit', async () => {

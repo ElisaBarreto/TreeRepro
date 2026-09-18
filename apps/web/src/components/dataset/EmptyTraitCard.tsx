@@ -1,17 +1,17 @@
 import type { Dictionary, TraitSummary } from '@treerepro/contracts';
-import { traitDescription } from '../../lib/dictionary.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
+import { traitTip } from './trait-tip.ts';
 
 /**
  * A trait `includeMissing` added: it has no record at all, so there is
  * nothing to open — no bars, no min · median · max, no accepted value, just
- * the name, its `?` description and, for `records.create`, a way to start
- * one. A zero-count categorical trait answers `levels: []`, never `null`
- * (RFC-63 R10 amended by RFC-70 R7); this card does not read `levels` at
- * all, so that distinction is someone else's to keep, not this one's to get
- * wrong.
+ * the name, the `?` that explains it ({@link traitTip}) and, for
+ * `records.create`, a way to start one. A zero-count categorical trait
+ * answers `levels: []`, never `null` (RFC-63 R10 amended by RFC-70 R7); this
+ * card does not read `levels` at all, so that distinction is someone else's
+ * to keep, not this one's to get wrong.
  * @rfc RFC-70 R7
  * @rfc RFC-13 R11
  */
@@ -26,7 +26,7 @@ export function EmptyTraitCard({
 }) {
   const { trait } = summary;
   const name = humaniseKey(trait.key);
-  const description = traitDescription(dictionary, trait.id);
+  const tip = traitTip(dictionary, trait);
 
   return (
     <CardFrame>
@@ -35,7 +35,7 @@ export function EmptyTraitCard({
           <span className="font-display text-card font-semibold text-canopy-950">
             {trait.unit ? `${name} (${trait.unit})` : name}
           </span>
-          {description ? <HelpTip label={`What does ${name} mean?`}>{description}</HelpTip> : null}
+          {tip ? <HelpTip label={`What does ${name} mean?`}>{tip}</HelpTip> : null}
         </span>
         <p className="text-meta text-mist-500">No records yet</p>
         {onAdd ? (

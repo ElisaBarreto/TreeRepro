@@ -531,6 +531,9 @@ describe('RFC-70 R1 Add entries from the species page', () => {
   });
 });
 
+// SPECIES_TRAITS_WITH_MISSING adds two zero-count traits, one card each.
+const MISSING_TRAITS = 2;
+
 describe('RFC-70 R7 species page missing toggle', () => {
   it('the checkbox is unchecked by default and the query asks for no missing traits', async () => {
     await openPage();
@@ -564,10 +567,12 @@ describe('RFC-70 R7 species page missing toggle', () => {
     dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
     renderAt(`/app/species/${SPECIES.id}?missing=true`);
     await screen.findByText('Adenanthera pavonina');
-    expect(screen.getAllByText('No records yet').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('No records yet')).toHaveLength(MISSING_TRAITS);
     const [firstAdd] = screen.getAllByRole('button', { name: 'Add the first entry' });
     await userEvent.click(firstAdd as HTMLElement);
-    const dialog = await screen.findByRole('dialog', { name: /^Add entries for/ });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Add entries for self compatibility',
+    });
     expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
   });
 
@@ -575,7 +580,7 @@ describe('RFC-70 R7 species page missing toggle', () => {
     dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
     renderAt(`/app/species/${SPECIES.id}?missing=true`);
     await screen.findByText('Adenanthera pavonina');
-    expect(screen.getAllByText('No records yet').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('No records yet')).toHaveLength(MISSING_TRAITS);
     expect(screen.queryByRole('button', { name: 'Add the first entry' })).not.toBeInTheDocument();
   });
 });
