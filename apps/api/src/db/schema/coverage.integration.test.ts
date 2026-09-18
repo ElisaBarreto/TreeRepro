@@ -165,6 +165,11 @@ describe('RFC-69 R3 migration backfill', () => {
       // harness offers (test/helpers/db.ts); it also suspends foreign-key
       // triggers, which is harmless because every id below is a real row.
       await tx.execute(sql`set local session_replication_role = replica`);
+      // The backfill's second statement row-locks every species that has
+      // coverage, in a database shared by the test files running in parallel.
+      // Without a timeout a pathological wait would hang the whole suite with
+      // no diagnostic; with one this test fails loudly (55P03) instead.
+      await tx.execute(sql`set local lock_timeout = '5s'`);
       const { user } = await createUser(tx);
       const ref = await createReference(tx);
       const trait = await createTrait(tx, { levels: ['a', 'b'] });

@@ -44,3 +44,31 @@
 **Symptom:** `db:migrate` (or the `migrate` service) sits on `0022_coverage.sql` for minutes with nothing on stdout, and the stack does not come up.
 **Cause:** RFC-69 R3's backfill groups the whole of `trait_records` — eight million rows on the production dataset — into `species_trait_coverage`, then sets `species.trait_count` from it. The migrator has no statement timeout, so the two statements simply run to completion.
 **Fix:** Nothing to fix — let it finish; do not interrupt the migrator. An interrupted run leaves 0022 unapplied and the next one repeats the whole scan from the start.
+
+## Stop `api` before applying migration 0022 to a running stack
+**Symptom:** After a rolling upgrade, a species reads "Missing data" for a trait it demonstrably has: it is absent from `?traitId=…&traitData=with`, present in `…&traitData=missing`, and `sort=completeness` ranks it as more incomplete than it is. Permanently — nothing recomputes, and re-running the migration does not repair it.
+**Cause:** `compose.yml`'s `api` declares `depends_on: migrate: service_completed_successfully`, which orders a **cold** start only. On `docker compose up -d` against a stack that is already running, `migrate` starts while the previous `api` container keeps serving. Drizzle applies the migration in one transaction, so its `CREATE OR REPLACE` of `trait_records_reference_usage()` is invisible to those sessions: every `trait_records` insert they commit still executes the pre-0022 (0015) function, which knows nothing about coverage. Under READ COMMITTED the backfill `INSERT` takes its own snapshot, so rows committed after it are missed. The backfill runs for minutes on the 8M-row dataset (see above), so the window is minutes wide. The damage is silent — no error, no log line, only a species that has dropped out of a filter — and the backfill is not usable as a repair: `ON CONFLICT DO NOTHING` skips every pair that already exists, so a pair left with a short `record_count` stays short, and only an entirely fresh pair is ever recovered.
+**Fix:** Stop the API for the upgrade; do not rely on compose ordering.
+
+```
+docker compose pull                # or build
+docker compose stop api            # no writer while the backfill runs
+docker compose up -d               # migrate runs to completion, then api starts
+```
+
+If it was not stopped, a repair has to **update** rather than skip on conflict — the aggregate below is over the whole of `trait_records`, so its values are the authoritative ones. Run it as `treerepro_migrator` (the app role has `SELECT` only on the table) with `api` stopped, then recompute the column:
+
+```sql
+insert into species_trait_coverage (species_id, trait_id, record_count, harmonised_count, first_record_at, last_record_at)
+select species_id, trait_id, count(*), count(*) filter (where harmonisation = 'harmonised'), min(created_at), max(created_at)
+from trait_records group by 1, 2
+on conflict (species_id, trait_id) do update set
+  record_count = excluded.record_count,
+  harmonised_count = excluded.harmonised_count,
+  first_record_at = excluded.first_record_at,
+  last_record_at = excluded.last_record_at;
+
+update species s set trait_count = c.n
+from (select species_id, count(*) as n from species_trait_coverage group by 1) c
+where s.id = c.species_id;
+```

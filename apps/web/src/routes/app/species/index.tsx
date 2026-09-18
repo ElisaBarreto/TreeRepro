@@ -1,12 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { SPECIES_SORTS, SPECIES_STATUSES, TRAIT_DATA_MODES } from '@treerepro/contracts';
+import {
+  SPECIES_SCOPES,
+  SPECIES_SORTS,
+  SPECIES_STATUSES,
+  TRAIT_DATA_MODES,
+} from '@treerepro/contracts';
 import {
   type SpeciesSearch,
   SpeciesSearchPage,
 } from '../../../pages/dataset/SpeciesSearchPage.tsx';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SCOPES = ['plots', 'all'] as const;
 
 function text(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -44,7 +48,7 @@ function validateSearch(search: Record<string, unknown>): SpeciesSearch {
     genusId: uuid(search.genusId),
     unresolved: search.unresolved === true || search.unresolved === 'true' ? true : undefined,
     status: oneOf(search.status, SPECIES_STATUSES),
-    scope: oneOf(search.scope, SCOPES),
+    scope: oneOf(search.scope, SPECIES_SCOPES),
     plotId: uuid(search.plotId),
     categoryKey: text(search.categoryKey, 100),
     traitId: uuid(search.traitId),

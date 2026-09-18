@@ -20,8 +20,14 @@ CREATE INDEX "species_trait_count_idx" ON "species" USING btree ("trait_count","
 -- pattern of 0007): it is owned by the migrator, which owns every table, so
 -- the app role's inserts into trait_records maintain a table the app role can
 -- only read. Records are append-only (RFC-63 R4), so nothing decrements.
+-- pg_temp is named explicitly, and LAST: unless it appears in search_path
+-- PostgreSQL searches it FIRST for relations, so a caller holding TEMPORARY
+-- (treerepro_app does, via the default PUBLIC grant) could create
+-- pg_temp.species_trait_coverage and have this definer body resolve to it,
+-- running attached triggers or rules as the migrator. Naming it last puts it
+-- after public, where it can shadow nothing.
 CREATE OR REPLACE FUNCTION trait_records_reference_usage() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
   UPDATE bibliographic_references r SET primary_count = r.primary_count + u.n
   FROM (SELECT primary_reference_id AS id, count(*) AS n FROM inserted WHERE primary_reference_id IS NOT NULL GROUP BY 1) u

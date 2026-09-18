@@ -327,8 +327,10 @@ export async function getSpecies(
   // dropped here so the body carries exactly the contract's keys.
   // R7's `traitCount` is counted live from the records this same read already
   // aggregates, rather than read from `species.trait_count` (R6's maintained
-  // guide): the two are meant to agree, and a test pins them together, but the
-  // page that shows `recordCount` counts the traits behind it itself.
+  // guide): the two are meant to agree, and the page that shows `recordCount`
+  // counts the traits behind it itself. A test compares the live count with
+  // the column on rows it has just created, which pins the trigger's
+  // arithmetic; nothing detects drift on a row that was written earlier.
   const { traitRecordCount: _listOnly, ...listItem } = toListItem({
     ...row,
     matchedName: null,
