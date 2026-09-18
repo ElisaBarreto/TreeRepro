@@ -98,7 +98,6 @@ const speciesColumns = {
   genusName: genera.name,
   familyId: families.id,
   familyName: families.name,
-  traitCount: species.traitCount,
 };
 
 /**
@@ -248,6 +247,9 @@ export async function searchSpecies(
   const rows = await db
     .select({
       ...speciesColumns,
+      // RFC-69 R1's maintained counter: the list's coarse coverage guide, and
+      // the completeness keyset's leading column.
+      traitCount: species.traitCount,
       matchedName: matchedName.as('matched_name'),
       traitRecordCount: traitRecordCount.as('trait_record_count'),
     })
@@ -323,7 +325,15 @@ export async function getSpecies(
   // `traitRecordCount` answers "records for the one filtered trait" and the
   // detail route takes no trait, so the contract omits it from `speciesSchema`;
   // dropped here so the body carries exactly the contract's keys.
-  const { traitRecordCount: _listOnly, ...listItem } = toListItem({ ...row, matchedName: null });
+  // R7's `traitCount` is counted live from the records this same read already
+  // aggregates, rather than read from `species.trait_count` (R6's maintained
+  // guide): the two are meant to agree, and a test pins them together, but the
+  // page that shows `recordCount` counts the traits behind it itself.
+  const { traitRecordCount: _listOnly, ...listItem } = toListItem({
+    ...row,
+    matchedName: null,
+    traitCount: counts?.traitCount ?? 0,
+  });
   return {
     ...listItem,
     plots: speciesPlots,
@@ -333,12 +343,6 @@ export async function getSpecies(
       gbifUsageKey: n.gbifUsageKey,
     })),
     recordCount: counts?.recordCount ?? 0,
-    // R7's own count — distinct traits of this species with at least one
-    // record — not `species.trait_count` (R6's coarse guide). The two are
-    // equal by construction (RFC-69 R1 counts exactly those pairs), but the
-    // detail page keeps reading the records it also counts, so the number and
-    // `recordCount` beside it can never disagree.
-    traitCount: counts?.traitCount ?? 0,
   };
 }
 
