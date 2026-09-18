@@ -192,9 +192,16 @@ export const listDisputedQuerySchema = cursorQuerySchema.extend({
 });
 
 /**
- * `contestedBy` is empty for a human dispute (RFC-65 R10 amended by plan
- * 11b): the non-withdrawn records with `intent = 'contest'` responding to
- * the standing dispute, newest first.
+ * `contestedBy` (RFC-65 R10 amended by plan 11b) holds the non-withdrawn
+ * records with `intent = 'contest'` that respond to the disputed record,
+ * newest first. It is empty when nothing contests that record, which is the
+ * ordinary case for a dispute raised by hand — but not a guarantee: the
+ * query filters on the responded record, the intent and the withdrawal, and
+ * never on whether the standing dispute was generated. A record that carries
+ * both a hand-raised dispute and a live contest therefore arrives with a
+ * non-empty array whichever of the two is standing, which is the rule's own
+ * reading: the array answers "what value is being offered instead", not "who
+ * raised the dispute".
  * @rfc RFC-65 R10
  */
 export const disputedRecordSchema = recordSchema.extend({

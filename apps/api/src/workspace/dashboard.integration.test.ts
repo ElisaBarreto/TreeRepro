@@ -40,19 +40,28 @@ const PLOT_CASE_MISSING = 2;
  * READ THIS BEFORE ASSERTING A DATASET COUNT FROM ANY SUITE.
  *
  * Several tests below call `getDashboard` on a rolled-back `repeatable read`
- * transaction, and `getDashboard` reads `stats:dataset` — a fixed key, shared
- * by every dashboard call in the run, with the longest ttl in the suite at one
- * hour. Whichever caller finds that key cold fills it, and when that caller is
- * one of these tests the entry it publishes counts rows from a frozen snapshot
- * that were never committed, for the next 3600 seconds.
+ * transaction, and `getDashboard` writes two fixed keys that every caller in
+ * the run shares:
+ *
+ * - `stats:dataset`, the longest ttl in the suite at one hour; and
+ * - `coverage:totals:<u|r>`, ten minutes, written by `curationSection` →
+ *   `coverageTotals` for any viewer holding `records.review` — which the
+ *   curation test below is.
+ *
+ * Whichever caller finds such a key cold fills it, and when that caller is one
+ * of these tests the entry it publishes counts rows from a frozen snapshot
+ * that were never committed, for the whole of that ttl.
  *
  * Nothing asserts those values today — this file proves the dataset counts
- * through the uncached `computeDatasetStats` as a delta, and proves the entry
- * semantics on a random key — so it cannot fail now. But a later plan (11c's
- * coverage page, 12a's getting-started card) that asserts `dataset.recordCount`
- * or `dataset.speciesCount` against a fixture of its own will fail here, rarely
- * and for an hour at a time, and the cause will not be in its own file. Assert
- * the uncached function, or a delta, and leave the shared entry alone.
+ * through the uncached `computeDatasetStats` as a delta, proves the entry
+ * semantics on a random key, and compares the curation queues against the
+ * services themselves rather than against a fixture — so it cannot fail now.
+ * But a later plan (11c's coverage page, which is about coverage totals, or
+ * 12a's getting-started card) that asserts `dataset.recordCount`,
+ * `dataset.speciesCount` or `curation.coverage.*` against a fixture of its own
+ * will fail here, rarely and for a whole ttl at a time, and the cause will not
+ * be in its own file. Assert the uncached function, or a delta, and leave the
+ * shared entries alone.
  */
 
 /**

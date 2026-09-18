@@ -409,8 +409,21 @@ async function curationSection(
  * `GET /api/me/dashboard`: the four sections of RFC-72 R1, each degrading on
  * its own. The sections are independent, so they run together; the viewer's
  * own one is served through `dashboard:<viewer id>` for five minutes and is
- * dropped by the routes that let a viewer change what it counts.
+ * dropped by the routes that let a viewer change what it counts. The record
+ * items it lists are re-hydrated outside that entry, which holds only their
+ * ids (RFC-40 R1).
+ *
+ * Two writes do not drop the entry and leave it stale for the rest of its
+ * five minutes: changing which species a plot holds, and revoking
+ * `dataset.read_inactive`. Both would have to bust the key of every viewer
+ * bound to that plot or holding that role, which is disproportionate to an
+ * infrequent administrative action, so RFC-72 R1 states the staleness
+ * instead — for at most five minutes a restricted viewer's section may count,
+ * and list, a record on a species that has just left their plots. Nothing
+ * outside this section is affected: `scope` and `curation` are computed per
+ * request, and the ids are re-read through `itemQuery` but not re-filtered.
  * @rfc RFC-72 R1, R2
+ * @rfc RFC-40 R1
  * @rfc RFC-33 R2, R3
  */
 export async function getDashboard(
