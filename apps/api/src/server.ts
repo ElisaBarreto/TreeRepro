@@ -41,6 +41,7 @@ const app = createApp({
   logger,
   health: createHealthChecks(db, redis),
   db,
+  redis,
   sessions,
   mfa,
   limiter,
