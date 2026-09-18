@@ -1,8 +1,18 @@
-import { userSchema } from '@treerepro/contracts';
+import {
+  contributionAnnotationSchema,
+  contributionRecordSchema,
+  contributionSummarySchema,
+  type PermissionKey,
+  userSchema,
+} from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
-import { createPlot } from '../../../../test/helpers/dataset.ts';
+import {
+  createAnnotation,
+  createPlot,
+  createVisibilityFixture,
+} from '../../../../test/helpers/dataset.ts';
 import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser, randomEmail } from '../../../../test/helpers/users.ts';
@@ -266,5 +276,85 @@ describe('RFC-50 R13, RFC-67 R6 PUT /api/admin/users/:id/plots', () => {
       body: { plotIds: [p1.id], restrictToAssignedPlots: false },
     });
     expect(forbidden.status).toBe(403);
+  });
+});
+
+describe('RFC-71 R5 GET /api/admin/users/:id/contributions', () => {
+  const t = useTestApp();
+
+  const viewer = async (permissions: PermissionKey[]) => {
+    const role = await createRole(t.db, { permissions });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, cookie: (await loginAs(t, user)).cookie };
+  };
+
+  it("answers another user's contributions and summary with contributions.read", async () => {
+    const { cookie } = await viewer(['contributions.read']);
+    const { user: target } = await createUser(t.db);
+    const fixture = await createVisibilityFixture(t.db, target.id);
+    await createAnnotation(t.db, {
+      recordId: fixture.visible.id,
+      actorId: target.id,
+      kind: 'confirm',
+    });
+
+    const list = await call(
+      t.app,
+      'GET',
+      `/api/admin/users/${target.id}/contributions?kind=records`,
+      { cookie },
+    );
+    expect(list.status).toBe(200);
+    const body = await list.json();
+    expect(contributionRecordSchema.safeParse(body.data[0]).success).toBe(true);
+    // RFC-71 R5: the viewer's own visibility applies; the route widens nothing.
+    expect(body.data.map((r: { id: string }) => r.id)).toEqual([fixture.visible.id]);
+
+    const annotations = await call(
+      t.app,
+      'GET',
+      `/api/admin/users/${target.id}/contributions?kind=annotations`,
+      { cookie },
+    );
+    expect(annotations.status).toBe(200);
+    expect(contributionAnnotationSchema.safeParse((await annotations.json()).data[0]).success).toBe(
+      true,
+    );
+
+    // RFC-71 R4: the summary counts every row, including the two the list hides.
+    const summary = await call(
+      t.app,
+      'GET',
+      `/api/admin/users/${target.id}/contributions/summary`,
+      { cookie },
+    );
+    expect(summary.status).toBe(200);
+    const counts = await summary.json();
+    expect(contributionSummarySchema.safeParse(counts.data).success).toBe(true);
+    expect(counts.data.records).toBe(3);
+    expect(counts.data.validations).toBe(1);
+  });
+
+  it('is 404 for an unknown user and 403 without contributions.read', async () => {
+    const { cookie } = await viewer(['contributions.read']);
+    for (const path of [
+      `/api/admin/users/${UNKNOWN}/contributions?kind=records`,
+      `/api/admin/users/${UNKNOWN}/contributions/summary`,
+    ]) {
+      const res = await call(t.app, 'GET', path, { cookie });
+      expect(res.status, path).toBe(404);
+      expect((await res.json()).error.code, path).toBe('USER_NOT_FOUND');
+    }
+
+    const { user: target } = await createUser(t.db);
+    const denied = await viewer(['dataset.read', 'users.read']);
+    for (const path of [
+      `/api/admin/users/${target.id}/contributions?kind=records`,
+      `/api/admin/users/${target.id}/contributions/summary`,
+    ]) {
+      const res = await call(t.app, 'GET', path, { cookie: denied.cookie });
+      expect(res.status, path).toBe(403);
+      expect((await res.json()).error.code, path).toBe('PERMISSION_DENIED');
+    }
   });
 });
