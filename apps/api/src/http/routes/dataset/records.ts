@@ -1,8 +1,8 @@
 import {
   annotateRecordBodySchema,
   createRecordBodySchema,
-  cursorQuerySchema,
   idParamSchema,
+  listDisputedQuerySchema,
   listRecordsQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
@@ -16,6 +16,7 @@ import { getRecord, listRecords } from '../../../dataset/records.ts';
 import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
+import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
@@ -54,6 +55,13 @@ export function recordRoutes(ctx: AuthContext) {
           secondaryReferenceId: body.secondaryReferenceId,
           actorId: actor.id,
         });
+        // After the transaction, never inside the service: the dashboard's
+        // contributor section counts what was just written, and the services
+        // stay free of Redis (RFC-72 R1). Best-effort, since the mutation
+        // already committed.
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
+        });
         return c.json({ data: result }, 201);
       },
     )
@@ -82,6 +90,9 @@ export function recordRoutes(ctx: AuthContext) {
           actorId: actor.id,
           canWithdrawAny: currentPermissions(c).has('records.withdraw'),
           canReview: currentPermissions(c).has('records.review'),
+        });
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
         });
         return c.json({ data: record }, 201);
       },
@@ -127,10 +138,17 @@ export function recordRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'records.review'),
       validate('json', mapPendingBodySchema),
       async (c) => {
+        const actor = currentUser(c);
         const visibility = await visibilityOf(ctx, c);
         const result = await mapPending(ctx.db, visibility, {
           ...c.req.valid('json'),
-          actorId: currentUser(c).id,
+          actorId: actor.id,
+        });
+        // Mapping a group creates records with `created_by = actor` (RFC-65
+        // R9), so it invalidates the actor's own dashboard exactly as
+        // creating one by hand does (RFC-72 R1).
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
         });
         return c.json({ data: result });
       },
@@ -138,13 +156,14 @@ export function recordRoutes(ctx: AuthContext) {
     .get(
       '/disputed',
       requirePermission(ctx, 'records.review'),
-      validate('query', cursorQuerySchema),
+      validate('query', listDisputedQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
         const { data, nextCursor } = await listDisputed(ctx.db, visibility, {
           cursor: q.cursor,
           limit: q.limit,
+          intent: q.intent,
         });
         return c.json({ data, meta: { nextCursor } });
       },

@@ -18,13 +18,20 @@ import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
 import { withQuery } from './query.ts';
 
-/** Query keys of the curation screens, nested under the dataset prefixes so one invalidation covers both. @rfc RFC-65 R6, R8, R10 */
+/**
+ * Query keys of the curation screens, nested under the dataset prefixes so
+ * one invalidation covers both. `disputed` takes the filters (RFC-65 R10
+ * amended by plan 11b: `intent`) so switching `?intent=contest` on and off
+ * is its own cache entry and its own page-1 reset, the same as every other
+ * filtered list in the app.
+ * @rfc RFC-65 R6, R8, R10
+ */
 export const curationKeys = {
   accepted: (speciesId: string, traitId: string) =>
     ['species', speciesId, 'traits', traitId, 'accepted'] as const,
   pendingTraits: ['records', 'pending', 'traits'] as const,
   pendingGroups: (traitId: string) => ['records', 'pending', 'groups', traitId] as const,
-  disputed: ['records', 'disputed'] as const,
+  disputed: (params: { intent?: 'contest' }) => ['records', 'disputed', params] as const,
 };
 
 /** The file download of RFC-66; a plain link, the session cookie authenticates it. @rfc RFC-66 R1 */
@@ -86,8 +93,8 @@ export async function mapPending(body: MapPendingBody): Promise<MapResult> {
     await apiFetch<DataEnvelope<MapResult>>('/records/pending/map', { method: 'POST', json: body })
   ).data;
 }
-/** @rfc RFC-65 R10 */
-export function fetchDisputed(params: { cursor?: string; limit?: number }) {
+/** `intent: 'contest'` narrows the queue to disputes a contest generated. @rfc RFC-65 R10 */
+export function fetchDisputed(params: { cursor?: string; limit?: number; intent?: 'contest' }) {
   return apiFetch<Page<DisputedRecord>>(withQuery('/records/disputed', params));
 }
 

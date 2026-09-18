@@ -31,6 +31,7 @@ import { contributionSummary, listContributions } from '../../../dataset/contrib
 import { clientIp, userAgent } from '../../client-ip.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
+import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
 import { requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
@@ -139,6 +140,15 @@ export function adminUserRoutes(ctx: AuthContext) {
           userId: id,
           plotIds,
           restrictToAssignedPlots,
+        });
+        // After the transaction, never inside the service: the target
+        // user's own dashboard answers over the plots that just changed,
+        // not the ones cached from before (RFC-72 R1). The target's key,
+        // not the acting admin's — it is the target's `scope` that changed.
+        // Best-effort, since the mutation already committed.
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${id}`, {
+          targetUserId: id,
+          actorUserId: currentUser(c).id,
         });
         return c.json({ data });
       },

@@ -297,6 +297,54 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       supersededBy: [],
     });
   });
+
+  it('still answers 201 and commits the record when the dashboard cache invalidation fails', async () => {
+    const { cookie } = await scientist(t);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['red'] });
+    const ref = await createReference(t.db);
+    // Same redis connection as `t.redis`, except DEL always fails, the way a
+    // transient command timeout or a failover would: proves the route
+    // returns its normal success response instead of a 500 for a write that
+    // already committed (RFC-72 R1).
+    const failingRedis = new Proxy(t.redis, {
+      get(target, prop, receiver) {
+        if (prop === 'del') {
+          return async () => {
+            throw new Error('ECONNRESET: forced by test');
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const { app, lines } = t.build({ redis: failingRedis });
+
+    const res = await call(app, 'POST', '/api/records', {
+      cookie,
+      body: {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        value: { levelId: trait.levels[0]?.id },
+        sources: { references: [{ id: ref.id }] },
+      },
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()).data.created[0];
+
+    // The mutation check: re-read the record through the real-redis app,
+    // independent of the response body above.
+    const stored = await call(t.app, 'GET', `/api/records/${created.id}`, { cookie });
+    expect(stored.status).toBe(200);
+    expect((await stored.json()).data).toMatchObject({ id: created.id, speciesId: sp1.id });
+
+    const warning = lines.find(
+      (l) =>
+        (l as { level: number }).level === 40 &&
+        (l as { msg: string }).msg.includes('cache invalidation failed'),
+    );
+    expect(warning).toBeDefined();
+  });
 });
 
 describe('RFC-65 R7–R9 harmonisation queue', () => {
@@ -633,23 +681,35 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
 describe('RFC-65 R10 GET /api/records/disputed', () => {
   const t = useTestApp();
 
-  const idsOf = async (cookie: string) => {
-    const ids: string[] = [];
+  type DisputedItem = {
+    id: string;
+    contestedBy: {
+      id: string;
+      valueText: string;
+      createdBy: { id: string; name: string } | null;
+    }[];
+  };
+
+  const itemsOf = async (cookie: string, query = '') => {
+    const items: DisputedItem[] = [];
     let cursor: string | null = null;
     do {
       const res = await call(
         t.app,
         'GET',
-        `/api/records/disputed?limit=200${cursor ? `&cursor=${cursor}` : ''}`,
+        `/api/records/disputed?limit=200${query}${cursor ? `&cursor=${cursor}` : ''}`,
         { cookie },
       );
       expect(res.status).toBe(200);
       const body = await res.json();
-      ids.push(...body.data.map((r: { id: string }) => r.id));
+      items.push(...(body.data as DisputedItem[]));
       cursor = body.meta.nextCursor;
     } while (cursor);
-    return ids;
+    return items;
   };
+
+  const idsOf = async (cookie: string, query = '') =>
+    (await itemsOf(cookie, query)).map((r) => r.id);
 
   it('lists standing disputes newest first, drops them after a later accepted decision for the species and trait or a changed stance, never withdrawn records', async () => {
     const author = await manager(t);
@@ -734,6 +794,71 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
       cookie: author.cookie,
     });
     expect(bad.status).toBe(400);
+  });
+
+  it('carries ?intent=contest through to the queue, and rejects any other intent', async () => {
+    const author = await manager(t);
+    const contester = await scientist(t, ['records.create', 'dataset.read']);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
+    const ref = await createReference(t.db);
+    const contestRef = await createReference(t.db);
+    const base = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: author.user.id,
+    });
+    const byHand = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'b',
+      levelId: trait.levels[1]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: author.user.id,
+    });
+    await createAnnotation(t.db, {
+      recordId: byHand.id,
+      actorId: author.user.id,
+      kind: 'dispute',
+      note: 'Raised by hand, not by a contest',
+    });
+    const contest = await call(t.app, 'POST', '/api/records', {
+      cookie: contester.cookie,
+      body: {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        value: { levelId: trait.levels[1]?.id },
+        sources: { references: [{ id: contestRef.id }] },
+        intent: 'contest',
+        respondsToRecordId: base.id,
+      },
+    });
+    expect(contest.status).toBe(201);
+    const contestId: string = (await contest.json()).data.created[0].id;
+
+    // The filter reaches the query rather than being dropped by the handler:
+    // the hand-raised dispute is in the unfiltered queue and out of this one.
+    const generated = await itemsOf(author.cookie, '&intent=contest');
+    expect(generated.map((r) => r.id)).toContain(base.id);
+    expect(generated.map((r) => r.id)).not.toContain(byHand.id);
+    expect(await idsOf(author.cookie)).toContain(byHand.id);
+    expect(generated.find((r) => r.id === base.id)?.contestedBy).toEqual([
+      {
+        id: contestId,
+        valueText: 'b',
+        createdBy: { id: contester.user.id, name: 'Test User' },
+      },
+    ]);
+
+    const rejected = await call(t.app, 'GET', '/api/records/disputed?intent=complement', {
+      cookie: author.cookie,
+    });
+    expect(rejected.status).toBe(400);
   });
 });
 

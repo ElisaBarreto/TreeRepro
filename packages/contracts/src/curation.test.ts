@@ -4,6 +4,8 @@ import {
   createLevelBodySchema,
   createRecordBodySchema,
   createReferenceBodySchema,
+  disputedRecordSchema,
+  listDisputedQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
   resolveDoiResultSchema,
@@ -17,6 +19,25 @@ import { cursorQuerySchema } from './pagination.ts';
 
 const uuid = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
 const other = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
+
+const record = {
+  id: uuid,
+  speciesId: uuid,
+  species: { id: uuid, canonicalName: 'Testus specimen' },
+  trait: { id: uuid, key: 'flower_color', valueType: 'categorical', unit: null },
+  valueText: 'blue',
+  level: { id: uuid, key: 'blue' },
+  numericValue: null,
+  harmonisation: 'harmonised',
+  review: 'disputed',
+  primaryReference: null,
+  secondaryReference: null,
+  origin: 'manual',
+  createdAt: '2026-09-13T00:00:00.000Z',
+  createdBy: { id: uuid, name: 'Ada' },
+  intent: null,
+  respondsTo: null,
+};
 
 describe('RFC-65 R1 createRecordBodySchema', () => {
   const base = { speciesId: uuid, traitId: uuid, sources: { references: [{ id: uuid }] } };
@@ -214,6 +235,53 @@ describe('RFC-65 R8, R9 pending queue', () => {
       mapPendingBodySchema.safeParse({ traitId: uuid, valueText: '', value: { numeric: 3 } })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('RFC-65 R10 listDisputedQuerySchema', () => {
+  it('accepts intent: contest, accepts its absence, and rejects any other value', () => {
+    expect(listDisputedQuerySchema.safeParse({ intent: 'contest' }).success).toBe(true);
+    expect(listDisputedQuerySchema.safeParse({}).success).toBe(true);
+    expect(listDisputedQuerySchema.safeParse({ intent: 'complement' }).success).toBe(false);
+    expect(listDisputedQuerySchema.safeParse({ intent: 'none' }).success).toBe(false);
+  });
+});
+
+describe('RFC-65 R10 disputedRecordSchema contestedBy', () => {
+  const latestDispute = {
+    id: uuid,
+    actor: { id: uuid, name: 'Ada' },
+    note: 'Wrong',
+    createdAt: '2026-09-13T00:00:00.000Z',
+  };
+  const contestingRecord = { id: other, valueText: 'red', createdBy: { id: uuid, name: 'Ada' } };
+  const withContests = {
+    ...record,
+    latestDispute,
+    contestedBy: [contestingRecord],
+  };
+
+  it('parses a populated contestedBy and an empty one, and requires the field', () => {
+    expect(disputedRecordSchema.safeParse(withContests).success).toBe(true);
+    expect(disputedRecordSchema.safeParse({ ...withContests, contestedBy: [] }).success).toBe(true);
+    const { contestedBy: _contestedBy, ...missingContestedBy } = withContests;
+    expect(disputedRecordSchema.safeParse(missingContestedBy).success).toBe(false);
+    expect(
+      disputedRecordSchema.safeParse({
+        ...withContests,
+        contestedBy: [{ id: other, valueText: 'red', createdBy: null }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an unknown key in a contestedBy entry', () => {
+    const result = disputedRecordSchema.safeParse({
+      ...withContests,
+      contestedBy: [{ ...contestingRecord, extra: 1 }],
+    });
+    // zod reports unrecognized_keys at the offending object's own path.
+    const issuePaths = result.success ? [] : result.error.issues.map((i) => i.path.join('.'));
+    expect(issuePaths).toContain('contestedBy.0');
   });
 });
 

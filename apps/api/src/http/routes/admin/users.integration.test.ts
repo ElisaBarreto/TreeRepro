@@ -17,6 +17,7 @@ import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser, randomEmail } from '../../../../test/helpers/users.ts';
 import { findUserByEmail } from '../../../auth/users.ts';
+import { forgetCached } from '../../../redis/cache.ts';
 
 async function adminCookie(t: ReturnType<typeof useTestApp>) {
   const { user } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
@@ -276,6 +277,44 @@ describe('RFC-50 R13, RFC-67 R6 PUT /api/admin/users/:id/plots', () => {
       body: { plotIds: [p1.id], restrictToAssignedPlots: false },
     });
     expect(forbidden.status).toBe(403);
+  });
+
+  it("forgets the target user's dashboard cache entry, so their next dashboard read reflects the new plots rather than the no-plots answer cached before them", async () => {
+    const { cookie } = await adminCookie(t);
+    const { user } = await createUser(t.db, {
+      roles: [(await createRole(t.db, { permissions: ['dataset.read'] })).id],
+    });
+    const targetCookie = (await loginAs(t, user)).cookie;
+    const p1 = await createPlot(t.db);
+    const key = `dashboard:${user.id}`;
+
+    try {
+      // Warm the target's own cache entry while they still have no plots.
+      const before = await call(t.app, 'GET', '/api/me/dashboard', { cookie: targetCookie });
+      expect(before.status).toBe(200);
+      expect((await before.json()).data.scope).toBeNull();
+      expect(await t.redis.get(key)).not.toBeNull();
+
+      const assigned = await call(t.app, 'PUT', `/api/admin/users/${user.id}/plots`, {
+        cookie,
+        body: { plotIds: [p1.id], restrictToAssignedPlots: true },
+      });
+      expect(assigned.status).toBe(200);
+      expect(await t.redis.get(key)).toBeNull();
+
+      // Without the fix this answers `scope` (uncached) with the new plot
+      // while `contributor` still comes back as the no-plots shape cached
+      // above — two sections of one page disagreeing about whether the
+      // viewer has plots.
+      const after = await call(t.app, 'GET', '/api/me/dashboard', { cookie: targetCookie });
+      expect(after.status).toBe(200);
+      const body = (await after.json()).data;
+      expect(body.scope).not.toBeNull();
+      expect(body.contributor.missingCells).not.toBeNull();
+      expect(body.contributor.awaitingValidation).not.toBeNull();
+    } finally {
+      await forgetCached(t.redis, key);
+    }
   });
 });
 
