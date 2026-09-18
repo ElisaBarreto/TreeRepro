@@ -93,6 +93,7 @@ describe('RFC-31 R1, R2 roles tables', () => {
       'records.create',
     ]);
     expect(await keys('manager')).toEqual([
+      'contributions.read',
       'dataset.read',
       'dataset.read_inactive',
       'imports.read',

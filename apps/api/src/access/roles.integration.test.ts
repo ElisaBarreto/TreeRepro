@@ -164,6 +164,7 @@ describe('RFC-31 R3, R4, R5 role services', () => {
     const manager = await getRole(t.db, managerId);
     expect(manager?.permissions).toEqual(
       [
+        'contributions.read',
         'dataset.read',
         'dataset.read_inactive',
         'imports.read',
