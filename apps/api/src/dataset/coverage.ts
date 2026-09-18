@@ -9,6 +9,7 @@ import type {
 import { eq, type SQL, sql } from 'drizzle-orm';
 import { globalSpeciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { traitCategories } from '../db/schema/dictionary.ts';
 import { plots } from '../db/schema/plots.ts';
 import { families } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
@@ -147,10 +148,14 @@ const both = (parts: SQL[]): SQL => parts.reduce((left, right) => sql`(${left}) 
  * R6). `familyId` and `plotId` are existence-checked before they are
  * authorised and only then added as conjuncts, the order `speciesListConditions`
  * uses (RFC-60 R6), so a viewer learns "no such plot" before "not yours".
- * `categoryKey` is not existence-checked: an unknown key selects no trait,
- * which is an empty grid rather than an error.
+ * `categoryKey` is looked up the same way and refused with the same error
+ * `speciesListConditions` raises for it (`VALIDATION_FAILED`, path
+ * `categoryKey`), so a typo answers 400 on `GET /api/coverage` exactly as it
+ * does on `GET /api/species`, rather than an empty grid that reads like a
+ * dataset with no traits in that category.
  * @rfc RFC-69 R5
  * @rfc RFC-33 R2, R6
+ * @rfc RFC-60 R6
  */
 async function coverageSelection(
   db: DbExecutor,
@@ -184,7 +189,19 @@ async function coverageSelection(
     );
   }
   const traitParts = [traitVisible(visibility, sql`t.active`)];
-  if (filters.categoryKey) traitParts.push(sql`t.category_key = ${filters.categoryKey}`);
+  if (filters.categoryKey) {
+    const [category] = await db
+      .select({ key: traitCategories.key })
+      .from(traitCategories)
+      .where(eq(traitCategories.key, filters.categoryKey))
+      .limit(1);
+    if (!category) {
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'categoryKey', message: 'Unknown trait category' },
+      ]);
+    }
+    traitParts.push(sql`t.category_key = ${filters.categoryKey}`);
+  }
   return { speciesSeen: both(speciesParts), traitSeen: both(traitParts) };
 }
 
@@ -320,6 +337,22 @@ export async function computeCoverageMetrics(
 }
 
 /**
+ * One segment of the cache key: `-` for a filter that was not given, and the
+ * percent-encoded value otherwise. `encodeURIComponent` escapes the `:` the
+ * key is split on and leaves an ordinary key (`leaf_traits`, a uuid) exactly
+ * as RFC-69 R6 writes it; it does *not* escape a lone `-`, which is the
+ * sentinel, so that one value is written `%2D`. No value can then render as
+ * the sentinel or as more than one segment, and `%2D` is itself unreachable
+ * (`encodeURIComponent('%2D')` is `%252D`), so the mapping stays one-to-one.
+ * @rfc RFC-69 R6
+ */
+function keySegment(value: string | undefined): string {
+  if (value === undefined) return '-';
+  const encoded = encodeURIComponent(value);
+  return encoded === '-' ? '%2D' : encoded;
+}
+
+/**
  * `GET /api/coverage`: {@link computeCoverageMetrics} behind the ten-minute
  * entry of RFC-69 R6, keyed by the viewer class and the explicit filters —
  * `coverage:<u|r>:<familyId>:<categoryKey>:<plotId>`, an absent filter being
@@ -331,15 +364,15 @@ export async function computeCoverageMetrics(
  * a cache hit exactly as on a miss, and a hit is what a viewer allowed that
  * same plot leaves behind.
  *
- * `familyId` and `plotId` reach the key only after they have been found in the
- * database, so they are uuids and hold no separator. `categoryKey` is free
- * text (`coverageQuerySchema`) and is not existence-checked, so it is the one
- * segment that could carry a `:` and read back the entry of another filter
- * combination — `x:<plot uuid>` as a category is otherwise the same key as
- * category `x` scoped to that plot, which is exactly the plot-scoped number
- * R6 keeps a viewer from reading. Percent-encoding that one segment leaves
- * every real category key (`[a-z_]+` in the seeded dictionary) written as R6
- * writes it.
+ * The segments are escaped by {@link keySegment}: a filter value must not be
+ * able to forge the key of a different filter set, because two filter sets
+ * sharing one entry is both a wrong answer and a way to write into an answer
+ * a viewer never asked for. `categoryKey` is free text
+ * (`coverageQuerySchema`), so unescaped it could carry the `:` separator
+ * (`x:<plot uuid>` is otherwise the key of category `x` scoped to that plot —
+ * the plot-scoped number R6 keeps a viewer from reading) or be the absent
+ * sentinel itself (`-` is otherwise the unfiltered key, the entry every viewer
+ * of the class reads).
  * @rfc RFC-69 R5, R6
  * @rfc RFC-33 R2, R6
  */
@@ -349,9 +382,13 @@ export async function coverageMetrics(
   filters: CoverageQuery,
 ): Promise<Coverage> {
   const selection = await coverageSelection(ctx.db, visibility, filters);
-  const category =
-    filters.categoryKey === undefined ? '-' : encodeURIComponent(filters.categoryKey);
-  const key = `coverage:${visibility.inactive ? 'u' : 'r'}:${filters.familyId ?? '-'}:${category}:${filters.plotId ?? '-'}`;
+  const key = [
+    'coverage',
+    visibility.inactive ? 'u' : 'r',
+    keySegment(filters.familyId),
+    keySegment(filters.categoryKey),
+    keySegment(filters.plotId),
+  ].join(':');
   const { value, computedAt } = await cachedJson(ctx.redis, key, COVERAGE_TTL_SECONDS, () =>
     coverageGrid(ctx.db, selection),
   );

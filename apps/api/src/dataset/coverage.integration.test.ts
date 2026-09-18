@@ -327,6 +327,24 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       expect(activeAfter.cells).toBe((activeBefore.species + 2) * (activeBefore.traits + 2));
       expect(activeAfter.withData - activeBefore.withData).toBe(3);
       expect(activeAfter.accepted - activeBefore.accepted).toBe(1);
+
+      // Unfiltered, `coverageMetrics` and plan 11b's `coverageTotals` are the
+      // same five numbers over the same grid, reached by different SQL: this
+      // pins them together so a change to one cannot quietly diverge from the
+      // other (both viewer classes, over this test's frozen snapshot).
+      for (const [visibility, metrics] of [
+        [UNRESTRICTED, wideAfter],
+        [RESTRICTED, activeAfter],
+      ] as const) {
+        const totals = await computeCoverageTotals(tx, visibility);
+        expect(totals).toEqual({
+          cells: metrics.cells,
+          withData: metrics.withData,
+          accepted: metrics.accepted,
+          percentWithData: metrics.percentWithData,
+          percentAccepted: metrics.percentAccepted,
+        });
+      }
     });
   });
 
@@ -428,12 +446,29 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
     });
   });
 
-  it('answers an empty selection, not an error, for a category key that is not a category', async () => {
+  it('refuses a category key that is not a category, as the species list does', async () => {
     await withRollback(t.db, async (tx) => {
       await coverageFixture(tx);
-      const m = await computeCoverageMetrics(tx, UNRESTRICTED, {
-        categoryKey: `no_such_category_${randomUUID()}`,
+      // The same code, path and message `speciesListConditions` raises for an
+      // unknown `categoryKey` (RFC-60 R6), so the two filters answer a typo
+      // alike instead of one 400 and one empty grid.
+      await expect(
+        computeCoverageMetrics(tx, UNRESTRICTED, {
+          categoryKey: `no_such_category_${randomUUID()}`,
+        }),
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_FAILED',
+        status: 400,
+        details: [{ path: 'categoryKey', message: 'Unknown trait category' }],
       });
+    });
+  });
+
+  it('answers an empty grid for a category that exists and holds no visible trait', async () => {
+    await withRollback(t.db, async (tx) => {
+      await coverageFixture(tx);
+      const empty = await createTraitCategory(tx);
+      const m = await computeCoverageMetrics(tx, UNRESTRICTED, { categoryKey: empty.key });
       expect(m).toMatchObject({
         traits: 0,
         cells: 0,
@@ -582,22 +617,48 @@ describe('RFC-69 R6 coverageMetrics is cached for ten minutes per viewer class a
     });
   });
 
-  it('keeps a category key that carries the key separator off the entry of another filter', async () => {
+  it('keeps a crafted category key off the entry of another filter set', async () => {
     await withRollback(t.db, async (tx) => {
       const f = await coverageFixture(tx);
-      // `categoryKey` is free text and is not existence-checked, so written
-      // into the key unescaped it would be ambiguous: this category is the
-      // same string as category `x` scoped to a plot, whose entry holds a
-      // plot-scoped number this viewer was never authorised for.
-      const crafted = `x:${f.plotAll.id}`;
-      const collision = `coverage:u:-:x:${f.plotAll.id}:-`;
+      // A category key is free text (`coverageQuerySchema`) and a category may
+      // be created with any key, so the two strings a key segment must survive
+      // are the separator and the absent-filter sentinel. Unescaped, the first
+      // is the key of category `x` scoped to that plot — a plot-scoped number
+      // this viewer was never authorised for — and the second is the
+      // unfiltered key, the entry every viewer of this class reads.
+      const separator = await createTraitCategory(tx, { key: `x:${f.plotAll.id}` });
+      const sentinel = await createTraitCategory(tx, { key: '-' });
+      const separatorCollision = `coverage:u:-:x:${f.plotAll.id}:-`;
+      const separatorKey = `coverage:u:-:${encodeURIComponent(separator.key)}:-`;
+      // `coverage:u:-:-:-`, the unfiltered key, is what an unescaped `-`
+      // would land on; the escaped one is a key of its own.
+      const sentinelKey = 'coverage:u:-:%2D:-';
       try {
-        const m = await coverageMetrics({ db: tx, redis }, UNRESTRICTED, { categoryKey: crafted });
-        expect(m.traits).toBe(0);
-        expect(await redis.get(collision)).toBeNull();
-        expect(await redis.get(`coverage:u:-:${encodeURIComponent(crafted)}:-`)).not.toBeNull();
+        const bySeparator = await coverageMetrics({ db: tx, redis }, UNRESTRICTED, {
+          categoryKey: separator.key,
+        });
+        expect(bySeparator.traits).toBe(0);
+        expect(await redis.get(separatorCollision)).toBeNull();
+        expect(await redis.get(separatorKey)).not.toBeNull();
+
+        const bySentinel = await coverageMetrics({ db: tx, redis }, UNRESTRICTED, {
+          categoryKey: sentinel.key,
+        });
+        // The unfiltered entry is shared by every caller in the run, so it is
+        // never asserted absent here (a sibling suite may hold it) and never
+        // written from inside this rolled-back fixture. What is asserted is
+        // that this call landed on a key of its own, holding its own answer:
+        // no visible trait is in category `-`, while the unfiltered grid this
+        // same transaction sees holds many.
+        expect(bySentinel.traits).toBe(0);
+        const stored = await redis.get(sentinelKey);
+        expect(stored).not.toBeNull();
+        const { computedAt, ...value } = bySentinel;
+        expect(JSON.parse(stored ?? 'null')).toEqual({ value, computedAt });
+        const unfiltered = await computeCoverageMetrics(tx, UNRESTRICTED, {});
+        expect(unfiltered.traits).toBeGreaterThan(0);
       } finally {
-        await forgetCached(redis, collision, `coverage:u:-:${encodeURIComponent(crafted)}:-`);
+        await forgetCached(redis, separatorCollision, separatorKey, sentinelKey);
       }
     });
   });

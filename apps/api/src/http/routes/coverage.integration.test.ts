@@ -94,6 +94,19 @@ describe('RFC-69 R5, R6 GET /api/coverage', () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error.code).toBe('VALIDATION_FAILED');
   });
+
+  it('answers 400 VALIDATION_FAILED for a category key that is not a category', async () => {
+    const { cookie } = await reader(['coverage.read']);
+    const res = await call(t.app, 'GET', '/api/coverage?categoryKey=no_such_category_xyz', {
+      cookie,
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_FAILED');
+    expect(body.error.details).toEqual([
+      { path: 'categoryKey', message: 'Unknown trait category' },
+    ]);
+  });
 });
 
 describe('RFC-69 R7 GET /api/coverage/top', () => {
@@ -107,9 +120,13 @@ describe('RFC-69 R7 GET /api/coverage/top', () => {
 
   it('answers byTrait items, ranked and cut to the limit', async () => {
     const { cookie } = await reader(['coverage.read']);
-    // The dictionary is seeded, so the visible grid always holds more than
-    // three traits; the items are asserted by shape and by the ranking rule,
-    // never as an absolute list of traits.
+    // The ranking itself is pinned in `dataset/coverage.integration.test.ts`
+    // against its own fixture. What is asserted here is that the route cuts
+    // the list to `limit` and hands back contract-shaped items — and the three
+    // traits the limit is read against are this test's own, so the assertion
+    // does not rest on how many traits the shared dictionary happens to hold.
+    const category = await createTraitCategory(t.db);
+    for (let i = 0; i < 3; i++) await createTrait(t.db, { categoryKey: category.key });
     const res = await call(t.app, 'GET', '/api/coverage/top?mode=missing&limit=3', { cookie });
     expect(res.status).toBe(200);
     const body = await res.json();
