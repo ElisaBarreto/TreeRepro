@@ -133,11 +133,16 @@ export function recordRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'records.review'),
       validate('json', mapPendingBodySchema),
       async (c) => {
+        const actor = currentUser(c);
         const visibility = await visibilityOf(ctx, c);
         const result = await mapPending(ctx.db, visibility, {
           ...c.req.valid('json'),
-          actorId: currentUser(c).id,
+          actorId: actor.id,
         });
+        // Mapping a group creates records with `created_by = actor` (RFC-65
+        // R9), so it invalidates the actor's own dashboard exactly as
+        // creating one by hand does (RFC-72 R1).
+        await forgetCached(ctx.redis, `dashboard:${actor.id}`);
         return c.json({ data: result });
       },
     )

@@ -98,4 +98,46 @@ describe('RFC-72 R1, R2 GET /api/me/dashboard', () => {
       await forgetCached(t.redis, key);
     }
   });
+
+  /**
+   * RFC-72 R1 names "creating a record" as an invalidator, and mapping a
+   * pending group creates records: the INSERT … SELECT writes `trait_records`
+   * with `created_by = <actor>` and `origin = 'manual'`, which lands in the
+   * actor's own `awaitingValidation` and moves `missingCells`,
+   * `topMissingTraits` and the contribution summary.
+   */
+  it('forgets the viewer entry when they map a pending group', async () => {
+    const { user, cookie } = await reader(['dataset.read', 'records.review']);
+    const species = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['alpha', 'beta'] });
+    const reference = await createReference(t.db);
+    await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'ten to twelve',
+      harmonisation: 'unknown_level',
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const key = `dashboard:${user.id}`;
+    try {
+      expect((await call(t.app, 'GET', '/api/me/dashboard', { cookie })).status).toBe(200);
+      expect(await t.redis.get(key)).not.toBeNull();
+
+      const mapped = await call(t.app, 'POST', '/api/records/pending/map', {
+        cookie,
+        body: {
+          traitId: trait.id,
+          valueText: 'ten to twelve',
+          value: { levelIds: [trait.levels[0]?.id] },
+        },
+      });
+      expect(mapped.status).toBe(200);
+      expect(await mapped.json()).toEqual({ data: { created: 1, skipped: 0 } });
+      expect(await t.redis.get(key)).toBeNull();
+    } finally {
+      await forgetCached(t.redis, key);
+    }
+  });
 });
