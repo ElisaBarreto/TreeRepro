@@ -1,0 +1,166 @@
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
+import { describe, expect, it } from 'vitest';
+import { createReference } from '../../../test/helpers/dataset.ts';
+import { useTestDb } from '../../../test/helpers/db.ts';
+import { createUser } from '../../../test/helpers/users.ts';
+import { auditLog } from '../../db/schema/audit-log.ts';
+import { importRejects } from '../../db/schema/imports.ts';
+import { bibliographicReferences } from '../../db/schema/references.ts';
+import { importReferences } from './references.ts';
+
+async function csv(lines: string[], eol = '\n'): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'references-import-'));
+  const file = join(dir, 'import.csv');
+  await writeFile(file, `${lines.join(eol)}${eol}`);
+  return file;
+}
+
+async function referenceRow(db: Parameters<typeof createReference>[0], id: string) {
+  const [row] = await db
+    .select()
+    .from(bibliographicReferences)
+    .where(eq(bibliographicReferences.id, id));
+  if (!row) throw new Error('referenceRow: no row');
+  return row;
+}
+
+describe('RFC-68 R13 import:references', () => {
+  const t = useTestDb();
+
+  it('a reference with all four fields null gets all four filled (inserted)', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},Short cite,Full cite,10.1234/abc,https://example.test/a`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect(batch.kind).toBe('references');
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      1, 1, 0, 0,
+    ]);
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.shortCitation).toBe('Short cite');
+    expect(row.fullCitation).toBe('Full cite');
+    expect(row.doi).toBe('10.1234/abc');
+    expect(row.url).toBe('https://example.test/a');
+    const [entry] = await t.db.select().from(auditLog).where(eq(auditLog.targetId, batch.id));
+    expect(entry?.action).toBe('imports.completed');
+    expect(entry?.metadata).toMatchObject({ kind: 'references', rowsInserted: 1 });
+  });
+
+  it('a second run of the same file is duplicate: fill-only-when-null never overwrites', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},Short cite,Full cite,10.1234/xyz,https://example.test/b`,
+    ]);
+    await importReferences(t.db, { filePath: file, runBy: user.id });
+    const again = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([again.rowsTotal, again.rowsInserted, again.rowsDuplicate, again.rowsRejected]).toEqual([
+      1, 0, 1, 0,
+    ]);
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.doi).toBe('10.1234/xyz');
+  });
+
+  it('a reference that already has a doi keeps it and fills only url (still inserted)', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db, { doi: `10.5555/already-${Date.now()}` });
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},,,${ref.doi},https://example.test/c`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      1, 1, 0, 0,
+    ]);
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.doi).toBe(ref.doi);
+    expect(row.url).toBe('https://example.test/c');
+    expect(row.shortCitation).toBeNull();
+    expect(row.fullCitation).toBeNull();
+  });
+
+  it('a doi already held by a different reference is rejected doi_taken (agrees with the lower(doi) unique index)', async () => {
+    const { user } = await createUser(t.db);
+    const taken = `10.6000/taken-${Date.now()}`;
+    await createReference(t.db, { doi: taken });
+    const target = await createReference(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      // uppercase variant of an already-held doi: case-insensitive match against lower(doi)
+      `${target.citationKey},,,${taken.toUpperCase()},`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      1, 0, 0, 1,
+    ]);
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.reason).toBe('doi_taken');
+    const row = await referenceRow(t.db, target.id);
+    expect(row.doi).toBeNull();
+  });
+
+  it('a malformed doi is rejected invalid_value (RFC-80 R1)', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},,,not-a-doi,`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      1, 0, 0, 1,
+    ]);
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.reason).toBe('invalid_value');
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.doi).toBeNull();
+  });
+
+  it('an unknown citation key is rejected unknown_reference', async () => {
+    const { user } = await createUser(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `No_such_key_${Date.now()},Short,Full,,`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      1, 0, 0, 1,
+    ]);
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.reason).toBe('unknown_reference');
+  });
+
+  it('DOIs are normalised before storage: 10.1111/GEB.1 becomes 10.1111/geb.1 (RFC-80 R1)', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},,,10.1111/GEB.1,`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect(batch.rowsInserted).toBe(1);
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.doi).toBe('10.1111/geb.1');
+  });
+
+  it('refuses a wrong header before creating a batch', async () => {
+    const bad = await csv(['citation_key,short_citation', 'x,y']);
+    await expect(importReferences(t.db, { filePath: bad, runBy: null })).rejects.toThrow(/header/i);
+  });
+});
