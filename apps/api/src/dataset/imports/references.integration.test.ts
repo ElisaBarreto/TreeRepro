@@ -245,6 +245,25 @@ describe('RFC-68 R13 import:references', () => {
     expect(row.doi).toBe(winningDoi);
   });
 
+  it('two blank reference keys are not a repeated key: each is rejected unknown_reference on its own row, never folded into duplicate (RFC-68 R4)', async () => {
+    const { user } = await createUser(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      ',Blank one,,,',
+      '   ,Blank two (whitespace-only),,,',
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      2, 0, 0, 2,
+    ]);
+    expect(batch.rowsInserted + batch.rowsDuplicate + batch.rowsRejected).toBe(batch.rowsTotal);
+    const rejects = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(rejects.map((r) => r.reason)).toEqual(['unknown_reference', 'unknown_reference']);
+  });
+
   it('refuses a wrong header before creating a batch', async () => {
     const bad = await csv(['citation_key,short_citation', 'x,y']);
     await expect(importReferences(t.db, { filePath: bad, runBy: null })).rejects.toThrow(/header/i);

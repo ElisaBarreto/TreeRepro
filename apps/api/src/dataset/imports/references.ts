@@ -100,9 +100,23 @@ export async function importReferences(
       // by `ref_key` keeps `unknown_reference` scoped to a row whose own
       // key matches nothing, while a *repeated* unknown key still picks one
       // winner the same as a matched key does.
+      //
+      // A blank `reference_key` cell is not a key at all — `ref_key` is
+      // null for it — and `group by` collapses every null into one group,
+      // which would wrongly treat two unrelated blank-key rows as "the same
+      // repeated key" and fold the earlier one into `duplicate` instead of
+      // rejecting it on its own. The second grouping column breaks that:
+      // it is null (so inert) whenever `ref_key` is a real, non-null key —
+      // those rows still group by `ref_key` alone, unchanged — but it is
+      // each null row's own unique `row_no` whenever `ref_key` is null, so
+      // no two blank-key rows ever share a group and each is its own
+      // winner.
       await tx`
         update import_staging s set is_winner = true
-        where s.row_no in (select max(row_no) from import_staging group by ref_key)`;
+        where s.row_no in (
+          select max(row_no) from import_staging
+          group by ref_key, case when ref_key is null then row_no end
+        )`;
 
       // Priority: a non-winning row of a repeated key is duplicate whatever
       // it contains (RFC-68 R4, checked first so validation below never
