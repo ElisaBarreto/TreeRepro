@@ -86,6 +86,28 @@ describe('RFC-42 R4 purgeAudit records its own run', () => {
   });
 });
 
+describe('RFC-42 R4 purgeAudit reports the purge failure, not the run update', () => {
+  const su = useTestDb({ role: 'superuser' });
+
+  it('rethrows the purge error even though finishRun cannot write into the aborted transaction', async () => {
+    // Renaming the function inside the transaction is the only way to make
+    // audit_log_purge() fail deterministically; the rollback puts it back.
+    await withRollback(su.db, async (tx) => {
+      await tx.execute(sql`alter function audit_log_purge() rename to audit_log_purge_absent`);
+      // startRun succeeds, the purge raises 42883 and aborts the transaction,
+      // so the `failed` finishRun raises 25P02 in turn. The caller must still
+      // see 42883: the run row is a trace, never a reason to lose the error.
+      await expect(unwrapDbError(purgeAudit(tx))).rejects.toMatchObject({
+        code: '42883',
+      });
+    });
+    const back = await su.db.execute(
+      sql`select count(*)::int as n from pg_proc where proname = 'audit_log_purge'`,
+    );
+    expect(back[0]?.n).toBe(1);
+  });
+});
+
 describe('RFC-42 R6 job_runs_purge', () => {
   const t = useTestDb();
   const su = useTestDb({ role: 'superuser' });

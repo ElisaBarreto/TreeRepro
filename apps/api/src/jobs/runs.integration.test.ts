@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb, withRollback } from '../../test/helpers/db.ts';
@@ -35,6 +35,17 @@ describe('RFC-74 R1 startRun / finishRun', () => {
       expect(row).toMatchObject({ status: 'completed', detail: { purged: 7 }, error: null });
       expect(row?.finishedAt).toBeInstanceOf(Date);
       expect(row?.finishedAt?.getTime()).toBeGreaterThanOrEqual(row?.startedAt.getTime() ?? 0);
+    });
+  });
+
+  it('finishRun throws when the id closes no row', async () => {
+    await withRollback(t.db, async (tx) => {
+      // RFC-74 R7: the grant is table-wide, so only the code can hold
+      // finishRun to "its own row by id". An UPDATE matching nothing does not
+      // abort the transaction, which is exactly why it must not pass silently.
+      await expect(finishRun(tx, randomUUID(), { status: 'completed' })).rejects.toThrow(
+        /finishRun: no job run/,
+      );
     });
   });
 

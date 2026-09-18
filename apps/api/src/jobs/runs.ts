@@ -21,10 +21,15 @@ export async function startRun(db: DbExecutor, kind: JobKind): Promise<string> {
 /**
  * Closes the run: sets `finished_at`, the final status, the detail and the
  * error. This is the one `UPDATE` the runtime role needs on `job_runs`.
+ *
+ * Throws when `id` closes no row. R7 scopes the update to "its own row by id",
+ * and a table-level `UPDATE` grant cannot tell one row from another, so this
+ * is the only place that can be enforced: a stale id must be a loud failure,
+ * not a silent no-op that leaves a run `running` for ever.
  * @rfc RFC-74 R1, R7
  */
 export async function finishRun(db: DbExecutor, id: string, result: JobRunResult): Promise<void> {
-  await db
+  const [row] = await db
     .update(jobRuns)
     .set({
       status: result.status,
@@ -32,7 +37,9 @@ export async function finishRun(db: DbExecutor, id: string, result: JobRunResult
       detail: result.detail ?? {},
       error: result.error ?? null,
     })
-    .where(eq(jobRuns.id, id));
+    .where(eq(jobRuns.id, id))
+    .returning({ id: jobRuns.id });
+  if (!row) throw new Error(`finishRun: no job run ${id}`);
 }
 
 /**

@@ -51,14 +51,26 @@ export function startRetentionTimer(deps: {
   logger: Logger;
   intervalMs?: number;
 }): { stop(): void } {
-  const run = async (): Promise<void> => {
+  /** Runs one purge; returns null and logs at `error` when it throws. */
+  const attempt = async (job: () => Promise<number>, what: string): Promise<number | null> => {
     try {
-      const purged = await deps.purge();
-      const purgedRuns = await deps.purgeRuns();
-      deps.logger.info({ purged, purgedRuns }, 'audit retention run');
+      return await job();
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      deps.logger.error({ err: sanitizeError(error) }, 'audit retention failed');
+      deps.logger.error({ err: sanitizeError(error), job: what }, 'audit retention failed');
+      return null;
+    }
+  };
+  const run = async (): Promise<void> => {
+    // RFC-42 R6: job_runs is purged right AFTER the audit log and on the SAME
+    // schedule, not only when the audit purge succeeded. The two are attempted
+    // independently: while audit_log_purge() is broken, purgeAudit writes a
+    // failed run every 24 h, so job_runs fills fastest exactly when a shared
+    // try block would stop purging it.
+    const purged = await attempt(() => deps.purge(), 'audit_log');
+    const purgedRuns = await attempt(() => deps.purgeRuns(), 'job_runs');
+    if (purged !== null && purgedRuns !== null) {
+      deps.logger.info({ purged, purgedRuns }, 'audit retention run');
     }
   };
   void run();

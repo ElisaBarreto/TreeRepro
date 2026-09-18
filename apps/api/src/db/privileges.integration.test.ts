@@ -128,7 +128,7 @@ describe('RFC-10 R7 treerepro_backup is read-only and passwords are stored as SC
   });
 });
 
-describe('RFC-42 R2, RFC-69 R3 SECURITY DEFINER functions pin search_path with pg_temp last', () => {
+describe('RFC-42 R2, R6, RFC-69 R3 SECURITY DEFINER functions pin search_path with pg_temp last', () => {
   const t = useTestDb();
 
   // Unless pg_temp is listed, PostgreSQL searches it FIRST for relations, so a

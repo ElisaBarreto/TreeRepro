@@ -52,7 +52,7 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-REVOKE EXECUTE ON FUNCTION job_runs_purge() FROM PUBLIC;
+REVOKE ALL ON FUNCTION job_runs_purge() FROM PUBLIC;
 --> statement-breakpoint
 -- Guarded like the grants above (0023 does the same for audit_log_purge()).
 DO $$
