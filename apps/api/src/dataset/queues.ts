@@ -253,10 +253,22 @@ function notWithdrawn(recordId: SQL): SQL {
     where w.record_id = ${recordId} and w.kind = 'withdraw')`;
 }
 
-/** No accepted-value decision for the species and trait is newer than `at` (RFC-65 R10). */
-function noDecisionAfter(speciesId: SQL, traitId: SQL, at: SQL): SQL {
+/**
+ * No accepted-value decision for the species and trait is newer than `at`.
+ *
+ * Two callers read "decision" differently and both are right where they sit.
+ * The default is RFC-65 R10 verbatim — the disputed queue drops a record once
+ * a curator has decided anything about the cell, and clearing the accepted
+ * value is deciding. `only: 'accepted'` is the narrower reading that spec §4
+ * R1 and RFC-72 R1 both spell out for the contested *count*, "no **accepted**
+ * decision newer than the contest": a `cleared` row settles nothing about a
+ * contest, and must not hide a live one from the tile.
+ */
+function noDecisionAfter(speciesId: SQL, traitId: SQL, at: SQL, only?: 'accepted'): SQL {
+  const decision = only === undefined ? sql`true` : sql`v.decision = 'accepted'`;
   return sql`not exists (select 1 from accepted_values v
-    where v.species_id = ${speciesId} and v.trait_id = ${traitId} and v.created_at > ${at})`;
+    where v.species_id = ${speciesId} and v.trait_id = ${traitId} and v.created_at > ${at}
+      and ${decision})`;
 }
 
 /**
@@ -323,7 +335,16 @@ export async function countDisputed(db: DbExecutor, visibility: Visibility): Pro
  * Do not "reconcile" the two by narrowing this predicate: the rule is the
  * specification, and the tile would then report something it does not name.
  * The two predicates shared with `disputedQuery` keep them in step on
- * everything the rule does hold in common.
+ * everything the rule does hold in common — bar the decision, which both
+ * rules word as an **accepted** one here and `disputedQuery` words as any
+ * decision (see `noDecisionAfter`).
+ *
+ * The leading `responds_to_record_id is not null` is redundant against the
+ * check constraint `trait_records_intent_check` and deliberate, exactly as
+ * `PENDING`'s redundant `<> 'harmonised'` is: `trait_records_responds_to_idx`
+ * is partial on that predicate, so without stating it the planner cannot use
+ * the index and every reviewer's page load scans `trait_records` — there is
+ * no index on `intent`, and this runs uncached on every dashboard call.
  * @rfc RFC-65 R10
  * @rfc RFC-72 R1
  * @rfc RFC-33 R2, R3
@@ -335,9 +356,10 @@ export async function countContested(db: DbExecutor, visibility: Visibility): Pr
     join trait_records b on b.id = c.responds_to_record_id
     join species sp on sp.id = c.species_id
     join traits tr on tr.id = c.trait_id
-    where c.intent = 'contest'
+    where c.responds_to_record_id is not null
+      and c.intent = 'contest'
       and ${notWithdrawn(sql`b.id`)}
-      and ${noDecisionAfter(sql`c.species_id`, sql`c.trait_id`, sql`c.created_at`)}
+      and ${noDecisionAfter(sql`c.species_id`, sql`c.trait_id`, sql`c.created_at`, 'accepted')}
       and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
       and ${traitVisible(visibility, sql`tr.active`)}`)) as unknown as [
     { count: number } | undefined,
