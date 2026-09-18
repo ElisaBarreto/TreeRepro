@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ContributionSummary } from '@treerepro/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONTRIBUTION_SUMMARY, ZERO_CONTRIBUTION_SUMMARY } from '../../test/dataset-fixtures.ts';
 import { withRouter } from '../../test/router.tsx';
@@ -9,6 +10,30 @@ const STORAGE_KEY = 'treerepro.gettingStarted.hidden';
 
 function hrefUrl(href: string | null) {
   return new URL(href ?? '', 'https://example.org');
+}
+
+/**
+ * Mounts the card next to a sentinel under the very route component
+ * `withRouter` renders, then awaits the sentinel. `withRouter`'s own doc
+ * comment warns its route mounts on its own tick: a synchronous
+ * `queryByRole` taken right after `render(withRouter(...))` runs before that
+ * tick, so it answers "not found" whether or not the card would ever have
+ * rendered — a "never renders" assertion built that way is vacuous. Since
+ * the sentinel sits next to the card inside the very same component
+ * `withRouter` renders, its appearance proves that commit — the one
+ * containing the card's own render decision — has already happened, so the
+ * query that follows is checked against the real result.
+ */
+async function renderSettled(summary: ContributionSummary) {
+  render(
+    withRouter(
+      <>
+        <GettingStartedCard summary={summary} />
+        <span data-testid="settled" />
+      </>,
+    ),
+  );
+  await screen.findByTestId('settled');
 }
 
 afterEach(() => {
@@ -58,21 +83,30 @@ describe('RFC-73 R3 GettingStartedCard', () => {
     expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
   });
 
-  it('never renders when the summary has any non-zero count', () => {
-    render(withRouter(<GettingStartedCard summary={CONTRIBUTION_SUMMARY} />));
+  it('never renders when the summary has any non-zero count', async () => {
+    await renderSettled(CONTRIBUTION_SUMMARY);
     expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
   });
 
-  it('never renders when a single field of the summary is non-zero', () => {
-    render(
-      withRouter(<GettingStartedCard summary={{ ...ZERO_CONTRIBUTION_SUMMARY, withdrawn: 1 }} />),
-    );
-    expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
-  });
+  // One case per field of ZERO_CONTRIBUTION_SUMMARY rather than a single
+  // hand-picked field: RFC-73 R3 is "any" non-zero count, and hasNoContribution
+  // &&-chains all seven checks, so a test that only ever set one particular
+  // field non-zero would keep passing even if the &&-chain silently dropped
+  // a check for a different field. Deriving the field list from the fixture
+  // itself (instead of a hand-typed array of the seven names) means an
+  // eighth field added to ContributionSummary later is covered here too,
+  // without anyone remembering to update this test.
+  it.each(Object.keys(ZERO_CONTRIBUTION_SUMMARY) as (keyof typeof ZERO_CONTRIBUTION_SUMMARY)[])(
+    'never renders when only %s is non-zero',
+    async (field) => {
+      await renderSettled({ ...ZERO_CONTRIBUTION_SUMMARY, [field]: 1 });
+      expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
+    },
+  );
 
-  it('never renders when the hidden flag is already set, even with an all-zero summary', () => {
+  it('never renders when the hidden flag is already set, even with an all-zero summary', async () => {
     window.localStorage.setItem(STORAGE_KEY, 'true');
-    render(withRouter(<GettingStartedCard summary={ZERO_CONTRIBUTION_SUMMARY} />));
+    await renderSettled(ZERO_CONTRIBUTION_SUMMARY);
     expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
   });
 });
