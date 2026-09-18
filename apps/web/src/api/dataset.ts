@@ -153,8 +153,19 @@ export function fetchTraitSpecies(
 ) {
   return apiFetch<Page<TraitSpeciesItem>>(withQuery(`/traits/${id}/species`, params));
 }
-/** @rfc RFC-61 R4 */
-export function searchReferences(params: { q?: string; cursor?: string; limit?: number }) {
+/**
+ * `categoryKey` and `traitId` are the references list's own filters (RFC-61
+ * R4 amendment): a link from a trait or a category page narrows the
+ * bibliography to what cites it.
+ * @rfc RFC-61 R4
+ */
+export function searchReferences(params: {
+  q?: string;
+  categoryKey?: string;
+  traitId?: string;
+  cursor?: string;
+  limit?: number;
+}) {
   return apiFetch<Page<Reference>>(withQuery('/references', params));
 }
 /** @rfc RFC-61 R4 */

@@ -560,7 +560,7 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   accepted: {
     recordId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d30',
     valueText: 'dioecious',
-    reference: { ...PRIMARY_REFERENCE, shortCitation: null },
+    reference: PRIMARY_REFERENCE,
   },
   summary: {
     levels: [
@@ -649,6 +649,24 @@ export const PERSONAL_OBSERVATION_DETAIL: ReferenceDetail = {
 
 /** REFERENCE with the count `GET /api/references/:id` adds: two records, one per role. @rfc RFC-61 R4 */
 export const REFERENCE_DETAIL: ReferenceDetail = { ...REFERENCE, recordCount: 2, traits: [] };
+
+/**
+ * REFERENCE with a written short and full citation and its usage by trait —
+ * a purpose-built fixture for plan 10d's own branches (the short-citation
+ * label, the full-citation paragraph, the Traits section), so the four
+ * shared reference constants above stay untouched.
+ * @rfc RFC-61 R4, R6, R9
+ */
+export const CITED_REFERENCE_DETAIL: ReferenceDetail = {
+  ...REFERENCE_DETAIL,
+  shortCitation: 'Smith & Doe (2001)',
+  fullCitation:
+    'Smith, J.; Doe, A. (2001). Breeding systems of tropical trees. Journal of Tropical Ecology. https://doi.org/10.1000/jte.2001.1',
+  traits: [
+    { trait: SEXUAL_SYSTEM, recordCount: 5 },
+    { trait: SEED_MASS, recordCount: 1 },
+  ],
+};
 
 /** A completed batch with one unknown level. @rfc RFC-64 R11 */
 export const IMPORT_BATCH: ImportBatch = {

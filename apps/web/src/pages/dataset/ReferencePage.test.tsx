@@ -4,6 +4,7 @@ import type { MeResponse, RecordItem, ReferenceDetail } from '@treerepro/contrac
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
+  CITED_REFERENCE_DETAIL,
   PENDING_RECORD,
   PERSONAL_OBSERVATION_DETAIL,
   RECORD,
@@ -113,7 +114,8 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
     expect(definition('Journal')).toHaveTextContent('Journal of Tropical Ecology');
     const doi = within(definition('DOI')).getByRole('link', { name: '10.1000/jte.2001.1' });
     expect(doi).toHaveAttribute('href', 'https://doi.org/10.1000/jte.2001.1');
-    expect(doi).toHaveAttribute('rel', 'noreferrer');
+    expect(doi).toHaveAttribute('target', '_blank');
+    expect(doi).toHaveAttribute('rel', 'noopener noreferrer');
     const url = within(definition('URL')).getByRole('link', {
       name: 'https://example.org/smith2001',
     });
@@ -169,6 +171,53 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
     const urlField = definition('URL');
     expect(urlField).toHaveTextContent('example.org/smith2001');
     expect(within(urlField).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('shows no full citation paragraph when none was written or derived', async () => {
+    await openPage();
+    // A pattern only the full citation's own sentence would produce — the
+    // journal and the DOI concatenated — never the separate Journal and DOI
+    // metadata rows this reference (fullCitation: null) still renders.
+    expect(
+      screen.queryByText(/Journal of Tropical Ecology\. https:\/\/doi\.org/),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-61 R4, R6, R8 ReferencePage full citation and short citation heading', () => {
+  it('titles the page with the short citation and shows the full citation as its own paragraph', async () => {
+    dataset.fetchReference.mockResolvedValue(CITED_REFERENCE_DETAIL);
+    dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
+    renderAt(`/app/references/${CITED_REFERENCE_DETAIL.id}`);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Smith & Doe (2001)' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(CITED_REFERENCE_DETAIL.citationKey)).not.toBeInTheDocument();
+    expect(screen.getByText(CITED_REFERENCE_DETAIL.fullCitation as string)).toBeInTheDocument();
+  });
+});
+
+describe('RFC-61 R4, R9 ReferencePage traits', () => {
+  it('chips the traits this article has been used for, each with its count and a link to the trait page', async () => {
+    dataset.fetchReference.mockResolvedValue(CITED_REFERENCE_DETAIL);
+    dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
+    renderAt(`/app/references/${CITED_REFERENCE_DETAIL.id}`);
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Traits' });
+    const section = heading.closest('section');
+    if (!(section instanceof HTMLElement)) throw new Error('no Traits section');
+    const sexual = within(section).getByRole('link', { name: /sexual system/ });
+    expect(sexual).toHaveAttribute(
+      'href',
+      `/app/traits/${CITED_REFERENCE_DETAIL.traits[0]?.trait.id}`,
+    );
+    expect(sexual).toHaveTextContent('5 records');
+    const seed = within(section).getByRole('link', { name: /seed mass/ });
+    expect(seed).toHaveTextContent('1 record');
+  });
+
+  it('shows no Traits section when the reference names no visible trait', async () => {
+    await openPage();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Traits' })).not.toBeInTheDocument();
   });
 });
 
