@@ -542,9 +542,10 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
     expect(asAnnotations(dayAfter.data).map((r) => r.id)).not.toContain(annotation.id);
   });
 
-  // R3's "the filters apply to the annotated record", for the two filters R1
-  // calls records-only: the contract accepts them with either kind, and a
-  // filter that silently did nothing would be the worse trap.
+  // R3's "the filters apply to the annotated record" covers `review` and
+  // `intent` for annotations too, same as for records: the contract accepts
+  // them with either kind, and a filter that silently did nothing would be
+  // the worse trap.
   it('filters by review and by intent through the annotated record, none included', async () => {
     const { user: a } = await createUser(t.db);
     const { user: b } = await createUser(t.db);

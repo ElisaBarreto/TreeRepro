@@ -141,16 +141,24 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
 
       // R4: the summary tiles count the record, its contest intent, the
       // validation and the generated dispute — this fresh contributor has
-      // done nothing else, so every other count stays zero.
+      // done nothing else, so every other count stays zero. Label and value
+      // are pinned separately (as StatTiles.test.tsx does with
+      // toHaveTextContent), not as one exact string of the two stacked
+      // elements a tile renders.
       const tiles = page.getByRole('list', { name: 'Summary' });
       const tile = (label: string) => tiles.getByRole('listitem').filter({ hasText: label });
-      await expect(tile('Records')).toHaveText('Records1');
-      await expect(tile('Contests')).toHaveText('Contests1');
-      await expect(tile('Complements')).toHaveText('Complements0');
-      await expect(tile('Validations')).toHaveText('Validations1');
-      await expect(tile('Disputes')).toHaveText('Disputes1');
-      await expect(tile('Withdrawn')).toHaveText('Withdrawn0');
-      await expect(tile('Accepted')).toHaveText('Accepted0');
+      const tileShows = async (label: string, value: string) => {
+        const item = tile(label);
+        await expect(item).toContainText(label);
+        await expect(item).toContainText(value);
+      };
+      await tileShows('Records', '1');
+      await tileShows('Contests', '1');
+      await tileShows('Complements', '0');
+      await tileShows('Validations', '1');
+      await tileShows('Disputes', '1');
+      await tileShows('Withdrawn', '0');
+      await tileShows('Accepted', '0');
 
       // R2: the Records tab (open by default) lists the contest as the
       // contributor's own manual record, badged with its intent; it is not
