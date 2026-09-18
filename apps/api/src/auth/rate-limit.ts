@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { z } from 'zod';
 import type { Redis } from '../redis/client.ts';
 
 export interface RateLimitRule {
@@ -19,6 +20,18 @@ export interface RateLimiter {
 const MINUTE = 60_000;
 const QUARTER_HOUR = 15 * MINUTE;
 
+// `tokenIp` is shared by `invite/accept` and `password/reset` (RFC-24 R3)
+// and, unlike the other buckets, gets hit repeatedly by test suites that
+// each provision their own users (the same tightrope `loginEmailIp` walks
+// in apps/e2e/tests/global-setup.ts). Its limit reads from an env var so
+// the E2E compose stack can widen it without changing the shipped default.
+const TOKEN_IP_LIMIT = z.coerce
+  .number()
+  .int()
+  .positive()
+  .default(10)
+  .parse(process.env.RATE_LIMIT_TOKEN_IP);
+
 /** @rfc RFC-24 R3 */
 export const RATE_LIMITS = {
   globalSession: { limit: 300, windowMs: MINUTE },
@@ -28,7 +41,7 @@ export const RATE_LIMITS = {
   loginTotp: { limit: 5, windowMs: QUARTER_HOUR },
   forgotEmailIp: { limit: 3, windowMs: QUARTER_HOUR },
   forgotIp: { limit: 10, windowMs: QUARTER_HOUR },
-  tokenIp: { limit: 10, windowMs: QUARTER_HOUR },
+  tokenIp: { limit: TOKEN_IP_LIMIT, windowMs: QUARTER_HOUR },
 } as const satisfies Record<string, RateLimitRule>;
 
 // KEYS[1] = sorted set; ARGV = now(ms), window(ms), limit, member.

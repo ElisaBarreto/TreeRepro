@@ -133,6 +133,21 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
   });
 
+  it('RFC-71 shows My contributions under Data with dataset.read', () => {
+    const { unmount } = renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    expect(screen.queryByRole('link', { name: 'My contributions' })).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read'] },
+    });
+    const data = screen.getByRole('navigation', { name: 'Data' });
+    expect(within(data).getByRole('link', { name: 'My contributions' })).toHaveAttribute(
+      'href',
+      '/app/contributions',
+    );
+  });
+
   it('shows Taxa under Data with taxa.manage, not with dataset.read alone', () => {
     const reader = renderWithProviders(<AppShell>child</AppShell>, {
       me: { ...ME, permissions: ['dataset.read'] },

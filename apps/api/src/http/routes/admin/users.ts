@@ -1,5 +1,6 @@
 import {
   createUserBodySchema,
+  listContributionsQuerySchema,
   listUsersQuerySchema,
   setUserPlotsBodySchema,
   updateUserBodySchema,
@@ -7,6 +8,7 @@ import {
 } from '@treerepro/contracts';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
+import { visibilityOf } from '../../../access/visibility.ts';
 import {
   listUserSessions,
   revokeAllUserSessions,
@@ -25,6 +27,7 @@ import {
 import type { AuthContext } from '../../../auth/context.ts';
 import { InvitationMailError, inviteUser } from '../../../auth/flows/invitation.ts';
 import { UserEmailTakenError } from '../../../auth/users.ts';
+import { contributionSummary, listContributions } from '../../../dataset/contributions.ts';
 import { clientIp, userAgent } from '../../client-ip.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
@@ -58,7 +61,21 @@ async function inviting<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** @rfc RFC-50 R2-R9 */
+/**
+ * Answers 404 for a user id nobody holds, so the per-user reads never look
+ * like an empty contribution list.
+ * @rfc RFC-50 R4
+ */
+async function requireUserId(ctx: AuthContext, id: string): Promise<string> {
+  const user = await getUser(ctx.db, id);
+  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found');
+  return user.id;
+}
+
+/**
+ * @rfc RFC-50 R2-R9
+ * @rfc RFC-71 R5
+ */
 export function adminUserRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
     .get(
@@ -150,6 +167,32 @@ export function adminUserRoutes(ctx: AuthContext) {
             resendInvite(ctx, { ...actor(c), id: c.req.valid('param').id }),
           ),
         }),
+    )
+    .get(
+      '/:id/contributions',
+      requirePermission(ctx, 'contributions.read'),
+      validate('param', userIdParamSchema),
+      validate('query', listContributionsQuerySchema),
+      async (c) => {
+        const userId = await requireUserId(ctx, c.req.valid('param').id);
+        // RFC-71 R5: the viewer's own visibility, never the target user's.
+        const { data, nextCursor } = await listContributions(
+          ctx.db,
+          await visibilityOf(ctx, c),
+          userId,
+          c.req.valid('query'),
+        );
+        return c.json({ data, meta: { nextCursor } });
+      },
+    )
+    .get(
+      '/:id/contributions/summary',
+      requirePermission(ctx, 'contributions.read'),
+      validate('param', userIdParamSchema),
+      async (c) => {
+        const userId = await requireUserId(ctx, c.req.valid('param').id);
+        return c.json({ data: await contributionSummary(ctx.db, userId) });
+      },
     )
     .get(
       '/:id/sessions',
