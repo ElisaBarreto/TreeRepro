@@ -9,6 +9,7 @@ import {
   createReference,
   createSpecies,
   createTrait,
+  createVisibilityFixture,
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
@@ -16,6 +17,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
+import { speciesTraitSummary } from './summary.ts';
 import { getSpecies, likePattern, listFamilies, listGenera, searchSpecies } from './taxa.ts';
 
 const tag = () => randomBytes(4).toString('hex');
@@ -260,6 +262,38 @@ describe('RFC-33 R2, R3 species visibility', () => {
         (g) => g.id,
       ),
     ).toContain(genus.id);
+  });
+
+  // RFC-33 R9's two-viewer sweep for `getSpecies`, over the fixture's second
+  // case: an active species with a record on an inactive trait.
+  //
+  // The detail's counts are deliberately NOT filtered by trait visibility, and
+  // this test exists to say so where the next reviewer will read it. RFC-60 R7
+  // returns "the item (R6)", whose `traitCount` RFC-60 R6 and RFC-69 R1 define
+  // as visibility-blind by design — it counts every coverage row, including
+  // rows on traits a curator has deactivated. Filtering it here would make the
+  // same species report one number on its own page and another in the list row
+  // beside it, per viewer, which no rule sanctions. RFC-33 R3 omits invisible
+  // *rows* from lists and exempts counters outright ("Reference counters are
+  // stored and unaffected"); it does not oblige an aggregate.
+  //
+  // What a restricted viewer may therefore infer — how many traits with data
+  // they cannot see, never which or what — is a stated, bounded, accepted
+  // exposure, the same one `recordCount` beside it already carries.
+  it('RFC-33 R9 the detail counts are viewer-independent (RFC-69 R1: visibility-blind by design)', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    // `shownSpecies` is active and carries two records: one on an active trait,
+    // one on an inactive trait.
+    const restricted = await getSpecies(t.db, RESTRICTED, f.shownSpecies.id);
+    const unrestricted = await getSpecies(t.db, UNRESTRICTED, f.shownSpecies.id);
+    expect(restricted).toMatchObject({ recordCount: 2, traitCount: 2 });
+    expect(unrestricted).toMatchObject({ recordCount: 2, traitCount: 2 });
+
+    // ...while the trait list on the same page is filtered (RFC-33 R3), so the
+    // divergence this pins is real and intended, not an oversight.
+    const summary = await speciesTraitSummary(t.db, RESTRICTED, f.shownSpecies.id);
+    expect(summary?.flatMap((c) => c.traits).map((x) => x.trait.id)).toEqual([f.activeTrait.id]);
   });
 });
 
