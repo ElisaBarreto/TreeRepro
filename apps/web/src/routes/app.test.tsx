@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client.ts';
+import { DASHBOARD } from '../test/dataset-fixtures.ts';
 import { ME } from '../test/fixtures.ts';
 import { renderAt } from '../test/router.tsx';
 
@@ -21,14 +22,23 @@ const me = vi.hoisted(() => ({
   listSessions: vi.fn(),
   revokeSession: vi.fn(),
 }));
+// The `/app` index route renders WorkspacePage (RFC-72), which reads the
+// dashboard query; mocked here purely so it resolves quietly and never
+// contributes a stray error alert to these session-guard assertions.
+const dashboard = vi.hoisted(() => ({ fetchDashboard: vi.fn() }));
 vi.mock('../api/auth.ts', () => auth);
 vi.mock('../api/me.ts', () => me);
+vi.mock('../api/dashboard.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/dashboard.ts')>()),
+  ...dashboard,
+}));
 vi.mock('qrcode', () => ({ toCanvas: vi.fn().mockResolvedValue(undefined) }));
 
 beforeEach(() => {
   auth.fetchMe.mockReset();
   auth.logout.mockReset();
   me.listSessions.mockReset();
+  dashboard.fetchDashboard.mockReset().mockResolvedValue(DASHBOARD);
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
 

@@ -85,4 +85,24 @@ describe('RFC-65 R10 DisputedPage', () => {
     const { router } = renderAt('/app/curation/disputed');
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
+
+  it('?intent=contest (plan 11b) retitles the page and narrows the fetch', async () => {
+    renderAt('/app/curation/disputed?intent=contest');
+    expect(await screen.findByRole('heading', { name: 'Contested records' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(curation.fetchDisputed).toHaveBeenCalledWith(
+        expect.objectContaining({ intent: 'contest' }),
+      ),
+    );
+  });
+
+  it('without ?intent, the page keeps its plain title and asks for no intent filter', async () => {
+    renderAt('/app/curation/disputed');
+    expect(await screen.findByRole('heading', { name: 'Disputed records' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(curation.fetchDisputed).toHaveBeenCalledWith(
+        expect.objectContaining({ intent: undefined }),
+      ),
+    );
+  });
 });

@@ -11,18 +11,22 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  * The disputed queue (RFC-65 R10): records whose review is `disputed` and
  * whose species × trait has no later accepted decision, newest dispute
  * first. A row opens the record drawer, whose actions resolve the dispute.
+ * `?intent=contest` (plan 11b) narrows the queue to disputes a contest
+ * generated and retitles the page "Contested records", so the link the
+ * workspace dashboard's Contested tile carries lands on a page that says
+ * what it is showing.
  * @rfc RFC-13 R2
  * @rfc RFC-65 R10
  */
-export function DisputedPage() {
-  const list = usePagedList(curationKeys.disputed, (cursor, limit) =>
-    fetchDisputed({ cursor, limit }),
+export function DisputedPage({ search }: { search: { intent?: 'contest' } }) {
+  const list = usePagedList(curationKeys.disputed(search), (cursor, limit) =>
+    fetchDisputed({ cursor, limit, intent: search.intent }),
   );
   const [open, setOpen] = useState<string | null>(null);
   return (
     <>
       <PageHeader
-        title="Disputed records"
+        title={search.intent === 'contest' ? 'Contested records' : 'Disputed records'}
         description="Records a scientist disputes and no curator has decided on since. Set or clear the accepted value, or wait for the disputer to step back."
       />
       <div className="flex flex-col gap-4">
