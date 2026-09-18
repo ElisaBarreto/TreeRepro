@@ -127,7 +127,10 @@ function FullCitation({ reference }: { reference: ReferenceDetail }) {
  * article for it, linking to the trait page. Renders nothing when the
  * reference names no visible trait — a personal observation's own field
  * notes, or a reference no harmonised record has used yet — rather than an
- * empty heading.
+ * empty heading. The chips are the one visibility-filtered thing on the
+ * page: the per-role counts in the header count every viewer's records
+ * alike (RFC-33 R3), so for a viewer who cannot see every trait the chips
+ * need not add up to them.
  * @rfc RFC-61 R4, R9
  */
 function Traits({ reference }: { reference: ReferenceDetail }) {

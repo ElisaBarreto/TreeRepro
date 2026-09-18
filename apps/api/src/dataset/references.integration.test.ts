@@ -362,7 +362,7 @@ describe('RFC-61 R4 references', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
-  it('detail traits are ordered by recordCount descending and exclude invisible traits', async () => {
+  it('detail traits are ordered by recordCount descending and exclude invisible traits; recordCount is visibility-blind', async () => {
     const { user } = await createUser(t.db);
     const ref = await createReference(t.db);
     const sp1 = await createSpecies(t.db);
@@ -428,6 +428,23 @@ describe('RFC-61 R4 references', () => {
         recordCount: 1,
       },
     ]);
+    // The counters are the same for every viewer (RFC-33 R3): `recordCount`
+    // still counts the record on the invisible trait, so the visible chips
+    // (2 + 1) need not add up to it for this viewer.
+    expect(detail).toMatchObject({ recordCount: 4, primaryCount: 4, secondaryCount: 0 });
+
+    // The unrestricted viewer gets the third chip; the two singletons tie on
+    // count and fall back to key order, which the random keys leave open.
+    const unrestricted = await getReference(t.db, ref.id, UNRESTRICTED);
+    expect(unrestricted?.traits[0]).toMatchObject({ trait: { id: traitHigh.id }, recordCount: 2 });
+    expect(unrestricted?.traits.slice(1).map((t) => [t.trait.id, t.recordCount])).toEqual(
+      expect.arrayContaining([
+        [traitLow.id, 1],
+        [traitInvisible.id, 1],
+      ]),
+    );
+    expect(unrestricted?.traits).toHaveLength(3);
+    expect(unrestricted).toMatchObject({ recordCount: 4, primaryCount: 4, secondaryCount: 0 });
   });
 });
 
