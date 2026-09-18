@@ -194,12 +194,22 @@ describe('RFC-61 R4 references', () => {
   it('searchReferences omits personal observations by default; kind=all includes them with observer', async () => {
     const { user } = await createUser(t.db);
     const po = await ensurePersonalObservation(t.db, user.id);
-    const pub = await createReference(t.db, { citationKey: `Pub_${tag()}` });
-    const def = await searchReferences(t.db, { limit: 100 });
-    expect(def.data.some((r) => r.id === po.id)).toBe(false);
-    expect(def.data.some((r) => r.id === pub.id)).toBe(true);
+    const pubTag = tag();
+    const pub = await createReference(t.db, { citationKey: `Pub_${pubTag}` });
 
-    const all = await searchReferences(t.db, { limit: 100, kind: 'all' });
+    // A publication is returned by a default-kind search, scoped to its own
+    // unique citation key rather than to an arbitrary page of the table.
+    const defPub = await searchReferences(t.db, { q: pubTag, limit: 10 });
+    expect(defPub.data.some((r) => r.id === pub.id)).toBe(true);
+
+    // ensurePersonalObservation gives the row citation key
+    // `personal-observation:${userId}` (references.ts), so a search scoped to
+    // this user's id would genuinely find `po` if the `kind` filter were not
+    // applied — it must not be found by a default-kind search.
+    const defPo = await searchReferences(t.db, { q: user.id, limit: 10 });
+    expect(defPo.data.some((r) => r.id === po.id)).toBe(false);
+
+    const all = await searchReferences(t.db, { q: user.id, limit: 10, kind: 'all' });
     const foundPo = all.data.find((r) => r.id === po.id);
     expect(foundPo).toBeDefined();
     expect(foundPo?.kind).toBe('personal_observation');
