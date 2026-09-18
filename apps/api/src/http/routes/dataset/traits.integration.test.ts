@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
 import {
+  createGenus,
   createRecord,
   createReference,
   createSpecies,
@@ -246,5 +247,110 @@ describe('RFC-62 R5 GET /api/traits filters and speciesCount', () => {
     const badQuery = await call(t.app, 'GET', '/api/traits?valueType=nope', { cookie });
     expect(badQuery.status).toBe(400);
     expect((await badQuery.json()).error.code).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('RFC-62 R7, R8 GET /api/traits/:id and /api/traits/:id/species', () => {
+  const t = useTestApp();
+
+  async function reader() {
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, cookie: (await loginAs(t, user)).cookie };
+  }
+
+  it('R7 answers the trait detail, and 404 for an unknown or invisible trait', async () => {
+    const { user, cookie } = await reader();
+    const reference = await createReference(t.db);
+    const own = await createTrait(t.db, { categoryKey: 'flower_color', levels: ['alpha'] });
+    const subject = await createSpecies(t.db);
+    await createRecord(t.db, {
+      speciesId: subject.id,
+      traitId: own.id,
+      valueText: 'alpha',
+      levelId: own.levels[0]?.id,
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    try {
+      const res = await call(t.app, 'GET', `/api/traits/${own.id}`, { cookie });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data).toMatchObject({
+        id: own.id,
+        category: { key: 'flower_color' },
+        speciesWithData: 1,
+        acceptedCount: 0,
+        distribution: {
+          levels: [
+            { level: { id: own.levels[0]?.id, key: 'alpha' }, speciesCount: 1, recordCount: 1 },
+          ],
+        },
+      });
+
+      const unknown = await call(t.app, 'GET', `/api/traits/${zero}`, { cookie });
+      expect(unknown.status).toBe(404);
+      expect((await unknown.json()).error.code).toBe('TRAIT_NOT_FOUND');
+
+      // `reader` has `dataset.read` but not `dataset.read_inactive`.
+      const retired = await createTrait(t.db, { active: false });
+      const invisible = await call(t.app, 'GET', `/api/traits/${retired.id}`, { cookie });
+      expect(invisible.status).toBe(404);
+    } finally {
+      await t.redis.del(`trait:${own.id}:distribution:u`, `trait:${own.id}:distribution:r`);
+    }
+  });
+
+  it('R8 lists the species of a trait, defaulting to mode=with, and 404 for an unknown trait', async () => {
+    const { user, cookie } = await reader();
+    const reference = await createReference(t.db);
+    const own = await createTrait(t.db, { levels: ['alpha'] });
+    const genus = await createGenus(t.db);
+    const withData = await createSpecies(t.db, { genusId: genus.id });
+    const without = await createSpecies(t.db, { genusId: genus.id });
+    await createRecord(t.db, {
+      speciesId: withData.id,
+      traitId: own.id,
+      valueText: 'alpha',
+      levelId: own.levels[0]?.id,
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const implied = await call(t.app, 'GET', `/api/traits/${own.id}/species`, { cookie });
+    expect(implied.status).toBe(200);
+    const body = await implied.json();
+    expect(body.meta).toEqual({ nextCursor: null });
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: withData.id,
+        recordCount: 1,
+        summary: { levels: [{ key: 'alpha', count: 1 }] },
+      }),
+    ]);
+
+    const explicit = await call(t.app, 'GET', `/api/traits/${own.id}/species?mode=with`, {
+      cookie,
+    });
+    expect((await explicit.json()).data).toEqual(body.data);
+
+    const missing = await call(
+      t.app,
+      'GET',
+      `/api/traits/${own.id}/species?mode=missing&genusId=${genus.id}`,
+      { cookie },
+    );
+    expect((await missing.json()).data).toEqual([
+      expect.objectContaining({ id: without.id, recordCount: null, accepted: null, summary: null }),
+    ]);
+
+    const unknown = await call(t.app, 'GET', `/api/traits/${zero}/species`, { cookie });
+    expect(unknown.status).toBe(404);
+    expect((await unknown.json()).error.code).toBe('TRAIT_NOT_FOUND');
+
+    const badMode = await call(t.app, 'GET', `/api/traits/${own.id}/species?mode=nope`, { cookie });
+    expect(badMode.status).toBe(400);
   });
 });

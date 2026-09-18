@@ -1,8 +1,8 @@
 import type { Dictionary, ListTraitsQuery, Trait, TraitValueType } from '@treerepro/contracts';
-import { and, asc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import {
+  globalSpeciesVisible,
   levelVisible,
-  speciesVisible,
   traitVisible,
   type Visibility,
 } from '../access/visibility.ts';
@@ -122,20 +122,6 @@ export async function dictionaryCategories(
     label: c.label,
     traits: traitsByCategory.get(c.key) ?? [],
   }));
-}
-
-/**
- * `speciesCount` (both `getDictionary`'s cached map and `getTrait`'s direct
- * read) is a global summary, never scoped to a plot-bound viewer's plots: it
- * varies only along the active/inactive dimension. This mirrors RFC-62 R7's
- * distribution cache ("plot-bound viewers get the restricted class: the
- * summary is global, not per plot") and RFC-60 R6's `species.trait_count`.
- * Scoping the count to `plotIds` too would give every plot-bound viewer a
- * private cache entry and a full coverage-table scan each — exactly what the
- * cache exists to avoid.
- */
-function globalSpeciesVisible(visibility: Visibility, activeCol: SQL, idCol: SQL): SQL {
-  return speciesVisible({ inactive: visibility.inactive, plotIds: null }, activeCol, idCol);
 }
 
 /**
