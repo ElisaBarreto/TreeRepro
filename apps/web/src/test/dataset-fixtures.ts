@@ -815,6 +815,7 @@ export const DISPUTED_RECORD: DisputedRecord = {
     note: 'Value is not a number.',
     createdAt: '2026-09-03T12:00:00.000Z',
   },
+  contestedBy: [],
 };
 
 /**

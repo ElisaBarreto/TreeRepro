@@ -278,6 +278,10 @@ export async function listDisputed(
           note: r.note,
           createdAt: new Date(r.created_at).toISOString(),
         },
+        // Placeholder: Task 3 replaces this with the real query — the
+        // non-withdrawn intent = 'contest' records responding to this
+        // record, newest first (RFC-65 R10).
+        contestedBy: [],
       },
     ];
   });
