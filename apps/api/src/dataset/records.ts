@@ -47,8 +47,10 @@ const itemColumns = {
   levelKey: traitLevels.key,
   primaryKey: primaryRef.citationKey,
   primaryKind: primaryRef.kind,
+  primaryShortCitation: primaryRef.shortCitation,
   secondaryKey: secondaryRef.citationKey,
   secondaryKind: secondaryRef.kind,
+  secondaryShortCitation: secondaryRef.shortCitation,
   authorName: author.name,
 };
 
@@ -61,8 +63,10 @@ export type ItemRow = {
   levelKey: string | null;
   primaryKey: string | null;
   primaryKind: (typeof bibliographicReferences.$inferSelect)['kind'] | null;
+  primaryShortCitation: string | null;
   secondaryKey: string | null;
   secondaryKind: (typeof bibliographicReferences.$inferSelect)['kind'] | null;
+  secondaryShortCitation: string | null;
   authorName: string | null;
   review: ReviewStatus;
 };
@@ -80,15 +84,13 @@ export function toItem(r: ItemRow): RecordItem {
     numericValue: rec.numericValue,
     harmonisation: rec.harmonisation,
     review: r.review,
-    // `shortCitation` is null here until plan 10d's column lands; the item
-    // query does not select it.
     primaryReference:
       rec.primaryReferenceId && r.primaryKey && r.primaryKind
         ? {
             id: rec.primaryReferenceId,
             citationKey: r.primaryKey,
             kind: r.primaryKind,
-            shortCitation: null,
+            shortCitation: r.primaryShortCitation,
           }
         : null,
     secondaryReference:
@@ -97,7 +99,7 @@ export function toItem(r: ItemRow): RecordItem {
             id: rec.secondaryReferenceId,
             citationKey: r.secondaryKey,
             kind: r.secondaryKind,
-            shortCitation: null,
+            shortCitation: r.secondaryShortCitation,
           }
         : null,
     origin: rec.origin,
@@ -200,6 +202,7 @@ export async function getRecord(
         refId: bibliographicReferences.id,
         refCitationKey: bibliographicReferences.citationKey,
         refKind: bibliographicReferences.kind,
+        refShortCitation: bibliographicReferences.shortCitation,
         actorId: users.id,
         actorName: users.name,
         createdAt: recordAnnotations.createdAt,
@@ -266,7 +269,12 @@ export async function getRecord(
       actor: { id: a.actorId, name: a.actorName },
       reference:
         a.refId && a.refCitationKey && a.refKind
-          ? { id: a.refId, citationKey: a.refCitationKey, kind: a.refKind, shortCitation: null }
+          ? {
+              id: a.refId,
+              citationKey: a.refCitationKey,
+              kind: a.refKind,
+              shortCitation: a.refShortCitation,
+            }
           : null,
       generated: a.generated,
       createdAt: a.createdAt.toISOString(),

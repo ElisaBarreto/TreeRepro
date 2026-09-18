@@ -69,7 +69,12 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       numericValue: null,
       harmonisation: 'harmonised',
       review: 'unreviewed',
-      primaryReference: { id: ref.id, citationKey: ref.citationKey, kind: 'publication' },
+      primaryReference: {
+        id: ref.id,
+        citationKey: ref.citationKey,
+        kind: 'publication',
+        shortCitation: null,
+      },
       secondaryReference: null,
       origin: 'import',
       createdAt: expect.any(String),
@@ -81,6 +86,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       id: ref.id,
       citationKey: ref.citationKey,
       kind: 'publication',
+      shortCitation: null,
     });
 
     const byRef = await listRecords(t.db, UNRESTRICTED, { referenceId: ref.id, limit: 2 });

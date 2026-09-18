@@ -155,6 +155,7 @@ async function listAnnotationContributions(
       referenceId: bibliographicReferences.id,
       citationKey: bibliographicReferences.citationKey,
       referenceKind: bibliographicReferences.kind,
+      shortCitation: bibliographicReferences.shortCitation,
     })
     .from(recordAnnotations)
     .innerJoin(traitRecords, eq(traitRecords.id, recordAnnotations.recordId))
@@ -191,7 +192,7 @@ async function listAnnotationContributions(
                 id: r.referenceId,
                 citationKey: r.citationKey,
                 kind: r.referenceKind,
-                shortCitation: null,
+                shortCitation: r.shortCitation,
               }
             : null,
         generated: r.generated,

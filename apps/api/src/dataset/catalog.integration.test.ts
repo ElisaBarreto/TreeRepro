@@ -146,6 +146,34 @@ describe('RFC-61 R6 references carry a short and a full citation', () => {
     expect(metadata?.fields).toEqual(['shortCitation', 'fullCitation']);
   });
 
+  it('updateReference audits only the field that actually changed, by name', async () => {
+    const { user } = await createUser(t.db);
+    const created = await createReference(t.db, {
+      citationKey: `Solo_${tag()}`,
+      shortCitation: 'Old (2000)',
+      fullCitation: 'Old, A. (2000). A title.',
+      actorId: user.id,
+    });
+    await updateReference(t.db, {
+      id: created.id,
+      shortCitation: 'New (2026)',
+      actorId: user.id,
+    });
+    expect(await rowOf(created.id)).toEqual({
+      shortCitation: 'New (2026)',
+      fullCitation: 'Old, A. (2000). A title.',
+    });
+    const audits = await t.db
+      .select({ action: auditLog.action, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(eq(auditLog.targetId, created.id));
+    const updates = audits.filter((a) => a.action === 'references.updated');
+    expect(updates).toHaveLength(1);
+    expect((updates[0]?.metadata as { fields: string[] } | undefined)?.fields).toEqual([
+      'shortCitation',
+    ]);
+  });
+
   it('updateReference records nothing when a citation equals the stored value', async () => {
     const { user } = await createUser(t.db);
     const created = await createReference(t.db, {

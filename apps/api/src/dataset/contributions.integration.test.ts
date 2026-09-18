@@ -108,6 +108,7 @@ describe('RFC-71 R2 listContributions kind=records', () => {
         id: reference.id,
         citationKey: reference.citationKey,
         kind: 'publication',
+        shortCitation: null,
       },
       secondaryReference: null,
       origin: 'manual',
@@ -464,6 +465,7 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
       id: cited.id,
       citationKey: cited.citationKey,
       kind: 'publication',
+      shortCitation: null,
     });
     expect(rest[0]?.generated).toBe(false);
     expect(rest[0]?.record.id).toBe(record.id);

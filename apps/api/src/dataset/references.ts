@@ -1,8 +1,11 @@
 import type { Reference, ReferenceDetail, ReferenceKind } from '@treerepro/contracts';
-import { and, count, desc, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
+import { traitVisible, UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { traitCategories, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
+import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
 import { users } from '../db/schema/users.ts';
 import {
@@ -12,15 +15,12 @@ import {
   isUuid,
   pageOf,
 } from '../http/cursor.ts';
-import type { DoiMetadata } from '../integrations/doi.ts';
+import { AppError } from '../http/errors.ts';
+import { type DoiMetadata, shortCitationFrom } from '../integrations/doi.ts';
+import { requireTrait } from './dictionary.ts';
 import { likePattern } from './taxa.ts';
 
-/**
- * `shortCitation` / `fullCitation` are `null` until plan 10d's columns and
- * derivation (RFC-61 R1, R8) land; this keeps the contract's required fields
- * compiling in the meantime.
- * @rfc RFC-61 R4
- */
+/** @rfc RFC-61 R1, R4 */
 export function toReference(
   row: ReferenceRow,
   observer?: { id: string; name: string } | null,
@@ -39,9 +39,28 @@ export function toReference(
     secondaryCount: row.secondaryCount,
     kind: row.kind,
     observer: observer?.id ? { id: observer.id, name: observer.name } : null,
-    shortCitation: null,
-    fullCitation: null,
+    shortCitation: row.shortCitation,
+    fullCitation: row.fullCitation,
   };
+}
+
+/**
+ * An existing category, or 400 `VALIDATION_FAILED` on `categoryKey`. The
+ * twin of `catalog.ts`'s private `requireCategory`: not shared, so each file
+ * keeps its own tiny dependency on `trait_categories`.
+ * @rfc RFC-61 R4
+ */
+async function requireCategory(db: DbExecutor, key: string): Promise<void> {
+  const [row] = await db
+    .select({ key: traitCategories.key })
+    .from(traitCategories)
+    .where(eq(traitCategories.key, key))
+    .limit(1);
+  if (!row) {
+    throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+      { path: 'categoryKey', message: 'Unknown category' },
+    ]);
+  }
 }
 
 // A usage total in a cursor: digits that still fit a JS integer, so the bigint
@@ -54,11 +73,25 @@ const isUsageCount = (part: string) => isDigits(part) && Number.isSafeInteger(Nu
  * and maintained by the `trait_records` insert trigger (schema/references.ts),
  * so a page is one index-ordered scan of `bibliographic_references_usage_idx`
  * whatever the size of `trait_records`.
- * @rfc RFC-61 R4
+ *
+ * `traitId` (a visible trait; unknown or invisible throws `TRAIT_NOT_FOUND`)
+ * keeps references with a `reference_traits` row for it; `categoryKey` (an
+ * existing category; unknown throws 400 `VALIDATION_FAILED`) keeps
+ * references with a `reference_traits` row for any visible trait of that
+ * category (RFC-61 R9).
+ * @rfc RFC-61 R4, R9
  */
 export async function searchReferences(
   db: DbExecutor,
-  input: { q?: string; cursor?: string; limit: number; kind?: ReferenceKind | 'all' },
+  visibility: Visibility,
+  input: {
+    q?: string;
+    cursor?: string;
+    limit: number;
+    kind?: ReferenceKind | 'all';
+    traitId?: string;
+    categoryKey?: string;
+  },
 ): Promise<{ data: Reference[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
   // No `kind` means publications only: a personal observation belongs to its
@@ -72,7 +105,25 @@ export async function searchReferences(
       or(
         ilike(bibliographicReferences.citationKey, pattern),
         ilike(bibliographicReferences.title, pattern),
+        ilike(bibliographicReferences.shortCitation, pattern),
       ) as SQL,
+    );
+  }
+  if (input.traitId) {
+    // Throws TRAIT_NOT_FOUND when the trait is unknown or, for this viewer,
+    // invisible (RFC-33 R2, R4).
+    await requireTrait(db, visibility, input.traitId);
+    conditions.push(
+      sql`exists (select 1 from ${referenceTraits} rt
+        where rt.reference_id = ${bibliographicReferences.id} and rt.trait_id = ${input.traitId}::uuid)`,
+    );
+  }
+  if (input.categoryKey) {
+    await requireCategory(db, input.categoryKey);
+    conditions.push(
+      sql`exists (select 1 from ${referenceTraits} rt join ${traits} t on t.id = rt.trait_id
+        where rt.reference_id = ${bibliographicReferences.id}
+          and t.category_key = ${input.categoryKey} and ${traitVisible(visibility, sql`t.active`)})`,
     );
   }
   if (input.cursor) {
@@ -103,8 +154,20 @@ export async function searchReferences(
   };
 }
 
-/** @rfc RFC-61 R4 */
-export async function getReference(db: DbExecutor, id: string): Promise<ReferenceDetail | null> {
+/**
+ * `visibility` defaults to {@link UNRESTRICTED}: `catalog.ts`'s writers call
+ * this with `(db, id)` alone to build the detail they return after a create
+ * or update, and a curator privileged enough to write metadata sees every
+ * trait the reference is used on. A route passes the viewer's own visibility
+ * so `traits` (RFC-61 R9) lists visible traits only.
+ * @rfc RFC-61 R4, R9
+ * @rfc RFC-33 R2
+ */
+export async function getReference(
+  db: DbExecutor,
+  id: string,
+  visibility: Visibility = UNRESTRICTED,
+): Promise<ReferenceDetail | null> {
   const [row] = await db
     .select({
       ref: bibliographicReferences,
@@ -115,16 +178,33 @@ export async function getReference(db: DbExecutor, id: string): Promise<Referenc
     .where(eq(bibliographicReferences.id, id))
     .limit(1);
   if (!row) return null;
-  const [counts] = await db
-    .select({ recordCount: count() })
-    .from(traitRecords)
-    .where(or(eq(traitRecords.primaryReferenceId, id), eq(traitRecords.secondaryReferenceId, id)));
+  const [counts, traitRows] = await Promise.all([
+    db
+      .select({ recordCount: count() })
+      .from(traitRecords)
+      .where(
+        or(eq(traitRecords.primaryReferenceId, id), eq(traitRecords.secondaryReferenceId, id)),
+      ),
+    db
+      .select({
+        id: traits.id,
+        key: traits.key,
+        valueType: traits.valueType,
+        unit: traits.unit,
+        recordCount: referenceTraits.recordCount,
+      })
+      .from(referenceTraits)
+      .innerJoin(traits, eq(traits.id, referenceTraits.traitId))
+      .where(and(eq(referenceTraits.referenceId, id), traitVisible(visibility)))
+      .orderBy(desc(referenceTraits.recordCount), asc(traits.key)),
+  ]);
   return {
     ...toReference(row.ref, row.observer?.id ? row.observer : null),
-    recordCount: counts?.recordCount ?? 0,
-    // `reference_traits` (RFC-61 R9) does not exist yet; the trait usage list
-    // is empty until that migration and the query behind it land.
-    traits: [],
+    recordCount: counts[0]?.recordCount ?? 0,
+    traits: traitRows.map((t) => ({
+      trait: { id: t.id, key: t.key, valueType: t.valueType, unit: t.unit },
+      recordCount: t.recordCount,
+    })),
   };
 }
 
@@ -215,6 +295,17 @@ export async function findReferenceByDoi(db: DbExecutor, doi: string): Promise<R
 }
 
 /**
+ * `full_citation` is `<authors> (<year>). <title>. <journal>. https://doi.org/<doi>`
+ * — the raw Crossref `authors` string (not the derived {@link shortCitationFrom}
+ * string), the row's own year, journal and normalised DOI.
+ * @rfc RFC-61 R8
+ */
+function fullCitationFrom(metadata: DoiMetadata, doi: string): string {
+  const authorsYear = `${metadata.authors ?? ''}${metadata.year != null ? ` (${metadata.year})` : ''}`;
+  return `${authorsYear}. ${metadata.title}. ${metadata.journal ?? ''}. https://doi.org/${doi}`;
+}
+
+/**
  * The local reference for a DOI, created from the Crossref metadata on first
  * use. `ON CONFLICT DO NOTHING` rather than a caught 23505: a raised unique
  * violation aborts the surrounding transaction, so the re-read below would
@@ -229,6 +320,10 @@ export async function createReferenceFromDoi(
   const existing = await findReferenceByDoi(db, norm);
   if (existing) return existing;
 
+  const shortCitation = input.metadata ? shortCitationFrom(input.metadata) : null;
+  const fullCitation =
+    input.metadata?.title != null ? fullCitationFrom(input.metadata, norm) : null;
+
   return db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(bibliographicReferences)
@@ -242,6 +337,8 @@ export async function createReferenceFromDoi(
         url: `https://doi.org/${norm}`,
         createdBy: input.actorId,
         kind: 'publication',
+        shortCitation,
+        fullCitation,
       })
       .onConflictDoNothing()
       .returning({ id: bibliographicReferences.id });

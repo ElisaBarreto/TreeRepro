@@ -6,6 +6,7 @@ import {
   updateReferenceBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
+import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { createReference, updateReference } from '../../../dataset/catalog.ts';
 import { getReference, searchReferences } from '../../../dataset/references.ts';
@@ -34,11 +35,14 @@ export function referenceRoutes(ctx: AuthContext) {
       validate('query', listReferencesQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
-        const { data, nextCursor } = await searchReferences(ctx.db, {
+        const visibility = await visibilityOf(ctx, c);
+        const { data, nextCursor } = await searchReferences(ctx.db, visibility, {
           q: q.q,
           cursor: q.cursor,
           limit: q.limit,
           kind: q.kind,
+          traitId: q.traitId,
+          categoryKey: q.categoryKey,
         });
         return c.json({ data, meta: { nextCursor } });
       },
@@ -74,7 +78,8 @@ export function referenceRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'dataset.read'),
       validate('param', idParamSchema),
       async (c) => {
-        const found = await getReference(ctx.db, c.req.valid('param').id);
+        const visibility = await visibilityOf(ctx, c);
+        const found = await getReference(ctx.db, c.req.valid('param').id, visibility);
         if (!found) throw new AppError('REFERENCE_NOT_FOUND', 'Reference not found');
         return c.json({ data: found });
       },

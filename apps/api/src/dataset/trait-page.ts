@@ -215,6 +215,7 @@ interface AcceptedRow {
   value_text: string | null;
   reference_id: string | null;
   citation_key: string | null;
+  short_citation: string | null;
   kind: 'publication' | 'personal_observation' | null;
 }
 
@@ -246,7 +247,7 @@ async function enrich(
   const acceptedRows = db.execute(sql`
     select distinct on (a.species_id)
       a.species_id, a.decision, a.record_id, r.value_text,
-      b.id as reference_id, b.citation_key, b.kind
+      b.id as reference_id, b.citation_key, b.short_citation, b.kind
     from accepted_values a
     left join trait_records r on r.id = a.record_id
     -- A record always names a primary or a secondary reference (RFC-63 R2's
@@ -329,8 +330,7 @@ function collectAccepted(rows: AcceptedRow[], into: Map<string, TraitSpeciesItem
       reference: {
         id: r.reference_id,
         citationKey: r.citation_key,
-        // Plan 10d adds the column; until then there is no short citation.
-        shortCitation: null,
+        shortCitation: r.short_citation,
         kind: r.kind,
       },
     });
