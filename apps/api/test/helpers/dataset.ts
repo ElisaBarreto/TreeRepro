@@ -5,6 +5,7 @@ import type {
   HarmonisationStatus,
   ImportBatchKind,
   NameSource,
+  NameType,
   RecordIntent,
   TraitValueType,
 } from '@treerepro/contracts';
@@ -49,7 +50,13 @@ export async function createSpecies(
     canonicalName?: string;
     nameSource?: NameSource;
     genusId?: string | null;
-    names?: { name: string; gbifUsageKey?: string }[];
+    names?: {
+      name: string;
+      nameType?: NameType;
+      language?: string;
+      source?: string;
+      gbifUsageKey?: string;
+    }[];
   } = {},
 ) {
   const [row] = await db
@@ -66,6 +73,9 @@ export async function createSpecies(
       options.names.map((n) => ({
         speciesId: row.id,
         name: n.name,
+        nameType: n.nameType ?? 'gbif',
+        language: n.language ?? null,
+        source: n.source ?? 'gbif',
         gbifUsageKey: n.gbifUsageKey ?? null,
       })),
     );

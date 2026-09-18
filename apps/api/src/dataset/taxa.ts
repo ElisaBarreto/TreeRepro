@@ -1,5 +1,6 @@
 import type {
   Genus,
+  NameType,
   PlotRef,
   Species,
   SpeciesListItem,
@@ -28,10 +29,20 @@ import {
 import { AppError } from '../http/errors.ts';
 import { requireTrait } from './dictionary.ts';
 
-/** Escapes `%`, `_` and `\` so a search term matches literally. @rfc RFC-60 R6 */
-export function likePattern(term: string, mode: 'substring' | 'prefix'): string {
+/**
+ * Escapes `%`, `_` and `\` so a search term matches literally. `'exact'`
+ * carries no wildcard at all: `canonical_name ilike <pattern>` is then a
+ * case-insensitive equality the trigram index still serves (RFC-60 R6 tier
+ * 1) — unlike `'substring'`'s `%…%`, which needs the wildcards to match
+ * partway through the name, and unlike a `lower(canonical_name) = …`
+ * predicate, which has no index to use here at all.
+ * @rfc RFC-60 R6
+ */
+export function likePattern(term: string, mode: 'substring' | 'prefix' | 'exact'): string {
   const escaped = term.replace(/[\\%_]/g, (c) => `\\${c}`);
-  return mode === 'prefix' ? `${escaped}%` : `%${escaped}%`;
+  if (mode === 'prefix') return `${escaped}%`;
+  if (mode === 'exact') return escaped;
+  return `%${escaped}%`;
 }
 
 /** Ordering by a text column and id needs both values in the cursor. */
@@ -46,18 +57,58 @@ function afterNameCursor(cursor: string, nameCol: AnyPgColumn, idCol: AnyPgColum
 const isTraitCount = (part: string) => isDigits(part) && Number(part) <= 2_147_483_647;
 
 /**
- * Ordering by completeness (`trait_count`, `canonical_name`, `id`, all
- * ascending — the `species_trait_count_idx` keyset) needs all three in the
- * cursor.
+ * The species list's cursor carries a leading tier key ahead of its ordering
+ * keyset (RFC-60 R6): `[tier, name, id]` under `sort=name`, `[tier,
+ * traitCount, name, id]` under `sort=completeness` — one part longer than
+ * before plan 10b, so the inherited per-sort arity check
+ * ({@link decodeCompositeCursor}) still answers 400 `VALIDATION_FAILED` on
+ * `cursor` for a cursor minted under the other sort, never a silent
+ * mis-decode.
+ * @rfc RFC-60 R6
+ * @rfc RFC-11 R6
+ */
+function decodeSpeciesCursor(cursor: string, sort: SpeciesSort): { tier: string; predicate: SQL } {
+  if (sort === 'completeness') {
+    const [tier, traitCount, name, id] = decodeCompositeCursor(cursor, 4, [
+      isDigits,
+      isTraitCount,
+      () => true,
+      isUuid,
+    ]) as [string, string, string, string];
+    return {
+      tier,
+      predicate: sql`(${species.traitCount}, ${species.canonicalName}, ${species.id}) > (${Number(traitCount)}::int, ${name}, ${id}::uuid)`,
+    };
+  }
+  const [tier, name, id] = decodeCompositeCursor(cursor, 3, [isDigits, () => true, isUuid]) as [
+    string,
+    string,
+    string,
+  ];
+  return {
+    tier,
+    predicate: sql`(${species.canonicalName}, ${species.id}) > (${name}, ${id}::uuid)`,
+  };
+}
+
+/**
+ * RFC-60 R6 tier 1: does any species under the given base conditions —
+ * visibility, plot scope, status, the taxonomy filters, the trait filters,
+ * everything {@link speciesListConditions} builds before `q` — have `q` as
+ * its canonical name, case-insensitively? One cheap lookup (`limit 1`) that
+ * the trigram index serves because `likePattern`'s `'exact'` mode carries no
+ * wildcard.
  * @rfc RFC-60 R6
  */
-function afterCompletenessCursor(cursor: string): SQL {
-  const [traitCount, name, id] = decodeCompositeCursor(cursor, 3, [
-    isTraitCount,
-    () => true,
-    isUuid,
-  ]) as [string, string, string];
-  return sql`(${species.traitCount}, ${species.canonicalName}, ${species.id}) > (${Number(traitCount)}::int, ${name}, ${id}::uuid)`;
+async function firstTier(db: DbExecutor, baseConditions: SQL[], q: string): Promise<1 | 2> {
+  const [row] = await db
+    .select({ id: species.id })
+    .from(species)
+    .leftJoin(genera, eq(genera.id, species.genusId))
+    .leftJoin(families, eq(families.id, genera.familyId))
+    .where(and(...baseConditions, ilike(species.canonicalName, likePattern(q, 'exact'))))
+    .limit(1);
+  return row ? 1 : 2;
 }
 
 interface SpeciesJoinedRow {
@@ -70,6 +121,7 @@ interface SpeciesJoinedRow {
   familyId: string | null;
   familyName: string | null;
   matchedName: string | null;
+  matchedNameType: NameType | null;
   traitCount: number;
   traitRecordCount?: number | null;
 }
@@ -83,9 +135,7 @@ function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
     genus: r.genusId && r.genusName ? { id: r.genusId, name: r.genusName } : null,
     family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
     matchedName: r.matchedName ?? null,
-    // Plan 10b's search tiers compute the real type; until the columns and the
-    // tiered search land, no row can name a matched alternative name's type.
-    matchedNameType: null,
+    matchedNameType: r.matchedNameType ?? null,
     unresolvedTaxon: r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null,
     traitCount: r.traitCount,
     traitRecordCount: r.traitRecordCount ?? null,
@@ -138,6 +188,15 @@ export interface SpeciesListFilters {
  *
  * `traitData` without `traitId` or `categoryKey` is ignored: the spec names no
  * error for it, and the filter it would apply is undefined.
+ *
+ * `tier` is RFC-60 R6's search tier: `0` without `q`, else `1` (the canonical
+ * name equals `q` exactly, case-insensitively) or `2` (today's substring
+ * match, over the canonical name or any alternative name) — never both. A
+ * cursor already names its tier ({@link decodeSpeciesCursor}), so a later page
+ * reuses it instead of re-running {@link firstTier}; the first page decides it
+ * fresh, under every other condition here (visibility, plot scope, status,
+ * the taxonomy filters, the trait filters) but never `q` or the cursor
+ * itself, which is what the tier is decided over and paged within.
  * @rfc RFC-60 R3, R4, R6
  * @rfc RFC-33 R2, R3, R6
  * @rfc RFC-62 R8
@@ -147,7 +206,7 @@ export async function speciesListConditions(
   db: DbExecutor,
   visibility: Visibility,
   filters: SpeciesListFilters,
-): Promise<SQL[]> {
+): Promise<{ conditions: SQL[]; tier: 0 | 1 | 2 }> {
   const conditions: SQL[] = [speciesVisible(visibility)];
   const viewerPlotIds = filters.viewerPlotIds ?? [];
 
@@ -196,23 +255,6 @@ export async function speciesListConditions(
   const status = visibility.inactive ? (filters.status ?? 'all') : 'active';
   if (status === 'active') conditions.push(eq(species.active, true));
   if (status === 'inactive') conditions.push(eq(species.active, false));
-  // `searchSpecies` computes this same pattern again for its `matchedName`
-  // highlight: the predicate here and the highlight there must always be the
-  // one pattern, so the two calls change together or not at all. Plan 10b
-  // replaces both with the search tiers, which is why they are not
-  // consolidated now.
-  const pattern = filters.q ? likePattern(filters.q, 'substring') : undefined;
-  if (pattern) {
-    // A single `or(ilike, exists(...))` forces a full scan of `species` (the planner
-    // can't turn an OR across two tables into an index-only lookup); a semi-join over
-    // the UNION of both trigram lookups lets it bitmap-scan each gin index instead.
-    conditions.push(
-      sql`${species.id} in (
-        select s.id from ${species} s where s.canonical_name ilike ${pattern}
-        union
-        select sn.species_id from ${speciesNames} sn where sn.name ilike ${pattern})`,
-    );
-  }
   if (filters.familyId) conditions.push(eq(genera.familyId, filters.familyId));
   if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
   if (filters.unresolved) {
@@ -251,14 +293,30 @@ export async function speciesListConditions(
     conditions.push(filters.traitData === 'missing' ? sql`not ${e}` : e);
   }
 
-  if (filters.cursor) {
+  // Everything above is the base conditions RFC-60 R6's search tiers are
+  // decided and paged under — visibility, plot scope, status, the taxonomy
+  // filters, the trait filters — but never `q` or the cursor.
+  const sort = filters.sort ?? 'name';
+  const cursorInfo = filters.cursor ? decodeSpeciesCursor(filters.cursor, sort) : null;
+  let tier: 0 | 1 | 2 = 0;
+  if (filters.q) {
+    tier = cursorInfo
+      ? (Number(cursorInfo.tier) as 0 | 1 | 2)
+      : await firstTier(db, conditions, filters.q);
     conditions.push(
-      (filters.sort ?? 'name') === 'completeness'
-        ? afterCompletenessCursor(filters.cursor)
-        : afterNameCursor(filters.cursor, species.canonicalName, species.id),
+      tier === 1
+        ? ilike(species.canonicalName, likePattern(filters.q, 'exact'))
+        : // A single `or(ilike, exists(...))` forces a full scan of `species` (the planner
+          // can't turn an OR across two tables into an index-only lookup); a semi-join over
+          // the UNION of both trigram lookups lets it bitmap-scan each gin index instead.
+          sql`${species.id} in (
+        select s.id from ${species} s where s.canonical_name ilike ${likePattern(filters.q, 'substring')}
+        union
+        select sn.species_id from ${speciesNames} sn where sn.name ilike ${likePattern(filters.q, 'substring')})`,
     );
   }
-  return conditions;
+  if (cursorInfo) conditions.push(cursorInfo.predicate);
+  return { conditions, tier };
 }
 
 /**
@@ -273,12 +331,13 @@ export async function searchSpecies(
   visibility: Visibility,
   input: SpeciesListFilters & { limit: number },
 ): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
-  const conditions = await speciesListConditions(db, visibility, input);
-  // The twin of the call in `speciesListConditions`, which builds the
-  // predicate this highlight describes: if the two ever disagree, a row can
-  // match without a `matchedName` or the other way round. They change
-  // together, until plan 10b's search tiers replace both.
-  const pattern = input.q ? likePattern(input.q, 'substring') : undefined;
+  const { conditions, tier } = await speciesListConditions(db, visibility, input);
+  // The twin of the tier 2 predicate `speciesListConditions` built: if the two
+  // ever disagree, a row can match without a `matchedName` or the other way
+  // round. They change together. Tier 1's `q` matched the canonical name
+  // exactly, so `matchedName`/`matchedNameType` are always null there (RFC-60
+  // R6) — no pattern is even built.
+  const pattern = input.q && tier === 2 ? likePattern(input.q, 'substring') : undefined;
   // The same choice the cursor predicate made in `speciesListConditions`.
   const sort: SpeciesSort = input.sort ?? 'name';
   // `null` unless a trait was named; the coverage row's `record_count`
@@ -292,6 +351,10 @@ export async function searchSpecies(
     ? sql<string | null>`case when ${species.canonicalName} ilike ${pattern} then null
         else (select sn.name from ${speciesNames} sn where sn.species_id = ${species.id} and sn.name ilike ${pattern} order by sn.name limit 1) end`
     : sql<string | null>`null`;
+  const matchedNameType = pattern
+    ? sql<NameType | null>`case when ${species.canonicalName} ilike ${pattern} then null
+        else (select sn.name_type from ${speciesNames} sn where sn.species_id = ${species.id} and sn.name ilike ${pattern} order by sn.name limit 1) end`
+    : sql<NameType | null>`null`;
   const rows = await db
     .select({
       ...speciesColumns,
@@ -299,6 +362,7 @@ export async function searchSpecies(
       // the completeness keyset's leading column.
       traitCount: species.traitCount,
       matchedName: matchedName.as('matched_name'),
+      matchedNameType: matchedNameType.as('matched_name_type'),
       traitRecordCount: traitRecordCount.as('trait_record_count'),
     })
     .from(species)
@@ -313,8 +377,8 @@ export async function searchSpecies(
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
     sort === 'completeness'
-      ? encodeCompositeCursor([String(r.traitCount), r.canonicalName, r.id])
-      : encodeCompositeCursor([r.canonicalName, r.id]),
+      ? encodeCompositeCursor([String(tier), String(r.traitCount), r.canonicalName, r.id])
+      : encodeCompositeCursor([String(tier), r.canonicalName, r.id]),
   );
   return { data: page.map(toListItem), nextCursor };
 }
@@ -360,10 +424,20 @@ export async function getSpecies(
 
   const [names, [counts], speciesPlots] = await Promise.all([
     db
-      .select({ name: speciesNames.name, gbifUsageKey: speciesNames.gbifUsageKey })
+      .select({
+        name: speciesNames.name,
+        nameType: speciesNames.nameType,
+        language: speciesNames.language,
+        source: speciesNames.source,
+        gbifUsageKey: speciesNames.gbifUsageKey,
+      })
       .from(speciesNames)
       .where(eq(speciesNames.speciesId, id))
-      .orderBy(asc(speciesNames.name)),
+      // RFC-60 R7: gbif, synonym, common, then name.
+      .orderBy(
+        sql`case ${speciesNames.nameType} when 'gbif' then 0 when 'synonym' then 1 else 2 end`,
+        asc(speciesNames.name),
+      ),
     db
       .select({ recordCount: count(), traitCount: countDistinct(traitRecords.traitId) })
       .from(traitRecords)
@@ -382,18 +456,17 @@ export async function getSpecies(
   const { traitRecordCount: _listOnly, ...listItem } = toListItem({
     ...row,
     matchedName: null,
+    matchedNameType: null,
     traitCount: counts?.traitCount ?? 0,
   });
   return {
     ...listItem,
     plots: speciesPlots,
-    // Plan 10b's `species_names` columns (`name_type`, `language`) do not
-    // exist yet: every stored name is a GBIF name until that migration lands.
     names: names.map((n) => ({
       name: n.name,
-      nameType: 'gbif' as const,
-      language: null,
-      source: 'gbif',
+      nameType: n.nameType,
+      language: n.language,
+      source: n.source,
       gbifUsageKey: n.gbifUsageKey,
     })),
     recordCount: counts?.recordCount ?? 0,
