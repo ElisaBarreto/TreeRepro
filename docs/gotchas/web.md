@@ -2,8 +2,13 @@
 
 ## Testing Library does not clean up between tests
 **Symptom:** A second test in the same file fails with `Found multiple elements with the text of: …` although each test renders once.
-**Cause:** Testing Library registers its automatic `cleanup` only when the runner exposes `afterEach` globally. `apps/web/vitest.config.ts` runs without `globals: true`, so nothing unmounts the previous render.
+**Cause:** Testing Library registers its automatic `cleanup` only when the runner exposes `afterEach` globally. `apps/web/vite.config.ts` runs without `globals: true`, so nothing unmounts the previous render.
 **Fix:** `apps/web/src/test/setup.ts` imports `cleanup` and registers `afterEach(cleanup)` itself. Do not turn on `globals` to get the same effect.
+
+## A different test file times out on `findByRole` each full run
+**Symptom:** Under parallel load (the whole suite on a laptop, CI, a container) roughly one web test per run fails with `Unable to find role="heading" …` and an empty `<body><div /></body>`; a different, untouched file each time; always the first test of its file; every one passes alone (issue #99).
+**Cause:** Two costs landed inside Testing Library's 1 s `findBy*` budget. Each test file built its own jsdom (`Environment … jsdom was created 95 times`, a third of the suite's CPU), starving whichever file was mid-render; and with the router plugin's `autoCodeSplitting` the first render of every file imported and transformed its route chunk on the spot — about 380 ms of a 511 ms first test on an idle machine, so any 2× slowdown failed it.
+**Fix:** `apps/web/vite.config.ts` runs the web project with `pool: 'vmThreads'` (jsdom loaded once per worker, still a fresh window per file — `isolate: false` would share `window` and module mocks across files) and turns `autoCodeSplitting` off under Vitest (`!process.env.VITEST`); the e2e suite still runs the split production build. Measured on 12 cores with 32 busy loops in the background: 3/3 runs green, against 2/3 runs failing before with 16. Do not raise `asyncUtilTimeout` for this — it hides the cause and slows every genuinely failing `findBy*`.
 
 ## Swapping two forms in place keeps the old input values
 **Symptom:** After the login form switches to the verification-code step, the code field already contains the email address.

@@ -1,5 +1,5 @@
 {
-  "id": "125dd9de-8906-4fab-8d9a-912c6d9c7782",
+  "id": "29795fb1-f99a-4a14-82fe-b1fe6bc104f7",
   "prevId": "178b5f66-5218-49b9-bda1-04c0b4e0253b",
   "version": "7",
   "dialect": "postgresql",
@@ -411,6 +411,33 @@
             },
             {
               "expression": "trait_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "accepted_values_trait_idx": {
+          "name": "accepted_values_trait_idx",
+          "columns": [
+            {
+              "expression": "trait_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "species_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2678,19 +2705,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "name_type": {
-          "name": "name_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'gbif'"
-        },
-        "language": {
-          "name": "language",
-          "type": "char(2)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "source": {
           "name": "source",
           "type": "text",
@@ -2768,20 +2782,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "species_names_type_check": {
-          "name": "species_names_type_check",
-          "value": "\"species_names\".\"name_type\" in ('gbif', 'synonym', 'common')"
-        },
-        "species_names_language_check": {
-          "name": "species_names_language_check",
-          "value": "(\"species_names\".\"name_type\" = 'common') = (\"species_names\".\"language\" is not null)"
-        },
-        "species_names_gbif_key_check": {
-          "name": "species_names_gbif_key_check",
-          "value": "\"species_names\".\"gbif_usage_key\" is null or \"species_names\".\"name_type\" = 'gbif'"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.totp_recovery_codes": {

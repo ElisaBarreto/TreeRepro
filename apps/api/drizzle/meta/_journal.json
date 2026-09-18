@@ -180,15 +180,8 @@
     {
       "idx": 25,
       "version": "7",
-      "when": 1789748243244,
-      "tag": "0025_species_names",
-      "breakpoints": true
-    },
-    {
-      "idx": 26,
-      "version": "7",
-      "when": 1789748253501,
-      "tag": "0026_references_enriched",
+      "when": 1789747726484,
+      "tag": "0025_accepted_values_trait_idx",
       "breakpoints": true
     }
   ]
