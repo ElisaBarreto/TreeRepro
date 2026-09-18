@@ -16,7 +16,11 @@ export default defineConfig({
     // Tests live next to the routes they cover (e.g. routes/app.test.tsx).
     tanstackRouter({
       target: 'react',
-      autoCodeSplitting: true,
+      // Under Vitest the split would make the first render of every test file
+      // import and transform its route chunk inside `findByRole`'s 1 s budget,
+      // which is what timed out under load (issue #99); the e2e suite runs the
+      // production build, split included.
+      autoCodeSplitting: !process.env.VITEST,
       routeFileIgnorePattern: '\\.test\\.tsx?$',
     }),
     react(),
@@ -34,6 +38,11 @@ export default defineConfig({
   test: {
     name: 'web',
     environment: 'jsdom',
+    // Loads jsdom once per worker instead of once per file (it was a third of
+    // the suite's CPU time) while keeping a fresh window per file; under
+    // parallel load the per-file build starved a test in some other file past
+    // Testing Library's timeout (issue #99).
+    pool: 'vmThreads',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
   },
