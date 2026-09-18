@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
@@ -11,9 +12,9 @@ import { useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { species } from '../db/schema/taxa.ts';
-import { forgetCached } from '../redis/cache.ts';
+import { cachedJson, forgetCached } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
-import { computeCoverageTotals, coverageTotals, percentHalfUp } from './coverage.ts';
+import { computeCoverageTotals, coverageTotals } from './coverage.ts';
 
 interface CachedEntry {
   value: Awaited<ReturnType<typeof coverageTotals>>;
@@ -37,6 +38,14 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
       // fixture; the transaction then rolls back, so the fixture is never
       // visible to a sibling either.
       await tx.execute(sql`set transaction isolation level repeatable read`);
+      // The `set` above binds only while `withRollback` opens a plain
+      // transaction; were it ever to become savepoint-based, it would silently
+      // stop applying and every delta below would turn into a race. Fail here
+      // instead, loudly.
+      const [isolation] = (await tx.execute(sql`show transaction_isolation`)) as unknown as [
+        { transaction_isolation: string } | undefined,
+      ];
+      expect(isolation?.transaction_isolation).toBe('repeatable read');
       const before = await computeCoverageTotals(tx, RESTRICTED);
       const beforeInactive = await computeCoverageTotals(tx, UNRESTRICTED);
       const [grid] = (await tx.execute(sql`
@@ -103,8 +112,16 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
       expect(afterInactive.withData - beforeInactive.withData).toBe(5);
       expect(after.accepted - before.accepted).toBe(2);
       expect(afterInactive.accepted - beforeInactive.accepted).toBe(4);
-      expect(after.percentWithData).toBe(percentHalfUp(after.withData, after.cells));
-      expect(after.percentAccepted).toBe(percentHalfUp(after.accepted, after.cells));
+      // Both percentages are readings of the whole grid, never of `withData`
+      // (`docs/specs/2026-09-17-workspace-design.md` §4 R1): the denominator
+      // here is the cell count this test derived from the oracle, and the
+      // arithmetic is written out rather than borrowed from the implementation
+      // (the half-up rule itself is pinned in coverage.test.ts).
+      const cells = (grid.active_species + 2) * (grid.active_traits + 2);
+      expect([after.percentWithData, after.percentAccepted]).toEqual([
+        Math.floor((after.withData * 200 + cells) / (cells * 2)),
+        Math.floor((after.accepted * 200 + cells) / (cells * 2)),
+      ]);
     });
   });
 });
@@ -120,27 +137,60 @@ describe('RFC-69 R5 coverageTotals is cached for ten minutes', () => {
     await redis.quit();
   });
 
-  it('answers the second call from the entry the first one stored', async () => {
-    // Only the two readings are compared with each other, never with an
-    // absolute number: `coverage:totals:r` is a fixed key shared by every
-    // caller in the run (RFC-69 R5), so which caller computed the entry is not
-    // this test's business — that it is not recomputed is.
-    await forgetCached(redis, 'coverage:totals:r');
-    const first = await coverageTotals({ db: t.db, redis }, RESTRICTED);
-    const firstEntry = await entryOf(redis, 'coverage:totals:r');
-    const second = await coverageTotals({ db: t.db, redis }, RESTRICTED);
-    const secondEntry = await entryOf(redis, 'coverage:totals:r');
-    expect(firstEntry?.value).toEqual(first);
-    expect(second).toEqual(first);
-    expect(secondEntry?.computedAt).toBe(firstEntry?.computedAt);
-    const ttl = await redis.ttl('coverage:totals:r');
-    expect(ttl).toBeGreaterThan(0);
-    expect(ttl).toBeLessThanOrEqual(600);
+  /**
+   * The entry semantics, on a key of this test's own. `coverage:totals:<u|r>`
+   * is fixed and shared by every caller in the run (RFC-69 R5), and deleting
+   * it to watch it refill opens a window another caller can win: it misses the
+   * key this test just deleted, computes alongside it and `SET`s afterwards, so
+   * the entry this test reads back is someone else's numbers and someone
+   * else's `computedAt`. A random key takes this test out of that shared
+   * resource entirely rather than narrowing the window. What it exercises is
+   * the same `cachedJson` call `coverageTotals` delegates to, over the same
+   * computation and the same ten-minute ttl; the test below pins the wrapper's
+   * key convention against the real key, with assertions no other caller can
+   * falsify.
+   */
+  it('answers the second call from the entry the first one stored, without recomputing', async () => {
+    const key = `coverage:totals:test:${randomUUID()}`;
+    let computed = 0;
+    const compute = () => {
+      computed += 1;
+      return computeCoverageTotals(t.db, RESTRICTED);
+    };
+    try {
+      const first = await cachedJson(redis, key, 600, compute);
+      const second = await cachedJson(redis, key, 600, compute);
+      expect(computed).toBe(1);
+      expect(second.value).toEqual(first.value);
+      expect(second.computedAt).toBe(first.computedAt);
+      expect(await entryOf(redis, key)).toEqual(first);
+      const ttl = await redis.ttl(key);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(600);
+    } finally {
+      await forgetCached(redis, key);
+    }
   });
 
-  it('keys the unrestricted viewer class apart', async () => {
-    await forgetCached(redis, 'coverage:totals:u');
-    await coverageTotals({ db: t.db, redis }, UNRESTRICTED);
-    expect(await entryOf(redis, 'coverage:totals:u')).not.toBeNull();
+  it('stores each viewer class under the key RFC-69 R5 names', async () => {
+    // Nothing here is falsifiable by another caller computing the same fixed
+    // key: a concurrent `cachedJson` on it writes the same shape with the same
+    // ttl, and no caller anywhere deletes it. The key is never deleted here
+    // either, so no window is opened for anyone else.
+    const fields = ['accepted', 'cells', 'percentAccepted', 'percentWithData', 'withData'];
+    for (const [visibility, key] of [
+      [RESTRICTED, 'coverage:totals:r'],
+      [UNRESTRICTED, 'coverage:totals:u'],
+    ] as const) {
+      const totals = await coverageTotals({ db: t.db, redis }, visibility);
+      // The wrapper answers `cachedJson`'s `value`, not the entry around it.
+      expect(Object.keys(totals).sort()).toEqual(fields);
+      const entry = await entryOf(redis, key);
+      expect(Object.keys(entry?.value ?? {}).sort()).toEqual(fields);
+      expect(typeof entry?.computedAt).toBe('string');
+      const ttl = await redis.ttl(key);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(600);
+    }
   });
 });
