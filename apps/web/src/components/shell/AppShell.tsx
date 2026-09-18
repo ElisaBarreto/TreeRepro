@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { logout } from '../../api/auth.ts';
 import { forgetSession, hasPermission, useMe } from '../../lib/session.ts';
 import { Alert, Button, Emblem, Icon } from '../ui/index.ts';
+import { BreadcrumbProvider, type Crumb, useCrumbs } from './Breadcrumb.tsx';
 import { currentEntry, NAV_ENTRIES, NAV_SECTIONS, type NavEntry } from './nav.ts';
 
 const LINK =
@@ -59,11 +60,65 @@ function NavGroup({
   );
 }
 
+const CRUMB_LINK =
+  'text-mist-500 transition-colors hover:text-canopy-700 hover:underline rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500';
+
+// Not exported: no @rfc tag needed (RFC-00 R6 applies to exports only).
+// Renders `Group › Entry › crumbs…`: `crumbGroup` and the current entry's
+// label link (to the current entry's own route) once a page has registered
+// trailing crumbs through `useBreadcrumb`; whichever segment ends up last —
+// the entry when there are no registered crumbs, else the last registered
+// crumb — renders as text with `aria-current="page"`. Must render below
+// `BreadcrumbProvider` to read `useCrumbs`.
+function BreadcrumbTrail({
+  crumbGroup,
+  current,
+}: {
+  crumbGroup: string | null | undefined;
+  current: NavEntry | undefined;
+}) {
+  const crumbs = useCrumbs();
+  const hasCrumbs = crumbs.length > 0;
+  const linkTarget = hasCrumbs ? { to: current?.to, search: current?.search } : {};
+  const segments: (Crumb & { key: string })[] = [];
+  if (crumbGroup) segments.push({ key: 'group', label: crumbGroup, ...linkTarget });
+  segments.push({ key: 'entry', label: current?.label ?? 'Workspace', ...linkTarget });
+  crumbs.forEach((crumb, index) => {
+    segments.push({ ...crumb, key: `crumb-${index}` });
+  });
+
+  return (
+    <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-cell text-mist-500">
+      {segments.map((segment, index) => {
+        const isLast = index === segments.length - 1;
+        return (
+          <Fragment key={segment.key}>
+            {isLast ? (
+              <span aria-current="page" className="font-semibold text-canopy-900">
+                {segment.label}
+              </span>
+            ) : segment.to ? (
+              <Link to={segment.to} search={segment.search} className={CRUMB_LINK}>
+                {segment.label}
+              </Link>
+            ) : (
+              <span>{segment.label}</span>
+            )}
+            {!isLast ? <Icon name="chevronRight" size={16} className="text-mist-300" /> : null}
+          </Fragment>
+        );
+      })}
+    </nav>
+  );
+}
+
 /**
  * Dark sidebar (emblem, grouped entries), light content under a top bar
  * (breadcrumb, user, sign-out). Entries render by permission; the Admin
  * group needs admin.access on top of the entries' own permissions. The
  * current entry is the one `currentEntry` picks for the pathname and search.
+ * The breadcrumb is `Group › Entry › crumbs…`, the trailing crumbs coming
+ * from pages that call `useBreadcrumb` (RFC-13 R3 amendment, plan 10a).
  * @rfc RFC-13 R2, R3, R4
  */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -100,70 +155,64 @@ export function AppShell({ children }: { children: ReactNode }) {
     : null;
 
   return (
-    <div className="flex min-h-screen bg-mist-50 text-canopy-950">
-      <aside className="flex w-[264px] shrink-0 flex-col gap-7 bg-canopy-900 px-4 py-6 text-mist-100">
-        <Link
-          to="/app"
-          className="flex items-center gap-3 rounded-[10px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-        >
-          <Emblem size={40} />
-          <span className="flex flex-col">
-            <span className="font-display text-card font-bold tracking-[-0.01em] text-white">
-              TreeRepro
+    <BreadcrumbProvider>
+      <div className="flex min-h-screen bg-mist-50 text-canopy-950">
+        <aside className="flex w-[264px] shrink-0 flex-col gap-7 bg-canopy-900 px-4 py-6 text-mist-100">
+          <Link
+            to="/app"
+            className="flex items-center gap-3 rounded-[10px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+          >
+            <Emblem size={40} />
+            <span className="flex flex-col">
+              <span className="font-display text-card font-bold tracking-[-0.01em] text-white">
+                TreeRepro
+              </span>
+              <span className="text-label font-semibold uppercase tracking-[0.14em] text-mist-400">
+                Workspace
+              </span>
             </span>
-            <span className="text-label font-semibold uppercase tracking-[0.14em] text-mist-400">
-              Workspace
-            </span>
-          </span>
-        </Link>
-        {groups.map((g) => (
-          <NavGroup
-            key={g.name}
-            name={g.name}
-            heading={g.heading}
-            entries={g.entries}
-            current={current}
-          />
-        ))}
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between gap-4 border-b border-canopy-700/10 bg-white px-10">
-          <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-cell text-mist-500">
-            {crumbGroup ? (
-              <>
-                <span>{crumbGroup}</span>
-                <Icon name="chevronRight" size={16} className="text-mist-300" />
-              </>
-            ) : null}
-            <span className="font-semibold text-canopy-900">{current?.label ?? 'Workspace'}</span>
-          </nav>
-          <div className="flex items-center gap-4">
-            {signOut.isError ? <Alert tone="error">Could not sign out. Try again.</Alert> : null}
-            <div className="flex items-center gap-2.5">
-              <span
-                aria-hidden="true"
-                className="inline-flex size-9 items-center justify-center rounded-full bg-canopy-200 font-display text-label font-bold text-canopy-900"
+          </Link>
+          {groups.map((g) => (
+            <NavGroup
+              key={g.name}
+              name={g.name}
+              heading={g.heading}
+              entries={g.entries}
+              current={current}
+            />
+          ))}
+        </aside>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-16 items-center justify-between gap-4 border-b border-canopy-700/10 bg-white px-10">
+            <BreadcrumbTrail crumbGroup={crumbGroup} current={current} />
+            <div className="flex items-center gap-4">
+              {signOut.isError ? <Alert tone="error">Could not sign out. Try again.</Alert> : null}
+              <div className="flex items-center gap-2.5">
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-9 items-center justify-center rounded-full bg-canopy-200 font-display text-label font-bold text-canopy-900"
+                >
+                  {initials(me.user.name)}
+                </span>
+                <span className="flex flex-col leading-tight">
+                  <span className="text-cell font-semibold text-canopy-950">{me.user.name}</span>
+                  <span className="text-label text-mist-500">{me.user.email}</span>
+                </span>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                pending={signOut.isPending}
+                onClick={() => signOut.mutate()}
               >
-                {initials(me.user.name)}
-              </span>
-              <span className="flex flex-col leading-tight">
-                <span className="text-cell font-semibold text-canopy-950">{me.user.name}</span>
-                <span className="text-label text-mist-500">{me.user.email}</span>
-              </span>
+                <Icon name="logout" size={18} />
+                Sign out
+              </Button>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              pending={signOut.isPending}
-              onClick={() => signOut.mutate()}
-            >
-              <Icon name="logout" size={18} />
-              Sign out
-            </Button>
-          </div>
-        </header>
-        <main className="flex-1 px-10 py-8">{children}</main>
+          </header>
+          <main className="flex-1 px-10 py-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </BreadcrumbProvider>
   );
 }

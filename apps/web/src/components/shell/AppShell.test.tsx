@@ -1,8 +1,10 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { AppShell } from './AppShell.tsx';
+import { useBreadcrumb } from './Breadcrumb.tsx';
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>();
@@ -216,6 +218,74 @@ describe('RFC-13 R3 AppShell chrome', () => {
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Workspace' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Settings');
+    location.pathname = '/app';
+  });
+});
+
+describe('RFC-13 R3 hierarchical breadcrumb', () => {
+  function SpeciesCrumbRegistrar() {
+    useBreadcrumb([{ label: 'Anathallis funerea' }]);
+    return null;
+  }
+  // A page unmounts its crumb-registering piece itself (e.g. navigating
+  // away); this stands in for that, toggled from inside the tree so the
+  // QueryClientProvider `renderWithProviders` wraps around stays mounted.
+  function SpeciesCrumbToggle() {
+    const [show, setShow] = useState(true);
+    return (
+      <>
+        <button type="button" onClick={() => setShow(false)}>
+          leave
+        </button>
+        {show ? <SpeciesCrumbRegistrar /> : null}
+      </>
+    );
+  }
+
+  it('appends a page-registered crumb after Data › Species, the trailing one as text with aria-current, the rest as links', () => {
+    location.pathname = '/app/species/018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
+    const { unmount } = renderWithProviders(
+      <AppShell>
+        <SpeciesCrumbRegistrar />
+      </AppShell>,
+      { me: ADMIN_ME },
+    );
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(crumb).toHaveTextContent('Data');
+    expect(crumb).toHaveTextContent('Species');
+    expect(crumb).toHaveTextContent('Anathallis funerea');
+    expect(within(crumb).getByRole('link', { name: 'Data' })).toHaveAttribute(
+      'href',
+      '/app/species',
+    );
+    expect(within(crumb).getByRole('link', { name: 'Species' })).toHaveAttribute(
+      'href',
+      '/app/species',
+    );
+    const last = within(crumb).getByText('Anathallis funerea');
+    expect(last).toHaveAttribute('aria-current', 'page');
+    expect(last.tagName).not.toBe('A');
+    unmount();
+    location.pathname = '/app';
+  });
+
+  it('removes the registered crumb once the registering component unmounts', () => {
+    location.pathname = '/app/species/018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
+    const { unmount } = renderWithProviders(
+      <AppShell>
+        <SpeciesCrumbToggle />
+      </AppShell>,
+      { me: ADMIN_ME },
+    );
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent(
+      'Anathallis funerea',
+    );
+    fireEvent.click(screen.getByText('leave'));
+    const entry = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(entry).not.toHaveTextContent('Anathallis funerea');
+    expect(within(entry).queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
+    expect(within(entry).getByText('Species')).toHaveAttribute('aria-current', 'page');
+    unmount();
     location.pathname = '/app';
   });
 });
