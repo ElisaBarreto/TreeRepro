@@ -131,6 +131,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     section: 'admin',
   },
   { to: '/app/settings', label: 'Settings', icon: 'sliders', section: 'account' },
+  // No permission: the help section is open to every signed-in user (RFC-73 R1).
+  { to: '/app/help', label: 'Help', icon: 'help', section: 'account' },
 ];
 
 // Every search entry of `entry` is present in `search` with the same value.

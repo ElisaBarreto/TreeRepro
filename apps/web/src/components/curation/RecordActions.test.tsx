@@ -12,6 +12,7 @@ import {
 } from '../../test/dataset-fixtures.ts';
 import { ME, USER } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
+import { withRouter } from '../../test/router.tsx';
 import { RecordActions } from './RecordActions.tsx';
 
 const curation = vi.hoisted(() => ({
@@ -145,14 +146,20 @@ describe('RFC-70 R4 RecordActions by permission', () => {
     expect(screen.getByRole('button', { name: 'Set as accepted' })).toBeInTheDocument();
   });
 
-  it('explains each decision in its own words', async () => {
-    renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
-    await userEvent.click(screen.getByRole('button', { name: 'What does Validate mean?' }));
+  // Mounted through a router: each tip carries a "Learn more" link into the
+  // help topic (RFC-73 R4), and a router `Link` needs one.
+  it('explains each decision in its own words, and links on to the help topic', async () => {
+    renderWithProviders(withRouter(<RecordActions record={THEIRS} />), { me: CONTRIBUTOR });
+    await userEvent.click(await screen.findByRole('button', { name: 'What does Validate mean?' }));
     expect(
       screen.getByText(
         'Records that you agree with this value as it stands. Nothing is changed; your confirmation is attached to the record.',
       ),
     ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Learn more' })).toHaveAttribute(
+      'href',
+      '/app/help/workflow#validate',
+    );
     await userEvent.click(
       screen.getByRole('button', { name: 'What does Add different record mean?' }),
     );

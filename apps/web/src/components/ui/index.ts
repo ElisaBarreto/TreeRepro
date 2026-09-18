@@ -27,6 +27,7 @@ export { Input } from './Input.tsx';
 export type { MeterProps } from './Meter.tsx';
 export { Meter } from './Meter.tsx';
 export { PageHeader } from './PageHeader.tsx';
+export { Prose } from './Prose.tsx';
 export type { SectionProps } from './Section.tsx';
 export { Section } from './Section.tsx';
 export type { SelectProps } from './Select.tsx';

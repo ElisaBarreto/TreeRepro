@@ -1,4 +1,5 @@
 import type { Dictionary, TraitSummary } from '@treerepro/contracts';
+import { helpHref } from '../../content/help/href.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
@@ -35,7 +36,14 @@ export function EmptyTraitCard({
           <span className="font-display text-card font-semibold text-canopy-950">
             {trait.unit ? `${name} (${trait.unit})` : name}
           </span>
-          {tip ? <HelpTip label={`What does ${name} mean?`}>{tip}</HelpTip> : null}
+          {tip ? (
+            <HelpTip
+              label={`What does ${name} mean?`}
+              learnMore={helpHref('vocabulary', 'descriptions')}
+            >
+              {tip}
+            </HelpTip>
+          ) : null}
         </span>
         <p className="text-meta text-mist-500">No records yet</p>
         {onAdd ? (

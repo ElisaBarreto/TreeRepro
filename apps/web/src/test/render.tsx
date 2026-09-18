@@ -23,3 +23,16 @@ export function renderWithProviders(
     ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>, rest),
   };
 }
+
+/**
+ * A `HelpTip`'s own words, without the "Learn more" link every tip carries
+ * since RFC-73 R4 — for the assertions that check a tip says exactly one
+ * thing and no more.
+ * @rfc RFC-01 R2
+ */
+export function tipText(tip: HTMLElement): string {
+  return Array.from(tip.childNodes)
+    .filter((node) => !(node instanceof HTMLAnchorElement))
+    .map((node) => node.textContent ?? '')
+    .join('');
+}

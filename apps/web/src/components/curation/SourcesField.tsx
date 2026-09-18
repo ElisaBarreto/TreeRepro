@@ -2,6 +2,7 @@ import type { CreateRecordBody, ResolveDoiResult } from '@treerepro/contracts';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { resolveDoi } from '../../api/curation.ts';
+import { helpHref } from '../../content/help/href.ts';
 import { Button, HelpTip } from '../ui/index.ts';
 import { type DoiCheck, DoiField, resolvedCheck } from './DoiField.tsx';
 
@@ -119,7 +120,7 @@ export function SourcesField({ value, onChange, errors, onValidity }: SourcesFie
       <legend className="sr-only">Sources</legend>
       <p id={hintId} className="flex items-start gap-1.5 text-meta text-mist-500">
         <span>{HINT}</span>
-        <HelpTip>{HINT}</HelpTip>
+        <HelpTip learnMore={helpHref('references', 'doi')}>{HINT}</HelpTip>
       </p>
       <div className="flex flex-col gap-4">
         {rows.map((doi, index) => {

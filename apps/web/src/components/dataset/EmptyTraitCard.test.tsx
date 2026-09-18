@@ -6,17 +6,24 @@ import {
   SEED_LENGTH_MISSING_SUMMARY,
   SELF_COMPATIBILITY_MISSING_SUMMARY,
 } from '../../test/dataset-fixtures.ts';
+import { tipText } from '../../test/render.tsx';
+import { withRouter } from '../../test/router.tsx';
 import { EmptyTraitCard } from './EmptyTraitCard.tsx';
 
 describe('RFC-70 R7 EmptyTraitCard', () => {
   it('names the trait, says "No records yet" and shows the HelpTip description', async () => {
-    render(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} dictionary={DICTIONARY} />);
-    expect(screen.getByText('self compatibility')).toBeInTheDocument();
+    // Through a router: the tip carries a "Learn more" link (RFC-73 R4).
+    render(
+      withRouter(
+        <EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} dictionary={DICTIONARY} />,
+      ),
+    );
+    expect(await screen.findByText('self compatibility')).toBeInTheDocument();
     expect(screen.getByText('No records yet')).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: 'What does self compatibility mean?' }),
     );
-    expect(screen.getByRole('tooltip').textContent).toBe(
+    expect(tipText(screen.getByRole('tooltip'))).toBe(
       'Whether an individual sets seed with its own pollen.',
     );
   });
@@ -28,11 +35,13 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
   });
 
   it('spec §7.5 the tip of a quantitative trait names the unit its records are measured in', async () => {
-    render(<EmptyTraitCard summary={SEED_LENGTH_MISSING_SUMMARY} dictionary={DICTIONARY} />);
-    await userEvent.click(screen.getByRole('button', { name: 'What does seed length mean?' }));
-    expect(screen.getByRole('tooltip').textContent).toBe(
-      'Length of the mature seed. Measured in mm.',
+    render(
+      withRouter(<EmptyTraitCard summary={SEED_LENGTH_MISSING_SUMMARY} dictionary={DICTIONARY} />),
     );
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'What does seed length mean?' }),
+    );
+    expect(tipText(screen.getByRole('tooltip'))).toBe('Length of the mature seed. Measured in mm.');
   });
 
   it('a categorical missing trait answers levels: [], not null, and renders all the same', () => {
