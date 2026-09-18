@@ -55,6 +55,7 @@ export function TaxonomyFilters({
     placeholderData: keepPreviousData,
   });
   const suggestions = genusText.trim().length >= 1 ? genera.data?.data : undefined;
+  const showSuggestions = suggestions !== undefined && suggestions.length > 0;
 
   function chooseGenus(genus: Genus) {
     setChosenGenus({ id: genus.id, name: genus.name });
@@ -115,8 +116,8 @@ export function TaxonomyFilters({
             autoComplete="off"
             maxLength={100}
             aria-autocomplete="list"
-            aria-expanded={suggestions !== undefined}
-            aria-controls={suggestions !== undefined ? ids.genera : undefined}
+            aria-expanded={showSuggestions}
+            aria-controls={showSuggestions ? ids.genera : undefined}
             placeholder="Type to search genera"
             value={genusText}
             onChange={(event) => setGenusText(event.target.value)}

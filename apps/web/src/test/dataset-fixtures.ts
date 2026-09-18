@@ -560,7 +560,13 @@ export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
   summary: { numeric: { min: 0.5, max: 3 } },
 };
 
-/** A `mode=missing` row: no records, so no count, value or summary. @rfc RFC-62 R8 */
+/**
+ * A `mode=missing` row: no records, so no count, value or summary.
+ * `traitRecordCount` stays 0 — `searchSpecies` always supplies `traitId` here,
+ * so its coverage counter is never null, and the coverage row itself does not
+ * exist in missing mode by construction (RFC-60 R6, RFC-62 R8).
+ * @rfc RFC-62 R8
+ */
 export const TRAIT_SPECIES_MISSING: TraitSpeciesItem = {
   ...TRAIT_SPECIES_WITH_DATA,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d08',
@@ -568,7 +574,7 @@ export const TRAIT_SPECIES_MISSING: TraitSpeciesItem = {
   genus: null,
   family: MALVACEAE,
   traitCount: 0,
-  traitRecordCount: null,
+  traitRecordCount: 0,
   recordCount: null,
   accepted: null,
   summary: null,
