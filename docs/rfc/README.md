@@ -48,5 +48,5 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-68 | Supplementary imports | accepted |
 | RFC-69 | Coverage summary | accepted |
 | RFC-70 | Contribution workflow | accepted |
-| RFC-71 | My contributions | draft |
+| RFC-71 | My contributions | accepted |
 | RFC-80 | DOI resolution | accepted |
