@@ -186,6 +186,65 @@ describe('RFC-68 R13 import:references', () => {
     expect(row.doi).toBe('10.1111/geb.1');
   });
 
+  it('a repeated key whose earlier row is malformed and whose last row is valid: the last row applies, the earlier row is duplicate, not rejected (RFC-68 R4)', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},,,not-a-doi,`,
+      `${ref.citationKey},,,10.8000/last-wins-${Date.now()},`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      2, 1, 1, 0,
+    ]);
+    const rejects = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(rejects).toHaveLength(0);
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.doi).toMatch(/^10\.8000\/last-wins-/);
+  });
+
+  it('a repeated key whose last row is malformed: the key contributes nothing, the last row is rejected with its own reason, the earlier row is duplicate and never applied (RFC-68 R4)', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},,,10.8100/earlier-loses-${Date.now()},`,
+      `${ref.citationKey},,,not-a-doi,`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      2, 0, 1, 1,
+    ]);
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.reason).toBe('invalid_value');
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.doi).toBeNull();
+  });
+
+  it('a repeated key where both rows are valid: the last row wins, the earlier row is duplicate (RFC-68 R4)', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const winningDoi = `10.8200/second-wins-${Date.now()}`;
+    const file = await csv([
+      'reference_key,short_citation,full_citation,doi,url',
+      `${ref.citationKey},,,10.8200/first-loses-${Date.now()},`,
+      `${ref.citationKey},,,${winningDoi},`,
+    ]);
+    const batch = await importReferences(t.db, { filePath: file, runBy: user.id });
+    expect([batch.rowsTotal, batch.rowsInserted, batch.rowsDuplicate, batch.rowsRejected]).toEqual([
+      2, 1, 1, 0,
+    ]);
+    const row = await referenceRow(t.db, ref.id);
+    expect(row.doi).toBe(winningDoi);
+  });
+
   it('refuses a wrong header before creating a batch', async () => {
     const bad = await csv(['citation_key,short_citation', 'x,y']);
     await expect(importReferences(t.db, { filePath: bad, runBy: null })).rejects.toThrow(/header/i);

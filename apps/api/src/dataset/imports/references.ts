@@ -90,27 +90,44 @@ export async function importReferences(
         update import_staging s set reference_id = r.id
         from bibliographic_references r where r.citation_key = s.ref_key`;
 
-      // Priority: unknown target first, then malformed input, then a DOI
+      // RFC-68 R4: a repeated key — only the last row (highest row_no) for
+      // a given staged key is a candidate to apply; every earlier row for
+      // that key is duplicate whatever it contains. This runs BEFORE any
+      // outcome validation below, and is grouped by the staged `ref_key`,
+      // not `reference_id`: an unknown key has no `reference_id`, and
+      // grouping by that null would lump every unmatched row in the whole
+      // file into one group, hiding the real per-key repetition. Grouping
+      // by `ref_key` keeps `unknown_reference` scoped to a row whose own
+      // key matches nothing, while a *repeated* unknown key still picks one
+      // winner the same as a matched key does.
+      await tx`
+        update import_staging s set is_winner = true
+        where s.row_no in (select max(row_no) from import_staging group by ref_key)`;
+
+      // Priority: a non-winning row of a repeated key is duplicate whatever
+      // it contains (RFC-68 R4, checked first so validation below never
+      // runs on it); then unknown target; then malformed input; then a DOI
       // already held elsewhere — checked case-insensitively against
       // lower(doi), agreeing with bibliographic_references_doi_idx, and
       // excluding the row's own reference (which may already hold that
       // exact DOI, case-varied — not a conflict).
       //
-      // Deliberate asymmetry: `short_citation`, `full_citation` and `url`
-      // are never validated (any non-empty text fills them), but `doi` is
-      // checked for malformed-ness and cross-row collision unconditionally
-      // — even when the target reference already has a stored doi and this
-      // field would never be written. That's intentional: unlike the other
-      // three fields, `doi_taken` is a cross-row uniqueness signal ("this
-      // row claims a DOI belonging to a *different* reference"), a genuine
-      // data conflict in the operator's source file that is worth surfacing
-      // on its own merits, whether or not the row would have used the
-      // value. Folding it into a bland "duplicate" would hide that conflict
-      // from the report. (RFC-68 R13 doesn't spell this out; recorded here
-      // so a future reader doesn't "fix" it back to matching the other
-      // fields.)
+      // Deliberate asymmetry, for a key's winning row: `short_citation`,
+      // `full_citation` and `url` are never validated (any non-empty text
+      // fills them), but `doi` is checked for malformed-ness and cross-row
+      // collision unconditionally — even when the target reference already
+      // has a stored doi and this field would never be written. That's
+      // intentional: unlike the other three fields, `doi_taken` is a
+      // cross-row uniqueness signal ("this row claims a DOI belonging to a
+      // *different* reference"), a genuine data conflict in the operator's
+      // source file that is worth surfacing on its own merits, whether or
+      // not the row would have used the value. Folding it into a bland
+      // "duplicate" would hide that conflict from the report. (RFC-68 R13
+      // doesn't spell this out; recorded here so a future reader doesn't
+      // "fix" it back to matching the other fields.)
       await tx`
         update import_staging s set outcome = case
+          when not s.is_winner then 'duplicate'
           when reference_id is null then 'unknown_reference'
           when doi_malformed then 'invalid_value'
           when norm_doi is not null and exists (
@@ -119,21 +136,14 @@ export async function importReferences(
           ) then 'doi_taken'
           else 'apply' end`;
 
-      // RFC-68 R4: a repeated key — only the last row (highest row_no) for
-      // a given reference is a candidate to apply; earlier candidate rows
-      // for the same reference are duplicate whatever they contain.
-      await tx`
-        update import_staging s set is_winner = true
-        where s.row_no in (
-          select max(row_no) from import_staging where outcome = 'apply' group by reference_id
-        )`;
-
       // Guard against two winning rows in the same file trying to give the
       // same brand-new DOI to two different references — postgres would
       // raise 23505 mid-statement on the update below (an aborted
       // transaction we must not catch-and-re-read, docs/gotchas/drizzle.md);
       // catch it here instead, keeping only the earliest such row and
-      // rejecting the rest as doi_taken.
+      // rejecting the rest as doi_taken. `s.is_winner` is already implied
+      // by `s.outcome = 'apply'` at this point (duplicates were excluded
+      // above); kept explicit for clarity.
       await tx`
         update import_staging s set outcome = 'doi_taken', is_winner = false
         where s.outcome = 'apply' and s.is_winner and s.norm_doi is not null
@@ -158,10 +168,18 @@ export async function importReferences(
         from import_staging where outcome in ('unknown_reference', 'invalid_value', 'doi_taken')
         order by row_no`;
 
-      const [{ candidate_count: candidateCount }] = (await tx`
-        select count(*)::int as candidate_count from import_staging where outcome = 'apply'`) as [
-        { candidate_count: number },
-      ];
+      // `duplicate` counts two distinct things, added together: a row that
+      // never got to apply at all because a later row of its key won
+      // instead (`outcome = 'duplicate'`, RFC-68 R4), and a winning row
+      // whose `outcome = 'apply'` but that changed nothing on the stored
+      // reference (every field it carries was already filled — `applied`
+      // below only counts a row once something actually changed). Either
+      // way `rows_total = inserted + duplicate + rejected` still holds.
+      const [{ candidate_count: candidateCount, dup_outcome_count: dupOutcomeCount }] = (await tx`
+        select
+          count(*) filter (where outcome = 'apply')::int as candidate_count,
+          count(*) filter (where outcome = 'duplicate')::int as dup_outcome_count
+        from import_staging`) as [{ candidate_count: number; dup_outcome_count: number }];
 
       // Fill only the fields still null on the stored row (never overwrite);
       // the WHERE re-checks that at least one field actually changes, so the
@@ -190,7 +208,7 @@ export async function importReferences(
 
       return {
         inserted: applied.count,
-        duplicate: candidateCount - applied.count,
+        duplicate: candidateCount - applied.count + dupOutcomeCount,
         rejected,
       };
     },
