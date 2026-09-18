@@ -1,5 +1,5 @@
 import type { Dictionary, ListTraitsQuery, Trait, TraitValueType } from '@treerepro/contracts';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, type SQL, sql } from 'drizzle-orm';
 import {
   levelVisible,
   speciesVisible,
@@ -125,6 +125,20 @@ export async function dictionaryCategories(
 }
 
 /**
+ * `speciesCount` (both `getDictionary`'s cached map and `getTrait`'s direct
+ * read) is a global summary, never scoped to a plot-bound viewer's plots: it
+ * varies only along the active/inactive dimension. This mirrors RFC-62 R7's
+ * distribution cache ("plot-bound viewers get the restricted class: the
+ * summary is global, not per plot") and RFC-60 R6's `species.trait_count`.
+ * Scoping the count to `plotIds` too would give every plot-bound viewer a
+ * private cache entry and a full coverage-table scan each — exactly what the
+ * cache exists to avoid.
+ */
+function globalSpeciesVisible(visibility: Visibility, activeCol: SQL, idCol: SQL): SQL {
+  return speciesVisible({ inactive: visibility.inactive, plotIds: null }, activeCol, idCol);
+}
+
+/**
  * The visible species count per trait, keyed by trait id: a scan of
  * `species_trait_coverage` joined to visible species, cached 10 minutes per
  * viewer class under `dictionary:species-counts:<u|r>` (RFC-62 R5) — the
@@ -140,7 +154,7 @@ async function speciesCountsByTrait(
       select c.trait_id as trait_id, count(*)::int as species_count
       from species_trait_coverage c
       join species s on s.id = c.species_id
-      where ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
+      where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
       group by c.trait_id
     `)) as unknown as { trait_id: string; species_count: number }[];
     return rows.map((r) => [r.trait_id, r.species_count] as [string, number]);
@@ -222,12 +236,14 @@ export async function getTrait(
   // species_trait_coverage_trait_idx) rather than the dictionary-wide cache:
   // trait writes are rare, so a fresh number costs nothing here, and this
   // feeds POST/PATCH /api/traits, where a cached, possibly-stale 0 would
-  // ship as wrong data.
+  // ship as wrong data. Plot-blind like `getDictionary`'s cached map: the
+  // same contract field cannot mean one thing on GET /api/traits and another
+  // on the write responses.
   const [countRow] = (await db.execute(sql`
     select count(*)::int as species_count
     from species_trait_coverage c
     join species s on s.id = c.species_id
-    where c.trait_id = ${id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
+    where c.trait_id = ${id} and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
   `)) as unknown as { species_count: number }[];
   return {
     id: t.id,

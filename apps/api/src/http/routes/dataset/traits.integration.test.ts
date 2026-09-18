@@ -10,7 +10,6 @@ import {
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
-import { forgetCached } from '../../../redis/cache.ts';
 
 const zero = '00000000-0000-7000-8000-000000000000';
 
@@ -184,7 +183,7 @@ describe('RFC-62 R5 GET /api/traits filters and speciesCount', () => {
     return { cookie: (await loginAs(t, user)).cookie };
   }
 
-  it('applies categoryKey, valueType and q server-side, and reports speciesCount', async () => {
+  it('applies categoryKey, valueType and q server-side, and reports the cached speciesCount', async () => {
     const { cookie } = await reader();
     const suffix = Math.random().toString(16).slice(2);
     const own = await createTrait(t.db, {
@@ -198,23 +197,22 @@ describe('RFC-62 R5 GET /api/traits filters and speciesCount', () => {
       categoryKey: 'plant_form',
       valueType: 'quantitative',
     });
-    const ref = await createReference(t.db);
-    const sp = await createSpecies(t.db);
-    const { user: recorder } = await createUser(t.db);
-    await createRecord(t.db, {
-      speciesId: sp.id,
-      traitId: own.id,
-      valueText: 'x',
-      levelId: own.levels[0]?.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: recorder.id,
-    });
 
-    // The species-count map is cached under a fixed key shared by every
-    // parallel test that reads the dictionary (RFC-62 R5); forget it first
-    // so this call scans fresh and sees the record just inserted above.
-    await forgetCached(t.redis, 'dictionary:species-counts:u', 'dictionary:species-counts:r');
+    // `dictionary:species-counts:r` is a fixed key (RFC-62 R5) shared by
+    // every parallel test that reads the dictionary; forgetting it and then
+    // reading races a sibling for who wins the miss→scan→write cycle. This
+    // seeds the key directly and reads it back immediately, so the assertion
+    // is provably this call's own value (the sentinel below cannot arise
+    // from a real scan: `own` has no species_trait_coverage row at all).
+    // `reader()` has `dataset.read` but not `dataset.read_inactive`, so it
+    // is a restricted viewer and reads the `r` key, not `u`.
+    const sentinel = 424242;
+    await t.redis.set(
+      'dictionary:species-counts:r',
+      JSON.stringify({ value: [[own.id, sentinel]], computedAt: new Date().toISOString() }),
+      'EX',
+      600,
+    );
     const res = await call(t.app, 'GET', `/api/traits?categoryKey=flower_color&q=${own.key}`, {
       cookie,
     });
@@ -225,7 +223,7 @@ describe('RFC-62 R5 GET /api/traits filters and speciesCount', () => {
     }[];
     const traitsFound = dictionary.flatMap((c) => c.traits);
     expect(traitsFound.map((tr) => tr.key)).toEqual([own.key]);
-    expect(traitsFound[0]?.speciesCount).toBe(1);
+    expect(traitsFound[0]?.speciesCount).toBe(sentinel);
     expect(traitsFound.some((tr) => tr.id === other.id)).toBe(false);
 
     const badQuery = await call(t.app, 'GET', '/api/traits?valueType=nope', { cookie });

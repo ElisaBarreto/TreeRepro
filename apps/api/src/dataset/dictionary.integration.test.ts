@@ -2,6 +2,8 @@ import type { Dictionary } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
+  addPlotSpecies,
+  createPlot,
   createRecord,
   createReference,
   createSpecies,
@@ -12,7 +14,6 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
-import { forgetCached } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
 import { getDictionary, getTrait } from './dictionary.ts';
 
@@ -79,6 +80,8 @@ describe('RFC-62 R5 dictionary filters', () => {
     await redis.quit();
   });
 
+  const keysOf = (d: Dictionary) => d.flatMap((c) => c.traits).map((tr) => tr.key);
+
   it('filters by categoryKey, valueType, and a case-insensitive q on key or description', async () => {
     const suffix = Math.random().toString(16).slice(2);
     const alphaKey = `filter_alpha_${suffix}`;
@@ -97,8 +100,6 @@ describe('RFC-62 R5 dictionary filters', () => {
       categoryKey: 'plant_form',
       valueType: 'quantitative',
     });
-
-    const keysOf = (d: Dictionary) => d.flatMap((c) => c.traits).map((tr) => tr.key);
 
     const byCategory = await getDictionary({ db: t.db, redis }, UNRESTRICTED, {
       categoryKey: 'flower_color',
@@ -121,6 +122,44 @@ describe('RFC-62 R5 dictionary filters', () => {
       q: `MARKER ${suffix}`,
     });
     expect(keysOf(byDescriptionSubstring)).toEqual([alphaKey]);
+  });
+
+  it('ANDs categoryKey, valueType and q together rather than ORing them', async () => {
+    const suffix = Math.random().toString(16).slice(2);
+    const qTerm = `and_target_${suffix}`;
+    // Matches all three conditions.
+    const target = await createTrait(t.db, {
+      key: qTerm,
+      categoryKey: 'flower_color',
+      valueType: 'categorical',
+    });
+    // Matches categoryKey and q, wrong valueType.
+    await createTrait(t.db, {
+      key: `${qTerm}_wrong_value_type`,
+      categoryKey: 'flower_color',
+      valueType: 'quantitative',
+    });
+    // Matches valueType and q, wrong categoryKey.
+    await createTrait(t.db, {
+      key: `${qTerm}_wrong_category`,
+      categoryKey: 'plant_form',
+      valueType: 'categorical',
+    });
+    // Matches categoryKey and valueType, wrong q.
+    await createTrait(t.db, {
+      key: `unrelated_${suffix}`,
+      categoryKey: 'flower_color',
+      valueType: 'categorical',
+    });
+
+    const dictionary = await getDictionary({ db: t.db, redis }, UNRESTRICTED, {
+      categoryKey: 'flower_color',
+      valueType: 'categorical',
+      q: qTerm,
+    });
+    // If the predicate ORed instead of ANDed, every one of the four traits
+    // above would satisfy at least one condition and all would appear.
+    expect(keysOf(dictionary)).toEqual([target.key]);
   });
 });
 
@@ -156,7 +195,7 @@ describe('RFC-62 R5 dictionary filters prune empty categories', () => {
   });
 });
 
-describe('RFC-62 R5 dictionary speciesCount', () => {
+describe('RFC-62 R5 dictionary speciesCount is read from the cache', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
@@ -168,54 +207,54 @@ describe('RFC-62 R5 dictionary speciesCount', () => {
   });
 
   /**
-   * The map is served through `cachedJson` under a fixed key per viewer
-   * class (RFC-62 R5), so every parallel test file that reads the dictionary
-   * shares it. Forgetting it right before reading forces a fresh scan that
-   * includes this test's own just-inserted rows; assertions only ever look
-   * up this test's own trait id, never a total, so a sibling test's traits
-   * in the same scan cannot break them.
+   * `dictionary:species-counts:<u|r>` is a fixed key (RFC-62 R5), shared by
+   * every parallel test and route call that reads the dictionary in this
+   * run. `forgetCached`-then-read raced a sibling's own scan for that same
+   * key (a sibling could win the miss→scan→write cycle between the forget
+   * and the read, so the read's "hit" would be someone else's value, not
+   * this test's). Seeding the key directly and reading it back in the next
+   * line removes that race: whatever the test asserts is verifiably the
+   * value it just wrote, not a value a scan happened to produce. It also
+   * proves the cache-hit path returns the cache's value rather than
+   * silently rescanning: the seeded number cannot match a real scan (the
+   * trait has no coverage rows at all).
    */
-  async function forgetCounts() {
-    await forgetCached(redis, 'dictionary:species-counts:u', 'dictionary:species-counts:r');
+  async function seedCounts(entries: { u?: [string, number][]; r?: [string, number][] }) {
+    const now = new Date().toISOString();
+    if (entries.u) {
+      await redis.set(
+        'dictionary:species-counts:u',
+        JSON.stringify({ value: entries.u, computedAt: now }),
+        'EX',
+        600,
+      );
+    }
+    if (entries.r) {
+      await redis.set(
+        'dictionary:species-counts:r',
+        JSON.stringify({ value: entries.r, computedAt: now }),
+        'EX',
+        600,
+      );
+    }
   }
 
-  it('counts visible species with a species_trait_coverage row, cached 600s per viewer class', async () => {
-    const { user } = await createUser(t.db);
-    const ref = await createReference(t.db);
+  it('attaches the exact cached number to its trait, per viewer class', async () => {
     const trait = await createTrait(t.db);
-    const level = trait.levels[0]?.id as string;
-    const levelKey = trait.levels[0]?.key as string;
-    const activeSpecies = await createSpecies(t.db);
-    const inactiveSpecies = await createSpecies(t.db);
-    await t.db.update(species).set({ active: false }).where(eq(species.id, inactiveSpecies.id));
-    for (const speciesId of [activeSpecies.id, inactiveSpecies.id]) {
-      await createRecord(t.db, {
-        speciesId,
-        traitId: trait.id,
-        valueText: levelKey,
-        levelId: level,
-        primaryReferenceId: ref.id,
-        origin: 'manual',
-        createdBy: user.id,
-      });
-    }
+    const uSentinel = 111111;
+    const rSentinel = 222222;
 
-    await forgetCounts();
+    await seedCounts({ u: [[trait.id, uSentinel]] });
     const unrestricted = await getDictionary({ db: t.db, redis }, UNRESTRICTED);
-    const uTrait = unrestricted.flatMap((c) => c.traits).find((tr) => tr.id === trait.id);
-    expect(uTrait?.speciesCount).toBe(2);
+    expect(
+      unrestricted.flatMap((c) => c.traits).find((tr) => tr.id === trait.id)?.speciesCount,
+    ).toBe(uSentinel);
 
+    await seedCounts({ r: [[trait.id, rSentinel]] });
     const restricted = await getDictionary({ db: t.db, redis }, RESTRICTED);
-    const rTrait = restricted.flatMap((c) => c.traits).find((tr) => tr.id === trait.id);
-    expect(rTrait?.speciesCount).toBe(1);
-
-    // Separate cache entries per viewer class, each with the RFC-62 R5 TTL.
-    const uTtl = await redis.ttl('dictionary:species-counts:u');
-    const rTtl = await redis.ttl('dictionary:species-counts:r');
-    expect(uTtl).toBeGreaterThan(0);
-    expect(uTtl).toBeLessThanOrEqual(600);
-    expect(rTtl).toBeGreaterThan(0);
-    expect(rTtl).toBeLessThanOrEqual(600);
+    expect(restricted.flatMap((c) => c.traits).find((tr) => tr.id === trait.id)?.speciesCount).toBe(
+      rSentinel,
+    );
   });
 });
 
@@ -257,5 +296,36 @@ describe('RFC-62 R5 getTrait speciesCount', () => {
       createdBy: user.id,
     });
     expect((await getTrait(t.db, UNRESTRICTED, trait.id))?.speciesCount).toBe(3);
+  });
+
+  it('is plot-blind: a plot-bound viewer counts species outside their plots too', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db);
+    const level = trait.levels[0]?.id as string;
+    const levelKey = trait.levels[0]?.key as string;
+    const plot = await createPlot(t.db);
+    const insidePlot = await createSpecies(t.db);
+    const outsidePlot = await createSpecies(t.db);
+    await addPlotSpecies(t.db, plot.id, [insidePlot.id]);
+    for (const speciesId of [insidePlot.id, outsidePlot.id]) {
+      await createRecord(t.db, {
+        speciesId,
+        traitId: trait.id,
+        valueText: levelKey,
+        levelId: level,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+    }
+
+    const plotBound = { inactive: false, plotIds: [plot.id] };
+    // A viewer bound to `plot` (which contains only `insidePlot`) still
+    // counts `outsidePlot`, and gets the same number as a restricted viewer
+    // with no plot restriction at all: speciesCount is a global summary
+    // (RFC-62 R5), not scoped to the plots this particular viewer can see.
+    expect((await getTrait(t.db, plotBound, trait.id))?.speciesCount).toBe(2);
+    expect((await getTrait(t.db, RESTRICTED, trait.id))?.speciesCount).toBe(2);
   });
 });
