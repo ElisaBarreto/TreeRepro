@@ -1,7 +1,7 @@
 # TreeRepro — Platform Design (plans 12a–12d)
 
 **Date:** 2026-09-17
-**Status:** 12b implemented (API and web); plans `-12a-help.md`, `-12c-proposals.md`, `-12d-health.md` not yet started
+**Status:** 12a implemented (web); 12b implemented (API and web); plans `-12c-proposals.md`, `-12d-health.md` not yet started
 **Scope:** the pieces around the scientific workflow: help pages and a getting-started card for new contributors; a daily e-mail digest for managers and admins; species proposals with an external taxonomy lookup and an approval queue; a platform health page for the admin. RFC-73 (help and onboarding), RFC-74 (daily digest), RFC-75 (species proposals), RFC-81 (taxonomy lookup), RFC-52 (platform health), amendments to RFC-13, RFC-30, RFC-31, RFC-41, RFC-42, RFC-12. Programme index: `2026-09-17-contributor-launch-overview.md`.
 
 ## 1. Context
