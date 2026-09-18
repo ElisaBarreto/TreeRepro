@@ -1,6 +1,6 @@
 {
-  "id": "125dd9de-8906-4fab-8d9a-912c6d9c7782",
-  "prevId": "29795fb1-f99a-4a14-82fe-b1fe6bc104f7",
+  "id": "c16c5337-59b9-4a26-9226-2b20b07542ee",
+  "prevId": "125dd9de-8906-4fab-8d9a-912c6d9c7782",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1978,6 +1978,88 @@
       },
       "isRLSEnabled": false
     },
+    "public.reference_traits": {
+      "name": "reference_traits",
+      "schema": "",
+      "columns": {
+        "reference_id": {
+          "name": "reference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trait_id": {
+          "name": "trait_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "record_count": {
+          "name": "record_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "reference_traits_trait_idx": {
+          "name": "reference_traits_trait_idx",
+          "columns": [
+            {
+              "expression": "trait_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "reference_traits_reference_id_bibliographic_references_id_fk": {
+          "name": "reference_traits_reference_id_bibliographic_references_id_fk",
+          "tableFrom": "reference_traits",
+          "tableTo": "bibliographic_references",
+          "columnsFrom": [
+            "reference_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "reference_traits_trait_id_traits_id_fk": {
+          "name": "reference_traits_trait_id_traits_id_fk",
+          "tableFrom": "reference_traits",
+          "tableTo": "traits",
+          "columnsFrom": [
+            "trait_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "reference_traits_reference_id_trait_id_pk": {
+          "name": "reference_traits_reference_id_trait_id_pk",
+          "columns": [
+            "reference_id",
+            "trait_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.bibliographic_references": {
       "name": "bibliographic_references",
       "schema": "",
@@ -2078,6 +2160,18 @@
         "observer_user_id": {
           "name": "observer_user_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "short_citation": {
+          "name": "short_citation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "full_citation": {
+          "name": "full_citation",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }

@@ -98,4 +98,4 @@ on conflict (reference_id, trait_id) do update set record_count = excluded.recor
 
 The `union` is over distinct `(record id, reference, trait)` triples, not over counts: a record naming the same reference in both roles yields the same triple on both sides and so counts once, while `id` keeps two different records on the same pair apart. `union all` would double-count the first case. Keep that shape in any hand-written repair — it is the definition of `record_count` (RFC-61 R9).
 
-The migration is `references_enriched`; it was generated as `0026` and may carry a different number after a renumber, so match it by tag.
+The migration is `references_enriched`; it is `0027` today and may carry a different number after a renumber, so match it by tag.
