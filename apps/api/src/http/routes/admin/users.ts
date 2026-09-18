@@ -28,6 +28,7 @@ import type { AuthContext } from '../../../auth/context.ts';
 import { InvitationMailError, inviteUser } from '../../../auth/flows/invitation.ts';
 import { UserEmailTakenError } from '../../../auth/users.ts';
 import { contributionSummary, listContributions } from '../../../dataset/contributions.ts';
+import { forgetCached } from '../../../redis/cache.ts';
 import { clientIp, userAgent } from '../../client-ip.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
@@ -140,6 +141,11 @@ export function adminUserRoutes(ctx: AuthContext) {
           plotIds,
           restrictToAssignedPlots,
         });
+        // After the transaction, never inside the service: the target
+        // user's own dashboard answers over the plots that just changed,
+        // not the ones cached from before (RFC-72 R1). The target's key,
+        // not the acting admin's — it is the target's `scope` that changed.
+        await forgetCached(ctx.redis, `dashboard:${id}`);
         return c.json({ data });
       },
     )

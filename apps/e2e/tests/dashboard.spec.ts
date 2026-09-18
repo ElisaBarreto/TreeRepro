@@ -17,6 +17,9 @@ interface SpeciesRow {
 interface PlotRow {
   id: string;
 }
+interface ReferenceRow {
+  id: string;
+}
 interface TraitRow {
   id: string;
 }
@@ -46,10 +49,13 @@ test.describe('RFC-72 workspace dashboard (plan 11b)', () => {
     const plotName = `E2E Dashboard Plot ${stamp}`;
     const traitKey = `e2e_dashboard_${stamp}`;
     const traitName = humanised(traitKey);
+    const citationKey = `E2EDASH-${stamp}`;
 
-    // ── Seed one species and one plot holding only it, plus a trait new to
-    // the dictionary — everything timestamped so nothing here can collide
-    // with another branch's fixtures or with dataset-wide activity. ────────
+    // ── Seed one species, one plot holding only it, a trait new to the
+    // dictionary and one record on it — everything timestamped so nothing
+    // here can collide with another branch's fixtures or with dataset-wide
+    // activity. The record is the admin's, not the contributor's: it is
+    // what the contributor's dashboard finds awaiting their validation. ────
     const species = await create<SpeciesRow>(admin, '/api/species', {
       canonicalName: speciesName,
       nameSource: 'wcvp',
@@ -59,41 +65,37 @@ test.describe('RFC-72 workspace dashboard (plan 11b)', () => {
       speciesId: species.id,
     });
     expect(memberAdded.status).toBe(201);
+    const reference = await create<ReferenceRow>(admin, '/api/references', {
+      citationKey,
+      title: 'Reproductive traits for the workspace dashboard E2E',
+      year: 2026,
+    });
     const trait = await create<TraitRow>(admin, '/api/traits', {
       key: traitKey,
       categoryKey: CATEGORY_KEY,
       valueType: 'quantitative',
       description: 'A quantitative trait created for the workspace dashboard E2E.',
     });
+    const recordCreated = await apiCall(admin, 'POST', '/api/records', {
+      speciesId: species.id,
+      traitId: trait.id,
+      value: { numeric: 12.5 },
+      sources: { references: [{ id: reference.id }] },
+    });
+    expect(recordCreated.status).toBe(201);
 
     const contributor = await inviteAndActivate(browser, admin, { role: 'contributor' });
 
     try {
+      // PUT /api/admin/users/:id/plots drops the contributor's own dashboard
+      // cache entry (RFC-72 R1), so their next load answers over the plot
+      // just assigned rather than the no-plots answer their two page loads
+      // inside `inviteAndActivate` cached before this plot existed for them.
       const assigned = await apiCall(admin, 'PUT', `/api/admin/users/${contributor.userId}/plots`, {
         plotIds: [plot.id],
         restrictToAssignedPlots: true,
       });
       expect(assigned.status).toBe(200);
-
-      // The record awaiting validation is the contributor's own — a personal
-      // observation, so no admin-created reference is needed — created
-      // through the API after the plot assignment above. `POST /api/records`
-      // drops the caller's own `dashboard:<id>` cache entry (RFC-72 R1), the
-      // only thing that makes the plot assignment visible on the next
-      // dashboard fetch: nothing invalidates that cache when a user's plots
-      // change, so the contributor's own two page loads earlier in
-      // `inviteAndActivate` (both before this plot existed for them) would
-      // otherwise still be served back on the next load below. Authorship
-      // does not matter to "awaiting" (RFC-72 R1: no confirm annotation from
-      // anyone, no withdraw), so this is still a faithful fixture, not a
-      // workaround dressed as one.
-      const recordCreated = await apiCall(contributor.context, 'POST', '/api/records', {
-        speciesId: species.id,
-        traitId: trait.id,
-        value: { numeric: 12.5 },
-        sources: { personalObservation: true },
-      });
-      expect(recordCreated.status).toBe(201);
 
       const page = contributor.page;
       await page.goto('/app/');
@@ -119,7 +121,7 @@ test.describe('RFC-72 workspace dashboard (plan 11b)', () => {
       ).toBeVisible();
       const row = page.getByRole('row').filter({ hasText: speciesName });
       await expect(row).toContainText(traitName);
-      await expect(row.getByRole('link', { name: 'Personal observation' })).toBeVisible();
+      await expect(row.getByRole('link', { name: citationKey })).toBeVisible();
       await row.getByRole('button', { name: '12.5', exact: true }).click();
 
       // ── Validate it from the record drawer. ─────────────────────────────
@@ -129,10 +131,10 @@ test.describe('RFC-72 workspace dashboard (plan 11b)', () => {
       await expect(drawer.getByText('You validated this record')).toBeVisible();
       await drawer.getByRole('button', { name: 'Close' }).click();
 
-      // ── Validating drops the record's own cache entry the same way the
-      // seeding write above did, but the page itself only asks for the
-      // dashboard once, on mount — seeing the drop takes a fresh navigation,
-      // not a wait on the still-mounted query. ────────────────────────────
+      // ── Validating drops the contributor's own cache entry the same way
+      // the plot assignment did, but the page itself only asks for the
+      // dashboard once, on mount — seeing the drop takes a fresh
+      // navigation, not a wait on the still-mounted query. ────────────────
       await page.goto('/app/');
       await expect(
         page.getByRole('heading', { name: 'Records awaiting your validation (0)' }),
