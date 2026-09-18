@@ -24,6 +24,7 @@ Beyond the compiled dataset (RFC-64) the owner loads smaller files: which specie
 - **R10** Kind `plot_species`. Header `plot_id,wcvp_species`. Unknown plot → `unknown_plot`; unknown species → `unknown_species`; existing pair → duplicate (RFC-67 R10).
 - **R11** Kind `user_plots`. Header `user_email,plot_id`. The user is matched by e-mail hash and must exist in any status (an invited user may be assigned before accepting); e-mails are matched through the blind index, computed by the command inside the import transaction; unknown → `unknown_user`; unknown plot → `unknown_plot`; existing pair → duplicate. To prevent persisting plaintext PII (RFC-40 R1), rejected rows record `raw_row` with a masked e-mail (`a***@domain.com`) in `user_email`. The restriction flag is not imported: the admin sets it on the user page (default `false`) (RFC-67 R11).
 - **R12** Kind `synonyms`. Header `wcvp_canonical_name,synonym_or_common_name,name_type,source`. The species is matched by `wcvp_canonical_name` after normalisation (RFC-60 R2); unknown → `unknown_species`. `name_type` is `synonym` or `common_<lang>` (`lang` two lowercase letters); anything else → `invalid_value`. A name equal to the species' canonical name or already stored for the species (whatever its type) → duplicate. Empty `source` → `'import'`.
+- **R13** Kind `references`. Header `reference_key,short_citation,full_citation,doi,url`. The reference is matched by `citation_key`; unknown → `unknown_reference`. Fills `short_citation`, `full_citation`, `doi` and `url` only when the stored value is null (the second kind, after R8, that changes an existing row); a row that fills none of the four → duplicate. A `doi` already held by another reference → `doi_taken`; a malformed DOI (RFC-80 R1) → `invalid_value`. DOIs are normalised before storage (RFC-80 R1).
 
 ## Open questions
 
@@ -37,3 +38,4 @@ None.
 - 2026-09-17 — R4: repeated keys (CodeRabbit).
 - 2026-09-17 — R9–R11: kinds plots, plot_species, user_plots (RFC-67, plan 08b).
 - 2026-09-17 — R12: kind `synonyms` (RFC-60 R4, R6; plan 10b).
+- 2026-09-17 — R13: kind `references` (RFC-61 R9; plan 10d).
