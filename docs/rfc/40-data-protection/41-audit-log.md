@@ -63,6 +63,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `plots.species_added` | Species added to a field plot (RFC-67 R5). |
 | `plots.species_removed` | Species removed from a field plot (RFC-67 R5). |
 | `users.plots_changed` | Field plots assigned to or removed from a user, or restriction flag changed (RFC-67 R6). |
+| `digest.sent` | Daily digest e-mail run completed (RFC-74 R5). |
 
 ## Open questions
 
@@ -80,3 +81,4 @@ None.
 - 2026-09-13 — R3: the catalog lives in packages/contracts (plan 05b).
 - 2026-09-17 — imports.completed (RFC-68, plan 08a).
 - 2026-09-17 — plots.*, users.plots_changed (RFC-67, plan 08b).
+- 2026-09-19 — digest.sent (RFC-74, plan 12b).
