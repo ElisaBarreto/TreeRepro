@@ -12,9 +12,10 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  * whose species × trait has no later accepted decision, newest dispute
  * first. A row opens the record drawer, whose actions resolve the dispute.
  * `?intent=contest` (plan 11b) narrows the queue to disputes a contest
- * generated and retitles the page "Contested records", so the link the
- * workspace dashboard's Contested tile carries lands on a page that says
- * what it is showing.
+ * generated and gives the page its own title and description, so the link
+ * the workspace dashboard's Contested tile carries lands on a page that says
+ * what it is showing — a contest is a competing value, not a scientist
+ * stepping back from one.
  * @rfc RFC-13 R2
  * @rfc RFC-65 R10
  */
@@ -27,7 +28,11 @@ export function DisputedPage({ search }: { search: { intent?: 'contest' } }) {
     <>
       <PageHeader
         title={search.intent === 'contest' ? 'Contested records' : 'Disputed records'}
-        description="Records a scientist disputes and no curator has decided on since. Set or clear the accepted value, or wait for the disputer to step back."
+        description={
+          search.intent === 'contest'
+            ? 'Records a scientist has answered with a competing value, and no curator has decided on since. Set or clear the accepted value, or wait for the contest to be withdrawn.'
+            : 'Records a scientist disputes and no curator has decided on since. Set or clear the accepted value, or wait for the disputer to step back.'
+        }
       />
       <div className="flex flex-col gap-4">
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}

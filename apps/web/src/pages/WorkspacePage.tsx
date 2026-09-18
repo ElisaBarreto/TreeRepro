@@ -59,7 +59,7 @@ export function WorkspacePage() {
         <div className="flex flex-col gap-6">
           <IntroCard dataset={data.dataset} />
           {data.scope ? <ScopeCard scope={data.scope} /> : null}
-          <QuickActions />
+          <QuickActions hasPlots={hasPlots} />
 
           {data.contributor.awaitingValidation ? (
             <section aria-labelledby="awaiting-heading" className={SECTION_CLASS}>

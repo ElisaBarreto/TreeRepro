@@ -89,6 +89,10 @@ describe('RFC-65 R10 DisputedPage', () => {
   it('?intent=contest (plan 11b) retitles the page and narrows the fetch', async () => {
     renderAt('/app/curation/disputed?intent=contest');
     expect(await screen.findByRole('heading', { name: 'Contested records' })).toBeInTheDocument();
+    // The title flips, so the sentence under it must flip with it: the plain
+    // queue's wording describes a dispute raised by hand.
+    expect(screen.getByText(/competing value/)).toBeInTheDocument();
+    expect(screen.queryByText(/wait for the disputer to step back/)).not.toBeInTheDocument();
     await waitFor(() =>
       expect(curation.fetchDisputed).toHaveBeenCalledWith(
         expect.objectContaining({ intent: 'contest' }),
@@ -96,9 +100,10 @@ describe('RFC-65 R10 DisputedPage', () => {
     );
   });
 
-  it('without ?intent, the page keeps its plain title and asks for no intent filter', async () => {
+  it('without ?intent, the page keeps its plain title, description and unfiltered fetch', async () => {
     renderAt('/app/curation/disputed');
     expect(await screen.findByRole('heading', { name: 'Disputed records' })).toBeInTheDocument();
+    expect(screen.getByText(/wait for the disputer to step back/)).toBeInTheDocument();
     await waitFor(() =>
       expect(curation.fetchDisputed).toHaveBeenCalledWith(
         expect.objectContaining({ intent: undefined }),

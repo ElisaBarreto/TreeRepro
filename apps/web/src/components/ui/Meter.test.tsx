@@ -21,6 +21,15 @@ describe('RFC-72 R3 Meter', () => {
     expect(screen.getByText('0%')).toBeInTheDocument();
   });
 
+  it('writes the supplied percentage instead of recomputing it from the float', () => {
+    // The API rounds halves up in integer arithmetic (RFC-69 R5); a float
+    // quotient of the same two counts rounds the other way on an exact half,
+    // so the meter shows the number the API computed, not its own.
+    render(<Meter value={115} max={200} percent={58} label="Coverage" />);
+    expect(screen.getByText('58%')).toBeInTheDocument();
+    expect(screen.queryByText('57%')).not.toBeInTheDocument();
+  });
+
   it('carries no inline style attribute', () => {
     const { container } = render(<Meter value={2} max={4} label="Coverage" />);
     for (const el of container.querySelectorAll('*')) {

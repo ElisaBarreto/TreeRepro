@@ -40,6 +40,24 @@ describe('RFC-72 R3 CurationCards', () => {
     expect(meters[1]).toHaveAttribute('max', String(DASHBOARD_CURATION.coverage.cells));
   });
 
+  it('shows the percentages the API computed, not its own float rounding', async () => {
+    renderInRouter(<CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />);
+    await screen.findAllByRole('meter');
+    expect(screen.getByText(`${DASHBOARD_CURATION.coverage.percentWithData}%`)).toBeInTheDocument();
+    expect(screen.getByText(`${DASHBOARD_CURATION.coverage.percentAccepted}%`)).toBeInTheDocument();
+    // What the browser would have computed from the same two counts.
+    expect(screen.queryByText('57%')).not.toBeInTheDocument();
+    expect(screen.queryByText('28%')).not.toBeInTheDocument();
+  });
+
+  it('names both meters as dataset-wide, since the coverage totals are plot-blind', async () => {
+    renderInRouter(<CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />);
+    const meters = await screen.findAllByRole('meter');
+    for (const meter of meters) {
+      expect(meter.getAttribute('aria-label')).toMatch(/dataset-wide/);
+    }
+  });
+
   it('links the queue tiles to pending, disputed and disputed?intent=contest', async () => {
     renderInRouter(<CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />);
     expect(await screen.findByRole('link', { name: /^Pending/ })).toHaveAttribute(

@@ -947,7 +947,11 @@ export const NO_PLOTS_CONTRIBUTOR: Dashboard['contributor'] = {
 
 /** The curation section, present only for a viewer with `records.review`. @rfc RFC-72 R1 */
 export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
-  coverage: { cells: 200, withData: 120, accepted: 80, percentWithData: 60, percentAccepted: 40 },
+  // 115/200 and 57/200 are exact halves in the rationals (57.5%, 28.5%): the
+  // API's half-up integer arithmetic (RFC-69 R5) answers 58 and 29, while a
+  // float quotient rounded in the browser answers 57 and 28. The fixture is
+  // chosen so an assertion can tell the two apart.
+  coverage: { cells: 200, withData: 115, accepted: 57, percentWithData: 58, percentAccepted: 29 },
   queues: { pendingGroups: 3, disputed: 2, contested: 1, proposals: 0 },
 };
 

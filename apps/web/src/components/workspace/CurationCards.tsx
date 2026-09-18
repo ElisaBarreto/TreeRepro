@@ -42,8 +42,8 @@ function ProposalsTile({ value }: { value: number }) {
 }
 
 /**
- * The curation section: two coverage meters and the queue tiles a reviewer
- * works from (spec §4). Rendered only while `curation` is not null (present
+ * The curation section: two dataset-wide coverage meters and the queue tiles
+ * a reviewer works from (spec §4). Rendered only while `curation` is not null (present
  * for `records.review` viewers, RFC-72 R1) — that null check belongs to the
  * caller. The proposals tile only appears once there are open proposals
  * (plan 12c has not shipped, so today that is never); the coverage link
@@ -67,15 +67,26 @@ export function CurationCards({
         Curation
       </h2>
       <div className="grid gap-4 sm:grid-cols-2">
+        {/*
+          The percentages come from the API, which rounds halves up in integer
+          arithmetic (RFC-69 R5); recomputing them here from the float would
+          disagree with it by one on an exact half. The labels say
+          "dataset-wide" because `coverage` is plot-blind by design while the
+          queue counts below it are plot-scoped, and the two sit in one card —
+          a plot-restricted reviewer would otherwise read a dataset-wide
+          percentage as their own scope.
+        */}
         <Meter
           value={coverage.withData}
           max={coverage.cells}
-          label="Species × trait cells with data"
+          percent={coverage.percentWithData}
+          label="Species × trait cells with data, dataset-wide"
         />
         <Meter
           value={coverage.accepted}
           max={coverage.cells}
-          label="Species × trait cells with an accepted value"
+          percent={coverage.percentAccepted}
+          label="Species × trait cells with an accepted value, dataset-wide"
         />
       </div>
       <ul aria-label="Curation queues" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
