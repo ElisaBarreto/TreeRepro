@@ -246,33 +246,76 @@ describe('RFC-60 R9, R10 species writes', () => {
       body: { genusId: '00000000-0000-7000-8000-000000000000' },
     });
     expect((await unknownGenus.json()).error.code).toBe('GENUS_NOT_FOUND');
+
+    // RFC-60 R9: a GBIF name keeps its usage key; an omitted `source`
+    // defaults to `'manual'` (the write's default, not the import's `'gbif'`).
     const alt = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
       cookie,
-      body: { name: `${name} alt`, gbifUsageKey: '123' },
+      body: { name: `${name} alt`, nameType: 'gbif', gbifUsageKey: '123' },
     });
     expect(alt.status).toBe(201);
     expect((await alt.json()).data.names).toEqual([
-      { name: `${name} alt`, source: 'gbif', gbifUsageKey: '123' },
+      {
+        name: `${name} alt`,
+        nameType: 'gbif',
+        language: null,
+        source: 'manual',
+        gbifUsageKey: '123',
+      },
     ]);
     expect((await lastAudit(t.db, 'taxa.created', { actorUserId: user.id }))?.metadata).toEqual({
       kind: 'species_name',
       speciesId: sp.id,
     });
+
+    // A common name needs a language; without one the write answers 400 on
+    // `language`, not the species (RFC-60 R9).
+    const commonNoLanguage = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name: `${name} common`, nameType: 'common' },
+    });
+    expect(commonNoLanguage.status).toBe(400);
+    expect((await commonNoLanguage.json()).error.details[0].path).toBe('language');
+
+    // With a language and an explicit `source`, the common name is added and
+    // ordered after the GBIF name (RFC-60 R7: gbif, synonym, common, then name).
+    const common = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
+      cookie,
+      body: { name: `${name} common`, nameType: 'common', language: 'pt', source: 'Flora' },
+    });
+    expect(common.status).toBe(201);
+    expect((await common.json()).data.names).toEqual([
+      {
+        name: `${name} alt`,
+        nameType: 'gbif',
+        language: null,
+        source: 'manual',
+        gbifUsageKey: '123',
+      },
+      {
+        name: `${name} common`,
+        nameType: 'common',
+        language: 'pt',
+        source: 'Flora',
+        gbifUsageKey: null,
+      },
+    ]);
+
     const altAgain = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
       cookie,
-      body: { name: `${name} alt` },
+      body: { name: `${name} alt`, nameType: 'gbif' },
     });
     expect((await altAgain.json()).error.code).toBe('SPECIES_NAME_TAKEN');
     const canonical = await call(t.app, 'POST', `/api/species/${sp.id}/names`, {
       cookie,
-      body: { name },
+      body: { name, nameType: 'gbif' },
     });
     expect((await canonical.json()).error.code).toBe('SPECIES_NAME_TAKEN');
     const missing = await call(
       t.app,
       'POST',
       '/api/species/00000000-0000-7000-8000-000000000000/names',
-      { cookie, body: { name: 'x' } },
+      { cookie, body: { name: 'x', nameType: 'gbif' } },
     );
     expect((await missing.json()).error.code).toBe('SPECIES_NOT_FOUND');
   });

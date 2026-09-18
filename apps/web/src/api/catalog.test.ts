@@ -66,7 +66,11 @@ describe('RFC-60 R9 taxa writes', () => {
       init: { method: 'PATCH' },
     });
     mockJson(201, { data: SPECIES });
-    await addSpeciesName(SPECIES.id, { name: 'Adenanthera gersenii', gbifUsageKey: '2969393' });
+    await addSpeciesName(SPECIES.id, {
+      name: 'Adenanthera gersenii',
+      nameType: 'gbif',
+      gbifUsageKey: '2969393',
+    });
     expect(lastRequest()).toMatchObject({
       url: `/api/species/${SPECIES.id}/names`,
       init: { method: 'POST' },

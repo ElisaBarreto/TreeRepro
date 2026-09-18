@@ -159,7 +159,10 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
       await expect(drawer.getByRole('button', { name: /^contests record/ })).toBeVisible();
       await expect(drawer.getByText(contestedLevel.key, { exact: true }).first()).toBeVisible();
 
-      const observation = drawer.getByRole('link', { name: 'Personal observation', exact: true });
+      const observation = drawer.getByRole('link', {
+        name: `Personal observation (${contributorName})`,
+        exact: true,
+      });
       await expect(observation).toBeVisible();
       // RFC-61 R7: the reference itself names its observer — the citation key
       // (`personal-observation:<user id>`) is never shown.

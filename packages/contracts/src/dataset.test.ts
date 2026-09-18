@@ -5,15 +5,19 @@ import {
   importBatchSchema,
   listGeneraQuerySchema,
   listRecordsQuerySchema,
+  listReferencesQuerySchema,
   listSpeciesQuerySchema,
   listTraitSpeciesQuerySchema,
   listTraitsQuerySchema,
+  NAME_TYPES,
   REVIEW_STATUSES,
   recordSchema,
   referenceDetailSchema,
+  referenceRefSchema,
   referenceSchema,
   SPECIES_SORTS,
   speciesListItemSchema,
+  speciesNameSchema,
   speciesTraitsSchema,
   TRAIT_DATA_MODES,
   TRAIT_SPECIES_MODES,
@@ -72,7 +76,13 @@ describe('RFC-63 R8 recordSchema', () => {
       numericValue: null,
       harmonisation: 'harmonised',
       review: 'unreviewed',
-      primaryReference: { id: uuid, citationKey: 'A_2020', kind: 'publication' },
+      primaryReference: {
+        id: uuid,
+        citationKey: 'A_2020',
+        kind: 'publication',
+        observer: null,
+        shortCitation: null,
+      },
       secondaryReference: null,
       origin: 'import',
       createdAt: '2026-09-13T00:00:00.000Z',
@@ -154,6 +164,8 @@ describe('RFC-61 R4 referenceSchema', () => {
     secondaryCount: 0,
     kind: 'publication',
     observer: null,
+    shortCitation: null,
+    fullCitation: null,
   };
 
   it('every item carries its usage per role as non-negative integers', () => {
@@ -164,10 +176,95 @@ describe('RFC-61 R4 referenceSchema', () => {
     expect(referenceSchema.safeParse({ ...reference, primaryCount: 1.5 }).success).toBe(false);
   });
 
-  it('the detail adds recordCount on top of the per-role counts', () => {
-    const detail = { ...reference, recordCount: 2 };
+  it('requires shortCitation and fullCitation, both nullable', () => {
+    expect(
+      referenceSchema.parse({ ...reference, shortCitation: 'Smith (2001)' }).shortCitation,
+    ).toBe('Smith (2001)');
+    const { shortCitation: _sc, ...withoutShort } = reference;
+    expect(referenceSchema.safeParse(withoutShort).success).toBe(false);
+    const { fullCitation: _fc, ...withoutFull } = reference;
+    expect(referenceSchema.safeParse(withoutFull).success).toBe(false);
+  });
+
+  it('the detail adds recordCount and traits on top of the per-role counts', () => {
+    const detail = { ...reference, recordCount: 2, traits: [] };
     expect(referenceDetailSchema.parse(detail)).toEqual(detail);
     expect(referenceDetailSchema.safeParse(reference).success).toBe(false);
+    const withTrait = {
+      ...detail,
+      traits: [
+        {
+          trait: { id: uuid, key: 'sexual_system', valueType: 'categorical', unit: null },
+          recordCount: 3,
+        },
+      ],
+    };
+    expect(referenceDetailSchema.parse(withTrait)).toEqual(withTrait);
+  });
+});
+
+describe('RFC-61 R1, R4, R7 referenceRefSchema', () => {
+  it('requires shortCitation, nullable', () => {
+    const ref = {
+      id: uuid,
+      citationKey: 'Smith2001',
+      kind: 'publication',
+      observer: null,
+      shortCitation: null,
+    };
+    expect(referenceRefSchema.parse(ref)).toEqual(ref);
+    expect(referenceRefSchema.parse({ ...ref, shortCitation: 'Smith (2001)' }).shortCitation).toBe(
+      'Smith (2001)',
+    );
+    const { shortCitation: _sc, ...withoutShort } = ref;
+    expect(referenceRefSchema.safeParse(withoutShort).success).toBe(false);
+  });
+
+  it('requires observer, nullable, so a personal observation can carry its own name', () => {
+    const observation = {
+      id: uuid,
+      citationKey: `personal-observation:${uuid}`,
+      kind: 'personal_observation',
+      observer: { id: uuid, name: 'Ada' },
+      shortCitation: null,
+    };
+    expect(referenceRefSchema.parse(observation)).toEqual(observation);
+    const { observer: _o, ...withoutObserver } = observation;
+    expect(referenceRefSchema.safeParse(withoutObserver).success).toBe(false);
+  });
+});
+
+describe('RFC-61 R4 listReferencesQuerySchema traitId, categoryKey filters', () => {
+  it('accepts traitId and categoryKey', () => {
+    expect(listReferencesQuerySchema.safeParse({ traitId: uuid }).success).toBe(true);
+    expect(listReferencesQuerySchema.safeParse({ categoryKey: 'leaf' }).success).toBe(true);
+    expect(listReferencesQuerySchema.safeParse({ traitId: 'nope' }).success).toBe(false);
+    expect(listReferencesQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);
+  });
+});
+
+describe('RFC-60 R1, R4, R7 speciesNameSchema, NAME_TYPES', () => {
+  it('lists the three name types and requires nameType, language and source', () => {
+    expect(NAME_TYPES).toEqual(['gbif', 'synonym', 'common']);
+    const gbifName = {
+      name: 'Adenanthera gersenii',
+      nameType: 'gbif',
+      language: null,
+      source: 'gbif',
+      gbifUsageKey: '2969393',
+    };
+    expect(speciesNameSchema.parse(gbifName)).toEqual(gbifName);
+    const commonName = {
+      name: 'Coralwood',
+      nameType: 'common',
+      language: 'en',
+      source: 'manual',
+      gbifUsageKey: null,
+    };
+    expect(speciesNameSchema.parse(commonName)).toEqual(commonName);
+    const { nameType: _nt, ...withoutType } = gbifName;
+    expect(speciesNameSchema.safeParse(withoutType).success).toBe(false);
+    expect(speciesNameSchema.safeParse({ ...commonName, language: 'eng' }).success).toBe(false);
   });
 });
 
@@ -237,6 +334,7 @@ describe('RFC-60 R6 species item carries active; status filter', () => {
       genus: null,
       family: null,
       matchedName: null,
+      matchedNameType: null,
       unresolvedTaxon: false,
       active: true,
       traitCount: 3,
@@ -281,6 +379,7 @@ describe('RFC-60 R6, RFC-69 R1 speciesListItemSchema trait coverage fields', () 
       genus: null,
       family: null,
       matchedName: null,
+      matchedNameType: null,
       unresolvedTaxon: false,
       traitCount: 3,
       traitRecordCount: null,
@@ -426,6 +525,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     genus: null,
     family: null,
     matchedName: null,
+    matchedNameType: null,
     unresolvedTaxon: false,
     traitCount: 3,
     traitRecordCount: null,
@@ -442,6 +542,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
           id: uuid,
           citationKey: 'Smith2001',
           kind: 'publication',
+          observer: null,
           shortCitation: null,
         },
       },

@@ -72,3 +72,30 @@ update species s set trait_count = c.n
 from (select species_id, count(*) as n from species_trait_coverage group by 1) c
 where s.id = c.species_id;
 ```
+
+## Stop `api` before applying the `references_enriched` migration to a running stack
+**Symptom:** After a rolling upgrade, a reference under-reports its use of a trait: `GET /api/references/:id` shows a `traits` count lower than the records actually name, and `GET /api/references?traitId=…` (or `&categoryKey=`) omits the reference entirely when the count should have been its only row. Permanently — nothing recomputes, and re-running the migration does not repair it.
+**Cause:** The same hazard as migration 0022 above, inherited exactly: `compose.yml`'s `api` declares `depends_on: migrate: service_completed_successfully`, which orders a **cold** start only. On `docker compose up -d` against a stack that is already running, `migrate` starts while the previous `api` container keeps serving. Drizzle applies the migration in one transaction, so its `CREATE OR REPLACE` of `trait_records_reference_usage()` is invisible to those sessions: every `trait_records` insert they commit still executes the previous (0022) function, which knows nothing about `reference_traits`. Under READ COMMITTED the backfill `INSERT` takes its own snapshot, so rows committed after it are missed. The damage is silent — no error, no log line — and the backfill is not usable as a repair: `ON CONFLICT DO NOTHING` skips every pair that already exists, so a pair left with a short `record_count` stays short forever, and only an entirely fresh pair is ever recovered. `DO NOTHING` is nevertheless correct *in the migration*, which has to be idempotent; repair is a separate statement.
+**Fix:** Stop the API for the upgrade; do not rely on compose ordering.
+
+```
+docker compose pull                # or build
+docker compose stop api            # no writer while the backfill runs
+docker compose up -d               # migrate runs to completion, then api starts
+```
+
+If it was not stopped, a repair has to **update** rather than skip on conflict — the aggregate below is over the whole of `trait_records`, so its values are the authoritative ones. Run it as `treerepro_migrator` (the app role has `SELECT` only on `reference_traits`, which is what the migration's own `REVOKE INSERT, UPDATE, DELETE, TRUNCATE` established) with `api` stopped:
+
+```sql
+insert into reference_traits (reference_id, trait_id, record_count)
+select reference_id, trait_id, count(*) from (
+  select distinct id, primary_reference_id as reference_id, trait_id from trait_records where primary_reference_id is not null
+  union
+  select distinct id, secondary_reference_id, trait_id from trait_records where secondary_reference_id is not null
+) x group by 1, 2
+on conflict (reference_id, trait_id) do update set record_count = excluded.record_count;
+```
+
+The `union` is over distinct `(record id, reference, trait)` triples, not over counts: a record naming the same reference in both roles yields the same triple on both sides and so counts once, while `id` keeps two different records on the same pair apart. `union all` would double-count the first case. Keep that shape in any hand-written repair — it is the definition of `record_count` (RFC-61 R9).
+
+The migration is `references_enriched`; it is `0027` today and may carry a different number after a renumber, so match it by tag.

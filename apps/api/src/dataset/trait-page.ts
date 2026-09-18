@@ -4,10 +4,11 @@ import type {
   TraitSpeciesItem,
   TraitSpeciesMode,
 } from '@treerepro/contracts';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { globalSpeciesVisible, levelVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
+import { users } from '../db/schema/users.ts';
 import { cachedJson } from '../redis/cache.ts';
 import type { Redis } from '../redis/client.ts';
 import { getTrait, requireTrait } from './dictionary.ts';
@@ -217,7 +218,13 @@ interface AcceptedRow {
   value_text: string | null;
   reference_id: string | null;
   citation_key: string | null;
+  short_citation: string | null;
   kind: 'publication' | 'personal_observation' | null;
+  // A plain uuid, safe to select in raw SQL; the observer's *name* is
+  // encrypted (RFC-40) and can only be decrypted through Drizzle's query
+  // builder, never through `db.execute`, so it is fetched separately
+  // (`observerNames`) and merged in {@link collectAccepted}.
+  observer_user_id: string | null;
 }
 
 type Summary = TraitSpeciesItem['summary'];
@@ -248,7 +255,8 @@ async function enrich(
   const acceptedRows = db.execute(sql`
     select distinct on (a.species_id)
       a.species_id, a.decision, a.record_id, r.value_text,
-      b.id as reference_id, b.citation_key, b.kind
+      b.id as reference_id, b.citation_key, b.short_citation, b.kind,
+      b.observer_user_id
     from accepted_values a
     left join trait_records r on r.id = a.record_id
     -- A record always names a primary or a secondary reference (RFC-63 R2's
@@ -280,7 +288,7 @@ async function enrich(
           : { numeric: { min: r.numeric_min, max: r.numeric_max } },
       );
     }
-    collectAccepted(decisions, accepted);
+    await collectAccepted(db, decisions, accepted);
     return { recordCount, summary, accepted };
   }
 
@@ -308,12 +316,37 @@ async function enrich(
     ]);
   }
   for (const [speciesId, entries] of levels) summary.set(speciesId, { levels: entries });
-  collectAccepted(decisions, accepted);
+  await collectAccepted(db, decisions, accepted);
   return { recordCount, summary, accepted };
 }
 
-/** The newest decision per species wins, and only an acceptance is a value. */
-function collectAccepted(rows: AcceptedRow[], into: Map<string, TraitSpeciesItem['accepted']>) {
+/**
+ * The observer names of a batch of accepted rows, decrypted through Drizzle's
+ * query builder (never `db.execute`, which returns `users.name` still
+ * encrypted, RFC-40). Empty input skips the query entirely, so an ordinary
+ * publication-only page never pays for it.
+ */
+async function observerNames(db: DbExecutor, rows: AcceptedRow[]): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.map((r) => r.observer_user_id).filter((id) => id !== null))];
+  if (ids.length === 0) return new Map();
+  const found = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, ids));
+  return new Map(found.map((u) => [u.id, u.name]));
+}
+
+/**
+ * The newest decision per species wins, and only an acceptance is a value.
+ * `observer` on the accepted reference follows the same rule as
+ * `toReference` (`references.ts`): present only when the reference has one.
+ */
+async function collectAccepted(
+  db: DbExecutor,
+  rows: AcceptedRow[],
+  into: Map<string, TraitSpeciesItem['accepted']>,
+): Promise<void> {
+  const names = await observerNames(db, rows);
   for (const r of rows) {
     if (
       r.decision !== 'accepted' ||
@@ -325,15 +358,19 @@ function collectAccepted(rows: AcceptedRow[], into: Map<string, TraitSpeciesItem
     ) {
       continue;
     }
+    const observerName = r.observer_user_id ? names.get(r.observer_user_id) : undefined;
     into.set(r.species_id, {
       recordId: r.record_id,
       valueText: r.value_text,
       reference: {
         id: r.reference_id,
         citationKey: r.citation_key,
-        // Plan 10d adds the column; until then there is no short citation.
-        shortCitation: null,
         kind: r.kind,
+        observer:
+          r.observer_user_id && observerName
+            ? { id: r.observer_user_id, name: observerName }
+            : null,
+        shortCitation: r.short_citation,
       },
     });
   }

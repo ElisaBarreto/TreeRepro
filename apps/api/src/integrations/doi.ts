@@ -60,6 +60,32 @@ export function crossrefToMetadata(work: unknown): DoiMetadata {
   return { title, authors, year, journal };
 }
 
+/**
+ * The display short citation derived from resolved metadata: the first
+ * author's family name alone for one author; `<family> and <family>` for
+ * two; `<family> et al.` for three or more; then ` (<year>)` when a year is
+ * known. The family name of an author entry is the part before its first
+ * comma (entries are `;`-separated, as {@link crossrefToMetadata} joins
+ * them). `null` when there are no authors at all.
+ * @rfc RFC-61 R8
+ */
+export function shortCitationFrom(metadata: Pick<DoiMetadata, 'authors' | 'year'>): string | null {
+  if (!metadata.authors) return null;
+  const families = metadata.authors
+    .split(';')
+    .map((entry) => entry.split(',')[0]?.trim() ?? '')
+    .filter(Boolean);
+  const [first, second] = families;
+  if (!first) return null;
+  const names =
+    families.length === 1
+      ? first
+      : families.length === 2
+        ? `${first} and ${second}`
+        : `${first} et al.`;
+  return metadata.year != null ? `${names} (${metadata.year})` : names;
+}
+
 /** @rfc RFC-80 R2, R3 */
 export function createDoiClient(options: {
   contactEmail?: string;

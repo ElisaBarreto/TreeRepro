@@ -27,14 +27,21 @@ export interface DoiFieldProps {
 
 /**
  * What `GET /api/references/resolve` left on a row: not found, or the line a
- * resolved DOI reads as — the title the registry previewed or the one the
- * known reference carries (its citation key if it has no title, the DOI
- * itself if it has neither), with the year. One rule, because every form that
- * checks a DOI shows the same line.
+ * resolved DOI reads as. A known reference with a written or derived short
+ * citation (RFC-61 R4, R6, R8) reads by it verbatim — the same string
+ * `referenceLabel` would show everywhere else, already carrying its own
+ * year when it has one. Otherwise: the title the registry previewed or the
+ * one the known reference carries (its citation key if it has no title, the
+ * DOI itself if it has neither), with the year. One rule, because every form
+ * that checks a DOI shows the same line.
+ * @rfc RFC-61 R4, R6, R8
  * @rfc RFC-80 R4
  */
 export function resolvedCheck(result: ResolveDoiResult, doi: string): DoiCheck {
   if (result.status === 'not_found') return { status: 'not_found' };
+  if (result.status === 'known' && result.reference.shortCitation) {
+    return { status: 'ok', label: result.reference.shortCitation };
+  }
   const preview = result.status === 'resolvable' ? result.preview : null;
   const reference = result.status === 'known' ? result.reference : null;
   const title = preview?.title ?? reference?.title ?? reference?.citationKey ?? doi;

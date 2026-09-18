@@ -232,7 +232,9 @@ describe('RFC-61 R4 RecordDrawer references', () => {
       ...ME,
       permissions: ['dataset.read'],
     });
-    expect(await screen.findByRole('link', { name: 'Personal observation' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: 'Personal observation (Grace)' }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(GRACE_PERSONAL_OBSERVATION_REFERENCE.citationKey),
     ).not.toBeInTheDocument();

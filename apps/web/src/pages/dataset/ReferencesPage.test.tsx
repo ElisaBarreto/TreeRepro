@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse, Reference } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { PERSONAL_OBSERVATION, REFERENCE, REFERENCE_DETAIL } from '../../test/dataset-fixtures.ts';
+import {
+  DICTIONARY,
+  PERSONAL_OBSERVATION,
+  REFERENCE,
+  REFERENCE_DETAIL,
+} from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -19,7 +24,11 @@ const auth = vi.hoisted(() => ({
   totpDisable: vi.fn(),
 }));
 const catalog = vi.hoisted(() => ({ createReference: vi.fn() }));
-const dataset = vi.hoisted(() => ({ searchReferences: vi.fn(), fetchReference: vi.fn() }));
+const dataset = vi.hoisted(() => ({
+  searchReferences: vi.fn(),
+  fetchReference: vi.fn(),
+  fetchDictionary: vi.fn(),
+}));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/catalog.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
@@ -41,6 +50,7 @@ const BARE: Reference = {
   title: null,
   year: null,
   journal: null,
+  doi: null,
   primaryCount: 0,
   secondaryCount: 0,
 };
@@ -72,7 +82,12 @@ beforeEach(() => {
   catalog.createReference.mockReset();
   dataset.searchReferences.mockReset();
   dataset.fetchReference.mockReset();
+  dataset.fetchDictionary.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
+  dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
+  // Every filter test below drives the selects, not the list; a resolved
+  // default keeps `usePagedList` from choking on an unmocked `undefined`.
+  dataset.searchReferences.mockResolvedValue(page([]));
 });
 
 async function openPage() {
@@ -107,17 +122,28 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
         .map((th) => th.textContent),
-    ).toEqual(['Article', 'As primary', 'As secondary', 'Year']);
+    ).toEqual(['Article', 'As primary', 'As secondary', 'Year', 'DOI']);
     expect(
-      rows.slice(1).map((row) => within(row as HTMLElement).getByRole('link').textContent),
+      rows
+        .slice(1)
+        .map(
+          (row) =>
+            within(cells(row as HTMLElement)[0] as HTMLElement).getByRole('link').textContent,
+        ),
     ).toEqual(['10.1111/geb.13640', '42', 'Smith2001', `${LONG_KEY.slice(0, 79)}…`]);
 
-    // Ordinary key: no badge; counts and year in their columns.
+    // Ordinary key: no badge; counts, year and the DOI link in their columns.
     const smith = cells(rows[3] as HTMLElement);
     expect(smith[0]).toHaveTextContent(/^Smith2001$/);
     expect(smith[1]).toHaveTextContent(/^1$/);
     expect(smith[2]).toHaveTextContent(/^1$/);
     expect(smith[3]).toHaveTextContent(/^2001$/);
+    const smithDoi = within(smith[4] as HTMLElement).getByRole('link', {
+      name: '10.1000/jte.2001.1',
+    });
+    expect(smithDoi).toHaveAttribute('href', 'https://doi.org/10.1000/jte.2001.1');
+    expect(smithDoi).toHaveAttribute('target', '_blank');
+    expect(smithDoi).toHaveAttribute('rel', 'noopener noreferrer');
     expect(screen.queryByText('Breeding systems of tropical trees')).not.toBeInTheDocument();
 
     const doi = cells(rows[1] as HTMLElement);
@@ -128,14 +154,15 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(within(numeric[0] as HTMLElement).getByText('numeric index')).toBeInTheDocument();
     expect(numeric[2]).toHaveTextContent(/^3$/);
 
-    const truncated = within(rows[4] as HTMLElement).getByRole('link');
+    const truncated = within(cells(rows[4] as HTMLElement)[0] as HTMLElement).getByRole('link');
     expect(truncated).toHaveTextContent(`${LONG_KEY.slice(0, 79)}…`);
     expect(truncated).toHaveAttribute('title', LONG_KEY);
     expect(truncated).toHaveAttribute('href', `/app/references/${BARE.id}`);
     expect(
       within(cells(rows[4] as HTMLElement)[0] as HTMLElement).getByText('full citation'),
     ).toBeInTheDocument();
-    expect(within(rows[4] as HTMLElement).getAllByText('—')).toHaveLength(1);
+    // BARE has no DOI: its dash and the year's dash, two in all.
+    expect(within(rows[4] as HTMLElement).getAllByText('—')).toHaveLength(2);
     const pagination = screen.getByRole('navigation', { name: 'Pagination' });
     expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
     expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();
@@ -236,6 +263,77 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     // sidebar entry and the breadcrumb, so only the heading disambiguates.
     await openPage();
     expect(screen.queryByRole('button', { name: 'New reference' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-61 R4 ReferencesPage category and trait filters', () => {
+  it('seeds both selects from the URL and asks the API for the filtered references', async () => {
+    const seedMassId = DICTIONARY[1]?.traits[0]?.id as string;
+    renderAt(`/app/references?categoryKey=seed&traitId=${seedMassId}`);
+    await screen.findByRole('option', { name: 'Reproductive system' });
+    expect(screen.getByLabelText('Category')).toHaveValue('seed');
+    expect(screen.getByLabelText('Trait')).toHaveValue(seedMassId);
+    await waitFor(() =>
+      expect(dataset.searchReferences).toHaveBeenCalledWith(
+        expect.objectContaining({ categoryKey: 'seed', traitId: seedMassId }),
+      ),
+    );
+    // The trait select only offers the chosen category's traits.
+    const traitSelect = screen.getByLabelText('Trait');
+    expect(within(traitSelect).getByRole('option', { name: 'seed mass' })).toBeInTheDocument();
+    expect(
+      within(traitSelect).queryByRole('option', { name: 'sexual system' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a ?traitId= deep link with no category derives one from the dictionary', async () => {
+    const sexualSystemId = DICTIONARY[0]?.traits[0]?.id as string;
+    renderAt(`/app/references?traitId=${sexualSystemId}`);
+    await screen.findByRole('option', { name: 'Reproductive system' });
+    expect(screen.getByLabelText('Category')).toHaveValue('reproductive_system');
+    expect(screen.getByLabelText('Trait')).toHaveValue(sexualSystemId);
+  });
+
+  it('disables the trait select until a category is in force', async () => {
+    await openPage();
+    await screen.findByRole('option', { name: 'Seed' });
+    expect(screen.getByLabelText('Trait')).toBeDisabled();
+  });
+
+  it('writes the chosen category into the URL and clears a trait that belonged to another one', async () => {
+    const seedMassId = DICTIONARY[1]?.traits[0]?.id as string;
+    const { router } = await openPage();
+    await screen.findByRole('option', { name: 'Seed' });
+
+    await userEvent.selectOptions(screen.getByLabelText('Category'), 'seed');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ categoryKey: 'seed' }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(
+      expect.not.objectContaining({ traitId: seedMassId }),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Trait'), seedMassId);
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ categoryKey: 'seed', traitId: seedMassId }),
+      ),
+    );
+    await waitFor(() =>
+      expect(dataset.searchReferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ traitId: seedMassId }),
+      ),
+    );
+
+    // Leaving the category behind drops the trait that belonged to it.
+    await userEvent.selectOptions(screen.getByLabelText('Category'), 'reproductive_system');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.not.objectContaining({ traitId: seedMassId }),
+      ),
+    );
   });
 });
 

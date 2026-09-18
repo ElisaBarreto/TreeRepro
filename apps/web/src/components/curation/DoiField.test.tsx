@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ResolveDoiResult } from '@treerepro/contracts';
 import { describe, expect, it, vi } from 'vitest';
-import { DoiField } from './DoiField.tsx';
+import { REFERENCE } from '../../test/dataset-fixtures.ts';
+import { DoiField, resolvedCheck } from './DoiField.tsx';
 
 function mount(props: Partial<Parameters<typeof DoiField>[0]> = {}) {
   const onChange = vi.fn();
@@ -83,5 +85,52 @@ describe('RFC-80 R4 DoiField', () => {
     mount({ onRemove });
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
     expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RFC-61 R4, R6, R8; RFC-80 R4 resolvedCheck', () => {
+  it('reads a known reference by its short citation verbatim, over its title and year', () => {
+    const result: ResolveDoiResult = {
+      status: 'known',
+      reference: { ...REFERENCE, shortCitation: 'Smith & Doe (2001)' },
+    };
+    expect(resolvedCheck(result, REFERENCE.doi as string)).toEqual({
+      status: 'ok',
+      label: 'Smith & Doe (2001)',
+    });
+  });
+
+  it('falls back to the title and year when the known reference has no short citation', () => {
+    const result: ResolveDoiResult = { status: 'known', reference: REFERENCE };
+    expect(resolvedCheck(result, REFERENCE.doi as string)).toEqual({
+      status: 'ok',
+      label: `${REFERENCE.title} (${REFERENCE.year})`,
+    });
+  });
+
+  it('falls back to the citation key when the known reference has neither a short citation nor a title', () => {
+    const bare = { ...REFERENCE, title: null, shortCitation: null };
+    const result: ResolveDoiResult = { status: 'known', reference: bare };
+    expect(resolvedCheck(result, REFERENCE.doi as string)).toEqual({
+      status: 'ok',
+      label: `${bare.citationKey} (${bare.year})`,
+    });
+  });
+
+  it('previews a resolvable DOI Crossref has not attached to a known reference yet', () => {
+    const result: ResolveDoiResult = {
+      status: 'resolvable',
+      reference: null,
+      preview: { title: 'Seed size', authors: null, year: 2023, journal: null },
+    };
+    expect(resolvedCheck(result, '10.1111/geb.13000')).toEqual({
+      status: 'ok',
+      label: 'Seed size (2023)',
+    });
+  });
+
+  it('reports a DOI the registry does not know', () => {
+    const result: ResolveDoiResult = { status: 'not_found', reference: null };
+    expect(resolvedCheck(result, '10.1111/nope')).toEqual({ status: 'not_found' });
   });
 });

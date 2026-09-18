@@ -14,14 +14,22 @@ import {
 } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, isValidationError } from '../../lib/errors.ts';
-import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
+import { Alert, Button, Dialog, Field, Input, Textarea } from '../ui/index.ts';
 import {
   REFERENCE_DOI_TAKEN_MESSAGE,
   REFERENCE_KEY_TAKEN_MESSAGE,
   referenceErrorMessage,
 } from './errors.ts';
 
-const OPTIONAL = ['title', 'authors', 'journal', 'doi', 'url'] as const;
+const OPTIONAL = [
+  'title',
+  'authors',
+  'journal',
+  'doi',
+  'url',
+  'shortCitation',
+  'fullCitation',
+] as const;
 
 interface FormValues {
   citationKey: string;
@@ -31,6 +39,8 @@ interface FormValues {
   journal: string;
   doi: string;
   url: string;
+  shortCitation: string;
+  fullCitation: string;
 }
 
 function createBody(v: FormValues): CreateReferenceBody {
@@ -70,13 +80,16 @@ function takenErrors(error: unknown): Record<string, string> {
 }
 
 /**
- * Create (no `reference`) or edit a bibliographic reference. Edit sends only
- * the diff against the loaded entity: a changed field its value, an emptied
- * optional field `null`, an untouched field omitted, and an empty diff
- * closes the dialog without a request — the citation key is required and an
- * emptied one is refused locally rather than sent as `null`. Mounted only
- * while open, so its state starts fresh each time it opens.
- * @rfc RFC-61 R6
+ * Create (no `reference`) or edit a bibliographic reference — including a
+ * short citation (how the reference reads everywhere `referenceLabel` is
+ * used) and a full citation (its own paragraph on the reference page), both
+ * optional and either written here or left to R8's Crossref derivation. Edit
+ * sends only the diff against the loaded entity: a changed field its value,
+ * an emptied optional field `null`, an untouched field omitted, and an empty
+ * diff closes the dialog without a request — the citation key is required
+ * and an emptied one is refused locally rather than sent as `null`. Mounted
+ * only while open, so its state starts fresh each time it opens.
+ * @rfc RFC-61 R4, R6, R8
  * @rfc RFC-13 R6
  */
 export function ReferenceDialog({
@@ -97,6 +110,8 @@ export function ReferenceDialog({
     journal: useId(),
     doi: useId(),
     url: useId(),
+    shortCitation: useId(),
+    fullCitation: useId(),
   };
   const [citationKey, setCitationKey] = useState(reference?.citationKey ?? '');
   const [title, setTitle] = useState(reference?.title ?? '');
@@ -105,6 +120,8 @@ export function ReferenceDialog({
   const [journal, setJournal] = useState(reference?.journal ?? '');
   const [doi, setDoi] = useState(reference?.doi ?? '');
   const [url, setUrl] = useState(reference?.url ?? '');
+  const [shortCitation, setShortCitation] = useState(reference?.shortCitation ?? '');
+  const [fullCitation, setFullCitation] = useState(reference?.fullCitation ?? '');
   const [local, setLocal] = useState<Record<string, string>>({});
 
   const save = useMutation({
@@ -122,7 +139,17 @@ export function ReferenceDialog({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const values: FormValues = { citationKey, title, authors, year, journal, doi, url };
+    const values: FormValues = {
+      citationKey,
+      title,
+      authors,
+      year,
+      journal,
+      doi,
+      url,
+      shortCitation,
+      fullCitation,
+    };
 
     // A local error replaces the previous attempt's answer: without the
     // reset, a stale API Alert would sit beside the fresh field message.
@@ -165,6 +192,20 @@ export function ReferenceDialog({
             maxLength={2000}
             onChange={(e) => setCitationKey(e.target.value)}
             invalid={Boolean(errors.citationKey)}
+          />
+        </Field>
+        <Field
+          id={ids.shortCitation}
+          label="Short citation (optional)"
+          error={errors.shortCitation}
+        >
+          <Input
+            id={ids.shortCitation}
+            value={shortCitation}
+            maxLength={200}
+            placeholder="Renner (2014)"
+            onChange={(e) => setShortCitation(e.target.value)}
+            invalid={Boolean(errors.shortCitation)}
           />
         </Field>
         <Field id={ids.title} label="Title (optional)" error={errors.title}>
@@ -223,6 +264,16 @@ export function ReferenceDialog({
             maxLength={500}
             onChange={(e) => setUrl(e.target.value)}
             invalid={Boolean(errors.url)}
+          />
+        </Field>
+        <Field id={ids.fullCitation} label="Full citation (optional)" error={errors.fullCitation}>
+          <Textarea
+            id={ids.fullCitation}
+            value={fullCitation}
+            maxLength={2000}
+            rows={3}
+            onChange={(e) => setFullCitation(e.target.value)}
+            invalid={Boolean(errors.fullCitation)}
           />
         </Field>
         {save.isError && Object.keys(taken).length === 0 && !isValidationError(save.error) ? (

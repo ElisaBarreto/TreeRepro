@@ -7,6 +7,7 @@ export * from './imports.ts';
 export * from './permissions.ts';
 export * from './plots.ts';
 export * from './records.ts';
+export * from './reference-traits.ts';
 export * from './references.ts';
 export * from './role-permissions.ts';
 export * from './roles.ts';
