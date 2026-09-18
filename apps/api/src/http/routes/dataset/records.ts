@@ -14,6 +14,7 @@ import { annotateRecord, createRecords } from '../../../dataset/curation.ts';
 import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
+import { forgetCached } from '../../../redis/cache.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
@@ -54,6 +55,10 @@ export function recordRoutes(ctx: AuthContext) {
           secondaryReferenceId: body.secondaryReferenceId,
           actorId: actor.id,
         });
+        // After the transaction, never inside the service: the dashboard's
+        // contributor section counts what was just written, and the services
+        // stay free of Redis (RFC-72 R1).
+        await forgetCached(ctx.redis, `dashboard:${actor.id}`);
         return c.json({ data: result }, 201);
       },
     )
@@ -83,6 +88,7 @@ export function recordRoutes(ctx: AuthContext) {
           canWithdrawAny: currentPermissions(c).has('records.withdraw'),
           canReview: currentPermissions(c).has('records.review'),
         });
+        await forgetCached(ctx.redis, `dashboard:${actor.id}`);
         return c.json({ data: record }, 201);
       },
     )

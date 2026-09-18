@@ -129,8 +129,15 @@ export async function dictionaryCategories(
  * `species_trait_coverage` joined to visible species, cached 10 minutes per
  * viewer class under `dictionary:species-counts:<u|r>` (RFC-62 R5) — the
  * table is millions of rows, so this is not recomputed per request.
+ *
+ * Exported for the workspace dashboard (RFC-72 R1), whose `topMissingTraits`
+ * subtracts these same counts from the visible species count: one producer
+ * writes this key, because two that diverge on the visibility predicate or the
+ * stored shape would corrupt the dictionary page with nothing to point at.
+ * @rfc RFC-62 R5
+ * @rfc RFC-72 R1
  */
-async function speciesCountsByTrait(
+export async function speciesCountsByTrait(
   ctx: { db: DbExecutor; redis: Redis },
   visibility: Visibility,
 ): Promise<Map<string, number>> {

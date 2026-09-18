@@ -19,6 +19,7 @@ import { requestLogger } from './http/request-logger.ts';
 import { adminRoutes } from './http/routes/admin/index.ts';
 import { authRoutes } from './http/routes/auth.ts';
 import { contributionRoutes } from './http/routes/contributions.ts';
+import { dashboardRoutes } from './http/routes/dashboard.ts';
 import { datasetRoutes } from './http/routes/dataset/index.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import { meRoutes } from './http/routes/me.ts';
@@ -97,6 +98,9 @@ export function createApp(deps: AppDeps) {
   // Hono takes several routers on one prefix: the contributions reads need
   // `dataset.read`, so they stay out of the self-service router (RFC-71 R1).
   app.route('/me', contributionRoutes(ctx));
+  // Same reason as above: the dashboard is permission-guarded, not
+  // self-service (RFC-72 R1).
+  app.route('/me', dashboardRoutes(ctx));
   app.route('/admin', adminRoutes(ctx));
   app.route('/', datasetRoutes(ctx));
 
