@@ -97,6 +97,23 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     expect(admin.listUserSessions).not.toHaveBeenCalled();
   });
 
+  it('RFC-71 R5 links to the contributions of this user with contributions.read', async () => {
+    auth.fetchMe.mockResolvedValue(VIEWER);
+    const { unmount } = await openUser(SUSPENDED_USER);
+    expect(screen.queryByRole('link', { name: 'View contributions' })).not.toBeInTheDocument();
+    unmount();
+
+    auth.fetchMe.mockResolvedValue({
+      ...VIEWER,
+      permissions: [...VIEWER.permissions, 'contributions.read'],
+    });
+    await openUser(SUSPENDED_USER);
+    expect(screen.getByRole('link', { name: 'View contributions' })).toHaveAttribute(
+      'href',
+      `/app/contributions?userId=${SUSPENDED_USER.id}`,
+    );
+  });
+
   it('RFC-13 R4 an unknown id reads as not found; a 403 as the permission sentence', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     admin.fetchUser.mockRejectedValueOnce(new ApiError(404, 'USER_NOT_FOUND', 'x'));

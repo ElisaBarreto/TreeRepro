@@ -18,6 +18,7 @@ import { originCheck } from './http/origin-check.ts';
 import { requestLogger } from './http/request-logger.ts';
 import { adminRoutes } from './http/routes/admin/index.ts';
 import { authRoutes } from './http/routes/auth.ts';
+import { contributionRoutes } from './http/routes/contributions.ts';
 import { datasetRoutes } from './http/routes/dataset/index.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import { meRoutes } from './http/routes/me.ts';
@@ -93,6 +94,9 @@ export function createApp(deps: AppDeps) {
   app.route('/health', healthRoutes(deps.health));
   app.route('/auth', authRoutes(ctx));
   app.route('/me', meRoutes(ctx));
+  // Hono takes several routers on one prefix: the contributions reads need
+  // `dataset.read`, so they stay out of the self-service router (RFC-71 R1).
+  app.route('/me', contributionRoutes(ctx));
   app.route('/admin', adminRoutes(ctx));
   app.route('/', datasetRoutes(ctx));
 

@@ -165,6 +165,32 @@ describe('RFC-63 R8 RecordTable', () => {
   });
 });
 
+describe('RFC-71 R2 RecordTable extra column', () => {
+  it("appends one column of the caller's own, cell by row", async () => {
+    renderInRouter(
+      <RecordTable
+        records={[RECORD, PENDING_RECORD]}
+        onSelect={vi.fn()}
+        extra={{
+          header: 'Status',
+          cell: (record) => (record.review === 'disputed' ? 'contested' : 'quiet'),
+        }}
+      />,
+    );
+    const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
+    expect(headers.at(-1)).toBe('Status');
+    const rows = screen.getAllByRole('row');
+    expect(cells(rows[1] as HTMLElement).at(-1)).toHaveTextContent('quiet');
+    expect(cells(rows[2] as HTMLElement).at(-1)).toHaveTextContent('contested');
+  });
+
+  it('adds no column when the caller passes none', async () => {
+    renderInRouter(<RecordTable records={[RECORD]} onSelect={vi.fn()} />);
+    const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
+    expect(headers.at(-1)).toBe('Added');
+  });
+});
+
 describe('RFC-61 R4 RecordTable references', () => {
   it('names a personal observation instead of showing its key', async () => {
     renderInRouter(

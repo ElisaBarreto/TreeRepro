@@ -5,6 +5,7 @@ import type {
   HarmonisationStatus,
   ImportBatchKind,
   NameSource,
+  RecordIntent,
   TraitValueType,
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
@@ -149,10 +150,19 @@ type RecordBase = {
   primaryReferenceId?: string | null;
   secondaryReferenceId?: string | null;
   supersedesRecordId?: string;
+  /** Overrides the default `now()` (RFC-71 R1's day bounds need fixed instants). */
+  createdAt?: Date;
 };
 type RecordOrigin =
   | { origin?: 'import'; importBatchId: string; importRowNo?: number }
-  | { origin: 'manual'; createdBy: string; note?: string };
+  | {
+      origin: 'manual';
+      createdBy: string;
+      note?: string;
+      /** A response record (RFC-70 R1); both fields go together. */
+      intent?: RecordIntent;
+      respondsToRecordId?: string;
+    };
 
 let rowCounter = 0;
 
@@ -176,8 +186,15 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
       primaryReferenceId: input.primaryReferenceId ?? null,
       secondaryReferenceId: input.secondaryReferenceId ?? null,
       supersedesRecordId: input.supersedesRecordId ?? null,
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
       ...(input.origin === 'manual'
-        ? { origin: 'manual' as const, createdBy: input.createdBy, note: input.note ?? null }
+        ? {
+            origin: 'manual' as const,
+            createdBy: input.createdBy,
+            note: input.note ?? null,
+            intent: input.intent ?? null,
+            respondsToRecordId: input.respondsToRecordId ?? null,
+          }
         : {
             origin: 'import' as const,
             importBatchId: input.importBatchId,
@@ -239,7 +256,14 @@ export async function createTrait(
 
 export async function createAnnotation(
   db: DbExecutor,
-  input: { recordId: string; actorId: string; kind: AnnotationKind; note?: string },
+  input: {
+    recordId: string;
+    actorId: string;
+    kind: AnnotationKind;
+    note?: string;
+    referenceId?: string;
+    generated?: boolean;
+  },
 ): Promise<{ id: string }> {
   const [row] = await db
     .insert(recordAnnotations)
@@ -248,6 +272,8 @@ export async function createAnnotation(
       actorId: input.actorId,
       kind: input.kind,
       note: input.note ?? (input.kind === 'dispute' || input.kind === 'withdraw' ? 'test' : null),
+      referenceId: input.referenceId ?? null,
+      generated: input.generated ?? false,
     })
     .returning({ id: recordAnnotations.id });
   if (!row) throw new Error('createAnnotation: no row');

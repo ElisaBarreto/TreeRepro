@@ -99,6 +99,10 @@ export const traitRecords = pgTable(
     index('trait_records_responds_to_idx')
       .on(t.respondsToRecordId)
       .where(sql`${t.respondsToRecordId} is not null`),
+    /** RFC-71 R4: the viewer's own manual records, newest first. */
+    index('trait_records_created_by_idx')
+      .on(t.createdBy, t.id.desc())
+      .where(sql`${t.createdBy} is not null`),
     check(
       'trait_records_intent_check',
       sql`(${t.intent} is null) = (${t.respondsToRecordId} is null)`,

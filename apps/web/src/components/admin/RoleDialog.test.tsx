@@ -51,6 +51,7 @@ describe('RFC-30 R1, R2 groupPermissions', () => {
       'references',
       'traits',
       'plots',
+      'contributions',
     ]);
     expect(groups.flatMap((g) => g.entries.map((e) => e.key))).not.toContain('users.delete');
     const distinctPrefixes = new Set(PERMISSION_ENTRIES.map((e) => e.key.split('.')[0]));

@@ -14,7 +14,14 @@ import { UserRolesSection } from '../../components/admin/UserRolesSection.tsx';
 import { UserSessionsSection } from '../../components/admin/UserSessionsSection.tsx';
 import { UserStatusBadge } from '../../components/admin/UserStatusBadge.tsx';
 import { userErrorMessage } from '../../components/admin/user-errors.ts';
-import { Alert, Badge, Button, ConfirmDialog, PageHeader } from '../../components/ui/index.ts';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  ConfirmDialog,
+  PageHeader,
+} from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
@@ -29,6 +36,7 @@ type Pending = 'suspend' | 'reactivate' | null;
  * answered user in the detail cache and refreshes the lists.
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-50 R4, R6, R7, R8
+ * @rfc RFC-71 R5
  */
 export function UserPage({ id }: { id: string }) {
   const me = useMe();
@@ -67,6 +75,7 @@ export function UserPage({ id }: { id: string }) {
   const canSuspend = hasPermission(me, 'users.suspend');
   const canInvite = hasPermission(me, 'users.invite');
   const canUpdate = hasPermission(me, 'users.update');
+  const canReadContributions = hasPermission(me, 'contributions.read');
 
   return (
     <>
@@ -75,6 +84,11 @@ export function UserPage({ id }: { id: string }) {
         description={u.email}
         actions={
           <>
+            {canReadContributions ? (
+              <ButtonLink to="/app/contributions" search={{ userId: u.id }}>
+                View contributions
+              </ButtonLink>
+            ) : null}
             {canInvite && u.status === 'invited' ? (
               <Button
                 variant="secondary"

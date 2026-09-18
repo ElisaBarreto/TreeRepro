@@ -32,6 +32,8 @@ export const recordAnnotations = pgTable(
   },
   (t) => [
     index('record_annotations_record_idx').on(t.recordId, t.id.desc()),
+    /** RFC-71 R4: the viewer's own annotations, newest first. */
+    index('record_annotations_actor_idx').on(t.actorId, t.id.desc()),
     check(
       'record_annotations_note_check',
       sql`${t.kind} not in ('dispute', 'withdraw') or ${t.note} is not null`,

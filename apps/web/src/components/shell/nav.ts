@@ -37,6 +37,7 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
  * @rfc RFC-13 R3
  * @rfc RFC-60 R9
  * @rfc RFC-65 R8, R10
+ * @rfc RFC-71 R1
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app', label: 'Workspace', icon: 'home' },
@@ -61,6 +62,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'Imports',
     icon: 'upload',
     permission: 'imports.read',
+    section: 'data',
+  },
+  {
+    to: '/app/contributions',
+    label: 'My contributions',
+    icon: 'user',
+    permission: 'dataset.read',
     section: 'data',
   },
   {

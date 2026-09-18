@@ -8,6 +8,10 @@ services:
       APP_ORIGIN: http://localhost:8080
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
+      # The suite provisions several users via invite/reset from one IP,
+      # sharing the `tokenIp` bucket (RFC-24 R3); the shipped default of 10
+      # is too tight for that within one 15-minute window.
+      RATE_LIMIT_TOKEN_IP: "100"
     depends_on:
       mailpit:
         condition: service_started

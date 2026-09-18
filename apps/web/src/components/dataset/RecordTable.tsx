@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import type { RecordItem, ReferenceRef } from '@treerepro/contracts';
+import type { ReactNode } from 'react';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
 import { referenceLabel } from '../../lib/references.ts';
 import { Badge, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
@@ -50,21 +51,27 @@ function ArticleCell({ reference }: { reference: ReferenceRef | null }) {
  * outside a trait panel (`showTrait`) a column names the trait, so a row
  * reads on its own. `acceptedRecordId` marks the species × trait's current
  * accepted value with a badge next to it (RFC-65 R6).
+ * `extra` appends one trailing column of the caller's own: the Status
+ * column of the contributions page, where every row carries its own
+ * standing rather than the one accepted id a species page has.
  * @rfc RFC-63 R8
  * @rfc RFC-65 R6
+ * @rfc RFC-71 R2
  */
-export function RecordTable({
+export function RecordTable<T extends RecordItem>({
   records,
   onSelect,
   showSpecies = false,
   showTrait = false,
   acceptedRecordId,
+  extra,
 }: {
-  records: RecordItem[];
-  onSelect: (record: RecordItem) => void;
+  records: T[];
+  onSelect: (record: T) => void;
   showSpecies?: boolean;
   showTrait?: boolean;
   acceptedRecordId?: string;
+  extra?: { header: string; cell: (record: T) => ReactNode };
 }) {
   return (
     <Table>
@@ -79,6 +86,7 @@ export function RecordTable({
           <Th>Harmonisation</Th>
           <Th>Review</Th>
           <Th>Added</Th>
+          {extra ? <Th>{extra.header}</Th> : null}
         </Tr>
       </Thead>
       <Tbody>
@@ -122,6 +130,7 @@ export function RecordTable({
               <Td className="whitespace-nowrap tabular-nums">
                 <time dateTime={record.createdAt}>{isoDate(record.createdAt)}</time>
               </Td>
+              {extra ? <Td>{extra.cell(record)}</Td> : null}
             </Tr>
           );
         })}

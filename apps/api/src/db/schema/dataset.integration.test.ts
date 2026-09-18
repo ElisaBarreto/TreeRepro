@@ -795,3 +795,19 @@ describe('RFC-63 R1, R2 intent and responses', () => {
     });
   });
 });
+
+describe('RFC-71 R4 per-user contribution indexes', () => {
+  const t = useTestDb();
+
+  it('record_annotations and trait_records carry the per-user indexes', async () => {
+    const rows = await t.db.execute(sql`
+      select indexname from pg_indexes
+      where indexname in ('record_annotations_actor_idx', 'trait_records_created_by_idx')
+      order by indexname
+    `);
+    expect(rows.map((r) => r.indexname)).toEqual([
+      'record_annotations_actor_idx',
+      'trait_records_created_by_idx',
+    ]);
+  });
+});

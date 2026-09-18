@@ -1,5 +1,8 @@
 import type {
   AcceptedState,
+  ContributionAnnotation,
+  ContributionRecord,
+  ContributionSummary,
   Dictionary,
   DisputedRecord,
   Genus,
@@ -687,4 +690,72 @@ export const DISPUTED_RECORD: DisputedRecord = {
     note: 'Value is not a number.',
     createdAt: '2026-09-03T12:00:00.000Z',
   },
+};
+
+/**
+ * The viewer's own manual record, as `/api/me/contributions?kind=records`
+ * answers it: the current accepted value of its species and trait, with one
+ * record answering it.
+ * @rfc RFC-71 R2
+ */
+export const CONTRIBUTION_RECORD: ContributionRecord = {
+  ...PENDING_RECORD,
+  isAccepted: true,
+  responseCount: 1,
+};
+
+/** The viewer's own record contesting {@link RECORD}; nobody has accepted it. @rfc RFC-71 R2 */
+export const CONTESTING_CONTRIBUTION: ContributionRecord = {
+  ...PENDING_RECORD,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d54',
+  trait: SEXUAL_SYSTEM,
+  valueText: 'monoecious',
+  review: 'unreviewed',
+  intent: 'contest',
+  respondsTo: { id: RECORD.id },
+  createdAt: '2026-09-07T08:00:00.000Z',
+  isAccepted: false,
+  responseCount: 0,
+};
+
+/** A confirmation the viewer wrote, backed by a reference. @rfc RFC-71 R3 */
+export const CONTRIBUTION_ANNOTATION: ContributionAnnotation = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d75',
+  kind: 'confirm',
+  note: 'Matches the herbarium sheet.',
+  reference: PRIMARY_REFERENCE,
+  generated: false,
+  createdAt: '2026-09-08T09:00:00.000Z',
+  record: RECORD,
+};
+
+/**
+ * The dispute a contest generated in the viewer's name: `generated`, which
+ * the page reads as "automatic". Its own date is later than the record it
+ * annotates, which is what the two date columns keep apart.
+ * @rfc RFC-71 R3
+ */
+export const GENERATED_CONTRIBUTION_ANNOTATION: ContributionAnnotation = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d76',
+  kind: 'dispute',
+  note: `Contested by record ${CONTESTING_CONTRIBUTION.id}`,
+  reference: null,
+  generated: true,
+  createdAt: '2026-09-09T11:00:00.000Z',
+  record: PENDING_RECORD,
+};
+
+/**
+ * A standing with more records than any page lists: the summary counts every
+ * row, the lists omit what the viewer may no longer see (RFC-71 R4).
+ * @rfc RFC-71 R4
+ */
+export const CONTRIBUTION_SUMMARY: ContributionSummary = {
+  records: 12,
+  contests: 2,
+  complements: 3,
+  validations: 7,
+  disputes: 1,
+  withdrawn: 1,
+  accepted: 4,
 };
