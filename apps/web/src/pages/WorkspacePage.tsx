@@ -6,6 +6,7 @@ import { RecordDrawer } from '../components/dataset/RecordDrawer.tsx';
 import { Alert, ButtonLink, EmptyState, PageHeader } from '../components/ui/index.ts';
 import { AwaitingTable } from '../components/workspace/AwaitingTable.tsx';
 import { CurationCards } from '../components/workspace/CurationCards.tsx';
+import { GettingStartedCard } from '../components/workspace/GettingStartedCard.tsx';
 import { IntroCard } from '../components/workspace/IntroCard.tsx';
 import { MissingTraitsList } from '../components/workspace/MissingTraitsList.tsx';
 import { QuickActions } from '../components/workspace/QuickActions.tsx';
@@ -60,6 +61,7 @@ export function WorkspacePage() {
           <IntroCard dataset={data.dataset} />
           {data.scope ? <ScopeCard scope={data.scope} /> : null}
           <QuickActions hasPlots={hasPlots} />
+          <GettingStartedCard summary={data.contributor.summary} />
 
           {data.contributor.awaitingValidation ? (
             <section aria-labelledby="awaiting-heading" className={SECTION_CLASS}>
