@@ -3,6 +3,7 @@ import type {
   ContributionAnnotation,
   ContributionRecord,
   ContributionSummary,
+  Dashboard,
   Dictionary,
   DisputedRecord,
   Genus,
@@ -884,4 +885,92 @@ export const CONTRIBUTION_SUMMARY: ContributionSummary = {
   disputes: 1,
   withdrawn: 1,
   accepted: 4,
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard (RFC-72 R1; plan 11b). Records in here are always one of the
+// RecordItem fixtures above (RECORD, PENDING_RECORD): never a fresh
+// reference-ref literal, so a required field added to referenceRefSchema by
+// a sibling branch is a one-place edit, not a rewrite of every fixture here.
+// ---------------------------------------------------------------------------
+
+/** One of the viewer's field plots, with its own species count. @rfc RFC-72 R1 */
+export const DASHBOARD_PLOT = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e01',
+  code: 'PLT-01',
+  name: 'Riverside plot',
+  speciesCount: 8,
+};
+
+/** A restricted viewer's scope: one plot, nothing outside it. @rfc RFC-72 R1 */
+export const DASHBOARD_SCOPE: NonNullable<Dashboard['scope']> = {
+  plots: [DASHBOARD_PLOT],
+  speciesCount: 8,
+  restricted: true,
+};
+
+/** Ranked traits missing data, descending by missing-species count. @rfc RFC-72 R1 */
+export const TOP_MISSING_TRAITS: Dashboard['contributor']['topMissingTraits'] = [
+  {
+    trait: SEED_MASS,
+    category: { key: 'seed', label: 'Seed' },
+    missingSpeciesCount: 5,
+  },
+  {
+    trait: POLLINATION_MODE,
+    category: { key: 'pollination', label: 'Pollination' },
+    missingSpeciesCount: 2,
+  },
+];
+
+/** Records awaiting the viewer's validation, newest first. @rfc RFC-72 R1 */
+export const AWAITING_VALIDATION: NonNullable<Dashboard['contributor']['awaitingValidation']> = {
+  count: 2,
+  records: [PENDING_RECORD, RECORD],
+};
+
+/** The contributor section of a viewer with plots. @rfc RFC-72 R1 */
+export const DASHBOARD_CONTRIBUTOR: Dashboard['contributor'] = {
+  missingCells: 14,
+  awaitingValidation: AWAITING_VALIDATION,
+  topMissingTraits: TOP_MISSING_TRAITS,
+  summary: CONTRIBUTION_SUMMARY,
+};
+
+/** The contributor section of a viewer without plots: global hints instead. @rfc RFC-72 R1 */
+export const NO_PLOTS_CONTRIBUTOR: Dashboard['contributor'] = {
+  missingCells: null,
+  awaitingValidation: null,
+  topMissingTraits: TOP_MISSING_TRAITS,
+  summary: CONTRIBUTION_SUMMARY,
+};
+
+/** The curation section, present only for a viewer with `records.review`. @rfc RFC-72 R1 */
+export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
+  coverage: { cells: 200, withData: 120, accepted: 80, percentWithData: 60, percentAccepted: 40 },
+  queues: { pendingGroups: 3, disputed: 2, contested: 1, proposals: 0 },
+};
+
+/** The whole dashboard answer for a contributor with plots and no review permission. @rfc RFC-72 R1 */
+export const DASHBOARD: Dashboard = {
+  dataset: {
+    speciesCount: 120,
+    referenceCount: 45,
+    recordCount: 980,
+    computedAt: '2026-09-18T08:00:00.000Z',
+  },
+  scope: DASHBOARD_SCOPE,
+  contributor: DASHBOARD_CONTRIBUTOR,
+  curation: null,
+};
+
+/** The same dataset and scope, for a reviewer: `curation` is present. @rfc RFC-72 R1 */
+export const REVIEWER_DASHBOARD: Dashboard = { ...DASHBOARD, curation: DASHBOARD_CURATION };
+
+/** A viewer without plots: `scope` is null, the contributor section degrades with it. @rfc RFC-72 R1 */
+export const NO_PLOTS_DASHBOARD: Dashboard = {
+  dataset: DASHBOARD.dataset,
+  scope: null,
+  contributor: NO_PLOTS_CONTRIBUTOR,
+  curation: null,
 };

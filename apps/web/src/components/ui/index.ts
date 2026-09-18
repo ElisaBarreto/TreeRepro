@@ -24,6 +24,8 @@ export type { IconName } from './Icon.tsx';
 export { Icon } from './Icon.tsx';
 export type { InputProps } from './Input.tsx';
 export { Input } from './Input.tsx';
+export type { MeterProps } from './Meter.tsx';
+export { Meter } from './Meter.tsx';
 export { PageHeader } from './PageHeader.tsx';
 export type { SectionProps } from './Section.tsx';
 export { Section } from './Section.tsx';
