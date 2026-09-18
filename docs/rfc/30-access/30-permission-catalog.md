@@ -47,6 +47,7 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `records.review` | Work the harmonisation and disputed queues; neutralise or dispute any record with a note |
 | `plots.manage` | Create and edit field plots and their species |
 | `contributions.read` | View any user's contributions |
+| `coverage.read` | View coverage metrics |
 
 ## Open questions
 
@@ -64,3 +65,4 @@ None.
 - 2026-09-17 — R1: an underscore inside the action segment (plan 08a).
 - 2026-09-17 — records.review: meaning widened by RFC-70 R4 (plan 09a).
 - 2026-09-18 — contributions.read (RFC-71, plan 11a).
+- 2026-09-18 — coverage.read (RFC-69 R5-R7, plan 11c).

@@ -21,7 +21,7 @@ Roles are named sets of permissions created by administrators. A user holds any 
 - **R7** Anti-lockout: the last `active` user holding `admin` cannot lose it — `setUserRoles` answers 409 `ROLE_LAST_ADMIN` when the change would remove `admin` from that user. `assertNotLastAdmin(userId)` exposes the same check for suspension (RFC-50 R6); the check holds a transaction-scoped advisory lock so concurrent removals serialize. Suspended and invited holders do not count.
 - **R8** Every service takes the actor's user id (null for the seed command) and runs in one transaction with its audit entry; a failed audit rolls the change back (RFC-41 R5).
 - **R9** `pnpm seed:admin` assigns `admin` to the invited user (RFC-20 R8); running it again for the same invited user keeps the role.
-- **R10** Permission sets of the seeded roles. `contributor`: `dataset.read`, `records.create`, `records.annotate`. `manager`: the contributor set plus `dataset.read_inactive`, `records.review`, `records.withdraw`, `imports.read`, `contributions.read`. Managers do not hold `traits.manage`: a missing level is escalated to the admin. Later plans append: `taxa.propose` (contributor and manager, RFC-75), `coverage.read` (manager, RFC-69).
+- **R10** Permission sets of the seeded roles. `contributor`: `dataset.read`, `records.create`, `records.annotate`. `manager`: the contributor set plus `dataset.read_inactive`, `records.review`, `records.withdraw`, `imports.read`, `contributions.read`, `coverage.read`. Managers do not hold `traits.manage`: a missing level is escalated to the admin. Later plans append: `taxa.propose` (contributor and manager, RFC-75).
 - **R11** `GET /api/admin/roles` items carry `isSystem` and, for a system role with stored permissions, its permission keys; the web role list renders system roles read-only.
 
 ## Open questions
@@ -35,3 +35,4 @@ None.
 - 2026-09-12 — R7: no erasure; wording (RFC-50).
 - 2026-09-17 — R2 amended, R10–R11 added: manager and contributor system roles (plan 08a).
 - 2026-09-18 — R10: manager gains `contributions.read` (RFC-71, plan 11a).
+- 2026-09-18 — R10: manager gains `coverage.read` (RFC-69 R5-R7, plan 11c).
