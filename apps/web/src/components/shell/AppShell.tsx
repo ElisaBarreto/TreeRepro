@@ -63,7 +63,32 @@ function NavGroup({
 const CRUMB_LINK =
   'text-mist-500 transition-colors hover:text-canopy-700 hover:underline rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500';
 
-// Not exported: no @rfc tag needed (RFC-00 R6 applies to exports only).
+// `Link` sets `aria-current="page"` on its own — unconditionally, after
+// whatever prop is passed — whenever it decides its target is "active", and
+// without `activeOptions.exact` that decision is a path-segment prefix
+// match. A non-last breadcrumb segment's `to` is either the current entry's
+// own route (`crumbGroup`/entry, once any crumb is registered) or a
+// registered crumb's own link, and either would prefix-match the URL of the
+// page that registered it (e.g. `/app/species` under `/app/species/$id`),
+// so without `exact` the router would mark it current too.
+//
+// `exact: true` fixes it by changing the decision instead of fighting the
+// output: a non-last segment only gets a `to` when `hasCrumbs` is true
+// below, which — for every page that registers a crumb today (species,
+// references, plots; all `/app/<section>/$id` routes) — only happens on a
+// route one segment deeper than that `to`, so the pathnames can never be
+// equal and the link is never "active". (An earlier version of this fixed
+// it after the fact instead, with a ref and a `useLayoutEffect` stripping
+// the attribute every render — correct, but it fought the router silently
+// on every render instead of just telling it the truth once.)
+//
+// `includeSearch: false`: the default (`true`) would also compare search,
+// and in practice a detail page's own search almost never matches this
+// link's empty one — but that would make the check pass for the wrong
+// reason (an incidental search mismatch) instead of the real one (the
+// pathnames differ), so search is explicitly left out of the decision here.
+const CRUMB_ACTIVE_OPTIONS = { exact: true, includeSearch: false } as const;
+
 // Renders `Group › Entry › crumbs…`: `crumbGroup` and the current entry's
 // label link (to the current entry's own route) once a page has registered
 // trailing crumbs through `useBreadcrumb`; whichever segment ends up last —
@@ -98,7 +123,12 @@ function BreadcrumbTrail({
                 {segment.label}
               </span>
             ) : segment.to ? (
-              <Link to={segment.to} search={segment.search} className={CRUMB_LINK}>
+              <Link
+                to={segment.to}
+                search={segment.search}
+                activeOptions={CRUMB_ACTIVE_OPTIONS}
+                className={CRUMB_LINK}
+              >
                 {segment.label}
               </Link>
             ) : (
