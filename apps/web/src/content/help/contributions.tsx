@@ -50,13 +50,14 @@ export const contributions: HelpTopicSource = {
           <strong>unreviewed</strong> — nobody has annotated it yet. A new record starts here.
         </li>
         <li>
-          <strong>confirmed</strong> — the latest annotation is a validation. Someone read the value
-          and agreed with it.
+          <strong>confirmed</strong> — somebody&rsquo;s latest word on it is a validation. The axis
+          is read per person, so a neutral from someone else does not take your validation back.
         </li>
         <li>
-          <strong>disputed</strong> — someone&rsquo;s standing position on it is a dispute, whether
-          written by a manager or raised automatically by a contest. It is in the Disputed queue
-          until that is resolved.
+          <strong>disputed</strong> — somebody&rsquo;s standing position on it is a dispute, whether
+          written by a manager or raised automatically by a contest. It outranks a validation, and
+          it puts the record in the managers&rsquo; Disputed queue until they settle the accepted
+          value for that species and trait.
         </li>
         <li>
           <strong>withdrawn</strong> — a withdrawal exists. This wins over everything else: a

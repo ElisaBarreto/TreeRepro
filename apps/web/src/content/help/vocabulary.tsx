@@ -30,8 +30,9 @@ export const vocabulary: HelpTopicSource = {
         </li>
       </ul>
       <p>
-        The whole list lives on the <strong>Traits</strong> page, with the number of species that
-        have data for each trait and the ones that do not.
+        The whole list lives on the <strong>Traits</strong> page, category by category, with the
+        number of species that have data for each trait. Open a trait to see the rest: how its
+        records are distributed, and the species that are still missing it.
       </p>
 
       <h2 id="levels">Levels</h2>
@@ -61,8 +62,12 @@ export const vocabulary: HelpTopicSource = {
         type: put <em>1200</em> in the box, not <em>1200 mg</em>.
       </p>
       <p>
-        Write a decimal point, not a comma, and no thousands separators. A range or an approximation
-        is not a number: enter the value you would defend, and put the range in the note.
+        Write a decimal point, not a comma, and no thousands separators. The form takes one number
+        and nothing else — there is no free-text box beside it — so a range has nowhere to go: enter
+        the single figure your source gives for the species, the one you would defend. If the source
+        gives a range and no representative value, it is better to leave the trait empty than to
+        invent a midpoint. A second figure from a second paper is a separate record: add it as a{' '}
+        <Link to={helpHref('workflow', 'complement')}>complement</Link>.
       </p>
       <p>
         A unit is fixed once the trait exists, because changing it would silently change the meaning

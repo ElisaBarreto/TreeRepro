@@ -28,28 +28,37 @@ export const references: HelpTopicSource = {
         reference however it was typed.
       </p>
       <p>
-        When you leave the DOI box, TreeRepro asks the DOI registry about it and tells you one of
-        three things:
+        When you leave the DOI box, TreeRepro checks it against the DOI registry. The line under the
+        field says what came back, in these words:
       </p>
       <ul>
         <li>
-          <strong>Already here</strong> — the work is in the project&rsquo;s reference list and your
-          record will be attached to it.
+          <strong>Checking…</strong> — the request is out. Wait for it; the form will not submit a
+          DOI nobody has answered for.
         </li>
         <li>
-          <strong>Found</strong> — the DOI exists but the work is new here. It is added
-          automatically, with its title, authors, year and journal, when your record is saved.
+          <strong>Resolved: …</strong> — the DOI is real, and the rest of the line is the work it
+          names. This is the answer you want. It reads the same whether the work is already in the
+          project&rsquo;s reference list or brand new here; a new one is added automatically, with
+          its title, authors, year and journal, when your record is saved.
         </li>
         <li>
-          <strong>Not found</strong> — the registry does not know that DOI. Check it against the
-          paper itself; a record cannot be saved with a DOI that does not resolve.
+          <strong>DOI not found</strong> — the registry does not know it. Check it against the paper
+          itself.
+        </li>
+        <li>
+          <strong>Malformed DOI</strong> — it is not shaped like a DOI at all. The usual causes are
+          a missing digit, a stray space, or a page URL copied instead of the DOI.
+        </li>
+        <li>
+          <strong>Could not check the DOI — try again</strong> — the registry could not be reached.
+          This says nothing about your DOI. Click into the field and out of it again and the check
+          runs once more.
         </li>
       </ul>
       <p>
-        If the check itself fails — the registry is unreachable rather than saying no — the field
-        says so and asks you to try again. Leave the box and come back to it; the check runs once
-        more. Wait for a green answer before submitting: the form will not send a DOI nobody has
-        answered for.
+        The last three block the form: the API would refuse the record anyway. Only{' '}
+        <strong>Resolved</strong> lets it through.
       </p>
 
       <h2 id="personal-observation">Personal observation</h2>
@@ -89,14 +98,20 @@ export const references: HelpTopicSource = {
 
       <h2 id="bibliography">Where references come from</h2>
       <p>
-        The <strong>References</strong> page in the sidebar lists every work the dataset uses, most
-        used first, with how many records name it. Each has its own page: its metadata, its DOI
-        link, and the traits it contributes to.
+        The <strong>References</strong> page in the sidebar lists the <em>publications</em> the
+        records cite — most used first, with how many records name each one as a primary and as a
+        secondary source. Each has its own page: its metadata, its DOI link, and the traits it has
+        been used for.
       </p>
       <p>
-        You never have to add a reference there yourself. Giving a DOI on a record is what creates
-        it, with the metadata fetched from the registry. The list also holds the personal
-        observations, which is why a reference carries a kind.
+        Personal observations are not in that list: it is the project&rsquo;s bibliography, and an
+        observation is not a publication. They appear against the records that rest on them — on the
+        species page and on <strong>My contributions</strong>, a record sourced that way reads
+        &ldquo;Personal observation&rdquo; with the observer&rsquo;s name where a citation would be.
+      </p>
+      <p>
+        You never have to add a publication there yourself. Giving a DOI on a record is what creates
+        it, with the metadata fetched from the registry.
       </p>
     </>
   ),

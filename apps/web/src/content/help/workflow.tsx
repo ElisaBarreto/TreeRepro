@@ -129,9 +129,14 @@ export const workflow: HelpTopicSource = {
       <p>
         Records under a standing dispute — yours included — go to the managers&rsquo;{' '}
         <strong>Disputed</strong> queue, which lists the disputed record together with the records
-        contesting it, so the two values can be compared side by side. A separate{' '}
-        <strong>Pending</strong> queue is where imported values that do not match any level of the
-        dictionary are mapped by hand.
+        contesting it, so the two values can be compared side by side. A record leaves that queue
+        once a manager settles the accepted value for its species and trait: it may still read{' '}
+        <em>disputed</em> on the species page while no longer waiting in the queue.
+      </p>
+      <p>
+        A separate <strong>Pending</strong> queue is where imported values the dictionary cannot
+        read are mapped by hand — a categorical value matching no level, one cell holding several
+        values at once, or a quantitative cell that is not a number.
       </p>
       <p>
         None of this is instant. A validation or a contest may sit unreviewed for a while; it is

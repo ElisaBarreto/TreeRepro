@@ -16,7 +16,7 @@ export const gettingStarted: HelpTopicSource = {
       <h2 id="what">What TreeRepro is</h2>
       <p>
         TreeRepro is a collective assembly of reproductive trait data for trees: traits of flowers,
-        fruits and seeds. Its core data comes from open-access papers and data repositories, and it
+        fruits and seeds. Its core data comes from open-source papers and data repositories, and it
         is shared with a community of specialist scientists who fill the gaps and check what is
         already there.
       </p>

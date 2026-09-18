@@ -15,8 +15,9 @@ export const contact: HelpTopicSource = {
   body: (
     <>
       <p>
-        Write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. It is the project&rsquo;s
-        own address; a person reads it, so plain English is fine and there is no form to fill in.
+        Write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>, the project&rsquo;s
+        contact address. A person reads it, so plain English is fine and there is no form to fill
+        in.
       </p>
       <p>Things only the admin can do, and which are therefore worth writing about:</p>
       <ul>
