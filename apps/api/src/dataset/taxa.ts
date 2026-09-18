@@ -193,6 +193,11 @@ export async function speciesListConditions(
   const status = visibility.inactive ? (filters.status ?? 'all') : 'active';
   if (status === 'active') conditions.push(eq(species.active, true));
   if (status === 'inactive') conditions.push(eq(species.active, false));
+  // `searchSpecies` computes this same pattern again for its `matchedName`
+  // highlight: the predicate here and the highlight there must always be the
+  // one pattern, so the two calls change together or not at all. Plan 10b
+  // replaces both with the search tiers, which is why they are not
+  // consolidated now.
   const pattern = filters.q ? likePattern(filters.q, 'substring') : undefined;
   if (pattern) {
     // A single `or(ilike, exists(...))` forces a full scan of `species` (the planner
@@ -266,6 +271,10 @@ export async function searchSpecies(
   input: SpeciesListFilters & { limit: number },
 ): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
   const conditions = await speciesListConditions(db, visibility, input);
+  // The twin of the call in `speciesListConditions`, which builds the
+  // predicate this highlight describes: if the two ever disagree, a row can
+  // match without a `matchedName` or the other way round. They change
+  // together, until plan 10b's search tiers replace both.
   const pattern = input.q ? likePattern(input.q, 'substring') : undefined;
   // The same choice the cursor predicate made in `speciesListConditions`.
   const sort: SpeciesSort = input.sort ?? 'name';

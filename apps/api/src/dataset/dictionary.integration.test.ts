@@ -314,10 +314,20 @@ describe('RFC-62 R5 dictionary speciesCount is read from the cache', () => {
       },
     );
 
-    // The seed does not outlive the call it served: nothing is left for the
-    // next reader (in this run or a later one) to read as a cache hit.
-    expect(await redis.get('dictionary:species-counts:u')).toBeNull();
-    expect(await redis.get('dictionary:species-counts:r')).toBeNull();
+    // The seed does not outlive the call it served. The key itself cannot be
+    // asserted absent: it is fixed and shared (RFC-62 R5), and every sibling
+    // reading `GET /api/traits` repopulates it — legitimately — between the
+    // `finally` above and this line. What must be gone is the *sentinel*, and
+    // no other test ever writes one, so whatever comes back here is a real
+    // count: this trait has no coverage row, so it is 0.
+    const countOf = (d: Dictionary) =>
+      d.flatMap((c) => c.traits).find((tr) => tr.id === trait.id)?.speciesCount;
+    const afterUnrestricted = countOf(await getDictionary({ db: t.db, redis }, UNRESTRICTED));
+    expect(afterUnrestricted).not.toBe(uSentinel);
+    expect(afterUnrestricted).toBe(0);
+    const afterRestricted = countOf(await getDictionary({ db: t.db, redis }, RESTRICTED));
+    expect(afterRestricted).not.toBe(rSentinel);
+    expect(afterRestricted).toBe(0);
   });
 });
 
