@@ -104,7 +104,12 @@ describe('RFC-63 R8 RecordTable', () => {
     const longKey = `Smith, J.; Doe, A. (2001). ${'x'.repeat(60)}`;
     const long: RecordItem = {
       ...RECORD,
-      primaryReference: { id: PRIMARY_REFERENCE.id, citationKey: longKey, kind: 'publication' },
+      primaryReference: {
+        id: PRIMARY_REFERENCE.id,
+        citationKey: longKey,
+        kind: 'publication',
+        shortCitation: null,
+      },
     };
     renderInRouter(<RecordTable records={[long]} onSelect={vi.fn()} />);
     const rows = await screen.findAllByRole('row');

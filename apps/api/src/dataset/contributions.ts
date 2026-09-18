@@ -187,7 +187,12 @@ async function listAnnotationContributions(
         note: r.note,
         reference:
           r.referenceId && r.citationKey && r.referenceKind
-            ? { id: r.referenceId, citationKey: r.citationKey, kind: r.referenceKind }
+            ? {
+                id: r.referenceId,
+                citationKey: r.citationKey,
+                kind: r.referenceKind,
+                shortCitation: null,
+              }
             : null,
         generated: r.generated,
         createdAt: r.createdAt.toISOString(),

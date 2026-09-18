@@ -80,13 +80,25 @@ export function toItem(r: ItemRow): RecordItem {
     numericValue: rec.numericValue,
     harmonisation: rec.harmonisation,
     review: r.review,
+    // `shortCitation` is null here until plan 10d's column lands; the item
+    // query does not select it.
     primaryReference:
       rec.primaryReferenceId && r.primaryKey && r.primaryKind
-        ? { id: rec.primaryReferenceId, citationKey: r.primaryKey, kind: r.primaryKind }
+        ? {
+            id: rec.primaryReferenceId,
+            citationKey: r.primaryKey,
+            kind: r.primaryKind,
+            shortCitation: null,
+          }
         : null,
     secondaryReference:
       rec.secondaryReferenceId && r.secondaryKey && r.secondaryKind
-        ? { id: rec.secondaryReferenceId, citationKey: r.secondaryKey, kind: r.secondaryKind }
+        ? {
+            id: rec.secondaryReferenceId,
+            citationKey: r.secondaryKey,
+            kind: r.secondaryKind,
+            shortCitation: null,
+          }
         : null,
     origin: rec.origin,
     createdAt: rec.createdAt.toISOString(),
@@ -254,7 +266,7 @@ export async function getRecord(
       actor: { id: a.actorId, name: a.actorName },
       reference:
         a.refId && a.refCitationKey && a.refKind
-          ? { id: a.refId, citationKey: a.refCitationKey, kind: a.refKind }
+          ? { id: a.refId, citationKey: a.refCitationKey, kind: a.refKind, shortCitation: null }
           : null,
       generated: a.generated,
       createdAt: a.createdAt.toISOString(),

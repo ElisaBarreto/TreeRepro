@@ -150,12 +150,14 @@ export const PRIMARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d40',
   citationKey: 'Renner2014',
   kind: 'publication' as const,
+  shortCitation: null,
 };
 /** @rfc RFC-61 R4 */
 export const SECONDARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d41',
   citationKey: 'TRY-6.0',
   kind: 'publication' as const,
+  shortCitation: null,
 };
 
 /** The reference a scientist's own field work is recorded under. @rfc RFC-61 R7 */
@@ -163,6 +165,7 @@ export const PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d42',
   citationKey: `personal-observation:${USER.id}`,
   kind: 'personal_observation',
+  shortCitation: null,
 };
 
 const GRACE_ID = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
@@ -177,6 +180,7 @@ export const GRACE_PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d43',
   citationKey: `personal-observation:${GRACE_ID}`,
   kind: 'personal_observation',
+  shortCitation: null,
 };
 
 /** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
@@ -609,6 +613,8 @@ export const REFERENCE: Reference = {
   secondaryCount: 1,
   kind: 'publication',
   observer: null,
+  shortCitation: null,
+  fullCitation: null,
 };
 
 /** The personal-observation reference of USER, as the references screens see it. @rfc RFC-61 R7 */
@@ -626,16 +632,19 @@ export const PERSONAL_OBSERVATION: Reference = {
   secondaryCount: 0,
   kind: 'personal_observation',
   observer: { id: USER.id, name: USER.name },
+  shortCitation: null,
+  fullCitation: null,
 };
 
 /** @rfc RFC-61 R7 */
 export const PERSONAL_OBSERVATION_DETAIL: ReferenceDetail = {
   ...PERSONAL_OBSERVATION,
   recordCount: 1,
+  traits: [],
 };
 
 /** REFERENCE with the count `GET /api/references/:id` adds: two records, one per role. @rfc RFC-61 R4 */
-export const REFERENCE_DETAIL: ReferenceDetail = { ...REFERENCE, recordCount: 2 };
+export const REFERENCE_DETAIL: ReferenceDetail = { ...REFERENCE, recordCount: 2, traits: [] };
 
 /** A completed batch with one unknown level. @rfc RFC-64 R11 */
 export const IMPORT_BATCH: ImportBatch = {

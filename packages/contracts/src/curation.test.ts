@@ -152,6 +152,8 @@ describe('RFC-80 resolveDoiResultSchema', () => {
           doi: null,
           url: null,
           observer: null,
+          shortCitation: null,
+          fullCitation: null,
         },
       }).success,
     ).toBe(true);
@@ -237,6 +239,18 @@ describe('RFC-60 R9, RFC-61 R6, RFC-62 R6 catalog bodies', () => {
     expect(createLevelBodySchema.safeParse({ key: 'a', sortOrder: 2147483648 }).success).toBe(
       false,
     );
+  });
+
+  it('accepts shortCitation and fullCitation on create; null clears them on update', () => {
+    expect(
+      createReferenceBodySchema.safeParse({ citationKey: 'K', shortCitation: 'Smith (2001)' })
+        .success,
+    ).toBe(true);
+    expect(
+      createReferenceBodySchema.safeParse({ citationKey: 'K', shortCitation: '' }).success,
+    ).toBe(false);
+    expect(updateReferenceBodySchema.safeParse({ shortCitation: null }).success).toBe(true);
+    expect(updateReferenceBodySchema.safeParse({ fullCitation: null }).success).toBe(true);
   });
 });
 

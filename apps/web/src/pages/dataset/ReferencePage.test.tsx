@@ -43,7 +43,12 @@ vi.mock('../../api/dataset.ts', async (importOriginal) => ({
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
 const LIBRARIAN: MeResponse = { ...ME, permissions: ['dataset.read', 'references.manage'] };
-const SMITH = { id: REFERENCE.id, citationKey: REFERENCE.citationKey, kind: REFERENCE.kind };
+const SMITH = {
+  id: REFERENCE.id,
+  citationKey: REFERENCE.citationKey,
+  kind: REFERENCE.kind,
+  shortCitation: REFERENCE.shortCitation,
+};
 // The records of this page name Smith2001 as primary or secondary source.
 const PRIMARY: RecordItem = { ...RECORD, primaryReference: SMITH, secondaryReference: null };
 const SECONDARY: RecordItem = { ...PENDING_RECORD, secondaryReference: SMITH };

@@ -267,6 +267,8 @@ export const createReferenceBodySchema = z.strictObject({
   journal: text(1000).optional(),
   doi: text(500).optional(),
   url: text(500).optional(),
+  shortCitation: text(200).optional(),
+  fullCitation: text(2000).optional(),
 });
 /** @rfc RFC-61 R6 */
 export const updateReferenceBodySchema = nonEmpty(
@@ -278,6 +280,8 @@ export const updateReferenceBodySchema = nonEmpty(
     journal: text(1000).nullable().optional(),
     doi: text(500).nullable().optional(),
     url: text(500).nullable().optional(),
+    shortCitation: text(200).nullable().optional(),
+    fullCitation: text(2000).nullable().optional(),
   },
   'citationKey',
 );

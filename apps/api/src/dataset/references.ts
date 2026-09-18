@@ -15,7 +15,12 @@ import {
 import type { DoiMetadata } from '../integrations/doi.ts';
 import { likePattern } from './taxa.ts';
 
-/** @rfc RFC-61 R4 */
+/**
+ * `shortCitation` / `fullCitation` are `null` until plan 10d's columns and
+ * derivation (RFC-61 R1, R8) land; this keeps the contract's required fields
+ * compiling in the meantime.
+ * @rfc RFC-61 R4
+ */
 export function toReference(
   row: ReferenceRow,
   observer?: { id: string; name: string } | null,
@@ -34,6 +39,8 @@ export function toReference(
     secondaryCount: row.secondaryCount,
     kind: row.kind,
     observer: observer?.id ? { id: observer.id, name: observer.name } : null,
+    shortCitation: null,
+    fullCitation: null,
   };
 }
 
@@ -115,6 +122,9 @@ export async function getReference(db: DbExecutor, id: string): Promise<Referenc
   return {
     ...toReference(row.ref, row.observer?.id ? row.observer : null),
     recordCount: counts?.recordCount ?? 0,
+    // `reference_traits` (RFC-61 R9) does not exist yet; the trait usage list
+    // is empty until that migration and the query behind it land.
+    traits: [],
   };
 }
 

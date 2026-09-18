@@ -5,6 +5,7 @@ import {
   importBatchSchema,
   listGeneraQuerySchema,
   listRecordsQuerySchema,
+  listReferencesQuerySchema,
   listSpeciesQuerySchema,
   listTraitSpeciesQuerySchema,
   listTraitsQuerySchema,
@@ -12,6 +13,7 @@ import {
   REVIEW_STATUSES,
   recordSchema,
   referenceDetailSchema,
+  referenceRefSchema,
   referenceSchema,
   SPECIES_SORTS,
   speciesListItemSchema,
@@ -74,7 +76,12 @@ describe('RFC-63 R8 recordSchema', () => {
       numericValue: null,
       harmonisation: 'harmonised',
       review: 'unreviewed',
-      primaryReference: { id: uuid, citationKey: 'A_2020', kind: 'publication' },
+      primaryReference: {
+        id: uuid,
+        citationKey: 'A_2020',
+        kind: 'publication',
+        shortCitation: null,
+      },
       secondaryReference: null,
       origin: 'import',
       createdAt: '2026-09-13T00:00:00.000Z',
@@ -156,6 +163,8 @@ describe('RFC-61 R4 referenceSchema', () => {
     secondaryCount: 0,
     kind: 'publication',
     observer: null,
+    shortCitation: null,
+    fullCitation: null,
   };
 
   it('every item carries its usage per role as non-negative integers', () => {
@@ -166,10 +175,51 @@ describe('RFC-61 R4 referenceSchema', () => {
     expect(referenceSchema.safeParse({ ...reference, primaryCount: 1.5 }).success).toBe(false);
   });
 
-  it('the detail adds recordCount on top of the per-role counts', () => {
-    const detail = { ...reference, recordCount: 2 };
+  it('requires shortCitation and fullCitation, both nullable', () => {
+    expect(
+      referenceSchema.parse({ ...reference, shortCitation: 'Smith (2001)' }).shortCitation,
+    ).toBe('Smith (2001)');
+    const { shortCitation: _sc, ...withoutShort } = reference;
+    expect(referenceSchema.safeParse(withoutShort).success).toBe(false);
+    const { fullCitation: _fc, ...withoutFull } = reference;
+    expect(referenceSchema.safeParse(withoutFull).success).toBe(false);
+  });
+
+  it('the detail adds recordCount and traits on top of the per-role counts', () => {
+    const detail = { ...reference, recordCount: 2, traits: [] };
     expect(referenceDetailSchema.parse(detail)).toEqual(detail);
     expect(referenceDetailSchema.safeParse(reference).success).toBe(false);
+    const withTrait = {
+      ...detail,
+      traits: [
+        {
+          trait: { id: uuid, key: 'sexual_system', valueType: 'categorical', unit: null },
+          recordCount: 3,
+        },
+      ],
+    };
+    expect(referenceDetailSchema.parse(withTrait)).toEqual(withTrait);
+  });
+});
+
+describe('RFC-61 R1, R4, R7 referenceRefSchema', () => {
+  it('requires shortCitation, nullable', () => {
+    const ref = { id: uuid, citationKey: 'Smith2001', kind: 'publication', shortCitation: null };
+    expect(referenceRefSchema.parse(ref)).toEqual(ref);
+    expect(referenceRefSchema.parse({ ...ref, shortCitation: 'Smith (2001)' }).shortCitation).toBe(
+      'Smith (2001)',
+    );
+    const { shortCitation: _sc, ...withoutShort } = ref;
+    expect(referenceRefSchema.safeParse(withoutShort).success).toBe(false);
+  });
+});
+
+describe('RFC-61 R4 listReferencesQuerySchema traitId, categoryKey filters', () => {
+  it('accepts traitId and categoryKey', () => {
+    expect(listReferencesQuerySchema.safeParse({ traitId: uuid }).success).toBe(true);
+    expect(listReferencesQuerySchema.safeParse({ categoryKey: 'leaf' }).success).toBe(true);
+    expect(listReferencesQuerySchema.safeParse({ traitId: 'nope' }).success).toBe(false);
+    expect(listReferencesQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);
   });
 });
 
