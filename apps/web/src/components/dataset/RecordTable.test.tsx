@@ -104,7 +104,13 @@ describe('RFC-63 R8 RecordTable', () => {
     const longKey = `Smith, J.; Doe, A. (2001). ${'x'.repeat(60)}`;
     const long: RecordItem = {
       ...RECORD,
-      primaryReference: { id: PRIMARY_REFERENCE.id, citationKey: longKey, kind: 'publication' },
+      primaryReference: {
+        id: PRIMARY_REFERENCE.id,
+        citationKey: longKey,
+        kind: 'publication',
+        observer: null,
+        shortCitation: null,
+      },
     };
     renderInRouter(<RecordTable records={[long]} onSelect={vi.fn()} />);
     const rows = await screen.findAllByRole('row');
@@ -199,7 +205,9 @@ describe('RFC-61 R4 RecordTable references', () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(await screen.findByRole('link', { name: 'Personal observation' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: 'Personal observation (Ada)' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(PERSONAL_OBSERVATION_REFERENCE.citationKey)).not.toBeInTheDocument();
   });
 });

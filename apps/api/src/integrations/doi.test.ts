@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDoiClient, crossrefToMetadata, normaliseDoi } from './doi.ts';
+import { createDoiClient, crossrefToMetadata, normaliseDoi, shortCitationFrom } from './doi.ts';
 
 describe('RFC-80 R1 normaliseDoi', () => {
   it('strips resolver prefixes, lowercases, validates', () => {
@@ -38,6 +38,40 @@ describe('RFC-61 R8 crossrefToMetadata', () => {
       year: null,
       journal: null,
     });
+  });
+});
+
+describe('RFC-61 R8 shortCitationFrom', () => {
+  it('one author: family name alone, then the year', () => {
+    expect(shortCitationFrom({ authors: 'Alfaro, A', year: 2023 })).toBe('Alfaro (2023)');
+  });
+
+  it('two authors: "and" joins their family names, then the year', () => {
+    expect(shortCitationFrom({ authors: 'Alfaro, A; Diaz, B', year: 2023 })).toBe(
+      'Alfaro and Diaz (2023)',
+    );
+  });
+
+  it('three or more authors: the first family name, "et al.", then the year', () => {
+    expect(shortCitationFrom({ authors: 'Alfaro, A; Diaz, B; Silva, C', year: 2023 })).toBe(
+      'Alfaro et al. (2023)',
+    );
+  });
+
+  it('no year: the family-name part alone, with no parenthesis', () => {
+    expect(shortCitationFrom({ authors: 'Alfaro, A; Diaz, B; Silva, C', year: null })).toBe(
+      'Alfaro et al.',
+    );
+  });
+
+  it('no authors: null', () => {
+    expect(shortCitationFrom({ authors: null, year: 2023 })).toBeNull();
+  });
+
+  it("the family name is the part before the first entry's first comma only", () => {
+    expect(shortCitationFrom({ authors: 'Alfaro, A, Jr; Diaz, B', year: 2023 })).toBe(
+      'Alfaro and Diaz (2023)',
+    );
   });
 });
 

@@ -1,10 +1,17 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
-import { createReference } from '../../../../test/helpers/dataset.ts';
+import {
+  createRecord,
+  createReference,
+  createSpecies,
+  createTrait,
+} from '../../../../test/helpers/dataset.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
+import { bibliographicReferences } from '../../../db/schema/references.ts';
 
 describe('RFC-61 R4 reference routes', () => {
   const t = useTestApp();
@@ -40,6 +47,78 @@ describe('RFC-61 R4 reference routes', () => {
     );
     expect(missing.status).toBe(404);
     expect((await missing.json()).error.code).toBe('REFERENCE_NOT_FOUND');
+  });
+});
+
+describe('RFC-61 R4, R9 reference routes: shortCitation, traitId, categoryKey, traits detail', () => {
+  const t = useTestApp();
+
+  it('the list carries shortCitation, traitId filters and 404s on an unknown trait, and the detail lists traits', async () => {
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, user);
+
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    await t.db
+      .update(bibliographicReferences)
+      .set({ shortCitation: 'Cited (2020)' })
+      .where(eq(bibliographicReferences.id, ref.id));
+    await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const list = await call(
+      t.app,
+      'GET',
+      `/api/references?q=${encodeURIComponent(ref.citationKey)}`,
+      { cookie },
+    );
+    expect((await list.json()).data[0]).toMatchObject({
+      id: ref.id,
+      shortCitation: 'Cited (2020)',
+    });
+
+    const byTrait = await call(t.app, 'GET', `/api/references?traitId=${trait.id}&limit=10`, {
+      cookie,
+    });
+    expect(byTrait.status).toBe(200);
+    const byTraitIds = (await byTrait.json()).data.map((r: { id: string }) => r.id);
+    expect(byTraitIds).toContain(ref.id);
+
+    const unknownTrait = await call(
+      t.app,
+      'GET',
+      '/api/references?traitId=00000000-0000-7000-8000-000000000000',
+      { cookie },
+    );
+    expect(unknownTrait.status).toBe(404);
+    expect((await unknownTrait.json()).error.code).toBe('TRAIT_NOT_FOUND');
+
+    const badCategory = await call(
+      t.app,
+      'GET',
+      '/api/references?categoryKey=not-a-real-category',
+      {
+        cookie,
+      },
+    );
+    expect(badCategory.status).toBe(400);
+
+    const detail = await call(t.app, 'GET', `/api/references/${ref.id}`, { cookie });
+    expect((await detail.json()).data.traits).toEqual([
+      {
+        trait: { id: trait.id, key: trait.key, valueType: trait.valueType, unit: trait.unit },
+        recordCount: 1,
+      },
+    ]);
   });
 });
 

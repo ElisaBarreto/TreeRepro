@@ -5,6 +5,7 @@ import type {
   ListContributionsQuery,
 } from '@treerepro/contracts';
 import { and, count, desc, eq, gte, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
@@ -12,8 +13,11 @@ import { traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
+import { users } from '../db/schema/users.ts';
 import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
 import { itemQuery, reviewStatusSql, toItem } from './records.ts';
+
+const annotationRefObserver = alias(users, 'annotation_ref_observer');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -155,6 +159,9 @@ async function listAnnotationContributions(
       referenceId: bibliographicReferences.id,
       citationKey: bibliographicReferences.citationKey,
       referenceKind: bibliographicReferences.kind,
+      referenceObserverId: annotationRefObserver.id,
+      referenceObserverName: annotationRefObserver.name,
+      shortCitation: bibliographicReferences.shortCitation,
     })
     .from(recordAnnotations)
     .innerJoin(traitRecords, eq(traitRecords.id, recordAnnotations.recordId))
@@ -163,6 +170,10 @@ async function listAnnotationContributions(
     .leftJoin(
       bibliographicReferences,
       eq(bibliographicReferences.id, recordAnnotations.referenceId),
+    )
+    .leftJoin(
+      annotationRefObserver,
+      eq(annotationRefObserver.id, bibliographicReferences.observerUserId),
     )
     .where(and(...conditions))
     .orderBy(desc(recordAnnotations.id))
@@ -187,7 +198,16 @@ async function listAnnotationContributions(
         note: r.note,
         reference:
           r.referenceId && r.citationKey && r.referenceKind
-            ? { id: r.referenceId, citationKey: r.citationKey, kind: r.referenceKind }
+            ? {
+                id: r.referenceId,
+                citationKey: r.citationKey,
+                kind: r.referenceKind,
+                observer:
+                  r.referenceObserverId && r.referenceObserverName
+                    ? { id: r.referenceObserverId, name: r.referenceObserverName }
+                    : null,
+                shortCitation: r.shortCitation,
+              }
             : null,
         generated: r.generated,
         createdAt: r.createdAt.toISOString(),

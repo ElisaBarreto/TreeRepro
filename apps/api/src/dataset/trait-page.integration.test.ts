@@ -18,6 +18,7 @@ import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
 import { forgetCached } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
+import { ensurePersonalObservation } from './references.ts';
 import { getTraitDetail, listTraitSpecies } from './trait-page.ts';
 
 /** Both viewer classes of RFC-62 R7's distribution cache, for a `finally`. */
@@ -551,6 +552,47 @@ describe('RFC-62 R8 listTraitSpecies', () => {
           { key: 'alpha', count: 2 },
           { key: 'beta', count: 1 },
         ],
+      },
+    });
+  });
+
+  it('RFC-61 R4, R7 with: an accepted value from a personal observation carries its observer, decrypted', async () => {
+    const { user } = await createUser(t.db);
+    const { user: observer } = await createUser(t.db, {
+      name: `Observer-${Math.random().toString(16).slice(2)}`,
+    });
+    const observation = await ensurePersonalObservation(t.db, observer.id);
+    const trait = await createTrait(t.db, { levels: ['alpha'] });
+    const alpha = levelOf(trait, 'alpha');
+    const one = await createSpecies(t.db);
+    const accepted = await record(t.db, {
+      actor: user,
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: 'alpha',
+      levelId: alpha.id,
+      referenceId: observation.id,
+    });
+    await createAcceptedValue(t.db, {
+      speciesId: one.id,
+      traitId: trait.id,
+      actorId: user.id,
+      recordId: accepted.id,
+    });
+
+    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+      mode: 'with',
+      limit: 50,
+    });
+    expect(data.find((s) => s.id === one.id)?.accepted).toEqual({
+      recordId: accepted.id,
+      valueText: 'alpha',
+      reference: {
+        id: observation.id,
+        citationKey: `personal-observation:${observer.id}`,
+        kind: 'personal_observation',
+        observer: { id: observer.id, name: observer.name },
+        shortCitation: null,
       },
     });
   });

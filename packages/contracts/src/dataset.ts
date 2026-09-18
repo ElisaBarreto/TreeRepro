@@ -6,6 +6,10 @@ import { plotRefSchema, SPECIES_SCOPES } from './plots.ts';
 export const NAME_SOURCES = ['wcvp', 'gbif', 'original'] as const;
 export type NameSource = (typeof NAME_SOURCES)[number];
 
+/** An alternative name is a GBIF name, a synonym or a common name. @rfc RFC-60 R1, R4 */
+export const NAME_TYPES = ['gbif', 'synonym', 'common'] as const;
+export type NameType = (typeof NAME_TYPES)[number];
+
 /** @rfc RFC-62 R1 */
 export const TRAIT_VALUE_TYPES = ['categorical', 'quantitative'] as const;
 export type TraitValueType = (typeof TRAIT_VALUE_TYPES)[number];
@@ -117,6 +121,8 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
 /**
  * `traitRecordCount` is `null` when no `traitId` filter was given, `0` in
  * missing mode, and the coverage row's `record_count` otherwise.
+ * `matchedNameType` is the type of the alternative name that matched
+ * (`matchedName`), else `null`.
  * @rfc RFC-60 R3, R6
  * @rfc RFC-33 R7
  * @rfc RFC-69 R1
@@ -129,15 +135,18 @@ export const speciesListItemSchema = z.strictObject({
   genus: taxonRefSchema.nullable(),
   family: taxonRefSchema.nullable(),
   matchedName: z.string().nullable(),
+  matchedNameType: z.enum(NAME_TYPES).nullable(),
   unresolvedTaxon: z.boolean(),
   traitCount: z.number().int().nonnegative(),
   traitRecordCount: z.number().int().nonnegative().nullable(),
 });
 
-/** @rfc RFC-60 R4, R7 */
+/** An alternative name of a species: type, language (common names only) and source. @rfc RFC-60 R1, R4, R7 */
 export const speciesNameSchema = z.strictObject({
   name: z.string(),
-  source: z.literal('gbif'),
+  nameType: z.enum(NAME_TYPES),
+  language: z.string().length(2).nullable(),
+  source: z.string(),
   gbifUsageKey: z.string().nullable(),
 });
 
@@ -174,17 +183,35 @@ export type ReferenceKind = (typeof REFERENCE_KINDS)[number];
 export const RECORD_INTENTS = ['contest', 'complement'] as const;
 export type RecordIntent = (typeof RECORD_INTENTS)[number];
 
-/** @rfc RFC-61 R1, R7 */
+/** @rfc RFC-62 R5 */
+export const traitRefSchema = z.strictObject({
+  id: z.uuid(),
+  key: z.string(),
+  valueType: z.enum(TRAIT_VALUE_TYPES),
+  unit: z.string().nullable(),
+});
+
+/**
+ * `observer` is the personal-observation owner (RFC-61 R7): present only
+ * when the reference is one, and left `null` otherwise exactly as
+ * `toReference` decides it for the full {@link referenceSchema} — the API
+ * never widens exposure beyond that rule for this shorter shape.
+ * @rfc RFC-61 R1, R4, R7
+ */
 export const referenceRefSchema = z.strictObject({
   id: z.uuid(),
   citationKey: z.string(),
   kind: z.enum(REFERENCE_KINDS),
+  observer: userRefSchema.nullable(),
+  shortCitation: z.string().nullable(),
 });
 
 /**
  * `primaryCount` / `secondaryCount`: records naming the reference in that
  * role; a record naming the same reference in both roles counts once in each.
- * @rfc RFC-61 R4
+ * `shortCitation` and `fullCitation` are a derived or written display
+ * citation (R6, R8).
+ * @rfc RFC-61 R1, R4
  */
 export const referenceSchema = z.strictObject({
   id: z.uuid(),
@@ -200,17 +227,29 @@ export const referenceSchema = z.strictObject({
   secondaryCount: z.number().int().nonnegative(),
   kind: z.enum(REFERENCE_KINDS),
   observer: userRefSchema.nullable(),
+  shortCitation: z.string().nullable(),
+  fullCitation: z.string().nullable(),
 });
 
-/** `recordCount`: records naming the reference in either role, counted once. @rfc RFC-61 R4 */
+/**
+ * `recordCount`: records naming the reference in either role, counted once.
+ * `traits`: the reference's usage by trait (R9's counters), visible traits
+ * only, ordered by count.
+ * @rfc RFC-61 R4, R9
+ */
 export const referenceDetailSchema = referenceSchema.extend({
   recordCount: z.number().int().nonnegative(),
+  traits: z.array(
+    z.strictObject({ trait: traitRefSchema, recordCount: z.number().int().nonnegative() }),
+  ),
 });
 
 /** @rfc RFC-61 R4 */
 export const listReferencesQuerySchema = cursorQuerySchema.extend({
   q: searchTermSchema.optional(),
   kind: z.enum([...REFERENCE_KINDS, 'all']).optional(),
+  traitId: z.uuid().optional(),
+  categoryKey: z.string().trim().min(1).max(100).optional(),
 });
 
 /** `GET /api/traits` filters, applied server-side. @rfc RFC-62 R5 */
@@ -218,14 +257,6 @@ export const listTraitsQuerySchema = z.strictObject({
   categoryKey: z.string().trim().min(1).max(100).optional(),
   valueType: z.enum(TRAIT_VALUE_TYPES).optional(),
   q: z.string().trim().min(1).max(100).optional(),
-});
-
-/** @rfc RFC-62 R5 */
-export const traitRefSchema = z.strictObject({
-  id: z.uuid(),
-  key: z.string(),
-  valueType: z.enum(TRAIT_VALUE_TYPES),
-  unit: z.string().nullable(),
 });
 
 /** @rfc RFC-62 R5 */
@@ -310,8 +341,8 @@ export const listTraitSpeciesQuerySchema = cursorQuerySchema.extend({
 
 /**
  * A species row of `GET /api/traits/:id/species`: the species list item plus,
- * in `with` mode, the accepted value (its reference's `shortCitation` is
- * `null` until plan 10d adds the column) and a per-species summary of its
+ * in `with` mode, the accepted value (its reference, which carries
+ * `shortCitation` itself, RFC-61 R1) and a per-species summary of its
  * records on the trait — `levels` for a categorical trait, `numeric` for a
  * quantitative one. `missing` mode leaves all three `null`.
  * @rfc RFC-62 R8
@@ -322,7 +353,7 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
     .strictObject({
       recordId: z.uuid(),
       valueText: z.string(),
-      reference: referenceRefSchema.extend({ shortCitation: z.string().nullable() }),
+      reference: referenceRefSchema,
     })
     .nullable(),
   summary: z

@@ -37,6 +37,7 @@ const ADENANTHERA: SpeciesListItem = {
   genus: GENUS,
   family: FAMILY,
   matchedName: null,
+  matchedNameType: null,
   unresolvedTaxon: false,
   traitCount: 12,
   traitRecordCount: null,
@@ -100,5 +101,48 @@ describe('RFC-60 R6 SpeciesList coverage columns', () => {
     expect(cells).toHaveLength(6);
     expect(cells[3]).toHaveTextContent('12');
     expect(cells[4]).toHaveTextContent('—');
+  });
+});
+
+describe('RFC-60 R6 SpeciesList match badge', () => {
+  it('renders "found as: name" with a common badge for a matched common name', async () => {
+    renderInRouter(
+      <SpeciesList items={[{ ...ADENANTHERA, matchedName: 'Tento', matchedNameType: 'common' }]} />,
+    );
+    const table = await screen.findByRole('table');
+    const row = within(table).getAllByRole('row')[1] as HTMLElement;
+    expect(row).toHaveTextContent('found as:');
+    expect(within(row).getByText('Tento').tagName).toBe('EM');
+    expect(within(row).getByText('common')).toBeInTheDocument();
+  });
+
+  it('renders a synonym badge for a matched synonym', async () => {
+    renderInRouter(
+      <SpeciesList
+        items={[{ ...ADENANTHERA, matchedName: 'Adenanthera bicolor', matchedNameType: 'synonym' }]}
+      />,
+    );
+    const table = await screen.findByRole('table');
+    const row = within(table).getAllByRole('row')[1] as HTMLElement;
+    expect(within(row).getByText('synonym')).toBeInTheDocument();
+  });
+
+  it('renders a GBIF badge for a matched gbif name', async () => {
+    renderInRouter(
+      <SpeciesList
+        items={[{ ...ADENANTHERA, matchedName: 'Adansonia baobab', matchedNameType: 'gbif' }]}
+      />,
+    );
+    const table = await screen.findByRole('table');
+    const row = within(table).getAllByRole('row')[1] as HTMLElement;
+    expect(within(row).getByText('GBIF')).toBeInTheDocument();
+  });
+
+  it('shows a dash and no badge when nothing matched', async () => {
+    renderInRouter(<SpeciesList items={[ADENANTHERA]} />);
+    const table = await screen.findByRole('table');
+    const row = within(table).getAllByRole('row')[1] as HTMLElement;
+    expect(row).toHaveTextContent('—');
+    expect(row).not.toHaveTextContent('found as:');
   });
 });

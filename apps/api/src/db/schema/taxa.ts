@@ -1,7 +1,8 @@
-import { NAME_SOURCES } from '@treerepro/contracts';
+import { NAME_SOURCES, NAME_TYPES } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  char,
   check,
   index,
   integer,
@@ -69,7 +70,19 @@ export const species = pgTable(
   ],
 );
 
-/** @rfc RFC-60 R1, R4 */
+/**
+ * An alternative name of a species: a GBIF name, a synonym or a common name.
+ *
+ * `source` names the provider as free text (`gbif`, `WCVP`, `Flora e Funga do
+ * Brasil`, a DOI…); it was constrained to `'gbif'` before plan 10b. Its column
+ * default stays `'gbif'` for the rows the import writes, while the write route
+ * defaults an omitted `source` to `'manual'` (RFC-60 R9) — the two differ on
+ * purpose.
+ *
+ * `language` is an equivalence, not an implication: a common name carries one
+ * and no other type may.
+ * @rfc RFC-60 R1, R4
+ */
 export const speciesNames = pgTable(
   'species_names',
   {
@@ -78,15 +91,21 @@ export const speciesNames = pgTable(
       .notNull()
       .references(() => species.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
-    source: text('source', { enum: ['gbif'] })
-      .notNull()
-      .default('gbif'),
+    nameType: text('name_type', { enum: NAME_TYPES }).notNull().default('gbif'),
+    language: char('language', { length: 2 }),
+    source: text('source').notNull().default('gbif'),
     gbifUsageKey: text('gbif_usage_key'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('species_names_species_name_idx').on(t.speciesId, t.name),
     index('species_names_name_trgm_idx').using('gin', sql`${t.name} gin_trgm_ops`),
+    check('species_names_type_check', sql`${t.nameType} in ('gbif', 'synonym', 'common')`),
+    check(
+      'species_names_language_check',
+      sql`(${t.nameType} = 'common') = (${t.language} is not null)`,
+    ),
+    check('species_names_gbif_key_check', sql`${t.gbifUsageKey} is null or ${t.nameType} = 'gbif'`),
   ],
 );
 

@@ -22,6 +22,8 @@ import {
   SPECIES,
   SPECIES_TRAITS,
   SPECIES_TRAITS_WITH_MISSING,
+  SPECIES_WITH_NAME_GROUPS,
+  SPECIES_WITH_SYNONYM_ONLY,
   UNRESOLVED_SPECIES,
 } from '../../test/dataset-fixtures.ts';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
@@ -163,6 +165,30 @@ describe('RFC-60 R7 SpeciesPage header', () => {
     await openPage();
     const heading = screen.getByRole('heading', { level: 1 });
     expect(within(heading).queryByText('inactive')).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-60 R4, R7 SpeciesPage name groups', () => {
+  it('groups gbif names as "Also known as", synonyms as "Synonyms" and common names with a language chip', async () => {
+    dataset.fetchSpecies.mockResolvedValue(SPECIES_WITH_NAME_GROUPS);
+    await openPage(SPECIES_WITH_NAME_GROUPS);
+    expect(screen.getByText(/Also known as/)).toBeInTheDocument();
+    expect(screen.getByText('Adenanthera gersenii')).toBeInTheDocument();
+    expect(screen.getByText(/Synonyms/)).toBeInTheDocument();
+    expect(screen.getByText('Adenanthera bicolor')).toBeInTheDocument();
+    expect(screen.getByText(/Common names/)).toBeInTheDocument();
+    const commonName = screen.getByText('Tento-carolina');
+    expect(commonName.tagName).toBe('EM');
+    expect(screen.getByText('pt')).toBeInTheDocument();
+  });
+
+  it('hides a name group with no names of that type', async () => {
+    dataset.fetchSpecies.mockResolvedValue(SPECIES_WITH_SYNONYM_ONLY);
+    await openPage(SPECIES_WITH_SYNONYM_ONLY);
+    expect(screen.getByText(/Synonyms/)).toBeInTheDocument();
+    expect(screen.getByText('Adenanthera bicolor')).toBeInTheDocument();
+    expect(screen.queryByText(/Also known as/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Common names/)).not.toBeInTheDocument();
   });
 });
 
@@ -626,7 +652,13 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
       ...SPECIES,
       names: [
         ...SPECIES.names,
-        { name: 'Adenanthera polita', source: 'gbif' as const, gbifUsageKey: null },
+        {
+          name: 'Adenanthera polita',
+          nameType: 'gbif' as const,
+          language: null,
+          source: 'gbif',
+          gbifUsageKey: null,
+        },
       ],
     };
     dataset.fetchSpecies.mockResolvedValueOnce(SPECIES).mockResolvedValue(withName);

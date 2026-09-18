@@ -8,6 +8,7 @@ import {
   pendingGroupsQuerySchema,
   resolveDoiResultSchema,
   setAcceptedBodySchema,
+  speciesNameBodySchema,
   updateGenusBodySchema,
   updateReferenceBodySchema,
   updateTraitBodySchema,
@@ -151,6 +152,8 @@ describe('RFC-80 resolveDoiResultSchema', () => {
           doi: null,
           url: null,
           observer: null,
+          shortCitation: null,
+          fullCitation: null,
         },
       }).success,
     ).toBe(true);
@@ -236,5 +239,62 @@ describe('RFC-60 R9, RFC-61 R6, RFC-62 R6 catalog bodies', () => {
     expect(createLevelBodySchema.safeParse({ key: 'a', sortOrder: 2147483648 }).success).toBe(
       false,
     );
+  });
+
+  it('accepts shortCitation and fullCitation on create; null clears them on update', () => {
+    expect(
+      createReferenceBodySchema.safeParse({ citationKey: 'K', shortCitation: 'Smith (2001)' })
+        .success,
+    ).toBe(true);
+    expect(
+      createReferenceBodySchema.safeParse({ citationKey: 'K', shortCitation: '' }).success,
+    ).toBe(false);
+    expect(updateReferenceBodySchema.safeParse({ shortCitation: null }).success).toBe(true);
+    expect(updateReferenceBodySchema.safeParse({ fullCitation: null }).success).toBe(true);
+  });
+});
+
+describe('RFC-60 R4, R9 speciesNameBodySchema', () => {
+  it('a common name needs a language and no other type may carry one', () => {
+    expect(
+      speciesNameBodySchema.safeParse({ name: 'Coralwood', nameType: 'common', language: 'en' })
+        .success,
+    ).toBe(true);
+    const missingLanguage = speciesNameBodySchema.safeParse({
+      name: 'Coralwood',
+      nameType: 'common',
+    });
+    expect(missingLanguage.success).toBe(false);
+    if (!missingLanguage.success) {
+      expect(missingLanguage.error.issues[0]?.path).toEqual(['language']);
+    }
+    const strayLanguage = speciesNameBodySchema.safeParse({
+      name: 'Sinonimo',
+      nameType: 'synonym',
+      language: 'pt',
+    });
+    expect(strayLanguage.success).toBe(false);
+    if (!strayLanguage.success) {
+      expect(strayLanguage.error.issues[0]?.path).toEqual(['language']);
+    }
+  });
+
+  it('only a GBIF name carries a usage key', () => {
+    expect(
+      speciesNameBodySchema.safeParse({
+        name: 'Adenanthera gersenii',
+        nameType: 'gbif',
+        gbifUsageKey: '2969393',
+      }).success,
+    ).toBe(true);
+    const strayKey = speciesNameBodySchema.safeParse({
+      name: 'Sinonimo',
+      nameType: 'synonym',
+      gbifUsageKey: '2969393',
+    });
+    expect(strayKey.success).toBe(false);
+    if (!strayKey.success) {
+      expect(strayKey.error.issues[0]?.path).toEqual(['gbifUsageKey']);
+    }
   });
 });

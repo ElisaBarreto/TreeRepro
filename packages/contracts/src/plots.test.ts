@@ -224,6 +224,7 @@ describe('RFC-60 R6, R7 / RFC-33 R6 dataset contracts scope', () => {
       genus: null,
       family: null,
       matchedName: null,
+      matchedNameType: null,
       unresolvedTaxon: false,
       names: [],
       plots: [{ id: '019a0000-0000-7000-8000-000000000002', code: 'P1', name: 'Plot 1' }],

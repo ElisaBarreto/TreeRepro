@@ -88,6 +88,56 @@ describe('RFC-61 R6 ReferenceDialog', () => {
     );
   });
 
+  it('creates with a short and full citation, trimmed', async () => {
+    catalog.createReference.mockResolvedValue(REFERENCE_DETAIL);
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /citation key/i }),
+      'Smith2001',
+    );
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /short citation/i }),
+      '  Smith & Doe (2001)  ',
+    );
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /full citation/i }),
+      'Smith, J.; Doe, A. (2001). Breeding systems.',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create reference' }));
+    await waitFor(() =>
+      expect(catalog.createReference).toHaveBeenCalledWith({
+        citationKey: 'Smith2001',
+        shortCitation: 'Smith & Doe (2001)',
+        fullCitation: 'Smith, J.; Doe, A. (2001). Breeding systems.',
+      }),
+    );
+  });
+
+  it('edit: prefills the short and full citation and sends null when either is emptied', async () => {
+    catalog.updateReference.mockResolvedValue(REFERENCE_DETAIL);
+    const cited: ReferenceDetail = {
+      ...REFERENCE_DETAIL,
+      shortCitation: 'Smith & Doe (2001)',
+      fullCitation: 'Smith, J.; Doe, A. (2001). Breeding systems.',
+    };
+    const { dialog } = mount(cited);
+    expect(within(dialog).getByRole('textbox', { name: /short citation/i })).toHaveValue(
+      'Smith & Doe (2001)',
+    );
+    expect(within(dialog).getByRole('textbox', { name: /full citation/i })).toHaveValue(
+      'Smith, J.; Doe, A. (2001). Breeding systems.',
+    );
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: /short citation/i }));
+    await userEvent.clear(within(dialog).getByRole('textbox', { name: /full citation/i }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(catalog.updateReference).toHaveBeenCalledWith(cited.id, {
+        shortCitation: null,
+        fullCitation: null,
+      }),
+    );
+  });
+
   it('edit: prefilled; sends only the changed fields, null for an emptied one; unchanged closes without a request', async () => {
     catalog.updateReference.mockResolvedValue(REFERENCE_DETAIL);
     const first = mount(REFERENCE_DETAIL);

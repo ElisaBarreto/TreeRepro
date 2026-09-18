@@ -24,6 +24,10 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' 
  * trigger on every insert into `trait_records` (migration 0015) — records are
  * append-only, so the counters never go down. `usage_count` is their stored
  * sum, the list's sort key, indexed with `id` for the keyset cursor.
+ *
+ * `short_citation` (1–200 characters) and `full_citation` (1–2,000) hold the
+ * display citation, written by a curator or derived from Crossref (RFC-61 R8);
+ * the lengths are enforced by the contract, not by the column.
  * @rfc RFC-61 R1, R2, R4, R5
  */
 export const bibliographicReferences = pgTable(
@@ -46,6 +50,8 @@ export const bibliographicReferences = pgTable(
       .generatedAlwaysAs(sql`primary_count + secondary_count`),
     kind: text('kind', { enum: REFERENCE_KINDS }).notNull().default('publication'),
     observerUserId: uuid('observer_user_id').references(() => users.id),
+    shortCitation: text('short_citation'),
+    fullCitation: text('full_citation'),
   },
   (t) => [
     uniqueIndex('bibliographic_references_citation_key_idx').on(t.citationKey),

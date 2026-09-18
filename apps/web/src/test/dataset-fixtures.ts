@@ -41,7 +41,16 @@ export const SPECIES: Species = {
   genus: GENUS,
   family: FAMILY,
   matchedName: null,
-  names: [{ name: 'Adenanthera gersenii', source: 'gbif', gbifUsageKey: '2969393' }],
+  matchedNameType: null,
+  names: [
+    {
+      name: 'Adenanthera gersenii',
+      nameType: 'gbif',
+      language: null,
+      source: 'gbif',
+      gbifUsageKey: '2969393',
+    },
+  ],
   plots: [],
   recordCount: 12,
   traitCount: 3,
@@ -57,6 +66,7 @@ export const UNRESOLVED_SPECIES: Species = {
   genus: null,
   family: null,
   matchedName: null,
+  matchedNameType: null,
   names: [],
   plots: [],
   recordCount: 0,
@@ -140,33 +150,41 @@ export const PRIMARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d40',
   citationKey: 'Renner2014',
   kind: 'publication' as const,
+  observer: null,
+  shortCitation: null,
 };
 /** @rfc RFC-61 R4 */
 export const SECONDARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d41',
   citationKey: 'TRY-6.0',
   kind: 'publication' as const,
+  observer: null,
+  shortCitation: null,
 };
 
-/** The reference a scientist's own field work is recorded under. @rfc RFC-61 R7 */
+const GRACE_ID = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
+
+/** The reference a scientist's own field work is recorded under. @rfc RFC-61 R4, R7 */
 export const PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d42',
   citationKey: `personal-observation:${USER.id}`,
   kind: 'personal_observation',
+  observer: { id: USER.id, name: USER.name },
+  shortCitation: null,
 };
-
-const GRACE_ID = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
 
 /**
  * Grace's own field work — a personal observation always resolves to the
  * actor's own row, so a record Grace creates can only cite this one, never
  * {@link PERSONAL_OBSERVATION_REFERENCE} (USER's).
- * @rfc RFC-61 R7
+ * @rfc RFC-61 R4, R7
  */
 export const GRACE_PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d43',
   citationKey: `personal-observation:${GRACE_ID}`,
   kind: 'personal_observation',
+  observer: { id: GRACE_ID, name: 'Grace' },
+  shortCitation: null,
 };
 
 /** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
@@ -534,6 +552,7 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   genus: GENUS,
   family: FAMILY,
   matchedName: null,
+  matchedNameType: null,
   unresolvedTaxon: false,
   traitCount: 3,
   traitRecordCount: 4,
@@ -541,7 +560,7 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   accepted: {
     recordId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d30',
     valueText: 'dioecious',
-    reference: { ...PRIMARY_REFERENCE, shortCitation: null },
+    reference: PRIMARY_REFERENCE,
   },
   summary: {
     levels: [
@@ -598,6 +617,8 @@ export const REFERENCE: Reference = {
   secondaryCount: 1,
   kind: 'publication',
   observer: null,
+  shortCitation: null,
+  fullCitation: null,
 };
 
 /** The personal-observation reference of USER, as the references screens see it. @rfc RFC-61 R7 */
@@ -615,16 +636,37 @@ export const PERSONAL_OBSERVATION: Reference = {
   secondaryCount: 0,
   kind: 'personal_observation',
   observer: { id: USER.id, name: USER.name },
+  shortCitation: null,
+  fullCitation: null,
 };
 
 /** @rfc RFC-61 R7 */
 export const PERSONAL_OBSERVATION_DETAIL: ReferenceDetail = {
   ...PERSONAL_OBSERVATION,
   recordCount: 1,
+  traits: [],
 };
 
 /** REFERENCE with the count `GET /api/references/:id` adds: two records, one per role. @rfc RFC-61 R4 */
-export const REFERENCE_DETAIL: ReferenceDetail = { ...REFERENCE, recordCount: 2 };
+export const REFERENCE_DETAIL: ReferenceDetail = { ...REFERENCE, recordCount: 2, traits: [] };
+
+/**
+ * REFERENCE with a written short and full citation and its usage by trait —
+ * a purpose-built fixture for plan 10d's own branches (the short-citation
+ * label, the full-citation paragraph, the Traits section), so the four
+ * shared reference constants above stay untouched.
+ * @rfc RFC-61 R4, R6, R9
+ */
+export const CITED_REFERENCE_DETAIL: ReferenceDetail = {
+  ...REFERENCE_DETAIL,
+  shortCitation: 'Smith & Doe (2001)',
+  fullCitation:
+    'Smith, J.; Doe, A. (2001). Breeding systems of tropical trees. Journal of Tropical Ecology. https://doi.org/10.1000/jte.2001.1',
+  traits: [
+    { trait: SEXUAL_SYSTEM, recordCount: 5 },
+    { trait: SEED_MASS, recordCount: 1 },
+  ],
+};
 
 /** A completed batch with one unknown level. @rfc RFC-64 R11 */
 export const IMPORT_BATCH: ImportBatch = {
@@ -883,4 +925,47 @@ export const CONTRIBUTION_SUMMARY: ContributionSummary = {
   disputes: 1,
   withdrawn: 1,
   accepted: 4,
+};
+
+// --- Plan 10b (browsing: synonyms and common names) -----------------------
+
+/**
+ * SPECIES with a synonym and a Portuguese common name added to its one GBIF
+ * name, for the header's grouped "Also known as" / "Synonyms" / "Common
+ * names" (RFC-60 R4, R7).
+ * @rfc RFC-60 R4, R7
+ */
+export const SPECIES_WITH_NAME_GROUPS: Species = {
+  ...SPECIES,
+  names: [
+    ...SPECIES.names,
+    {
+      name: 'Adenanthera bicolor',
+      nameType: 'synonym',
+      language: null,
+      source: 'WCVP',
+      gbifUsageKey: null,
+    },
+    {
+      name: 'Tento-carolina',
+      nameType: 'common',
+      language: 'pt',
+      source: 'original',
+      gbifUsageKey: null,
+    },
+  ],
+};
+
+/** SPECIES with only a synonym: the group-hidden rule's other side. @rfc RFC-60 R4, R7 */
+export const SPECIES_WITH_SYNONYM_ONLY: Species = {
+  ...SPECIES,
+  names: [
+    {
+      name: 'Adenanthera bicolor',
+      nameType: 'synonym',
+      language: null,
+      source: 'WCVP',
+      gbifUsageKey: null,
+    },
+  ],
 };

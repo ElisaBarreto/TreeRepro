@@ -17,6 +17,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
+import { encodeCompositeCursor } from '../http/cursor.ts';
 import { speciesTraitSummary } from './summary.ts';
 import { getSpecies, likePattern, listFamilies, listGenera, searchSpecies } from './taxa.ts';
 
@@ -126,8 +127,131 @@ describe('RFC-60 R6 searchSpecies', () => {
   });
 });
 
+describe('RFC-60 R6 search tiers', () => {
+  const t = useTestDb();
+
+  it('an exact canonical match answers alone (case-insensitive); otherwise canonical and alternative substrings match together, with the type', async () => {
+    const stem = `Tier${tag()}`;
+    const exact = await createSpecies(t.db, { canonicalName: `${stem} robur` });
+    const longer = await createSpecies(t.db, { canonicalName: `${stem} robur var. alba` });
+    const bySyn = await createSpecies(t.db, {
+      canonicalName: `Other ${tag()}`,
+      names: [{ name: `${stem} robur old`, nameType: 'synonym' }],
+    });
+    const q1 = await searchSpecies(t.db, UNRESTRICTED, { q: `${stem} ROBUR`, limit: 10 });
+    expect(q1.data.map((s) => s.id)).toEqual([exact.id]); // tier 1: the synonym holder and the longer name are not listed
+    const q2 = await searchSpecies(t.db, UNRESTRICTED, { q: `${stem} rob`, limit: 10 });
+    expect(q2.data.map((s) => s.id).sort()).toEqual([exact.id, longer.id, bySyn.id].sort()); // tier 2 = today's search
+    expect(q2.data.find((s) => s.id === bySyn.id)?.matchedNameType).toBe('synonym');
+    const q3 = await searchSpecies(t.db, UNRESTRICTED, { q: `robur old`, limit: 10 });
+    expect(q3.data.map((s) => [s.id, s.matchedName, s.matchedNameType])).toEqual([
+      [bySyn.id, `${stem} robur old`, 'synonym'],
+    ]);
+  });
+
+  it('the cursor stays within the tier', async () => {
+    const stem = `Page${tag()}`;
+    const exact = await createSpecies(t.db, { canonicalName: stem });
+    await createSpecies(t.db, { canonicalName: `${stem} b` });
+    const p1 = await searchSpecies(t.db, UNRESTRICTED, { q: stem, limit: 1 });
+    expect(p1.data.map((s) => s.id)).toEqual([exact.id]);
+    expect(p1.nextCursor).toBeNull(); // tier 1 holds one row; the substring match of tier 2 is never paged into
+  });
+
+  it('a cursor minted under one sort is rejected, not mis-decoded, under the other (the leading tier key does not change the arity rule)', async () => {
+    const stem = `Sort${tag()}`;
+    await createSpecies(t.db, { canonicalName: `${stem} a` });
+    await createSpecies(t.db, { canonicalName: `${stem} b` });
+    const byName = await searchSpecies(t.db, UNRESTRICTED, { q: stem, limit: 1 });
+    expect(byName.nextCursor).not.toBeNull();
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, {
+        q: stem,
+        sort: 'completeness',
+        cursor: byName.nextCursor as string,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
+    const byCompleteness = await searchSpecies(t.db, UNRESTRICTED, {
+      q: stem,
+      sort: 'completeness',
+      limit: 1,
+    });
+    expect(byCompleteness.nextCursor).not.toBeNull();
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, {
+        q: stem,
+        cursor: byCompleteness.nextCursor as string,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
+  });
+
+  it('a cursor whose tier is not 0, 1 or 2 is rejected with 400, never mis-decoded into the wrong tier branch (RFC-60 R6, RFC-11 R6)', async () => {
+    const stem = `Tier${tag()}`;
+    const sp = await createSpecies(t.db, { canonicalName: stem });
+    const badTierByName = encodeCompositeCursor(['7', stem, sp.id]);
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, { q: stem, cursor: badTierByName, limit: 1 }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
+    const badTierByCompleteness = encodeCompositeCursor(['7', '0', stem, sp.id]);
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, {
+        q: stem,
+        sort: 'completeness',
+        cursor: badTierByCompleteness,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
+  });
+});
+
 describe('RFC-60 R7 getSpecies', () => {
   const t = useTestDb();
+
+  it('names carry type, language and source, ordered gbif, synonym, common, then name', async () => {
+    const k = tag();
+    const sp = await createSpecies(t.db, {
+      canonicalName: `Order sp-${k}`,
+      names: [
+        { name: `Order common b-${k}`, nameType: 'common', language: 'pt' },
+        { name: `Order gbif-${k}`, nameType: 'gbif', gbifUsageKey: '9' },
+        { name: `Order synonym-${k}`, nameType: 'synonym', source: 'WCVP' },
+        { name: `Order common a-${k}`, nameType: 'common', language: 'en' },
+      ],
+    });
+    const found = await getSpecies(t.db, UNRESTRICTED, sp.id);
+    expect(found?.names).toEqual([
+      {
+        name: `Order gbif-${k}`,
+        nameType: 'gbif',
+        language: null,
+        source: 'gbif',
+        gbifUsageKey: '9',
+      },
+      {
+        name: `Order synonym-${k}`,
+        nameType: 'synonym',
+        language: null,
+        source: 'WCVP',
+        gbifUsageKey: null,
+      },
+      {
+        name: `Order common a-${k}`,
+        nameType: 'common',
+        language: 'en',
+        source: 'gbif',
+        gbifUsageKey: null,
+      },
+      {
+        name: `Order common b-${k}`,
+        nameType: 'common',
+        language: 'pt',
+        source: 'gbif',
+        gbifUsageKey: null,
+      },
+    ]);
+  });
 
   it('adds names, counts and the unresolved flag; unknown id is null', async () => {
     const k = tag();
