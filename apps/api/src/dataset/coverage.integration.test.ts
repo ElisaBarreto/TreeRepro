@@ -27,6 +27,7 @@ import {
   coverageMetrics,
   coverageTop,
   coverageTotals,
+  rankCoverageTraits,
 } from './coverage.ts';
 
 interface CachedEntry {
@@ -510,8 +511,32 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
   });
 });
 
+/**
+ * `coverageTop` reads the no-filter entry of R6, `coverage:<u|r>:-:-:-`. That
+ * key is fixed and shared by every caller in the run, and these tests both
+ * fill it and read it back from inside a rolled-back fixture, so writing it on
+ * the run's Redis would hand a sibling suite numbers that no longer exist.
+ * They take a logical database of their own instead — same server, same
+ * client, keys nobody else can see — and still delete the key afterwards so
+ * one test here never reads the entry another one left behind.
+ */
+const TOP_REDIS_DB = 9;
+
+/** The no-filter key of RFC-69 R6 for the unrestricted viewer class. */
+const NO_FILTER_KEY_UNRESTRICTED = 'coverage:u:-:-:-';
+
 describe('RFC-69 R7 coverageTop ranks the traits of the unfiltered grid', () => {
   const t = useTestDb();
+  let redis: Redis;
+  beforeAll(async () => {
+    const url = new URL(inject('redisUrl'));
+    url.pathname = `/${TOP_REDIS_DB}`;
+    redis = createRedis(url.toString());
+    await redis.connect();
+  });
+  afterAll(async () => {
+    await redis.quit();
+  });
 
   it('ranks by ascending withData for missing and by ascending percentAccepted for least_accepted', async () => {
     await withRollback(t.db, async (tx) => {
@@ -519,41 +544,76 @@ describe('RFC-69 R7 coverageTop ranks the traits of the unfiltered grid', () => 
       const f = await coverageFixture(tx);
       const all = await computeCoverageMetrics(tx, UNRESTRICTED, {});
 
-      // The ranking is over every visible trait in the database, so the items
-      // are asserted as the `byTrait` rows of the unfiltered grid, in the
-      // order the mode names — never as an absolute list.
-      const missing = await coverageTop({ db: tx }, UNRESTRICTED, {
-        mode: 'missing',
-        limit: all.traits,
-      });
-      expect(missing).toHaveLength(all.traits);
-      expect(missing.map((r) => r.withData)).toEqual(
-        [...missing.map((r) => r.withData)].sort((a, b) => a - b),
-      );
-      const rank = (rows: typeof missing, id: string) => rows.findIndex((r) => r.trait.id === id);
-      // T2 has data for none of the fixture's species, T3 for one: the emptier
-      // trait ranks first.
-      expect(rank(missing, f.traitTwo.id)).toBeGreaterThanOrEqual(0);
-      expect(rank(missing, f.traitTwo.id)).toBeLessThan(rank(missing, f.traitThree.id));
-      expect(missing.find((r) => r.trait.id === f.traitOne.id)).toEqual(
-        all.byTrait.find((r) => r.trait.id === f.traitOne.id),
-      );
+      try {
+        // The ranking is over every visible trait in the database, so the items
+        // are asserted as the `byTrait` rows of the unfiltered grid, in the
+        // order the mode names — never as an absolute list.
+        const missing = await coverageTop({ db: tx, redis }, UNRESTRICTED, {
+          mode: 'missing',
+          limit: all.traits,
+        });
+        expect(missing).toHaveLength(all.traits);
+        expect(missing.map((r) => r.withData)).toEqual(
+          [...missing.map((r) => r.withData)].sort((a, b) => a - b),
+        );
+        const rank = (rows: typeof missing, id: string) => rows.findIndex((r) => r.trait.id === id);
+        // T2 has data for none of the fixture's species, T3 for one: the emptier
+        // trait ranks first.
+        expect(rank(missing, f.traitTwo.id)).toBeGreaterThanOrEqual(0);
+        expect(rank(missing, f.traitTwo.id)).toBeLessThan(rank(missing, f.traitThree.id));
+        expect(missing.find((r) => r.trait.id === f.traitOne.id)).toEqual(
+          all.byTrait.find((r) => r.trait.id === f.traitOne.id),
+        );
 
-      const least = await coverageTop({ db: tx }, UNRESTRICTED, {
-        mode: 'least_accepted',
-        limit: all.traits,
-      });
-      expect(least.map((r) => r.percentAccepted)).toEqual(
-        [...least.map((r) => r.percentAccepted)].sort((a, b) => a - b),
-      );
-      expect(new Set(least.map((r) => r.trait.id))).toEqual(
-        new Set(missing.map((r) => r.trait.id)),
-      );
+        const least = await coverageTop({ db: tx, redis }, UNRESTRICTED, {
+          mode: 'least_accepted',
+          limit: all.traits,
+        });
+        expect(least.map((r) => r.percentAccepted)).toEqual(
+          [...least.map((r) => r.percentAccepted)].sort((a, b) => a - b),
+        );
+        expect(new Set(least.map((r) => r.trait.id))).toEqual(
+          new Set(missing.map((r) => r.trait.id)),
+        );
 
-      // `limit` cuts the ranking, and `missing` is the default mode.
-      const three = await coverageTop({ db: tx }, UNRESTRICTED, { limit: 3 });
-      expect(three).toHaveLength(3);
-      expect(three).toEqual(missing.slice(0, 3));
+        // `limit` cuts the ranking, and `missing` is the default mode.
+        const three = await coverageTop({ db: tx, redis }, UNRESTRICTED, { limit: 3 });
+        expect(three).toHaveLength(3);
+        expect(three).toEqual(missing.slice(0, 3));
+      } finally {
+        await forgetCached(redis, NO_FILTER_KEY_UNRESTRICTED);
+      }
+    });
+  });
+
+  /**
+   * RFC-69 R7 ranks the answer R6 already caches, rather than scanning the
+   * grid again beside a sibling request that is a cache hit. What proves the
+   * entry is the one being read is a trait created *after* it was stored: a
+   * recomputed ranking would hold it, the cached one cannot. The limit is one
+   * more than the whole grid, so the proof is the length itself and does not
+   * depend on where the new trait would have ranked.
+   */
+  it('answers from the no-filter entry coverageMetrics stored, without recomputing the grid', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const f = await coverageFixture(tx);
+      try {
+        const cached = await coverageMetrics({ db: tx, redis }, UNRESTRICTED, {});
+        expect(await redis.get(NO_FILTER_KEY_UNRESTRICTED)).not.toBeNull();
+
+        const afterwards = await createTrait(tx, { categoryKey: f.categoryC.key, levels: ['a'] });
+        const top = await coverageTop({ db: tx, redis }, UNRESTRICTED, {
+          mode: 'missing',
+          limit: cached.traits + 1,
+        });
+
+        expect(top).toHaveLength(cached.traits);
+        expect(top.map((r) => r.trait.id)).not.toContain(afterwards.id);
+        expect(top).toEqual(rankCoverageTraits(cached.byTrait, 'missing'));
+      } finally {
+        await forgetCached(redis, NO_FILTER_KEY_UNRESTRICTED);
+      }
     });
   });
 });

@@ -118,7 +118,7 @@ describe('RFC-69 R7 GET /api/coverage/top', () => {
     return { user, cookie: (await loginAs(t, user)).cookie };
   };
 
-  it('answers byTrait items, ranked and cut to the limit', async () => {
+  it("answers byTrait items, ranked and cut to the limit, off R6's no-filter entry", async () => {
     const { cookie } = await reader(['coverage.read']);
     // The ranking itself is pinned in `dataset/coverage.integration.test.ts`
     // against its own fixture. What is asserted here is that the route cuts
@@ -127,24 +127,34 @@ describe('RFC-69 R7 GET /api/coverage/top', () => {
     // does not rest on how many traits the shared dictionary happens to hold.
     const category = await createTraitCategory(t.db);
     for (let i = 0; i < 3; i++) await createTrait(t.db, { categoryKey: category.key });
-    const res = await call(t.app, 'GET', '/api/coverage/top?mode=missing&limit=3', { cookie });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data).toHaveLength(3);
-    for (const item of body.data) {
-      const parsed = coverageTraitRowSchema.safeParse(item);
-      expect(parsed.error?.issues.map((i) => i.path.join('.'))).toBeUndefined();
-      expect(parsed.success).toBe(true);
-      expect(item.species).toBe(item.withData);
-    }
-    const withData = body.data.map((r: { withData: number }) => r.withData);
-    expect(withData).toEqual([...withData].sort((a: number, b: number) => a - b));
+    // The viewer has no `dataset.read_inactive`, so the entry this route now
+    // shares with `GET /api/coverage` (RFC-69 R6, R7) is the `r` one. It is
+    // the run's one no-filter key, so only its presence is asserted, never its
+    // contents, and it is dropped afterwards rather than left to a sibling.
+    const key = 'coverage:r:-:-:-';
+    try {
+      const res = await call(t.app, 'GET', '/api/coverage/top?mode=missing&limit=3', { cookie });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data).toHaveLength(3);
+      for (const item of body.data) {
+        const parsed = coverageTraitRowSchema.safeParse(item);
+        expect(parsed.error?.issues.map((i) => i.path.join('.'))).toBeUndefined();
+        expect(parsed.success).toBe(true);
+        expect(item.species).toBe(item.withData);
+      }
+      const withData = body.data.map((r: { withData: number }) => r.withData);
+      expect(withData).toEqual([...withData].sort((a: number, b: number) => a - b));
+      expect(await t.redis.get(key)).not.toBeNull();
 
-    const least = await call(t.app, 'GET', '/api/coverage/top?mode=least_accepted&limit=2', {
-      cookie,
-    });
-    expect(least.status).toBe(200);
-    expect((await least.json()).data).toHaveLength(2);
+      const least = await call(t.app, 'GET', '/api/coverage/top?mode=least_accepted&limit=2', {
+        cookie,
+      });
+      expect(least.status).toBe(200);
+      expect((await least.json()).data).toHaveLength(2);
+    } finally {
+      await forgetCached(t.redis, key);
+    }
   });
 
   it('rejects an unknown mode and a limit outside the contract', async () => {

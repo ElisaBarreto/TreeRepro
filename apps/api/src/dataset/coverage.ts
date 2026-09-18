@@ -414,19 +414,25 @@ export function rankCoverageTraits(
 
 /**
  * `GET /api/coverage/top`: the traits with the most visible species lacking
- * data, or with the lowest accepted share, as `byTrait` items. It is computed
- * over the full unfiltered visible grid — the same base selection as
- * {@link coverageTotals}, never {@link coverageMetrics}'s filters — and is not
- * cached: RFC-69 R6 keys its entry by the filters, and this answer has none of
- * them.
- * @rfc RFC-69 R7
+ * data, or with the lowest accepted share, as `byTrait` items. It is the full
+ * unfiltered visible grid — the same base selection as {@link coverageTotals},
+ * never {@link coverageMetrics}'s filters — ranked and cut.
+ *
+ * That grid is {@link coverageMetrics} with no filters, so this reads R6's
+ * no-filter entry (`coverage:<u|r>:-:-:-`) rather than computing a grid of its
+ * own: the scope of this answer *is* the no-filter scope, and the coverage
+ * page asks for both within one load. A ranking computed beside a sibling
+ * request that is a cache hit would put a `distinct on` over `accepted_values`
+ * and a group-by over `species_trait_coverage` on every page load and every
+ * mode toggle, which is the scan per page load RFC-69 exists to remove.
+ * @rfc RFC-69 R6, R7
  */
 export async function coverageTop(
-  ctx: { db: DbExecutor },
+  ctx: { db: DbExecutor; redis: Redis },
   visibility: Visibility,
   options: CoverageTopQuery,
 ): Promise<CoverageTraitRow[]> {
-  const { byTrait } = await coverageGrid(ctx.db, await coverageSelection(ctx.db, visibility, {}));
+  const { byTrait } = await coverageMetrics(ctx, visibility, {});
   return rankCoverageTraits(byTrait, options.mode ?? 'missing').slice(
     0,
     options.limit ?? TOP_LIMIT_DEFAULT,
