@@ -1,36 +1,68 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
+import { forwardRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { AppShell } from './AppShell.tsx';
+import { useBreadcrumb } from './Breadcrumb.tsx';
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>();
   return {
     ...actual,
-    Link: ({
-      to,
-      children,
-      activeOptions: _activeOptions,
-      search,
-      ...rest
-    }: {
-      to: string;
-      children: React.ReactNode;
-      activeOptions?: unknown;
-      search?: Record<string, unknown>;
-    }) => {
+    // Forwards its ref and, like the real `Link`, applies `data-status`/
+    // `aria-current="page"` on its own — unconditionally overriding any
+    // prop passed in — whenever the target is active: an exact pathname
+    // match, or (without `activeOptions.exact`) a path-segment prefix
+    // match. That prefix rule is what makes a breadcrumb link to
+    // `/app/species` "active" while on `/app/species/$id`; the mock has to
+    // reproduce it, or a test here could never catch that defect.
+    Link: forwardRef<
+      HTMLAnchorElement,
+      {
+        to: string;
+        children: React.ReactNode;
+        activeOptions?: { exact?: boolean; includeSearch?: boolean };
+        search?: Record<string, unknown>;
+      }
+    >(({ to, children, activeOptions, search, ...rest }, ref) => {
       const qs = search
         ? `?${Object.entries(search)
             .map(([key, value]) => `${key}=${value}`)
             .join('&')}`
         : '';
+      // `exact` requires the search to match exactly (both empty counts as a
+      // match); otherwise the link's own search just needs to be a subset of
+      // the current one — same rule the real router applies by default
+      // (`includeSearch` defaults to true), and needed here so a link with
+      // no `search` of its own (like the Species entry) is not wrongly
+      // marked active just because the current location happens to carry
+      // one. `includeSearch: false` (the breadcrumb's crumb links) skips
+      // this comparison entirely, same as the real router.
+      const next = search ?? {};
+      const current = location.search ?? {};
+      const searchOk =
+        activeOptions?.includeSearch === false
+          ? true
+          : activeOptions?.exact
+            ? Object.keys(next).length === Object.keys(current).length &&
+              Object.entries(next).every(([key, value]) => current[key] === value)
+            : Object.entries(next).every(([key, value]) => current[key] === value);
+      const isActive =
+        (activeOptions?.exact
+          ? location.pathname === to
+          : location.pathname === to || location.pathname.startsWith(`${to}/`)) && searchOk;
       return (
-        <a href={`${to}${qs}`} {...rest}>
+        <a
+          ref={ref}
+          href={`${to}${qs}`}
+          {...rest}
+          {...(isActive ? { 'data-status': 'active', 'aria-current': 'page' } : {})}
+        >
           {children}
         </a>
       );
-    },
+    }),
     useNavigate: () => vi.fn(),
     useLocation: () => ({ pathname: location.pathname, search: location.search }),
   };
@@ -216,6 +248,94 @@ describe('RFC-13 R3 AppShell chrome', () => {
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Workspace' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Settings');
+    location.pathname = '/app';
+  });
+});
+
+describe('RFC-13 R3 hierarchical breadcrumb', () => {
+  function SpeciesCrumbRegistrar() {
+    useBreadcrumb([{ label: 'Anathallis funerea' }]);
+    return null;
+  }
+  // A page unmounts its crumb-registering piece itself (e.g. navigating
+  // away); this stands in for that, toggled from inside the tree so the
+  // QueryClientProvider `renderWithProviders` wraps around stays mounted.
+  function SpeciesCrumbToggle() {
+    const [show, setShow] = useState(true);
+    return (
+      <>
+        <button type="button" onClick={() => setShow(false)}>
+          leave
+        </button>
+        {show ? <SpeciesCrumbRegistrar /> : null}
+      </>
+    );
+  }
+
+  it('appends a page-registered crumb after Data › Species, the trailing one as text with aria-current, the rest as links', () => {
+    location.pathname = '/app/species/018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
+    const { unmount } = renderWithProviders(
+      <AppShell>
+        <SpeciesCrumbRegistrar />
+      </AppShell>,
+      { me: ADMIN_ME },
+    );
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(crumb).toHaveTextContent('Data');
+    expect(crumb).toHaveTextContent('Species');
+    expect(crumb).toHaveTextContent('Anathallis funerea');
+    expect(within(crumb).getByRole('link', { name: 'Data' })).toHaveAttribute(
+      'href',
+      '/app/species',
+    );
+    expect(within(crumb).getByRole('link', { name: 'Species' })).toHaveAttribute(
+      'href',
+      '/app/species',
+    );
+    const last = within(crumb).getByText('Anathallis funerea');
+    expect(last).toHaveAttribute('aria-current', 'page');
+    expect(last.tagName).not.toBe('A');
+    unmount();
+    location.pathname = '/app';
+  });
+
+  it('marks exactly one element aria-current="page" in the breadcrumb, and it is the last crumb — not the Data/Species links the router also thinks are active', () => {
+    // The router's own active-link detection is a path-segment prefix
+    // match: `/app/species` prefix-matches the `/app/species/$id` we are on,
+    // so both the Data and Species crumb links are "active" by the router's
+    // rules even though only the last crumb is the current page.
+    location.pathname = '/app/species/018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
+    const { unmount } = renderWithProviders(
+      <AppShell>
+        <SpeciesCrumbRegistrar />
+      </AppShell>,
+      { me: ADMIN_ME },
+    );
+    const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const current = crumb.querySelectorAll('[aria-current="page"]');
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveTextContent('Anathallis funerea');
+    unmount();
+    location.pathname = '/app';
+  });
+
+  it('removes the registered crumb once the registering component unmounts', () => {
+    location.pathname = '/app/species/018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
+    const { unmount } = renderWithProviders(
+      <AppShell>
+        <SpeciesCrumbToggle />
+      </AppShell>,
+      { me: ADMIN_ME },
+    );
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent(
+      'Anathallis funerea',
+    );
+    fireEvent.click(screen.getByText('leave'));
+    const entry = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(entry).not.toHaveTextContent('Anathallis funerea');
+    expect(within(entry).queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
+    expect(within(entry).getByText('Species')).toHaveAttribute('aria-current', 'page');
+    unmount();
     location.pathname = '/app';
   });
 });

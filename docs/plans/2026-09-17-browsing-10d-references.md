@@ -64,7 +64,7 @@ export const referenceTraits = pgTable('reference_traits', {
 }, (t) => [primaryKey({ columns: [t.referenceId, t.traitId] }), index('reference_traits_trait_idx').on(t.traitId)]);
 ```
 
-- [ ] **Step 3: Migration** — `db:generate --name references_enriched`, append `CREATE OR REPLACE FUNCTION trait_records_reference_usage()` (the plan 10a body) plus, before `RETURN NULL`:
+- [ ] **Step 3: Migration** — `db:generate --name references_enriched`, append `CREATE OR REPLACE FUNCTION trait_records_reference_usage()` — the plan 10a body, copied from `apps/api/drizzle/0022_coverage.sql` and never from an older migration, with its header kept verbatim: the `SET search_path = public, pg_temp` it carries names `pg_temp` explicitly and last on purpose (RFC-69 R3), and a `CREATE OR REPLACE` that drops those two tokens silently reopens the escalation path in a `SECURITY DEFINER` function that fires on every insert — plus, before `RETURN NULL`:
 
 ```sql
   INSERT INTO reference_traits (reference_id, trait_id, record_count)

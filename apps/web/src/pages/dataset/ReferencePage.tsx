@@ -6,6 +6,7 @@ import { ReferenceDialog } from '../../components/catalog/ReferenceDialog.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { RecordTable } from '../../components/dataset/RecordTable.tsx';
+import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import { Alert, Button, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber } from '../../lib/format.ts';
@@ -131,6 +132,9 @@ function ReferenceRecords({
  * the reference resolved, so an unknown id shows one alert and no empty list.
  * An Edit action on the loaded header opens `ReferenceDialog` for
  * `references.manage`; the dialog's own invalidation refreshes this reference.
+ * The label the header shows is registered as the shell's trailing crumb, so
+ * the breadcrumb reads `Data › References › <label>` once the reference
+ * resolved (RFC-13 R3).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-61 R4, R6, R7
  */
@@ -142,6 +146,7 @@ export function ReferencePage({ id }: { id: string }) {
   });
   const [openRecord, setOpenRecord] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  useBreadcrumb(reference.data ? [{ label: referenceLabel(reference.data) }] : []);
 
   if (reference.isPending) {
     return (

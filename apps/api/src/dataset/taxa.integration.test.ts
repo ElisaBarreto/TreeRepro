@@ -8,11 +8,16 @@ import {
   createRecord,
   createReference,
   createSpecies,
+  createTrait,
+  createVisibilityFixture,
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
+import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
+import { speciesTraitSummary } from './summary.ts';
 import { getSpecies, likePattern, listFamilies, listGenera, searchSpecies } from './taxa.ts';
 
 const tag = () => randomBytes(4).toString('hex');
@@ -257,5 +262,182 @@ describe('RFC-33 R2, R3 species visibility', () => {
         (g) => g.id,
       ),
     ).toContain(genus.id);
+  });
+
+  // RFC-33 R9's two-viewer sweep for `getSpecies`, over the fixture's second
+  // case: an active species with a record on an inactive trait.
+  //
+  // The detail's counts are deliberately NOT filtered by trait visibility, and
+  // this test exists to say so where the next reviewer will read it. RFC-60 R7
+  // returns "the item (R6)", whose `traitCount` RFC-60 R6 and RFC-69 R1 define
+  // as visibility-blind by design — it counts every coverage row, including
+  // rows on traits a curator has deactivated. Filtering it here would make the
+  // same species report one number on its own page and another in the list row
+  // beside it, per viewer, which no rule sanctions. RFC-33 R3 omits invisible
+  // *rows* from lists and exempts counters outright ("Reference counters are
+  // stored and unaffected"); it does not oblige an aggregate.
+  //
+  // What a restricted viewer may therefore infer — how many traits with data
+  // they cannot see, never which or what — is a stated, bounded, accepted
+  // exposure, the same one `recordCount` beside it already carries.
+  it('RFC-33 R9 the detail counts are viewer-independent (RFC-69 R1: visibility-blind by design)', async () => {
+    const { user } = await createUser(t.db);
+    const f = await createVisibilityFixture(t.db, user.id);
+    // `shownSpecies` is active and carries two records: one on an active trait,
+    // one on an inactive trait.
+    const restricted = await getSpecies(t.db, RESTRICTED, f.shownSpecies.id);
+    const unrestricted = await getSpecies(t.db, UNRESTRICTED, f.shownSpecies.id);
+    expect(restricted).toMatchObject({ recordCount: 2, traitCount: 2 });
+    expect(unrestricted).toMatchObject({ recordCount: 2, traitCount: 2 });
+
+    // ...while the trait list on the same page is filtered (RFC-33 R3), so the
+    // divergence this pins is real and intended, not an oversight.
+    const summary = await speciesTraitSummary(t.db, RESTRICTED, f.shownSpecies.id);
+    expect(summary?.flatMap((c) => c.traits).map((x) => x.trait.id)).toEqual([f.activeTrait.id]);
+  });
+});
+
+describe('RFC-60 R6 trait filters and completeness', () => {
+  const t = useTestDb();
+
+  it('filters with/missing by trait and by category; orders by completeness with a stable cursor', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const cat = `cat_${tag()}`;
+    await t.db.insert(traitCategories).values({ key: cat, label: 'Cat', sortOrder: 99 });
+    const tA = await createTrait(t.db, { categoryKey: cat });
+    const tB = await createTrait(t.db, { categoryKey: cat });
+    const prefix = `Cov ${tag()}`;
+    const s0 = await createSpecies(t.db, { canonicalName: `${prefix} zero` });
+    const s1 = await createSpecies(t.db, { canonicalName: `${prefix} one` });
+    const s2 = await createSpecies(t.db, { canonicalName: `${prefix} two` });
+    const rec = (sp: { id: string }, tr: typeof tA) =>
+      createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: tr.id,
+        valueText: 'alpha',
+        levelId: tr.levels[0]?.id,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+    await rec(s1, tA);
+    await rec(s2, tA);
+    await rec(s2, tB);
+    const ids = (r: { data: { id: string }[] }) => r.data.map((x) => x.id);
+    expect(
+      ids(await searchSpecies(t.db, UNRESTRICTED, { q: prefix, traitId: tA.id, limit: 10 })).sort(),
+    ).toEqual([s1.id, s2.id].sort());
+    expect(
+      ids(
+        await searchSpecies(t.db, UNRESTRICTED, {
+          q: prefix,
+          traitId: tA.id,
+          traitData: 'missing',
+          limit: 10,
+        }),
+      ),
+    ).toEqual([s0.id]);
+    expect(
+      ids(
+        await searchSpecies(t.db, UNRESTRICTED, {
+          q: prefix,
+          categoryKey: cat,
+          traitData: 'missing',
+          limit: 10,
+        }),
+      ),
+    ).toEqual([s0.id]);
+    const byCompleteness = await searchSpecies(t.db, UNRESTRICTED, {
+      q: prefix,
+      sort: 'completeness',
+      limit: 2,
+    });
+    expect(ids(byCompleteness)).toEqual([s0.id, s1.id]);
+    expect(byCompleteness.data[1]?.traitCount).toBe(1);
+    const next = await searchSpecies(t.db, UNRESTRICTED, {
+      q: prefix,
+      sort: 'completeness',
+      limit: 2,
+      cursor: byCompleteness.nextCursor ?? undefined,
+    });
+    expect(ids(next)).toEqual([s2.id]);
+    const withCount = await searchSpecies(t.db, UNRESTRICTED, {
+      q: prefix,
+      traitId: tA.id,
+      limit: 10,
+    });
+    expect(withCount.data.find((x) => x.id === s2.id)?.traitRecordCount).toBe(1);
+    // The list reports `species.trait_count` (RFC-69 R1, maintained by the
+    // insert trigger and never recomputed after the 0022 backfill); the detail
+    // counts the records live (RFC-60 R7). They are meant to agree — pinned
+    // here so a drift in the trigger cannot pass unnoticed.
+    const detail = await getSpecies(t.db, UNRESTRICTED, s2.id);
+    expect(detail?.traitCount).toBe(2);
+    expect(detail?.traitCount).toBe(withCount.data.find((x) => x.id === s2.id)?.traitCount);
+  });
+
+  it('an invisible trait id answers TRAIT_NOT_FOUND; a category mismatch answers 400', async () => {
+    const off = await createTrait(t.db, { active: false });
+    await expect(
+      searchSpecies(t.db, RESTRICTED, { traitId: off.id, limit: 10 }),
+    ).rejects.toMatchObject({ code: 'TRAIT_NOT_FOUND' });
+    const tr = await createTrait(t.db);
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, { traitId: tr.id, categoryKey: 'nope', limit: 10 }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'categoryKey' }],
+    });
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, { categoryKey: 'nope', limit: 10 }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'categoryKey' }],
+    });
+  });
+
+  // RFC-69 R4: `species_trait_coverage` has no `active` flag, so the only thing
+  // keeping an invisible trait out of the filter is the `traits` join inside
+  // `coverageExists`. The `traitId` path cannot reach it — `requireTrait` throws
+  // first — so this goes through `categoryKey`, which resolves no trait.
+  it('RFC-69 R4 an inactive trait is invisible to the coverage filter; with/missing stay complementary', async () => {
+    const cat = `cat_${tag()}`;
+    await t.db.insert(traitCategories).values({ key: cat, label: 'Cat', sortOrder: 99 });
+    const shown = await createTrait(t.db, { categoryKey: cat });
+    const hidden = await createTrait(t.db, { categoryKey: cat, active: false });
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const prefix = `Vis ${tag()}`;
+    const onShown = await createSpecies(t.db, { canonicalName: `${prefix} shown` });
+    const onHidden = await createSpecies(t.db, { canonicalName: `${prefix} hidden` });
+    const none = await createSpecies(t.db, { canonicalName: `${prefix} none` });
+    for (const [sp, tr] of [
+      [onShown, shown],
+      [onHidden, hidden],
+    ] as const) {
+      await createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: tr.id,
+        valueText: 'alpha',
+        levelId: tr.levels[0]?.id,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+    }
+    const ids = async (v: typeof RESTRICTED, traitData: 'with' | 'missing') =>
+      (
+        await searchSpecies(t.db, v, { q: prefix, categoryKey: cat, traitData, limit: 10 })
+      ).data.map((s) => s.id);
+
+    // The species whose only records are on the inactive trait counts as
+    // covered for a viewer who sees inactive traits...
+    expect((await ids(UNRESTRICTED, 'with')).sort()).toEqual([onShown.id, onHidden.id].sort());
+    expect(await ids(UNRESTRICTED, 'missing')).toEqual([none.id]);
+    // ...and as missing for one who does not — the two modes partition the same
+    // three species for each viewer, never dropping or doubling one.
+    expect(await ids(RESTRICTED, 'with')).toEqual([onShown.id]);
+    expect((await ids(RESTRICTED, 'missing')).sort()).toEqual([onHidden.id, none.id].sort());
   });
 });

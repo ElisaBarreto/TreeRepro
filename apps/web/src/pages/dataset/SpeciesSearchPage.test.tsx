@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse, SpeciesListItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { SPECIES } from '../../test/dataset-fixtures.ts';
+import { DICTIONARY, SPECIES } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -24,6 +24,7 @@ const dataset = vi.hoisted(() => ({
   fetchSpeciesTraits: vi.fn(),
   fetchFamilies: vi.fn(),
   fetchGenera: vi.fn(),
+  fetchDictionary: vi.fn(),
 }));
 const catalog = vi.hoisted(() => ({ createSpecies: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
@@ -48,6 +49,8 @@ const ADENANTHERA: SpeciesListItem = {
   family: FAMILY,
   matchedName: null,
   unresolvedTaxon: false,
+  traitCount: 12,
+  traitRecordCount: null,
 };
 const ADANSONIA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04',
@@ -58,6 +61,8 @@ const ADANSONIA: SpeciesListItem = {
   family: null,
   matchedName: 'Adansonia baobab',
   unresolvedTaxon: true,
+  traitCount: 0,
+  traitRecordCount: null,
 };
 const page = (data: SpeciesListItem[], nextCursor: string | null = null) => ({
   data,
@@ -71,11 +76,15 @@ beforeEach(() => {
   dataset.fetchSpeciesTraits.mockReset();
   dataset.fetchFamilies.mockReset();
   dataset.fetchGenera.mockReset();
+  dataset.fetchDictionary.mockReset();
   catalog.createSpecies.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchFamilies.mockResolvedValue([FAMILY]);
   dataset.fetchGenera.mockResolvedValue({ data: [GENUS], meta: { nextCursor: null } });
+  dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
 });
+
+const SEED_MASS_ID = DICTIONARY[1]?.traits[0]?.id as string;
 
 async function openPage() {
   const utils = renderAt('/app/species');
@@ -385,5 +394,199 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     await openPage();
     expect(screen.queryByRole('button', { name: 'New species' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-60 R6 SpeciesSearchPage trait filters, order and the URL', () => {
+  it('seeds every control from the URL and sends the filters on the first search', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    renderAt(
+      `/app/species?categoryKey=seed&traitId=${SEED_MASS_ID}&traitData=missing&sort=completeness`,
+    );
+    await waitFor(() => expect(screen.getByLabelText('Category')).toHaveValue('seed'));
+    expect(screen.getByLabelText('Trait')).toHaveValue(SEED_MASS_ID);
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeChecked();
+    expect(screen.getByLabelText('Order by')).toHaveValue('completeness');
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          categoryKey: 'seed',
+          traitId: SEED_MASS_ID,
+          traitData: 'missing',
+          sort: 'completeness',
+        }),
+      ),
+    );
+  });
+
+  it('mirrors a filter change in the URL', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = renderAt('/app/species');
+    await screen.findByRole('option', { name: 'Seed' });
+    await userEvent.selectOptions(screen.getByLabelText('Category'), 'seed');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ categoryKey: 'seed' }),
+      ),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Trait'), SEED_MASS_ID);
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ categoryKey: 'seed', traitId: SEED_MASS_ID }),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Missing data' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ traitData: 'missing' }),
+      ),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Order by'), 'completeness');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ sort: 'completeness' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          categoryKey: 'seed',
+          traitId: SEED_MASS_ID,
+          traitData: 'missing',
+          sort: 'completeness',
+        }),
+      ),
+    );
+  });
+
+  it('drops the cursor when the order changes: a name cursor is invalid under completeness', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA], 'c1'));
+    await openPage();
+    await screen.findByRole('link', { name: 'Adenanthera pavonina' });
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cursor: 'c1' }),
+      ),
+    );
+    expect(screen.getByText('Page 2')).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('Order by'), 'completeness');
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'completeness', cursor: undefined }),
+      ),
+    );
+    expect(screen.getByText('Page 1')).toBeInTheDocument();
+  });
+
+  it('shows the records column only while a trait filter is set', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const plain = await openPage();
+    await screen.findByRole('link', { name: 'Adenanthera pavonina' });
+    expect(screen.queryByRole('columnheader', { name: 'Records' })).not.toBeInTheDocument();
+    plain.unmount();
+
+    dataset.searchSpecies.mockResolvedValue(page([{ ...ADENANTHERA, traitRecordCount: 7 }]));
+    renderAt(`/app/species?traitId=${SEED_MASS_ID}`);
+    expect(await screen.findByRole('columnheader', { name: 'Records' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '7' })).toBeInTheDocument();
+    // A trait-only deep link still shows which filter is in force: the
+    // category comes from the dictionary, not from the URL.
+    expect(screen.getByLabelText('Category')).toHaveValue('seed');
+    expect(screen.getByLabelText('Trait')).toHaveValue(SEED_MASS_ID);
+  });
+
+  it('clearing the category of a trait-only deep link takes the trait out of the URL', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = renderAt(`/app/species?traitId=${SEED_MASS_ID}&traitData=missing`);
+    await screen.findByRole('option', { name: 'Seed' });
+    await userEvent.selectOptions(screen.getByLabelText('Category'), '');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.not.objectContaining({ traitId: SEED_MASS_ID }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(
+      expect.not.objectContaining({ traitData: 'missing' }),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          traitId: undefined,
+          traitData: undefined,
+          categoryKey: undefined,
+        }),
+      ),
+    );
+    expect(screen.queryByRole('columnheader', { name: 'Records' })).not.toBeInTheDocument();
+  });
+
+  it('an external navigation that drops q clears the name from the form as well', async () => {
+    // The sidebar's Species entry carries no search at all, so clicking it
+    // from a searched list replaces the whole search. Nothing but `q`
+    // changes, so this is the one navigation the form used to ignore.
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = await openPage();
+    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(expect.objectContaining({ q: 'ad' })),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'ad' })),
+    );
+
+    await userEvent.click(screen.getByRole('link', { name: 'Species' }));
+    await waitFor(() => expect(screen.getByLabelText('Search species')).toHaveValue(''));
+    expect(router.state.location.search).toEqual(expect.not.objectContaining({ q: 'ad' }));
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ q: undefined }),
+      ),
+    );
+  });
+
+  it('writes the name to the URL once it settles, not once per keystroke', async () => {
+    // One URL write per settled name is what lets the form adopt an incoming
+    // search wholesale: the address bar never holds a name the box has
+    // already moved past, so no echo can arrive carrying a stale one.
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = await openPage();
+    const box = screen.getByLabelText('Search species');
+
+    await userEvent.type(box, 'a');
+    expect(box).toHaveValue('a');
+    expect(router.state.location.search).toEqual(expect.not.objectContaining({ q: 'a' }));
+
+    await userEvent.type(box, 'd');
+    expect(box).toHaveValue('ad');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(expect.objectContaining({ q: 'ad' })),
+    );
+    // The letters survived the URL catching up with them.
+    expect(box).toHaveValue('ad');
+  });
+
+  it('drops unknown and malformed search params', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    renderAt('/app/species?traitId=not-a-uuid&traitData=perhaps&sort=random&categoryKey=&bogus=1');
+    expect(await screen.findByRole('heading', { name: 'Species' })).toBeInTheDocument();
+    await screen.findByRole('option', { name: 'Seed' });
+    expect(screen.getByLabelText('Category')).toHaveValue('');
+    expect(screen.getByLabelText('Order by')).toHaveValue('name');
+    expect(screen.getByRole('radio', { name: 'Has data' })).toBeDisabled();
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          traitId: undefined,
+          traitData: undefined,
+          sort: undefined,
+          categoryKey: undefined,
+        }),
+      ),
+    );
   });
 });

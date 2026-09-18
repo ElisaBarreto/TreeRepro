@@ -12,9 +12,11 @@ import type {
   ReferenceDetail,
   Species,
   SpeciesListItem,
+  SpeciesSort,
   SpeciesStatus,
   SpeciesTraits,
   TaxonRef,
+  TraitDataMode,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import { type QueryParams as Params, withQuery } from './query.ts';
@@ -46,6 +48,9 @@ export const datasetKeys = {
 };
 
 /**
+ * `categoryKey`, `traitId` and `traitData` are the coverage filters and
+ * `sort` the order (RFC-60 R6 amendment); a cursor belongs to one order
+ * only, so the caller starts over at page 1 whenever `sort` changes.
  * @rfc RFC-60 R6
  * @rfc RFC-33 R6
  * @rfc RFC-33 R7
@@ -58,6 +63,10 @@ export function searchSpecies(params: {
   status?: SpeciesStatus;
   scope?: 'plots' | 'all';
   plotId?: string;
+  categoryKey?: string;
+  traitId?: string;
+  traitData?: TraitDataMode;
+  sort?: SpeciesSort;
   cursor?: string;
   limit?: number;
 }) {

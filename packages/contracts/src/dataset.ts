@@ -86,7 +86,17 @@ export const searchTermSchema = z.string().trim().min(2).max(100);
 /** @rfc RFC-60 R1 */
 export const taxonRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 
+/** `traitData=with` keeps species with a coverage row; `missing` keeps species with none. @rfc RFC-60 R6 */
+export const TRAIT_DATA_MODES = ['with', 'missing'] as const;
+export type TraitDataMode = (typeof TRAIT_DATA_MODES)[number];
+
+/** `completeness` orders by `trait_count asc, canonical_name asc, id asc`. @rfc RFC-60 R6 */
+export const SPECIES_SORTS = ['name', 'completeness'] as const;
+export type SpeciesSort = (typeof SPECIES_SORTS)[number];
+
 /**
+ * `traitData` without `traitId` or `categoryKey` is still accepted here; the
+ * API decides what to do with it (it ignores it).
  * @rfc RFC-60 R6
  * @rfc RFC-33 R6, R7
  */
@@ -98,11 +108,18 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   status: z.enum(SPECIES_STATUSES).optional(),
   scope: z.enum(SPECIES_SCOPES).optional(),
   plotId: z.uuid().optional(),
+  categoryKey: z.string().trim().min(1).max(100).optional(),
+  traitId: z.uuid().optional(),
+  traitData: z.enum(TRAIT_DATA_MODES).optional(),
+  sort: z.enum(SPECIES_SORTS).optional(),
 });
 
 /**
+ * `traitRecordCount` is `null` when no `traitId` filter was given, `0` in
+ * missing mode, and the coverage row's `record_count` otherwise.
  * @rfc RFC-60 R3, R6
  * @rfc RFC-33 R7
+ * @rfc RFC-69 R1
  */
 export const speciesListItemSchema = z.strictObject({
   id: z.uuid(),
@@ -113,6 +130,8 @@ export const speciesListItemSchema = z.strictObject({
   family: taxonRefSchema.nullable(),
   matchedName: z.string().nullable(),
   unresolvedTaxon: z.boolean(),
+  traitCount: z.number().int().nonnegative(),
+  traitRecordCount: z.number().int().nonnegative().nullable(),
 });
 
 /** @rfc RFC-60 R4, R7 */
@@ -123,14 +142,16 @@ export const speciesNameSchema = z.strictObject({
 });
 
 /**
+ * `traitRecordCount` is omitted: it answers "how many records for the one
+ * filtered trait", which only makes sense on the list (RFC-60 R6); the
+ * detail route takes no `traitId` and keeps only `traitCount` (inherited).
  * @rfc RFC-60 R7
  * @rfc RFC-67 R8
  */
-export const speciesSchema = speciesListItemSchema.extend({
+export const speciesSchema = speciesListItemSchema.omit({ traitRecordCount: true }).extend({
   names: z.array(speciesNameSchema),
   plots: z.array(plotRefSchema),
   recordCount: z.number().int().nonnegative(),
-  traitCount: z.number().int().nonnegative(),
 });
 
 /** @rfc RFC-60 R8 */

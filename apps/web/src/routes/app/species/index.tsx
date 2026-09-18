@@ -1,34 +1,68 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { SpeciesSearchPage } from '../../../pages/dataset/SpeciesSearchPage.tsx';
+import {
+  SPECIES_SCOPES,
+  SPECIES_SORTS,
+  SPECIES_STATUSES,
+  TRAIT_DATA_MODES,
+} from '@treerepro/contracts';
+import {
+  type SpeciesSearch,
+  SpeciesSearchPage,
+} from '../../../pages/dataset/SpeciesSearchPage.tsx';
 
-/** `?unresolved=true` opens the search with the unresolved-taxa toggle on (RFC-65); `scope` and `plotId` per RFC-33 R6, RFC-67 R8. */
-function validateSearch(search: Record<string, unknown>): {
-  unresolved?: boolean;
-  scope?: 'plots' | 'all';
-  plotId?: string;
-} {
-  const result: { unresolved?: boolean; scope?: 'plots' | 'all'; plotId?: string } = {};
-  if (search.unresolved === true || search.unresolved === 'true') result.unresolved = true;
-  if (search.scope === 'plots' || search.scope === 'all') result.scope = search.scope;
-  if (typeof search.plotId === 'string' && search.plotId.trim() !== '') {
-    result.plotId = search.plotId.trim();
-  }
-  return result;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function text(value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' || trimmed.length > max ? undefined : trimmed;
 }
 
-// The page seeds its form state once, and the router keeps this component
-// mounted across a search-only change (Species <-> Unresolved taxa in the
-// sidebar); the key remounts it so the toggle follows the URL.
+function uuid(value: unknown): string | undefined {
+  const candidate = text(value, 36);
+  return candidate !== undefined && UUID.test(candidate) ? candidate : undefined;
+}
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : undefined;
+}
+
+/**
+ * Every control of the search form is a search param (RFC-60 R6 amendment):
+ * ids must look like uuids, the rest must be one of their enum's values.
+ * Every key is answered, `undefined` when the URL carries nothing usable for
+ * it — an omitted key would leave the raw, unvalidated value the router
+ * parsed out of the URL in its place, because a child route's validated
+ * search is merged over the location's own rather than replacing it. What
+ * the page reads is therefore exactly this shape, so a malformed id, a value
+ * outside its enum or a key nobody knows never reaches a control or the API.
+ * `?unresolved=true` opens the search with the unresolved-taxa toggle on
+ * (RFC-65); `scope` and `plotId` per RFC-33 R6, RFC-67 R8.
+ */
+function validateSearch(search: Record<string, unknown>): SpeciesSearch {
+  return {
+    q: text(search.q, 100),
+    familyId: uuid(search.familyId),
+    genusId: uuid(search.genusId),
+    unresolved: search.unresolved === true || search.unresolved === 'true' ? true : undefined,
+    status: oneOf(search.status, SPECIES_STATUSES),
+    scope: oneOf(search.scope, SPECIES_SCOPES),
+    plotId: uuid(search.plotId),
+    categoryKey: text(search.categoryKey, 100),
+    traitId: uuid(search.traitId),
+    traitData: oneOf(search.traitData, TRAIT_DATA_MODES),
+    sort: oneOf(search.sort, SPECIES_SORTS),
+  };
+}
+
+// The page seeds its form from the validated search and pushes every change
+// back into it, so the URL is the single source of truth and no remount key
+// is needed: a search-only change from the sidebar (Species <-> Unresolved
+// taxa) reaches the page as a new `search` prop and the form follows it.
 function SpeciesSearchRoute() {
-  const { unresolved, scope, plotId } = Route.useSearch();
-  return (
-    <SpeciesSearchPage
-      key={`${unresolved ? 'unresolved' : 'all'}:${scope ?? 'default'}:${plotId ?? 'all'}`}
-      initialUnresolved={unresolved === true}
-      initialScope={scope}
-      initialPlotId={plotId}
-    />
-  );
+  return <SpeciesSearchPage search={Route.useSearch()} />;
 }
 
 /**

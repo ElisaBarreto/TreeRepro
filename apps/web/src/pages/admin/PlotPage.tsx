@@ -6,6 +6,7 @@ import { PlotDialog } from '../../components/admin/PlotDialog.tsx';
 import { PlotSpeciesSection } from '../../components/admin/PlotSpeciesSection.tsx';
 import { UserStatusBadge } from '../../components/admin/UserStatusBadge.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
+import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import {
   Alert,
   Badge,
@@ -26,7 +27,10 @@ import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
 /**
- * Field plot detail page: metadata, edit plot dialog, species section, users section.
+ * Field plot detail page: metadata, edit plot dialog, species section, users
+ * section. The plot's title is registered as the shell's trailing crumb, so
+ * the breadcrumb reads `Admin › Plots › <code> — <name>` once the plot
+ * resolved (RFC-13 R3).
  * @rfc RFC-67 R3, R4, R5
  * @rfc RFC-13 R2, R3
  */
@@ -41,6 +45,10 @@ export function PlotPage({ id }: { id: string }) {
     queryKey: plotKeys.detail(id),
     queryFn: () => fetchPlot(id),
   });
+
+  useBreadcrumb(
+    plotQuery.data ? [{ label: `${plotQuery.data.code} — ${plotQuery.data.name}` }] : [],
+  );
 
   const usersList = usePagedList(
     plotKeys.users(id, {}),

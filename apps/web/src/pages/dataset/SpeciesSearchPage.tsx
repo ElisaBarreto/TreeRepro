@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import type { SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contracts';
+import { useEffect, useState } from 'react';
 import { EXPORT_ACCEPTED_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
@@ -22,11 +23,103 @@ import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
 /**
+ * Every control of the species search as URL search params, so a link from
+ * the trait page or the dashboard opens the list pre-filtered and a filtered
+ * list can be shared. The route's `validateSearch` is what produces this
+ * shape; nothing else here is trusted to.
+ * @rfc RFC-60 R6
+ */
+export interface SpeciesSearch {
+  q?: string;
+  familyId?: string;
+  genusId?: string;
+  unresolved?: boolean;
+  status?: SpeciesStatus;
+  scope?: 'plots' | 'all';
+  plotId?: string;
+  categoryKey?: string;
+  traitId?: string;
+  traitData?: TraitDataMode;
+  sort?: SpeciesSort;
+}
+
+function toValue(search: SpeciesSearch): SpeciesSearchValue {
+  return {
+    q: search.q ?? '',
+    familyId: search.familyId,
+    genusId: search.genusId,
+    unresolved: search.unresolved === true,
+    status: search.status,
+    scope: search.scope,
+    plotId: search.plotId,
+    categoryKey: search.categoryKey,
+    traitId: search.traitId,
+    traitData: search.traitData,
+    sort: search.sort,
+  };
+}
+
+// A param whose value is `undefined` is left out of the URL, so a cleared
+// filter disappears instead of lingering as an empty one.
+function toSearch(value: SpeciesSearchValue): SpeciesSearch {
+  const q = value.q.trim();
+  return {
+    q: q === '' ? undefined : q,
+    familyId: value.familyId,
+    genusId: value.genusId,
+    unresolved: value.unresolved ? true : undefined,
+    status: value.status,
+    scope: value.scope,
+    plotId: value.plotId,
+    categoryKey: value.categoryKey,
+    traitId: value.traitId,
+    traitData: value.traitData,
+    sort: value.sort,
+  };
+}
+
+// Everything the URL carries, in one comparable string: what the page last
+// wrote to the address bar, and what it finds there on the next render. The
+// name is part of it because `seenSearch` records exactly what was written,
+// so a search differing at all — in `q` alone, as the sidebar's Species
+// entry does by carrying no search and clearing the whole one — came from
+// outside (that link, the back button, a pasted URL) and the form follows
+// it, name included.
+function searchKey(value: SpeciesSearchValue): string {
+  return JSON.stringify([
+    value.q.trim() || null,
+    value.familyId ?? null,
+    value.genusId ?? null,
+    value.unresolved,
+    value.status ?? null,
+    value.scope ?? null,
+    value.plotId ?? null,
+    value.categoryKey ?? null,
+    value.traitId ?? null,
+    value.traitData ?? null,
+    value.sort ?? null,
+  ]);
+}
+
+/**
  * Species catalog: the first page lists at once; the form's value, with the
  * name debounced, narrows it and starts over at page 1. A name shorter than
- * the API's minimum of two letters (RFC-60 R6) is not sent. `initialUnresolved`
- * seeds the toggle from the route's `?unresolved=true` (the unresolved-taxa
- * nav entry); the export link is a plain download, gated by dataset.export.
+ * the API's minimum of two letters (RFC-60 R6) is not sent. The whole form
+ * lives in the URL (RFC-60 R6 amendment): `search` seeds it and every change
+ * is written back with `replace`, so `/app/species?traitId=…&traitData=missing`
+ * from the trait page or the dashboard opens the list pre-filtered and the
+ * address bar mirrors the form — the name on the same debounce boundary the
+ * search waits for, everything else at once. The traffic is the other way
+ * too: a search that arrives from outside, whatever changed in it, is adopted
+ * wholesale, so the sidebar's Species entry — which carries no search and
+ * therefore clears the whole one — empties the name box as well as the
+ * filters. A change of any filter changes the
+ * query key, which resets `usePagedList` to page 1 — that reset is what
+ * keeps a cursor from crossing a change of order, where it would be invalid
+ * (a `sort=name` cursor has two keys, a `sort=completeness` cursor three).
+ * The records column is shown exactly while a trait filter is set, since
+ * `traitRecordCount` answers "how many records for that trait" and is null
+ * otherwise. The export link is a plain download, gated by dataset.export.
  * With `taxa.manage`, "New species" opens the species editor and a created
  * species opens its own page (RFC-60 R9). The form's status filter is
  * carried through to the search and the query key (RFC-33 R7).
@@ -36,25 +129,39 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  * @rfc RFC-66 R1
  * @rfc RFC-33 R6, R7, R8
  */
-export function SpeciesSearchPage({
-  initialUnresolved = false,
-  initialScope,
-  initialPlotId,
-}: {
-  initialUnresolved?: boolean;
-  initialScope?: 'plots' | 'all';
-  initialPlotId?: string;
-}) {
+export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   const me = useMe();
   const navigate = useNavigate();
-  const [form, setForm] = useState<SpeciesSearchValue>({
-    q: '',
-    unresolved: initialUnresolved,
-    scope: initialScope,
-    plotId: initialPlotId,
-  });
+  const incoming = toValue(search);
+  const [form, setForm] = useState<SpeciesSearchValue>(incoming);
+  const [seenSearch, setSeenSearch] = useState(() => searchKey(incoming));
+  const incomingKey = searchKey(incoming);
+  if (incomingKey !== seenSearch) {
+    // The URL moved under the page (a sidebar link, the back button): adopt
+    // it during this render rather than in an effect, so the form and the
+    // search that follows it never disagree for a frame (React's
+    // adjust-state-during-render pattern).
+    setSeenSearch(incomingKey);
+    setForm(incoming);
+  }
   const [creating, setCreating] = useState(false);
   const term = useDebouncedValue(form.q.trim(), 300);
+  // `settled` is the debounce of the write itself: `formKey` follows `form`
+  // synchronously, so without it this effect navigates on every keystroke.
+  // It is not a correctness guard — the effect writes `toSearch(form)`, which
+  // is always the box's current value, never a name it has moved past — but
+  // browsers rate-limit `replaceState` and Safari throws on it, and the
+  // address bar is better off holding names that have stopped changing than
+  // every half-typed one.
+  const settled = term === form.q.trim();
+  const formKey = searchKey(form);
+  useEffect(() => {
+    if (!settled || formKey === seenSearch) return;
+    // Claim what is being written as already seen, so its own echo is not
+    // mistaken for an outside change.
+    setSeenSearch(formKey);
+    void navigate({ to: '/app/species', search: toSearch(form), replace: true });
+  }, [settled, formKey, seenSearch, form, navigate]);
   const params = {
     q: term.length >= 2 ? term : undefined,
     familyId: form.familyId,
@@ -63,6 +170,10 @@ export function SpeciesSearchPage({
     status: form.status,
     scope: form.scope,
     plotId: form.plotId,
+    categoryKey: form.categoryKey,
+    traitId: form.traitId,
+    traitData: form.traitData,
+    sort: form.sort,
   };
   const list = usePagedList(datasetKeys.species(params), (cursor, limit) =>
     searchSpecies({ ...params, cursor, limit }),
@@ -72,7 +183,7 @@ export function SpeciesSearchPage({
     <>
       <PageHeader
         title="Species"
-        description="Browse the taxonomy catalog, or narrow it by name, family or genus."
+        description="Browse the taxonomy catalog, or narrow it by name, family, genus or trait."
         actions={
           hasPermission(me, 'taxa.manage') || hasPermission(me, 'dataset.export') ? (
             <>
@@ -100,7 +211,9 @@ export function SpeciesSearchPage({
         {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No species match." />
         ) : null}
-        {list.items.length > 0 ? <SpeciesList items={list.items} /> : null}
+        {list.items.length > 0 ? (
+          <SpeciesList items={list.items} showTraitRecords={Boolean(form.traitId)} />
+        ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
       {creating ? (

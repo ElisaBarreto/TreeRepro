@@ -58,6 +58,7 @@ export function useTestApp(): TestApp {
       logger,
       health: { database: async () => true, redis: async () => true },
       db,
+      redis: r,
       sessions,
       mfa,
       limiter,
@@ -155,6 +156,7 @@ export function useTestApp(): TestApp {
 export function ctxOf(t: TestApp): AuthContext {
   return {
     db: t.db,
+    redis: t.redis,
     sessions: t.sessions,
     mfa: t.mfa,
     limiter: t.limiter,

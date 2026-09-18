@@ -24,6 +24,7 @@ import { meRoutes } from './http/routes/me.ts';
 import type { DoiClient } from './integrations/doi.ts';
 import type { Logger } from './logger.ts';
 import type { Mailer } from './mail/mailer.ts';
+import type { Redis } from './redis/client.ts';
 
 export interface AppDeps {
   config: Pick<AppConfig, 'appOrigin'>;
@@ -31,6 +32,7 @@ export interface AppDeps {
   doi: DoiClient;
   health: HealthChecks;
   db: Db;
+  redis: Redis;
   sessions: SessionStore;
   mfa: MfaStore;
   limiter: RateLimiter;
@@ -54,6 +56,7 @@ export const BODY_LIMIT_BYTES = 1024 * 1024;
 export function createApp(deps: AppDeps) {
   const ctx: AuthContext = {
     db: deps.db,
+    redis: deps.redis,
     sessions: deps.sessions,
     mfa: deps.mfa,
     limiter: deps.limiter,

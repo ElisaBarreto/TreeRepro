@@ -42,6 +42,7 @@ await redis.connect();
 const sessionSecret = config.sessionSecret.expose();
 const ctx: AuthContext = {
   db,
+  redis,
   sessions: createSessionStore(redis, sessionSecret),
   mfa: createMfaStore(redis, sessionSecret),
   limiter: createRateLimiter(redis),

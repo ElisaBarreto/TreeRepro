@@ -3,8 +3,20 @@ import userEvent from '@testing-library/user-event';
 import type { PlotDetail, PlotUser, SpeciesListItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADMIN_ME } from '../../test/fixtures.ts';
-import { renderWithProviders } from '../../test/render.tsx';
-import { PlotPage } from './PlotPage.tsx';
+import { renderAt } from '../../test/router.tsx';
+
+const auth = vi.hoisted(() => ({
+  login: vi.fn(),
+  loginTotp: vi.fn(),
+  fetchMe: vi.fn(),
+  logout: vi.fn(),
+  logoutAll: vi.fn(),
+  changePassword: vi.fn(),
+  totpSetup: vi.fn(),
+  totpConfirm: vi.fn(),
+  totpDisable: vi.fn(),
+}));
+vi.mock('../../api/auth.ts', () => auth);
 
 const plotsApi = vi.hoisted(() => ({
   fetchPlot: vi.fn(),
@@ -26,36 +38,6 @@ vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...datasetApi,
 }));
-
-vi.mock('@tanstack/react-router', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tanstack/react-router')>();
-  return {
-    ...actual,
-    useNavigate: () => vi.fn(),
-    Link: ({
-      children,
-      to,
-      params,
-      ...rest
-    }: {
-      children: React.ReactNode;
-      to: string;
-      params?: Record<string, string>;
-    } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
-      let href = to;
-      if (params) {
-        for (const [key, value] of Object.entries(params)) {
-          href = href.replace(`$${key}`, value);
-        }
-      }
-      return (
-        <a href={href} {...rest}>
-          {children}
-        </a>
-      );
-    },
-  };
-});
 
 const PLOT_DETAIL: PlotDetail = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d41',
@@ -81,6 +63,8 @@ const SPECIES_ITEM: SpeciesListItem = {
   matchedName: 'Bowdichia virgilioides Kunth',
   active: true,
   unresolvedTaxon: false,
+  traitCount: 4,
+  traitRecordCount: null,
 };
 
 const PLOT_USER: PlotUser = {
@@ -92,6 +76,8 @@ const PLOT_USER: PlotUser = {
 };
 
 beforeEach(() => {
+  auth.fetchMe.mockReset();
+  auth.fetchMe.mockResolvedValue(ADMIN_ME);
   plotsApi.fetchPlot.mockReset();
   plotsApi.updatePlot.mockReset();
   plotsApi.fetchPlotSpecies.mockReset();
@@ -113,7 +99,7 @@ beforeEach(() => {
 
 describe('RFC-67 R3-R5 PlotPage', () => {
   it('renders plot metadata, species section, and users section with link to user', async () => {
-    renderWithProviders(<PlotPage id={PLOT_DETAIL.id} />, { me: ADMIN_ME });
+    renderAt(`/app/admin/plots/${PLOT_DETAIL.id}`);
 
     expect(
       await screen.findByRole('heading', { name: 'PLT-01 — Cerrado Reserve' }),
@@ -137,7 +123,7 @@ describe('RFC-67 R3-R5 PlotPage', () => {
       speciesCount: 0,
     });
 
-    renderWithProviders(<PlotPage id={PLOT_DETAIL.id} />, { me: ADMIN_ME });
+    renderAt(`/app/admin/plots/${PLOT_DETAIL.id}`);
 
     expect(await screen.findByText('Bowdichia virgilioides')).toBeInTheDocument();
 
@@ -151,5 +137,22 @@ describe('RFC-67 R3-R5 PlotPage', () => {
     await userEvent.click(confirmBtn);
 
     expect(plotsApi.removePlotSpecies).toHaveBeenCalledWith(PLOT_DETAIL.id, SPECIES_ITEM.id);
+  });
+});
+
+describe('RFC-13 R3 PlotPage breadcrumb', () => {
+  it('registers the plot as the last crumb of Admin › Plots', async () => {
+    renderAt(`/app/admin/plots/${PLOT_DETAIL.id}`);
+    await screen.findByRole('heading', { name: 'PLT-01 — Cerrado Reserve' });
+    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(trail).getByText('PLT-01 — Cerrado Reserve')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(within(trail).getByRole('link', { name: 'Plots' })).toHaveAttribute(
+      'href',
+      '/app/admin/plots',
+    );
+    expect(trail).toHaveTextContent('Admin');
   });
 });

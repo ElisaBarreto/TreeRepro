@@ -4,6 +4,7 @@ import {
   boolean,
   check,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -39,7 +40,14 @@ export const genera = pgTable(
   (t) => [uniqueIndex('genera_name_idx').on(t.name), index('genera_family_idx').on(t.familyId)],
 );
 
-/** @rfc RFC-60 R1, R3, R6 */
+/**
+ * `traitCount` is the number of `species_trait_coverage` rows for the species,
+ * maintained by the same `trait_records` insert trigger (RFC-69 R1, R2); its
+ * index carries `canonicalName` and `id` so the species list can sort on
+ * coverage and page with a keyset cursor.
+ * @rfc RFC-60 R1, R3, R6
+ * @rfc RFC-69 R1
+ */
 export const species = pgTable(
   'species',
   {
@@ -48,6 +56,7 @@ export const species = pgTable(
     canonicalName: text('canonical_name').notNull(),
     nameSource: text('name_source', { enum: NAME_SOURCES }).notNull(),
     active: boolean('active').notNull().default(true),
+    traitCount: integer('trait_count').notNull().default(0),
     createdAt: ts('created_at').notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => users.id),
   },
@@ -55,6 +64,7 @@ export const species = pgTable(
     uniqueIndex('species_canonical_name_idx').on(t.canonicalName),
     index('species_canonical_name_trgm_idx').using('gin', sql`${t.canonicalName} gin_trgm_ops`),
     index('species_genus_idx').on(t.genusId),
+    index('species_trait_count_idx').on(t.traitCount, t.canonicalName, t.id),
     check('species_name_source_check', sql`${t.nameSource} in ('wcvp', 'gbif', 'original')`),
   ],
 );

@@ -660,3 +660,25 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
     expect(await screen.findByText('Plots: Plot A, Plot B')).toBeInTheDocument();
   });
 });
+
+describe('RFC-13 R3 SpeciesPage breadcrumb', () => {
+  it('registers the canonical name, in italics, as the last crumb of Data › Species', async () => {
+    await openPage();
+    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    const last = within(trail).getByText(SPECIES.canonicalName);
+    expect(last.tagName).toBe('EM');
+    expect(last.closest('[aria-current="page"]')).not.toBeNull();
+    expect(within(trail).getByRole('link', { name: 'Species' })).toHaveAttribute(
+      'href',
+      '/app/species',
+    );
+    expect(trail).toHaveTextContent('Data');
+  });
+
+  it('registers nothing while the species is still loading', async () => {
+    dataset.fetchSpecies.mockReturnValue(new Promise(() => {}));
+    renderAt(`/app/species/${SPECIES.id}`);
+    const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(trail).getByText('Species')).toHaveAttribute('aria-current', 'page');
+  });
+});

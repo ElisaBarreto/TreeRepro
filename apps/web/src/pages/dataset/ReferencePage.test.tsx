@@ -337,3 +337,19 @@ describe('RFC-61 R6 ReferencePage editor', () => {
     expect(await screen.findByText('New title')).toBeInTheDocument();
   });
 });
+
+describe('RFC-13 R3 ReferencePage breadcrumb', () => {
+  it('registers the reference label as the last crumb of Data › References', async () => {
+    await openPage();
+    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(trail).getByText(REFERENCE_DETAIL.citationKey)).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(within(trail).getByRole('link', { name: 'References' })).toHaveAttribute(
+      'href',
+      '/app/references',
+    );
+    expect(trail).toHaveTextContent('Data');
+  });
+});

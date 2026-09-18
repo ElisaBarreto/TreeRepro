@@ -10,8 +10,10 @@ import {
   recordSchema,
   referenceDetailSchema,
   referenceSchema,
+  SPECIES_SORTS,
   speciesListItemSchema,
   speciesTraitsSchema,
+  TRAIT_DATA_MODES,
 } from './dataset.ts';
 
 const uuid = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
@@ -231,11 +233,58 @@ describe('RFC-60 R6 species item carries active; status filter', () => {
       matchedName: null,
       unresolvedTaxon: false,
       active: true,
+      traitCount: 3,
+      traitRecordCount: null,
     };
     expect(speciesListItemSchema.safeParse({ ...ITEM, active: false }).success).toBe(true);
     const { active: _a, ...without } = { ...ITEM, active: true };
     expect(speciesListItemSchema.safeParse(without).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ status: 'inactive' }).success).toBe(true);
     expect(listSpeciesQuerySchema.safeParse({ status: 'x' }).success).toBe(false);
+  });
+});
+
+describe('RFC-60 R6 species trait filters on listSpeciesQuerySchema', () => {
+  it('accepts categoryKey, traitId, traitData, sort; traitData alone is accepted (the API decides what to do)', () => {
+    expect(
+      listSpeciesQuerySchema.safeParse({
+        categoryKey: 'leaf',
+        traitId: uuid,
+        traitData: 'with',
+        sort: 'completeness',
+      }).success,
+    ).toBe(true);
+    // No traitId and no categoryKey: the schema still accepts traitData, the API decides what to do.
+    expect(listSpeciesQuerySchema.safeParse({ traitData: 'missing' }).success).toBe(true);
+    expect(listSpeciesQuerySchema.safeParse({ sort: 'name' }).success).toBe(true);
+    expect(listSpeciesQuerySchema.safeParse({ sort: 'nope' }).success).toBe(false);
+    expect(listSpeciesQuerySchema.safeParse({ traitData: 'nope' }).success).toBe(false);
+    expect(listSpeciesQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);
+    expect(TRAIT_DATA_MODES).toEqual(['with', 'missing']);
+    expect(SPECIES_SORTS).toEqual(['name', 'completeness']);
+  });
+});
+
+describe('RFC-60 R6, RFC-69 R1 speciesListItemSchema trait coverage fields', () => {
+  it('requires traitCount and nullable traitRecordCount', () => {
+    const ITEM = {
+      id: uuid,
+      canonicalName: 'Adenanthera pavonina',
+      nameSource: 'wcvp',
+      active: true,
+      genus: null,
+      family: null,
+      matchedName: null,
+      unresolvedTaxon: false,
+      traitCount: 3,
+      traitRecordCount: null,
+    };
+    expect(speciesListItemSchema.parse(ITEM)).toEqual(ITEM);
+    expect(speciesListItemSchema.safeParse({ ...ITEM, traitRecordCount: 5 }).success).toBe(true);
+    expect(speciesListItemSchema.safeParse({ ...ITEM, traitRecordCount: -1 }).success).toBe(false);
+    const { traitCount: _tc, ...withoutTraitCount } = ITEM;
+    expect(speciesListItemSchema.safeParse(withoutTraitCount).success).toBe(false);
+    const { traitRecordCount: _trc, ...withoutTraitRecordCount } = ITEM;
+    expect(speciesListItemSchema.safeParse(withoutTraitRecordCount).success).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 export * from './audit-log.ts';
 export * from './auth-tokens.ts';
+export * from './coverage.ts';
 export * from './curation.ts';
 export * from './dictionary.ts';
 export * from './imports.ts';

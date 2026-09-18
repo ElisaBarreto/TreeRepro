@@ -4,18 +4,29 @@ import type {
   Species,
   SpeciesListItem,
   SpeciesScope,
+  SpeciesSort,
   SpeciesStatus,
   TaxonRef,
+  TraitDataMode,
 } from '@treerepro/contracts';
 import { and, asc, count, countDistinct, eq, ilike, inArray, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { speciesVisible, type Visibility } from '../access/visibility.ts';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { speciesTraitCoverage } from '../db/schema/coverage.ts';
+import { traitCategories, traits } from '../db/schema/dictionary.ts';
 import { plotSpecies, plots } from '../db/schema/plots.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
-import { decodeCompositeCursor, encodeCompositeCursor, isUuid, pageOf } from '../http/cursor.ts';
+import {
+  decodeCompositeCursor,
+  encodeCompositeCursor,
+  isDigits,
+  isUuid,
+  pageOf,
+} from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
+import { requireTrait } from './dictionary.ts';
 
 /** Escapes `%`, `_` and `\` so a search term matches literally. @rfc RFC-60 R6 */
 export function likePattern(term: string, mode: 'substring' | 'prefix'): string {
@@ -29,6 +40,26 @@ function afterNameCursor(cursor: string, nameCol: AnyPgColumn, idCol: AnyPgColum
   return sql`(${nameCol}, ${idCol}) > (${name}, ${id}::uuid)`;
 }
 
+// A `trait_count` in a cursor: digits that still fit the `int` the predicate
+// below casts to, so a tampered token answers 400 instead of an out-of-range
+// driver error.
+const isTraitCount = (part: string) => isDigits(part) && Number(part) <= 2_147_483_647;
+
+/**
+ * Ordering by completeness (`trait_count`, `canonical_name`, `id`, all
+ * ascending — the `species_trait_count_idx` keyset) needs all three in the
+ * cursor.
+ * @rfc RFC-60 R6
+ */
+function afterCompletenessCursor(cursor: string): SQL {
+  const [traitCount, name, id] = decodeCompositeCursor(cursor, 3, [
+    isTraitCount,
+    () => true,
+    isUuid,
+  ]) as [string, string, string];
+  return sql`(${species.traitCount}, ${species.canonicalName}, ${species.id}) > (${Number(traitCount)}::int, ${name}, ${id}::uuid)`;
+}
+
 interface SpeciesJoinedRow {
   id: string;
   canonicalName: string;
@@ -39,6 +70,8 @@ interface SpeciesJoinedRow {
   familyId: string | null;
   familyName: string | null;
   matchedName: string | null;
+  traitCount: number;
+  traitRecordCount?: number | null;
 }
 
 function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
@@ -51,6 +84,8 @@ function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
     family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
     matchedName: r.matchedName ?? null,
     unresolvedTaxon: r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null,
+    traitCount: r.traitCount,
+    traitRecordCount: r.traitRecordCount ?? null,
   };
 }
 
@@ -66,8 +101,11 @@ const speciesColumns = {
 };
 
 /**
+ * `traitData` without `traitId` or `categoryKey` is ignored: the spec names no
+ * error for it, and the filter it would apply is undefined.
  * @rfc RFC-60 R3, R4, R6
  * @rfc RFC-33 R2, R3
+ * @rfc RFC-69 R4
  */
 export async function searchSpecies(
   db: DbExecutor,
@@ -83,6 +121,10 @@ export async function searchSpecies(
     scope?: SpeciesScope;
     plotId?: string;
     viewerPlotIds?: string[];
+    categoryKey?: string;
+    traitId?: string;
+    traitData?: TraitDataMode;
+    sort?: SpeciesSort;
   },
 ): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
   const conditions: SQL[] = [speciesVisible(visibility)];
@@ -152,22 +194,79 @@ export async function searchSpecies(
       sql`(${species.nameSource} <> 'wcvp' or ${species.genusId} is null or ${genera.familyId} is null)`,
     );
   }
-  if (input.cursor)
-    conditions.push(afterNameCursor(input.cursor, species.canonicalName, species.id));
+
+  // RFC-69 R4: `species_trait_coverage` has no flags of its own, so the trait
+  // side of visibility is the join on `traits`; the species side is already in
+  // `conditions`.
+  const coverageExists = (traitFilter: SQL) =>
+    sql`exists (select 1 from ${speciesTraitCoverage} c join ${traits} t on t.id = c.trait_id
+      where c.species_id = ${species.id} and ${traitFilter} and ${traitVisible(visibility, sql`t.active`)})`;
+  if (input.traitId) {
+    const trait = await requireTrait(db, visibility, input.traitId);
+    if (input.categoryKey && trait.categoryKey !== input.categoryKey) {
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'categoryKey', message: 'Trait is not in this category' },
+      ]);
+    }
+    const e = coverageExists(sql`c.trait_id = ${input.traitId}::uuid`);
+    conditions.push(input.traitData === 'missing' ? sql`not ${e}` : e);
+  } else if (input.categoryKey) {
+    const [category] = await db
+      .select({ key: traitCategories.key })
+      .from(traitCategories)
+      .where(eq(traitCategories.key, input.categoryKey))
+      .limit(1);
+    if (!category) {
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'categoryKey', message: 'Unknown trait category' },
+      ]);
+    }
+    const e = coverageExists(sql`t.category_key = ${input.categoryKey}`);
+    conditions.push(input.traitData === 'missing' ? sql`not ${e}` : e);
+  }
+
+  const sort: SpeciesSort = input.sort ?? 'name';
+  if (input.cursor) {
+    conditions.push(
+      sort === 'completeness'
+        ? afterCompletenessCursor(input.cursor)
+        : afterNameCursor(input.cursor, species.canonicalName, species.id),
+    );
+  }
+  // `null` unless a trait was named; the coverage row's `record_count`
+  // otherwise, and 0 in missing mode — where no row exists by construction.
+  const traitRecordCount = input.traitId
+    ? sql<
+        number | null
+      >`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${input.traitId}::uuid), 0)`
+    : sql<number | null>`null::int`;
   const matchedName = pattern
     ? sql<string | null>`case when ${species.canonicalName} ilike ${pattern} then null
         else (select sn.name from ${speciesNames} sn where sn.species_id = ${species.id} and sn.name ilike ${pattern} order by sn.name limit 1) end`
     : sql<string | null>`null`;
   const rows = await db
-    .select({ ...speciesColumns, matchedName: matchedName.as('matched_name') })
+    .select({
+      ...speciesColumns,
+      // RFC-69 R1's maintained counter: the list's coarse coverage guide, and
+      // the completeness keyset's leading column.
+      traitCount: species.traitCount,
+      matchedName: matchedName.as('matched_name'),
+      traitRecordCount: traitRecordCount.as('trait_record_count'),
+    })
     .from(species)
     .leftJoin(genera, eq(genera.id, species.genusId))
     .leftJoin(families, eq(families.id, genera.familyId))
     .where(and(...conditions))
-    .orderBy(asc(species.canonicalName), asc(species.id))
+    .orderBy(
+      ...(sort === 'completeness'
+        ? [asc(species.traitCount), asc(species.canonicalName), asc(species.id)]
+        : [asc(species.canonicalName), asc(species.id)]),
+    )
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    encodeCompositeCursor([r.canonicalName, r.id]),
+    sort === 'completeness'
+      ? encodeCompositeCursor([String(r.traitCount), r.canonicalName, r.id])
+      : encodeCompositeCursor([r.canonicalName, r.id]),
   );
   return { data: page.map(toListItem), nextCursor };
 }
@@ -223,8 +322,22 @@ export async function getSpecies(
       .where(eq(traitRecords.speciesId, id)),
     speciesPlotsQuery,
   ]);
+  // `traitRecordCount` answers "records for the one filtered trait" and the
+  // detail route takes no trait, so the contract omits it from `speciesSchema`;
+  // dropped here so the body carries exactly the contract's keys.
+  // R7's `traitCount` is counted live from the records this same read already
+  // aggregates, rather than read from `species.trait_count` (R6's maintained
+  // guide): the two are meant to agree, and the page that shows `recordCount`
+  // counts the traits behind it itself. A test compares the live count with
+  // the column on rows it has just created, which pins the trigger's
+  // arithmetic; nothing detects drift on a row that was written earlier.
+  const { traitRecordCount: _listOnly, ...listItem } = toListItem({
+    ...row,
+    matchedName: null,
+    traitCount: counts?.traitCount ?? 0,
+  });
   return {
-    ...toListItem({ ...row, matchedName: null }),
+    ...listItem,
     plots: speciesPlots,
     names: names.map((n) => ({
       name: n.name,
@@ -232,7 +345,6 @@ export async function getSpecies(
       gbifUsageKey: n.gbifUsageKey,
     })),
     recordCount: counts?.recordCount ?? 0,
-    traitCount: counts?.traitCount ?? 0,
   };
 }
 
