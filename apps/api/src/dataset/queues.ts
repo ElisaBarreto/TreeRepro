@@ -309,11 +309,21 @@ export async function countDisputed(db: DbExecutor, visibility: Visibility): Pro
 
 /**
  * How many contests are open, for the dashboard's `queues.contested`
- * (RFC-72 R1): records with `intent = 'contest'` whose responded record is not
- * withdrawn and whose species and trait carry no accepted decision newer than
- * the contest. It counts contest *records*, so a record contested twice counts
- * twice while the disputed queue lists it once; the two predicates it shares
- * with `disputedQuery` keep the two in step on everything else.
+ * (RFC-72 R1, `docs/specs/2026-09-17-workspace-design.md` §4 R1): records with
+ * `intent = 'contest'` whose responded record is not withdrawn and whose
+ * species and trait carry no accepted decision newer than the contest.
+ *
+ * **This number and the `?intent=contest` queue it links to may legitimately
+ * differ, and neither is wrong.** This counts contest *records*; that queue
+ * lists their *targets* (RFC-65 R10), so a record contested twice is two
+ * contests and one queue row. A contest withdrawn while another of the same
+ * actor still stands also keeps counting here, because the rule conditions on
+ * the responded record, while the queue drops a target once the last contest
+ * against it is withdrawn and its generated dispute turns neutral (RFC-70 R5).
+ * Do not "reconcile" the two by narrowing this predicate: the rule is the
+ * specification, and the tile would then report something it does not name.
+ * The two predicates shared with `disputedQuery` keep them in step on
+ * everything the rule does hold in common.
  * @rfc RFC-65 R10
  * @rfc RFC-72 R1
  * @rfc RFC-33 R2, R3

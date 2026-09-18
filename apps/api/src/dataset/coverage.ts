@@ -42,9 +42,15 @@ interface TotalsRow {
  * holds only the viewer class and a plot-scoped number under it would be read
  * back by the wrong viewer.
  *
- * Plan 11c generalises this into a filtered `coverageMetrics`: the filters
- * (family, category, plot) become further conjuncts of the two predicates
- * below, and the per-category and per-trait breakdowns group the same joins.
+ * It is exported, and not folded into `coverageTotals`, because the cached
+ * form writes one fixed Redis key per viewer class: integration tests run in
+ * parallel against a single Redis, so a test reading the numbers through the
+ * cache would race every other suite for that key and assert on whichever
+ * caller happened to compute the entry. Callers in the application read the
+ * cached form. That this is also where plan 11c hangs its filters is a bonus,
+ * not the reason: those filters (family, category, plot) become further
+ * conjuncts of the two predicates below, and the per-category and per-trait
+ * breakdowns group the same joins.
  * @rfc RFC-69 R5
  * @rfc RFC-33 R2
  */
