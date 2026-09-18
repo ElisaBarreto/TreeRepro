@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import type { SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contracts';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { EXPORT_ACCEPTED_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
@@ -78,13 +78,15 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
   };
 }
 
-// Everything the URL carries except the name. The name is typed a letter at
-// a time and pushed on every keystroke, so a URL that differs only in `q` is
-// this page's own echo and must not reset the form under the typist's
-// fingers; a difference anywhere else came from outside (a sidebar link, the
-// back button, a pasted link) and does reset it.
-function filtersOf(value: SpeciesSearchValue): string {
+// Everything the URL carries, in one comparable string: what the page last
+// put in the address bar, and what it finds there on the next render. The
+// name is part of it — the URL only ever holds a settled name (see the push
+// effect below), so an incoming search that differs in `q` alone is an
+// outside change (the sidebar's Species entry clears the whole search, the
+// back button, a pasted link) and the form follows it, name included.
+function searchKey(value: SpeciesSearchValue): string {
   return JSON.stringify([
+    value.q.trim() || null,
     value.familyId ?? null,
     value.genusId ?? null,
     value.unresolved,
@@ -103,9 +105,14 @@ function filtersOf(value: SpeciesSearchValue): string {
  * name debounced, narrows it and starts over at page 1. A name shorter than
  * the API's minimum of two letters (RFC-60 R6) is not sent. The whole form
  * lives in the URL (RFC-60 R6 amendment): `search` seeds it and every change
- * is pushed back with `replace`, so `/app/species?traitId=…&traitData=missing`
+ * is written back with `replace`, so `/app/species?traitId=…&traitData=missing`
  * from the trait page or the dashboard opens the list pre-filtered and the
- * address bar always mirrors the form. A change of any filter changes the
+ * address bar mirrors the form — the name on the same debounce boundary the
+ * search waits for, everything else at once. The traffic is the other way
+ * too: a search that arrives from outside, whatever changed in it, is adopted
+ * wholesale, so the sidebar's Species entry — which carries no search and
+ * therefore clears the whole one — empties the name box as well as the
+ * filters. A change of any filter changes the
  * query key, which resets `usePagedList` to page 1 — that reset is what
  * keeps a cursor from crossing a change of order, where it would be invalid
  * (a `sort=name` cursor has two keys, a `sort=completeness` cursor three).
@@ -126,18 +133,33 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   const navigate = useNavigate();
   const incoming = toValue(search);
   const [form, setForm] = useState<SpeciesSearchValue>(incoming);
-  const [seenFilters, setSeenFilters] = useState(() => filtersOf(incoming));
-  const incomingFilters = filtersOf(incoming);
-  if (incomingFilters !== seenFilters) {
+  const [seenSearch, setSeenSearch] = useState(() => searchKey(incoming));
+  const incomingKey = searchKey(incoming);
+  if (incomingKey !== seenSearch) {
     // The URL moved under the page (a sidebar link, the back button): adopt
     // it during this render rather than in an effect, so the form and the
     // search that follows it never disagree for a frame (React's
     // adjust-state-during-render pattern).
-    setSeenFilters(incomingFilters);
+    setSeenSearch(incomingKey);
     setForm(incoming);
   }
   const [creating, setCreating] = useState(false);
   const term = useDebouncedValue(form.q.trim(), 300);
+  // The address bar is written once the name has stopped changing, on the
+  // same boundary the search itself waits for — one write per settled name
+  // instead of one per keystroke. `settled` is what keeps a name the form has
+  // already moved past out of the URL: while the debounce is catching up, the
+  // page writes nothing at all, so it can neither put a stale name in the
+  // address bar nor push one back over a search just adopted from outside.
+  const settled = term === form.q.trim();
+  const formKey = searchKey(form);
+  useEffect(() => {
+    if (!settled || formKey === seenSearch) return;
+    // Claim what is being written as already seen, so its own echo is not
+    // mistaken for an outside change.
+    setSeenSearch(formKey);
+    void navigate({ to: '/app/species', search: toSearch(form), replace: true });
+  }, [settled, formKey, seenSearch, form, navigate]);
   const params = {
     q: term.length >= 2 ? term : undefined,
     familyId: form.familyId,
@@ -154,17 +176,6 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   const list = usePagedList(datasetKeys.species(params), (cursor, limit) =>
     searchSpecies({ ...params, cursor, limit }),
   );
-
-  function update(next: SpeciesSearchValue) {
-    setForm(next);
-    // Claim the filters being pushed as already seen, so the URL echo of
-    // this very change is not mistaken for an outside one. Without it the
-    // echo would adopt a search built a moment ago — and a letter typed
-    // between the push and the echo would be overwritten by the older `q`
-    // that push carried.
-    setSeenFilters(filtersOf(next));
-    void navigate({ to: '/app/species', search: toSearch(next), replace: true });
-  }
 
   return (
     <>
@@ -192,7 +203,7 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
         }
       />
       <div className="flex flex-col gap-6">
-        <SpeciesSearchForm value={form} onChange={update} />
+        <SpeciesSearchForm value={form} onChange={setForm} />
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading ? <p className="text-body text-mist-500">Searching…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (

@@ -525,6 +525,51 @@ describe('RFC-60 R6 SpeciesSearchPage trait filters, order and the URL', () => {
     expect(screen.queryByRole('columnheader', { name: 'Records' })).not.toBeInTheDocument();
   });
 
+  it('an external navigation that drops q clears the name from the form as well', async () => {
+    // The sidebar's Species entry carries no search at all, so clicking it
+    // from a searched list replaces the whole search. Nothing but `q`
+    // changes, so this is the one navigation the form used to ignore.
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = await openPage();
+    await userEvent.type(screen.getByLabelText('Search species'), 'ad');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(expect.objectContaining({ q: 'ad' })),
+    );
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'ad' })),
+    );
+
+    await userEvent.click(screen.getByRole('link', { name: 'Species' }));
+    await waitFor(() => expect(screen.getByLabelText('Search species')).toHaveValue(''));
+    expect(router.state.location.search).toEqual(expect.not.objectContaining({ q: 'ad' }));
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ q: undefined }),
+      ),
+    );
+  });
+
+  it('writes the name to the URL once it settles, not once per keystroke', async () => {
+    // One URL write per settled name is what lets the form adopt an incoming
+    // search wholesale: the address bar never holds a name the box has
+    // already moved past, so no echo can arrive carrying a stale one.
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = await openPage();
+    const box = screen.getByLabelText('Search species');
+
+    await userEvent.type(box, 'a');
+    expect(box).toHaveValue('a');
+    expect(router.state.location.search).toEqual(expect.not.objectContaining({ q: 'a' }));
+
+    await userEvent.type(box, 'd');
+    expect(box).toHaveValue('ad');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(expect.objectContaining({ q: 'ad' })),
+    );
+    // The letters survived the URL catching up with them.
+    expect(box).toHaveValue('ad');
+  });
+
   it('drops unknown and malformed search params', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     renderAt('/app/species?traitId=not-a-uuid&traitData=perhaps&sort=random&categoryKey=&bogus=1');

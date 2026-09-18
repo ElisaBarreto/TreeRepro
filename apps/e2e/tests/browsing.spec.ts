@@ -148,6 +148,12 @@ test.describe('RFC-60 R6 / RFC-69 species trait filters and breadcrumb (plan 10a
       await page.goto(deepLink);
       await page.getByLabel('Search species').fill(prefix);
       await page.getByRole('radio', { name: 'Has data' }).check();
+      // The page writes the whole search to the address bar on the same
+      // 300ms debounce the name waits for, so a filter changed just after a
+      // `fill` reaches the URL late by up to that much: every URL-param
+      // assertion in this file has to stay an `expect.poll` and must not
+      // become a bare `expect`, which would read the address bar before the
+      // page has finished writing it.
       await expect.poll(() => param(page, 'traitData')).toBe('with');
       await expect(page.getByRole('link', { name: coveredName, exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: missingName, exact: true })).toHaveCount(0);
