@@ -145,7 +145,11 @@ describe('RFC-42 R2, RFC-69 R3 SECURITY DEFINER functions pin search_path with p
     `);
     // The inventory is explicit so a new definer is added here on purpose, not
     // discovered: the loop below would pass vacuously on an empty result.
-    expect(rows.map((r) => r.name)).toEqual(['audit_log_purge', 'trait_records_reference_usage']);
+    expect(rows.map((r) => r.name)).toEqual([
+      'audit_log_purge',
+      'job_runs_purge',
+      'trait_records_reference_usage',
+    ]);
     for (const row of rows) {
       const config = row.config as string[] | null;
       const searchPath = config?.find((c) => c.startsWith('search_path='));
