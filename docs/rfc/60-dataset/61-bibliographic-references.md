@@ -35,4 +35,4 @@ None.
 - 2026-09-13 — R3 amended: a record superseding a pending record inherits the superseded record's references, possibly a secondary reference alone (RFC-65 R7, R9).
 - 2026-09-13 — R4 amended: `primaryCount` and `secondaryCount` are stored counters maintained by the `trait_records` insert trigger, not aggregated per request (issue #47).
 - 2026-09-17 — R1, R4 amended; R7, R8 new (plan 09a).
-- 2026-09-17 — R1, R4, R6, R8 amended, R9 added: `short_citation`, `full_citation`, `q` over `short_citation`, `traitId`/`categoryKey` filters, the DOI-derivation rule, `reference_traits` — migration `references_enriched` (RFC-68 R13; plan 10d).
+- 2026-09-18 — R1, R4, R6, R8 amended, R9 added: `short_citation`, `full_citation`, `q` over `short_citation`, `traitId`/`categoryKey` filters, the DOI-derivation rule, `reference_traits` — migration `references_enriched` (RFC-68 R13; plan 10d).

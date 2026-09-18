@@ -37,5 +37,5 @@ None.
 - 2026-09-17 — accepted.
 - 2026-09-17 — R4: repeated keys (CodeRabbit).
 - 2026-09-17 — R9–R11: kinds plots, plot_species, user_plots (RFC-67, plan 08b).
-- 2026-09-17 — R12: kind `synonyms` (RFC-60 R4, R6; plan 10b).
-- 2026-09-17 — R13: kind `references` (RFC-61 R9; plan 10d).
+- 2026-09-18 — R12: kind `synonyms` (RFC-60 R4, R6; plan 10b).
+- 2026-09-18 — R13: kind `references` (RFC-61 R9; plan 10d).
