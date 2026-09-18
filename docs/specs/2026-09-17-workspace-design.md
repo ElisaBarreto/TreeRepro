@@ -16,7 +16,7 @@ The workspace landing page still says "Research data arrives in the next release
 | Dashboard | One route `GET /api/me/dashboard` composes the sections the viewer is entitled to; each section is a small query or a cached number. Contributor sections need plots (a contributor without plots gets global hints instead of scope counts). |
 | Dataset totals | `species`, `references`, `records` counts cached in Redis for one hour (`stats:dataset`); `records` is `sum(record_count)` over the coverage table (monotonic, so a stale hour never shows a smaller number than before). |
 | Awaiting validation | Records of the viewer's plot species with no `confirm` annotation from anyone and no `withdraw`, on visible active traits. Computed from the plot species (hundreds) through `trait_records_species_trait_idx`; capped list of 20, count exact; the whole contributor section is cached 5 minutes per user (`dashboard:<userId>`) and the key is deleted by the record-write paths of the same user (`createRecords`, `annotateRecord`), so a validation drops the count at once. |
-| Missing cells | Plot species × visible active traits minus coverage rows; computed per request (plot species × ~100 traits). |
+| Missing cells | Plot species × visible active traits minus coverage rows; computed when the `contributor` section's cache entry is populated, not per request — the same five-minute cache as the rest of that section (§4 R1). |
 | Coverage metrics | `GET /api/coverage` over the coverage table with family / category / plot filters; Redis cache 10 minutes per filter combination; permission `coverage.read` (manager+). |
 | Description text | Fixed copy in the web app with live counts substituted; contact e-mail from the copy (public project contact, not a user's PII). |
 
