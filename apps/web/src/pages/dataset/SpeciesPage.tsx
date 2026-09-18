@@ -1,10 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Species, TraitRef } from '@treerepro/contracts';
 import { type ReactNode, useState } from 'react';
-import { datasetKeys, fetchSpecies, fetchSpeciesTraits } from '../../api/dataset.ts';
+import {
+  datasetKeys,
+  fetchDictionary,
+  fetchSpecies,
+  fetchSpeciesTraits,
+} from '../../api/dataset.ts';
 import { AddNameDialog } from '../../components/catalog/AddNameDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
 import { AddEntriesDialog } from '../../components/curation/AddEntriesDialog.tsx';
+import { EmptyTraitCard } from '../../components/dataset/EmptyTraitCard.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
@@ -23,7 +29,17 @@ function taxonomyLine(species: Species): string {
     .join(' › ');
 }
 
-function SpeciesHeader({ species, actions }: { species: Species; actions?: ReactNode }) {
+function SpeciesHeader({
+  species,
+  missing,
+  onMissingChange,
+  actions,
+}: {
+  species: Species;
+  missing: boolean;
+  onMissingChange: (missing: boolean) => void;
+  actions?: ReactNode;
+}) {
   const me = useMe();
   const canManagePlots = hasPermission(me, 'plots.manage');
   const names = species.names.map((n) => n.name);
@@ -56,7 +72,20 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
           </span>
         </>
       }
-      actions={actions}
+      actions={
+        <>
+          <label className="flex h-11 items-center gap-2.5 text-body text-canopy-900">
+            <input
+              type="checkbox"
+              className="size-5 accent-canopy-700"
+              checked={missing}
+              onChange={(event) => onMissingChange(event.target.checked)}
+            />
+            Show traits with no data
+          </label>
+          {actions}
+        </>
+      }
     />
   );
 }
@@ -78,15 +107,34 @@ function SpeciesHeader({ species, actions }: { species: Species; actions?: React
  * species" and "Add name" in the header open the species editor and the
  * alternative-name dialog (RFC-60 R9); their write invalidates the species
  * detail, so the header re-renders from the refetch. An inactive species is
- * flagged after the unresolved-taxon badge (RFC-33 R7).
+ * flagged after the unresolved-taxon badge (RFC-33 R7). The header's "Show
+ * traits with no data" checkbox is owned by the route's `missing` search
+ * param (RFC-70 R7): checking it asks the traits query for
+ * `includeMissing`, which the query key carries too, so the two answers
+ * never share a cache entry. A trait the summary reports with no records
+ * (`recordCount === 0`, only possible with the flag on) renders as an
+ * `EmptyTraitCard` instead of `TraitCard` — nothing to open, no panel — with
+ * "Add the first entry" wired to the same add-entries dialog as a card's own
+ * button. The dictionary loads alongside the traits, purely for the `?`
+ * descriptions the cards show (RFC-13 R11); its own loading or error state
+ * blocks nothing, a card with no description just shows none.
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-60 R7, R9
  * @rfc RFC-33 R7
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1, R6
- * @rfc RFC-70 R1, R3
+ * @rfc RFC-70 R1, R3, R7
+ * @rfc RFC-13 R11
  */
-export function SpeciesPage({ id }: { id: string }) {
+export function SpeciesPage({
+  id,
+  missing,
+  onMissingChange,
+}: {
+  id: string;
+  missing: boolean;
+  onMissingChange: (missing: boolean) => void;
+}) {
   const me = useMe();
   const canAdd = hasPermission(me, 'records.create');
   const canManageTaxa = hasPermission(me, 'taxa.manage');
@@ -95,9 +143,10 @@ export function SpeciesPage({ id }: { id: string }) {
     queryFn: () => fetchSpecies(id),
   });
   const traits = useQuery({
-    queryKey: datasetKeys.speciesTraits(id),
-    queryFn: () => fetchSpeciesTraits(id),
+    queryKey: datasetKeys.speciesTraits(id, missing),
+    queryFn: () => fetchSpeciesTraits(id, { includeMissing: missing }),
   });
+  const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
   const [openTraitId, setOpenTraitId] = useState<string | null>(null);
   const openTrait =
     openTraitId === null
@@ -117,6 +166,8 @@ export function SpeciesPage({ id }: { id: string }) {
       {species.data ? (
         <SpeciesHeader
           species={species.data}
+          missing={missing}
+          onMissingChange={onMissingChange}
           actions={
             canAdd || canManageTaxa ? (
               <>
@@ -157,14 +208,24 @@ export function SpeciesPage({ id }: { id: string }) {
                 {category.category.label}
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {category.traits.map((summary) => (
-                  <TraitCard
-                    key={summary.trait.id}
-                    summary={summary}
-                    onOpen={() => setOpenTraitId(summary.trait.id)}
-                    onAdd={canAdd ? () => setAdding({ trait: summary.trait }) : undefined}
-                  />
-                ))}
+                {category.traits.map((summary) =>
+                  summary.recordCount === 0 ? (
+                    <EmptyTraitCard
+                      key={summary.trait.id}
+                      summary={summary}
+                      dictionary={dictionary.data}
+                      onAdd={canAdd ? () => setAdding({ trait: summary.trait }) : undefined}
+                    />
+                  ) : (
+                    <TraitCard
+                      key={summary.trait.id}
+                      summary={summary}
+                      dictionary={dictionary.data}
+                      onOpen={() => setOpenTraitId(summary.trait.id)}
+                      onAdd={canAdd ? () => setAdding({ trait: summary.trait }) : undefined}
+                    />
+                  ),
+                )}
               </div>
             </section>
           ))}

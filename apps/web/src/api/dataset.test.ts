@@ -7,6 +7,7 @@ import {
   fetchImports,
   fetchRecords,
   fetchSpecies,
+  fetchSpeciesTraits,
   searchSpecies,
 } from './dataset.ts';
 
@@ -66,6 +67,22 @@ describe('RFC-60 R7 fetchSpecies', () => {
   });
 });
 
+describe('RFC-70 R7 fetchSpeciesTraits', () => {
+  it('leaves includeMissing off the query string by default and sends it as true when asked', async () => {
+    mockJson(200, { data: [] });
+    await fetchSpeciesTraits(SPECIES.id);
+    expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}/traits`);
+
+    mockJson(200, { data: [] });
+    await fetchSpeciesTraits(SPECIES.id, { includeMissing: true });
+    expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}/traits?includeMissing=true`);
+
+    mockJson(200, { data: [] });
+    await fetchSpeciesTraits(SPECIES.id, { includeMissing: false });
+    expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}/traits`);
+  });
+});
+
 describe('RFC-63 R9 fetchRecords', () => {
   it('builds the species + trait query', async () => {
     mockJson(200, { data: [], meta: { nextCursor: null } });
@@ -105,7 +122,8 @@ describe('RFC-60 R6 datasetKeys', () => {
   it('keys lists by their parameters and details by id', () => {
     expect(datasetKeys.species({ q: 'ad' })).toEqual(['species', { q: 'ad' }]);
     expect(datasetKeys.speciesDetail('x')).toEqual(['species', 'x']);
-    expect(datasetKeys.speciesTraits('x')).toEqual(['species', 'x', 'traits']);
+    expect(datasetKeys.speciesTraits('x', false)).toEqual(['species', 'x', 'traits', false]);
+    expect(datasetKeys.speciesTraits('x', true)).toEqual(['species', 'x', 'traits', true]);
     expect(datasetKeys.families).toEqual(['families']);
     expect(datasetKeys.importRejects('b')).toEqual(['imports', 'b', 'rejects']);
     expect(datasetKeys.imports({ kind: 'species_status' })).toEqual([

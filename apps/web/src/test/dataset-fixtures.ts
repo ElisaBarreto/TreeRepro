@@ -499,6 +499,51 @@ export const DICTIONARY_SEXUAL_SYSTEM: TraitRef = {
   unit: null,
 };
 
+/** The dictionary's seed_mass trait as a `TraitRef` (its id differs from `SEED_MASS`, which the summaries use). @rfc RFC-62 R5 */
+export const DICTIONARY_SEED_MASS: TraitRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e02',
+  key: 'seed_mass',
+  valueType: 'quantitative',
+  unit: 'mg',
+};
+
+/**
+ * A categorical trait `includeMissing` adds: no record at all, so
+ * `levels: []` — never `null`, which stays reserved for a quantitative
+ * trait, whatever its record count.
+ * @rfc RFC-70 R7
+ */
+export const SEXUAL_SYSTEM_MISSING_SUMMARY: TraitSummary = {
+  trait: DICTIONARY_SEXUAL_SYSTEM,
+  recordCount: 0,
+  harmonisationCounts: NO_PENDING,
+  levels: [],
+  numeric: null,
+  accepted: null,
+};
+
+/** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
+export const SEED_MASS_MISSING_SUMMARY: TraitSummary = {
+  trait: DICTIONARY_SEED_MASS,
+  recordCount: 0,
+  harmonisationCounts: NO_PENDING,
+  levels: null,
+  numeric: null,
+  accepted: null,
+};
+
+/** `SPECIES_TRAITS` with `includeMissing=true`'s zero-count traits added. @rfc RFC-70 R7 */
+export const SPECIES_TRAITS_WITH_MISSING: SpeciesTraits = [
+  {
+    category: { key: 'sexual_system', label: 'Sexual system' },
+    traits: [SEXUAL_SYSTEM_SUMMARY, SEXUAL_SYSTEM_MISSING_SUMMARY],
+  },
+  {
+    category: { key: 'pollination', label: 'Pollination' },
+    traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_MASS_MISSING_SUMMARY],
+  },
+];
+
 /** RECORD is the accepted value; one earlier decision was cleared. @rfc RFC-65 R11 */
 export const ACCEPTED_STATE: AcceptedState = {
   current: {

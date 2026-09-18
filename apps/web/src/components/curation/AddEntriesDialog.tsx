@@ -63,7 +63,11 @@ export interface AddEntriesDialogProps {
   /** The trait a card opened the dialog for; both selects are then fixed. */
   initialTrait?: TraitRef | null;
   onClose(): void;
-  /** The API's answer, once every stale query is invalidated. */
+  /**
+   * The API's answer, once every stale query is invalidated — only when
+   * `duplicates` is empty; a partly or entirely duplicate answer keeps the
+   * dialog open instead (`partial` below) and never calls this.
+   */
   onCreated(result: CreateRecordsResult): void;
   onOpenRecord(id: string): void;
 }
@@ -75,7 +79,9 @@ export interface AddEntriesDialogProps {
  * dictionary's description — the value the trait's type takes, and where the
  * claim comes from. Changing the category drops the trait and the value with
  * it: they belonged to the old category. Opened from a trait card, both are
- * fixed and read as one line instead.
+ * fixed and read as one line instead, and the title names the trait — the
+ * constant title asks the contributor to choose one, which a fixed trait
+ * would turn into a contradiction.
  *
  * The API creates one record per source (RFC-70 R3), so an answer is not
  * always plainly a success: `duplicates` names the claims that already
@@ -118,6 +124,10 @@ export function AddEntriesDialog({
   const valueType = trait?.valueType ?? initialTrait?.valueType;
   const unit = trait?.unit ?? initialTrait?.unit ?? null;
   const description = traitDescription(dictionary.data, traitId);
+  // The constant title only fits the header button's dialog, which asks the
+  // contributor to choose a trait; opened with one already fixed, the same
+  // words would read as a contradiction, so the title names it instead.
+  const title = initialTrait ? `Add entries for ${traitLabel(initialTrait)}` : TITLE;
 
   const save = useRecordWrite<CreateRecordBody, CreateRecordsResult>({
     write: createRecords,
@@ -154,16 +164,20 @@ export function AddEntriesDialog({
   const alertMessage =
     local.form ?? (save.isError ? contributionErrorMessage(save.error) : undefined);
 
+  // Clears only the messages this choice resolves: a fresh choice earns a
+  // fresh submit's worth of checks, not a wipe of every other field's error.
   function chooseCategory(key: string) {
     setCategoryKey(key);
     setTraitId('');
     setLevelId('');
     setNumeric('');
+    setLocal(({ categoryKey: _categoryKey, traitId: _traitId, ...rest }) => rest);
   }
   function chooseTrait(id: string) {
     setTraitId(id);
     setLevelId('');
     setNumeric('');
+    setLocal(({ traitId: _traitId, ...rest }) => rest);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -214,7 +228,7 @@ export function AddEntriesDialog({
   }
 
   return (
-    <Dialog open title={TITLE} onClose={onClose} closeDisabled={save.isPending}>
+    <Dialog open title={title} onClose={onClose} closeDisabled={save.isPending}>
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         {initialTrait ? (
           <div className="flex flex-col gap-1">

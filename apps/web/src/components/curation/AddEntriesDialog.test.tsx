@@ -111,9 +111,9 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(await within(dialog).findByRole('spinbutton', { name: /number/i })).toHaveValue(null);
   });
 
-  it('RFC-70 R1 fixes the trait when it was opened from a trait card, without the selects', async () => {
+  it('RFC-70 R1 fixes the trait when it was opened from a trait card, without the selects, and names it in the title', async () => {
     mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
-    const dialog = await screen.findByRole('dialog', { name: TITLE });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
     expect(within(dialog).queryByRole('combobox', { name: 'Broad trait category' })).toBeNull();
     expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).toBeNull();
     expect(
@@ -190,6 +190,26 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(curation.createRecords).not.toHaveBeenCalled();
   });
 
+  it('RFC-13 R6 asks for a number before sending a quantitative claim with none', async () => {
+    mount();
+    const dialog = await openWith('seed', SEED_MASS);
+    await userEvent.click(submit(dialog));
+    expect(within(dialog).getByText('Enter a number.')).toBeInTheDocument();
+    expect(curation.createRecords).not.toHaveBeenCalled();
+  });
+
+  it('RFC-70 R1 clears "Choose a trait." once a trait is chosen, before any submit', async () => {
+    mount();
+    const dialog = await screen.findByRole('dialog', { name: TITLE });
+    await within(dialog).findByRole('option', { name: 'Seed' });
+    await userEvent.selectOptions(categorySelect(dialog), 'reproductive_system');
+    await userEvent.click(submit(dialog));
+    expect(within(dialog).getByText('Choose a trait.')).toBeInTheDocument();
+    await userEvent.selectOptions(traitSelect(dialog), DICTIONARY_SEXUAL_SYSTEM.id);
+    expect(within(dialog).queryByText('Choose a trait.')).not.toBeInTheDocument();
+    expect(traitSelect(dialog)).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('RFC-80 R4 refuses to send while a DOI has not resolved', async () => {
     curation.resolveDoi.mockResolvedValue({ status: 'not_found', reference: null });
     mount();
@@ -233,6 +253,32 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(traitSelect(dialog)).toHaveAccessibleDescription(
       expect.stringContaining('Trait is inactive'),
     );
+  });
+
+  it('RFC-13 R6 shows a traitId API error under the fixed-trait paragraph, not a select', async () => {
+    curation.createRecords.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'traitId', message: 'Trait is inactive' },
+      ]),
+    );
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: 'Level' }),
+      DIOECIOUS,
+    );
+    expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
+    await userEvent.click(submit(dialog));
+    const message = await within(dialog).findByText('Trait is inactive');
+    expect(message.tagName).toBe('P');
+    expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
+  });
+
+  it('RFC-13 R6 hints that the dictionary failed to load, under the category field', async () => {
+    dataset.fetchDictionary.mockReset().mockRejectedValue(new Error('network down'));
+    mount();
+    const dialog = await screen.findByRole('dialog', { name: TITLE });
+    expect(await within(dialog).findByText('Could not load the dictionary.')).toBeInTheDocument();
   });
 
   it('RFC-70 R3 links to every existing record when the claim was a duplicate of all of them', async () => {

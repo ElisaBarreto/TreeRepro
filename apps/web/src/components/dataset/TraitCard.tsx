@@ -1,6 +1,8 @@
-import type { TraitSummary } from '@treerepro/contracts';
+import type { Dictionary, TraitSummary } from '@treerepro/contracts';
+import { traitDescription } from '../../lib/dictionary.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
-import { Badge, Button } from '../ui/index.ts';
+import { Badge, Button, HelpTip } from '../ui/index.ts';
+import { CardFrame } from './CardFrame.tsx';
 
 const MAX_BARS = 5;
 
@@ -30,23 +32,27 @@ function pendingCount(summary: TraitSummary): number {
 }
 
 /**
- * One trait of a species, as a button that opens its records, plus an
- * optional separate "Add value for <trait>" button (RFC-65 R1) — a sibling,
- * never nested inside the main button, named after the trait so the cards'
- * buttons read apart. Shows the summary the API computed
- * (RFC-63 R10): the top levels as bars scaled against the most frequent
- * one, or min · median · max for a measurement, how many records still
- * wait for harmonisation, and the accepted value. Only spans inside the
- * main button, so its content stays phrasing content.
+ * One trait of a species, as a button that opens its records, plus a `?`
+ * with the dictionary's description (RFC-13 R11) and an optional separate
+ * "Add value for <trait>" button (RFC-65 R1) — both siblings, never nested
+ * inside the main button, so a click on either never also opens the panel.
+ * Shows the summary the API computed (RFC-63 R10): the top levels as bars
+ * scaled against the most frequent one, or min · median · max for a
+ * measurement, how many records still wait for harmonisation, and the
+ * accepted value. Only spans inside the main button, so its content stays
+ * phrasing content.
+ * @rfc RFC-13 R11
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1
  */
 export function TraitCard({
   summary,
+  dictionary,
   onOpen,
   onAdd,
 }: {
   summary: TraitSummary;
+  dictionary?: Dictionary;
   onOpen: () => void;
   onAdd?: () => void;
 }) {
@@ -54,9 +60,11 @@ export function TraitCard({
   const pending = pendingCount(summary);
   const bars = levels?.slice(0, MAX_BARS) ?? [];
   const maxCount = Math.max(0, ...bars.map((level) => level.count));
+  const name = humaniseKey(trait.key);
+  const description = traitDescription(dictionary, trait.id);
 
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-canopy-700/15 bg-white p-5 shadow-[0_1px_2px_rgba(7,31,28,0.04)] transition-colors hover:border-canopy-600/50 hover:bg-mist-50/60">
+    <CardFrame>
       <button
         type="button"
         onClick={onOpen}
@@ -64,9 +72,7 @@ export function TraitCard({
       >
         <span className="flex w-full items-start justify-between gap-3">
           <span className="flex flex-col">
-            <span className="font-display text-card font-semibold text-canopy-950">
-              {humaniseKey(trait.key)}
-            </span>
+            <span className="font-display text-card font-semibold text-canopy-950">{name}</span>
             <span className="text-meta text-mist-500">
               {trait.unit ? `${trait.unit} · ` : ''}
               {recordCount} {recordCount === 1 ? 'record' : 'records'}
@@ -111,17 +117,20 @@ export function TraitCard({
           </span>
         ) : null}
       </button>
-      {onAdd ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          aria-label={`Add value for ${humaniseKey(trait.key)}`}
-          onClick={onAdd}
-          className="shrink-0 px-3"
-        >
-          +
-        </Button>
-      ) : null}
-    </div>
+      <span className="flex shrink-0 items-center gap-1">
+        {description ? <HelpTip label={`What does ${name} mean?`}>{description}</HelpTip> : null}
+        {onAdd ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            aria-label={`Add value for ${name}`}
+            onClick={onAdd}
+            className="shrink-0 px-3"
+          >
+            +
+          </Button>
+        ) : null}
+      </span>
+    </CardFrame>
   );
 }
