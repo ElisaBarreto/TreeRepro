@@ -52,6 +52,10 @@ export function speciesRoutes(ctx: AuthContext) {
           scope: q.scope,
           plotId: q.plotId,
           viewerPlotIds,
+          categoryKey: q.categoryKey,
+          traitId: q.traitId,
+          traitData: q.traitData,
+          sort: q.sort,
           cursor: q.cursor,
           limit: q.limit,
         });

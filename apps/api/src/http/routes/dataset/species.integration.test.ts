@@ -78,6 +78,71 @@ describe('RFC-60 R6-R8 species, families and genera routes', () => {
     expect((await tamperedCursor.json()).error.code).toBe('VALIDATION_FAILED');
   });
 
+  it('R6 trait filters, missing mode and the completeness order round-trip', async () => {
+    const cookie = await reader();
+    const k = tag();
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['alpha'] });
+    const withData = await createSpecies(t.db, { canonicalName: `Covroute${k} a` });
+    const without = await createSpecies(t.db, { canonicalName: `Covroute${k} b` });
+    await createRecord(t.db, {
+      speciesId: withData.id,
+      traitId: trait.id,
+      valueText: 'alpha',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const has = await call(t.app, 'GET', `/api/species?q=covroute${k}&traitId=${trait.id}`, {
+      cookie,
+    });
+    expect(has.status).toBe(200);
+    expect((await has.json()).data).toEqual([
+      expect.objectContaining({ id: withData.id, traitCount: 1, traitRecordCount: 1 }),
+    ]);
+    const missing = await call(
+      t.app,
+      'GET',
+      `/api/species?q=covroute${k}&traitId=${trait.id}&traitData=missing`,
+      { cookie },
+    );
+    expect((await missing.json()).data).toEqual([
+      expect.objectContaining({ id: without.id, traitCount: 0, traitRecordCount: 0 }),
+    ]);
+
+    const byCompleteness = await call(
+      t.app,
+      'GET',
+      `/api/species?q=covroute${k}&sort=completeness&limit=1`,
+      { cookie },
+    );
+    const firstPage = await byCompleteness.json();
+    expect(firstPage.data.map((s: { id: string }) => s.id)).toEqual([without.id]);
+    expect(firstPage.data[0].traitRecordCount).toBeNull();
+    const next = await call(
+      t.app,
+      'GET',
+      `/api/species?q=covroute${k}&sort=completeness&limit=1&cursor=${encodeURIComponent(firstPage.meta.nextCursor)}`,
+      { cookie },
+    );
+    expect((await next.json()).data.map((s: { id: string }) => s.id)).toEqual([withData.id]);
+
+    const unknownTrait = await call(
+      t.app,
+      'GET',
+      '/api/species?traitId=00000000-0000-7000-8000-000000000000',
+      { cookie },
+    );
+    expect(unknownTrait.status).toBe(404);
+    expect((await unknownTrait.json()).error.code).toBe('TRAIT_NOT_FOUND');
+    const unknownCategory = await call(t.app, 'GET', '/api/species?categoryKey=nope', { cookie });
+    expect(unknownCategory.status).toBe(400);
+    expect((await unknownCategory.json()).error.details[0].path).toBe('categoryKey');
+  });
+
   it('R7 detail answers the species or 404 SPECIES_NOT_FOUND', async () => {
     const cookie = await reader();
     const sp1 = await createSpecies(t.db, { nameSource: 'gbif' });

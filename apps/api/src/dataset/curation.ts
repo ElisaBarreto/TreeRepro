@@ -5,7 +5,6 @@ import type {
   RecordDetail,
   RecordIntent,
   RecordValue,
-  TraitValueType,
 } from '@treerepro/contracts';
 import { and, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import {
@@ -23,43 +22,17 @@ import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import { AppError } from '../http/errors.ts';
+import { requireTrait, type TraitBrief } from './dictionary.ts';
 import { isHarmonisableNumber } from './import.ts';
 import { getRecord, reviewStatusSql } from './records.ts';
 
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
 
-export interface TraitBrief {
-  id: string;
-  key: string;
-  valueType: TraitValueType;
-  unit: string | null;
-  active: boolean;
-}
-
-/**
- * @rfc RFC-65 R1
- * @rfc RFC-33 R2, R4
- */
-export async function requireTrait(
-  db: DbExecutor,
-  visibility: Visibility,
-  traitId: string,
-): Promise<TraitBrief> {
-  const [row] = await db
-    .select({
-      id: traits.id,
-      key: traits.key,
-      valueType: traits.valueType,
-      unit: traits.unit,
-      active: traits.active,
-    })
-    .from(traits)
-    .where(and(eq(traits.id, traitId), traitVisible(visibility)))
-    .limit(1);
-  if (!row) throw new AppError('TRAIT_NOT_FOUND', 'Trait not found');
-  return row;
-}
+// `requireTrait` and `TraitBrief` moved to `dictionary.ts` (an import cycle:
+// `catalog.ts` imports `taxa.ts`, which now needs `requireTrait`); they are
+// re-exported here so every existing caller keeps its import.
+export { requireTrait, type TraitBrief };
 
 /**
  * @rfc RFC-65 R1

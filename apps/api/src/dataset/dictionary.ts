@@ -1,8 +1,52 @@
-import type { Dictionary, Trait } from '@treerepro/contracts';
+import type { Dictionary, Trait, TraitValueType } from '@treerepro/contracts';
 import { and, asc, eq } from 'drizzle-orm';
 import { levelVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
+import { AppError } from '../http/errors.ts';
+
+/**
+ * The fields of a trait every caller needs before it may use it: enough to
+ * validate a value (RFC-65 R1) and to check a category filter (RFC-60 R6).
+ * @rfc RFC-65 R1
+ */
+export interface TraitBrief {
+  id: string;
+  key: string;
+  categoryKey: string;
+  valueType: TraitValueType;
+  unit: string | null;
+  active: boolean;
+}
+
+/**
+ * One visible trait, or 404. It lives here rather than in `curation.ts` so
+ * `taxa.ts` can use it: `catalog.ts` imports `getSpecies` from `taxa.ts`, so
+ * `taxa.ts` importing `curation.ts` would close an import cycle; this module
+ * imports neither. `curation.ts` re-exports it for its existing callers.
+ * @rfc RFC-65 R1
+ * @rfc RFC-33 R2, R4
+ */
+export async function requireTrait(
+  db: DbExecutor,
+  visibility: Visibility,
+  traitId: string,
+): Promise<TraitBrief> {
+  const [row] = await db
+    .select({
+      id: traits.id,
+      key: traits.key,
+      categoryKey: traits.categoryKey,
+      valueType: traits.valueType,
+      unit: traits.unit,
+      active: traits.active,
+    })
+    .from(traits)
+    .where(and(eq(traits.id, traitId), traitVisible(visibility)))
+    .limit(1);
+  if (!row) throw new AppError('TRAIT_NOT_FOUND', 'Trait not found');
+  return row;
+}
 
 /**
  * @rfc RFC-62 R5

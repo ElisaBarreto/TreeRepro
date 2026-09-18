@@ -8,10 +8,13 @@ import {
   createRecord,
   createReference,
   createSpecies,
+  createTrait,
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
+import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
 import { getSpecies, likePattern, listFamilies, listGenera, searchSpecies } from './taxa.ts';
 
@@ -257,5 +260,90 @@ describe('RFC-33 R2, R3 species visibility', () => {
         (g) => g.id,
       ),
     ).toContain(genus.id);
+  });
+});
+
+describe('RFC-60 R6 trait filters and completeness', () => {
+  const t = useTestDb();
+
+  it('filters with/missing by trait and by category; orders by completeness with a stable cursor', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const cat = `cat_${tag()}`;
+    await t.db.insert(traitCategories).values({ key: cat, label: 'Cat', sortOrder: 99 });
+    const tA = await createTrait(t.db, { categoryKey: cat });
+    const tB = await createTrait(t.db, { categoryKey: cat });
+    const prefix = `Cov ${tag()}`;
+    const s0 = await createSpecies(t.db, { canonicalName: `${prefix} zero` });
+    const s1 = await createSpecies(t.db, { canonicalName: `${prefix} one` });
+    const s2 = await createSpecies(t.db, { canonicalName: `${prefix} two` });
+    const rec = (sp: { id: string }, tr: typeof tA) =>
+      createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: tr.id,
+        valueText: 'alpha',
+        levelId: tr.levels[0]?.id,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+    await rec(s1, tA);
+    await rec(s2, tA);
+    await rec(s2, tB);
+    const ids = (r: { data: { id: string }[] }) => r.data.map((x) => x.id);
+    expect(
+      ids(await searchSpecies(t.db, UNRESTRICTED, { q: prefix, traitId: tA.id, limit: 10 })).sort(),
+    ).toEqual([s1.id, s2.id].sort());
+    expect(
+      ids(
+        await searchSpecies(t.db, UNRESTRICTED, {
+          q: prefix,
+          traitId: tA.id,
+          traitData: 'missing',
+          limit: 10,
+        }),
+      ),
+    ).toEqual([s0.id]);
+    expect(
+      ids(
+        await searchSpecies(t.db, UNRESTRICTED, {
+          q: prefix,
+          categoryKey: cat,
+          traitData: 'missing',
+          limit: 10,
+        }),
+      ),
+    ).toEqual([s0.id]);
+    const byCompleteness = await searchSpecies(t.db, UNRESTRICTED, {
+      q: prefix,
+      sort: 'completeness',
+      limit: 2,
+    });
+    expect(ids(byCompleteness)).toEqual([s0.id, s1.id]);
+    expect(byCompleteness.data[1]?.traitCount).toBe(1);
+    const next = await searchSpecies(t.db, UNRESTRICTED, {
+      q: prefix,
+      sort: 'completeness',
+      limit: 2,
+      cursor: byCompleteness.nextCursor ?? undefined,
+    });
+    expect(ids(next)).toEqual([s2.id]);
+    const withCount = await searchSpecies(t.db, UNRESTRICTED, {
+      q: prefix,
+      traitId: tA.id,
+      limit: 10,
+    });
+    expect(withCount.data.find((x) => x.id === s2.id)?.traitRecordCount).toBe(1);
+  });
+
+  it('an invisible trait id answers TRAIT_NOT_FOUND; a category mismatch answers 400', async () => {
+    const off = await createTrait(t.db, { active: false });
+    await expect(
+      searchSpecies(t.db, RESTRICTED, { traitId: off.id, limit: 10 }),
+    ).rejects.toMatchObject({ code: 'TRAIT_NOT_FOUND' });
+    const tr = await createTrait(t.db);
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, { traitId: tr.id, categoryKey: 'nope', limit: 10 }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 });
