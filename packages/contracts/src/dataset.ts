@@ -142,10 +142,13 @@ export const speciesNameSchema = z.strictObject({
 });
 
 /**
+ * `traitRecordCount` is omitted: it answers "how many records for the one
+ * filtered trait", which only makes sense on the list (RFC-60 R6); the
+ * detail route takes no `traitId` and keeps only `traitCount` (inherited).
  * @rfc RFC-60 R7
  * @rfc RFC-67 R8
  */
-export const speciesSchema = speciesListItemSchema.extend({
+export const speciesSchema = speciesListItemSchema.omit({ traitRecordCount: true }).extend({
   names: z.array(speciesNameSchema),
   plots: z.array(plotRefSchema),
   recordCount: z.number().int().nonnegative(),
