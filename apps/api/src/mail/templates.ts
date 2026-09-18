@@ -83,7 +83,10 @@ export function digestEmail(input: {
     text: [
       `Activity on TreeRepro from ${formatUtc(window.start)} to ${formatUtc(window.end)}.`,
       '',
-      `Records added: ${counts.records}`,
+      // Spelt out because a contest and a complement are themselves records and
+      // are counted on the first line too (R3); without this a reader adds the
+      // three lines up and gets more records than were created.
+      `Records added (contests and complements included): ${counts.records}`,
       `Contests: ${counts.contests}`,
       `Complements: ${counts.complements}`,
       `Validations: ${counts.validations}`,

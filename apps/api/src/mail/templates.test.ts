@@ -73,7 +73,7 @@ describe('RFC-74 R5 digestEmail', () => {
 
   it('carries every count of R3, the window activity and the current queue sizes apart', () => {
     const mail = digestEmail({ digest: digest(), appOrigin: APP_ORIGIN, date: '2026-09-17' });
-    expect(mail.text).toContain('Records added: 2');
+    expect(mail.text).toContain('Records added (contests and complements included): 2');
     expect(mail.text).toContain('Contests: 1');
     expect(mail.text).toContain('Complements: 1');
     expect(mail.text).toContain('Validations: 3');
@@ -121,8 +121,12 @@ describe('RFC-74 R5 digestEmail', () => {
       appOrigin: APP_ORIGIN,
       date: '2026-09-17',
     });
-    expect(mail.text).toContain('Contests');
-    expect(mail.text).toContain('Disputes');
-    expect(mail.text).toMatch(/None\./);
+    // Whole lines, not substrings: `Contests: 1` would satisfy a `toContain`
+    // and leave the heading itself unasserted.
+    const lines = mail.text.split('\n');
+    expect(lines).toContain('Contests');
+    expect(lines).toContain('Disputes');
+    expect(lines.filter((line) => line === 'None.')).toHaveLength(2);
+    expect(mail.text).not.toContain(`${APP_ORIGIN}/app/species/`);
   });
 });

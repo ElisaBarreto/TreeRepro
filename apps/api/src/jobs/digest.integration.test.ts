@@ -1,4 +1,4 @@
-import { TransactionRollbackError } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -11,8 +11,8 @@ import {
 import { useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { createRole, systemRoleId } from '../../test/helpers/roles.ts';
 import { createUser } from '../../test/helpers/users.ts';
-import type { Db, DbTransaction } from '../db/client.ts';
-import { computeDigest, type DigestWindow, digestRecipients } from './digest.ts';
+import type { DbTransaction } from '../db/client.ts';
+import { computeDigest, DIGEST_LIST_LIMIT, type DigestWindow, digestRecipients } from './digest.ts';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -40,6 +40,7 @@ const ANCHOR_DAYS = {
   exclusivityLate: 223,
   exclusivityEarly: 227,
   queues: 229,
+  lists: 233,
 } as const;
 
 const anchor = (daysAgo: number): Date => new Date(Date.now() - daysAgo * DAY);
@@ -51,30 +52,22 @@ const windowAround = (at: Date): DigestWindow => ({
 });
 
 /**
- * `withRollback`, but the transaction also holds one repeatable-read snapshot.
+ * Freezes the transaction's snapshot, and fails loudly if the driver ever
+ * stops honouring the request.
+ *
  * `pendingGroups` and `disputedNow` are current dataset-wide counts (RFC-65 R8,
  * R10) that no window can isolate, so the only honest assertion about them is a
  * before/after delta — and a delta is only comparable while a sibling suite
- * cannot commit between the two reads. Same technique as
- * `trait-page.integration.test.ts`.
+ * cannot commit between the two reads. Same guard, and the same shared
+ * `withRollback`, as `workspace/dashboard.integration.test.ts` and
+ * `dataset/coverage.integration.test.ts`.
  */
-async function inSnapshot<T>(db: Db, fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
-  let result: T | undefined;
-  let completed = false;
-  try {
-    await db.transaction(
-      async (tx) => {
-        result = await fn(tx);
-        completed = true;
-        tx.rollback();
-      },
-      { isolationLevel: 'repeatable read' },
-    );
-  } catch (error) {
-    if (!(error instanceof TransactionRollbackError)) throw error;
-  }
-  if (!completed) throw new Error('inSnapshot: callback did not complete');
-  return result as T;
+async function freezeSnapshot(tx: DbTransaction): Promise<void> {
+  await tx.execute(sql`set transaction isolation level repeatable read`);
+  const [isolation] = (await tx.execute(sql`show transaction_isolation`)) as unknown as [
+    { transaction_isolation: string } | undefined,
+  ];
+  expect(isolation?.transaction_isolation).toBe('repeatable read');
 }
 
 /** A species, a trait of its own with three levels, a reference and an import batch. */
@@ -226,6 +219,74 @@ describe('RFC-74 R3 computeDigest', () => {
     });
   });
 
+  it('lists the ten newest of each and leaves the eleventh out, while the counts stay uncapped', async () => {
+    // Ruling E and both halves of R3's "the 10 newest": the cap AND the order.
+    // Eleven contests and eleven disputes, two minutes apart inside one window,
+    // so dropping `limit` shows an eleventh item and flipping the sort shows
+    // the ten oldest — either way the expected arrays below stop matching.
+    await withRollback(t.db, async (tx) => {
+      const at = anchor(ANCHOR_DAYS.lists);
+      const s = await scene(tx);
+      const { user } = await createUser(tx, { name: 'Ada Lovelace', password: null });
+      /** Index 0 is the newest; index 10 is the one that must fall off both lists. */
+      const staggered = (index: number): Date => new Date(at.getTime() - index * 2 * 60_000);
+      const label = (what: string, index: number): string =>
+        `${what}-${String(index).padStart(2, '0')}`;
+
+      const base = await createRecord(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        valueText: 'alpha',
+        levelId: s.level('alpha'),
+        primaryReferenceId: s.reference.id,
+        importBatchId: s.batch.id,
+        createdAt: staggered(11),
+      });
+      // Oldest first, so the uuidv7 ids rise with `created_at` and the id
+      // tiebreak in the query can never disagree with the timestamps.
+      for (let index = 10; index >= 0; index--) {
+        await createRecord(tx, {
+          speciesId: s.species.id,
+          traitId: s.trait.id,
+          valueText: label('contest', index),
+          primaryReferenceId: s.reference.id,
+          origin: 'manual',
+          createdBy: user.id,
+          intent: 'contest',
+          respondsToRecordId: base.id,
+          createdAt: staggered(index),
+        });
+        const disputed = await createRecord(tx, {
+          speciesId: s.species.id,
+          traitId: s.trait.id,
+          valueText: label('dispute', index),
+          primaryReferenceId: s.reference.id,
+          origin: 'manual',
+          createdBy: user.id,
+          createdAt: staggered(index),
+        });
+        await createAnnotation(tx, {
+          recordId: disputed.id,
+          actorId: user.id,
+          kind: 'dispute',
+          note: 'Needs a second reference',
+          createdAt: staggered(index),
+        });
+      }
+
+      const digest = await computeDigest(tx, windowAround(at));
+
+      const newestTen = (what: string): string[] =>
+        Array.from({ length: DIGEST_LIST_LIMIT }, (_, index) => label(what, index));
+      expect(digest.contests).toHaveLength(DIGEST_LIST_LIMIT);
+      expect(digest.contests.map((c) => c.valueText)).toEqual(newestTen('contest'));
+      expect(digest.disputes).toHaveLength(DIGEST_LIST_LIMIT);
+      expect(digest.disputes.map((d) => d.valueText)).toEqual(newestTen('dispute'));
+      // The cap is on the lists alone: R3's counts describe the whole window.
+      expect(digest.counts).toMatchObject({ contests: 11, disputes: 11 });
+    });
+  });
+
   it('covers only its own backdated rows: two offsets never see each other', async () => {
     // The test Ruling Q asks for. A grep cannot catch a future sibling suite
     // wandering into this file's range, and one shared offset would make two
@@ -282,7 +343,9 @@ describe('RFC-74 R3 computeDigest', () => {
   });
 
   it('reports the queue sizes as they stand now, outside the window', async () => {
-    await inSnapshot(t.db, async (tx) => {
+    await withRollback(t.db, async (tx) => {
+      // The snapshot must be frozen before anything else reads.
+      await freezeSnapshot(tx);
       const at = anchor(ANCHOR_DAYS.queues);
       // Well outside the window: the two queue numbers are current counts
       // (RFC-65 R8, R10), so they must move even when nothing was created in
@@ -340,40 +403,57 @@ describe('RFC-74 R4 digestRecipients', () => {
 
   it('answers the active holders of records.review and of the admin role, once each', async () => {
     await withRollback(t.db, async (tx) => {
-      const reviewerRole = await createRole(tx, { permissions: ['records.review'] });
-      const contributorRole = await createRole(tx, { permissions: ['records.create'] });
-      const admin = await systemRoleId(tx, 'admin');
+      // The seeded roles, so that the grants R4 depends on are asserted rather
+      // than assumed: `manager` holds `records.review` and `contributor` does
+      // not (migration 0016). An ad-hoc role covers R4's "through ANY role".
+      const [manager, contributor, admin] = await Promise.all([
+        systemRoleId(tx, 'manager'),
+        systemRoleId(tx, 'contributor'),
+        systemRoleId(tx, 'admin'),
+      ]);
+      const customRole = await createRole(tx, { permissions: ['records.review'] });
 
-      const [reviewer, administrator, both, suspended, invited, contributor, roleless] =
-        await Promise.all([
-          createUser(tx, { name: 'Rita Reviewer', password: null, roles: [reviewerRole.id] }),
-          createUser(tx, { password: null, roles: [admin] }),
-          createUser(tx, { password: null, roles: [reviewerRole.id, admin] }),
-          createUser(tx, { status: 'suspended', password: null, roles: [reviewerRole.id] }),
-          createUser(tx, { status: 'invited', password: null, roles: [reviewerRole.id] }),
-          createUser(tx, { password: null, roles: [contributorRole.id] }),
-          createUser(tx, { password: null }),
-        ]);
+      const [
+        seededManager,
+        customReviewer,
+        administrator,
+        both,
+        suspendedManager,
+        invitedManager,
+        plainContributor,
+        roleless,
+      ] = await Promise.all([
+        createUser(tx, { name: 'Rita Reviewer', password: null, roles: [manager] }),
+        createUser(tx, { password: null, roles: [customRole.id] }),
+        createUser(tx, { password: null, roles: [admin] }),
+        createUser(tx, { password: null, roles: [customRole.id, admin] }),
+        createUser(tx, { status: 'suspended', password: null, roles: [manager] }),
+        createUser(tx, { status: 'invited', password: null, roles: [manager] }),
+        createUser(tx, { password: null, roles: [contributor] }),
+        createUser(tx, { password: null }),
+      ]);
 
       const recipients = await digestRecipients(tx);
       const ids = recipients.map((r) => r.id);
 
-      expect(ids).toContain(reviewer.user.id);
-      expect(ids).toContain(administrator.user.id);
+      expect(ids).toContain(seededManager.user.id);
+      expect(ids).toContain(customReviewer.user.id);
       // `admin` is the seeded system role, not a permission key: the admin
       // holds every permission without a `role_permissions` row for any of them.
+      expect(ids).toContain(administrator.user.id);
       expect(ids).toContain(both.user.id);
-      expect(ids).not.toContain(suspended.user.id);
-      expect(ids).not.toContain(invited.user.id);
-      expect(ids).not.toContain(contributor.user.id);
+      // R4 says `active`, so an invited holder is out as well as a suspended one.
+      expect(ids).not.toContain(suspendedManager.user.id);
+      expect(ids).not.toContain(invitedManager.user.id);
+      expect(ids).not.toContain(plainContributor.user.id);
       expect(ids).not.toContain(roleless.user.id);
       // Two qualifying roles are still one recipient, and so one e-mail (R5).
       expect(ids.filter((id) => id === both.user.id)).toHaveLength(1);
 
       // Name and address arrive decrypted from the column type (RFC-40 R8).
-      expect(recipients.find((r) => r.id === reviewer.user.id)).toEqual({
-        id: reviewer.user.id,
-        email: reviewer.email,
+      expect(recipients.find((r) => r.id === seededManager.user.id)).toEqual({
+        id: seededManager.user.id,
+        email: seededManager.email,
         name: 'Rita Reviewer',
       });
     });

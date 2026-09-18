@@ -43,6 +43,12 @@ describe('RFC-74 R2 isDigestDue', () => {
   });
 
   it('a success 24 h ago is due, and the window starts where that run stopped', () => {
+    // This is also what makes a failed run harmless: `isDigestDue` is only ever
+    // given a `completed` or `skipped` run, because the caller asks
+    // `latestRun(db, 'digest', ['completed', 'skipped'])`. That the status
+    // filter really skips a newer failed run is Task 2's
+    // `runs.integration.test.ts`, against a real `job_runs` table; nothing at
+    // this level can verify it, since a failed run cannot even be expressed here.
     const last = success(24 * HOUR);
     expect(isDigestDue(last, now)).toEqual({
       due: true,
@@ -52,16 +58,6 @@ describe('RFC-74 R2 isDigestDue', () => {
 
   it('a success 23 h 35 min ago is already due: the threshold is not a hard-coded 24 h', () => {
     expect(isDigestDue(success(23.5 * HOUR + 5 * 60_000), now).due).toBe(true);
-  });
-
-  it('a failed run an hour ago is no `lastSuccess`, so the window still starts at the last success', () => {
-    // `latestRun(db, 'digest', ['completed', 'skipped'])` never returns the
-    // failed run, so `isDigestDue` sees the 24 h old success and nothing else.
-    const last = success(24 * HOUR);
-    expect(isDigestDue(last, now)).toEqual({
-      due: true,
-      windowStart: new Date(last.detail.windowEnd),
-    });
   });
 
   it('a success that recorded no window end falls back to the last 24 h', () => {
