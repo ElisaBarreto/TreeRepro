@@ -2,6 +2,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DICTIONARY,
+  DICTIONARY_SEED_MASS,
+  DICTIONARY_SEXUAL_SYSTEM,
   POLLINATION_MODE_SUMMARY,
   SEED_MASS_SUMMARY,
   SEXUAL_SYSTEM_SUMMARY,
@@ -72,5 +75,31 @@ describe('RFC-63 R10 TraitCard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add value for sexual system' }));
     expect(onAdd).toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('RFC-13 R11 shows a HelpTip with the trait description from the dictionary, outside the open button', async () => {
+    const summary = { ...SEXUAL_SYSTEM_SUMMARY, trait: DICTIONARY_SEXUAL_SYSTEM };
+    render(<TraitCard summary={summary} dictionary={DICTIONARY} onOpen={() => {}} />);
+    const card = screen.getByRole('button', { name: /^sexual system/ });
+    const tip = screen.getByRole('button', { name: 'What does sexual system mean?' });
+    expect(card.contains(tip)).toBe(false);
+    await userEvent.click(tip);
+    // A categorical trait is measured in nothing, so the tip is the
+    // description and no more (spec §7.5).
+    expect(screen.getByRole('tooltip').textContent).toBe(
+      'Distribution of male and female function among individuals.',
+    );
+  });
+
+  it('spec §7.5 the tip of a quantitative trait names the unit its records are measured in', async () => {
+    const summary = { ...SEED_MASS_SUMMARY, trait: DICTIONARY_SEED_MASS };
+    render(<TraitCard summary={summary} dictionary={DICTIONARY} onOpen={() => {}} />);
+    await userEvent.click(screen.getByRole('button', { name: 'What does seed mass mean?' }));
+    expect(screen.getByRole('tooltip').textContent).toBe('Dry mass of one seed. Measured in mg.');
+  });
+
+  it('renders no HelpTip when the dictionary has no description for the trait', () => {
+    render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={() => {}} />);
+    expect(screen.queryByRole('button', { name: /What does .* mean\?/ })).not.toBeInTheDocument();
   });
 });

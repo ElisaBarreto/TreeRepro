@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
   PENDING_RECORD,
+  PERSONAL_OBSERVATION_DETAIL,
   RECORD,
   RECORD_DETAIL,
   REFERENCE,
@@ -143,6 +144,16 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
       expect(definition(label)).toHaveTextContent('—');
     }
     expect(within(definition('DOI')).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('RFC-61 R7 names a personal observation after its observer, never by its key', async () => {
+    dataset.fetchReference.mockResolvedValue(PERSONAL_OBSERVATION_DETAIL);
+    dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
+    renderAt(`/app/references/${PERSONAL_OBSERVATION_DETAIL.id}`);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Personal observation (Ada)' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(PERSONAL_OBSERVATION_DETAIL.citationKey)).not.toBeInTheDocument();
   });
 
   it('shows the URL as plain text when it is not an http(s) address', async () => {

@@ -17,6 +17,8 @@ export { Emblem } from './Emblem.tsx';
 export { EmptyState } from './EmptyState.tsx';
 export type { FieldProps } from './Field.tsx';
 export { Field } from './Field.tsx';
+export type { HelpTipProps } from './HelpTip.tsx';
+export { HelpTip } from './HelpTip.tsx';
 export type { IconName } from './Icon.tsx';
 export { Icon } from './Icon.tsx';
 export type { InputProps } from './Input.tsx';

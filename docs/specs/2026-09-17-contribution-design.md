@@ -1,7 +1,7 @@
 # TreeRepro — Contribution Workflow Design (plans 09a, 09b)
 
 **Date:** 2026-09-17
-**Status:** approved design; plans `2026-09-17-contribution-09a-api.md` and `2026-09-17-contribution-09b-web.md`
+**Status:** 09a implemented (API, PR #89); 09b implemented (web, PR #90); implementation plans `2026-09-17-contribution-09a-api.md` and `2026-09-17-contribution-09b-web.md`
 **Scope:** how a contributor validates a record, contests or complements it, and adds entries for a trait: personal-observation provenance, DOI-based references resolved through the Handle and Crossref APIs, several references per submission, the contest / complement intent and its side effects, the reviewer permission, the two-button record UI, the two-step contest dialog, the redesigned add-entries form, trait tooltips and the "traits with no data" view. RFC-70 (contribution workflow), RFC-80 (DOI resolution), amendments to RFC-30, RFC-31, RFC-41, RFC-61, RFC-63, RFC-65, RFC-12. Programme index: `2026-09-17-contributor-launch-overview.md`. Depends on plan 08a (visibility) and 08b (plots).
 
 ## 1. Context
@@ -98,7 +98,7 @@ Header button renamed **Add entries for another trait**. Fields, in order: **Bro
 
 ### 7.4 Sources field (`SourcesField`, `DoiField`)
 
-One `DoiField` by default with the hint "Leave blank if this comes from your own field work or expert knowledge; otherwise give the DOI." and a `HelpTip`. **Add another reference** appends a `DoiField` (up to 10); each row has a remove button. On blur, a non-empty field calls `GET /api/references/resolve?doi=` (debounced, one request per value) and shows: ✅ "Resolved: *title (year)*" (`known` or `resolvable`), ❌ "DOI not found" (blocks submit), ⚠ "Malformed DOI" (blocks submit), ⚠ "Could not check the DOI — try again" (blocks submit, the API would refuse anyway). Every field empty → the form submits `{ personalObservation: true }` and the line "This will be recorded as your personal observation" shows above the submit button. A mix of empty and filled fields submits the filled ones only.
+One `DoiField` by default with the hint "Leave blank if this comes from your own field work or expert knowledge; otherwise give the DOI." and a `HelpTip`. **Add another reference** appends a `DoiField` (up to 10); each row carries a remove button while more than one row is shown — the field always shows at least one row, so a lone row is cleared by emptying it rather than removed. On blur, a non-empty field calls `GET /api/references/resolve?doi=` (debounced, one request per value) and shows: ✅ "Resolved: *title (year)*" (`known` or `resolvable`), ❌ "DOI not found" (blocks submit), ⚠ "Malformed DOI" (blocks submit), ⚠ "Could not check the DOI — try again" (blocks submit, the API would refuse anyway). Every field empty → the form submits `{ personalObservation: true }` and the line "This will be recorded as your personal observation" shows above the submit button. A mix of empty and filled fields submits the filled ones only.
 
 ### 7.5 Help tips (`HelpTip`)
 

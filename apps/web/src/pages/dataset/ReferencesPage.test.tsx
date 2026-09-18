@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse, Reference } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { REFERENCE, REFERENCE_DETAIL } from '../../test/dataset-fixtures.ts';
+import { PERSONAL_OBSERVATION, REFERENCE, REFERENCE_DETAIL } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -236,5 +236,16 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     // sidebar entry and the breadcrumb, so only the heading disambiguates.
     await openPage();
     expect(screen.queryByRole('button', { name: 'New reference' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-61 R7 ReferencesPage personal observations', () => {
+  it('names a personal observation after its observer, never by its key', async () => {
+    dataset.searchReferences.mockResolvedValue(page([PERSONAL_OBSERVATION]));
+    renderAt('/app/references');
+    expect(
+      await screen.findByRole('link', { name: 'Personal observation (Ada)' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(PERSONAL_OBSERVATION.citationKey)).not.toBeInTheDocument();
   });
 });

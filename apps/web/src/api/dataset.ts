@@ -28,7 +28,11 @@ export interface Page<T> {
 export const datasetKeys = {
   species: (params: Params) => ['species', params] as const,
   speciesDetail: (id: string) => ['species', id] as const,
-  speciesTraits: (id: string) => ['species', id, 'traits'] as const,
+  // `includeMissing` is part of the key: the two responses (with and without
+  // the zero-count traits) must never share a cache entry, or flipping the
+  // "Show traits with no data" checkbox would show stale data (RFC-70 R7).
+  speciesTraits: (id: string, includeMissing: boolean) =>
+    ['species', id, 'traits', includeMissing] as const,
   records: (params: Params) => ['records', params] as const,
   record: (id: string) => ['records', id] as const,
   dictionary: ['traits'] as const,
@@ -63,9 +67,22 @@ export function searchSpecies(params: {
 export async function fetchSpecies(id: string): Promise<Species> {
   return (await apiFetch<DataEnvelope<Species>>(`/species/${id}`)).data;
 }
-/** @rfc RFC-63 R10 */
-export async function fetchSpeciesTraits(id: string): Promise<SpeciesTraits> {
-  return (await apiFetch<DataEnvelope<SpeciesTraits>>(`/species/${id}/traits`)).data;
+/**
+ * `includeMissing` adds every visible active trait with no record yet, as a
+ * zero-count entry (RFC-70 R7); the flag is left off the query string
+ * entirely when it is not requested, so the request is unchanged from before.
+ * @rfc RFC-63 R10
+ * @rfc RFC-70 R7
+ */
+export async function fetchSpeciesTraits(
+  id: string,
+  options?: { includeMissing?: boolean },
+): Promise<SpeciesTraits> {
+  return (
+    await apiFetch<DataEnvelope<SpeciesTraits>>(
+      withQuery(`/species/${id}/traits`, { includeMissing: options?.includeMissing }),
+    )
+  ).data;
 }
 /** @rfc RFC-63 R9 */
 export function fetchRecords(params: {

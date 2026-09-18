@@ -75,7 +75,7 @@
 ## A dialog mounted only while open starts from fresh state
 **Symptom:** A dialog's initial field values are stale or wrong after it is reopened for a different item.
 **Cause:** Toggling an `open` prop keeps the component instance (and its `useState`) alive across opens; when the initial value depends on what opened it (which trait, which pending group), the old state leaks into the new open.
-**Fix:** Mount and unmount the dialog instead of toggling `open` — render it only while a piece of state names what to open (`{addValueOpen ? <AddValueDialog ... /> : null}`), so every open is a fresh mount with fresh state (`AddValueDialog`, `MapDialog`).
+**Fix:** Mount and unmount the dialog instead of toggling `open` — render it only while a piece of state names what to open (`{adding ? <AddEntriesDialog ... /> : null}`), so every open is a fresh mount with fresh state (`AddEntriesDialog`, `MapDialog`).
 
 ## An edit dialog sends a diff, and an unchanged form is not a request
 

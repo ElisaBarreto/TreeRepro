@@ -12,6 +12,7 @@ import type {
   RecordItem,
   Reference,
   ReferenceDetail,
+  ReferenceRef,
   Species,
   SpeciesTraits,
   TaxonRef,
@@ -142,6 +143,27 @@ export const SECONDARY_REFERENCE = {
   kind: 'publication' as const,
 };
 
+/** The reference a scientist's own field work is recorded under. @rfc RFC-61 R7 */
+export const PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d42',
+  citationKey: `personal-observation:${USER.id}`,
+  kind: 'personal_observation',
+};
+
+const GRACE_ID = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
+
+/**
+ * Grace's own field work — a personal observation always resolves to the
+ * actor's own row, so a record Grace creates can only cite this one, never
+ * {@link PERSONAL_OBSERVATION_REFERENCE} (USER's).
+ * @rfc RFC-61 R7
+ */
+export const GRACE_PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d43',
+  citationKey: `personal-observation:${GRACE_ID}`,
+  kind: 'personal_observation',
+};
+
 /** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
 export const RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d50',
@@ -242,6 +264,72 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
 };
 
 /**
+ * A record contesting RECORD, sourced from the author's own observation —
+ * Grace's, since Grace is who created it (RFC-61 R7: a personal observation
+ * always resolves to the actor's own row).
+ * @rfc RFC-70 R6
+ */
+export const CONTEST_RECORD_DETAIL: RecordDetail = {
+  ...RECORD_DETAIL,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d52',
+  valueText: 'monoecious',
+  level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious' },
+  review: 'unreviewed',
+  origin: 'manual',
+  primaryReference: GRACE_PERSONAL_OBSERVATION_REFERENCE,
+  secondaryReference: null,
+  createdBy: { id: GRACE_ID, name: 'Grace' },
+  intent: 'contest',
+  respondsTo: { id: RECORD.id },
+  importBatch: null,
+  importRowNo: null,
+};
+
+/**
+ * RECORD once it has been answered: the dispute the contest generated and a
+ * confirmation backed by a reference, and the two records that answer it —
+ * the second by an author this viewer may not see.
+ * @rfc RFC-70 R4, R6
+ */
+export const RESPONDED_RECORD_DETAIL: RecordDetail = {
+  ...RECORD_DETAIL,
+  annotations: [
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d71',
+      kind: 'dispute',
+      note: `Contested by record ${CONTEST_RECORD_DETAIL.id}`,
+      actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+      createdAt: '2026-09-06T12:00:00.000Z',
+      reference: null,
+      generated: true,
+    },
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d72',
+      kind: 'confirm',
+      note: null,
+      actor: { id: USER.id, name: USER.name },
+      createdAt: '2026-09-05T12:00:00.000Z',
+      reference: PRIMARY_REFERENCE,
+      generated: false,
+    },
+  ],
+  responses: [
+    {
+      id: CONTEST_RECORD_DETAIL.id,
+      intent: 'contest',
+      createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+      createdAt: '2026-09-06T12:00:00.000Z',
+    },
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d53',
+      intent: 'complement',
+      createdBy: null,
+      createdAt: '2026-09-05T08:00:00.000Z',
+    },
+  ],
+};
+
+/**
  * Two categories in dictionary order: a categorical trait with an inactive
  * level, a quantitative trait without levels and an inactive trait.
  * @rfc RFC-62 R5
@@ -279,6 +367,28 @@ export const DICTIONARY: Dictionary = [
           },
         ],
       },
+      {
+        id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e05',
+        key: 'self_compatibility',
+        valueType: 'categorical',
+        unit: null,
+        description: 'Whether an individual sets seed with its own pollen.',
+        active: true,
+        levels: [
+          {
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e15',
+            key: 'self_compatible',
+            sortOrder: 0,
+            active: true,
+          },
+          {
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e16',
+            key: 'self_incompatible',
+            sortOrder: 1,
+            active: true,
+          },
+        ],
+      },
     ],
   },
   {
@@ -304,6 +414,15 @@ export const DICTIONARY: Dictionary = [
         levels: [
           { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e14', key: 'brown', sortOrder: 0, active: true },
         ],
+      },
+      {
+        id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e06',
+        key: 'seed_length',
+        valueType: 'quantitative',
+        unit: 'mm',
+        description: 'Length of the mature seed.',
+        active: true,
+        levels: [],
       },
     ],
   },
@@ -351,6 +470,29 @@ export const REFERENCE: Reference = {
   secondaryCount: 1,
   kind: 'publication',
   observer: null,
+};
+
+/** The personal-observation reference of USER, as the references screens see it. @rfc RFC-61 R7 */
+export const PERSONAL_OBSERVATION: Reference = {
+  id: PERSONAL_OBSERVATION_REFERENCE.id,
+  citationKey: PERSONAL_OBSERVATION_REFERENCE.citationKey,
+  title: null,
+  authors: null,
+  year: null,
+  journal: null,
+  doi: null,
+  url: null,
+  createdAt: '2026-09-14T09:00:00.000Z',
+  primaryCount: 1,
+  secondaryCount: 0,
+  kind: 'personal_observation',
+  observer: { id: USER.id, name: USER.name },
+};
+
+/** @rfc RFC-61 R7 */
+export const PERSONAL_OBSERVATION_DETAIL: ReferenceDetail = {
+  ...PERSONAL_OBSERVATION,
+  recordCount: 1,
 };
 
 /** REFERENCE with the count `GET /api/references/:id` adds: two records, one per role. @rfc RFC-61 R4 */
@@ -406,6 +548,75 @@ export const DICTIONARY_SEXUAL_SYSTEM: TraitRef = {
   valueType: 'categorical',
   unit: null,
 };
+
+/** The dictionary's seed_mass trait as a `TraitRef` (its id differs from `SEED_MASS`, which the summaries use). @rfc RFC-62 R5 */
+export const DICTIONARY_SEED_MASS: TraitRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e02',
+  key: 'seed_mass',
+  valueType: 'quantitative',
+  unit: 'mg',
+};
+
+/** The dictionary's self_compatibility trait as a `TraitRef`; no summary gives it a record. @rfc RFC-62 R5 */
+export const DICTIONARY_SELF_COMPATIBILITY: TraitRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e05',
+  key: 'self_compatibility',
+  valueType: 'categorical',
+  unit: null,
+};
+
+/** The dictionary's seed_length trait as a `TraitRef`; no summary gives it a record. @rfc RFC-62 R5 */
+export const DICTIONARY_SEED_LENGTH: TraitRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e06',
+  key: 'seed_length',
+  valueType: 'quantitative',
+  unit: 'mm',
+};
+
+/**
+ * A categorical trait `includeMissing` adds: no record at all, so
+ * `levels: []` — never `null`, which stays reserved for a quantitative
+ * trait, whatever its record count. Its trait is one no other summary
+ * names: the API lists a species' traits once each, so two cards on a page
+ * never share a key.
+ * @rfc RFC-70 R7
+ */
+export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
+  trait: DICTIONARY_SELF_COMPATIBILITY,
+  recordCount: 0,
+  harmonisationCounts: NO_PENDING,
+  levels: [],
+  numeric: null,
+  accepted: null,
+};
+
+/** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
+export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
+  trait: DICTIONARY_SEED_LENGTH,
+  recordCount: 0,
+  harmonisationCounts: NO_PENDING,
+  levels: null,
+  numeric: null,
+  accepted: null,
+};
+
+/**
+ * `SPECIES_TRAITS` with `includeMissing=true`'s zero-count traits added.
+ * The missing traits come from walking `DICTIONARY`, so their categories are
+ * `DICTIONARY`'s own (`reproductive_system` / `seed`), not the arbitrary
+ * ones `SPECIES_TRAITS` uses for the traits that already have records.
+ * @rfc RFC-70 R7
+ */
+export const SPECIES_TRAITS_WITH_MISSING: SpeciesTraits = [
+  {
+    category: { key: 'reproductive_system', label: 'Reproductive system' },
+    traits: [SEXUAL_SYSTEM_SUMMARY, SELF_COMPATIBILITY_MISSING_SUMMARY],
+  },
+  {
+    category: { key: 'seed', label: 'Seed' },
+    traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_LENGTH_MISSING_SUMMARY],
+  },
+];
 
 /** RECORD is the accepted value; one earlier decision was cleared. @rfc RFC-65 R11 */
 export const ACCEPTED_STATE: AcceptedState = {

@@ -22,6 +22,7 @@
 - **R8** Every page and shared component has component tests (Vitest, Testing Library, `vi.mock` of `apps/web/src/api/*`): rendering by permission, the happy path, mapped errors, and — for `/app` routes — the 401 and 403 behaviour of R4. Critical flows have Playwright end-to-end tests (RFC-01 R6, plan 05c).
 - **R9** Copy is English. Error messages never echo internals (RFC-02 R9); on sign-in, unknown email and wrong password share one sentence (RFC-22 R2).
 - **R10** Dialogs and drawers are modal: while one is open the rest of the document is `inert` (not focusable, not clickable, hidden from assistive technology), Tab and Shift+Tab cycle inside it, focus moves into it on open and returns to the element that opened it on close. The native `<dialog>` opened with `showModal` provides the trap; both `Dialog` and `Drawer` render through a portal at the end of `document.body` and share one stack of open modals that marks every other child of `body` `inert` and returns focus on close — also when a dialog is unmounted still open after a successful save, where the browser restores nothing. A drawer never opens over an open dialog: the native modal blocks everything outside it.
+- **R11** A `?` help tip is a button that shows a `role="tooltip"` element it controls (`aria-controls`/`aria-expanded`); it opens on click, on focus and on pointer hover, and closes on Escape, on a pointerdown outside it and once focus leaves it. Opening is not a toggle: a pointer click also carries the hover that opened the tip, so a click never closes it; hover and focus leaving are what close it. Its text is plain content, never HTML from the API.
 
 ## Open questions
 
@@ -35,3 +36,5 @@ None.
 - 2026-09-13 — R10: modal focus trap and inert background (plan 07b).
 - 2026-09-14 — R10: `Dialog` joins the `Drawer` modal stack (portal, shared `inert` marks, focus return on unmount); drawer-over-dialog ruled out (issue #59).
 - 2026-09-17 — R2: /app/admin/plots, /app/admin/plots/$id (RFC-67, plan 08b).
+- 2026-09-17 — R11: `?` help tip added — a button-controlled `role="tooltip"` popover, not a dialog (`HelpTip`, plan 09b).
+- 2026-09-17 — R11 softened: the tip opens rather than toggles; a click cannot close what the hover before it opened (`HelpTip`, plan 09b).

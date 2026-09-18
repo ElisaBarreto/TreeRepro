@@ -21,6 +21,7 @@ import {
   SEXUAL_SYSTEM_SUMMARY,
   SPECIES,
   SPECIES_TRAITS,
+  SPECIES_TRAITS_WITH_MISSING,
   UNRESOLVED_SPECIES,
 } from '../../test/dataset-fixtures.ts';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
@@ -53,7 +54,7 @@ const catalog = vi.hoisted(() => ({ updateSpecies: vi.fn(), addSpeciesName: vi.f
 // `invalidateAfterRecordWrite` keeps the real signature so one test can
 // swap the real implementation in.
 const curation = vi.hoisted(() => ({
-  createRecord: vi.fn(),
+  createRecords: vi.fn(),
   invalidateAfterRecordWrite: vi.fn(
     async (_queryClient: QueryClient, _speciesId?: string): Promise<void> => undefined,
   ),
@@ -92,7 +93,7 @@ beforeEach(() => {
   dataset.searchReferences.mockReset();
   dataset.fetchFamilies.mockReset().mockResolvedValue(FAMILIES);
   dataset.fetchGenera.mockReset().mockResolvedValue({ data: GENERA, meta: { nextCursor: null } });
-  curation.createRecord.mockReset();
+  curation.createRecords.mockReset();
   curation.setAccepted.mockReset();
   curation.invalidateAfterRecordWrite.mockReset().mockResolvedValue(undefined);
   catalog.updateSpecies.mockReset();
@@ -117,6 +118,8 @@ async function openPage(species = SPECIES) {
   return utils;
 }
 
+const ADD_ENTRIES = 'Add entries for another trait';
+
 async function openTraitPanel() {
   await userEvent.click(screen.getByRole('button', { name: /^sexual system/ }));
   return screen.findByRole('dialog', { name: 'sexual system' });
@@ -133,7 +136,7 @@ describe('RFC-60 R7 SpeciesPage header', () => {
     expect(screen.getByText('Adenanthera gersenii')).toBeInTheDocument();
     expect(screen.getByText('12 records · 3 traits')).toBeInTheDocument();
     expect(dataset.fetchSpecies).toHaveBeenCalledWith(SPECIES.id);
-    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id);
+    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: false });
   });
 
   it('flags an unresolved taxon and says so when family and genus are unknown', async () => {
@@ -379,7 +382,7 @@ describe('RFC-65 R6 SpeciesPage trait panel follows the live summary', () => {
     const { queryClient } = await openPage();
     await openTraitPanel();
     await act(() =>
-      queryClient.refetchQueries({ queryKey: datasetKeys.speciesTraits(SPECIES.id) }),
+      queryClient.refetchQueries({ queryKey: datasetKeys.speciesTraits(SPECIES.id, false) }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
@@ -470,10 +473,11 @@ describe('RFC-13 R2 SpeciesPage remounts per id', () => {
   });
 });
 
-describe('RFC-65 R1 Add value from the species page', () => {
-  it('shows the Add value buttons only with records.create; the header button opens the dialog without a trait, a card button with its trait', async () => {
+describe('RFC-70 R1 Add entries from the species page', () => {
+  it('shows the add buttons only with records.create; the header button opens the dialog without a trait, a card button with its trait', async () => {
     const first = await openPage();
-    expect(screen.queryByRole('button', { name: /^Add value/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ADD_ENTRIES })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Add value for/ })).not.toBeInTheDocument();
     // Unmount before remounting with the new permission: both renders show
     // the same species name, so a second `openPage()` without unmounting
     // would let its heading wait resolve against the still-mounted first
@@ -481,45 +485,108 @@ describe('RFC-65 R1 Add value from the species page', () => {
     first.unmount();
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
     await openPage();
-    const buttons = screen.getAllByRole('button', { name: /^Add value/ });
-    expect(buttons.length).toBeGreaterThan(1);
-    expect(buttons[0]).toHaveAccessibleName('Add value');
-    await userEvent.click(buttons[0] as HTMLElement);
-    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
-    expect(within(dialog).getByRole('combobox', { name: /trait/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: ADD_ENTRIES }));
+    const dialog = await screen.findByRole('dialog', { name: ADD_ENTRIES });
+    expect(
+      within(dialog).getByRole('combobox', { name: 'Broad trait category' }),
+    ).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Add value' })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('dialog', { name: ADD_ENTRIES })).not.toBeInTheDocument(),
     );
     const card = screen.getByRole('button', { name: /^sexual system/ })
       .parentElement as HTMLElement;
     await userEvent.click(within(card).getByRole('button', { name: /^Add value for/ }));
-    const prefilled = await screen.findByRole('dialog', { name: 'Add value' });
+    // The title names the fixed trait instead of the header button's generic
+    // constant: "another trait" would contradict a trait already chosen.
+    const prefilled = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
     expect(within(prefilled).getByText('sexual system')).toBeInTheDocument();
-    expect(within(prefilled).queryByRole('combobox', { name: /trait/i })).not.toBeInTheDocument();
+    expect(within(prefilled).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
   });
 
-  it('opens the created record in the drawer', async () => {
+  it('RFC-70 R3 opens the first created record in the drawer', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
-    curation.createRecord.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
+    curation.createRecords.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
     dataset.fetchRecord.mockResolvedValue(RECORD_DETAIL);
     await openPage();
-    await userEvent.click(screen.getByRole('button', { name: 'Add value' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Add value' });
-    await userEvent.type(within(dialog).getByRole('combobox', { name: /trait/i }), 'sexual');
-    await userEvent.click(await screen.findByRole('option', { name: /sexual system/ }));
+    await userEvent.click(screen.getByRole('button', { name: ADD_ENTRIES }));
+    const dialog = await screen.findByRole('dialog', { name: ADD_ENTRIES });
+    await within(dialog).findByRole('option', { name: 'Reproductive system' });
     await userEvent.selectOptions(
-      await within(dialog).findByRole('combobox', { name: /level/i }),
+      within(dialog).getByRole('combobox', { name: 'Broad trait category' }),
+      'Reproductive system',
+    );
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: 'Trait' }),
+      'sexual system',
+    );
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: 'Level' }),
       'dioecious',
     );
-    await userEvent.type(
-      within(dialog).getByRole('combobox', { name: /primary reference/i }),
-      'Re',
-    );
-    await userEvent.click(await screen.findByRole('option', { name: /Renner2014/ }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add record' }));
+    // No DOI: the claim is the contributor's own observation (RFC-80 R5).
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add record(s)' }));
     expect(await screen.findByRole('dialog', { name: 'Record' })).toHaveTextContent('dioecious');
     expect(dataset.fetchRecord).toHaveBeenCalledWith(RECORD_DETAIL.id);
+  });
+});
+
+// SPECIES_TRAITS_WITH_MISSING adds two zero-count traits, one card each.
+const MISSING_TRAITS = 2;
+
+describe('RFC-70 R7 species page missing toggle', () => {
+  it('the checkbox is unchecked by default and the query asks for no missing traits', async () => {
+    await openPage();
+    expect(screen.getByRole('checkbox', { name: 'Show traits with no data' })).not.toBeChecked();
+    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: false });
+  });
+
+  it('?missing=true checks the box and asks fetchSpeciesTraits for includeMissing', async () => {
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    renderAt(`/app/species/${SPECIES.id}?missing=true`);
+    await screen.findByText('Adenanthera pavonina');
+    expect(screen.getByRole('checkbox', { name: 'Show traits with no data' })).toBeChecked();
+    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: true });
+    // The zero-count traits come from walking DICTIONARY, so their sections
+    // are DICTIONARY's own categories, not the ones SPECIES_TRAITS uses for
+    // traits that already have records.
+    const sections = screen.getAllByRole('heading', { level: 2 });
+    expect(sections.map((h) => h.textContent)).toEqual(['Reproductive system', 'Seed']);
+  });
+
+  it('checking the box navigates to ?missing=true and refetches with includeMissing', async () => {
+    const { router } = await openPage();
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Show traits with no data' }));
+    await waitFor(() =>
+      expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, {
+        includeMissing: true,
+      }),
+    );
+    expect(screen.getByRole('checkbox', { name: 'Show traits with no data' })).toBeChecked();
+    expect(router.state.location.search).toEqual({ missing: true });
+  });
+
+  it('a zero-count trait renders as EmptyTraitCard with "No records yet"; with records.create, "Add the first entry" opens the dialog with the trait fixed', async () => {
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    renderAt(`/app/species/${SPECIES.id}?missing=true`);
+    await screen.findByText('Adenanthera pavonina');
+    expect(screen.getAllByText('No records yet')).toHaveLength(MISSING_TRAITS);
+    const [firstAdd] = screen.getAllByRole('button', { name: 'Add the first entry' });
+    await userEvent.click(firstAdd as HTMLElement);
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Add entries for self compatibility',
+    });
+    expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
+  });
+
+  it('hides "Add the first entry" without records.create', async () => {
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    renderAt(`/app/species/${SPECIES.id}?missing=true`);
+    await screen.findByText('Adenanthera pavonina');
+    expect(screen.getAllByText('No records yet')).toHaveLength(MISSING_TRAITS);
+    expect(screen.queryByRole('button', { name: 'Add the first entry' })).not.toBeInTheDocument();
   });
 });
 

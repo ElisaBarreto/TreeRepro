@@ -12,6 +12,7 @@ import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   PENDING_RECORD,
+  PERSONAL_OBSERVATION_REFERENCE,
   PRIMARY_REFERENCE,
   RECORD,
   SECONDARY_REFERENCE,
@@ -161,5 +162,18 @@ describe('RFC-63 R8 RecordTable', () => {
     const rows = (await screen.findAllByRole('row')).slice(1);
     expect(within(rows[0] as HTMLElement).getByText('accepted')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).queryByText('accepted')).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-61 R4 RecordTable references', () => {
+  it('names a personal observation instead of showing its key', async () => {
+    renderInRouter(
+      <RecordTable
+        records={[{ ...RECORD, primaryReference: PERSONAL_OBSERVATION_REFERENCE }]}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole('link', { name: 'Personal observation' })).toBeInTheDocument();
+    expect(screen.queryByText(PERSONAL_OBSERVATION_REFERENCE.citationKey)).not.toBeInTheDocument();
   });
 });

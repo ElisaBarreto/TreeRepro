@@ -9,6 +9,7 @@ import { RecordTable } from '../../components/dataset/RecordTable.tsx';
 import { Alert, Button, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber } from '../../lib/format.ts';
+import { referenceLabel } from '../../lib/references.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
@@ -119,7 +120,10 @@ function ReferenceRecords({
 }
 
 /**
- * One bibliographic reference (RFC-61 R4): its citation key as the title,
+ * One bibliographic reference (RFC-61 R4): how it reads as the title — its
+ * citation key, or "Personal observation (Name)" for the reference a
+ * scientist's own field work is recorded under (RFC-61 R7), whose key is an
+ * internal identity no contributor is shown —
  * how many records cite it as the primary and as the secondary article, the
  * metadata the import kept, and every record that names it in either role,
  * one page at a time with the species, trait and both articles of each row;
@@ -128,7 +132,7 @@ function ReferenceRecords({
  * An Edit action on the loaded header opens `ReferenceDialog` for
  * `references.manage`; the dialog's own invalidation refreshes this reference.
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-61 R4, R6
+ * @rfc RFC-61 R4, R6, R7
  */
 export function ReferencePage({ id }: { id: string }) {
   const me = useMe();
@@ -160,7 +164,7 @@ export function ReferencePage({ id }: { id: string }) {
   return (
     <>
       <PageHeader
-        title={<span className="break-words">{data.citationKey}</span>}
+        title={<span className="break-words">{referenceLabel(data)}</span>}
         description={`Used as the primary article in ${records(data.primaryCount)} and as the secondary article in ${records(data.secondaryCount)}.`}
         actions={
           hasPermission(me, 'references.manage') ? (

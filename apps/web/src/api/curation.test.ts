@@ -7,13 +7,14 @@ import {
   PENDING_GROUPS,
   PENDING_TRAITS,
   RECORD_DETAIL,
+  REFERENCE,
   SEXUAL_SYSTEM,
   SPECIES,
 } from '../test/dataset-fixtures.ts';
 import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
 import {
   annotateRecord,
-  createRecord,
+  createRecords,
   curationKeys,
   EXPORT_ACCEPTED_URL,
   fetchAccepted,
@@ -22,6 +23,7 @@ import {
   fetchPendingTraits,
   invalidateAfterRecordWrite,
   mapPending,
+  resolveDoi,
   setAccepted,
 } from './curation.ts';
 
@@ -29,10 +31,10 @@ installFetchMock();
 
 const body = () => JSON.parse(String(lastRequest().init?.body));
 
-describe('RFC-65 R1 createRecord', () => {
+describe('RFC-70 R1, R3 createRecords', () => {
   it('posts the body and unwraps the created records', async () => {
     mockJson(201, { data: { created: [RECORD_DETAIL], duplicates: [] } });
-    const result = await createRecord({
+    const result = await createRecords({
       speciesId: SPECIES.id,
       traitId: SEXUAL_SYSTEM.id,
       value: { levelId: RECORD_DETAIL.level?.id ?? '' },
@@ -46,6 +48,16 @@ describe('RFC-65 R1 createRecord', () => {
     });
     expect(result.created[0]?.id).toBe(RECORD_DETAIL.id);
     expect(result.duplicates).toEqual([]);
+  });
+});
+
+describe('RFC-80 R4 resolveDoi', () => {
+  it('sends the DOI as a query param and returns the resolution', async () => {
+    mockJson(200, { data: { status: 'known', reference: REFERENCE } });
+    const result = await resolveDoi('10.1234/example');
+    expect(lastRequest().url).toBe('/api/references/resolve?doi=10.1234%2Fexample');
+    expect(lastRequest().init?.method ?? 'GET').toBe('GET');
+    expect(result).toEqual({ status: 'known', reference: REFERENCE });
   });
 });
 

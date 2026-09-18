@@ -4,6 +4,7 @@ import type {
   AcceptedDecision,
   AnnotationKind,
   RecordDetail,
+  RecordIntent,
   ReferenceRef,
 } from '@treerepro/contracts';
 import type { ReactNode } from 'react';
@@ -11,6 +12,7 @@ import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchRecord } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber, humaniseKey, isoDate } from '../../lib/format.ts';
+import { referenceLabel } from '../../lib/references.ts';
 import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
 import { DrawerSection } from './DrawerSection.tsx';
@@ -28,6 +30,16 @@ const ANNOTATION_TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
 const DECISION_TONES: Record<AcceptedDecision, 'neutral' | 'green'> = {
   accepted: 'green',
   cleared: 'neutral',
+};
+// A contest says the value is wrong, a complement that both hold (RFC-70 R1);
+// the verb reads the same on the record that answers and on the answers listed.
+const INTENT_VERBS: Record<RecordIntent, string> = {
+  contest: 'contests',
+  complement: 'complements',
+};
+const INTENT_TONES: Record<RecordIntent, 'red' | 'neutral'> = {
+  contest: 'red',
+  complement: 'neutral',
 };
 
 const RAW_COLUMNS: ReadonlyArray<{
@@ -76,28 +88,32 @@ function ReferenceLink({ reference }: { reference: ReferenceRef | null }) {
       params={{ id: reference.id }}
       className="font-medium text-canopy-900 underline-offset-2 hover:underline"
     >
-      {reference.citationKey}
+      {referenceLabel(reference)}
     </Link>
   );
 }
 
-// "Harmonises record …a1b2c3" / "Harmonised as record …a1b2c3": the last six
-// characters of the id name the record; a button when the caller can open it.
+// "Harmonises record …a1b2c3", "contests record …a1b2c3", "Open record
+// …a1b2c3": the last six characters of the id name the record; a button when
+// the caller can open it.
 function RecordLink({
   id,
   verb,
   onOpen,
+  // The intent link sits inside a `Badge`, whose own size it keeps.
+  size = 'text-cell',
 }: {
   id: string;
-  verb: 'Harmonises' | 'Harmonised as';
+  verb: string;
   onOpen?: (id: string) => void;
+  size?: 'text-cell' | 'text-label';
 }) {
   const label = `${verb} record …${id.slice(-6)}`;
-  if (!onOpen) return <span className="text-cell text-canopy-900">{label}</span>;
+  if (!onOpen) return <span className={`${size} text-canopy-900`}>{label}</span>;
   return (
     <button
       type="button"
-      className="text-left text-cell font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+      className={`text-left ${size} font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500`}
       onClick={() => onOpen(id)}
     >
       {label}
@@ -134,13 +150,23 @@ function RecordBody({
             ...(unit ? [{ label: 'Unit', value: unit }] : []),
           ]}
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <HarmonisationBadge status={record.harmonisation} />
           <ReviewBadge status={record.review} />
+          {record.intent && record.respondsTo ? (
+            <Badge tone={INTENT_TONES[record.intent]}>
+              <RecordLink
+                id={record.respondsTo.id}
+                verb={INTENT_VERBS[record.intent]}
+                onOpen={onOpenRecord}
+                size="text-label"
+              />
+            </Badge>
+          ) : null}
         </div>
       </DrawerSection>
 
-      <RecordActions record={record} />
+      <RecordActions record={record} onOpenRecord={onOpenRecord} />
 
       <DrawerSection title="Source">
         <Definitions
@@ -191,6 +217,26 @@ function RecordBody({
         </section>
       ) : null}
 
+      {record.responses.length > 0 ? (
+        <section aria-label="Responses" className="flex flex-col gap-2">
+          <h3 className="text-label font-bold uppercase tracking-[0.08em] text-mist-500">
+            Responses
+          </h3>
+          <ul className="flex flex-col gap-2">
+            {record.responses.map((response) => (
+              <li key={response.id} className="flex flex-wrap items-center gap-2 text-cell">
+                <Badge tone={INTENT_TONES[response.intent]}>{INTENT_VERBS[response.intent]}</Badge>
+                <span className="text-canopy-900">{response.createdBy?.name ?? DASH}</span>
+                <time dateTime={response.createdAt} className="text-mist-500">
+                  {isoDate(response.createdAt)}
+                </time>
+                <RecordLink id={response.id} verb="Open" onOpen={onOpenRecord} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <DrawerSection title="Raw source columns">
         <Definitions
           rows={RAW_COLUMNS.map((column) => ({
@@ -209,10 +255,17 @@ function RecordBody({
               <li key={annotation.id} className="flex flex-col gap-1 text-cell">
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge tone={ANNOTATION_TONES[annotation.kind]}>{annotation.kind}</Badge>
+                  {annotation.generated ? <Badge tone="neutral">automatic</Badge> : null}
                   <span className="text-canopy-900">{annotation.actor.name}</span>
                   <time dateTime={annotation.createdAt} className="text-mist-500">
                     {isoDate(annotation.createdAt)}
                   </time>
+                  {annotation.reference ? (
+                    <span className="text-mist-500">
+                      supported by{' '}
+                      <em className="text-canopy-900">{referenceLabel(annotation.reference)}</em>
+                    </span>
+                  ) : null}
                 </span>
                 {annotation.note ? (
                   <span className="text-canopy-950">{annotation.note}</span>

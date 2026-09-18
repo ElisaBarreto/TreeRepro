@@ -11,6 +11,7 @@ import type {
   PendingGroup,
   PendingTrait,
   RecordDetail,
+  ResolveDoiResult,
   SetAcceptedBody,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
@@ -29,11 +30,16 @@ export const curationKeys = {
 /** The file download of RFC-66; a plain link, the session cookie authenticates it. @rfc RFC-66 R1 */
 export const EXPORT_ACCEPTED_URL = '/api/export/accepted.csv';
 
-/** @rfc RFC-65 R1 */
-export async function createRecord(body: CreateRecordBody): Promise<CreateRecordsResult> {
+/** @rfc RFC-70 R1, R3 */
+export async function createRecords(body: CreateRecordBody): Promise<CreateRecordsResult> {
   return (
     await apiFetch<DataEnvelope<CreateRecordsResult>>('/records', { method: 'POST', json: body })
   ).data;
+}
+/** @rfc RFC-80 R4 */
+export async function resolveDoi(doi: string): Promise<ResolveDoiResult> {
+  return (await apiFetch<DataEnvelope<ResolveDoiResult>>(withQuery('/references/resolve', { doi })))
+    .data;
 }
 /** @rfc RFC-65 R3 */
 export async function annotateRecord(id: string, body: AnnotateRecordBody): Promise<RecordDetail> {
