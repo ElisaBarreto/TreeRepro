@@ -66,28 +66,44 @@ export function CurationCards({
       <h2 id="curation-heading" className="font-display text-section font-semibold text-canopy-950">
         Curation
       </h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/*
-          The percentages come from the API, which rounds halves up in integer
-          arithmetic (RFC-69 R5); recomputing them here from the float would
-          disagree with it by one on an exact half. The labels say
-          "dataset-wide" because `coverage` is plot-blind by design while the
-          queue counts below it are plot-scoped, and the two sit in one card —
-          a plot-restricted reviewer would otherwise read a dataset-wide
-          percentage as their own scope.
-        */}
-        <Meter
-          value={coverage.withData}
-          max={coverage.cells}
-          percent={coverage.percentWithData}
-          label="Species × trait cells with data, dataset-wide"
-        />
-        <Meter
-          value={coverage.accepted}
-          max={coverage.cells}
-          percent={coverage.percentAccepted}
-          label="Species × trait cells with an accepted value, dataset-wide"
-        />
+      {/*
+        `coverage` is plot-blind by design while the queue counts below it are
+        plot-scoped, and the two sit in one card: without the caption a
+        plot-restricted reviewer reads a dataset-wide percentage as their own
+        scope. It is visible text and not only an accessible name, because
+        that misreading is a sighted one too. The caption names the group the
+        meters sit in rather than being repeated into each `aria-label`, so a
+        screen reader hears "dataset-wide" once on entering the group; and the
+        wording stays here rather than in `Meter`, which knows nothing of
+        scope and is reused by plans 11c and 12d. It is a plain paragraph
+        ahead of the two meters and carries no ARIA of its own: naming a group
+        with it would have a screen reader announce "dataset-wide" on entering
+        the group and again when reading the paragraph, and each meter keeps
+        its own specific label, so in reading order the caption is heard once
+        and then what each bar measures.
+
+        The percentages come from the API, which rounds halves up in integer
+        arithmetic (RFC-69 R5); recomputing them here from the float would
+        disagree with it by one on an exact half.
+      */}
+      <div className="flex flex-col gap-2.5">
+        <p className="text-meta text-mist-500">
+          Dataset-wide: every visible species and trait, not only your plots.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Meter
+            value={coverage.withData}
+            max={coverage.cells}
+            percent={coverage.percentWithData}
+            label="Species × trait cells with data"
+          />
+          <Meter
+            value={coverage.accepted}
+            max={coverage.cells}
+            percent={coverage.percentAccepted}
+            label="Species × trait cells with an accepted value"
+          />
+        </div>
       </div>
       <ul aria-label="Curation queues" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <li>

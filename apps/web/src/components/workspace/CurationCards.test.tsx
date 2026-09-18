@@ -50,11 +50,21 @@ describe('RFC-72 R3 CurationCards', () => {
     expect(screen.queryByText('28%')).not.toBeInTheDocument();
   });
 
-  it('names both meters as dataset-wide, since the coverage totals are plot-blind', async () => {
+  it('captions the coverage meters as dataset-wide on screen, and announces it once', async () => {
     renderInRouter(<CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />);
     const meters = await screen.findAllByRole('meter');
+    // Visible text, not only an accessible name: the finding was that a
+    // plot-restricted reviewer reads these percentages as their own scope,
+    // and the queue counts beside them in this card really are plot-scoped.
+    expect(screen.getByText(/Dataset-wide/)).toBeInTheDocument();
+    // Announced once: the caption carries no ARIA of its own and each meter
+    // keeps its own specific label, so a screen reader reads "dataset-wide"
+    // from the paragraph and then what each bar measures — never twice.
+    const caption = screen.getByText(/Dataset-wide/);
     for (const meter of meters) {
-      expect(meter.getAttribute('aria-label')).toMatch(/dataset-wide/);
+      expect(meter.getAttribute('aria-label')).not.toMatch(/dataset-wide/i);
+      // The caption precedes the meters, so reading order carries the scope.
+      expect(caption.compareDocumentPosition(meter)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     }
   });
 
