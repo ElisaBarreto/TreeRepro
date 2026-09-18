@@ -199,32 +199,49 @@ describe('RFC-62 R5 GET /api/traits filters and speciesCount', () => {
     });
 
     // `dictionary:species-counts:r` is a fixed key (RFC-62 R5) shared by
-    // every parallel test that reads the dictionary; forgetting it and then
-    // reading races a sibling for who wins the miss→scan→write cycle. This
-    // seeds the key directly and reads it back immediately, so the assertion
-    // is provably this call's own value (the sentinel below cannot arise
-    // from a real scan: `own` has no species_trait_coverage row at all).
+    // every parallel test that reads the dictionary, and `cachedJson` stores
+    // the whole per-viewer-class map as one blob: seeding a bare single-trait
+    // entry would silently zero out every other trait's count for the rest
+    // of the key's 10-minute TTL, corrupting any concurrent reader.
     // `reader()` has `dataset.read` but not `dataset.read_inactive`, so it
-    // is a restricted viewer and reads the `r` key, not `u`.
+    // is a restricted viewer and reads `r`, not `u`. An unfiltered request
+    // first ensures the key holds a real, complete map (fresh, or already
+    // warm from an earlier test — either way every trait but `own` keeps its
+    // true count); only then is `own`'s entry overridden with the sentinel
+    // and the *whole* map written back. The key is deleted in `finally` so a
+    // failing assertion cannot leave the seed behind — the window is bounded
+    // to this test, not the TTL.
+    const cacheKey = 'dictionary:species-counts:r';
+    await call(t.app, 'GET', '/api/traits', { cookie });
+    const cached = await t.redis.get(cacheKey);
+    const entry = cached
+      ? (JSON.parse(cached) as { value: [string, number][]; computedAt: string })
+      : { value: [] as [string, number][], computedAt: new Date().toISOString() };
+    const map = new Map(entry.value);
     const sentinel = 424242;
+    map.set(own.id, sentinel);
     await t.redis.set(
-      'dictionary:species-counts:r',
-      JSON.stringify({ value: [[own.id, sentinel]], computedAt: new Date().toISOString() }),
+      cacheKey,
+      JSON.stringify({ value: [...map], computedAt: entry.computedAt }),
       'EX',
       600,
     );
-    const res = await call(t.app, 'GET', `/api/traits?categoryKey=flower_color&q=${own.key}`, {
-      cookie,
-    });
-    expect(res.status).toBe(200);
-    const dictionary = (await res.json()).data as {
-      key: string;
-      traits: { id: string; key: string; speciesCount: number }[];
-    }[];
-    const traitsFound = dictionary.flatMap((c) => c.traits);
-    expect(traitsFound.map((tr) => tr.key)).toEqual([own.key]);
-    expect(traitsFound[0]?.speciesCount).toBe(sentinel);
-    expect(traitsFound.some((tr) => tr.id === other.id)).toBe(false);
+    try {
+      const res = await call(t.app, 'GET', `/api/traits?categoryKey=flower_color&q=${own.key}`, {
+        cookie,
+      });
+      expect(res.status).toBe(200);
+      const dictionary = (await res.json()).data as {
+        key: string;
+        traits: { id: string; key: string; speciesCount: number }[];
+      }[];
+      const traitsFound = dictionary.flatMap((c) => c.traits);
+      expect(traitsFound.map((tr) => tr.key)).toEqual([own.key]);
+      expect(traitsFound[0]?.speciesCount).toBe(sentinel);
+      expect(traitsFound.some((tr) => tr.id === other.id)).toBe(false);
+    } finally {
+      await t.redis.del(cacheKey);
+    }
 
     const badQuery = await call(t.app, 'GET', '/api/traits?valueType=nope', { cookie });
     expect(badQuery.status).toBe(400);

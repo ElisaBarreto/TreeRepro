@@ -12,8 +12,10 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import type { Visibility } from '../access/visibility.ts';
 import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
+import { forgetCached } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
 import { getDictionary, getTrait } from './dictionary.ts';
 
@@ -209,52 +211,113 @@ describe('RFC-62 R5 dictionary speciesCount is read from the cache', () => {
   /**
    * `dictionary:species-counts:<u|r>` is a fixed key (RFC-62 R5), shared by
    * every parallel test and route call that reads the dictionary in this
-   * run. `forgetCached`-then-read raced a sibling's own scan for that same
-   * key (a sibling could win the miss→scan→write cycle between the forget
-   * and the read, so the read's "hit" would be someone else's value, not
-   * this test's). Seeding the key directly and reading it back in the next
-   * line removes that race: whatever the test asserts is verifiably the
-   * value it just wrote, not a value a scan happened to produce. It also
-   * proves the cache-hit path returns the cache's value rather than
-   * silently rescanning: the seeded number cannot match a real scan (the
-   * trait has no coverage rows at all).
+   * run, and `cachedJson` stores the whole per-viewer-class map as one blob.
+   * Two things follow:
+   *
+   * 1. `forgetCached`-then-read raced a sibling's own scan for that same key
+   *    (a sibling could win the miss→scan→write cycle between the forget and
+   *    the read, so the read's "hit" would be someone else's value, not this
+   *    test's) — so this seeds the key directly instead.
+   * 2. A seed must never be a bare single-trait entry: since the whole map
+   *    is one blob, a bare entry would silently replace every other trait's
+   *    count with an implicit 0 for up to the 10-minute TTL, corrupting any
+   *    concurrent reader in the same viewer class. `visibility` first
+   *    ensures the key holds a real, complete map (computed fresh, or
+   *    already warm from an earlier test — either way every trait but this
+   *    one keeps its true count); only then is this test's trait id
+   *    overridden with the sentinel and the *whole* map written back. The
+   *    key is deleted once `fn` settles, in a `finally`, so neither a
+   *    passing nor a failing assertion leaves the seed behind — the window
+   *    is bounded to this call, not the TTL, and the next reader just gets
+   *    an ordinary cache miss (a real rescan, never corrupted data).
    */
-  async function seedCounts(entries: { u?: [string, number][]; r?: [string, number][] }) {
-    const now = new Date().toISOString();
-    if (entries.u) {
-      await redis.set(
-        'dictionary:species-counts:u',
-        JSON.stringify({ value: entries.u, computedAt: now }),
-        'EX',
-        600,
-      );
-    }
-    if (entries.r) {
-      await redis.set(
-        'dictionary:species-counts:r',
-        JSON.stringify({ value: entries.r, computedAt: now }),
-        'EX',
-        600,
-      );
+  async function withSeededCount(
+    visibility: Visibility,
+    key: string,
+    traitId: string,
+    sentinel: number,
+    fn: () => Promise<void>,
+  ): Promise<void> {
+    await getDictionary({ db: t.db, redis }, visibility); // ensures `key` holds a real map
+    const cached = await redis.get(key);
+    const entry = cached
+      ? (JSON.parse(cached) as { value: [string, number][]; computedAt: string })
+      : { value: [] as [string, number][], computedAt: new Date().toISOString() };
+    const map = new Map(entry.value);
+    map.set(traitId, sentinel);
+    await redis.set(
+      key,
+      JSON.stringify({ value: [...map], computedAt: entry.computedAt }),
+      'EX',
+      600,
+    );
+    try {
+      await fn();
+    } finally {
+      await redis.del(key);
     }
   }
 
-  it('attaches the exact cached number to its trait, per viewer class', async () => {
+  it('attaches the exact cached number to its trait, per viewer class, without disturbing any other trait', async () => {
     const trait = await createTrait(t.db);
     const uSentinel = 111111;
     const rSentinel = 222222;
 
-    await seedCounts({ u: [[trait.id, uSentinel]] });
-    const unrestricted = await getDictionary({ db: t.db, redis }, UNRESTRICTED);
-    expect(
-      unrestricted.flatMap((c) => c.traits).find((tr) => tr.id === trait.id)?.speciesCount,
-    ).toBe(uSentinel);
+    // A second trait with a real, known, non-zero coverage count: if the
+    // seed replaced the whole map instead of merging into it, this trait's
+    // count would silently read back as 0 instead of 1.
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const other = await createTrait(t.db);
+    const otherSpecies = await createSpecies(t.db);
+    await createRecord(t.db, {
+      speciesId: otherSpecies.id,
+      traitId: other.id,
+      valueText: other.levels[0]?.key ?? 'x',
+      levelId: other.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    // The one place this file forces a rescan: `other`'s coverage row is
+    // already committed by this point, so whichever caller's scan runs next
+    // (this test's or a sibling's) is guaranteed to see it — unlike the
+    // forget-then-assert-an-exact-value pattern this replaces elsewhere,
+    // nothing here depends on winning a race for a *specific* computedAt.
+    await forgetCached(redis, 'dictionary:species-counts:u');
 
-    await seedCounts({ r: [[trait.id, rSentinel]] });
-    const restricted = await getDictionary({ db: t.db, redis }, RESTRICTED);
-    expect(restricted.flatMap((c) => c.traits).find((tr) => tr.id === trait.id)?.speciesCount).toBe(
-      rSentinel,
+    await withSeededCount(
+      UNRESTRICTED,
+      'dictionary:species-counts:u',
+      trait.id,
+      uSentinel,
+      async () => {
+        const unrestricted = await getDictionary({ db: t.db, redis }, UNRESTRICTED);
+        const traits = unrestricted.flatMap((c) => c.traits);
+        expect(traits.find((tr) => tr.id === trait.id)?.speciesCount).toBe(uSentinel);
+        // The other trait keeps its own true count: the seed merged into the
+        // real map rather than replacing it wholesale.
+        expect(traits.find((tr) => tr.id === other.id)?.speciesCount).toBe(1);
+      },
     );
+
+    await withSeededCount(
+      RESTRICTED,
+      'dictionary:species-counts:r',
+      trait.id,
+      rSentinel,
+      async () => {
+        const restricted = await getDictionary({ db: t.db, redis }, RESTRICTED);
+        expect(
+          restricted.flatMap((c) => c.traits).find((tr) => tr.id === trait.id)?.speciesCount,
+        ).toBe(rSentinel);
+      },
+    );
+
+    // The seed does not outlive the call it served: nothing is left for the
+    // next reader (in this run or a later one) to read as a cache hit.
+    expect(await redis.get('dictionary:species-counts:u')).toBeNull();
+    expect(await redis.get('dictionary:species-counts:r')).toBeNull();
   });
 });
 
