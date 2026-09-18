@@ -145,6 +145,8 @@ export async function getTraitDetail(
                              where c.species_id = s.id and c.trait_id = ${id}::uuid)
         ) as species_missing,
         (select count(*)::int from (
+           -- Served by accepted_values_trait_idx (trait_id, species_id, id
+           -- desc): the filter and the ordering below, in one index (#97).
            select distinct on (a.species_id) a.species_id, a.decision
              from accepted_values a
              join species s on s.id = a.species_id

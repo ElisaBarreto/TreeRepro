@@ -811,3 +811,20 @@ describe('RFC-71 R4 per-user contribution indexes', () => {
     ]);
   });
 });
+
+describe('RFC-62 R7 trait detail index on accepted_values', () => {
+  const t = useTestDb();
+
+  it('accepted_values carries a trait-leading index in the order the acceptedCount query reads it', async () => {
+    // The trait detail's acceptedCount filters accepted_values by trait_id
+    // alone and takes the newest row per species (`distinct on (species_id)
+    // … order by species_id, id desc`). The species-leading index cannot serve
+    // that predicate; this one serves both the filter and the ordering (#97).
+    const rows = await t.db.execute(sql`
+      select indexdef from pg_indexes where indexname = 'accepted_values_trait_idx'
+    `);
+    expect(rows.map((r) => r.indexdef)).toEqual([
+      'CREATE INDEX accepted_values_trait_idx ON public.accepted_values USING btree (trait_id, species_id, id DESC NULLS LAST)',
+    ]);
+  });
+});
