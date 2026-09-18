@@ -130,6 +130,25 @@ describe('RFC-62 R7 TraitPage distribution', () => {
     ).toEqual(['hermaphrodite 8 species · 19 records', 'dioecious 4 species · 5 records']);
   });
 
+  it('inflects the record count and leaves "species" alone: one record reads "1 record"', async () => {
+    await openPage({
+      ...SEXUAL_SYSTEM_DETAIL,
+      distribution: {
+        levels: [
+          {
+            level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11', key: 'hermaphrodite' },
+            speciesCount: 1,
+            recordCount: 1,
+          },
+        ],
+      },
+    });
+    const levels = screen.getByRole('list', { name: 'Level distribution' });
+    expect(within(levels).getByRole('listitem').textContent).toBe(
+      'hermaphrodite 1 species · 1 record',
+    );
+  });
+
   it('shows min, median and max with the unit for a quantitative trait', async () => {
     await openPage(SEED_MASS_DETAIL);
     const spread = screen.getByRole('list', { name: 'Numeric distribution' });

@@ -264,7 +264,7 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
       const levels = page.getByRole('list', { name: 'Level distribution' });
       await expect(levels.getByRole('listitem')).toHaveCount(1);
       await expect(levels.getByRole('listitem')).toContainText('e2e present');
-      await expect(levels.getByRole('listitem')).toContainText('1 species · 1 records');
+      await expect(levels.getByRole('listitem')).toContainText('1 species · 1 record');
 
       // RFC-13 R3: `Data › Traits › <Category> › <trait>`.
       const trail = page.getByRole('navigation', { name: 'Breadcrumb' });
@@ -293,7 +293,21 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
         page.getByRole('columnheader', { name: 'Accepted value', exact: true }),
       ).toBeVisible();
       const coveredRow = page.getByRole('row').filter({ hasText: coveredName });
-      await expect(coveredRow.getByRole('cell').nth(2)).toHaveText('1');
+      // The three cells are addressed by position: Playwright has no
+      // header-relative cell locator, and deriving the index from the
+      // columnheaders at runtime reads worse than the comment above naming
+      // the order.
+      //
+      // The Records cell stacks two spans (`TraitSpeciesTable.tsx`), the
+      // count over the per-species summary, so its whole text is the two run
+      // together and each is asserted on its own.
+      const recordsCell = coveredRow.getByRole('cell').nth(2);
+      // `formatNumber(item.recordCount)` — the one record seeded above.
+      await expect(recordsCell).toContainText('1');
+      // `summaryText`, the levels this species has values on with their
+      // counts: the level key humanised (`e2e_present`) and its record count.
+      // RFC-62 R8's per-species summary is exercised nowhere else here.
+      await expect(recordsCell).toContainText('e2e present 1');
       // Nothing was accepted, so the value and its source are both dashes.
       await expect(coveredRow.getByRole('cell').nth(3)).toHaveText('—');
       await expect(coveredRow.getByRole('cell').nth(4)).toHaveText('—');

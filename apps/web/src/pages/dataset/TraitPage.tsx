@@ -54,6 +54,11 @@ function species(n: number): string {
   return `${formatNumber(n)} species`;
 }
 
+// `19 records`, `1 record` — this one does inflect.
+function records(n: number): string {
+  return `${formatNumber(n)} record${n === 1 ? '' : 's'}`;
+}
+
 // Everything the filters put in the URL, in one comparable string.
 function filtersKey(value: TaxonomyFiltersValue): string {
   return JSON.stringify([value.q.trim() || null, value.familyId ?? null, value.genusId ?? null]);
@@ -113,7 +118,7 @@ function Distribution({ trait }: { trait: TraitDetail }) {
                 <Chip>
                   {humaniseKey(entry.level.key)}{' '}
                   <span className="ml-1.5 text-mist-500">
-                    {species(entry.speciesCount)} · {formatNumber(entry.recordCount)} records
+                    {species(entry.speciesCount)} · {records(entry.recordCount)}
                   </span>
                 </Chip>
               </li>
