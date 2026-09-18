@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { cursorQuerySchema } from './pagination.ts';
 
-/** The RFC-41 catalog, in the table's order. @rfc RFC-41 R3 */
+/**
+ * The RFC-41 catalog, in the table's order.
+ * @rfc RFC-41 R3
+ * @rfc RFC-74 R5
+ */
 export const AUDIT_ACTIONS = [
   'auth.login.success',
   'auth.login.failure',
@@ -40,6 +44,7 @@ export const AUDIT_ACTIONS = [
   'plots.species_added',
   'plots.species_removed',
   'users.plots_changed',
+  'digest.sent',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
