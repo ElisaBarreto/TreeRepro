@@ -8,6 +8,9 @@ services:
       APP_ORIGIN: http://localhost:8080
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
+      # RFC-74 R6: the E2E stack never mails a digest — the suite drives the
+      # clock nowhere near a day, and a tick would mail every seeded reviewer.
+      DIGEST_ENABLED: "false"
       # The suite provisions several users via invite/reset from one IP,
       # sharing the `tokenIp` bucket (RFC-24 R3); the shipped default of 10
       # is too tight for that within one 15-minute window.

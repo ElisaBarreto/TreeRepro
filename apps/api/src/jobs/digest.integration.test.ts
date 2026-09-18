@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -9,10 +9,25 @@ import {
   createTrait,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb, withRollback } from '../../test/helpers/db.ts';
+import { captureLogger } from '../../test/helpers/logger.ts';
+import { createFakeMailer } from '../../test/helpers/mail.ts';
 import { createRole, systemRoleId } from '../../test/helpers/roles.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import type { DbTransaction } from '../db/client.ts';
-import { computeDigest, DIGEST_LIST_LIMIT, type DigestWindow, digestRecipients } from './digest.ts';
+import { auditLog } from '../db/schema/audit-log.ts';
+import { jobRuns } from '../db/schema/job-runs.ts';
+import type { Mailer, MailMessage } from '../mail/mailer.ts';
+import {
+  computeDigest,
+  DIGEST_LIST_LIMIT,
+  DIGEST_MIN_INTERVAL_MS,
+  type DigestRunResult,
+  type DigestWindow,
+  digestRecipients,
+  isDigestDue,
+  runDigest,
+} from './digest.ts';
+import { latestRun } from './runs.ts';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -41,6 +56,14 @@ const ANCHOR_DAYS = {
   exclusivityEarly: 227,
   queues: 229,
   lists: 233,
+  // Task 4's `runDigest` tests. Each takes its own offset for the same reason
+  // as the four above, and none of them reuses one: the windows are one hour
+  // either side of the anchor and the anchors are days apart.
+  runCompleted: 239,
+  runQuiet: 241,
+  runFailedSend: 251,
+  runNotDue: 257,
+  runRoundTrip: 263,
 } as const;
 
 const anchor = (daysAgo: number): Date => new Date(Date.now() - daysAgo * DAY);
@@ -456,6 +479,415 @@ describe('RFC-74 R4 digestRecipients', () => {
         email: seededManager.email,
         name: 'Rita Reviewer',
       });
+    });
+  });
+});
+
+/**
+ * **`runDigest` reads and writes "the latest digest run", which no test in a
+ * shared database may own.** Four things keep the tests below apart from each
+ * other and from every sibling suite:
+ *
+ * - `withRollback`, so no `digest` run they write is ever committed — this
+ *   file is the only one that writes any, and none of them escapes it;
+ * - `freezeSnapshot`, so a sibling committing between two dataset-wide reads
+ *   (`digestRecipients` here and the one inside `runDigest`) cannot make the
+ *   two disagree;
+ * - its own anchor per test, exactly as the `computeDigest` tests above: the
+ *   window `runDigest` computes ends at the injected `now`, so `now` sits at
+ *   the test's own anchor and the seeded previous run stops an hour before it;
+ * - `expect(row.id).toBe(result.runId)` wherever a test reads a run back, so a
+ *   foreign row winning the ordering fails loudly instead of being silently
+ *   asserted on.
+ *
+ * The recipient count is the one number that cannot be scoped: `runDigest`
+ * mails every active reviewer in the dataset, and a sibling suite's committed
+ * manager is one. It is therefore asserted against `digestRecipients` read in
+ * the same frozen snapshot, never against a literal.
+ */
+
+/** The origin the record drawer links in the mail are built from (R5). */
+const APP_ORIGIN = 'https://digest.test';
+
+/**
+ * The `completed` run `runDigest` will find as its last success, placed so the
+ * window it hands out is exactly `windowAround(at)`: it stopped at `at - 1 h`,
+ * and finished two days before that — well beyond `DIGEST_MIN_INTERVAL_MS`
+ * before the injected `now` of `at + 1 h`, so the tick is due.
+ *
+ * `started_at` is in the past here, unlike the future-dated rows of
+ * `runs.integration.test.ts`: the run `runDigest` opens must OUTRANK this one,
+ * or `latestRun` would answer the seed when the round trip reads back.
+ */
+async function seedLastRun(tx: DbTransaction, at: Date): Promise<void> {
+  const windowEnd = new Date(at.getTime() - HOUR);
+  const finishedAt = new Date(windowEnd.getTime() - 2 * DAY);
+  const [row] = await tx
+    .insert(jobRuns)
+    .values({
+      kind: 'digest',
+      startedAt: finishedAt,
+      finishedAt,
+      status: 'completed',
+      detail: {
+        windowStart: new Date(windowEnd.getTime() - DAY).toISOString(),
+        windowEnd: windowEnd.toISOString(),
+      },
+    })
+    .returning({ id: jobRuns.id });
+  if (!row) throw new Error('seedLastRun: no row');
+}
+
+/** One manual record at `at`: enough for `hasActivity`, and inside `windowAround(at)`. */
+async function activityAt(tx: DbTransaction, at: Date): Promise<void> {
+  const s = await scene(tx);
+  const { user } = await createUser(tx, { password: null });
+  await createRecord(tx, {
+    speciesId: s.species.id,
+    traitId: s.trait.id,
+    valueText: 'alpha',
+    levelId: s.level('alpha'),
+    primaryReferenceId: s.reference.id,
+    origin: 'manual',
+    createdBy: user.id,
+    createdAt: at,
+  });
+}
+
+/** Two active holders of the seeded `manager` role, which carries `records.review`. */
+async function twoRecipients(tx: DbTransaction): Promise<{ id: string; email: string }[]> {
+  const manager = await systemRoleId(tx, 'manager');
+  const created = await Promise.all([
+    createUser(tx, { password: null, roles: [manager] }),
+    createUser(tx, { password: null, roles: [manager] }),
+  ]);
+  return created.map((c) => ({ id: c.user.id, email: c.email }));
+}
+
+/** Narrows the id of a tick that wrote a run, failing loudly when it wrote none. */
+function runIdOf(result: DigestRunResult): string {
+  if (result.runId === null) throw new Error(`expected a job run, got "${result.status}"`);
+  return result.runId;
+}
+
+/** A mailer that rejects for one address and records every other send. */
+function mailerRejecting(address: string): { mailer: Mailer; sent: MailMessage[] } {
+  const sent: MailMessage[] = [];
+  return {
+    sent,
+    mailer: {
+      async send(message) {
+        if (message.to === address) throw new Error('smtp: mailbox unavailable');
+        sent.push(message);
+      },
+    },
+  };
+}
+
+/** The ids of every `digest.sent` entry visible right now, to diff a call against. */
+async function digestAuditIds(tx: DbTransaction): Promise<string[]> {
+  const rows = await tx
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(eq(auditLog.action, 'digest.sent'));
+  return rows.map((r) => r.id);
+}
+
+/** The `job_runs` row a tick wrote, read back by the id it returned. */
+async function runRow(tx: DbTransaction, id: string) {
+  const [row] = await tx.select().from(jobRuns).where(eq(jobRuns.id, id));
+  return row;
+}
+
+/** How many `digest` runs this transaction can see, to prove a tick wrote none. */
+async function digestRunCount(tx: DbTransaction): Promise<number> {
+  const rows = (await tx.execute(
+    sql`select count(*)::int as n from job_runs where kind = 'digest'`,
+  )) as unknown as [{ n: number } | undefined];
+  return rows[0]?.n ?? 0;
+}
+
+describe('RFC-74 R2, R5 runDigest', () => {
+  const t = useTestDb();
+
+  it('mails every recipient, completes the run with the window and the counts, and audits it with no address', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runCompleted);
+      const now = new Date(at.getTime() + HOUR);
+      const windowStart = new Date(at.getTime() - HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      const [first, second] = await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+      const auditBefore = new Set(await digestAuditIds(tx));
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        now,
+      });
+
+      // Every active reviewer of the dataset is mailed, so the count is the
+      // query's answer in this snapshot — the two below are mine within it.
+      const recipients = await digestRecipients(tx);
+      expect(result).toMatchObject({
+        status: 'completed',
+        recipients: recipients.length,
+        failed: 0,
+      });
+      const addressed = mailer.sent.map((m) => m.to);
+      expect(addressed).toHaveLength(recipients.length);
+      expect(addressed).toContain(first?.email);
+      expect(addressed).toContain(second?.email);
+
+      // R5: subject, plain text, and the record drawer links of the window.
+      const mail = mailer.sent.find((m) => m.to === first?.email);
+      expect(mail?.subject).toBe(`TreeRepro digest — ${now.toISOString().slice(0, 10)}`);
+      expect(mail?.text).toContain('Records added (contests and complements included): 1');
+
+      const run = await runRow(tx, runIdOf(result));
+      expect(run).toMatchObject({ kind: 'digest', status: 'completed', error: null });
+      expect(run?.detail).toEqual({
+        windowStart: windowStart.toISOString(),
+        windowEnd: now.toISOString(),
+        recipients: recipients.length,
+        failed: 0,
+        counts: {
+          records: 1,
+          contests: 0,
+          complements: 0,
+          validations: 0,
+          disputes: 0,
+          withdrawals: 0,
+          proposals: 0,
+          // Current dataset-wide queue sizes (RFC-65 R8, R10): no window can
+          // isolate them, so only their presence is asserted here.
+          pendingGroups: expect.any(Number),
+          disputedNow: expect.any(Number),
+        },
+      });
+
+      const written = (await digestAuditIds(tx)).filter((id) => !auditBefore.has(id));
+      expect(written).toHaveLength(1);
+      const [entry] = await tx
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.id, written[0] ?? ''));
+      // A background job has no session user; R5's metadata is exactly these four.
+      expect(entry?.actorUserId).toBeNull();
+      expect(entry?.metadata).toEqual({
+        recipients: recipients.length,
+        failed: 0,
+        windowStart: windowStart.toISOString(),
+        windowEnd: now.toISOString(),
+      });
+      // `assertSafeMetadata` rejects a key named after an address, but a key
+      // it does not recognise could still carry one: the row is searched for
+      // the addresses themselves, and for any address at all.
+      const serialised = JSON.stringify(entry);
+      expect(serialised).not.toContain(first?.email);
+      expect(serialised).not.toContain(second?.email);
+      expect(serialised).not.toMatch(/@/);
+    });
+  });
+
+  it('skips the run and sends nothing when the window holds no activity (R4)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runQuiet);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+      const auditBefore = new Set(await digestAuditIds(tx));
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        now,
+      });
+
+      expect(result).toMatchObject({ status: 'skipped', recipients: 0, failed: 0 });
+      expect(mailer.sent).toEqual([]);
+      const run = await runRow(tx, runIdOf(result));
+      expect(run?.status).toBe('skipped');
+      // The window is still recorded: a skipped window must not be covered
+      // twice, and `isDigestDue` needs a `windowEnd` to start the next one from.
+      expect(run?.detail).toMatchObject({
+        windowStart: new Date(at.getTime() - HOUR).toISOString(),
+        windowEnd: now.toISOString(),
+        reason: 'no_activity',
+      });
+      expect(await digestAuditIds(tx)).toEqual([...auditBefore]);
+    });
+  });
+
+  it('counts a rejected send, logs it without the address, and still completes (R5)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runFailedSend);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      const [first, second] = await twoRecipients(tx);
+      const unreachable = first?.email ?? '';
+      const mailer = mailerRejecting(unreachable);
+      const { logger, lines } = captureLogger();
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        now,
+      });
+
+      const recipients = await digestRecipients(tx);
+      // R5: the run completes when every send was ATTEMPTED; one refusal is a
+      // number in `detail.failed`, never a `failed` run.
+      expect(result).toMatchObject({
+        status: 'completed',
+        recipients: recipients.length,
+        failed: 1,
+      });
+      expect(mailer.sent.map((m) => m.to)).not.toContain(unreachable);
+      expect(mailer.sent.map((m) => m.to)).toContain(second?.email);
+      expect(mailer.sent).toHaveLength(recipients.length - 1);
+
+      const run = await runRow(tx, runIdOf(result));
+      expect(run?.status).toBe('completed');
+      expect(run?.detail).toMatchObject({ failed: 1, recipients: recipients.length });
+      expect(run?.error).toBeNull();
+
+      const logs = lines as { level: number; msg: string; recipientId?: string }[];
+      const failure = logs.find((l) => l.msg === 'digest send failed');
+      expect(failure).toMatchObject({ level: 50, recipientId: first?.id });
+      // The log line names the recipient by id; an address in a log would
+      // outlive the mail itself (RFC-02 R7).
+      expect(JSON.stringify(failure)).not.toContain(unreachable);
+    });
+  });
+
+  it('skips every tick with reason "disabled" before the due check even runs (R6)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+      const auditBefore = new Set(await digestAuditIds(tx));
+
+      const first = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: false,
+      });
+      const second = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: false,
+      });
+
+      for (const result of [first, second]) {
+        expect(result).toMatchObject({ status: 'skipped', recipients: 0, failed: 0 });
+        const run = await runRow(tx, runIdOf(result));
+        expect(run).toMatchObject({ kind: 'digest', status: 'skipped', error: null });
+        // R6 gives the disabled run no window at all; `isDigestDue` then falls
+        // back to the last 24 h, which Ruling C accepts.
+        expect(run?.detail).toEqual({ reason: 'disabled' });
+      }
+      // The proof that the flag is read FIRST: the second tick followed the
+      // first immediately, so a due check standing in front of it would have
+      // refused to write anything at all.
+      expect(second.runId).not.toBe(first.runId);
+      expect(mailer.sent).toEqual([]);
+      expect(await digestAuditIds(tx)).toEqual([...auditBefore]);
+    });
+  });
+
+  it('writes nothing at all on a tick that is not due yet (R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runNotDue);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+      const tick = { db: tx, mailer: mailer.mailer, appOrigin: APP_ORIGIN, logger };
+
+      const first = await runDigest({ ...tick, now });
+      expect(first.status).toBe('completed');
+      const sentOnce = mailer.sent.length;
+      const runsAfterFirst = await digestRunCount(tx);
+
+      // `finishRun` stamps `finished_at` itself, so the second tick is timed
+      // against the row as it was really written: half an hour short of the
+      // 23 h 30 min threshold.
+      const run = await runRow(tx, runIdOf(first));
+      const tooSoon = new Date(
+        (run?.finishedAt?.getTime() ?? 0) + DIGEST_MIN_INTERVAL_MS - 30 * 60_000,
+      );
+      const second = await runDigest({ ...tick, now: tooSoon });
+
+      expect(second).toMatchObject({ status: 'not_due', runId: null, recipients: 0, failed: 0 });
+      expect(mailer.sent).toHaveLength(sentOnce);
+      expect(await digestRunCount(tx)).toBe(runsAfterFirst);
+    });
+  });
+
+  it('writes windowEnd in the shape isDigestDue reads back: the next window starts where this one ended', async () => {
+    // The round trip of task 4's notes, and the one failure this plan cannot
+    // see otherwise. `isDigestDue` reads `detail.windowEnd` as `unknown` and
+    // accepts it ONLY as a parseable string; any other shape — a number, a
+    // Date that serialises unexpectedly, a nested object — falls back to
+    // `now - 24 h`. The window would then reset on every run and a window's
+    // activity would be dropped with no error and no failing test anywhere.
+    // Asserting the string shape alone does not prove the two halves agree;
+    // this feeds the row that was actually written back through the reader.
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runRoundTrip);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        now,
+      });
+      expect(result.status).toBe('completed');
+
+      // Exactly the call the timer makes, and the row must be the one this
+      // tick wrote — never a sibling's.
+      const last = await latestRun(tx, 'digest', ['completed', 'skipped']);
+      expect(last?.id).toBe(runIdOf(result));
+      expect(typeof last?.detail.windowEnd).toBe('string');
+
+      const nextTick = new Date((last?.finishedAt?.getTime() ?? 0) + DIGEST_MIN_INTERVAL_MS);
+      const next = isDigestDue(last, nextTick);
+
+      expect(next.due).toBe(true);
+      // The window the reader hands out starts exactly where the writer
+      // stopped: no gap, no overlap, nothing dropped.
+      expect(next.windowStart.getTime()).toBe(now.getTime());
+      // And that is not the fallback answering by coincidence.
+      expect(next.windowStart.getTime()).not.toBe(nextTick.getTime() - 24 * HOUR);
     });
   });
 });

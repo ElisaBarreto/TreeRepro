@@ -10,6 +10,7 @@ import { loadConfig } from './config.ts';
 import { createDb } from './db/client.ts';
 import { createHealthChecks } from './http/health-checks.ts';
 import { createDoiClient } from './integrations/doi.ts';
+import { runDigest, startDigestTimer } from './jobs/digest.ts';
 import { createLogger } from './logger.ts';
 import { createMailer, createSmtpTransport } from './mail/mailer.ts';
 import { createRedis } from './redis/client.ts';
@@ -62,9 +63,25 @@ const retention = startRetentionTimer({
   logger,
 });
 
+// RFC-74 R2, R6: the API process owns the digest schedule too — `createApp`
+// must not, or every test that builds an app would start mailing. The flag is
+// read here and passed down, so a disabled deployment still records its ticks.
+const digest = startDigestTimer({
+  run: () =>
+    runDigest({
+      db,
+      mailer,
+      appOrigin: config.appOrigin,
+      logger,
+      enabled: config.digestEnabled,
+    }),
+  logger,
+});
+
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'shutting down');
   retention.stop();
+  digest.stop();
   server.close(() => {
     Promise.allSettled([closeDb(), redis.quit()]).then(() => process.exit(0));
   });

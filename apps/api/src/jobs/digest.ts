@@ -1,12 +1,18 @@
 import type { PermissionKey } from '@treerepro/contracts';
 import { and, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import { UNRESTRICTED } from '../access/visibility.ts';
+import { recordAudit } from '../audit/audit.ts';
 import { countDisputed, countPendingGroups } from '../dataset/queues.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { rolePermissions } from '../db/schema/role-permissions.ts';
 import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { users } from '../db/schema/users.ts';
+import { sanitizeError } from '../http/errors.ts';
+import type { Logger } from '../logger.ts';
+import type { Mailer } from '../mail/mailer.ts';
+import { digestEmail } from '../mail/templates.ts';
+import { finishRun, latestRun, startRun } from './runs.ts';
 
 /**
  * How long a successful digest postpones the next one. The timer ticks hourly,
@@ -309,4 +315,176 @@ export async function digestRecipients(db: DbExecutor): Promise<DigestRecipient[
   const byId = new Map<string, DigestRecipient>();
   for (const row of rows) byId.set(row.id, row);
   return [...byId.values()];
+}
+
+/** How often the timer wakes up. @rfc RFC-74 R2 */
+export const DIGEST_TICK_MS = 60 * 60 * 1000;
+
+/** How long the first tick waits after start. @rfc RFC-74 R2 */
+export const DIGEST_FIRST_TICK_MS = 60_000;
+
+/** `not_due` is the tick that wrote no run at all. @rfc RFC-74 R2 */
+export type DigestRunStatus = 'completed' | 'skipped' | 'not_due';
+
+/** What one tick did. @rfc RFC-74 R2, R5 */
+export interface DigestRunResult {
+  /** The `job_runs` row this tick wrote, or null when it wrote none. */
+  runId: string | null;
+  status: DigestRunStatus;
+  /** How many recipients were attempted, and how many of those sends threw. */
+  recipients: number;
+  failed: number;
+}
+
+/** @rfc RFC-74 R2, R5, R6 */
+export interface RunDigestInput {
+  db: DbExecutor;
+  mailer: Mailer;
+  appOrigin: string;
+  logger: Logger;
+  /** `DIGEST_ENABLED` (R6); enabled unless this is explicitly `false`. */
+  enabled?: boolean;
+  /** The instant this tick happens; defaults to now, and the tests inject it. */
+  now?: Date;
+}
+
+/**
+ * One tick of the daily digest: decide, compute, send, record.
+ *
+ * The order is the rule's order. `DIGEST_ENABLED` is read FIRST (R6), so a
+ * disabled deployment records a `skipped` run on every tick rather than going
+ * silent; only then does R2's due check run, and a tick that is not due writes
+ * nothing at all — no row, no mail, no audit.
+ * @rfc RFC-74 R2, R4, R5, R6
+ * @rfc RFC-41 R1
+ */
+export async function runDigest(input: RunDigestInput): Promise<DigestRunResult> {
+  const { db, mailer, appOrigin, logger } = input;
+  const now = input.now ?? new Date();
+
+  if (input.enabled === false) {
+    const runId = await startRun(db, 'digest');
+    // R6 exactly: no window, because none was computed. `isDigestDue` reads
+    // such a run as "no usable window end" and falls back to the last 24 h
+    // (Ruling C), which is the accepted cost of the flag.
+    await finishRun(db, runId, { status: 'skipped', detail: { reason: 'disabled' } });
+    return { runId, status: 'skipped', recipients: 0, failed: 0 };
+  }
+
+  const lastSuccess = await latestRun(db, 'digest', ['completed', 'skipped']);
+  const { due, windowStart } = isDigestDue(lastSuccess, now);
+  if (!due) return { runId: null, status: 'not_due', recipients: 0, failed: 0 };
+
+  const window: DigestWindow = { start: windowStart, end: now };
+  /**
+   * ISO strings, never a `Date`, a number or a nested object: `isDigestDue`
+   * reads `detail.windowEnd` back as `unknown` and accepts it only when it is
+   * a string that parses to a date. In any other shape it falls back to
+   * `now - 24 h` — the window resets on every run and a window's activity is
+   * dropped with no error and no failing test. The round trip between this
+   * line and that reader is asserted in `digest.integration.test.ts`.
+   */
+  const windowDetail = {
+    windowStart: window.start.toISOString(),
+    windowEnd: window.end.toISOString(),
+  };
+
+  const runId = await startRun(db, 'digest');
+  try {
+    const digest = await computeDigest(db, window);
+    if (!hasActivity(digest.counts)) {
+      // R4: nothing happened, so nothing is sent. The window is recorded all
+      // the same, so the next run starts where this one stopped instead of
+      // falling back and covering the same day twice.
+      await finishRun(db, runId, {
+        status: 'skipped',
+        detail: { ...windowDetail, reason: 'no_activity', counts: digest.counts },
+      });
+      return { runId, status: 'skipped', recipients: 0, failed: 0 };
+    }
+
+    const recipients = await digestRecipients(db);
+    const mail = digestEmail({ digest, appOrigin, date: windowDetail.windowEnd.slice(0, 10) });
+    let failed = 0;
+    for (const recipient of recipients) {
+      try {
+        await mailer.send({ to: recipient.email, subject: mail.subject, text: mail.text });
+      } catch (err) {
+        failed += 1;
+        // R5: a failed send is logged and counted, and the tick carries on.
+        // The recipient is named by id: an address written to a log would
+        // outlive the mail itself (RFC-02 R7).
+        const error = err instanceof Error ? err : new Error(String(err));
+        logger.error(
+          { err: sanitizeError(error), recipientId: recipient.id },
+          'digest send failed',
+        );
+      }
+    }
+
+    // R5's metadata exactly: four numbers and two timestamps, no address and
+    // no name. The actor is null because a background job has no session user
+    // (RFC-41's `actor_user_id` is nullable for this).
+    await recordAudit(db, {
+      actorUserId: null,
+      action: 'digest.sent',
+      metadata: { recipients: recipients.length, failed, ...windowDetail },
+    });
+    // R5: the run completes once every send has been ATTEMPTED, so a partial
+    // failure is `completed` with `failed: n`, never a `failed` run.
+    await finishRun(db, runId, {
+      status: 'completed',
+      detail: { ...windowDetail, recipients: recipients.length, failed, counts: digest.counts },
+    });
+    return { runId, status: 'completed', recipients: recipients.length, failed };
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    // Best effort, exactly as `purgeAudit` (RFC-42 R4): the run row is a
+    // trace, and the job's own error is what the caller must see.
+    await finishRun(db, runId, { status: 'failed', error: error.message }).catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Ticks every `intervalMs` (hourly by default), the first time
+ * `initialDelayMs` after start rather than immediately (R2): this job sends
+ * mail, and a crash-restart loop must not send a digest per restart.
+ *
+ * `startRetentionTimer`'s discipline otherwise (RFC-42 R4): a failure is
+ * logged and never thrown, both handles are unref'd so neither holds the
+ * process open, and `stop()` clears them.
+ * @rfc RFC-74 R2
+ */
+export function startDigestTimer(deps: {
+  run: () => Promise<DigestRunResult>;
+  logger: Logger;
+  intervalMs?: number;
+  initialDelayMs?: number;
+}): { stop(): void } {
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const tick = async (): Promise<void> => {
+    try {
+      const result = await deps.run();
+      // 23 of the 24 daily ticks are not due; only a tick that did something
+      // earns an info line.
+      if (result.status === 'not_due') deps.logger.debug({ status: result.status }, 'digest tick');
+      else deps.logger.info({ ...result }, 'digest run');
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      deps.logger.error({ err: sanitizeError(error) }, 'digest run failed');
+    }
+  };
+  const first = setTimeout(() => {
+    void tick();
+    interval = setInterval(() => void tick(), deps.intervalMs ?? DIGEST_TICK_MS);
+    interval.unref();
+  }, deps.initialDelayMs ?? DIGEST_FIRST_TICK_MS);
+  first.unref();
+  return {
+    stop() {
+      clearTimeout(first);
+      if (interval) clearInterval(interval);
+    },
+  };
 }
