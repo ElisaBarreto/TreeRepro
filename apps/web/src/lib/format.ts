@@ -1,10 +1,17 @@
-import type { NameSource, TraitValueType } from '@treerepro/contracts';
+import type { NameSource, NameType, TraitValueType } from '@treerepro/contracts';
 
 /** How each species name source reads (RFC-60 R3); the wire code stays the value. @rfc RFC-13 R9 */
 export const NAME_SOURCE_LABELS: Record<NameSource, string> = {
   wcvp: 'WCVP',
   gbif: 'GBIF',
   original: 'Original source',
+};
+
+/** How each alternative-name type reads in `AddNameDialog`'s Type select (RFC-60 R4). @rfc RFC-13 R9 */
+export const NAME_TYPE_LABELS: Record<NameType, string> = {
+  gbif: 'GBIF name',
+  synonym: 'Synonym',
+  common: 'Common name',
 };
 
 /** How each trait value type reads (RFC-62 R2); the wire code stays the value. @rfc RFC-13 R9 */

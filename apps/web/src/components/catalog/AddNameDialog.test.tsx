@@ -89,3 +89,70 @@ describe('RFC-60 R9 AddNameDialog', () => {
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+describe('RFC-60 R4, R9 AddNameDialog type, language and source', () => {
+  it('defaults the Type select to GBIF name and shows no Language field', async () => {
+    const { dialog } = mount();
+    const type = within(dialog).getByRole('combobox', { name: /type/i });
+    expect(type).toHaveValue('gbif');
+    expect(within(dialog).queryByRole('textbox', { name: /language/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the Language field only for Common name and posts language, source and no gbifUsageKey', async () => {
+    catalog.addSpeciesName.mockResolvedValue(SPECIES);
+    const { dialog } = mount();
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: /type/i }),
+      'Common name',
+    );
+    expect(
+      within(dialog).queryByRole('textbox', { name: /gbif usage key/i }),
+    ).not.toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /^name/i }), 'Tento-carolina');
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /language/i }), 'pt');
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /source/i }), 'original');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add name' }));
+    await waitFor(() =>
+      expect(catalog.addSpeciesName).toHaveBeenCalledWith(SPECIES.id, {
+        name: 'Tento-carolina',
+        nameType: 'common',
+        language: 'pt',
+        source: 'original',
+      }),
+    );
+  });
+
+  it('posts a Synonym with no language and no gbifUsageKey', async () => {
+    catalog.addSpeciesName.mockResolvedValue(SPECIES);
+    const { dialog } = mount();
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: /type/i }),
+      'Synonym',
+    );
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /^name/i }),
+      'Adenanthera bicolor',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add name' }));
+    await waitFor(() =>
+      expect(catalog.addSpeciesName).toHaveBeenCalledWith(SPECIES.id, {
+        name: 'Adenanthera bicolor',
+        nameType: 'synonym',
+      }),
+    );
+  });
+
+  it('requires a language for a Common name', async () => {
+    const { dialog } = mount();
+    await userEvent.selectOptions(
+      within(dialog).getByRole('combobox', { name: /type/i }),
+      'Common name',
+    );
+    await userEvent.type(within(dialog).getByRole('textbox', { name: /^name/i }), 'Tento-carolina');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add name' }));
+    expect(
+      await within(dialog).findByText('Enter a two-letter language code, like pt.'),
+    ).toBeInTheDocument();
+    expect(catalog.addSpeciesName).not.toHaveBeenCalled();
+  });
+});

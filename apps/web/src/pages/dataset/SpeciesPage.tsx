@@ -15,7 +15,7 @@ import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
-import { Alert, Badge, Button, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import { Alert, Badge, Button, Chip, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
@@ -43,7 +43,9 @@ function SpeciesHeader({
 }) {
   const me = useMe();
   const canManagePlots = hasPermission(me, 'plots.manage');
-  const names = species.names.map((n) => n.name);
+  const gbifNames = species.names.filter((n) => n.nameType === 'gbif');
+  const synonyms = species.names.filter((n) => n.nameType === 'synonym');
+  const commonNames = species.names.filter((n) => n.nameType === 'common');
   return (
     <PageHeader
       title={
@@ -62,9 +64,26 @@ function SpeciesHeader({
               {species.plots.map((p) => p.name).join(', ')}
             </span>
           ) : null}
-          {names.length > 0 ? (
+          {gbifNames.length > 0 ? (
             <span className="block">
-              Also known as <span className="italic">{names.join(', ')}</span>
+              Also known as{' '}
+              <span className="italic">{gbifNames.map((n) => n.name).join(', ')}</span>
+            </span>
+          ) : null}
+          {synonyms.length > 0 ? (
+            <span className="block">
+              Synonyms <span className="italic">{synonyms.map((n) => n.name).join(', ')}</span>
+            </span>
+          ) : null}
+          {commonNames.length > 0 ? (
+            <span className="flex flex-wrap items-center gap-2">
+              Common names
+              {commonNames.map((n) => (
+                <span key={n.name} className="inline-flex items-center gap-1.5">
+                  <em>{n.name}</em>
+                  {n.language ? <Chip>{n.language}</Chip> : null}
+                </span>
+              ))}
             </span>
           ) : null}
           <span className="block">
@@ -92,7 +111,9 @@ function SpeciesHeader({
 }
 
 /**
- * One species: its taxonomy and names (RFC-60 R7) and, per category in
+ * One species: its taxonomy and names, grouped by type as "Also known as"
+ * (gbif), "Synonyms" and "Common names" (the last with a language chip per
+ * name; an empty group renders nothing) (RFC-60 R4, R7), and, per category in
  * dictionary order, a card per trait with the summary the API computed
  * (RFC-63 R10). A card opens the trait's records in a panel; a row there
  * opens the record's detail in a drawer on top. With `records.create`, an
@@ -123,7 +144,7 @@ function SpeciesHeader({
  * breadcrumb reads `Data › Species › <canonical name>` in italics once the
  * species resolved, and nothing extra while it loads or fails (RFC-13 R3).
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-60 R7, R9
+ * @rfc RFC-60 R4, R7, R9
  * @rfc RFC-33 R7
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1, R6

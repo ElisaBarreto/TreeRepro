@@ -904,3 +904,46 @@ export const CONTRIBUTION_SUMMARY: ContributionSummary = {
   withdrawn: 1,
   accepted: 4,
 };
+
+// --- Plan 10b (browsing: synonyms and common names) -----------------------
+
+/**
+ * SPECIES with a synonym and a Portuguese common name added to its one GBIF
+ * name, for the header's grouped "Also known as" / "Synonyms" / "Common
+ * names" (RFC-60 R4, R7).
+ * @rfc RFC-60 R4, R7
+ */
+export const SPECIES_WITH_NAME_GROUPS: Species = {
+  ...SPECIES,
+  names: [
+    ...SPECIES.names,
+    {
+      name: 'Adenanthera bicolor',
+      nameType: 'synonym',
+      language: null,
+      source: 'WCVP',
+      gbifUsageKey: null,
+    },
+    {
+      name: 'Tento-carolina',
+      nameType: 'common',
+      language: 'pt',
+      source: 'original',
+      gbifUsageKey: null,
+    },
+  ],
+};
+
+/** SPECIES with only a synonym: the group-hidden rule's other side. @rfc RFC-60 R4, R7 */
+export const SPECIES_WITH_SYNONYM_ONLY: Species = {
+  ...SPECIES,
+  names: [
+    {
+      name: 'Adenanthera bicolor',
+      nameType: 'synonym',
+      language: null,
+      source: 'WCVP',
+      gbifUsageKey: null,
+    },
+  ],
+};

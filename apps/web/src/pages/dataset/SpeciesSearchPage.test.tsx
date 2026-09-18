@@ -115,7 +115,7 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     expect(rows[1]).toHaveTextContent('Fabaceae');
     expect(rows[1]).toHaveTextContent('Adenanthera');
     expect(within(rows[1] as HTMLElement).queryByText('unresolved')).not.toBeInTheDocument();
-    expect(rows[2]).toHaveTextContent('matched: Adansonia baobab');
+    expect(rows[2]).toHaveTextContent('found as: Adansonia baobab');
     expect(within(rows[2] as HTMLElement).getByText('unresolved')).toBeInTheDocument();
     const pagination = screen.getByRole('navigation', { name: 'Pagination' });
     expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
