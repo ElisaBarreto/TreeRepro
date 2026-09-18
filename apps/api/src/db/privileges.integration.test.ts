@@ -154,7 +154,10 @@ describe('RFC-42 R2, RFC-69 R3 SECURITY DEFINER functions pin search_path with p
         ?.slice('search_path='.length)
         .split(',')
         .map((s) => s.trim());
-      expect(schemas?.at(-1), `${row.name} must name pg_temp last`).toBe('pg_temp');
+      expect(schemas, `${row.name} must pin exactly public, pg_temp`).toEqual([
+        'public',
+        'pg_temp',
+      ]);
     }
   });
 });
