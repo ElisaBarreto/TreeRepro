@@ -56,6 +56,15 @@ function afterNameCursor(cursor: string, nameCol: AnyPgColumn, idCol: AnyPgColum
 // driver error.
 const isTraitCount = (part: string) => isDigits(part) && Number(part) <= 2_147_483_647;
 
+// The tier key in a cursor: only '0', '1' or '2', RFC-60 R6's three search
+// tiers — not `isDigits`, which would also accept e.g. '7'. `Number('7') as
+// 0|1|2` is still 7 at runtime; `tier === 1` is false, so it falls through
+// to the tier-2 branch while `pattern` (gated on `tier === 2` in
+// `searchSpecies`) stays undefined, carrying tier-2 rows with
+// `matchedName`/`matchedNameType` null — a silent mis-decode, not the 400
+// `VALIDATION_FAILED` on `cursor` a bad cursor must always answer with.
+const isTier = (part: string) => part === '0' || part === '1' || part === '2';
+
 /**
  * The species list's cursor carries a leading tier key ahead of its ordering
  * keyset (RFC-60 R6): `[tier, name, id]` under `sort=name`, `[tier,
@@ -70,7 +79,7 @@ const isTraitCount = (part: string) => isDigits(part) && Number(part) <= 2_147_4
 function decodeSpeciesCursor(cursor: string, sort: SpeciesSort): { tier: string; predicate: SQL } {
   if (sort === 'completeness') {
     const [tier, traitCount, name, id] = decodeCompositeCursor(cursor, 4, [
-      isDigits,
+      isTier,
       isTraitCount,
       () => true,
       isUuid,
@@ -80,7 +89,7 @@ function decodeSpeciesCursor(cursor: string, sort: SpeciesSort): { tier: string;
       predicate: sql`(${species.traitCount}, ${species.canonicalName}, ${species.id}) > (${Number(traitCount)}::int, ${name}, ${id}::uuid)`,
     };
   }
-  const [tier, name, id] = decodeCompositeCursor(cursor, 3, [isDigits, () => true, isUuid]) as [
+  const [tier, name, id] = decodeCompositeCursor(cursor, 3, [isTier, () => true, isUuid]) as [
     string,
     string,
     string,

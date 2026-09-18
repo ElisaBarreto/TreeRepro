@@ -17,6 +17,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
+import { encodeCompositeCursor } from '../http/cursor.ts';
 import { speciesTraitSummary } from './summary.ts';
 import { getSpecies, likePattern, listFamilies, listGenera, searchSpecies } from './taxa.ts';
 
@@ -181,6 +182,24 @@ describe('RFC-60 R6 search tiers', () => {
       searchSpecies(t.db, UNRESTRICTED, {
         q: stem,
         cursor: byCompleteness.nextCursor as string,
+        limit: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
+  });
+
+  it('a cursor whose tier is not 0, 1 or 2 is rejected with 400, never mis-decoded into the wrong tier branch (RFC-60 R6, RFC-11 R6)', async () => {
+    const stem = `Tier${tag()}`;
+    const sp = await createSpecies(t.db, { canonicalName: stem });
+    const badTierByName = encodeCompositeCursor(['7', stem, sp.id]);
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, { q: stem, cursor: badTierByName, limit: 1 }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
+    const badTierByCompleteness = encodeCompositeCursor(['7', '0', stem, sp.id]);
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, {
+        q: stem,
+        sort: 'completeness',
+        cursor: badTierByCompleteness,
         limit: 1,
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
