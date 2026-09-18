@@ -213,6 +213,13 @@ export const listReferencesQuerySchema = cursorQuerySchema.extend({
   kind: z.enum([...REFERENCE_KINDS, 'all']).optional(),
 });
 
+/** `GET /api/traits` filters, applied server-side. @rfc RFC-62 R5 */
+export const listTraitsQuerySchema = z.strictObject({
+  categoryKey: z.string().trim().min(1).max(100).optional(),
+  valueType: z.enum(TRAIT_VALUE_TYPES).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+});
+
 /** @rfc RFC-62 R5 */
 export const traitRefSchema = z.strictObject({
   id: z.uuid(),
@@ -229,17 +236,99 @@ export const traitLevelSchema = z.strictObject({
   active: z.boolean(),
 });
 
-/** @rfc RFC-62 R5 */
+/**
+ * `speciesCount`: visible species with a coverage row for the trait, cached
+ * 10 minutes per viewer class (RFC-62 R5).
+ * @rfc RFC-62 R5
+ */
 export const traitSchema = traitRefSchema.extend({
   description: z.string(),
   active: z.boolean(),
   levels: z.array(traitLevelSchema),
+  speciesCount: z.number().int().nonnegative(),
 });
 
 /** @rfc RFC-62 R5 */
 export const dictionarySchema = z.array(
   z.strictObject({ key: z.string(), label: z.string(), traits: z.array(traitSchema) }),
 );
+
+/**
+ * `GET /api/traits/:id`: the trait entry plus its category, the species
+ * counted with and without a value, the accepted-value count, and the
+ * distribution over harmonised records — `levels` for a categorical trait,
+ * `numeric` (nullable, no harmonised records yet) for a quantitative one.
+ * @rfc RFC-62 R7
+ */
+export const traitDetailSchema = traitSchema.extend({
+  category: z.strictObject({ key: z.string(), label: z.string() }),
+  speciesWithData: z.number().int().nonnegative(),
+  speciesMissing: z.number().int().nonnegative(),
+  acceptedCount: z.number().int().nonnegative(),
+  distribution: z.union([
+    z.strictObject({
+      levels: z.array(
+        z.strictObject({
+          level: z.strictObject({ id: z.uuid(), key: z.string() }),
+          speciesCount: z.number().int(),
+          recordCount: z.number().int(),
+        }),
+      ),
+    }),
+    z.strictObject({
+      numeric: z
+        .strictObject({
+          min: z.number(),
+          median: z.number(),
+          max: z.number(),
+          speciesCount: z.number().int(),
+        })
+        .nullable(),
+    }),
+  ]),
+  computedAt: z.iso.datetime(),
+});
+
+/** `mode=with` keeps species with a value on the trait; `missing` keeps the rest. @rfc RFC-62 R8 */
+export const TRAIT_SPECIES_MODES = ['with', 'missing'] as const;
+export type TraitSpeciesMode = (typeof TRAIT_SPECIES_MODES)[number];
+
+/** `GET /api/traits/:id/species` query: species list filters plus `mode`. @rfc RFC-62 R8 */
+export const listTraitSpeciesQuerySchema = cursorQuerySchema.extend({
+  mode: z.enum(TRAIT_SPECIES_MODES).optional(),
+  q: searchTermSchema.optional(),
+  familyId: z.uuid().optional(),
+  genusId: z.uuid().optional(),
+  scope: z.enum(SPECIES_SCOPES).optional(),
+  plotId: z.uuid().optional(),
+});
+
+/**
+ * A species row of `GET /api/traits/:id/species`: the species list item plus,
+ * in `with` mode, the accepted value (its reference's `shortCitation` is
+ * `null` until plan 10d adds the column) and a per-species summary of its
+ * records on the trait — `levels` for a categorical trait, `numeric` for a
+ * quantitative one. `missing` mode leaves all three `null`.
+ * @rfc RFC-62 R8
+ */
+export const traitSpeciesItemSchema = speciesListItemSchema.extend({
+  recordCount: z.number().int().nonnegative().nullable(),
+  accepted: z
+    .strictObject({
+      recordId: z.uuid(),
+      valueText: z.string(),
+      reference: referenceRefSchema.extend({ shortCitation: z.string().nullable() }),
+    })
+    .nullable(),
+  summary: z
+    .union([
+      z.strictObject({
+        levels: z.array(z.strictObject({ key: z.string(), count: z.number().int() })),
+      }),
+      z.strictObject({ numeric: z.strictObject({ min: z.number(), max: z.number() }) }),
+    ])
+    .nullable(),
+});
 
 /** @rfc RFC-63 R8 */
 export const recordSchema = z.strictObject({
@@ -420,10 +509,14 @@ export type ReferenceRef = z.infer<typeof referenceRefSchema>;
 export type Reference = z.infer<typeof referenceSchema>;
 export type ReferenceDetail = z.infer<typeof referenceDetailSchema>;
 export type ListReferencesQuery = z.infer<typeof listReferencesQuerySchema>;
+export type ListTraitsQuery = z.infer<typeof listTraitsQuerySchema>;
 export type TraitRef = z.infer<typeof traitRefSchema>;
 export type TraitLevel = z.infer<typeof traitLevelSchema>;
 export type Trait = z.infer<typeof traitSchema>;
 export type Dictionary = z.infer<typeof dictionarySchema>;
+export type TraitDetail = z.infer<typeof traitDetailSchema>;
+export type ListTraitSpeciesQuery = z.infer<typeof listTraitSpeciesQuerySchema>;
+export type TraitSpeciesItem = z.infer<typeof traitSpeciesItemSchema>;
 export type UserRef = z.infer<typeof userRefSchema>;
 export type RecordItem = z.infer<typeof recordSchema>;
 export type Annotation = z.infer<typeof annotationSchema>;

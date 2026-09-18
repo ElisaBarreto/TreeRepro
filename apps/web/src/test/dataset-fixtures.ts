@@ -346,6 +346,7 @@ export const DICTIONARY: Dictionary = [
         unit: null,
         description: 'Distribution of male and female function among individuals.',
         active: true,
+        speciesCount: 0,
         levels: [
           {
             id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11',
@@ -374,6 +375,7 @@ export const DICTIONARY: Dictionary = [
         unit: null,
         description: 'Whether an individual sets seed with its own pollen.',
         active: true,
+        speciesCount: 0,
         levels: [
           {
             id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e15',
@@ -402,6 +404,7 @@ export const DICTIONARY: Dictionary = [
         unit: 'mg',
         description: 'Dry mass of one seed.',
         active: true,
+        speciesCount: 0,
         levels: [],
       },
       {
@@ -411,6 +414,7 @@ export const DICTIONARY: Dictionary = [
         unit: null,
         description: 'Colour of the mature seed coat.',
         active: false,
+        speciesCount: 0,
         levels: [
           { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e14', key: 'brown', sortOrder: 0, active: true },
         ],
@@ -422,6 +426,7 @@ export const DICTIONARY: Dictionary = [
         unit: 'mm',
         description: 'Length of the mature seed.',
         active: true,
+        speciesCount: 0,
         levels: [],
       },
     ],
@@ -452,6 +457,7 @@ export const NEW_TRAIT: Trait = {
   unit: null,
   description: '',
   active: true,
+  speciesCount: 0,
   levels: [],
 };
 

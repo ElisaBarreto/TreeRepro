@@ -6,6 +6,8 @@ import {
   listGeneraQuerySchema,
   listRecordsQuerySchema,
   listSpeciesQuerySchema,
+  listTraitSpeciesQuerySchema,
+  listTraitsQuerySchema,
   REVIEW_STATUSES,
   recordSchema,
   referenceDetailSchema,
@@ -14,6 +16,10 @@ import {
   speciesListItemSchema,
   speciesTraitsSchema,
   TRAIT_DATA_MODES,
+  TRAIT_SPECIES_MODES,
+  traitDetailSchema,
+  traitSchema,
+  traitSpeciesItemSchema,
 } from './dataset.ts';
 
 const uuid = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
@@ -286,5 +292,184 @@ describe('RFC-60 R6, RFC-69 R1 speciesListItemSchema trait coverage fields', () 
     expect(speciesListItemSchema.safeParse(withoutTraitCount).success).toBe(false);
     const { traitRecordCount: _trc, ...withoutTraitRecordCount } = ITEM;
     expect(speciesListItemSchema.safeParse(withoutTraitRecordCount).success).toBe(false);
+  });
+});
+
+const BASE_TRAIT = {
+  id: uuid,
+  key: 'sexual_system',
+  valueType: 'categorical' as const,
+  unit: null,
+  description: 'Distribution of male and female function among individuals.',
+  active: true,
+  levels: [],
+  speciesCount: 5,
+};
+
+describe('RFC-62 R5 traitSchema carries speciesCount', () => {
+  it('requires a non-negative integer speciesCount', () => {
+    expect(traitSchema.parse(BASE_TRAIT)).toEqual(BASE_TRAIT);
+    expect(traitSchema.safeParse({ ...BASE_TRAIT, speciesCount: -1 }).success).toBe(false);
+    expect(traitSchema.safeParse({ ...BASE_TRAIT, speciesCount: 1.5 }).success).toBe(false);
+    const { speciesCount: _sc, ...withoutSpeciesCount } = BASE_TRAIT;
+    expect(traitSchema.safeParse(withoutSpeciesCount).success).toBe(false);
+  });
+});
+
+describe('RFC-62 R5 listTraitsQuerySchema', () => {
+  it('filters are optional and bounded; valueType matches the vocabulary', () => {
+    expect(listTraitsQuerySchema.parse({})).toEqual({});
+    expect(
+      listTraitsQuerySchema.parse({ categoryKey: 'seed', valueType: 'quantitative', q: 'mass' }),
+    ).toEqual({ categoryKey: 'seed', valueType: 'quantitative', q: 'mass' });
+    expect(listTraitsQuerySchema.safeParse({ valueType: 'nope' }).success).toBe(false);
+    expect(listTraitsQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);
+    expect(listTraitsQuerySchema.safeParse({ q: 'x'.repeat(101) }).success).toBe(false);
+    expect(listTraitsQuerySchema.safeParse({ extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('RFC-62 R7 traitDetailSchema distribution union', () => {
+  const DETAIL_BASE = {
+    ...BASE_TRAIT,
+    category: { key: 'reproductive_system', label: 'Reproductive system' },
+    speciesWithData: 10,
+    speciesMissing: 2,
+    acceptedCount: 8,
+    computedAt: '2026-09-18T00:00:00.000Z',
+  };
+
+  it('accepts a categorical distribution (levels)', () => {
+    const detail = {
+      ...DETAIL_BASE,
+      distribution: {
+        levels: [{ level: { id: uuid, key: 'dioecious' }, speciesCount: 4, recordCount: 6 }],
+      },
+    };
+    expect(traitDetailSchema.parse(detail)).toEqual(detail);
+  });
+
+  it('accepts a quantitative distribution (numeric, possibly null)', () => {
+    const detail = {
+      ...DETAIL_BASE,
+      distribution: { numeric: { min: 0.5, median: 1.25, max: 3, speciesCount: 3 } },
+    };
+    expect(traitDetailSchema.parse(detail)).toEqual(detail);
+    expect(
+      traitDetailSchema.safeParse({ ...DETAIL_BASE, distribution: { numeric: null } }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a distribution that matches neither union member', () => {
+    expect(
+      traitDetailSchema.safeParse({ ...DETAIL_BASE, distribution: { levels: [], numeric: null } })
+        .success,
+    ).toBe(false);
+    expect(
+      traitDetailSchema.safeParse({ ...DETAIL_BASE, distribution: { foo: 'bar' } }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a negative speciesMissing', () => {
+    expect(
+      traitDetailSchema.safeParse({
+        ...DETAIL_BASE,
+        speciesMissing: -1,
+        distribution: { numeric: null },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('RFC-62 R8 listTraitSpeciesQuerySchema', () => {
+  it('mode is with|missing; filters follow the species list', () => {
+    expect(TRAIT_SPECIES_MODES).toEqual(['with', 'missing']);
+    expect(listTraitSpeciesQuerySchema.parse({ mode: 'with' }).mode).toBe('with');
+    expect(listTraitSpeciesQuerySchema.safeParse({ mode: 'nope' }).success).toBe(false);
+    expect(
+      listTraitSpeciesQuerySchema.safeParse({
+        mode: 'missing',
+        q: 'ad',
+        familyId: uuid,
+        genusId: uuid,
+        scope: 'plots',
+        plotId: uuid,
+      }).success,
+    ).toBe(true);
+    expect(listTraitSpeciesQuerySchema.safeParse({ scope: 'nope' }).success).toBe(false);
+    expect(listTraitSpeciesQuerySchema.safeParse({ extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('RFC-62 R8 traitSpeciesItemSchema', () => {
+  const ITEM_BASE = {
+    id: uuid,
+    canonicalName: 'Adenanthera pavonina',
+    nameSource: 'wcvp',
+    active: true,
+    genus: null,
+    family: null,
+    matchedName: null,
+    unresolvedTaxon: false,
+    traitCount: 3,
+    traitRecordCount: null,
+  };
+
+  it('accepted carries a reference with shortCitation; everything is nullable for missing mode', () => {
+    const item = {
+      ...ITEM_BASE,
+      recordCount: 2,
+      accepted: {
+        recordId: uuid,
+        valueText: 'dioecious',
+        reference: {
+          id: uuid,
+          citationKey: 'Smith2001',
+          kind: 'publication',
+          shortCitation: null,
+        },
+      },
+      summary: { levels: [{ key: 'dioecious', count: 2 }] },
+    };
+    expect(traitSpeciesItemSchema.parse(item)).toEqual(item);
+    expect(
+      traitSpeciesItemSchema.safeParse({
+        ...item,
+        recordCount: null,
+        accepted: null,
+        summary: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('summary is either levels or numeric, never both; recordCount is non-negative', () => {
+    const numericItem = {
+      ...ITEM_BASE,
+      recordCount: 1,
+      accepted: null,
+      summary: { numeric: { min: 1, max: 3 } },
+    };
+    expect(traitSpeciesItemSchema.parse(numericItem)).toEqual(numericItem);
+    expect(
+      traitSpeciesItemSchema.safeParse({
+        ...numericItem,
+        summary: { levels: [], numeric: { min: 1, max: 3 } },
+      }).success,
+    ).toBe(false);
+    expect(traitSpeciesItemSchema.safeParse({ ...numericItem, recordCount: -1 }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects an unknown key (strict)', () => {
+    expect(
+      traitSpeciesItemSchema.safeParse({
+        ...ITEM_BASE,
+        recordCount: null,
+        accepted: null,
+        summary: null,
+        extra: 1,
+      }).success,
+    ).toBe(false);
   });
 });

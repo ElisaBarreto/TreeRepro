@@ -89,6 +89,8 @@ export async function getDictionary(db: DbExecutor, visibility: Visibility): Pro
       description: t.description,
       active: t.active,
       levels: levelsByTrait.get(t.id) ?? [],
+      // Placeholder until Task 5 / RFC-62 R5 fills in the cached species count.
+      speciesCount: 0,
     };
     traitsByCategory.set(t.categoryKey, [...(traitsByCategory.get(t.categoryKey) ?? []), entry]);
   }
@@ -133,5 +135,7 @@ export async function getTrait(
     description: t.description,
     active: t.active,
     levels,
+    // Placeholder until Task 5 / RFC-62 R5 fills in the cached species count.
+    speciesCount: 0,
   };
 }
