@@ -1,5 +1,5 @@
 import type { Dashboard, PermissionKey, PlotRef } from '@treerepro/contracts';
-import { and, count, desc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import {
   globalSpeciesVisible,
   speciesVisible,
@@ -164,16 +164,32 @@ async function missingCellCount(
   return Math.max(0, row.species_count * row.trait_count - row.covered);
 }
 
+/** The cached form of `awaitingValidation`: ids, never the items themselves. */
+interface AwaitingIds {
+  count: number;
+  recordIds: string[];
+}
+
 /**
  * The records on the viewer's plot species that no scientist has confirmed or
- * withdrawn yet: the twenty newest, and how many there are in total.
+ * withdrawn yet: the ids of the twenty newest, and how many there are in
+ * total.
+ *
+ * Ids and not items, because this is what the per-viewer entry stores. A
+ * record item carries `createdBy: { id, name }`, and `users.name` is an
+ * encrypted column (RFC-40 R1): caching the items would persist a colleague's
+ * real name in the clear in Redis — visible in `MONITOR`, in an RDB or AOF
+ * dump and in every backup — which is exactly what R1 forbids, for Redis as
+ * much as for Postgres. `hydrateAwaiting` builds the items per request
+ * instead; the expensive parts of this section stay cached.
+ * @rfc RFC-40 R1
  * @rfc RFC-33 R2, R3
  */
 async function awaitingValidation(
   db: DbExecutor,
   visibility: Visibility,
   plotIds: string[],
-): Promise<Dashboard['contributor']['awaitingValidation']> {
+): Promise<AwaitingIds> {
   const where = and(
     speciesVisible(visibility),
     traitVisible(visibility),
@@ -184,7 +200,14 @@ async function awaitingValidation(
       where a.record_id = trait_records.id and a.kind in ('confirm', 'withdraw'))`,
   ) as SQL;
   const [rows, [total]] = await Promise.all([
-    itemQuery(db).where(where).orderBy(desc(traitRecords.id)).limit(20),
+    db
+      .select({ id: traitRecords.id })
+      .from(traitRecords)
+      .innerJoin(species, eq(species.id, traitRecords.speciesId))
+      .innerJoin(traits, eq(traits.id, traitRecords.traitId))
+      .where(where)
+      .orderBy(desc(traitRecords.id))
+      .limit(20),
     db
       .select({ n: count() })
       .from(traitRecords)
@@ -192,7 +215,36 @@ async function awaitingValidation(
       .innerJoin(traits, eq(traits.id, traitRecords.traitId))
       .where(where),
   ]);
-  return { count: total?.n ?? 0, records: rows.map(toItem) };
+  return { count: total?.n ?? 0, recordIds: rows.map((r) => r.id) };
+}
+
+/**
+ * The cached ids turned back into record items, in the order they were
+ * cached. Bounded by construction — at most twenty rows, fetched by primary
+ * key — so it costs one indexed lookup per request.
+ *
+ * `inArray` does not preserve the order of the id list, so the newest-first
+ * guarantee of RFC-72 R1 is re-applied here by mapping the ordered ids over a
+ * map of the items, the shape `listDisputed` uses for the same reason. An id
+ * whose record has since gone is dropped rather than left as a hole.
+ * @rfc RFC-72 R1
+ * @rfc RFC-40 R1
+ */
+async function hydrateAwaiting(
+  db: DbExecutor,
+  cached: AwaitingIds | null,
+): Promise<Dashboard['contributor']['awaitingValidation']> {
+  if (cached === null) return null;
+  if (cached.recordIds.length === 0) return { count: cached.count, records: [] };
+  const items = await itemQuery(db).where(inArray(traitRecords.id, cached.recordIds));
+  const itemById = new Map(items.map((i) => [i.record.id, toItem(i)]));
+  return {
+    count: cached.count,
+    records: cached.recordIds.flatMap((id) => {
+      const item = itemById.get(id);
+      return item ? [item] : [];
+    }),
+  };
 }
 
 interface RankRow {
@@ -289,13 +341,25 @@ export async function missingTraitCounts(
     );
 }
 
-/** Everything the viewer's own contribution panel shows; cached as one blob. */
+/**
+ * The cached form of the contributor section: everything the panel shows
+ * except the record items, which are represented by their ids (RFC-40 R1).
+ */
+interface CachedContributor extends Omit<Dashboard['contributor'], 'awaitingValidation'> {
+  awaitingValidation: AwaitingIds | null;
+}
+
+/**
+ * Everything the viewer's own contribution panel shows, cached as one blob —
+ * bar the records awaiting validation, which are cached as ids and
+ * re-hydrated per request so no name is persisted in Redis (RFC-40 R1).
+ */
 async function contributorSection(
   ctx: DashboardContext,
   visibility: Visibility,
   viewer: DashboardViewer,
   plotIds: string[],
-): Promise<Dashboard['contributor']> {
+): Promise<CachedContributor> {
   const [missingCells, awaiting, topMissingTraits, summary] = await Promise.all([
     plotIds.length === 0 ? null : missingCellCount(ctx.db, visibility, plotIds),
     plotIds.length === 0 ? null : awaitingValidation(ctx.db, visibility, plotIds),
@@ -347,7 +411,10 @@ export async function getDashboard(
     scopeSection(ctx.db, visibility, viewer.scope),
     cachedJson(ctx.redis, `dashboard:${viewer.id}`, 300, () =>
       contributorSection(ctx, visibility, viewer, plotIds),
-    ).then((entry) => entry.value),
+    ).then(async (entry) => ({
+      ...entry.value,
+      awaitingValidation: await hydrateAwaiting(ctx.db, entry.value.awaitingValidation),
+    })),
     curationSection(ctx, visibility, viewer),
   ]);
   return { dataset, scope, contributor, curation };

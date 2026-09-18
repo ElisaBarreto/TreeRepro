@@ -304,6 +304,76 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
     });
   });
 
+  /**
+   * RFC-40 R1: PII is never persisted in the clear, in Postgres or in Redis.
+   * The contributor entry is the one place a colleague's name could reach a
+   * Redis value, through `awaitingValidation.records[].createdBy.name` — so
+   * the entry stores record ids and the items are re-hydrated per request.
+   * Both names are random, so a substring hit in the stored JSON can only be
+   * this fixture's own.
+   */
+  it('RFC-40 R1: the per-viewer entry holds record ids, never a name in the clear', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const viewerName = `Viewer ${randomUUID()}`;
+      const authorName = `Author ${randomUUID()}`;
+      const { user: viewer } = await createUser(tx, { name: viewerName });
+      const { user: author } = await createUser(tx, { name: authorName });
+      const reference = await createReference(tx);
+      const plot = await createPlot(tx);
+      const one = await createSpecies(tx);
+      await addPlotSpecies(tx, plot.id, [one.id]);
+      const traitOne = await createTrait(tx, { levels: ['alpha'] });
+      const traitTwo = await createTrait(tx, { levels: ['alpha'] });
+      const write = (trait: { id: string; levels: { id: string; key: string }[] }) =>
+        createRecord(tx, {
+          speciesId: one.id,
+          traitId: trait.id,
+          valueText: 'alpha',
+          levelId: trait.levels[0]?.id,
+          primaryReferenceId: reference.id,
+          origin: 'manual',
+          createdBy: author.id,
+        });
+      // `trait_records.id` is a uuidv7, so the second write is the newer one.
+      const older = await write(traitOne);
+      const newer = await write(traitTwo);
+      const viewerScope: DashboardViewer = {
+        id: viewer.id,
+        permissions: permissions('dataset.read'),
+        scope: { plots: [plot], restricted: true },
+      };
+      const visibility: Visibility = { inactive: false, plotIds: [plot.id] };
+      const key = `dashboard:${viewer.id}`;
+
+      try {
+        const first = await getDashboard({ db: tx, redis }, visibility, viewerScope);
+        const records = first.contributor.awaitingValidation?.records ?? [];
+        // The answer carries the author's name, newest first…
+        expect(records.map((r) => r.id)).toEqual([newer.id, older.id]);
+        expect(records.map((r) => r.createdBy)).toEqual([
+          { id: author.id, name: authorName },
+          { id: author.id, name: authorName },
+        ]);
+
+        // …and the Redis value behind it carries neither name.
+        const raw = await redis.get(key);
+        expect(raw).not.toBeNull();
+        expect(raw).not.toContain(authorName);
+        expect(raw).not.toContain(viewerName);
+        expect(raw).toContain(newer.id);
+        expect(raw).toContain(older.id);
+
+        // The second call is served from that entry and still answers whole
+        // items, in the same order: the re-hydration is not a first-call path.
+        const second = await getDashboard({ db: tx, redis }, visibility, viewerScope);
+        expect(second.contributor.awaitingValidation).toEqual(first.contributor.awaitingValidation);
+      } finally {
+        await forgetCached(redis, key);
+      }
+    });
+  });
+
   it('serves the contributor section from the per-viewer entry until it is forgotten', async () => {
     await withRollback(t.db, async (tx) => {
       await freezeSnapshot(tx);
