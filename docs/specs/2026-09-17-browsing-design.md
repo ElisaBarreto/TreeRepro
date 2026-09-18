@@ -1,7 +1,7 @@
 # TreeRepro — Browsing Design (plans 10a–10e)
 
 **Date:** 2026-09-17
-**Status:** approved design; plans `2026-09-17-browsing-10a-species.md`, `-10b-synonyms.md`, `-10c-traits.md`, `-10d-references.md`, `-10e-distribution.md`
+**Status:** approved design; plans `2026-09-17-browsing-10a-species.md`, `-10b-synonyms.md`, `-10c-traits.md`, `-10d-references.md`, `-10e-distribution.md`. Open point for the owner (plan 10a, closed without it): §4's "the result count" beside the Order by select is **not** implemented and was ruled unbuildable as written — the list envelope's `meta` carries only `nextCursor` (RFC-11 R2), and a filtered `count(*)` over ~100k species is exactly the per-request aggregate §1 forbids. Either a later plan adds something cheap and bounded, or the phrase goes.
 **Scope:** the Data section tab by tab. Species: trait filters, order by completeness, a coverage table maintained by trigger, hierarchical breadcrumbs. Synonyms and common names with a three-tier search. Traits: filters, level chips, a trait page listing species with and without data. References: enriched citations, DOI links, filters by trait. Species distribution by country and state. RFC-69 (coverage summary) and amendments to RFC-60, RFC-61, RFC-62, RFC-63, RFC-68, RFC-13. Programme index: `2026-09-17-contributor-launch-overview.md`. Depends on plan 08a (visibility, import kinds) and 08b (scope toggle shares the filter panel).
 
 ## 1. Context

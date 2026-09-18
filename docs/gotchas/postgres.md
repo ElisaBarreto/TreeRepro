@@ -39,3 +39,8 @@
 **Symptom:** Setting `treerepro.allow_audit_purge = 'on'` in a session still cannot delete from `audit_log`.
 **Cause:** Since migration 0007 the app role has no `DELETE` privilege; the trigger flag only matters inside `audit_log_purge()`, which runs as the table owner.
 **Fix:** Nothing to fix — call `select audit_log_purge()`; there is no other supported path (RFC-42 R5).
+
+## Migration 0022 backfills coverage over every record
+**Symptom:** `db:migrate` (or the `migrate` service) sits on `0022_coverage.sql` for minutes with nothing on stdout, and the stack does not come up.
+**Cause:** RFC-69 R3's backfill groups the whole of `trait_records` — eight million rows on the production dataset — into `species_trait_coverage`, then sets `species.trait_count` from it. The migrator has no statement timeout, so the two statements simply run to completion.
+**Fix:** Nothing to fix — let it finish; do not interrupt the migrator. An interrupted run leaves 0022 unapplied and the next one repeats the whole scan from the start.
