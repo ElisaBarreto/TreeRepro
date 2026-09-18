@@ -2,12 +2,13 @@ import type { ReferenceKind } from '@treerepro/contracts';
 
 /**
  * What {@link referenceLabel} needs of a reference: every shape the API
- * hands out carries the citation key, the kinds and the observer come with
- * the fuller ones (`ReferenceRef` has no observer, `Reference` has).
+ * hands out carries the citation key and the kind (`referenceRefSchema` and
+ * `referenceSchema` both require `kind`); the observer comes only with the
+ * fuller one (`ReferenceRef` has no observer, `Reference` has).
  */
 export interface LabelledReference {
   citationKey: string;
-  kind?: ReferenceKind;
+  kind: ReferenceKind;
   observer?: { name: string } | null;
 }
 

@@ -13,7 +13,8 @@ export interface HelpTipProps {
 /**
  * A `?` popover, not a dialog — it never joins the modal stack and nothing
  * outside it becomes `inert` (RFC-13 R10). The trigger button shows a
- * `role="tooltip"` element it names through `aria-controls`/`aria-expanded`;
+ * `role="tooltip"` element it names through `aria-controls`/`aria-expanded`
+ * and, so a screen reader actually announces the tip, `aria-describedby`;
  * it opens on click, on focus and on pointer hover, and closes on Escape, on
  * a pointerdown outside the component, and once focus leaves it entirely —
  * the blur handler checks `relatedTarget` against the component's own
@@ -68,6 +69,7 @@ export function HelpTip({ label, children, learnMore }: HelpTipProps) {
         aria-label={label ?? 'What does this mean?'}
         aria-expanded={open}
         aria-controls={open ? tooltipId : undefined}
+        aria-describedby={open ? tooltipId : undefined}
         onClick={() => setOpen(true)}
         className="inline-flex size-5 items-center justify-center rounded-full text-mist-400 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
       >

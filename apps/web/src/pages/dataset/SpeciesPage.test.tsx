@@ -547,6 +547,11 @@ describe('RFC-70 R7 species page missing toggle', () => {
     await screen.findByText('Adenanthera pavonina');
     expect(screen.getByRole('checkbox', { name: 'Show traits with no data' })).toBeChecked();
     expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: true });
+    // The zero-count traits come from walking DICTIONARY, so their sections
+    // are DICTIONARY's own categories, not the ones SPECIES_TRAITS uses for
+    // traits that already have records.
+    const sections = screen.getAllByRole('heading', { level: 2 });
+    expect(sections.map((h) => h.textContent)).toEqual(['Reproductive system', 'Seed']);
   });
 
   it('checking the box navigates to ?missing=true and refetches with includeMissing', async () => {

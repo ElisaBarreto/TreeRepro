@@ -150,6 +150,20 @@ export const PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   kind: 'personal_observation',
 };
 
+const GRACE_ID = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
+
+/**
+ * Grace's own field work — a personal observation always resolves to the
+ * actor's own row, so a record Grace creates can only cite this one, never
+ * {@link PERSONAL_OBSERVATION_REFERENCE} (USER's).
+ * @rfc RFC-61 R7
+ */
+export const GRACE_PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d43',
+  citationKey: `personal-observation:${GRACE_ID}`,
+  kind: 'personal_observation',
+};
+
 /** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
 export const RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d50',
@@ -249,7 +263,12 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
   responses: [],
 };
 
-/** A record contesting RECORD, sourced from the author's own observation. @rfc RFC-70 R6 */
+/**
+ * A record contesting RECORD, sourced from the author's own observation —
+ * Grace's, since Grace is who created it (RFC-61 R7: a personal observation
+ * always resolves to the actor's own row).
+ * @rfc RFC-70 R6
+ */
 export const CONTEST_RECORD_DETAIL: RecordDetail = {
   ...RECORD_DETAIL,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d52',
@@ -257,9 +276,9 @@ export const CONTEST_RECORD_DETAIL: RecordDetail = {
   level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious' },
   review: 'unreviewed',
   origin: 'manual',
-  primaryReference: PERSONAL_OBSERVATION_REFERENCE,
+  primaryReference: GRACE_PERSONAL_OBSERVATION_REFERENCE,
   secondaryReference: null,
-  createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+  createdBy: { id: GRACE_ID, name: 'Grace' },
   intent: 'contest',
   respondsTo: { id: RECORD.id },
   importBatch: null,
@@ -581,14 +600,20 @@ export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
   accepted: null,
 };
 
-/** `SPECIES_TRAITS` with `includeMissing=true`'s zero-count traits added. @rfc RFC-70 R7 */
+/**
+ * `SPECIES_TRAITS` with `includeMissing=true`'s zero-count traits added.
+ * The missing traits come from walking `DICTIONARY`, so their categories are
+ * `DICTIONARY`'s own (`reproductive_system` / `seed`), not the arbitrary
+ * ones `SPECIES_TRAITS` uses for the traits that already have records.
+ * @rfc RFC-70 R7
+ */
 export const SPECIES_TRAITS_WITH_MISSING: SpeciesTraits = [
   {
-    category: { key: 'sexual_system', label: 'Sexual system' },
+    category: { key: 'reproductive_system', label: 'Reproductive system' },
     traits: [SEXUAL_SYSTEM_SUMMARY, SELF_COMPATIBILITY_MISSING_SUMMARY],
   },
   {
-    category: { key: 'pollination', label: 'Pollination' },
+    category: { key: 'seed', label: 'Seed' },
     traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_LENGTH_MISSING_SUMMARY],
   },
 ];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { referenceLabel } from './references.ts';
+import { type LabelledReference, referenceLabel } from './references.ts';
 
 const OBSERVATION_KEY = 'personal-observation:018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
 
@@ -31,7 +31,12 @@ describe('RFC-61 R4 referenceLabel', () => {
     ).toBe('Personal observation');
   });
 
-  it('falls back to the citation key for a reference that carries no kind', () => {
-    expect(referenceLabel({ citationKey: 'Smith2001' })).toBe('Smith2001');
+  // `kind` is required on `LabelledReference` (every reference the API
+  // hands out carries it, per `referenceRefSchema` / `referenceSchema`), so
+  // a well-typed caller cannot omit it; this only exercises the function's
+  // defensive fallback if malformed data ever reaches it at runtime.
+  it('falls back to the citation key if kind is ever missing at runtime', () => {
+    const malformed = { citationKey: 'Smith2001' } as LabelledReference;
+    expect(referenceLabel(malformed)).toBe('Smith2001');
   });
 });

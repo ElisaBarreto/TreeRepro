@@ -32,12 +32,15 @@ describe('RFC-13 R11 HelpTip', () => {
     render(<HelpTip>Explains things.</HelpTip>);
     const button = screen.getByRole('button', { name: 'What does this mean?' });
     expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(button).not.toHaveAccessibleDescription();
     await userEvent.click(button);
     const tip = screen.getByRole('tooltip');
     expect(tip).toHaveTextContent('Explains things.');
     expect(button).toHaveAttribute('aria-controls', tip.id);
+    expect(button).toHaveAccessibleDescription('Explains things.');
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(button).not.toHaveAccessibleDescription();
   });
 
   it('uses the given label for the trigger instead of the default', () => {

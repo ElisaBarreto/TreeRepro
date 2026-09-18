@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ME_QUERY_KEY } from '../../lib/session.ts';
 import {
   CONTEST_RECORD_DETAIL,
-  PERSONAL_OBSERVATION_REFERENCE,
+  GRACE_PERSONAL_OBSERVATION_REFERENCE,
   RECORD,
   RECORD_DETAIL,
   RESPONDED_RECORD_DETAIL,
@@ -233,6 +233,15 @@ describe('RFC-61 R4 RecordDrawer references', () => {
       permissions: ['dataset.read'],
     });
     expect(await screen.findByRole('link', { name: 'Personal observation' })).toBeInTheDocument();
-    expect(screen.queryByText(PERSONAL_OBSERVATION_REFERENCE.citationKey)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(GRACE_PERSONAL_OBSERVATION_REFERENCE.citationKey),
+    ).not.toBeInTheDocument();
+  });
+
+  it("RFC-61 R7 sources the contest's personal observation from its own creator, never another actor's", () => {
+    expect(CONTEST_RECORD_DETAIL.primaryReference).toBe(GRACE_PERSONAL_OBSERVATION_REFERENCE);
+    expect(GRACE_PERSONAL_OBSERVATION_REFERENCE.citationKey).toBe(
+      `personal-observation:${CONTEST_RECORD_DETAIL.createdBy?.id}`,
+    );
   });
 });
