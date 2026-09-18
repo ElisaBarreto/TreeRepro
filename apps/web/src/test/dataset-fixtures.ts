@@ -40,7 +40,6 @@ export const SPECIES: Species = {
   plots: [],
   recordCount: 12,
   traitCount: 3,
-  traitRecordCount: null,
   unresolvedTaxon: false,
 };
 
@@ -57,7 +56,6 @@ export const UNRESOLVED_SPECIES: Species = {
   plots: [],
   recordCount: 0,
   traitCount: 0,
-  traitRecordCount: null,
   unresolvedTaxon: true,
 };
 
