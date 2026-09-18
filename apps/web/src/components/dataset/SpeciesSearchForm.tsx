@@ -66,9 +66,11 @@ function Group({
  * trait's own category, read out of the dictionary, so the filter in force
  * is visible and clearable. Choosing another category drops the trait, which
  * belonged to the old one; going back to "All categories" clears the whole
- * group, the derived category included. The radio shows "Has data" while
- * nothing is chosen because that is the API's default mode; the value only
- * carries `traitData` once the contributor picks a side.
+ * group, the derived category included, and so does going back to "All
+ * traits" when the category was the trait's own — the mode never outlives
+ * both of its companions. The radio shows "Has data" while nothing is
+ * chosen because that is the API's default mode; the value only carries
+ * `traitData` once the contributor picks a side.
  *
  * **Scope** — the plot select, the outside-plots toggle and, with
  * `dataset.read_inactive`, the Status select (RFC-33 R6, R7, RFC-67 R8);
@@ -299,7 +301,20 @@ export function SpeciesSearchForm({
             id={ids.trait}
             disabled={!effectiveCategory}
             value={value.traitId ?? ''}
-            onChange={(event) => onChange({ ...value, traitId: event.target.value || undefined })}
+            onChange={(event) => {
+              const traitId = event.target.value || undefined;
+              // When the category was derived from the trait, clearing the
+              // trait clears the category with it, and a mode with neither
+              // companion has nothing to apply to — the same rule the
+              // category select applies when it goes back to all. A category
+              // the contributor chose outright survives, and so does the mode.
+              const stillFiltered = traitId !== undefined || value.categoryKey !== undefined;
+              onChange({
+                ...value,
+                traitId,
+                traitData: stillFiltered ? value.traitData : undefined,
+              });
+            }}
           >
             <option value="">All traits</option>
             {categoryTraits.map((trait) => (

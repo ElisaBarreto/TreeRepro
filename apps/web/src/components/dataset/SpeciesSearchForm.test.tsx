@@ -266,9 +266,9 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     expect(screen.getByRole('radio', { name: 'Has data' })).toBeEnabled();
   });
 
-  it('enables the radios for a trait alone, before the dictionary has arrived', async () => {
-    // The other half of "a trait OR a category": the value names a trait,
-    // nothing has been derived yet, and the mode is still the user's to pick.
+  it('enables the radios for a value carrying a trait and no category', async () => {
+    // The other half of "a trait OR a category": the value names a trait and
+    // no category of its own, and the mode is still the user's to pick.
     const onChange = vi.fn();
     renderWithProviders(
       <Controlled
@@ -285,6 +285,54 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ traitId: SEED_MASS_ID, traitData: 'missing' }),
     );
+  });
+
+  it('clears the mode when the trait that derived the category is cleared', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID, traitData: 'missing' }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    await screen.findByRole('option', { name: 'Seed' });
+    // "All traits" here takes the derived category away with the trait, so
+    // the mode would otherwise be left filtering nothing.
+    await userEvent.selectOptions(screen.getByLabelText('Trait'), '');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ traitId: undefined, traitData: undefined }),
+    );
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Missing data' })).not.toBeChecked();
+  });
+
+  it('keeps the mode when the trait is cleared but a chosen category remains', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{
+          q: '',
+          unresolved: false,
+          categoryKey: 'seed',
+          traitId: SEED_MASS_ID,
+          traitData: 'missing',
+        }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    await screen.findByRole('option', { name: 'Seed' });
+    await userEvent.selectOptions(screen.getByLabelText('Trait'), '');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        categoryKey: 'seed',
+        traitId: undefined,
+        traitData: 'missing',
+      }),
+    );
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeChecked();
   });
 
   it('clears the trait when the derived category is cleared', async () => {
