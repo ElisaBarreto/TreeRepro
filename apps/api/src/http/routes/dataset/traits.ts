@@ -2,6 +2,7 @@ import {
   createLevelBodySchema,
   createTraitBodySchema,
   idParamSchema,
+  listTraitsQuerySchema,
   traitLevelParamSchema,
   updateLevelBodySchema,
   updateTraitBodySchema,
@@ -22,10 +23,18 @@ import { validate } from '../../validate.ts';
  */
 export function traitRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
-    .get('/', requirePermission(ctx, 'dataset.read'), async (c) => {
-      const visibility = await visibilityOf(ctx, c);
-      return c.json({ data: await getDictionary(ctx.db, visibility) });
-    })
+    .get(
+      '/',
+      requirePermission(ctx, 'dataset.read'),
+      validate('query', listTraitsQuerySchema),
+      async (c) => {
+        const visibility = await visibilityOf(ctx, c);
+        const filters = c.req.valid('query');
+        return c.json({
+          data: await getDictionary({ db: ctx.db, redis: ctx.redis }, visibility, filters),
+        });
+      },
+    )
     .post(
       '/',
       requirePermission(ctx, 'traits.manage'),

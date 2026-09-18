@@ -3,7 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { species } from '../db/schema/taxa.ts';
-import { getDictionary } from './dictionary.ts';
+import { dictionaryCategories } from './dictionary.ts';
 
 interface TraitAggregate {
   trait_id: string;
@@ -163,7 +163,7 @@ export async function speciesTraitSummary(
   // in dictionary order (RFC-70 R7).
   if (options?.includeMissing) {
     const aggregatesByTrait = new Map(aggregates.map((row) => [row.trait_id, row]));
-    const dictionary = await getDictionary(db, visibility);
+    const dictionary = await dictionaryCategories(db, visibility);
     return dictionary.map((cat) => ({
       category: { key: cat.key, label: cat.label },
       traits: cat.traits.map((t) =>

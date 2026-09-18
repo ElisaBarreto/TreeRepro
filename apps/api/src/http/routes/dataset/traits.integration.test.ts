@@ -10,6 +10,7 @@ import {
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
+import { forgetCached } from '../../../redis/cache.ts';
 
 const zero = '00000000-0000-7000-8000-000000000000';
 
@@ -61,6 +62,7 @@ describe('RFC-62 R5, R6 dictionary reads and writes', () => {
       description: 'Test',
       active: true,
       levels: [],
+      speciesCount: 0,
     });
     expect((await lastAudit(t.db, 'traits.created', { targetId: trait.id }))?.targetType).toBe(
       'traits',
@@ -170,5 +172,64 @@ describe('RFC-62 R5, R6 dictionary reads and writes', () => {
     );
     expect(foreign.status).toBe(404);
     expect((await foreign.json()).error.code).toBe('LEVEL_NOT_FOUND');
+  });
+});
+
+describe('RFC-62 R5 GET /api/traits filters and speciesCount', () => {
+  const t = useTestApp();
+
+  async function reader() {
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { cookie: (await loginAs(t, user)).cookie };
+  }
+
+  it('applies categoryKey, valueType and q server-side, and reports speciesCount', async () => {
+    const { cookie } = await reader();
+    const suffix = Math.random().toString(16).slice(2);
+    const own = await createTrait(t.db, {
+      key: `route_filter_${suffix}`,
+      categoryKey: 'flower_color',
+      valueType: 'categorical',
+      levels: ['x'],
+    });
+    const other = await createTrait(t.db, {
+      key: `route_other_${suffix}`,
+      categoryKey: 'plant_form',
+      valueType: 'quantitative',
+    });
+    const ref = await createReference(t.db);
+    const sp = await createSpecies(t.db);
+    const { user: recorder } = await createUser(t.db);
+    await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: own.id,
+      valueText: 'x',
+      levelId: own.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: recorder.id,
+    });
+
+    // The species-count map is cached under a fixed key shared by every
+    // parallel test that reads the dictionary (RFC-62 R5); forget it first
+    // so this call scans fresh and sees the record just inserted above.
+    await forgetCached(t.redis, 'dictionary:species-counts:u', 'dictionary:species-counts:r');
+    const res = await call(t.app, 'GET', `/api/traits?categoryKey=flower_color&q=${own.key}`, {
+      cookie,
+    });
+    expect(res.status).toBe(200);
+    const dictionary = (await res.json()).data as {
+      key: string;
+      traits: { id: string; key: string; speciesCount: number }[];
+    }[];
+    const traitsFound = dictionary.flatMap((c) => c.traits);
+    expect(traitsFound.map((tr) => tr.key)).toEqual([own.key]);
+    expect(traitsFound[0]?.speciesCount).toBe(1);
+    expect(traitsFound.some((tr) => tr.id === other.id)).toBe(false);
+
+    const badQuery = await call(t.app, 'GET', '/api/traits?valueType=nope', { cookie });
+    expect(badQuery.status).toBe(400);
+    expect((await badQuery.json()).error.code).toBe('VALIDATION_FAILED');
   });
 });
