@@ -295,14 +295,26 @@ export async function findReferenceByDoi(db: DbExecutor, doi: string): Promise<R
 }
 
 /**
- * `full_citation` is `<authors> (<year>). <title>. <journal>. https://doi.org/<doi>`
- * — the raw Crossref `authors` string (not the derived {@link shortCitationFrom}
- * string), the row's own year, journal and normalised DOI.
+ * `full_citation` joins the parts Crossref actually returned with `. `,
+ * always ending in the DOI url: `<authors> (<year>). <title>. <journal>.
+ * https://doi.org/<doi>` when every part is present (the raw Crossref
+ * `authors` string, not the derived {@link shortCitationFrom} string, plus
+ * the row's own year, journal and normalised DOI) — but Crossref routinely
+ * omits `journal` (datasets, books, preprints) or `authors`, so a missing
+ * part is dropped rather than interpolated as `''`: no stray `. .` when
+ * `journal` is absent, no leading `. ` when `authors` is absent, and no bare
+ * `()` when `year` is absent.
  * @rfc RFC-61 R8
  */
-function fullCitationFrom(metadata: DoiMetadata, doi: string): string {
-  const authorsYear = `${metadata.authors ?? ''}${metadata.year != null ? ` (${metadata.year})` : ''}`;
-  return `${authorsYear}. ${metadata.title}. ${metadata.journal ?? ''}. https://doi.org/${doi}`;
+export function fullCitationFrom(metadata: DoiMetadata, doi: string): string {
+  const authorsYear =
+    metadata.authors && metadata.year != null
+      ? `${metadata.authors} (${metadata.year})`
+      : (metadata.authors ?? (metadata.year != null ? `(${metadata.year})` : ''));
+  const parts = [authorsYear, metadata.title, metadata.journal].filter((part): part is string =>
+    Boolean(part),
+  );
+  return `${parts.join('. ')}. https://doi.org/${doi}`;
 }
 
 /**
