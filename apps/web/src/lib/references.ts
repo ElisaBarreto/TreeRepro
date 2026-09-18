@@ -35,7 +35,21 @@ export function referenceLabel(reference: LabelledReference): string {
     : 'Personal observation';
 }
 
-/** Where a reference's DOI resolves (RFC-80 R4's registry link). @rfc RFC-61 R4 */
+/**
+ * Where a reference's DOI resolves (RFC-80 R4's registry link). RFC-80 R1's
+ * DOI pattern (`^10\.\d{4,9}\/\S{1,200}$`) allows any non-whitespace
+ * character in the suffix, including `#`, `?` and `%` — legal in a DOI but
+ * reserved in a URL, where they would start a fragment or query string that
+ * never reaches doi.org. Splitting at the first `/` (the one literal
+ * separator the pattern guarantees) and percent-encoding the prefix and
+ * suffix independently keeps that separator a real path separator while
+ * sending every reserved character on to doi.org as data.
+ * @rfc RFC-61 R4
+ * @rfc RFC-80 R1
+ */
 export function doiHref(doi: string): string {
-  return `https://doi.org/${doi}`;
+  const slash = doi.indexOf('/');
+  const prefix = doi.slice(0, slash);
+  const suffix = doi.slice(slash + 1);
+  return `https://doi.org/${encodeURIComponent(prefix)}/${encodeURIComponent(suffix)}`;
 }

@@ -69,4 +69,9 @@ describe('RFC-61 R4 doiHref', () => {
   it('resolves a stored DOI at doi.org', () => {
     expect(doiHref('10.1000/jte.2001.1')).toBe('https://doi.org/10.1000/jte.2001.1');
   });
+
+  it('percent-encodes a reserved character in the suffix so it reaches doi.org as data, not a URL fragment or query string (RFC-80 R1)', () => {
+    expect(doiHref('10.1000/jte.2001#1')).toBe('https://doi.org/10.1000/jte.2001%231');
+    expect(doiHref('10.1000/a?b=c')).toBe('https://doi.org/10.1000/a%3Fb%3Dc');
+  });
 });
