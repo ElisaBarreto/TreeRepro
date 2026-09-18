@@ -297,6 +297,54 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       supersededBy: [],
     });
   });
+
+  it('still answers 201 and commits the record when the dashboard cache invalidation fails', async () => {
+    const { cookie } = await scientist(t);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['red'] });
+    const ref = await createReference(t.db);
+    // Same redis connection as `t.redis`, except DEL always fails, the way a
+    // transient command timeout or a failover would: proves the route
+    // returns its normal success response instead of a 500 for a write that
+    // already committed (RFC-72 R1).
+    const failingRedis = new Proxy(t.redis, {
+      get(target, prop, receiver) {
+        if (prop === 'del') {
+          return async () => {
+            throw new Error('ECONNRESET: forced by test');
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const { app, lines } = t.build({ redis: failingRedis });
+
+    const res = await call(app, 'POST', '/api/records', {
+      cookie,
+      body: {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        value: { levelId: trait.levels[0]?.id },
+        sources: { references: [{ id: ref.id }] },
+      },
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()).data.created[0];
+
+    // The mutation check: re-read the record through the real-redis app,
+    // independent of the response body above.
+    const stored = await call(t.app, 'GET', `/api/records/${created.id}`, { cookie });
+    expect(stored.status).toBe(200);
+    expect((await stored.json()).data).toMatchObject({ id: created.id, speciesId: sp1.id });
+
+    const warning = lines.find(
+      (l) =>
+        (l as { level: number }).level === 40 &&
+        (l as { msg: string }).msg.includes('cache invalidation failed'),
+    );
+    expect(warning).toBeDefined();
+  });
 });
 
 describe('RFC-65 R7–R9 harmonisation queue', () => {

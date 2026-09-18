@@ -14,9 +14,9 @@ import { annotateRecord, createRecords } from '../../../dataset/curation.ts';
 import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
-import { forgetCached } from '../../../redis/cache.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
+import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
@@ -57,8 +57,11 @@ export function recordRoutes(ctx: AuthContext) {
         });
         // After the transaction, never inside the service: the dashboard's
         // contributor section counts what was just written, and the services
-        // stay free of Redis (RFC-72 R1).
-        await forgetCached(ctx.redis, `dashboard:${actor.id}`);
+        // stay free of Redis (RFC-72 R1). Best-effort, since the mutation
+        // already committed.
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
+        });
         return c.json({ data: result }, 201);
       },
     )
@@ -88,7 +91,9 @@ export function recordRoutes(ctx: AuthContext) {
           canWithdrawAny: currentPermissions(c).has('records.withdraw'),
           canReview: currentPermissions(c).has('records.review'),
         });
-        await forgetCached(ctx.redis, `dashboard:${actor.id}`);
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
+        });
         return c.json({ data: record }, 201);
       },
     )
@@ -142,7 +147,9 @@ export function recordRoutes(ctx: AuthContext) {
         // Mapping a group creates records with `created_by = actor` (RFC-65
         // R9), so it invalidates the actor's own dashboard exactly as
         // creating one by hand does (RFC-72 R1).
-        await forgetCached(ctx.redis, `dashboard:${actor.id}`);
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
+        });
         return c.json({ data: result });
       },
     )
