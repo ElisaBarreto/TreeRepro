@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | workspace |
 | Supersedes | — |
 
@@ -28,3 +28,4 @@ None.
 
 - 2026-09-18 — created (plan 11b).
 - 2026-09-18 — R1: `topMissingTraits` leaves out the traits no visible species misses, so the ranking can be shorter than ten or empty; "top traits missing data" that lists a trait nothing misses is a wrong answer, and the rule was in the code before it was in the rule (plan 11b).
+- 2026-09-18 — accepted.
