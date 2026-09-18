@@ -66,6 +66,10 @@ export const acceptedValues = pgTable(
   },
   (t) => [
     index('accepted_values_species_trait_idx').on(t.speciesId, t.traitId, t.id.desc()),
+    // The trait detail's acceptedCount (RFC-62 R7) filters by trait alone and
+    // takes the newest row per species; trait_id leads so the predicate can
+    // use it, and the tail matches its `order by species_id, id desc` (#97).
+    index('accepted_values_trait_idx').on(t.traitId, t.speciesId, t.id.desc()),
     check(
       'accepted_values_record_check',
       sql`(${t.decision} = 'accepted' and ${t.recordId} is not null) or (${t.decision} = 'cleared' and ${t.recordId} is null)`,

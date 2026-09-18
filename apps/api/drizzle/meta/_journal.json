@@ -176,6 +176,13 @@
       "when": 1789730346921,
       "tag": "0024_contributions",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789747726484,
+      "tag": "0025_accepted_values_trait_idx",
+      "breakpoints": true
     }
   ]
 }
