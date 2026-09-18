@@ -301,17 +301,30 @@ export async function missingTraitCounts(
 ): Promise<MissingTrait[]> {
   const traitSeen = traitVisible(visibility, sql`t.active`);
   if (plotIds.length > 0) {
+    // The plot species are counted per trait in a subquery of their own, and
+    // the ranking left-joins the result. Written the obvious way — the
+    // membership test in the `ON` clause of a left join over
+    // `species_trait_coverage` — the planner is free to compile it to a hashed
+    // SubPlan instead of a semi-join, and the inner side then walks
+    // `species_trait_coverage_trait_idx` across every species holding each
+    // trait: an index-only pass over the whole coverage table per cache miss,
+    // which is the scan RFC-72's context and spec §1 forbid. Pre-aggregating
+    // removes the choice — the coverage rows are only ever reached from
+    // `plot_sp`, by the coverage primary key. The arithmetic is unchanged:
+    // coverage is one row per species × trait, so `count(*)` per trait equals
+    // the `count(c.species_id)` this replaces.
     const rows = (await ctx.db.execute(sql`
       with ${plotSpeciesCte(visibility, plotIds)}
       select t.id as trait_id, t.key as trait_key, t.value_type as value_type, t.unit as unit,
              tc.key as category_key, tc.label as category_label,
-             (select count(*)::int from plot_sp) - count(c.species_id)::int as missing
+             (select count(*)::int from plot_sp) - coalesce(h.n, 0) as missing
       from traits t
       join trait_categories tc on tc.key = t.category_key
-      left join species_trait_coverage c
-        on c.trait_id = t.id and c.species_id in (select id from plot_sp)
+      left join (select c.trait_id as trait_id, count(*)::int as n
+                 from species_trait_coverage c
+                 where c.species_id in (select id from plot_sp)
+                 group by c.trait_id) h on h.trait_id = t.id
       where ${traitSeen}
-      group by t.id, t.key, t.value_type, t.unit, tc.key, tc.label
       order by missing desc, t.key asc`)) as unknown as RankRow[];
     return rows.filter((r) => (r.missing ?? 0) > 0).map((r) => toMissingTrait(r, r.missing ?? 0));
   }
