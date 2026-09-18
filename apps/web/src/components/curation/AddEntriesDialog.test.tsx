@@ -291,6 +291,26 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
   });
 
+  it('RFC-13 R6 says a fixed trait has no level to choose from, rather than an empty select', async () => {
+    // The dictionary loaded without the trait — inactive, or outside the
+    // viewer's visibility — so the fixed-trait branch has no levels to offer.
+    dataset.fetchDictionary.mockReset().mockResolvedValue([]);
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    expect(
+      await within(dialog).findByText('This trait has no level to choose from.'),
+    ).toBeInTheDocument();
+  });
+
+  it('RFC-13 R6 says so when the levels of a fixed trait could not be loaded at all', async () => {
+    dataset.fetchDictionary.mockReset().mockRejectedValue(new ApiError(500, 'INTERNAL', 'boom'));
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    expect(
+      await within(dialog).findByText('Could not load the levels. Reload the page.'),
+    ).toBeInTheDocument();
+  });
+
   it('RFC-13 R6 hints that the dictionary failed to load, under the category field', async () => {
     dataset.fetchDictionary.mockReset().mockRejectedValue(new Error('network down'));
     mount();

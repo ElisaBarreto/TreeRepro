@@ -15,7 +15,7 @@ import { humaniseKey } from '../../lib/format.ts';
 import { useMe } from '../../lib/session.ts';
 import { useRecordWrite } from '../../lib/use-record-write.ts';
 import { Alert, Button, Dialog, Field, HelpTip, Select } from '../ui/index.ts';
-import { contributionErrorMessage } from './errors.ts';
+import { contributionErrorMessage, SOURCES_NOT_READY } from './errors.ts';
 import { SourcesField, type SourcesValue, sourcesToBody } from './SourcesField.tsx';
 import { ValueField } from './ValueField.tsx';
 
@@ -27,9 +27,6 @@ const LOCAL_MESSAGES: Record<string, string> = {
   'value.levelId': 'Choose a level.',
   'value.numeric': 'Enter a number.',
 };
-// Not a message under one field: which row is unresolved the rows say
-// themselves, and a check still running belongs to no row at all.
-const SOURCES_NOT_READY = 'Each DOI must resolve before the record can be added.';
 
 /** The trait as the select reads it: its name, and its unit when it has one. */
 function traitLabel(trait: Pick<TraitRef, 'key' | 'unit'>): string {
@@ -121,6 +118,8 @@ export function AddEntriesDialog({
     : categories.find((c) => c.key === categoryKey);
   const traits = category?.traits ?? [];
   const trait = traits.find((t) => t.id === traitId);
+  const levels = trait?.levels ?? [];
+  const activeLevels = levels.filter((level) => level.active);
   const valueType = trait?.valueType ?? initialTrait?.valueType;
   const unit = trait?.unit ?? initialTrait?.unit ?? null;
   const description = traitDescription(dictionary.data, traitId);
@@ -306,7 +305,7 @@ export function AddEntriesDialog({
         )}
         {valueType ? (
           <ValueField
-            trait={{ valueType, unit, levels: trait?.levels ?? [] }}
+            trait={{ valueType, unit, levels }}
             levelId={levelId}
             numeric={numeric}
             onLevel={chooseLevel}
@@ -314,6 +313,17 @@ export function AddEntriesDialog({
             errors={valueErrors}
             ids={{ level: ids.level, numeric: ids.numeric }}
           />
+        ) : null}
+        {valueType === 'categorical' && activeLevels.length === 0 && !dictionary.isPending ? (
+          // An empty select needs a reason. A fixed trait renders no category
+          // field, so the hint under it never reaches this case: the trait may
+          // be inactive, outside the viewer's visibility, or the dictionary may
+          // not have loaded at all — and there is nothing this form can offer.
+          <p className="text-meta text-red-700">
+            {dictionary.isError
+              ? 'Could not load the levels. Reload the page.'
+              : 'This trait has no level to choose from.'}
+          </p>
         ) : null}
         <SourcesField
           value={sources}

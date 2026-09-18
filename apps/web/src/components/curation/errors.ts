@@ -22,3 +22,12 @@ export function contributionErrorMessage(error: unknown): string {
   }
   return pageErrorMessage(error);
 }
+
+/**
+ * Why a contribution form will not send while a DOI row is unresolved — a
+ * check that failed, or one still in flight. Not a message under one field:
+ * which row is unresolved the rows say themselves, and a check still running
+ * belongs to no row at all. Shared so both forms refuse in the same words.
+ * @rfc RFC-80 R4
+ */
+export const SOURCES_NOT_READY = 'Each DOI must resolve before the record can be added.';

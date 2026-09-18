@@ -295,8 +295,12 @@ export function RecordActions({
         {canContest ? (
           <>
             <Button
-              variant="danger"
+              // Spec 7.1: a red outline, not the solid red of Withdraw — this
+              // is the contributor's main action, and the one destructive
+              // control on the screen keeps the filled `danger` to itself.
+              variant="secondary"
               size="sm"
+              className="border-red-700/40 text-red-700 hover:bg-red-50"
               title="I have a different or additional value"
               onClick={() => setContesting(true)}
             >

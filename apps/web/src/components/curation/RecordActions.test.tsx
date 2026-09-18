@@ -124,6 +124,20 @@ describe('RFC-70 R4 RecordActions by permission', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('spec 7.1 gives Add different record a red outline, not the solid red of Withdraw', () => {
+    renderWithProviders(<RecordActions record={MINE} />, { me: CONTRIBUTOR });
+    const add = screen.getByRole('button', { name: ADD });
+    const withdraw = screen.getByRole('button', { name: 'Withdraw' });
+    // The contributor's main action: red, but an outline — the solid red fill
+    // belongs to the one destructive control on the screen.
+    expect(add.className).toContain('text-red-700');
+    expect(add.className).not.toContain('bg-red-700');
+    expect(withdraw.className).toContain('bg-red-700');
+    // And still not the primary Validate.
+    expect(add.className).not.toContain('bg-pollen-500');
+    expect(screen.getByRole('button', { name: VALIDATE }).className).toContain('bg-pollen-500');
+  });
+
   it('still offers Set as accepted to an accepted.manage holder', () => {
     renderWithProviders(<RecordActions record={THEIRS} />, {
       me: perms('dataset.read', 'records.annotate', 'accepted.manage'),

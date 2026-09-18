@@ -12,14 +12,16 @@ export interface HelpTipProps {
 
 /**
  * A `?` popover, not a dialog — it never joins the modal stack and nothing
- * outside it becomes `inert` (RFC-13 R10). The trigger button toggles a
+ * outside it becomes `inert` (RFC-13 R10). The trigger button shows a
  * `role="tooltip"` element it names through `aria-controls`/`aria-expanded`;
  * it opens on click, on focus and on pointer hover, and closes on Escape, on
  * a pointerdown outside the component, and once focus leaves it entirely —
  * the blur handler checks `relatedTarget` against the component's own
  * subtree so moving focus from the trigger into the popover (its "Learn
- * more" link) does not close it. Its content is plain React children, never
- * HTML from the API.
+ * more" link) does not close it. Opening is not a toggle (RFC-13 R11): a
+ * pointer click carries the hover that already opened the tip, so closing on
+ * click would close what the hover just opened. Its content is plain React
+ * children, never HTML from the API.
  * @rfc RFC-13 R11
  */
 export function HelpTip({ label, children, learnMore }: HelpTipProps) {

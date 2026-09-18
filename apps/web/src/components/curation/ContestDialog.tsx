@@ -14,7 +14,7 @@ import { humaniseKey } from '../../lib/format.ts';
 import { useMe } from '../../lib/session.ts';
 import { useRecordWrite } from '../../lib/use-record-write.ts';
 import { Alert, Button, Dialog } from '../ui/index.ts';
-import { contributionErrorMessage } from './errors.ts';
+import { contributionErrorMessage, SOURCES_NOT_READY } from './errors.ts';
 import { SourcesField, type SourcesValue, sourcesToBody } from './SourcesField.tsx';
 import { ValueField } from './ValueField.tsx';
 
@@ -51,12 +51,13 @@ function boundToAField(errors: Record<string, string>): boolean {
 }
 
 /**
- * The alert's sentence: a validation detail this form has no field for —
- * `intent` or `respondsToRecordId`, which it sets itself — is shown in the
- * API's own words, since "Check the highlighted fields" would highlight
- * nothing. Everything else reads through the contribution map.
+ * The alert's sentence for a refusal the API sent: a validation detail this
+ * form has no field for — `intent` or `respondsToRecordId`, which it sets
+ * itself — is shown in the API's own words, since "Check the highlighted
+ * fields" would highlight nothing. Everything else reads through the
+ * contribution map. A refusal the form raised itself is shown as it stands.
  */
-function alertMessage(error: unknown, errors: Record<string, string>): string {
+function apiAlertMessage(error: unknown, errors: Record<string, string>): string {
   return Object.values(errors)[0] ?? contributionErrorMessage(error);
 }
 
@@ -123,7 +124,11 @@ export function ContestDialog({
     const message = local[path] ?? serverErrors[path];
     if (message !== undefined) valueErrors[path] = message;
   }
-  const showAlert = save.isError && !boundToAField(serverErrors);
+  const showApiAlert = save.isError && !boundToAField(serverErrors);
+  // A refusal this form raised itself comes first: it is the answer to the
+  // click that raised it, and no request was sent for the API to answer.
+  const alertMessage =
+    local.form ?? (showApiAlert ? apiAlertMessage(save.error, serverErrors) : undefined);
   const activeLevels = levels.filter((level) => level.active);
 
   function chooseIntent(next: RecordIntent) {
@@ -158,6 +163,9 @@ export function ContestDialog({
     if (valueType === 'quantitative' && (numeric.trim() === '' || Number.isNaN(Number(numeric)))) {
       required['value.numeric'] = LOCAL_MESSAGES['value.numeric'] ?? '';
     }
+    // The submit button stays live while a DOI is unresolved: a dead control
+    // explains nothing, and this sentence is what ties the refusal to the row.
+    if (!sourcesReady) required.form = SOURCES_NOT_READY;
     if (Object.keys(required).length > 0) {
       save.reset();
       setLocal(required);
@@ -278,12 +286,12 @@ export function ContestDialog({
           <p className="text-meta text-mist-500">{`Recorded as ${me.user.name}`}</p>
         </fieldset>
 
-        {showAlert ? <Alert tone="error">{alertMessage(save.error, serverErrors)}</Alert> : null}
+        {alertMessage ? <Alert tone="error">{alertMessage}</Alert> : null}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
             Cancel
           </Button>
-          <Button type="submit" pending={save.isPending} disabled={!intent || !sourcesReady}>
+          <Button type="submit" pending={save.isPending} disabled={!intent}>
             Add record
           </Button>
         </div>

@@ -269,6 +269,25 @@ describe('RFC-70 R2 ContestDialog refusals', () => {
     ).toBeInTheDocument();
   });
 
+  it('RFC-80 R4 says why it will not send while a DOI has not resolved', async () => {
+    curation.resolveDoi.mockResolvedValue({ status: 'not_found', reference: null });
+    mount();
+    await screen.findByRole('combobox', { name: 'Level' });
+    await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
+    await userEvent.selectOptions(levelSelect(), DIOECIOUS);
+    await userEvent.type(screen.getByRole('textbox', { name: 'DOI' }), '10.1111/geb.13000');
+    await userEvent.tab();
+    expect(await screen.findByText('DOI not found')).toBeInTheDocument();
+    // The button stays live: a dead control explains nothing, and the sentence
+    // is what ties the refusal to the row (as in `AddEntriesDialog`).
+    expect(submit()).toBeEnabled();
+    await userEvent.click(submit());
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Each DOI must resolve before the record can be added.',
+    );
+    expect(curation.createRecords).not.toHaveBeenCalled();
+  });
+
   it('says a withdrawn record cannot be contested', async () => {
     curation.createRecords.mockRejectedValue(new ApiError(409, 'RECORD_WITHDRAWN', 'withdrawn'));
     mount();
