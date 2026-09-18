@@ -187,11 +187,16 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await expect(generatedDispute.getByText('automatic')).toBeVisible();
       await expect(generatedDispute).toContainText('Contested by record');
 
-      // The validation's own row opens the drawer on the record it was
-      // given for, which still shows the contributor's confirmation.
+      // An annotation row's button reopens the record it names — the seeded
+      // record here, still. That is not "You validated this record" any
+      // more: RecordActions keys `validated` off the contributor's *newest*
+      // non-withdraw stance, and the contest's generated dispute (RFC-70 R3)
+      // has since overtaken the earlier confirm, so Validate is enabled
+      // again and the span is gone. The review badge is computed the same
+      // way, from every annotation on the record, so it now reads disputed.
       await validation.getByRole('button', { name: `${speciesName} › ${traitName}` }).click();
       const reopened = page.getByRole('dialog', { name: 'Record', exact: true });
-      await expect(reopened.getByText('You validated this record')).toBeVisible();
+      await expect(reopened.getByText('disputed', { exact: true })).toBeVisible();
     } finally {
       await contributor.context.close();
       await admin.close();
