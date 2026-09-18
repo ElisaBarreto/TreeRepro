@@ -17,6 +17,10 @@ import type {
   SpeciesTraits,
   TaxonRef,
   TraitDataMode,
+  TraitDetail,
+  TraitSpeciesItem,
+  TraitSpeciesMode,
+  TraitValueType,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import { type QueryParams as Params, withQuery } from './query.ts';
@@ -37,7 +41,11 @@ export const datasetKeys = {
     ['species', id, 'traits', includeMissing] as const,
   records: (params: Params) => ['records', params] as const,
   record: (id: string) => ['records', id] as const,
-  dictionary: ['traits'] as const,
+  // The filters are part of the key: a filtered dictionary and the whole
+  // one (which every form's selects read) must never share a cache entry.
+  dictionary: (params: Params = {}) => ['traits', params] as const,
+  trait: (id: string) => ['traits', id] as const,
+  traitSpecies: (id: string, params: Params) => ['traits', id, 'species', params] as const,
   references: (params: Params) => ['references', params] as const,
   reference: (id: string) => ['references', id] as const,
   families: ['families'] as const,
@@ -107,9 +115,43 @@ export function fetchRecords(params: {
 export async function fetchRecord(id: string): Promise<RecordDetail> {
   return (await apiFetch<DataEnvelope<RecordDetail>>(`/records/${id}`)).data;
 }
-/** @rfc RFC-62 R5 */
-export async function fetchDictionary(): Promise<Dictionary> {
-  return (await apiFetch<DataEnvelope<Dictionary>>('/traits')).data;
+/**
+ * The trait dictionary, whole by default. `categoryKey`, `valueType` and `q`
+ * narrow it server-side, for the traits list's own filters and the deep
+ * links they produce (RFC-62 R5 amendment); a form that fills selects from
+ * the vocabulary asks for it unfiltered.
+ * @rfc RFC-62 R5
+ */
+export async function fetchDictionary(
+  params: { categoryKey?: string; valueType?: TraitValueType; q?: string } = {},
+): Promise<Dictionary> {
+  return (await apiFetch<DataEnvelope<Dictionary>>(withQuery('/traits', params))).data;
+}
+/** @rfc RFC-62 R7 */
+export async function fetchTrait(id: string): Promise<TraitDetail> {
+  return (await apiFetch<DataEnvelope<TraitDetail>>(`/traits/${id}`)).data;
+}
+/**
+ * One page of the species of a trait: `mode=with` those that have a record
+ * for it, `mode=missing` those that have none, narrowed by the taxonomy
+ * filters and ordered like the species list.
+ * @rfc RFC-62 R8
+ * @rfc RFC-33 R6
+ */
+export function fetchTraitSpecies(
+  id: string,
+  params: {
+    mode?: TraitSpeciesMode;
+    q?: string;
+    familyId?: string;
+    genusId?: string;
+    scope?: 'plots' | 'all';
+    plotId?: string;
+    cursor?: string;
+    limit?: number;
+  },
+) {
+  return apiFetch<Page<TraitSpeciesItem>>(withQuery(`/traits/${id}/species`, params));
 }
 /** @rfc RFC-61 R4 */
 export function searchReferences(params: { q?: string; cursor?: string; limit?: number }) {

@@ -5,29 +5,11 @@ import {
   SPECIES_STATUSES,
   TRAIT_DATA_MODES,
 } from '@treerepro/contracts';
+import { enumParam, textParam, uuidParam } from '../../../lib/search-params.ts';
 import {
   type SpeciesSearch,
   SpeciesSearchPage,
 } from '../../../pages/dataset/SpeciesSearchPage.tsx';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function text(value: unknown, max: number): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed === '' || trimmed.length > max ? undefined : trimmed;
-}
-
-function uuid(value: unknown): string | undefined {
-  const candidate = text(value, 36);
-  return candidate !== undefined && UUID.test(candidate) ? candidate : undefined;
-}
-
-function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | undefined {
-  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
-    ? (value as T)
-    : undefined;
-}
 
 /**
  * Every control of the search form is a search param (RFC-60 R6 amendment):
@@ -43,17 +25,17 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | und
  */
 function validateSearch(search: Record<string, unknown>): SpeciesSearch {
   return {
-    q: text(search.q, 100),
-    familyId: uuid(search.familyId),
-    genusId: uuid(search.genusId),
+    q: textParam(search.q, 100),
+    familyId: uuidParam(search.familyId),
+    genusId: uuidParam(search.genusId),
     unresolved: search.unresolved === true || search.unresolved === 'true' ? true : undefined,
-    status: oneOf(search.status, SPECIES_STATUSES),
-    scope: oneOf(search.scope, SPECIES_SCOPES),
-    plotId: uuid(search.plotId),
-    categoryKey: text(search.categoryKey, 100),
-    traitId: uuid(search.traitId),
-    traitData: oneOf(search.traitData, TRAIT_DATA_MODES),
-    sort: oneOf(search.sort, SPECIES_SORTS),
+    status: enumParam(search.status, SPECIES_STATUSES),
+    scope: enumParam(search.scope, SPECIES_SCOPES),
+    plotId: uuidParam(search.plotId),
+    categoryKey: textParam(search.categoryKey, 100),
+    traitId: uuidParam(search.traitId),
+    traitData: enumParam(search.traitData, TRAIT_DATA_MODES),
+    sort: enumParam(search.sort, SPECIES_SORTS),
   };
 }
 

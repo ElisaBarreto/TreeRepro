@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import type { Dictionary, MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { DICTIONARY, NEW_TRAIT } from '../../test/dataset-fixtures.ts';
+import {
+  DICTIONARY,
+  NEW_TRAIT,
+  SEED_MASS_TRAIT,
+  SEXUAL_SYSTEM_TRAIT,
+} from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -61,17 +66,29 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     expect(dataset.fetchDictionary).toHaveBeenCalledTimes(1);
 
     const [reproductive, seed] = screen.getAllByRole('table');
+    expect(
+      within(reproductive as HTMLElement)
+        .getAllByRole('columnheader')
+        .map((th) => th.textContent)
+        .slice(0, 5),
+    ).toEqual(['Trait', 'Type', 'Unit', 'Description', 'Species']);
     const sexual = within(reproductive as HTMLElement).getAllByRole('row')[1] as HTMLElement;
-    expect(sexual).toHaveTextContent('sexual system');
+    expect(within(sexual).getByRole('link', { name: 'sexual system' })).toHaveAttribute(
+      'href',
+      `/app/traits/${SEXUAL_SYSTEM_TRAIT.id}`,
+    );
     expect(sexual).toHaveTextContent('Categorical');
     expect(sexual).toHaveTextContent('Distribution of male and female function');
-    expect(within(sexual).getByText('active')).toBeInTheDocument();
+    expect(within(sexual).getAllByRole('cell')[4]).toHaveTextContent('12');
     expect(within(sexual).getByText('—')).toBeInTheDocument();
+    // RFC-62 R5 amendment: only `active: false` is worth a badge.
+    expect(within(sexual).queryByText('active')).not.toBeInTheDocument();
 
     const rows = within(seed as HTMLElement).getAllByRole('row');
     expect(rows[1]).toHaveTextContent('seed mass');
     expect(rows[1]).toHaveTextContent('Quantitative');
     expect(rows[1]).toHaveTextContent('mg');
+    expect(within(rows[1] as HTMLElement).getAllByRole('cell')[4]).toHaveTextContent('3');
     expect(within(rows[1] as HTMLElement).queryByRole('button')).not.toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText('inactive')).toBeInTheDocument();
   });
@@ -108,6 +125,9 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     const levels = screen.getByRole('list', { name: 'Levels of sexual system' });
     expect(toggle).toHaveAttribute('aria-controls', levels.closest('tr')?.id);
+    // The levels wrap as chips in one row, not as a column of table rows.
+    expect(levels.className).toContain('flex-wrap');
+    expect(within(levels).queryAllByRole('row')).toHaveLength(0);
     const items = within(levels).getAllByRole('listitem');
     expect(items.map((item) => item.textContent)).toEqual([
       'hermaphrodite',
@@ -139,6 +159,66 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     dataset.fetchDictionary.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     await openPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+});
+
+describe('RFC-62 R5 TraitsPage filters', () => {
+  it('seeds the three selects from the URL and asks the API for the filtered dictionary', async () => {
+    dataset.fetchDictionary.mockImplementation(async (params?: { categoryKey?: string }) =>
+      params?.categoryKey === 'seed' ? [DICTIONARY[1] as Dictionary[number]] : DICTIONARY,
+    );
+    renderAt(`/app/traits?categoryKey=seed&valueType=quantitative&traitId=${SEED_MASS_TRAIT.id}`);
+    // The selects fill in once the whole dictionary arrives.
+    await screen.findByRole('option', { name: 'Reproductive system' });
+    expect(screen.getByLabelText('Category')).toHaveValue('seed');
+    expect(screen.getByLabelText('Value type')).toHaveValue('quantitative');
+    expect(screen.getByLabelText('Trait')).toHaveValue(SEED_MASS_TRAIT.id);
+    await waitFor(() =>
+      expect(dataset.fetchDictionary).toHaveBeenCalledWith({
+        categoryKey: 'seed',
+        valueType: 'quantitative',
+      }),
+    );
+    // The selects are fed by the whole dictionary — asked for with no
+    // filters at all — so a chosen category can still be swapped for
+    // another one (RFC-62 R5).
+    expect(dataset.fetchDictionary).toHaveBeenCalledWith();
+    // Only the named trait is listed, whatever else its category holds.
+    const table = screen.getByRole('table');
+    expect(within(table).getByRole('link', { name: 'seed mass' })).toBeInTheDocument();
+    expect(within(table).queryByText('seed length')).not.toBeInTheDocument();
+  });
+
+  it('writes each filter into the URL and drops the trait when the category changes', async () => {
+    const { router } = await openPage();
+    await screen.findByRole('option', { name: 'Seed' });
+    await userEvent.selectOptions(screen.getByLabelText('Category'), 'seed');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ categoryKey: 'seed' }),
+      ),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Trait'), SEED_MASS_TRAIT.id);
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ categoryKey: 'seed', traitId: SEED_MASS_TRAIT.id }),
+      ),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Value type'), 'quantitative');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ valueType: 'quantitative' }),
+      ),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Category'), 'reproductive_system');
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.not.objectContaining({ traitId: SEED_MASS_TRAIT.id }),
+      ),
+    );
   });
 });
 

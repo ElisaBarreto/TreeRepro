@@ -17,7 +17,6 @@ import { Route as AppAdminRouteImport } from './routes/app/admin'
 import { Route as AppImportsRouteImport } from './routes/app/imports'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTaxaRouteImport } from './routes/app/taxa'
-import { Route as AppTraitsRouteImport } from './routes/app/traits'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as AppAdminAuditRouteImport } from './routes/app/admin/audit'
@@ -30,6 +29,8 @@ import { Route as AppReferencesIndexRouteImport } from './routes/app/references/
 import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
 import { Route as AppSpeciesIdRouteImport } from './routes/app/species/$id'
+import { Route as AppTraitsIndexRouteImport } from './routes/app/traits/index'
+import { Route as AppTraitsIdRouteImport } from './routes/app/traits/$id'
 import { Route as AppAdminPlotsIndexRouteImport } from './routes/app/admin/plots/index'
 import { Route as AppAdminPlotsIdRouteImport } from './routes/app/admin/plots/$id'
 import { Route as AppAdminUsersIndexRouteImport } from './routes/app/admin/users/index'
@@ -73,11 +74,6 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 const AppTaxaRoute = AppTaxaRouteImport.update({
   id: '/taxa',
   path: '/taxa',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppTraitsRoute = AppTraitsRouteImport.update({
-  id: '/traits',
-  path: '/traits',
   getParentRoute: () => AppRoute,
 } as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
@@ -140,6 +136,16 @@ const AppSpeciesIdRoute = AppSpeciesIdRouteImport.update({
   path: '/species/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTraitsIndexRoute = AppTraitsIndexRouteImport.update({
+  id: '/traits/',
+  path: '/traits/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTraitsIdRoute = AppTraitsIdRouteImport.update({
+  id: '/traits/$id',
+  path: '/traits/$id',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAdminPlotsIndexRoute = AppAdminPlotsIndexRouteImport.update({
   id: '/plots/',
   path: '/plots/',
@@ -169,7 +175,6 @@ export interface FileRoutesByFullPath {
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/taxa': typeof AppTaxaRoute
-  '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
@@ -180,9 +185,11 @@ export interface FileRoutesByFullPath {
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
+  '/app/traits/$id': typeof AppTraitsIdRoute
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/traits/': typeof AppTraitsIndexRoute
   '/app/admin/plots/$id': typeof AppAdminPlotsIdRoute
   '/app/admin/users/$id': typeof AppAdminUsersIdRoute
   '/app/admin/plots/': typeof AppAdminPlotsIndexRoute
@@ -194,7 +201,6 @@ export interface FileRoutesByTo {
   '/app/admin': typeof AppAdminRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/taxa': typeof AppTaxaRoute
-  '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app': typeof AppIndexRoute
@@ -205,9 +211,11 @@ export interface FileRoutesByTo {
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
+  '/app/traits/$id': typeof AppTraitsIdRoute
   '/app/imports': typeof AppImportsIndexRoute
   '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
+  '/app/traits': typeof AppTraitsIndexRoute
   '/app/admin/plots/$id': typeof AppAdminPlotsIdRoute
   '/app/admin/users/$id': typeof AppAdminUsersIdRoute
   '/app/admin/plots': typeof AppAdminPlotsIndexRoute
@@ -222,7 +230,6 @@ export interface FileRoutesById {
   '/app/imports': typeof AppImportsRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/taxa': typeof AppTaxaRoute
-  '/app/traits': typeof AppTraitsRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
@@ -233,9 +240,11 @@ export interface FileRoutesById {
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
+  '/app/traits/$id': typeof AppTraitsIdRoute
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
+  '/app/traits/': typeof AppTraitsIndexRoute
   '/app/admin/plots/$id': typeof AppAdminPlotsIdRoute
   '/app/admin/users/$id': typeof AppAdminUsersIdRoute
   '/app/admin/plots/': typeof AppAdminPlotsIndexRoute
@@ -251,7 +260,6 @@ export interface FileRouteTypes {
     | '/app/imports'
     | '/app/settings'
     | '/app/taxa'
-    | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
@@ -262,9 +270,11 @@ export interface FileRouteTypes {
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
+    | '/app/traits/$id'
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/traits/'
     | '/app/admin/plots/$id'
     | '/app/admin/users/$id'
     | '/app/admin/plots/'
@@ -276,7 +286,6 @@ export interface FileRouteTypes {
     | '/app/admin'
     | '/app/settings'
     | '/app/taxa'
-    | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app'
@@ -287,9 +296,11 @@ export interface FileRouteTypes {
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
+    | '/app/traits/$id'
     | '/app/imports'
     | '/app/references'
     | '/app/species'
+    | '/app/traits'
     | '/app/admin/plots/$id'
     | '/app/admin/users/$id'
     | '/app/admin/plots'
@@ -303,7 +314,6 @@ export interface FileRouteTypes {
     | '/app/imports'
     | '/app/settings'
     | '/app/taxa'
-    | '/app/traits'
     | '/invite/$token'
     | '/reset-password/$token'
     | '/app/'
@@ -314,9 +324,11 @@ export interface FileRouteTypes {
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
+    | '/app/traits/$id'
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
+    | '/app/traits/'
     | '/app/admin/plots/$id'
     | '/app/admin/users/$id'
     | '/app/admin/plots/'
@@ -387,13 +399,6 @@ declare module '@tanstack/react-router' {
       path: '/taxa'
       fullPath: '/app/taxa'
       preLoaderRoute: typeof AppTaxaRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/traits': {
-      id: '/app/traits'
-      path: '/traits'
-      fullPath: '/app/traits'
-      preLoaderRoute: typeof AppTraitsRouteImport
       parentRoute: typeof AppRoute
     }
     '/invite/$token': {
@@ -480,6 +485,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSpeciesIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/traits/': {
+      id: '/app/traits/'
+      path: '/traits'
+      fullPath: '/app/traits/'
+      preLoaderRoute: typeof AppTraitsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/traits/$id': {
+      id: '/app/traits/$id'
+      path: '/traits/$id'
+      fullPath: '/app/traits/$id'
+      preLoaderRoute: typeof AppTraitsIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/admin/plots/': {
       id: '/app/admin/plots/'
       path: '/plots'
@@ -552,14 +571,15 @@ interface AppRouteChildren {
   AppImportsRoute: typeof AppImportsRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppTaxaRoute: typeof AppTaxaRoute
-  AppTraitsRoute: typeof AppTraitsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCurationDisputedRoute: typeof AppCurationDisputedRoute
   AppCurationPendingRoute: typeof AppCurationPendingRoute
   AppReferencesIdRoute: typeof AppReferencesIdRoute
   AppSpeciesIdRoute: typeof AppSpeciesIdRoute
+  AppTraitsIdRoute: typeof AppTraitsIdRoute
   AppReferencesIndexRoute: typeof AppReferencesIndexRoute
   AppSpeciesIndexRoute: typeof AppSpeciesIndexRoute
+  AppTraitsIndexRoute: typeof AppTraitsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -567,14 +587,15 @@ const AppRouteChildren: AppRouteChildren = {
   AppImportsRoute: AppImportsRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppTaxaRoute: AppTaxaRoute,
-  AppTraitsRoute: AppTraitsRoute,
   AppIndexRoute: AppIndexRoute,
   AppCurationDisputedRoute: AppCurationDisputedRoute,
   AppCurationPendingRoute: AppCurationPendingRoute,
   AppReferencesIdRoute: AppReferencesIdRoute,
   AppSpeciesIdRoute: AppSpeciesIdRoute,
+  AppTraitsIdRoute: AppTraitsIdRoute,
   AppReferencesIndexRoute: AppReferencesIndexRoute,
   AppSpeciesIndexRoute: AppSpeciesIndexRoute,
+  AppTraitsIndexRoute: AppTraitsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

@@ -99,7 +99,10 @@ export function AddEntriesDialog({
 }: AddEntriesDialogProps) {
   const me = useMe();
   const ids = { category: useId(), trait: useId(), level: useId(), numeric: useId() };
-  const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
+  const dictionary = useQuery({
+    queryKey: datasetKeys.dictionary(),
+    queryFn: () => fetchDictionary(),
+  });
   const categories = categoriesWithActiveTraits(dictionary.data ?? []);
 
   const [categoryKey, setCategoryKey] = useState('');

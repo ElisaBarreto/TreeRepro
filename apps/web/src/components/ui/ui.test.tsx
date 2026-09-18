@@ -6,6 +6,7 @@ import {
   Badge,
   Button,
   buttonClassName,
+  Chip,
   ConfirmDialog,
   Dialog,
   EmptyState,
@@ -285,6 +286,17 @@ describe('RFC-13 R5 UI kit — workspace pattern additions', () => {
     );
     expect(screen.getByRole('columnheader', { name: 'N' }).className).toContain('text-right');
     expect(screen.getByRole('cell', { name: '1' }).className).toContain('tabular-nums');
+  });
+
+  it('Chip renders its children in the rounded pill every tone shares', () => {
+    const { rerender } = render(<Chip>dioecious</Chip>);
+    const chip = screen.getByText('dioecious');
+    expect(chip.className).toContain('rounded-full');
+    expect(chip.className).toContain('text-label');
+    expect(chip).not.toHaveAttribute('style');
+    const neutral = chip.className;
+    rerender(<Chip tone="muted">dioecious</Chip>);
+    expect(screen.getByText('dioecious').className).not.toBe(neutral);
   });
 
   it('Alert keeps its text as the accessible content next to a decorative icon', () => {

@@ -1,18 +1,13 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import type {
-  Genus,
-  SpeciesSort,
-  SpeciesStatus,
-  TaxonRef,
-  TraitDataMode,
-} from '@treerepro/contracts';
-import { type ReactNode, useId, useState } from 'react';
-import { datasetKeys, fetchDictionary, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
+import { useQuery } from '@tanstack/react-query';
+import type { SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contracts';
+import { useId } from 'react';
+import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
 import { listPlots, plotKeys } from '../../api/plots.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
-import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
-import { Badge, Button, Field, Input, Select } from '../ui/index.ts';
+import { Field, Select } from '../ui/index.ts';
+import { FILTER_CHECK, FILTER_LEGEND, FilterGroup } from './FilterGroup.tsx';
+import { TaxonomyFilters } from './TaxonomyFilters.tsx';
 
 export interface SpeciesSearchValue {
   q: string;
@@ -28,35 +23,11 @@ export interface SpeciesSearchValue {
   sort?: SpeciesSort;
 }
 
-const FIELDSET = 'flex flex-col gap-4 rounded-[12px] border border-canopy-700/15 px-4 pb-4';
-const LEGEND = 'px-1.5 text-label font-bold uppercase tracking-[0.08em] text-canopy-800';
-const CHECK = 'flex h-11 items-center gap-2.5 text-body text-canopy-900';
-
-// A titled fieldset: the legend is the group's accessible name, so each of
-// the three filter groups is one landmark a reader can jump to.
-function Group({
-  title,
-  columns,
-  children,
-}: {
-  title: string;
-  columns: string;
-  children: ReactNode;
-}) {
-  return (
-    <fieldset className={FIELDSET}>
-      <legend className={LEGEND}>{title}</legend>
-      <div className={`grid gap-4 md:items-start ${columns}`}>{children}</div>
-    </fieldset>
-  );
-}
-
 /**
  * The filters of the species search, in three groups.
  *
- * **Taxonomy** — a name box, a family select, a genus combobox fed by the
- * genera prefix search, and the unresolved-taxa toggle. A genus belongs to a
- * family, so changing the family drops the chosen genus.
+ * **Taxonomy** — {@link TaxonomyFilters}, the group the trait page renders
+ * too, with the unresolved-taxa toggle this form alone offers.
  *
  * **Traits** (RFC-60 R6 amendment) — a category select fed by the trait
  * dictionary, a trait select filtered to that category (disabled until a
@@ -93,10 +64,6 @@ export function SpeciesSearchForm({
 }) {
   const me = useMe();
   const ids = {
-    q: useId(),
-    family: useId(),
-    genus: useId(),
-    genera: useId(),
     status: useId(),
     plot: useId(),
     category: useId(),
@@ -104,8 +71,10 @@ export function SpeciesSearchForm({
     traitData: useId(),
     sort: useId(),
   };
-  const families = useQuery({ queryKey: datasetKeys.families, queryFn: fetchFamilies });
-  const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
+  const dictionary = useQuery({
+    queryKey: datasetKeys.dictionary(),
+    queryFn: () => fetchDictionary(),
+  });
 
   const hasPlots = Boolean(me.scope?.plots && me.scope.plots.length > 0);
   const canManagePlots = hasPermission(me, 'plots.manage');
@@ -120,29 +89,6 @@ export function SpeciesSearchForm({
   const availablePlots = canManagePlots
     ? (allPlotsQuery.data?.data ?? me.scope?.plots ?? [])
     : (me.scope?.plots ?? []);
-
-  const [genusText, setGenusText] = useState('');
-  const [chosenGenus, setChosenGenus] = useState<TaxonRef | null>(null);
-  const genusTerm = useDebouncedValue(genusText.trim(), 300);
-  const generaParams = { familyId: value.familyId, q: genusTerm, limit: 20 };
-  const genera = useQuery({
-    queryKey: datasetKeys.genera(generaParams),
-    queryFn: () => fetchGenera(generaParams),
-    enabled: genusTerm.length >= 1,
-    // Keeps the current suggestions on screen while the next prefix loads.
-    placeholderData: keepPreviousData,
-  });
-  const suggestions = genusText.trim().length >= 1 ? genera.data?.data : undefined;
-
-  function chooseGenus(genus: Genus) {
-    setChosenGenus({ id: genus.id, name: genus.name });
-    setGenusText('');
-    onChange({ ...value, genusId: genus.id });
-  }
-  function clearGenus() {
-    setChosenGenus(null);
-    onChange({ ...value, genusId: undefined });
-  }
 
   // A deep link may name a trait and no category — `/app/species?traitId=…`
   // is the link the trait page and the dashboard send people to (RFC-60 R6
@@ -165,109 +111,18 @@ export function SpeciesSearchForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <Group title="Taxonomy" columns="md:grid-cols-[2fr_1fr_1fr_auto]">
-        <Field id={ids.q} label="Search species">
-          <Input
-            id={ids.q}
-            type="search"
-            autoComplete="off"
-            maxLength={100}
-            placeholder="Canonical or alternative name"
-            value={value.q}
-            onChange={(event) => onChange({ ...value, q: event.target.value })}
-          />
-        </Field>
-        <Field
-          id={ids.family}
-          label="Family"
-          error={families.isError ? 'Could not load families.' : undefined}
-        >
-          <Select
-            id={ids.family}
-            value={value.familyId ?? ''}
-            onChange={(event) => {
-              setChosenGenus(null);
-              onChange({ ...value, familyId: event.target.value || undefined, genusId: undefined });
-            }}
-          >
-            <option value="">All families</option>
-            {families.data?.map((family) => (
-              <option key={family.id} value={family.id}>
-                {family.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="flex flex-col gap-2">
-          <Field
-            id={ids.genus}
-            label="Genus"
-            error={genera.isError ? 'Could not load genera.' : undefined}
-          >
-            <Input
-              id={ids.genus}
-              role="combobox"
-              autoComplete="off"
-              maxLength={100}
-              aria-autocomplete="list"
-              aria-expanded={suggestions !== undefined}
-              aria-controls={suggestions !== undefined ? ids.genera : undefined}
-              placeholder="Type to search genera"
-              value={genusText}
-              onChange={(event) => setGenusText(event.target.value)}
-            />
-          </Field>
-          {suggestions !== undefined ? (
-            suggestions.length > 0 ? (
-              <div
-                id={ids.genera}
-                role="listbox"
-                aria-label="Genus suggestions"
-                className="max-h-64 overflow-y-auto rounded-[10px] border border-canopy-700/15 bg-white py-1 text-cell shadow-sm"
-              >
-                {suggestions.map((genus) => (
-                  <button
-                    key={genus.id}
-                    type="button"
-                    role="option"
-                    aria-selected={genus.id === value.genusId}
-                    className="flex w-full items-baseline gap-2 px-3.5 py-2.5 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none"
-                    onClick={() => chooseGenus(genus)}
-                  >
-                    <span className="italic">{genus.name}</span>
-                    {genus.family ? (
-                      <span className="text-meta text-mist-500">{genus.family.name}</span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-meta text-mist-500">No genus matches.</p>
-            )
-          ) : null}
-          {value.genusId ? (
-            <div className="flex items-center gap-2">
-              <Badge tone="green">
-                <span className="italic">{chosenGenus?.name ?? 'Selected genus'}</span>
-              </Badge>
-              <Button variant="secondary" size="sm" aria-label="Clear genus" onClick={clearGenus}>
-                Clear
-              </Button>
-            </div>
-          ) : null}
-        </div>
-        <label className={CHECK}>
-          <input
-            type="checkbox"
-            className="size-5 accent-canopy-700"
-            checked={value.unresolved}
-            onChange={(event) => onChange({ ...value, unresolved: event.target.checked })}
-          />
-          Unresolved taxa only
-        </label>
-      </Group>
+      <TaxonomyFilters
+        showUnresolved
+        value={{
+          q: value.q,
+          familyId: value.familyId,
+          genusId: value.genusId,
+          unresolved: value.unresolved,
+        }}
+        onChange={(next) => onChange({ ...value, ...next, unresolved: next.unresolved === true })}
+      />
 
-      <Group title="Traits" columns="md:grid-cols-[1fr_1fr_auto]">
+      <FilterGroup title="Traits" columns="md:grid-cols-[1fr_1fr_auto]">
         <Field
           id={ids.category}
           label="Category"
@@ -325,9 +180,9 @@ export function SpeciesSearchForm({
           </Select>
         </Field>
         <fieldset disabled={!traitFilterChosen} className="flex flex-col gap-2">
-          <legend className={LEGEND}>Data</legend>
+          <legend className={FILTER_LEGEND}>Data</legend>
           <div className="flex flex-wrap items-center gap-6">
-            <label className={CHECK}>
+            <label className={FILTER_CHECK}>
               <input
                 type="radio"
                 className="size-5 accent-canopy-700"
@@ -338,7 +193,7 @@ export function SpeciesSearchForm({
               />
               Has data
             </label>
-            <label className={CHECK}>
+            <label className={FILTER_CHECK}>
               <input
                 type="radio"
                 className="size-5 accent-canopy-700"
@@ -351,10 +206,10 @@ export function SpeciesSearchForm({
             </label>
           </div>
         </fieldset>
-      </Group>
+      </FilterGroup>
 
       {showScopeGroup || canReadInactive ? (
-        <Group title="Scope" columns="md:grid-cols-[1fr_1fr_auto]">
+        <FilterGroup title="Scope" columns="md:grid-cols-[1fr_1fr_auto]">
           {showScopeGroup ? (
             <Field id={ids.plot} label="Plot">
               <Select
@@ -389,7 +244,7 @@ export function SpeciesSearchForm({
             </Field>
           ) : null}
           {hasPlots && !me.scope.restricted ? (
-            <label className={CHECK}>
+            <label className={FILTER_CHECK}>
               <input
                 type="checkbox"
                 className="size-5 accent-canopy-700"
@@ -401,7 +256,7 @@ export function SpeciesSearchForm({
               Show species outside my plots
             </label>
           ) : null}
-        </Group>
+        </FilterGroup>
       ) : null}
 
       <div className="md:w-64">

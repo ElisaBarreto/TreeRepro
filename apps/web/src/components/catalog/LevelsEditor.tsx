@@ -5,7 +5,7 @@ import { createLevel, invalidateAfterCatalogWrite, updateLevel } from '../../api
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, isValidationError } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
-import { Alert, Badge, Button, Dialog, Field, Input } from '../ui/index.ts';
+import { Alert, Button, Chip, Dialog, Field, Input } from '../ui/index.ts';
 import { levelErrorMessage } from './errors.ts';
 
 /**
@@ -108,16 +108,17 @@ function LevelKeyDialog({
 
 /**
  * The levels of one trait, in the order the API gives them (`sortOrder,
- * key` — never re-sorted client-side). A reader sees the list only; with
- * `canManage` each level gets Rename, Move up/down (disabled at the ends)
- * and Deactivate/Activate, and the list gets an Add level action. Every
- * mutation answers the whole parent trait and invalidates the dictionary
- * (RFC-13 R6) — this component never keeps that answer, the page re-renders
- * from the refetched dictionary. A move swaps the `sortOrder` of the moved
- * level and its neighbour in one `mutationFn`, moved level first, unless
- * the two are already equal (only possible in a dictionary seeded before
- * `sortOrder` existed), in which case a single patch shifts the moved
- * level's `sortOrder` past the neighbour's — except moving up across a tie
+ * key` — never re-sorted client-side). A reader sees them as a wrapping row
+ * of chips; with `canManage` each level gets Rename, Move up/down (disabled
+ * at the ends) and Deactivate/Activate on a line of its own, and the list
+ * gets an Add level action. Every mutation answers the whole parent trait
+ * and invalidates the dictionary (RFC-13 R6) — this component never keeps
+ * that answer, the page re-renders from the refetched dictionary. A move
+ * swaps the `sortOrder` of the moved level and its neighbour in one
+ * `mutationFn`, moved level first, unless the two are already equal (only
+ * possible in a dictionary seeded before `sortOrder` existed), in which case
+ * a single patch shifts the moved level's `sortOrder` past the neighbour's
+ * — except moving up across a tie
  * at 0, where the moved level cannot go negative, so the neighbour is
  * patched down past it instead.
  * @rfc RFC-62 R6
@@ -161,16 +162,22 @@ export function LevelsEditor({ trait, canManage }: { trait: Trait; canManage: bo
 
   return (
     <div className="flex flex-col gap-3">
-      <ul aria-label={`Levels of ${humaniseKey(trait.key)}`} className="flex flex-col gap-1.5">
+      {/* A reader sees the levels as chips wrapping in one row (RFC-62 R5
+          amendment); with the per-level actions each level needs a line of
+          its own, so the row becomes a column. */}
+      <ul
+        aria-label={`Levels of ${humaniseKey(trait.key)}`}
+        className={canManage ? 'flex flex-col gap-1.5' : 'flex flex-wrap items-center gap-2'}
+      >
         {trait.levels.map((level, index) => (
           <li key={level.id} className="flex flex-wrap items-center gap-2">
             {level.active ? (
-              <Badge>{level.key}</Badge>
+              <Chip>{level.key}</Chip>
             ) : (
-              <Badge>
+              <Chip tone="muted">
                 <span className="line-through">{level.key}</span>
                 <span className="sr-only"> (inactive)</span>
-              </Badge>
+              </Chip>
             )}
             {canManage ? (
               <>

@@ -46,7 +46,10 @@ export function PendingPage({
   const me = useMe();
   const canMap = hasPermission(me, 'records.create');
   const traits = useQuery({ queryKey: curationKeys.pendingTraits, queryFn: fetchPendingTraits });
-  const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
+  const dictionary = useQuery({
+    queryKey: datasetKeys.dictionary(),
+    queryFn: () => fetchDictionary(),
+  });
   const selected: PendingTrait | undefined =
     traits.data?.find((t) => t.trait.id === chosenId) ?? traits.data?.[0];
   const traitId = selected?.trait.id ?? '';

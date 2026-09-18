@@ -1,0 +1,177 @@
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { Genus, TaxonRef } from '@treerepro/contracts';
+import { useId, useState } from 'react';
+import { datasetKeys, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
+import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
+import { Badge, Button, Field, Input, Select } from '../ui/index.ts';
+import { FILTER_CHECK, FilterGroup } from './FilterGroup.tsx';
+
+/**
+ * What the Taxonomy group narrows by. `unresolved` is carried only by the
+ * species search, which is the form that shows the toggle.
+ * @rfc RFC-60 R6, R8
+ */
+export interface TaxonomyFiltersValue {
+  q: string;
+  familyId?: string;
+  genusId?: string;
+  unresolved?: boolean;
+}
+
+/**
+ * The Taxonomy group of a dataset filter form: a name box, a family select,
+ * a genus combobox fed by the genera prefix search and — where the form
+ * offers it — the unresolved-taxa toggle. A genus belongs to a family, so
+ * changing the family drops the chosen genus. Fully controlled: the caller
+ * owns the value and whatever it does with it (a URL, a search request).
+ * Shared by the species search (RFC-60 R6) and the trait page's species
+ * tables (RFC-62 R8).
+ * @rfc RFC-13 R2
+ * @rfc RFC-60 R6, R8
+ * @rfc RFC-62 R8
+ */
+export function TaxonomyFilters({
+  value,
+  onChange,
+  showUnresolved = false,
+}: {
+  value: TaxonomyFiltersValue;
+  onChange: (next: TaxonomyFiltersValue) => void;
+  /** The species search's own toggle (RFC-65); off everywhere else. */
+  showUnresolved?: boolean;
+}) {
+  const ids = { q: useId(), family: useId(), genus: useId(), genera: useId() };
+  const families = useQuery({ queryKey: datasetKeys.families, queryFn: fetchFamilies });
+
+  const [genusText, setGenusText] = useState('');
+  const [chosenGenus, setChosenGenus] = useState<TaxonRef | null>(null);
+  const genusTerm = useDebouncedValue(genusText.trim(), 300);
+  const generaParams = { familyId: value.familyId, q: genusTerm, limit: 20 };
+  const genera = useQuery({
+    queryKey: datasetKeys.genera(generaParams),
+    queryFn: () => fetchGenera(generaParams),
+    enabled: genusTerm.length >= 1,
+    // Keeps the current suggestions on screen while the next prefix loads.
+    placeholderData: keepPreviousData,
+  });
+  const suggestions = genusText.trim().length >= 1 ? genera.data?.data : undefined;
+
+  function chooseGenus(genus: Genus) {
+    setChosenGenus({ id: genus.id, name: genus.name });
+    setGenusText('');
+    onChange({ ...value, genusId: genus.id });
+  }
+  function clearGenus() {
+    setChosenGenus(null);
+    onChange({ ...value, genusId: undefined });
+  }
+
+  return (
+    <FilterGroup
+      title="Taxonomy"
+      columns={showUnresolved ? 'md:grid-cols-[2fr_1fr_1fr_auto]' : 'md:grid-cols-[2fr_1fr_1fr]'}
+    >
+      <Field id={ids.q} label="Search species">
+        <Input
+          id={ids.q}
+          type="search"
+          autoComplete="off"
+          maxLength={100}
+          placeholder="Canonical or alternative name"
+          value={value.q}
+          onChange={(event) => onChange({ ...value, q: event.target.value })}
+        />
+      </Field>
+      <Field
+        id={ids.family}
+        label="Family"
+        error={families.isError ? 'Could not load families.' : undefined}
+      >
+        <Select
+          id={ids.family}
+          value={value.familyId ?? ''}
+          onChange={(event) => {
+            setChosenGenus(null);
+            onChange({ ...value, familyId: event.target.value || undefined, genusId: undefined });
+          }}
+        >
+          <option value="">All families</option>
+          {families.data?.map((family) => (
+            <option key={family.id} value={family.id}>
+              {family.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <div className="flex flex-col gap-2">
+        <Field
+          id={ids.genus}
+          label="Genus"
+          error={genera.isError ? 'Could not load genera.' : undefined}
+        >
+          <Input
+            id={ids.genus}
+            role="combobox"
+            autoComplete="off"
+            maxLength={100}
+            aria-autocomplete="list"
+            aria-expanded={suggestions !== undefined}
+            aria-controls={suggestions !== undefined ? ids.genera : undefined}
+            placeholder="Type to search genera"
+            value={genusText}
+            onChange={(event) => setGenusText(event.target.value)}
+          />
+        </Field>
+        {suggestions !== undefined ? (
+          suggestions.length > 0 ? (
+            <div
+              id={ids.genera}
+              role="listbox"
+              aria-label="Genus suggestions"
+              className="max-h-64 overflow-y-auto rounded-[10px] border border-canopy-700/15 bg-white py-1 text-cell shadow-sm"
+            >
+              {suggestions.map((genus) => (
+                <button
+                  key={genus.id}
+                  type="button"
+                  role="option"
+                  aria-selected={genus.id === value.genusId}
+                  className="flex w-full items-baseline gap-2 px-3.5 py-2.5 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none"
+                  onClick={() => chooseGenus(genus)}
+                >
+                  <span className="italic">{genus.name}</span>
+                  {genus.family ? (
+                    <span className="text-meta text-mist-500">{genus.family.name}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-meta text-mist-500">No genus matches.</p>
+          )
+        ) : null}
+        {value.genusId ? (
+          <div className="flex items-center gap-2">
+            <Badge tone="green">
+              <span className="italic">{chosenGenus?.name ?? 'Selected genus'}</span>
+            </Badge>
+            <Button variant="secondary" size="sm" aria-label="Clear genus" onClick={clearGenus}>
+              Clear
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {showUnresolved ? (
+        <label className={FILTER_CHECK}>
+          <input
+            type="checkbox"
+            className="size-5 accent-canopy-700"
+            checked={value.unresolved === true}
+            onChange={(event) => onChange({ ...value, unresolved: event.target.checked })}
+          />
+          Unresolved taxa only
+        </label>
+      ) : null}
+    </FilterGroup>
+  );
+}
