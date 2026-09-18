@@ -1,3 +1,4 @@
+import type { ResolveDoiResult } from '@treerepro/contracts';
 import { Button, Field, Icon, type IconName, Input } from '../ui/index.ts';
 
 /** What the DOI resolve answered for one row; `ok` carries the line to show. */
@@ -22,6 +23,34 @@ export interface DoiFieldProps {
   error?: string;
   /** Tells the rows of one field apart ("DOI", "DOI 2", …); "DOI" by default. */
   label?: string;
+}
+
+/**
+ * What `GET /api/references/resolve` left on a row: not found, or the line a
+ * resolved DOI reads as — the title the registry previewed or the one the
+ * known reference carries (its citation key if it has no title, the DOI
+ * itself if it has neither), with the year. One rule, because every form that
+ * checks a DOI shows the same line.
+ * @rfc RFC-80 R4
+ */
+export function resolvedCheck(result: ResolveDoiResult, doi: string): DoiCheck {
+  if (result.status === 'not_found') return { status: 'not_found' };
+  const preview = result.status === 'resolvable' ? result.preview : null;
+  const reference = result.status === 'known' ? result.reference : null;
+  const title = preview?.title ?? reference?.title ?? reference?.citationKey ?? doi;
+  const year = preview?.year ?? reference?.year ?? null;
+  return { status: 'ok', label: year === null ? title : `${title} (${year})` };
+}
+
+/**
+ * Whether a check is a line that stops a form sending the DOI: the registry
+ * does not know it, the API called its shape malformed, or the check never
+ * landed. The API would refuse the record or the annotation either way, so
+ * every form that holds a DOI asks this one question.
+ * @rfc RFC-80 R4
+ */
+export function doiBlocks(check: DoiCheck): boolean {
+  return check.status === 'not_found' || check.status === 'malformed' || check.status === 'failed';
 }
 
 function statusLine(check: DoiCheck): { icon: IconName; text: string; className: string } | null {
@@ -69,8 +98,7 @@ export function DoiField({
   label = 'DOI',
 }: DoiFieldProps) {
   const line = statusLine(check);
-  const blocking =
-    check.status === 'not_found' || check.status === 'malformed' || check.status === 'failed';
+  const blocking = doiBlocks(check);
   return (
     <div className="flex flex-col gap-1">
       <Field

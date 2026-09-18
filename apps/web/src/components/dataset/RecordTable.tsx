@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import type { RecordItem, ReferenceRef } from '@treerepro/contracts';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
+import { referenceLabel } from '../../lib/references.ts';
 import { Badge, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 import { ReviewBadge } from './ReviewBadge.tsx';
@@ -18,18 +19,20 @@ function valueLabel(record: RecordItem): string {
   return record.valueText || '(empty)';
 }
 
-// One role's article: its citation key linked to the reference page, cut at
-// sixty characters with the whole key in the link's `title`; a dash when the
-// record names no article in that role.
+// One role's article: how the reference reads (RFC-61 R4 — a personal
+// observation by its observer, never by its key) linked to the reference
+// page, cut at sixty characters with the whole label in the link's `title`;
+// a dash when the record names no article in that role.
 function ArticleCell({ reference }: { reference: ReferenceRef | null }) {
   if (!reference) return <Td>{DASH}</Td>;
-  const shown = truncate(reference.citationKey, ARTICLE_MAX);
+  const label = referenceLabel(reference);
+  const shown = truncate(label, ARTICLE_MAX);
   return (
     <Td>
       <Link
         to="/app/references/$id"
         params={{ id: reference.id }}
-        title={shown === reference.citationKey ? undefined : reference.citationKey}
+        title={shown === label ? undefined : label}
         className="font-medium text-canopy-900 underline-offset-2 hover:underline"
       >
         {shown}

@@ -12,6 +12,7 @@ import type {
   RecordItem,
   Reference,
   ReferenceDetail,
+  ReferenceRef,
   Species,
   SpeciesTraits,
   TaxonRef,
@@ -142,6 +143,13 @@ export const SECONDARY_REFERENCE = {
   kind: 'publication' as const,
 };
 
+/** The reference a scientist's own field work is recorded under. @rfc RFC-61 R7 */
+export const PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d42',
+  citationKey: `personal-observation:${USER.id}`,
+  kind: 'personal_observation',
+};
+
 /** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
 export const RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d50',
@@ -239,6 +247,67 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
   supersedes: null,
   supersededBy: [],
   responses: [],
+};
+
+/** A record contesting RECORD, sourced from the author's own observation. @rfc RFC-70 R6 */
+export const CONTEST_RECORD_DETAIL: RecordDetail = {
+  ...RECORD_DETAIL,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d52',
+  valueText: 'monoecious',
+  level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious' },
+  review: 'unreviewed',
+  origin: 'manual',
+  primaryReference: PERSONAL_OBSERVATION_REFERENCE,
+  secondaryReference: null,
+  createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+  intent: 'contest',
+  respondsTo: { id: RECORD.id },
+  importBatch: null,
+  importRowNo: null,
+};
+
+/**
+ * RECORD once it has been answered: the dispute the contest generated and a
+ * confirmation backed by a reference, and the two records that answer it —
+ * the second by an author this viewer may not see.
+ * @rfc RFC-70 R4, R6
+ */
+export const RESPONDED_RECORD_DETAIL: RecordDetail = {
+  ...RECORD_DETAIL,
+  annotations: [
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d71',
+      kind: 'dispute',
+      note: `Contested by record ${CONTEST_RECORD_DETAIL.id}`,
+      actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+      createdAt: '2026-09-06T12:00:00.000Z',
+      reference: null,
+      generated: true,
+    },
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d72',
+      kind: 'confirm',
+      note: null,
+      actor: { id: USER.id, name: USER.name },
+      createdAt: '2026-09-05T12:00:00.000Z',
+      reference: PRIMARY_REFERENCE,
+      generated: false,
+    },
+  ],
+  responses: [
+    {
+      id: CONTEST_RECORD_DETAIL.id,
+      intent: 'contest',
+      createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+      createdAt: '2026-09-06T12:00:00.000Z',
+    },
+    {
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d53',
+      intent: 'complement',
+      createdBy: null,
+      createdAt: '2026-09-05T08:00:00.000Z',
+    },
+  ],
 };
 
 /**
@@ -351,6 +420,29 @@ export const REFERENCE: Reference = {
   secondaryCount: 1,
   kind: 'publication',
   observer: null,
+};
+
+/** The personal-observation reference of USER, as the references screens see it. @rfc RFC-61 R7 */
+export const PERSONAL_OBSERVATION: Reference = {
+  id: PERSONAL_OBSERVATION_REFERENCE.id,
+  citationKey: PERSONAL_OBSERVATION_REFERENCE.citationKey,
+  title: null,
+  authors: null,
+  year: null,
+  journal: null,
+  doi: null,
+  url: null,
+  createdAt: '2026-09-14T09:00:00.000Z',
+  primaryCount: 1,
+  secondaryCount: 0,
+  kind: 'personal_observation',
+  observer: { id: USER.id, name: USER.name },
+};
+
+/** @rfc RFC-61 R7 */
+export const PERSONAL_OBSERVATION_DETAIL: ReferenceDetail = {
+  ...PERSONAL_OBSERVATION,
+  recordCount: 1,
 };
 
 /** REFERENCE with the count `GET /api/references/:id` adds: two records, one per role. @rfc RFC-61 R4 */

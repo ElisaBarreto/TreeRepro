@@ -21,6 +21,7 @@ import {
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { articleKind, formatNumber, truncate } from '../../lib/format.ts';
+import { referenceLabel } from '../../lib/references.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
@@ -111,8 +112,12 @@ function ReferenceTable({ items }: { items: Reference[] }) {
       </Thead>
       <Tbody>
         {items.map((reference) => {
-          const shown = truncate(reference.citationKey, KEY_MAX);
-          const kind = articleKind(reference.citationKey);
+          // How the reference reads, not the key it is stored under: a
+          // personal observation names its observer (RFC-61 R4, R7), and
+          // never looks like a DOI or an index to `articleKind`.
+          const label = referenceLabel(reference);
+          const shown = truncate(label, KEY_MAX);
+          const kind = articleKind(label);
           return (
             <Tr key={reference.id}>
               <Td>
@@ -120,7 +125,7 @@ function ReferenceTable({ items }: { items: Reference[] }) {
                   <Link
                     to="/app/references/$id"
                     params={{ id: reference.id }}
-                    title={shown === reference.citationKey ? undefined : reference.citationKey}
+                    title={shown === label ? undefined : label}
                     className="font-medium text-canopy-900 underline-offset-2 hover:underline"
                   >
                     {shown}

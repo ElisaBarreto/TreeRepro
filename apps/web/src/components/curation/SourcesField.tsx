@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { resolveDoi } from '../../api/curation.ts';
 import { Button, HelpTip } from '../ui/index.ts';
-import { type DoiCheck, DoiField } from './DoiField.tsx';
+import { type DoiCheck, DoiField, resolvedCheck } from './DoiField.tsx';
 
 /** The DOIs of a claim's sources, one per row; `''` rows are blank ones. */
 export type SourcesValue = { dois: string[] };
@@ -34,20 +34,6 @@ export function sourcesToBody(value: SourcesValue): CreateRecordBody['sources'] 
   return dois.length === 0
     ? { personalObservation: true }
     : { references: dois.map((doi) => ({ doi })) };
-}
-
-/**
- * The line a resolved DOI shows: the title the registry previewed or the one
- * the known reference carries (its citation key if it has no title, the DOI
- * itself if it has neither), with the year.
- */
-function resolvedCheck(result: ResolveDoiResult, doi: string): DoiCheck {
-  if (result.status === 'not_found') return { status: 'not_found' };
-  const preview = result.status === 'resolvable' ? result.preview : null;
-  const reference = result.status === 'known' ? result.reference : null;
-  const title = preview?.title ?? reference?.title ?? reference?.citationKey ?? doi;
-  const year = preview?.year ?? reference?.year ?? null;
-  return { status: 'ok', label: year === null ? title : `${title} (${year})` };
 }
 
 /**
