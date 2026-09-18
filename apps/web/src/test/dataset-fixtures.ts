@@ -150,6 +150,7 @@ export const PRIMARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d40',
   citationKey: 'Renner2014',
   kind: 'publication' as const,
+  observer: null,
   shortCitation: null,
 };
 /** @rfc RFC-61 R4 */
@@ -157,29 +158,32 @@ export const SECONDARY_REFERENCE = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d41',
   citationKey: 'TRY-6.0',
   kind: 'publication' as const,
-  shortCitation: null,
-};
-
-/** The reference a scientist's own field work is recorded under. @rfc RFC-61 R7 */
-export const PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
-  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d42',
-  citationKey: `personal-observation:${USER.id}`,
-  kind: 'personal_observation',
+  observer: null,
   shortCitation: null,
 };
 
 const GRACE_ID = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f';
 
+/** The reference a scientist's own field work is recorded under. @rfc RFC-61 R4, R7 */
+export const PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d42',
+  citationKey: `personal-observation:${USER.id}`,
+  kind: 'personal_observation',
+  observer: { id: USER.id, name: USER.name },
+  shortCitation: null,
+};
+
 /**
  * Grace's own field work — a personal observation always resolves to the
  * actor's own row, so a record Grace creates can only cite this one, never
  * {@link PERSONAL_OBSERVATION_REFERENCE} (USER's).
- * @rfc RFC-61 R7
+ * @rfc RFC-61 R4, R7
  */
 export const GRACE_PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d43',
   citationKey: `personal-observation:${GRACE_ID}`,
   kind: 'personal_observation',
+  observer: { id: GRACE_ID, name: 'Grace' },
   shortCitation: null,
 };
 

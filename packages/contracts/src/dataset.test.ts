@@ -80,6 +80,7 @@ describe('RFC-63 R8 recordSchema', () => {
         id: uuid,
         citationKey: 'A_2020',
         kind: 'publication',
+        observer: null,
         shortCitation: null,
       },
       secondaryReference: null,
@@ -204,13 +205,32 @@ describe('RFC-61 R4 referenceSchema', () => {
 
 describe('RFC-61 R1, R4, R7 referenceRefSchema', () => {
   it('requires shortCitation, nullable', () => {
-    const ref = { id: uuid, citationKey: 'Smith2001', kind: 'publication', shortCitation: null };
+    const ref = {
+      id: uuid,
+      citationKey: 'Smith2001',
+      kind: 'publication',
+      observer: null,
+      shortCitation: null,
+    };
     expect(referenceRefSchema.parse(ref)).toEqual(ref);
     expect(referenceRefSchema.parse({ ...ref, shortCitation: 'Smith (2001)' }).shortCitation).toBe(
       'Smith (2001)',
     );
     const { shortCitation: _sc, ...withoutShort } = ref;
     expect(referenceRefSchema.safeParse(withoutShort).success).toBe(false);
+  });
+
+  it('requires observer, nullable, so a personal observation can carry its own name', () => {
+    const observation = {
+      id: uuid,
+      citationKey: `personal-observation:${uuid}`,
+      kind: 'personal_observation',
+      observer: { id: uuid, name: 'Ada' },
+      shortCitation: null,
+    };
+    expect(referenceRefSchema.parse(observation)).toEqual(observation);
+    const { observer: _o, ...withoutObserver } = observation;
+    expect(referenceRefSchema.safeParse(withoutObserver).success).toBe(false);
   });
 });
 
@@ -522,6 +542,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
           id: uuid,
           citationKey: 'Smith2001',
           kind: 'publication',
+          observer: null,
           shortCitation: null,
         },
       },

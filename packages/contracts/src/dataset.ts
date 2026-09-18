@@ -191,11 +191,18 @@ export const traitRefSchema = z.strictObject({
   unit: z.string().nullable(),
 });
 
-/** @rfc RFC-61 R1, R4, R7 */
+/**
+ * `observer` is the personal-observation owner (RFC-61 R7): present only
+ * when the reference is one, and left `null` otherwise exactly as
+ * `toReference` decides it for the full {@link referenceSchema} — the API
+ * never widens exposure beyond that rule for this shorter shape.
+ * @rfc RFC-61 R1, R4, R7
+ */
 export const referenceRefSchema = z.strictObject({
   id: z.uuid(),
   citationKey: z.string(),
   kind: z.enum(REFERENCE_KINDS),
+  observer: userRefSchema.nullable(),
   shortCitation: z.string().nullable(),
 });
 

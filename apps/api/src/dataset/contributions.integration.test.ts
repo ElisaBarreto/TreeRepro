@@ -15,6 +15,7 @@ import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
 import { contributionSummary, listContributions } from './contributions.ts';
+import { ensurePersonalObservation } from './references.ts';
 
 type Level = { id: string; key: string };
 const level = (levels: Level[], key: string): string => {
@@ -108,6 +109,7 @@ describe('RFC-71 R2 listContributions kind=records', () => {
         id: reference.id,
         citationKey: reference.citationKey,
         kind: 'publication',
+        observer: null,
         shortCitation: null,
       },
       secondaryReference: null,
@@ -465,10 +467,49 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
       id: cited.id,
       citationKey: cited.citationKey,
       kind: 'publication',
+      observer: null,
       shortCitation: null,
     });
     expect(rest[0]?.generated).toBe(false);
     expect(rest[0]?.record.id).toBe(record.id);
+  });
+
+  it('RFC-61 R4, R7 an annotation citing a personal observation carries its observer', async () => {
+    const { user: a } = await createUser(t.db);
+    const { user: observer } = await createUser(t.db, {
+      name: `Observer-${Math.random().toString(16).slice(2)}`,
+    });
+    const observation = await ensurePersonalObservation(t.db, observer.id);
+    const { species, trait, reference } = await scene(t.db);
+    const record = await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'alpha',
+      levelId: level(trait.levels, 'alpha'),
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: a.id,
+    });
+    await createAnnotation(t.db, {
+      recordId: record.id,
+      actorId: a.id,
+      kind: 'confirm',
+      note: 'seen it myself',
+      referenceId: observation.id,
+    });
+
+    const page = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      limit: 10,
+    });
+    const rows = asAnnotations(page.data);
+    expect(rows[0]?.reference).toEqual({
+      id: observation.id,
+      citationKey: `personal-observation:${observer.id}`,
+      kind: 'personal_observation',
+      observer: { id: observer.id, name: observer.name },
+      shortCitation: null,
+    });
   });
 
   it('applies the filters to the annotated record', async () => {

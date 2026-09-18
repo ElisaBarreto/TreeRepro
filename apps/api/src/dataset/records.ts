@@ -15,6 +15,9 @@ import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
 const secondaryRef = alias(bibliographicReferences, 'secondary_ref');
 const author = alias(users, 'author');
+const primaryRefObserver = alias(users, 'primary_ref_observer');
+const secondaryRefObserver = alias(users, 'secondary_ref_observer');
+const annotationRefObserver = alias(users, 'annotation_ref_observer');
 
 /**
  * The review axis of one record, derived from its annotations: withdrawn >
@@ -48,9 +51,13 @@ const itemColumns = {
   primaryKey: primaryRef.citationKey,
   primaryKind: primaryRef.kind,
   primaryShortCitation: primaryRef.shortCitation,
+  primaryObserverId: primaryRefObserver.id,
+  primaryObserverName: primaryRefObserver.name,
   secondaryKey: secondaryRef.citationKey,
   secondaryKind: secondaryRef.kind,
   secondaryShortCitation: secondaryRef.shortCitation,
+  secondaryObserverId: secondaryRefObserver.id,
+  secondaryObserverName: secondaryRefObserver.name,
   authorName: author.name,
 };
 
@@ -64,9 +71,13 @@ export type ItemRow = {
   primaryKey: string | null;
   primaryKind: (typeof bibliographicReferences.$inferSelect)['kind'] | null;
   primaryShortCitation: string | null;
+  primaryObserverId: string | null;
+  primaryObserverName: string | null;
   secondaryKey: string | null;
   secondaryKind: (typeof bibliographicReferences.$inferSelect)['kind'] | null;
   secondaryShortCitation: string | null;
+  secondaryObserverId: string | null;
+  secondaryObserverName: string | null;
   authorName: string | null;
   review: ReviewStatus;
 };
@@ -90,6 +101,10 @@ export function toItem(r: ItemRow): RecordItem {
             id: rec.primaryReferenceId,
             citationKey: r.primaryKey,
             kind: r.primaryKind,
+            observer:
+              r.primaryObserverId && r.primaryObserverName
+                ? { id: r.primaryObserverId, name: r.primaryObserverName }
+                : null,
             shortCitation: r.primaryShortCitation,
           }
         : null,
@@ -99,6 +114,10 @@ export function toItem(r: ItemRow): RecordItem {
             id: rec.secondaryReferenceId,
             citationKey: r.secondaryKey,
             kind: r.secondaryKind,
+            observer:
+              r.secondaryObserverId && r.secondaryObserverName
+                ? { id: r.secondaryObserverId, name: r.secondaryObserverName }
+                : null,
             shortCitation: r.secondaryShortCitation,
           }
         : null,
@@ -120,6 +139,8 @@ export function itemQuery(db: DbExecutor) {
     .leftJoin(traitLevels, eq(traitLevels.id, traitRecords.levelId))
     .leftJoin(primaryRef, eq(primaryRef.id, traitRecords.primaryReferenceId))
     .leftJoin(secondaryRef, eq(secondaryRef.id, traitRecords.secondaryReferenceId))
+    .leftJoin(primaryRefObserver, eq(primaryRefObserver.id, primaryRef.observerUserId))
+    .leftJoin(secondaryRefObserver, eq(secondaryRefObserver.id, secondaryRef.observerUserId))
     .leftJoin(author, eq(author.id, traitRecords.createdBy));
 }
 
@@ -203,6 +224,8 @@ export async function getRecord(
         refCitationKey: bibliographicReferences.citationKey,
         refKind: bibliographicReferences.kind,
         refShortCitation: bibliographicReferences.shortCitation,
+        refObserverId: annotationRefObserver.id,
+        refObserverName: annotationRefObserver.name,
         actorId: users.id,
         actorName: users.name,
         createdAt: recordAnnotations.createdAt,
@@ -212,6 +235,10 @@ export async function getRecord(
       .leftJoin(
         bibliographicReferences,
         eq(bibliographicReferences.id, recordAnnotations.referenceId),
+      )
+      .leftJoin(
+        annotationRefObserver,
+        eq(annotationRefObserver.id, bibliographicReferences.observerUserId),
       )
       .where(eq(recordAnnotations.recordId, id))
       .orderBy(desc(recordAnnotations.id)),
@@ -273,6 +300,10 @@ export async function getRecord(
               id: a.refId,
               citationKey: a.refCitationKey,
               kind: a.refKind,
+              observer:
+                a.refObserverId && a.refObserverName
+                  ? { id: a.refObserverId, name: a.refObserverName }
+                  : null,
               shortCitation: a.refShortCitation,
             }
           : null,

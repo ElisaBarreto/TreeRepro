@@ -47,6 +47,7 @@ const SMITH = {
   id: REFERENCE.id,
   citationKey: REFERENCE.citationKey,
   kind: REFERENCE.kind,
+  observer: REFERENCE.observer,
   shortCitation: REFERENCE.shortCitation,
 };
 // The records of this page name Smith2001 as primary or secondary source.

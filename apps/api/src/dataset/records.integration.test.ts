@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
@@ -15,6 +16,7 @@ import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { getRecord, listRecords, reviewStatusSql } from './records.ts';
+import { ensurePersonalObservation } from './references.ts';
 
 describe('RFC-63 R8, R9 listRecords and getRecord', () => {
   const t = useTestDb();
@@ -73,6 +75,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
         id: ref.id,
         citationKey: ref.citationKey,
         kind: 'publication',
+        observer: null,
         shortCitation: null,
       },
       secondaryReference: null,
@@ -86,6 +89,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       id: ref.id,
       citationKey: ref.citationKey,
       kind: 'publication',
+      observer: null,
       shortCitation: null,
     });
 
@@ -243,6 +247,39 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       importRowNo: null,
     });
     expect(await getRecord(t.db, UNRESTRICTED, '00000000-0000-7000-8000-000000000000')).toBeNull();
+  });
+
+  it('RFC-61 R4, R7 a record citing a personal observation carries its observer on the reference ref', async () => {
+    const sp1 = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'flower_color');
+    const { user: observer } = await createUser(t.db, {
+      name: `Observer-${randomBytes(4).toString('hex')}`,
+    });
+    const observation = await ensurePersonalObservation(t.db, observer.id);
+    const batch = await createImportBatch(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'x',
+      primaryReferenceId: observation.id,
+      importBatchId: batch.id,
+    });
+
+    const listed = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      limit: 10,
+    });
+    expect(listed.data[0]?.primaryReference).toEqual({
+      id: observation.id,
+      citationKey: `personal-observation:${observer.id}`,
+      kind: 'personal_observation',
+      observer: { id: observer.id, name: observer.name },
+      shortCitation: null,
+    });
+
+    const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
+    expect(detail?.primaryReference?.observer).toEqual({ id: observer.id, name: observer.name });
   });
 });
 

@@ -108,6 +108,7 @@ describe('RFC-63 R8 RecordTable', () => {
         id: PRIMARY_REFERENCE.id,
         citationKey: longKey,
         kind: 'publication',
+        observer: null,
         shortCitation: null,
       },
     };
@@ -204,7 +205,9 @@ describe('RFC-61 R4 RecordTable references', () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(await screen.findByRole('link', { name: 'Personal observation' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: 'Personal observation (Ada)' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(PERSONAL_OBSERVATION_REFERENCE.citationKey)).not.toBeInTheDocument();
   });
 });
