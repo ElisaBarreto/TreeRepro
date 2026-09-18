@@ -1,7 +1,7 @@
 # TreeRepro — Contribution Workflow Design (plans 09a, 09b)
 
 **Date:** 2026-09-17
-**Status:** 09a implemented (API, PR #89); 09b implemented (web); implementation plans `2026-09-17-contribution-09a-api.md` and `2026-09-17-contribution-09b-web.md`
+**Status:** 09a implemented (API, PR #89); 09b implemented (web, PR #90); implementation plans `2026-09-17-contribution-09a-api.md` and `2026-09-17-contribution-09b-web.md`
 **Scope:** how a contributor validates a record, contests or complements it, and adds entries for a trait: personal-observation provenance, DOI-based references resolved through the Handle and Crossref APIs, several references per submission, the contest / complement intent and its side effects, the reviewer permission, the two-button record UI, the two-step contest dialog, the redesigned add-entries form, trait tooltips and the "traits with no data" view. RFC-70 (contribution workflow), RFC-80 (DOI resolution), amendments to RFC-30, RFC-31, RFC-41, RFC-61, RFC-63, RFC-65, RFC-12. Programme index: `2026-09-17-contributor-launch-overview.md`. Depends on plan 08a (visibility) and 08b (plots).
 
 ## 1. Context
