@@ -18,7 +18,9 @@
     "import:species-status": "node --conditions=development src/cli/import-species-status.ts",
     "import:plots": "node --conditions=development src/cli/import-plots.ts",
     "import:plot-species": "node --conditions=development src/cli/import-plot-species.ts",
-    "import:user-plots": "node --conditions=development src/cli/import-user-plots.ts"
+    "import:user-plots": "node --conditions=development src/cli/import-user-plots.ts",
+    "import:synonyms": "node --conditions=development src/cli/import-synonyms.ts",
+    "import:references": "node --conditions=development src/cli/import-references.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
