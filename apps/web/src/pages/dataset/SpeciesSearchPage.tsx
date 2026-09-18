@@ -79,11 +79,12 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
 }
 
 // Everything the URL carries, in one comparable string: what the page last
-// put in the address bar, and what it finds there on the next render. The
-// name is part of it — the URL only ever holds a settled name (see the push
-// effect below), so an incoming search that differs in `q` alone is an
-// outside change (the sidebar's Species entry clears the whole search, the
-// back button, a pasted link) and the form follows it, name included.
+// wrote to the address bar, and what it finds there on the next render. The
+// name is part of it because `seenSearch` records exactly what was written,
+// so a search differing at all — in `q` alone, as the sidebar's Species
+// entry does by carrying no search and clearing the whole one — came from
+// outside (that link, the back button, a pasted URL) and the form follows
+// it, name included.
 function searchKey(value: SpeciesSearchValue): string {
   return JSON.stringify([
     value.q.trim() || null,
@@ -145,12 +146,13 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   }
   const [creating, setCreating] = useState(false);
   const term = useDebouncedValue(form.q.trim(), 300);
-  // The address bar is written once the name has stopped changing, on the
-  // same boundary the search itself waits for — one write per settled name
-  // instead of one per keystroke. `settled` is what keeps a name the form has
-  // already moved past out of the URL: while the debounce is catching up, the
-  // page writes nothing at all, so it can neither put a stale name in the
-  // address bar nor push one back over a search just adopted from outside.
+  // `settled` is the debounce of the write itself: `formKey` follows `form`
+  // synchronously, so without it this effect navigates on every keystroke.
+  // It is not a correctness guard — the effect writes `toSearch(form)`, which
+  // is always the box's current value, never a name it has moved past — but
+  // browsers rate-limit `replaceState` and Safari throws on it, and the
+  // address bar is better off holding names that have stopped changing than
+  // every half-typed one.
   const settled = term === form.q.trim();
   const formKey = searchKey(form);
   useEffect(() => {
