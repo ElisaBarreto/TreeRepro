@@ -245,18 +245,20 @@ describe('RFC-65 R10 listDisputedQuerySchema', () => {
 });
 
 describe('RFC-65 R10 disputedRecordSchema contestedBy', () => {
+  const latestDispute = {
+    id: uuid,
+    actor: { id: uuid, name: 'Ada' },
+    note: 'Wrong',
+    createdAt: '2026-09-13T00:00:00.000Z',
+  };
+  const contestingRecord = { id: other, valueText: 'red', createdBy: { id: uuid, name: 'Ada' } };
+  const withContests = {
+    ...record,
+    latestDispute,
+    contestedBy: [contestingRecord],
+  };
+
   it('parses a populated contestedBy and an empty one, and requires the field', () => {
-    const latestDispute = {
-      id: uuid,
-      actor: { id: uuid, name: 'Ada' },
-      note: 'Wrong',
-      createdAt: '2026-09-13T00:00:00.000Z',
-    };
-    const withContests = {
-      ...record,
-      latestDispute,
-      contestedBy: [{ id: other, valueText: 'red', createdBy: { id: uuid, name: 'Ada' } }],
-    };
     expect(disputedRecordSchema.safeParse(withContests).success).toBe(true);
     expect(disputedRecordSchema.safeParse({ ...withContests, contestedBy: [] }).success).toBe(true);
     const { contestedBy: _contestedBy, ...missingContestedBy } = withContests;
@@ -267,6 +269,16 @@ describe('RFC-65 R10 disputedRecordSchema contestedBy', () => {
         contestedBy: [{ id: other, valueText: 'red', createdBy: null }],
       }).success,
     ).toBe(true);
+  });
+
+  it('rejects an unknown key in a contestedBy entry', () => {
+    const result = disputedRecordSchema.safeParse({
+      ...withContests,
+      contestedBy: [{ ...contestingRecord, extra: 1 }],
+    });
+    // zod reports unrecognized_keys at the offending object's own path.
+    const issuePaths = result.success ? [] : result.error.issues.map((i) => i.path.join('.'));
+    expect(issuePaths).toContain('contestedBy.0');
   });
 });
 
