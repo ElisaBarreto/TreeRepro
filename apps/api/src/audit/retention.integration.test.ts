@@ -61,7 +61,7 @@ describe('RFC-42 R1-R3 audit_log_purge', () => {
     expect(rows[0]).toMatchObject({
       secdef: true,
       owner: 'treerepro_migrator',
-      config: ['search_path=public'],
+      config: ['search_path=public, pg_temp'],
     });
   });
 });

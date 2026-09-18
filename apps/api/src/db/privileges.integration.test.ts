@@ -127,3 +127,34 @@ describe('RFC-10 R7 treerepro_backup is read-only and passwords are stored as SC
     ]);
   });
 });
+
+describe('RFC-42 R2, RFC-69 R3 SECURITY DEFINER functions pin search_path with pg_temp last', () => {
+  const t = useTestDb();
+
+  // Unless pg_temp is listed, PostgreSQL searches it FIRST for relations, so a
+  // caller holding TEMPORARY (every role, through the default PUBLIC grant)
+  // could shadow a table the definer body resolves. Naming it last puts it
+  // after public, where it can shadow nothing. The sweep covers every definer
+  // in the schema so the next one cannot ship without the clause.
+  it('every SECURITY DEFINER function in public names pg_temp last in search_path', async () => {
+    const rows = await t.db.execute(sql`
+      select p.proname as name, p.proconfig as config
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.prosecdef
+      order by p.proname
+    `);
+    // The inventory is explicit so a new definer is added here on purpose, not
+    // discovered: the loop below would pass vacuously on an empty result.
+    expect(rows.map((r) => r.name)).toEqual(['audit_log_purge', 'trait_records_reference_usage']);
+    for (const row of rows) {
+      const config = row.config as string[] | null;
+      const searchPath = config?.find((c) => c.startsWith('search_path='));
+      expect(searchPath, `${row.name} pins no search_path`).toBeDefined();
+      const schemas = searchPath
+        ?.slice('search_path='.length)
+        .split(',')
+        .map((s) => s.trim());
+      expect(schemas?.at(-1), `${row.name} must name pg_temp last`).toBe('pg_temp');
+    }
+  });
+});

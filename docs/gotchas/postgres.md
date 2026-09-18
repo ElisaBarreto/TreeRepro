@@ -33,7 +33,7 @@
 ## A `SECURITY DEFINER` function must pin `search_path`
 **Symptom:** A privileged function (`audit_log_purge`) resolves a table or operator name through the caller's schema, letting a lower-privileged role hijack it.
 **Cause:** `SECURITY DEFINER` runs as the owner but, by default, with the caller's `search_path`.
-**Fix:** Declare `SET search_path = public` on the function (migration 0007) and revoke `EXECUTE` from `PUBLIC` before granting it to the role that needs it. `retention.integration.test.ts` asserts both.
+**Fix:** Declare `SET search_path = public, pg_temp` on the function and revoke `EXECUTE` from `PUBLIC` before granting it to the role that needs it. `pg_temp` must be named, and named **last**: unless it appears in `search_path`, PostgreSQL searches the temporary schema *first* for relation names, so a caller holding `TEMPORARY` (every role, through the default `PUBLIC` grant) could create `pg_temp.audit_log` and have the definer body act on it as the owner. Migration 0007 shipped `public` alone; 0023 corrected it (issue #93), and 0022 got it right from the start. `retention.integration.test.ts` asserts the clause on `audit_log_purge()`; `privileges.integration.test.ts` sweeps every `SECURITY DEFINER` function in `public` for a `search_path` ending in `pg_temp`, so the next one cannot ship without it.
 
 ## `REVOKE DELETE` is the guarantee; the trigger is the backup
 **Symptom:** Setting `treerepro.allow_audit_purge = 'on'` in a session still cannot delete from `audit_log`.
