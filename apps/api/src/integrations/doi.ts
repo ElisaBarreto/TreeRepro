@@ -25,7 +25,28 @@ const PREFIXES = [
   'doi:',
 ];
 
-/** Strip resolver prefixes, lowercase, validate format. @rfc RFC-80 R1 */
+/**
+ * A DOI pasted from a browser's address bar arrives percent-encoded
+ * (`%3C857` for `<857`), and storing that literally would have the web's
+ * `doiHref` encode the `%` again (`%253C`) into a link doi.org cannot
+ * resolve. Decoded exactly once — `%2523` is the DOI `…%23…`, not `…#…` —
+ * and a `%` that starts no valid escape (`10.1234/100%`) is a literal
+ * character of the DOI, which `decodeURIComponent` reports by throwing.
+ */
+function percentDecodeOnce(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * Strip resolver prefixes, percent-decode once, lowercase, validate format.
+ * What is stored is the canonical DOI; the render side stays the single
+ * encoder.
+ * @rfc RFC-80 R1
+ */
 export function normaliseDoi(text: string): string | null {
   let s = text.trim();
   const lower = s.toLowerCase();
@@ -35,7 +56,7 @@ export function normaliseDoi(text: string): string | null {
       break;
     }
   }
-  s = s.toLowerCase();
+  s = percentDecodeOnce(s).toLowerCase();
   return DOI_PATTERN.test(s) ? s : null;
 }
 

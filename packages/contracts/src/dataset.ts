@@ -232,9 +232,10 @@ export const referenceSchema = z.strictObject({
 });
 
 /**
- * `recordCount`: records naming the reference in either role, counted once.
- * `traits`: the reference's usage by trait (R9's counters), visible traits
- * only, ordered by count.
+ * `recordCount`: records naming the reference in either role, counted once;
+ * visibility-blind like `primaryCount` and `secondaryCount`. `traits`: the
+ * reference's usage by trait (R9's counters), visible traits only, ordered
+ * by count — so for a restricted viewer they need not add up to `recordCount`.
  * @rfc RFC-61 R4, R9
  */
 export const referenceDetailSchema = referenceSchema.extend({

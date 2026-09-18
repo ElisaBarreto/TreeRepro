@@ -60,6 +60,7 @@ Every PR must pass `Verify`, `Images` (build + Trivy), `E2E` (Playwright against
 4. **Security from day one** (RFC-02, RFC-40). Secrets only from `/run/secrets`. PII encrypted at the application level. Logs redacted. Every route guarded: every route is public, self-service (`requireSession`) or permission-guarded (`requirePermission`), enforced by a meta-test (RFC-32).
 5. **English everywhere.** Code, comments, docs, UI, commits.
 6. **Latest stable versions, pinned exact.** No legacy versions.
+7. **Claim an issue before working on it.** Whoever picks up an issue assigns it to themselves and adds the `in-progress` label first, so an issue carrying both is known to be in someone's hands and one without is free to take. Closing the issue keeps the label (GitHub never removes labels on close), which is fine: `is:open label:in-progress` is the list of claimed work. Dropping an issue without closing it means removing the label and the assignment, so it reads as free again.
 
 ## Where things go
 

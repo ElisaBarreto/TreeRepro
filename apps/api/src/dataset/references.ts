@@ -159,9 +159,13 @@ export async function searchReferences(
  * this with `(db, id)` alone to build the detail they return after a create
  * or update, and a curator privileged enough to write metadata sees every
  * trait the reference is used on. A route passes the viewer's own visibility
- * so `traits` (RFC-61 R9) lists visible traits only.
+ * so `traits` (RFC-61 R9) lists visible traits only. `recordCount` takes no
+ * visibility on purpose: it is a counter like `primaryCount` and
+ * `secondaryCount` on the same row, and counters are the same for every
+ * viewer (RFC-33 R3; the choice RFC-60 R7 makes for a species), so for a
+ * restricted viewer the visible `traits` need not add up to it.
  * @rfc RFC-61 R4, R9
- * @rfc RFC-33 R2
+ * @rfc RFC-33 R2, R3
  */
 export async function getReference(
   db: DbExecutor,

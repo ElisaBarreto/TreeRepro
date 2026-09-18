@@ -18,6 +18,19 @@ describe('RFC-80 R1 normaliseDoi property tests', () => {
     );
   });
 
+  it('undoes one percent-encoding of the suffix, whatever reserved characters it holds', () => {
+    // Every non-whitespace character RFC-80 R1 allows, including the ones a
+    // URL reserves (`#`, `?`, `%`, `<`, `>`): what a browser encodes once,
+    // normalisation stores decoded, so the render side is the single encoder.
+    const reservedSuffixArb = fc.stringMatching(/^[A-Za-z0-9._;()<>#?%&=+-]{1,50}$/);
+    fc.assert(
+      fc.property(registrantArb, reservedSuffixArb, (reg, suffix) => {
+        const canonical = `10.${reg}/${suffix}`.toLowerCase();
+        expect(normaliseDoi(`10.${reg}/${encodeURIComponent(suffix)}`)).toBe(canonical);
+      }),
+    );
+  });
+
   it('is idempotent on its own output', () => {
     fc.assert(
       fc.property(registrantArb, suffixArb, (reg, suffix) => {

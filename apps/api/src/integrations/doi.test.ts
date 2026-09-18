@@ -10,6 +10,25 @@ describe('RFC-80 R1 normaliseDoi', () => {
     expect(normaliseDoi('10.1111/')).toBeNull();
     expect(normaliseDoi(`10.1111/${'a'.repeat(201)}`)).toBeNull();
   });
+
+  it('percent-decodes once, so a DOI pasted from a URL is stored in its canonical form', () => {
+    // `<` and `>` pasted from a browser's address bar arrive as `%3C` / `%3E`.
+    expect(
+      normaliseDoi(
+        'https://doi.org/10.1002/(SICI)1097-0258(19980430)17:8%3C857::AID-SIM777%3E3.0.CO;2-E',
+      ),
+    ).toBe('10.1002/(sici)1097-0258(19980430)17:8<857::aid-sim777>3.0.co;2-e');
+    // `#` and `?` are legal in a suffix (RFC-80 R1) and only encoded on render.
+    expect(normaliseDoi('10.1234/foo%23bar')).toBe('10.1234/foo#bar');
+    expect(normaliseDoi('10.1234/a%3Fb%3Dc')).toBe('10.1234/a?b=c');
+    // Decoded once, not until fixpoint: `%2523` is the DOI `…%23…`, not `…#…`.
+    expect(normaliseDoi('10.1234/foo%2523bar')).toBe('10.1234/foo%23bar');
+    // A `%` that starts no valid escape is a literal character of the DOI.
+    expect(normaliseDoi('10.1234/100%')).toBe('10.1234/100%');
+    expect(normaliseDoi('10.1234/a%zzb')).toBe('10.1234/a%zzb');
+    // Decoding runs before validation: an encoded space is still a space.
+    expect(normaliseDoi('10.1234/foo%20bar')).toBeNull();
+  });
 });
 
 describe('RFC-61 R8 crossrefToMetadata', () => {
