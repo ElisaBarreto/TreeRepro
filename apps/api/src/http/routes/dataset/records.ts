@@ -1,8 +1,8 @@
 import {
   annotateRecordBodySchema,
   createRecordBodySchema,
-  cursorQuerySchema,
   idParamSchema,
+  listDisputedQuerySchema,
   listRecordsQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
@@ -138,13 +138,14 @@ export function recordRoutes(ctx: AuthContext) {
     .get(
       '/disputed',
       requirePermission(ctx, 'records.review'),
-      validate('query', cursorQuerySchema),
+      validate('query', listDisputedQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
         const { data, nextCursor } = await listDisputed(ctx.db, visibility, {
           cursor: q.cursor,
           limit: q.limit,
+          intent: q.intent,
         });
         return c.json({ data, meta: { nextCursor } });
       },
