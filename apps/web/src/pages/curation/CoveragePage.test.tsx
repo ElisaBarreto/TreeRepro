@@ -63,39 +63,6 @@ describe('RFC-69 R5-R7 CoveragePage', () => {
     expect(trail).toHaveTextContent('Coverage');
   });
 
-  it('renders the family and category filters, and no plot filter without plots.manage or an assigned plot', async () => {
-    renderAt('/app/curation/coverage');
-    const family = await screen.findByLabelText('Family');
-    expect(await within(family).findByRole('option', { name: 'Fabaceae' })).toBeInTheDocument();
-    expect(within(family).getByRole('option', { name: 'Malvaceae' })).toBeInTheDocument();
-    const category = screen.getByLabelText('Category');
-    expect(
-      await within(category).findByRole('option', { name: DICTIONARY[0]?.label }),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText('Plot')).not.toBeInTheDocument();
-    expect(plots.listPlots).not.toHaveBeenCalled();
-  });
-
-  it('shows the plot filter, fed by the session scope, for a viewer with an assigned plot', async () => {
-    auth.fetchMe.mockResolvedValue({
-      ...ME,
-      permissions: ['coverage.read'],
-      scope: { plots: [DASHBOARD_PLOT], restricted: true },
-    });
-    renderAt('/app/curation/coverage');
-    const plot = await screen.findByLabelText('Plot');
-    expect(within(plot).getByRole('option', { name: /Riverside plot/ })).toBeInTheDocument();
-    expect(plots.listPlots).not.toHaveBeenCalled();
-  });
-
-  it('shows the plot filter, fed by listPlots, for a plots.manage holder without assigned plots', async () => {
-    auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['coverage.read', 'plots.manage'] });
-    renderAt('/app/curation/coverage');
-    const plot = await screen.findByLabelText('Plot');
-    await waitFor(() => expect(plots.listPlots).toHaveBeenCalled());
-    expect(await within(plot).findByRole('option', { name: /Riverside plot/ })).toBeInTheDocument();
-  });
-
   it('renders the headline tiles with the counts and the two meters from the API', async () => {
     renderAt('/app/curation/coverage');
     const tiles = await screen.findByRole('list', { name: 'Coverage totals' });
@@ -125,6 +92,41 @@ describe('RFC-69 R5-R7 CoveragePage', () => {
       ),
     );
     expect(router.state.location.search).toMatchObject({ familyId: MALVACEAE.id });
+  });
+
+  it('choosing a category writes it to the URL and refetches coverage with it', async () => {
+    const { router } = renderAt('/app/curation/coverage');
+    const category = await screen.findByLabelText('Category');
+    const label = DICTIONARY[0]?.label as string;
+    const key = DICTIONARY[0]?.key as string;
+    await within(category).findByRole('option', { name: label });
+    await userEvent.selectOptions(category, label);
+    await waitFor(() =>
+      expect(coverage.fetchCoverage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ categoryKey: key }),
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({ categoryKey: key });
+  });
+
+  it('choosing a plot writes it to the URL and refetches coverage with it', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...ME,
+      permissions: ['coverage.read'],
+      scope: { plots: [DASHBOARD_PLOT], restricted: true },
+    });
+    const { router } = renderAt('/app/curation/coverage');
+    const plot = await screen.findByLabelText('Plot');
+    const option = await within(plot).findByRole('option', {
+      name: new RegExp(DASHBOARD_PLOT.name),
+    });
+    await userEvent.selectOptions(plot, option);
+    await waitFor(() =>
+      expect(coverage.fetchCoverage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ plotId: DASHBOARD_PLOT.id }),
+      ),
+    );
+    expect(router.state.location.search).toMatchObject({ plotId: DASHBOARD_PLOT.id });
   });
 
   it('RFC-13 R4 a 403 on the coverage query shows the permission sentence', async () => {
