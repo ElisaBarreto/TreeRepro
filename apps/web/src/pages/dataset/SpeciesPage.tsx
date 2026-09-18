@@ -14,6 +14,7 @@ import { EmptyTraitCard } from '../../components/dataset/EmptyTraitCard.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
+import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import { Alert, Badge, Button, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
@@ -117,7 +118,10 @@ function SpeciesHeader({
  * "Add the first entry" wired to the same add-entries dialog as a card's own
  * button. The dictionary loads alongside the traits, purely for the `?`
  * descriptions the cards show (RFC-13 R11); its own loading or error state
- * blocks nothing, a card with no description just shows none.
+ * blocks nothing, a card with no description just shows none. The page
+ * registers the canonical name as the shell's trailing crumb, so the
+ * breadcrumb reads `Data › Species › <canonical name>` in italics once the
+ * species resolved, and nothing extra while it loads or fails (RFC-13 R3).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-60 R7, R9
  * @rfc RFC-33 R7
@@ -147,6 +151,7 @@ export function SpeciesPage({
     queryFn: () => fetchSpeciesTraits(id, { includeMissing: missing }),
   });
   const dictionary = useQuery({ queryKey: datasetKeys.dictionary, queryFn: fetchDictionary });
+  useBreadcrumb(species.data ? [{ label: <em>{species.data.canonicalName}</em> }] : []);
   const [openTraitId, setOpenTraitId] = useState<string | null>(null);
   const openTrait =
     openTraitId === null
