@@ -4,6 +4,7 @@ export * from './coverage.ts';
 export * from './curation.ts';
 export * from './dictionary.ts';
 export * from './imports.ts';
+export * from './job-runs.ts';
 export * from './permissions.ts';
 export * from './plots.ts';
 export * from './records.ts';

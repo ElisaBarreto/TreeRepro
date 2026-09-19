@@ -6,7 +6,15 @@ import { requestId } from 'hono/request-id';
 import { describe, expect, it } from 'vitest';
 import { captureLogger } from '../../test/helpers/logger.ts';
 import type { AppEnv } from './env.ts';
-import { AppError, createErrorHandler, errorBody, RateLimitedError } from './errors.ts';
+import {
+  AppError,
+  createErrorHandler,
+  ERROR_SUMMARY_MAX,
+  errorBody,
+  RateLimitedError,
+  safeErrorSummary,
+  sanitizeError,
+} from './errors.ts';
 
 describe('RFC-11 R3-R4 AppError and errorBody', () => {
   it('derives the HTTP status from the code', () => {
@@ -131,5 +139,70 @@ describe('RFC-02 R9 error handler', () => {
     expect(line).not.toContain('secret-value');
     expect(line).not.toContain('params:');
     expect(line).not.toContain('insert into users');
+  });
+});
+
+describe('RFC-02 R7 sanitizeError reads the codes an unwrapped driver sets', () => {
+  it('takes code and responseCode off the error itself when there is no cause', () => {
+    // nodemailer never wraps: `createMailer` awaits `transport.sendMail`, so a
+    // rejection arrives with its own `code` and `responseCode` and no cause.
+    // Reading only through the cause left both `undefined` for every mail
+    // failure in production.
+    const err = Object.assign(new Error('Invalid login: 535 5.7.8'), {
+      code: 'EAUTH',
+      responseCode: 535,
+    });
+    expect(sanitizeError(err)).toMatchObject({ code: 'EAUTH', responseCode: 535 });
+  });
+
+  it('still prefers the cause of a wrapped query error', () => {
+    const cause = Object.assign(new Error('boom'), { code: '23505' });
+    const err = new DrizzleQueryError('insert into users values ($1)', ['secret-value'], cause);
+    // Drizzle leaves `name` at the base class's 'Error': the class name is not
+    // available to identify a query error by, which is why the guard in
+    // `safeErrorSummary` keys on the message's shape instead.
+    expect(sanitizeError(err)).toMatchObject({ name: 'Error', message: 'boom', code: '23505' });
+  });
+
+  it('ignores a code of the wrong type rather than stringifying it', () => {
+    const err = Object.assign(new Error('x'), { code: 7, responseCode: '550' });
+    expect(sanitizeError(err)).toMatchObject({ code: undefined, responseCode: undefined });
+  });
+});
+
+describe('RFC-02 R7 safeErrorSummary', () => {
+  it('keeps the name, the code and the driver message of a query error, never the SQL or the params', () => {
+    const cause = Object.assign(new Error('boom'), { code: '23505' });
+    const summary = safeErrorSummary(
+      new DrizzleQueryError('insert into users values ($1)', ['secret-value'], cause),
+    );
+    expect(summary).toBe('Error 23505: boom');
+    expect(summary).not.toContain('secret-value');
+    expect(summary).not.toContain('Failed query:');
+  });
+
+  it('drops the message of a query error that carries no cause at all', () => {
+    // `sanitizeError` swaps in the cause's message; without a cause the raw
+    // two-line "Failed query: … params: …" would survive, and this is the one
+    // path that puts it in a durable column.
+    const err = new Error('Failed query: select * from users where email = $1\nparams: ada@x.org');
+    err.name = 'DrizzleQueryError';
+    const summary = safeErrorSummary(err);
+    expect(summary).toBe('DrizzleQueryError');
+    expect(summary).not.toContain('ada@x.org');
+  });
+
+  it('keeps an ordinary message, and the SMTP response code when there is one', () => {
+    expect(safeErrorSummary(new Error('db down'))).toBe('Error: db down');
+    const smtp = Object.assign(new Error('Greeting never received'), {
+      code: 'ETIMEDOUT',
+      responseCode: 421,
+    });
+    expect(safeErrorSummary(smtp)).toBe('Error ETIMEDOUT 421: Greeting never received');
+  });
+
+  it('truncates, so one pathological message cannot fill a durable column', () => {
+    const summary = safeErrorSummary(new Error('x'.repeat(5_000)));
+    expect(summary).toHaveLength(ERROR_SUMMARY_MAX);
   });
 });

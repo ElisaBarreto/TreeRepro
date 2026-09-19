@@ -116,7 +116,9 @@ function SpeciesHeader({
  * name; an empty group renders nothing) (RFC-60 R4, R7), and, per category in
  * dictionary order, a card per trait with the summary the API computed
  * (RFC-63 R10). A card opens the trait's records in a panel; a row there
- * opens the record's detail in a drawer on top. With `records.create`, an
+ * opens the record's detail in a drawer on top — the same drawer the route's
+ * `record` search param opens on mount, the digest e-mail's deep link
+ * (RFC-74 R5). With `records.create`, an
  * "Add entries for another trait" button in the header and one on each
  * trait card open the add-entries dialog (RFC-70 R1) — the header button
  * without a fixed trait, a card's button with its trait; the first record
@@ -150,15 +152,23 @@ function SpeciesHeader({
  * @rfc RFC-65 R1, R6
  * @rfc RFC-70 R1, R3, R7
  * @rfc RFC-13 R11
+ * @rfc RFC-74 R5
  */
 export function SpeciesPage({
   id,
   missing,
   onMissingChange,
+  initialRecordId,
 }: {
   id: string;
   missing: boolean;
   onMissingChange: (missing: boolean) => void;
+  /**
+   * The `record` search param (RFC-74 R5): the digest e-mail's deep link.
+   * Seeds the drawer's initial state only — opened this way, the drawer
+   * still closes and reopens exactly like one clicked from a row.
+   */
+  initialRecordId?: string;
 }) {
   const me = useMe();
   const canAdd = hasPermission(me, 'records.create');
@@ -184,7 +194,7 @@ export function SpeciesPage({
   // The trait left the summary (a refetch no longer lists it): forget it
   // during this render so a later summary cannot reopen the panel unasked.
   if (openTraitId !== null && traits.data && !openTrait) setOpenTraitId(null);
-  const [openRecord, setOpenRecord] = useState<string | null>(null);
+  const [openRecord, setOpenRecord] = useState<string | null>(initialRecordId ?? null);
   const [adding, setAdding] = useState<{ trait: TraitRef | null } | null>(null);
   const [editing, setEditing] = useState(false);
   const [addingName, setAddingName] = useState(false);

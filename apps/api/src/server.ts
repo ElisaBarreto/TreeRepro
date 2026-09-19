@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { createPermissionCache } from './access/permissions.ts';
 import { createApp } from './app.ts';
-import { purgeAudit, startRetentionTimer } from './audit/retention.ts';
+import { purgeAudit, purgeJobRuns, startRetentionTimer } from './audit/retention.ts';
 import { createHibpChecker } from './auth/breach-check.ts';
 import { createMfaStore } from './auth/mfa.ts';
 import { createRateLimiter } from './auth/rate-limit.ts';
@@ -10,6 +10,7 @@ import { loadConfig } from './config.ts';
 import { createDb } from './db/client.ts';
 import { createHealthChecks } from './http/health-checks.ts';
 import { createDoiClient } from './integrations/doi.ts';
+import { runDigest, startDigestTimer } from './jobs/digest.ts';
 import { createLogger } from './logger.ts';
 import { createMailer, createSmtpTransport } from './mail/mailer.ts';
 import { createRedis } from './redis/client.ts';
@@ -55,12 +56,32 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' 
   logger.info({ port: info.port, env: config.nodeEnv }, 'api listening');
 });
 
-// RFC-42 R4: the API process owns the purge schedule; tests never start it.
-const retention = startRetentionTimer({ purge: () => purgeAudit(db), logger });
+// RFC-42 R4, R6: the API process owns the purge schedule; tests never start it.
+const retention = startRetentionTimer({
+  purge: () => purgeAudit(db),
+  purgeRuns: () => purgeJobRuns(db),
+  logger,
+});
+
+// RFC-74 R2, R6: the API process owns the digest schedule too — `createApp`
+// must not, or every test that builds an app would start mailing. The flag is
+// read here and passed down, so a disabled deployment still records its ticks.
+const digest = startDigestTimer({
+  run: () =>
+    runDigest({
+      db,
+      mailer,
+      appOrigin: config.appOrigin,
+      logger,
+      enabled: config.digestEnabled,
+    }),
+  logger,
+});
 
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'shutting down');
   retention.stop();
+  digest.stop();
   server.close(() => {
     Promise.allSettled([closeDb(), redis.quit()]).then(() => process.exit(0));
   });

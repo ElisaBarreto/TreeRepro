@@ -352,6 +352,51 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
   });
 });
 
+describe('RFC-74 R5 ?record= opens the drawer on mount', () => {
+  it('opens the record drawer on mount from ?record=<uuid>, the digest e-mail deep link', async () => {
+    renderAt(`/app/species/${SPECIES.id}?record=${RECORD.id}`);
+    const drawer = await screen.findByRole('dialog', { name: 'Record' });
+    expect(dataset.fetchRecord).toHaveBeenCalledWith(RECORD.id);
+    expect(await within(drawer).findByText('Dioecious')).toBeInTheDocument();
+  });
+
+  it('opens nothing when the record param is absent', async () => {
+    await openPage();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(dataset.fetchRecord).not.toHaveBeenCalled();
+  });
+
+  it('opens nothing for a malformed record param', async () => {
+    renderAt(`/app/species/${SPECIES.id}?record=not-a-uuid`);
+    await screen.findByRole('heading', { level: 1, name: /Adenanthera pavonina/ });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(dataset.fetchRecord).not.toHaveBeenCalled();
+  });
+
+  it('RFC-70 R7 the missing toggle keeps ?record= in the URL, so the deep link survives it', async () => {
+    // Nothing visibly breaks when it does not — the drawer is seeded state and
+    // stays open — but the link an operator copies out of the address bar
+    // stops opening the record after a single toggle.
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    const { router } = renderAt(`/app/species/${SPECIES.id}?record=${RECORD.id}`);
+    const drawer = await screen.findByRole('dialog', { name: 'Record' });
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Record' })).not.toBeInTheDocument(),
+    );
+
+    const box = screen.getByRole('checkbox', { name: 'Show traits with no data' });
+    await userEvent.click(box);
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ missing: true, record: RECORD.id }),
+    );
+
+    // And back off: the toggle owns `missing` alone in both directions.
+    await userEvent.click(box);
+    await waitFor(() => expect(router.state.location.search).toEqual({ record: RECORD.id }));
+  });
+});
+
 describe('RFC-65 R6 SpeciesPage trait panel follows the live summary', () => {
   // The summary as the page first loads it, with RECORD as the accepted
   // value, and the same summary once the accepted value is cleared.

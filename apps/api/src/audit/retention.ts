@@ -1,34 +1,83 @@
 import { sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/client.ts';
-import { sanitizeError } from '../http/errors.ts';
+import { safeErrorSummary, sanitizeError } from '../http/errors.ts';
+import { finishRun, startRun } from '../jobs/runs.ts';
 import type { Logger } from '../logger.ts';
 
 /** @rfc RFC-42 R4 */
 export const RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-/** Runs the privileged purge function; returns the number of rows deleted. @rfc RFC-42 R2 */
+/**
+ * Runs the privileged purge function and records the run in `job_runs`;
+ * returns the number of rows deleted.
+ * @rfc RFC-42 R2, R4
+ */
 export async function purgeAudit(db: DbExecutor): Promise<number> {
-  const rows = await db.execute(sql`select audit_log_purge() as purged`);
+  const runId = await startRun(db, 'audit_purge');
+  try {
+    const rows = await db.execute(sql`select audit_log_purge() as purged`);
+    const purged = Number(rows[0]?.purged ?? 0);
+    await finishRun(db, runId, { status: 'completed', detail: { purged } });
+    return purged;
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    // Best effort: the run row is a trace, and a purge that failed mid
+    // transaction leaves that transaction unable to accept the UPDATE. The
+    // purge's own error is what the caller must see.
+    //
+    // `safeErrorSummary`, never `error.message`: a Drizzle query error's
+    // message is "Failed query: <sql>\nparams: <values>", and `job_runs.error`
+    // is durable, plaintext at rest and read back by the health page of
+    // RFC-52. The rethrow below still carries the whole error to the caller.
+    await finishRun(db, runId, { status: 'failed', error: safeErrorSummary(error) }).catch(
+      () => undefined,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Runs the privileged `job_runs` purge; returns the number of runs deleted.
+ * @rfc RFC-42 R6
+ * @rfc RFC-74 R7
+ */
+export async function purgeJobRuns(db: DbExecutor): Promise<number> {
+  const rows = await db.execute(sql`select job_runs_purge() as purged`);
   return Number(rows[0]?.purged ?? 0);
 }
 
 /**
- * Purges now and every `intervalMs` (default 24 hours). Failures are logged
- * and never thrown; the interval is unref'd so it never holds the process open.
- * @rfc RFC-42 R4
+ * Purges now and every `intervalMs` (default 24 hours): the audit log first,
+ * then `job_runs` on the same schedule. Failures are logged and never thrown;
+ * the interval is unref'd so it never holds the process open.
+ * @rfc RFC-42 R4, R6
  */
 export function startRetentionTimer(deps: {
   purge: () => Promise<number>;
+  purgeRuns: () => Promise<number>;
   logger: Logger;
   intervalMs?: number;
 }): { stop(): void } {
-  const run = async (): Promise<void> => {
+  /** Runs one purge; returns null and logs at `error` when it throws. */
+  const attempt = async (job: () => Promise<number>, what: string): Promise<number | null> => {
     try {
-      const purged = await deps.purge();
-      deps.logger.info({ purged }, 'audit retention run');
+      return await job();
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      deps.logger.error({ err: sanitizeError(error) }, 'audit retention failed');
+      deps.logger.error({ err: sanitizeError(error), job: what }, 'audit retention failed');
+      return null;
+    }
+  };
+  const run = async (): Promise<void> => {
+    // RFC-42 R6: job_runs is purged right AFTER the audit log and on the SAME
+    // schedule, not only when the audit purge succeeded. The two are attempted
+    // independently: while audit_log_purge() is broken, purgeAudit writes a
+    // failed run every 24 h, so job_runs fills fastest exactly when a shared
+    // try block would stop purging it.
+    const purged = await attempt(() => deps.purge(), 'audit_log');
+    const purgedRuns = await attempt(() => deps.purgeRuns(), 'job_runs');
+    if (purged !== null && purgedRuns !== null) {
+      deps.logger.info({ purged, purgedRuns }, 'audit retention run');
     }
   };
   void run();

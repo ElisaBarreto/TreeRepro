@@ -268,3 +268,23 @@ describe('RFC-10 R5 SMTP settings', () => {
     expect(() => loadConfig(env({ SMTP_HOST: undefined }))).toThrow(/SMTP_HOST/);
   });
 });
+
+describe('RFC-74 R6 DIGEST_ENABLED', () => {
+  it('defaults to enabled when the variable is unset', () => {
+    expect(loadConfig(env()).digestEnabled).toBe(true);
+  });
+
+  it('is off for "false" and on for "true"', () => {
+    // R6 names `false` as the value that turns the daily digest off; the E2E
+    // stack sets exactly that.
+    expect(loadConfig(env({ DIGEST_ENABLED: 'false' })).digestEnabled).toBe(false);
+    expect(loadConfig(env({ DIGEST_ENABLED: 'true' })).digestEnabled).toBe(true);
+  });
+
+  it('refuses a value that is neither, naming the field', () => {
+    // A typo must not silently mail every reviewer: RFC-10 R5 refuses to start.
+    expect(() => loadConfig(env({ DIGEST_ENABLED: 'no thanks' }))).toThrow(
+      new ConfigError('invalid environment: DIGEST_ENABLED'),
+    );
+  });
+});

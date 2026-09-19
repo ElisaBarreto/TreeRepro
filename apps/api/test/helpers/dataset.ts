@@ -299,6 +299,8 @@ export async function createAnnotation(
     note?: string;
     referenceId?: string;
     generated?: boolean;
+    /** Overrides the default `now()`; the digest counts annotations over a window (RFC-74 R3). */
+    createdAt?: Date;
   },
 ): Promise<{ id: string }> {
   const [row] = await db
@@ -310,6 +312,7 @@ export async function createAnnotation(
       note: input.note ?? (input.kind === 'dispute' || input.kind === 'withdraw' ? 'test' : null),
       referenceId: input.referenceId ?? null,
       generated: input.generated ?? false,
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
     })
     .returning({ id: recordAnnotations.id });
   if (!row) throw new Error('createAnnotation: no row');
