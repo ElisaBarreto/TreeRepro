@@ -20,9 +20,9 @@ import { jobRuns } from '../db/schema/job-runs.ts';
 import type { Mailer, MailMessage } from '../mail/mailer.ts';
 import {
   computeDigest,
+  DIGEST_ATTEMPT_GUARD_MS,
   DIGEST_LIST_LIMIT,
   DIGEST_MIN_INTERVAL_MS,
-  DIGEST_RUNNING_GUARD_MS,
   type DigestRunResult,
   type DigestWindow,
   digestRecipients,
@@ -1148,7 +1148,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
       const recipients = await twoRecipients(tx);
       // Nothing ever closes this row. A guard that merely asked "is any run
       // still running" would silence the digest permanently.
-      await seedAttempt(tx, new Date(now.getTime() - (DIGEST_RUNNING_GUARD_MS + HOUR)), 'running');
+      await seedAttempt(tx, new Date(now.getTime() - (DIGEST_ATTEMPT_GUARD_MS + HOUR)), 'running');
       const mailer = createFakeMailer();
       const { logger } = captureLogger();
 
@@ -1244,8 +1244,17 @@ describe('RFC-74 R2, R5 runDigest', () => {
       expect(attempt).toMatchObject({ kind: 'digest', status: 'failed' });
       // And the e-mail has already gone out, which is what makes a second tick
       // a duplicate rather than a retry.
-      expect(mailer.sent.map((m) => m.to).sort()).toEqual(recipients.map((r) => r.email).sort());
+      //
+      // Containment, never equality: `digestRecipients` is dataset-wide (R3:
+      // "unrestricted"), so every `records.review` holder a sibling suite has
+      // committed is mailed too. Asserting the exact set would be true only
+      // while the database is small — the same reason `counts a rejected send`
+      // compares against `digestRecipients(tx)` rather than a literal.
+      expect(mailer.sent.map((m) => m.to)).toEqual(
+        expect.arrayContaining(recipients.map((r) => r.email)),
+      );
       const sentOnce = mailer.sent.length;
+      expect(sentOnce).toBeGreaterThanOrEqual(recipients.length);
       // `latestRun(db, 'digest', ['completed', 'skipped'])` still answers the
       // seeded success, whose `finished_at` is two days past the interval — so
       // nothing but the guard can stop the next tick.
@@ -1279,7 +1288,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
       const recipients = await twoRecipients(tx);
       // A job that fails on every attempt must back off, never stop: the
       // `failed` half of the guard cannot become a permanent mute.
-      await seedAttempt(tx, new Date(now.getTime() - (DIGEST_RUNNING_GUARD_MS + HOUR)), 'failed');
+      await seedAttempt(tx, new Date(now.getTime() - (DIGEST_ATTEMPT_GUARD_MS + HOUR)), 'failed');
       const mailer = createFakeMailer();
       const { logger } = captureLogger();
 

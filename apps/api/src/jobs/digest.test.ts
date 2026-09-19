@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { captureLogger } from '../../test/helpers/logger.ts';
 import {
+  DIGEST_ATTEMPT_GUARD_MS,
   DIGEST_FIRST_TICK_MS,
   DIGEST_LIST_LIMIT,
   DIGEST_MIN_INTERVAL_MS,
-  DIGEST_RUNNING_GUARD_MS,
   DIGEST_TICK_MS,
   type DigestCounts,
   type DigestRunResult,
@@ -95,40 +95,41 @@ describe('RFC-74 R2 isDigestDue guards against a run that recorded no success', 
    * `latestRun(db, 'digest', ['running', 'failed'])`, so this stands for
    * either status — only `started_at` reaches the function.
    */
-  const inFlight = (ms: number) => ({ startedAt: ago(ms) });
+  const attempt = (ms: number) => ({ startedAt: ago(ms) });
 
   it('the guard is two ticks, so it outlasts the very next tick rather than landing on it', () => {
-    expect(DIGEST_RUNNING_GUARD_MS).toBe(2 * DIGEST_TICK_MS);
+    expect(DIGEST_ATTEMPT_GUARD_MS).toBe(2 * DIGEST_TICK_MS);
     // The load-bearing half: the guard is measured from `started_at` and the
     // next tick fires a full tick after the previous one did, so a guard of
     // exactly one tick would expire on the boundary and suppress nothing.
-    expect(DIGEST_RUNNING_GUARD_MS).toBeGreaterThan(DIGEST_TICK_MS);
+    expect(DIGEST_ATTEMPT_GUARD_MS).toBeGreaterThan(DIGEST_TICK_MS);
     // And it stays far below the success interval: a stuck row must cost one
     // repeated digest, never the digest itself.
-    expect(DIGEST_RUNNING_GUARD_MS).toBeLessThan(DIGEST_MIN_INTERVAL_MS);
+    expect(DIGEST_ATTEMPT_GUARD_MS).toBeLessThan(DIGEST_MIN_INTERVAL_MS);
   });
 
   it('a run that recorded no success minutes ago postpones an otherwise due tick', () => {
     // Exactly the state a throw in `runDigest`'s tail leaves behind: the sends
     // are done, the last success is a day old and still due, and the run row
-    // never reached a terminal status.
+    // records no success of its own — `failed` normally, `running` when the
+    // process died.
     const last = success(24 * HOUR);
     expect(isDigestDue(last, now, null).due).toBe(true);
-    expect(isDigestDue(last, now, inFlight(5 * 60_000)).due).toBe(false);
+    expect(isDigestDue(last, now, attempt(5 * 60_000)).due).toBe(false);
   });
 
   it('postpones the very first tick too, when no success exists at all', () => {
-    expect(isDigestDue(null, now, inFlight(5 * 60_000)).due).toBe(false);
+    expect(isDigestDue(null, now, attempt(5 * 60_000)).due).toBe(false);
   });
 
   it('holds across the next tick, which is when the duplicate would have gone out', () => {
-    expect(isDigestDue(success(24 * HOUR), now, inFlight(DIGEST_TICK_MS)).due).toBe(false);
+    expect(isDigestDue(success(24 * HOUR), now, attempt(DIGEST_TICK_MS)).due).toBe(false);
   });
 
   it('an attempt older than the guard postpones nothing: no row can disable the digest', () => {
     const last = success(24 * HOUR);
-    expect(isDigestDue(last, now, inFlight(DIGEST_RUNNING_GUARD_MS)).due).toBe(true);
-    expect(isDigestDue(last, now, inFlight(7 * 24 * HOUR)).due).toBe(true);
+    expect(isDigestDue(last, now, attempt(DIGEST_ATTEMPT_GUARD_MS)).due).toBe(true);
+    expect(isDigestDue(last, now, attempt(7 * 24 * HOUR)).due).toBe(true);
   });
 
   it('a job that fails on every attempt retries every two ticks, for ever', () => {
@@ -136,19 +137,19 @@ describe('RFC-74 R2 isDigestDue guards against a run that recorded no success', 
     // permanently silent one. One tick after a failed attempt the next tick is
     // held; two ticks after it, it runs again — a bounded backoff, not a stop.
     const last = success(24 * HOUR);
-    expect(isDigestDue(last, now, inFlight(DIGEST_TICK_MS)).due).toBe(false);
-    expect(isDigestDue(last, now, inFlight(2 * DIGEST_TICK_MS)).due).toBe(true);
+    expect(isDigestDue(last, now, attempt(DIGEST_TICK_MS)).due).toBe(false);
+    expect(isDigestDue(last, now, attempt(2 * DIGEST_TICK_MS)).due).toBe(true);
   });
 
   it('never moves the window: a postponed tick still reads the last success back', () => {
     const last = success(24 * HOUR);
-    expect(isDigestDue(last, now, inFlight(5 * 60_000)).windowStart).toEqual(
+    expect(isDigestDue(last, now, attempt(5 * 60_000)).windowStart).toEqual(
       new Date(last.detail.windowEnd),
     );
   });
 
   it('a run still running does not make a tick due that the interval already refused', () => {
-    expect(isDigestDue(success(23 * HOUR), now, inFlight(5 * 60_000)).due).toBe(false);
+    expect(isDigestDue(success(23 * HOUR), now, attempt(5 * 60_000)).due).toBe(false);
   });
 });
 

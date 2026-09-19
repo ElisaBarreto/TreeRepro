@@ -56,7 +56,7 @@ export const DIGEST_FIRST_TICK_MS = 60_000;
  * covers grows to match, so nothing is dropped.
  * @rfc RFC-74 R2
  */
-export const DIGEST_RUNNING_GUARD_MS = 2 * DIGEST_TICK_MS;
+export const DIGEST_ATTEMPT_GUARD_MS = 2 * DIGEST_TICK_MS;
 
 /** The window of the first run ever, and of any run whose predecessor left none. @rfc RFC-74 R2 */
 const DIGEST_FIRST_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -159,7 +159,7 @@ export interface DigestRecipient {
  *
  * `lastAttempt` is the second half of R2's "a restart never doubles it": a run
  * that recorded no success — `running` OR `failed` — and is younger than
- * `DIGEST_RUNNING_GUARD_MS` postpones this tick whatever the last success
+ * `DIGEST_ATTEMPT_GUARD_MS` postpones this tick whatever the last success
  * says, because that run may have mailed already. `null` is not optional — it
  * must be passed deliberately, for the same reason `RunDigestInput.enabled` is
  * required: the value that decides whether mail goes out must never be able to
@@ -184,7 +184,7 @@ export function isDigestDue(
   // guard, so neither can disable the digest for good.
   const recentAttempt =
     lastAttempt !== null &&
-    now.getTime() - lastAttempt.startedAt.getTime() < DIGEST_RUNNING_GUARD_MS;
+    now.getTime() - lastAttempt.startedAt.getTime() < DIGEST_ATTEMPT_GUARD_MS;
   if (lastSuccess === null || lastSuccess.finishedAt === null)
     return { due: !recentAttempt, windowStart: fallback };
   const recorded = lastSuccess.detail.windowEnd;
@@ -447,7 +447,7 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
 
   // Two reads, not one: the last success sets the window, and the newest run
   // that recorded no success says whether a tick this hour would be a repeat
-  // of one that already mailed (R2, `DIGEST_RUNNING_GUARD_MS`). BOTH
+  // of one that already mailed (R2, `DIGEST_ATTEMPT_GUARD_MS`). BOTH
   // non-success statuses are asked for: the catch below writes `failed` and
   // normally succeeds, so `['running']` alone would have missed every caught
   // throw — which is the common case, not the rare one.
