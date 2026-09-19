@@ -29,23 +29,31 @@ export const DIGEST_TICK_MS = 60 * 60 * 1000;
 export const DIGEST_FIRST_TICK_MS = 60_000;
 
 /**
- * How long a `digest` run left `running` postpones the next tick.
+ * How long a `digest` run that recorded no success postpones the next tick.
  *
- * A run that throws in its tail — `recordAudit` or `finishRun`, both AFTER
- * every e-mail has gone out — never reaches a terminal status, so the row
- * stays `running` for ever and `latestRun(db, 'digest', ['completed',
- * 'skipped'])` keeps answering the PREVIOUS success. That success finished
- * more than `DIGEST_MIN_INTERVAL_MS` ago and still carries the old
- * `windowEnd`, so without this guard the next tick recomputes the IDENTICAL
- * window and mails every manager again — hourly, for as long as the database
- * is unwell. R2's "a restart never doubles it" has to hold for a throw too.
+ * A run that throws in its tail — `recordAudit` at the latest, AFTER every
+ * e-mail has gone out — lands in one of TWO states, and the guard has to cover
+ * both. The catch writes `failed` and normally succeeds, so the row ends
+ * `failed`; only when the process dies, or when `finishRun` itself is what
+ * threw, does the row stay `running`. Neither status is in
+ * `latestRun(db, 'digest', ['completed', 'skipped'])`, so that call keeps
+ * answering the PREVIOUS success — which finished more than
+ * `DIGEST_MIN_INTERVAL_MS` ago and still carries the old `windowEnd`. Without
+ * this guard the next tick therefore recomputes the IDENTICAL window and mails
+ * every manager again, hourly, for as long as the database is unwell. R2's "a
+ * restart never doubles it" has to hold for a caught throw too, and a guard on
+ * `running` alone would have covered only the rarer half.
  *
  * Two ticks, not one: the guard is compared against `started_at`, and the very
  * next tick fires a full `DIGEST_TICK_MS` after the previous one did, so a
- * one-tick window lands exactly on its own boundary and buys nothing. Two is
- * the smallest value with margin. It is deliberately far below
- * `DIGEST_MIN_INTERVAL_MS`: a row stuck `running` for ever must cost at most
- * one repeated digest, never the digest itself.
+ * one-tick window lands exactly on its own boundary and buys nothing — it
+ * would reduce to "did the previous tick's INSERT take longer than the
+ * interval drift", with Node's clock on one side and Postgres' on the other.
+ * Two is the smallest value with margin. It is deliberately far below
+ * `DIGEST_MIN_INTERVAL_MS`: a run stuck in either state must cost at most one
+ * delayed digest, never the digest itself. A job that fails on every attempt
+ * therefore retries every two ticks instead of every one, and the window it
+ * covers grows to match, so nothing is dropped.
  * @rfc RFC-74 R2
  */
 export const DIGEST_RUNNING_GUARD_MS = 2 * DIGEST_TICK_MS;
@@ -109,8 +117,8 @@ export interface Digest {
  * The newest `digest` run that is `completed` or `skipped` — what
  * `latestRun(db, 'digest', ['completed', 'skipped'])` answers, so a `JobRunRow`
  * is passed straight in. A `failed` or `running` run is not one of these and
- * never sets the window; a `running` one postpones the tick through
- * `DigestInFlightRun` instead.
+ * never sets the window; it postpones the tick through `DigestLastAttempt`
+ * instead.
  * @rfc RFC-74 R2
  */
 export interface DigestLastSuccess {
@@ -119,13 +127,17 @@ export interface DigestLastSuccess {
 }
 
 /**
- * The newest `digest` run still `running` — what
- * `latestRun(db, 'digest', ['running'])` answers, so a `JobRunRow` is passed
- * straight in. Only `started_at` matters: such a run has no `finished_at` by
- * definition, and no window to hand on.
+ * The newest `digest` run that recorded no success — `running` or `failed`,
+ * what `latestRun(db, 'digest', ['running', 'failed'])` answers, so a
+ * `JobRunRow` is passed straight in.
+ *
+ * Both statuses, not just `running`: a throw after the sends normally ends
+ * `failed`, because the catch's own `finishRun` succeeds. Only `started_at`
+ * matters — such a run hands on no window, and a `running` one has no
+ * `finished_at` at all.
  * @rfc RFC-74 R2
  */
-export interface DigestInFlightRun {
+export interface DigestLastAttempt {
   startedAt: Date;
 }
 
@@ -145,31 +157,41 @@ export interface DigestRecipient {
  * `detail = { reason: 'disabled' }` (R6), so a `lastSuccess` without a window
  * is an ordinary state, not a corruption.
  *
- * `inFlight` is the second half of R2's "a restart never doubles it": a run
- * that is still `running` and younger than `DIGEST_RUNNING_GUARD_MS` postpones
- * this tick whatever the last success says, because that run may have mailed
- * already. `null` is not optional — it must be passed deliberately, for the
- * same reason `RunDigestInput.enabled` is required: the value that decides
- * whether mail goes out must never be able to fail open by omission.
+ * `lastAttempt` is the second half of R2's "a restart never doubles it": a run
+ * that recorded no success — `running` OR `failed` — and is younger than
+ * `DIGEST_RUNNING_GUARD_MS` postpones this tick whatever the last success
+ * says, because that run may have mailed already. `null` is not optional — it
+ * must be passed deliberately, for the same reason `RunDigestInput.enabled` is
+ * required: the value that decides whether mail goes out must never be able to
+ * fail open by omission.
+ *
+ * A run that failed BEFORE any send is postponed too, and that is deliberate:
+ * the status alone cannot tell the two apart, the delay is bounded at two
+ * ticks, and `DIGEST_MIN_INTERVAL_MS` is 23.5 h, so the window is still due
+ * afterwards and simply grows to cover the gap. Nothing is dropped; the digest
+ * arrives later that day. A bounded delay of one informational e-mail is the
+ * cheaper error than mailing every manager the same window twice.
  * @rfc RFC-74 R2, R6
  */
 export function isDigestDue(
   lastSuccess: DigestLastSuccess | null,
   now: Date,
-  inFlight: DigestInFlightRun | null,
+  lastAttempt: DigestLastAttempt | null,
 ): { due: boolean; windowStart: Date } {
   const fallback = new Date(now.getTime() - DIGEST_FIRST_WINDOW_MS);
-  // A stale `running` row — one nothing will ever close — stops postponing
-  // once it ages past the guard, so a single stuck row can never disable the
-  // digest for good.
-  const running =
-    inFlight !== null && now.getTime() - inFlight.startedAt.getTime() < DIGEST_RUNNING_GUARD_MS;
+  // A stale row — a `running` one nothing will ever close, or a `failed` one
+  // from a job that is simply broken — stops postponing once it ages past the
+  // guard, so neither can disable the digest for good.
+  const recentAttempt =
+    lastAttempt !== null &&
+    now.getTime() - lastAttempt.startedAt.getTime() < DIGEST_RUNNING_GUARD_MS;
   if (lastSuccess === null || lastSuccess.finishedAt === null)
-    return { due: !running, windowStart: fallback };
+    return { due: !recentAttempt, windowStart: fallback };
   const recorded = lastSuccess.detail.windowEnd;
   const windowEnd = typeof recorded === 'string' ? new Date(recorded) : null;
   return {
-    due: !running && now.getTime() - lastSuccess.finishedAt.getTime() >= DIGEST_MIN_INTERVAL_MS,
+    due:
+      !recentAttempt && now.getTime() - lastSuccess.finishedAt.getTime() >= DIGEST_MIN_INTERVAL_MS,
     windowStart: windowEnd && !Number.isNaN(windowEnd.getTime()) ? windowEnd : fallback,
   };
 }
@@ -424,13 +446,16 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
   }
 
   // Two reads, not one: the last success sets the window, and the newest run
-  // still `running` says whether a tick this hour would be a repeat of one
-  // that already mailed (R2, `DIGEST_RUNNING_GUARD_MS`).
-  const [lastSuccess, inFlight] = await Promise.all([
+  // that recorded no success says whether a tick this hour would be a repeat
+  // of one that already mailed (R2, `DIGEST_RUNNING_GUARD_MS`). BOTH
+  // non-success statuses are asked for: the catch below writes `failed` and
+  // normally succeeds, so `['running']` alone would have missed every caught
+  // throw — which is the common case, not the rare one.
+  const [lastSuccess, lastAttempt] = await Promise.all([
     latestRun(db, 'digest', ['completed', 'skipped']),
-    latestRun(db, 'digest', ['running']),
+    latestRun(db, 'digest', ['running', 'failed']),
   ]);
-  const { due, windowStart } = isDigestDue(lastSuccess, now, inFlight);
+  const { due, windowStart } = isDigestDue(lastSuccess, now, lastAttempt);
   if (!due) return { runId: null, status: 'not_due', recipients: 0, failed: 0 };
 
   const window: DigestWindow = { start: windowStart, end: now };

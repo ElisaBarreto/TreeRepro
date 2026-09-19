@@ -71,6 +71,8 @@ const ANCHOR_DAYS = {
   runStillRunning: 277,
   runStaleRunning: 281,
   runQueryError: 283,
+  runFailedAfterSend: 289,
+  runStaleFailed: 293,
 } as const;
 
 const anchor = (daysAgo: number): Date => new Date(Date.now() - daysAgo * DAY);
@@ -615,17 +617,50 @@ async function digestRunCount(tx: DbTransaction): Promise<number> {
 }
 
 /**
- * A `digest` run opened at `startedAt` and never closed — exactly what a throw
- * in `runDigest`'s tail leaves behind, once the sends have already gone out.
+ * A `digest` run opened at `startedAt` that recorded no success — what a throw
+ * in `runDigest`'s tail leaves behind once the sends have gone out. `failed`
+ * is the usual outcome (the catch's own `finishRun` succeeds); `running` is
+ * what is left when the process dies or `finishRun` is itself what threw.
  * @rfc RFC-74 R2
  */
-async function seedRunningRun(tx: DbTransaction, startedAt: Date): Promise<string> {
+async function seedAttempt(
+  tx: DbTransaction,
+  startedAt: Date,
+  status: 'running' | 'failed',
+): Promise<string> {
   const [row] = await tx
     .insert(jobRuns)
-    .values({ kind: 'digest', startedAt, status: 'running' })
+    .values({
+      kind: 'digest',
+      startedAt,
+      status,
+      ...(status === 'failed' ? { finishedAt: startedAt, error: 'Error: seeded' } : {}),
+    })
     .returning({ id: jobRuns.id });
-  if (!row) throw new Error('seedRunningRun: no row');
+  if (!row) throw new Error('seedAttempt: no row');
   return row.id;
+}
+
+/**
+ * The transaction with the `audit_log` insert alone replaced by a rejection.
+ * Everything else — `job_runs`, the digest's own queries, the mailer — works,
+ * which is exactly the production shape this guard exists for: `recordAudit`
+ * runs AFTER every e-mail has gone out, and the catch that follows it writes
+ * `failed` successfully.
+ */
+function dbFailingAuditInsert(tx: DbTransaction, error: Error): DbTransaction {
+  return new Proxy(tx, {
+    get(target, prop) {
+      if (prop === 'insert') {
+        return (table: Parameters<DbTransaction['insert']>[0]) =>
+          table === auditLog
+            ? { values: () => ({ returning: () => Promise.reject(error) }) }
+            : target.insert(table);
+      }
+      const value = Reflect.get(target, prop) as unknown;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
 }
 
 /**
@@ -1078,7 +1113,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
       await seedLastRun(tx, at);
       await activityAt(tx, at);
       await twoRecipients(tx);
-      await seedRunningRun(tx, new Date(now.getTime() - 5 * 60_000));
+      await seedAttempt(tx, new Date(now.getTime() - 5 * 60_000), 'running');
       const mailer = createFakeMailer();
       const { logger } = captureLogger();
       const auditBefore = new Set(await digestAuditIds(tx));
@@ -1113,7 +1148,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
       const recipients = await twoRecipients(tx);
       // Nothing ever closes this row. A guard that merely asked "is any run
       // still running" would silence the digest permanently.
-      await seedRunningRun(tx, new Date(now.getTime() - (DIGEST_RUNNING_GUARD_MS + HOUR)));
+      await seedAttempt(tx, new Date(now.getTime() - (DIGEST_RUNNING_GUARD_MS + HOUR)), 'running');
       const mailer = createFakeMailer();
       const { logger } = captureLogger();
 
@@ -1174,6 +1209,93 @@ describe('RFC-74 R2, R5 runDigest', () => {
       expect(stored).toContain('42501');
       expect(stored).toContain('permission denied for function pgp_sym_decrypt');
       expect(mailer.sent).toEqual([]);
+    });
+  });
+
+  it('a throw after the sends records failed, not running, and the next tick is still not due (R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const at = anchor(ANCHOR_DAYS.runFailedAfterSend);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      const recipients = await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+      // `recordAudit` is the first thing after the send loop, and it is the
+      // realistic post-send failure: the mail is already gone.
+      const auditFailure = new Error('audit insert rejected');
+
+      await expect(
+        runDigest({
+          db: dbFailingAuditInsert(tx, auditFailure),
+          mailer: mailer.mailer,
+          appOrigin: APP_ORIGIN,
+          logger,
+          enabled: true,
+          now,
+        }),
+      ).rejects.toBe(auditFailure);
+
+      // The premise this guard was first built on was wrong. The catch's own
+      // `finishRun` succeeds here — only `job_runs` is involved and the
+      // transaction is healthy — so the run ends `failed`, NOT `running`, and
+      // a guard that asked for `['running']` alone would never see it.
+      const attempt = await latestRun(tx, 'digest');
+      expect(attempt).toMatchObject({ kind: 'digest', status: 'failed' });
+      // And the e-mail has already gone out, which is what makes a second tick
+      // a duplicate rather than a retry.
+      expect(mailer.sent.map((m) => m.to).sort()).toEqual(recipients.map((r) => r.email).sort());
+      const sentOnce = mailer.sent.length;
+      // `latestRun(db, 'digest', ['completed', 'skipped'])` still answers the
+      // seeded success, whose `finished_at` is two days past the interval — so
+      // nothing but the guard can stop the next tick.
+      const stillAnswers = await latestRun(tx, 'digest', ['completed', 'skipped']);
+      expect(stillAnswers?.id).not.toBe(attempt?.id);
+
+      // Five minutes later, timed against the row as `startRun` really stamped
+      // it (the transaction clock), because the guard compares `started_at`.
+      const nextTick = new Date((attempt?.startedAt?.getTime() ?? 0) + 5 * 60_000);
+      const second = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now: nextTick,
+      });
+
+      expect(second).toMatchObject({ status: 'not_due', runId: null });
+      expect(mailer.sent).toHaveLength(sentOnce);
+    });
+  });
+
+  it('a failed digest run past the guard window does not postpone for ever (R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runStaleFailed);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      const recipients = await twoRecipients(tx);
+      // A job that fails on every attempt must back off, never stop: the
+      // `failed` half of the guard cannot become a permanent mute.
+      await seedAttempt(tx, new Date(now.getTime() - (DIGEST_RUNNING_GUARD_MS + HOUR)), 'failed');
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(mailer.sent.map((m) => m.to)).toEqual(
+        expect.arrayContaining(recipients.map((r) => r.email)),
+      );
     });
   });
 });

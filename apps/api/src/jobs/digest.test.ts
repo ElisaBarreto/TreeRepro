@@ -89,8 +89,12 @@ describe('RFC-74 R2 isDigestDue', () => {
   });
 });
 
-describe('RFC-74 R2 isDigestDue guards against a run left running', () => {
-  /** A run opened `ms` ago and never closed. */
+describe('RFC-74 R2 isDigestDue guards against a run that recorded no success', () => {
+  /**
+   * A run opened `ms` ago that recorded no success. The caller asks
+   * `latestRun(db, 'digest', ['running', 'failed'])`, so this stands for
+   * either status — only `started_at` reaches the function.
+   */
   const inFlight = (ms: number) => ({ startedAt: ago(ms) });
 
   it('the guard is two ticks, so it outlasts the very next tick rather than landing on it', () => {
@@ -104,7 +108,7 @@ describe('RFC-74 R2 isDigestDue guards against a run left running', () => {
     expect(DIGEST_RUNNING_GUARD_MS).toBeLessThan(DIGEST_MIN_INTERVAL_MS);
   });
 
-  it('a run still running from minutes ago postpones an otherwise due tick', () => {
+  it('a run that recorded no success minutes ago postpones an otherwise due tick', () => {
     // Exactly the state a throw in `runDigest`'s tail leaves behind: the sends
     // are done, the last success is a day old and still due, and the run row
     // never reached a terminal status.
@@ -121,10 +125,19 @@ describe('RFC-74 R2 isDigestDue guards against a run left running', () => {
     expect(isDigestDue(success(24 * HOUR), now, inFlight(DIGEST_TICK_MS)).due).toBe(false);
   });
 
-  it('a running run older than the guard postpones nothing: a stuck row cannot disable the digest', () => {
+  it('an attempt older than the guard postpones nothing: no row can disable the digest', () => {
     const last = success(24 * HOUR);
     expect(isDigestDue(last, now, inFlight(DIGEST_RUNNING_GUARD_MS)).due).toBe(true);
     expect(isDigestDue(last, now, inFlight(7 * 24 * HOUR)).due).toBe(true);
+  });
+
+  it('a job that fails on every attempt retries every two ticks, for ever', () => {
+    // The `failed` half of the guard must not turn a broken job into a
+    // permanently silent one. One tick after a failed attempt the next tick is
+    // held; two ticks after it, it runs again — a bounded backoff, not a stop.
+    const last = success(24 * HOUR);
+    expect(isDigestDue(last, now, inFlight(DIGEST_TICK_MS)).due).toBe(false);
+    expect(isDigestDue(last, now, inFlight(2 * DIGEST_TICK_MS)).due).toBe(true);
   });
 
   it('never moves the window: a postponed tick still reads the last success back', () => {
