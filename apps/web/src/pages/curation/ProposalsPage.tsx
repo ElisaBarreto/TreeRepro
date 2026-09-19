@@ -64,7 +64,7 @@ export function ProposalsPage({
     <>
       <PageHeader
         title="Species proposals"
-        description="Names contributors have asked for, with what GBIF and the World Checklist of Vascular Plants make of them. Approving one creates the species."
+        description="Names contributors have asked for, with what GBIF and, when configured, the World Checklist of Vascular Plants make of them. Approving one creates the species."
       />
       <div className="flex flex-col gap-6">
         <div className="max-w-56">
