@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import type { Coverage } from '@treerepro/contracts';
 import { useState } from 'react';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
+import { useMe } from '../../lib/session.ts';
 import { EmptyState, Icon, Meter, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import type { CoverageSearch } from './CoverageFilters.tsx';
 
@@ -19,8 +20,10 @@ const CHEVRON_BUTTON =
  * counts as a record here (RFC-69 R2), so a zero means none exists at all.
  *
  * `search` is the page's own filter state, carried into those species links
- * by {@link missingSpeciesSearch} so the list a row opens counts the species
- * the row counted.
+ * by {@link missingSpeciesSearch} so the list a row opens honours the same
+ * family/category/plot filters the row was computed over. For a
+ * plot-restricted viewer with no plot filter, that list narrows further, to
+ * their own plots — see {@link missingSpeciesSearch} for why.
  * @rfc RFC-69 R5
  * @rfc RFC-13 R2
  */
@@ -33,6 +36,7 @@ export function CoverageTable({
   byTrait: Coverage['byTrait'];
   search: CoverageSearch;
 }) {
+  const me = useMe();
   if (byCategory.length === 0) {
     return (
       <EmptyState
@@ -61,6 +65,7 @@ export function CoverageTable({
             category={category}
             traits={byTrait.filter((trait) => trait.category.key === category.category.key)}
             search={search}
+            restricted={me.scope.restricted}
           />
         ))}
       </Tbody>
@@ -72,10 +77,12 @@ function CategoryRows({
   category,
   traits,
   search,
+  restricted,
 }: {
   category: Coverage['byCategory'][number];
   traits: Coverage['byTrait'];
   search: CoverageSearch;
+  restricted: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -119,47 +126,63 @@ function CategoryRows({
         </Td>
       </Tr>
       {open
-        ? traits.map((trait) => <TraitRow key={trait.trait.id} trait={trait} search={search} />)
+        ? traits.map((trait) => (
+            <TraitRow key={trait.trait.id} trait={trait} search={search} restricted={restricted} />
+          ))
         : null}
     </>
   );
 }
 
 /**
- * The search the row's "Species with no record yet" link carries: the trait
- * and `traitData=missing`, plus the page's own filters, so the list opens over
- * the same selection the row was computed over rather than over every species.
+ * The search the row's missing-species link carries: the trait and
+ * `traitData=missing`, plus the page's own filters, so the list opens over
+ * the same selection the row was computed over rather than over every
+ * species.
  *
- * `scope` is named rather than left to default, for the same reason
- * `MissingTraitsList` names it. The coverage grid is plot-agnostic unless a
- * `plotId` filter is given (RFC-69 R6), so the row is a dataset-wide number
- * and its link must ask for the dataset-wide list — while `GET /api/species`
- * defaults a viewer with assigned plots to `scope=plots` (RFC-33 R6), which
- * would answer a smaller number than the row the viewer clicked. With a
- * `plotId` filter the row is that plot's, and `plotId` scopes the list on its
- * own (`scope` is ignored beside it, RFC-33 R6). A plot-bound viewer is
- * refused `scope=all` and reads RFC-13 R4's message instead: their coverage
- * row is dataset-wide and no species list they may open matches it, so an
- * honest refusal beats a number that silently disagrees.
+ * The coverage row itself is always dataset-wide (RFC-69 R6): a
+ * plot-restricted viewer is barred from trait data for species outside their
+ * plots, not from aggregate statistics about them, and a count is exactly
+ * that — a species total, a completeness percentage, nothing about any one
+ * species' traits. The drill-down list is different: it hands the viewer
+ * actual species rows, which for a restricted viewer must stop at their own
+ * plots. With a `plotId` filter the row is already that plot's, and
+ * `plotId` scopes the list on its own (`scope` is ignored beside it,
+ * RFC-33 R6). Without one, an unrestricted viewer gets `scope=all` so the
+ * list matches the dataset-wide row they clicked; a restricted viewer
+ * instead gets no `scope` at all, so `GET /api/species` falls back to its
+ * own default for them, `scope=plots` (RFC-33 R6) — the species in their own
+ * plots missing this trait, which is what they can actually act on, rather
+ * than the `PERMISSION_DENIED` a bare `scope=all` would draw.
  */
-function missingSpeciesSearch(traitId: string, search: CoverageSearch) {
+function missingSpeciesSearch(traitId: string, search: CoverageSearch, restricted: boolean) {
   const base = {
     traitId,
     traitData: 'missing',
     familyId: search.familyId,
     categoryKey: search.categoryKey,
   } as const;
-  return search.plotId ? { ...base, plotId: search.plotId } : { ...base, scope: 'all' as const };
+  if (search.plotId) return { ...base, plotId: search.plotId };
+  return restricted ? base : { ...base, scope: 'all' as const };
 }
 
 function TraitRow({
   trait,
   search,
+  restricted,
 }: {
   trait: Coverage['byTrait'][number];
   search: CoverageSearch;
+  restricted: boolean;
 }) {
   const name = humaniseKey(trait.trait.key);
+  // The label follows the link's own target (see `missingSpeciesSearch`):
+  // only the unfiltered, restricted case opens the viewer's own plots rather
+  // than the dataset-wide list the row counts.
+  const missingLabel =
+    restricted && !search.plotId
+      ? 'Species in your plots with no record yet'
+      : 'Species with no record yet';
   return (
     <Tr className="bg-mist-50">
       <Td />
@@ -177,10 +200,10 @@ function TraitRow({
           </span>
           <Link
             to="/app/species"
-            search={missingSpeciesSearch(trait.trait.id, search)}
+            search={missingSpeciesSearch(trait.trait.id, search, restricted)}
             className="text-meta font-medium text-canopy-700 underline-offset-2 hover:underline"
           >
-            Species with no record yet
+            {missingLabel}
           </Link>
         </div>
       </Td>
