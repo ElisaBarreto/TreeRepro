@@ -51,6 +51,14 @@ function mount(proposal = PROPOSAL, me = REVIEWER) {
 
 const drawer = () => screen.findByRole('dialog', { name: 'Proposal' });
 
+// `renderSettled` renders its own tree, so the query client the drawer needs
+// travels inside the element handed to it.
+function seededClient() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient.setQueryData(['auth', 'me'], REVIEWER);
+  return queryClient;
+}
+
 describe('RFC-75 R6 ProposalDrawer', () => {
   it('shows the proposed name, the proposer, the note and both lookup cards', async () => {
     mount();
@@ -94,6 +102,7 @@ describe('RFC-75 R6 ProposalDrawer', () => {
         familyName: 'Fagaceae',
       }),
     );
+    expect(proposals.invalidateAfterProposalWrite).toHaveBeenCalled();
     expect(onDecided).toHaveBeenCalledWith(APPROVED_PROPOSAL);
   });
 
@@ -135,11 +144,9 @@ describe('RFC-75 R6 ProposalDrawer', () => {
   });
 
   it('RFC-75 R6 a decided proposal shows its decision and offers no decision at all', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    queryClient.setQueryData(['auth', 'me'], REVIEWER);
     await renderSettled(
       (
-        <QueryClientProvider client={queryClient}>
+        <QueryClientProvider client={seededClient()}>
           <ProposalDrawer proposal={APPROVED_PROPOSAL} onClose={vi.fn()} onDecided={vi.fn()} />
         </QueryClientProvider>
       ) as ReactElement,
@@ -161,10 +168,18 @@ describe('RFC-75 R6 ProposalDrawer', () => {
     expect(within(panel).queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument();
   });
 
-  it('renders nothing without a proposal', () => {
-    renderWithProviders(
-      withRouter(<ProposalDrawer proposal={null} onClose={vi.fn()} onDecided={vi.fn()} />),
-      { me: REVIEWER },
+  it('renders nothing without a proposal', async () => {
+    // `renderSettled`, not a synchronous query after `withRouter`: the
+    // router mounts on its own tick, so a `queryBy…` taken straight after
+    // the render answers "not found" whether or not the drawer would ever
+    // have rendered — the assertion would hold against a component that
+    // dropped its `if (!proposal) return null` guard entirely (R-P).
+    await renderSettled(
+      (
+        <QueryClientProvider client={seededClient()}>
+          <ProposalDrawer proposal={null} onClose={vi.fn()} onDecided={vi.fn()} />
+        </QueryClientProvider>
+      ) as ReactElement,
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

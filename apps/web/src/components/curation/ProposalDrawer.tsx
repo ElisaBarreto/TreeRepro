@@ -5,12 +5,11 @@ import { useId, useState } from 'react';
 import { invalidateAfterProposalWrite, rejectProposal } from '../../api/proposals.ts';
 import { isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
-import { SpeciesDialog } from '../catalog/SpeciesDialog.tsx';
 import { DrawerSection } from '../dataset/DrawerSection.tsx';
 import { Alert, Badge, Button, Drawer, Field, Textarea } from '../ui/index.ts';
+import { ApproveProposalDialog } from './ApproveProposalDialog.tsx';
 import { LookupBadge, LookupCard } from './LookupCard.tsx';
 import { decideErrorMessage } from './proposal-errors.ts';
-import { proposalPrefill } from './proposal-prefill.ts';
 
 /** How each proposal status reads and looks. @rfc RFC-75 R6 */
 const STATUS_TONES: Record<ProposalStatus, 'amber' | 'green' | 'red'> = {
@@ -38,10 +37,10 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
  * nobody actually checked is a different, and false, statement.
  *
  * With `taxa.manage` an open proposal offers the two decisions of RFC-75 R4:
- * **Approve** opens the species dialog prefilled from the match and its save
- * is the approve endpoint, **Reject** asks for the note the decision is
- * recorded with. A decided proposal shows the decision instead and offers
- * neither, whatever the viewer holds.
+ * **Approve** opens `ApproveProposalDialog`, prefilled from the match,
+ * **Reject** asks for the note the decision is recorded with. A decided
+ * proposal shows the decision instead and offers neither, whatever the
+ * viewer holds.
  * @rfc RFC-13 R3, R5, R10
  * @rfc RFC-75 R4, R6
  * @rfc RFC-81 R3
@@ -197,17 +196,13 @@ export function ProposalDrawer({
         </div>
       </Drawer>
       {approving ? (
-        <SpeciesDialog
-          approval={{
-            proposalId: proposal.id,
-            proposedName: proposal.proposedName,
-            ...proposalPrefill(proposal),
-            onApproved: (decided) => {
-              setApproving(false);
-              onDecided(decided);
-            },
-          }}
+        <ApproveProposalDialog
+          proposal={proposal}
           onClose={() => setApproving(false)}
+          onApproved={(decided) => {
+            setApproving(false);
+            onDecided(decided);
+          }}
         />
       ) : null}
     </>

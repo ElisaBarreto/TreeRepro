@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type {
-  ContributionKind,
-  ContributionSummary,
-  Proposal,
-  ProposalStatus,
-  RecordIntent,
+import {
+  CONTRIBUTION_KINDS,
+  type ContributionKind,
+  type ContributionSummary,
+  type Proposal,
+  type ProposalStatus,
+  type RecordIntent,
 } from '@treerepro/contracts';
 import { useState } from 'react';
 import { adminKeys, fetchUser } from '../../api/admin.ts';
@@ -65,8 +66,15 @@ export interface ContributionsSearch extends ContributionFiltersValue {
   userId?: string;
 }
 
-/** The tab values the page understands, contract kinds plus its own. @rfc RFC-75 R5 */
-export const CONTRIBUTION_TABS = ['records', 'annotations', 'proposals'] as const;
+/**
+ * The tab values the page understands: every contract kind, plus the one the
+ * web app owns. Derived from `CONTRIBUTION_KINDS` rather than restated, so a
+ * kind added to the contract keeps being validated by the route instead of
+ * silently falling through to Records.
+ * @rfc RFC-71 R1
+ * @rfc RFC-75 R5
+ */
+export const CONTRIBUTION_TABS = [...CONTRIBUTION_KINDS, 'proposals'] as const;
 
 const TABS: readonly { kind: ContributionKind; label: string }[] = [
   { kind: 'records', label: 'Records' },

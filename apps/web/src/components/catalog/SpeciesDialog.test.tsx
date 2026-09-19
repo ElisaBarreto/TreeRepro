@@ -348,6 +348,27 @@ describe('RFC-81 R4 the Look up button', () => {
     expect(within(dialog).getByLabelText('Family')).toHaveValue('');
   });
 
+  it('a genus lookup that fails still says what happened, rather than half-applying in silence', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: FAMILY.name, genus: GENUS.name },
+    });
+    dataset.fetchGenera.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Adenanthera pavonina',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    expect(
+      await within(dialog).findByText(/the catalog could not be searched/),
+    ).toBeInTheDocument();
+    // The half that did succeed is still applied: the family was matched
+    // before the genus search failed.
+    expect(within(dialog).getByLabelText('Family')).toHaveValue(FAMILY.id);
+  });
+
   it('RFC-60 R9 edit mode has no Look up button', () => {
     const { dialog } = mount(SPECIES);
     expect(within(dialog).queryByRole('button', { name: 'Look up' })).not.toBeInTheDocument();
