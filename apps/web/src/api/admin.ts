@@ -1,17 +1,18 @@
-import type {
-  AuditLogEntry,
-  CreateRoleBody,
-  CreateUserBody,
-  DataEnvelope,
-  PermissionEntry,
-  PlatformHealth,
-  Role,
-  SessionSummary,
-  SetUserPlotsBody,
-  UpdateRoleBody,
-  UpdateUserBody,
-  User,
-  UserStatus,
+import {
+  type AuditLogEntry,
+  type CreateRoleBody,
+  type CreateUserBody,
+  type DataEnvelope,
+  type PermissionEntry,
+  type PlatformHealth,
+  platformHealthSchema,
+  type Role,
+  type SessionSummary,
+  type SetUserPlotsBody,
+  type UpdateRoleBody,
+  type UpdateUserBody,
+  type User,
+  type UserStatus,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
@@ -142,8 +143,16 @@ export async function setUserPlots(id: string, body: SetUserPlotsBody): Promise<
   return data;
 }
 
-/** @rfc RFC-52 R1 */
+/**
+ * Parses the payload against `platformHealthSchema`: unlike every other
+ * fetcher in this module, `HealthPage` reads deep into this shape
+ * (`health.data.users.active` and further) on first render, so a malformed
+ * or partial response must reject the query rather than reach that render
+ * and throw. `parse` throws on a mismatch, which TanStack Query turns into
+ * `health.error`, taking the page's existing `Alert tone="error"` path.
+ * @rfc RFC-52 R1
+ */
 export async function fetchPlatformHealth(): Promise<PlatformHealth> {
   const { data } = await apiFetch<DataEnvelope<PlatformHealth>>('/admin/health');
-  return data;
+  return platformHealthSchema.parse(data);
 }

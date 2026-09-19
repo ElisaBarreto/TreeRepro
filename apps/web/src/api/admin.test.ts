@@ -167,4 +167,11 @@ describe('RFC-52 R1 platform health', () => {
     expect(lastRequest().url).toBe('/api/admin/health');
     expect(lastRequest().init?.method ?? 'GET').toBe('GET');
   });
+
+  it('fetchPlatformHealth rejects a malformed payload instead of returning it', async () => {
+    mockJson(200, {
+      data: { ...PLATFORM_HEALTH, users: { ...PLATFORM_HEALTH.users, active: 'twelve' } },
+    });
+    await expect(fetchPlatformHealth()).rejects.toThrow();
+  });
 });
