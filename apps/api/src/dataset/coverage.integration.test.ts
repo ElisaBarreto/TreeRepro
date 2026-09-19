@@ -509,6 +509,26 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       expect(own.withData).toBe(1);
     });
   });
+
+  it('answers the no-filter case with the global species selection, not the plot-bound one (RFC-69 R6)', async () => {
+    await withRollback(t.db, async (tx) => {
+      // The two computations below both read the dataset-wide grid, so they
+      // must run against the same snapshot or a sibling suite's commit
+      // landing between them could make them differ for a reason that has
+      // nothing to do with the rule under test.
+      await freezeSnapshot(tx);
+      const f = await coverageFixture(tx);
+
+      // S1 is active (so visible to a RESTRICTED viewer) and outside
+      // `plotThree`, which holds S3 alone: a plot-scoped no-filter answer for
+      // `bound` would drop S1 and diverge from `restricted`, so this fixture
+      // is not vacuous under a plot-scoped implementation.
+      const bound: Visibility = { inactive: false, plotIds: [f.plotThree.id] };
+      const boundNoFilter = await computeCoverageMetrics(tx, bound, {});
+      const restrictedNoFilter = await computeCoverageMetrics(tx, RESTRICTED, {});
+      expect(boundNoFilter).toEqual(restrictedNoFilter);
+    });
+  });
 });
 
 /**
