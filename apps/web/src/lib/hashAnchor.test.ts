@@ -1,61 +1,88 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { realignHashOnceFontsLoad } from './hashAnchor.ts';
+import { realignHashWhileSettling } from './hashAnchor.ts';
 
-// `document.fonts` does not exist in jsdom, so every test installs the one
-// it wants and the hash is set on the real location.
-function withFonts(ready: Promise<unknown>): void {
-  Object.defineProperty(document, 'fonts', { value: { ready }, configurable: true });
+// jsdom has no layout, so the reflow the real observer waits for has to be
+// delivered by hand. This stands in for it and hands the callback back.
+let notifyReflow: (() => void) | undefined;
+
+class CapturingResizeObserver {
+  private readonly callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    notifyReflow = () => this.callback([], this as unknown as ResizeObserver);
+  }
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {
+    notifyReflow = undefined;
+  }
 }
 
-function target(id: string): { element: HTMLElement; scrollIntoView: ReturnType<typeof vi.fn> } {
-  const element = document.createElement('h2');
-  element.id = id;
+function armed(): { scrollIntoView: ReturnType<typeof vi.fn>; stop: () => void } {
+  const heading = document.createElement('h2');
+  heading.id = 'contest';
   const scrollIntoView = vi.fn();
-  element.scrollIntoView = scrollIntoView;
-  document.body.append(element);
-  return { element, scrollIntoView };
+  heading.scrollIntoView = scrollIntoView;
+  document.body.append(heading);
+  return { scrollIntoView, stop: realignHashWhileSettling() };
 }
+
+const RealResizeObserver = globalThis.ResizeObserver;
 
 afterEach(() => {
+  globalThis.ResizeObserver = RealResizeObserver;
+  notifyReflow = undefined;
   document.body.innerHTML = '';
   window.location.hash = '';
   vi.restoreAllMocks();
 });
 
 describe('RFC-73 R2 hash anchor realignment', () => {
-  it('scrolls to the hash target again once the fonts are ready', async () => {
+  it('aligns the hash target as soon as it is armed, then again on every reflow', () => {
+    globalThis.ResizeObserver = CapturingResizeObserver as unknown as typeof ResizeObserver;
     window.location.hash = '#contest';
-    const { scrollIntoView } = target('contest');
-    withFonts(Promise.resolve());
+    const { scrollIntoView, stop } = armed();
 
-    realignHashOnceFontsLoad();
-    await vi.waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    // The element is in the DOM by the time the page arms this, so the first
+    // alignment is not a silent no-op.
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // The reflow a font swap causes, whenever it lands.
+    notifyReflow?.();
+    notifyReflow?.();
+    expect(scrollIntoView).toHaveBeenCalledTimes(3);
+    stop();
   });
 
-  it('leaves the page alone when the visitor has already started scrolling', async () => {
+  it('stops aligning once the visitor has started scrolling', () => {
+    globalThis.ResizeObserver = CapturingResizeObserver as unknown as typeof ResizeObserver;
     window.location.hash = '#contest';
-    const { scrollIntoView } = target('contest');
-    let settle = (): void => {};
-    withFonts(
-      new Promise<void>((resolve) => {
-        settle = resolve;
-      }),
-    );
+    const { scrollIntoView, stop } = armed();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
-    realignHashOnceFontsLoad();
     window.dispatchEvent(new Event('wheel'));
-    settle();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    notifyReflow?.();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    stop();
   });
 
-  it('does nothing at all when the URL carries no hash', async () => {
-    const { scrollIntoView } = target('contest');
-    withFonts(Promise.resolve());
+  it('does nothing at all when the URL carries no hash', () => {
+    globalThis.ResizeObserver = CapturingResizeObserver as unknown as typeof ResizeObserver;
+    const { scrollIntoView, stop } = armed();
 
-    realignHashOnceFontsLoad();
-    await Promise.resolve();
     expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(notifyReflow).toBeUndefined();
+    stop();
+  });
+
+  it('cleanup stops the observer, so a later reflow aligns nothing', () => {
+    globalThis.ResizeObserver = CapturingResizeObserver as unknown as typeof ResizeObserver;
+    window.location.hash = '#contest';
+    const { scrollIntoView, stop } = armed();
+    const afterArming = scrollIntoView.mock.calls.length;
+
+    stop();
+    notifyReflow?.();
+    expect(scrollIntoView).toHaveBeenCalledTimes(afterArming);
   });
 });

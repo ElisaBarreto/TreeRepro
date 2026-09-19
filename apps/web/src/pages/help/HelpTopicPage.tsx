@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import { PageHeader, Prose } from '../../components/ui/index.ts';
 import { helpTopic } from '../../content/help/index.ts';
+import { realignHashWhileSettling } from '../../lib/hashAnchor.ts';
 import { HelpIndexPage } from './HelpIndexPage.tsx';
 
 /**
@@ -18,6 +20,11 @@ export function HelpTopicPage({ slug }: { slug: string }) {
   // Called before the branch below: an unknown topic registers no crumb, and
   // a hook may not be skipped.
   useBreadcrumb(topic ? [{ label: topic.title }] : []);
+  // Armed here, not in `main.tsx`: this is the component that renders the
+  // headings, so by the time the effect runs they are in the DOM and there
+  // is something for the correction to find. Armed before the branch below
+  // for the same reason as the crumb — a hook may not be skipped.
+  useEffect(() => realignHashWhileSettling(), []);
 
   if (!topic) return <HelpIndexPage />;
   return (
