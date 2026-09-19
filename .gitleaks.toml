@@ -53,3 +53,25 @@ paths = [
   '''^apps/api/src/integrations/fixtures/gbif/wcvp-genus\.json$''',
   '''^apps/api/src/integrations/fixtures/gbif/wcvp-misapplied-first\.json$''',
 ]
+
+# A second, unrelated public GBIF dataset key: `19491596-35ae-4a91-9a98-
+# 85cf505f1bd3` is GBIF's own id for "The IUCN Red List of Threatened
+# Species" (confirmed against GBIF's own `/v2/species/match/metadata`,
+# `ancillaryIndexes`, `datasetAlias: "IUCN"`). Unlike the WCVP key above, we
+# did not choose or configure this value — it is a `datasetKey` GBIF itself
+# returns inside a live backbone match's `additionalStatus` block, captured
+# verbatim in these two fixtures (RFC-81 R1/R2, R-A/R-I in
+# .superpowers/sdd/2026-09-17-platform-12c-proposals/constraints.md). The
+# same reasoning applies (public identifier, not a secret; high entropy next
+# to a `Key` field name is exactly what makes it look like one), but it gets
+# its own entry because a fixture recapture can surface other such ids GBIF
+# happens to include that day — this entry names the two files it is in
+# today, not a rule for GBIF dataset keys in general.
+[[rules.allowlists]]
+description = "IUCN Red List GBIF dataset key, present because GBIF's own backbone response includes it — not a secret"
+condition = "and"
+regexes = ['''19491596-35ae-4a91-9a98-85cf505f1bd3''']
+paths = [
+  '''^apps/api/src/integrations/fixtures/gbif/backbone-exact\.json$''',
+  '''^apps/api/src/integrations/fixtures/gbif/backbone-variant\.json$''',
+]
