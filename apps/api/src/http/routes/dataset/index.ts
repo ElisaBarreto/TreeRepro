@@ -8,6 +8,7 @@ import { recordRoutes } from './records.ts';
 import { referenceRoutes } from './references.ts';
 import { speciesRoutes } from './species.ts';
 import { familyRoutes, genusRoutes } from './taxa.ts';
+import { taxonomyRoutes } from './taxonomy.ts';
 import { traitRoutes } from './traits.ts';
 
 /**
@@ -19,6 +20,7 @@ import { traitRoutes } from './traits.ts';
  * @rfc RFC-64 R11
  * @rfc RFC-66 R1
  * @rfc RFC-67 R3-R5
+ * @rfc RFC-81 R4
  */
 export function datasetRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
@@ -30,5 +32,6 @@ export function datasetRoutes(ctx: AuthContext) {
     .route('/records', recordRoutes(ctx))
     .route('/traits', traitRoutes(ctx))
     .route('/imports', importRoutes(ctx))
-    .route('/export', exportRoutes(ctx));
+    .route('/export', exportRoutes(ctx))
+    .route('/taxonomy', taxonomyRoutes(ctx));
 }

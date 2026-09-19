@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +18,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import type { DbTransaction } from '../db/client.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { jobRuns } from '../db/schema/job-runs.ts';
+import { speciesProposals } from '../db/schema/proposals.ts';
 import type { Mailer, MailMessage } from '../mail/mailer.ts';
 import {
   computeDigest,
@@ -214,6 +216,15 @@ describe('RFC-74 R3 computeDigest', () => {
         }),
       ]);
 
+      // RFC-75 R7: one proposal created inside the window. Backdated like
+      // every other row of this test, so no sibling suite's proposal — all of
+      // which are written at `now()` — can fall into it.
+      await tx.insert(speciesProposals).values({
+        proposedName: `Testus digestus ${randomBytes(6).toString('hex')}`,
+        proposerId: ada.id,
+        createdAt: at,
+      });
+
       const digest = await computeDigest(tx, windowAround(at));
 
       expect(digest.counts).toMatchObject({
@@ -223,8 +234,7 @@ describe('RFC-74 R3 computeDigest', () => {
         validations: 3,
         disputes: 1,
         withdrawals: 1,
-        // RFC-75 lands in plan 12c; until then there is nothing to count.
-        proposals: 0,
+        proposals: 1,
       });
       expect(digest.window).toEqual(windowAround(at));
 

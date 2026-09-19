@@ -2,6 +2,7 @@ import type { PermissionKey } from '@treerepro/contracts';
 import { and, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import { UNRESTRICTED } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
+import { countProposalsCreated } from '../dataset/proposals.ts';
 import { countDisputed, countPendingGroups } from '../dataset/queues.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { rolePermissions } from '../db/schema/role-permissions.ts';
@@ -307,29 +308,36 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
   const within = (column: SQL): SQL =>
     sql`${column} > ${start}::timestamptz and ${column} <= ${end}::timestamptz`;
 
-  const [recordCounts, annotationCounts, contestRows, disputeRows, pendingGroups, disputedNow] =
-    await Promise.all([
-      // R3 reads `records` as "manual records created", which a contest and a
-      // complement both are: the two intents are subsets of `records`, not
-      // additions to it. R4's activity sum is a "was anything done at all"
-      // test, so counting a contest twice there changes nothing.
-      db.execute(sql`
+  const [
+    recordCounts,
+    annotationCounts,
+    contestRows,
+    disputeRows,
+    pendingGroups,
+    disputedNow,
+    proposals,
+  ] = await Promise.all([
+    // R3 reads `records` as "manual records created", which a contest and a
+    // complement both are: the two intents are subsets of `records`, not
+    // additions to it. R4's activity sum is a "was anything done at all"
+    // test, so counting a contest twice there changes nothing.
+    db.execute(sql`
         select
           count(*) filter (where r.origin = 'manual')::int as records,
           count(*) filter (where r.origin = 'manual' and r.intent = 'contest')::int as contests,
           count(*) filter (where r.origin = 'manual' and r.intent = 'complement')::int as complements
         from trait_records r
         where ${within(sql`r.created_at`)}`) as unknown as Promise<[RecordCountRow | undefined]>,
-      db.execute(sql`
+    db.execute(sql`
         select
           count(*) filter (where a.kind = 'confirm')::int as validations,
           count(*) filter (where a.kind = 'dispute' and not a.generated)::int as disputes,
           count(*) filter (where a.kind = 'withdraw')::int as withdrawals
         from record_annotations a
         where ${within(sql`a.created_at`)}`) as unknown as Promise<
-        [AnnotationCountRow | undefined]
-      >,
-      db.execute(sql`
+      [AnnotationCountRow | undefined]
+    >,
+    db.execute(sql`
         select r.id as record_id, r.species_id, sp.canonical_name as species_name,
           t.key as trait_key, r.value_text, r.created_by as actor_id, r.created_at
         from trait_records r
@@ -338,10 +346,10 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
         where r.intent = 'contest' and r.origin = 'manual' and ${within(sql`r.created_at`)}
         order by r.created_at desc, r.id desc
         limit ${DIGEST_LIST_LIMIT}`) as unknown as Promise<ItemRow[]>,
-      // The listed dispute describes the record it stands against, so the
-      // species, the trait and the value are the disputed record's, and the
-      // link opens that record's drawer.
-      db.execute(sql`
+    // The listed dispute describes the record it stands against, so the
+    // species, the trait and the value are the disputed record's, and the
+    // link opens that record's drawer.
+    db.execute(sql`
         select a.record_id, r.species_id, sp.canonical_name as species_name,
           t.key as trait_key, r.value_text, a.actor_id, a.created_at
         from record_annotations a
@@ -351,9 +359,12 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
         where a.kind = 'dispute' and not a.generated and ${within(sql`a.created_at`)}
         order by a.created_at desc, a.id desc
         limit ${DIGEST_LIST_LIMIT}`) as unknown as Promise<ItemRow[]>,
-      countPendingGroups(db, UNRESTRICTED),
-      countDisputed(db, UNRESTRICTED),
-    ]);
+    countPendingGroups(db, UNRESTRICTED),
+    countDisputed(db, UNRESTRICTED),
+    // RFC-75 R7: proposals created inside the window, whatever became of
+    // them since — the count describes the window, not the queue.
+    countProposalsCreated(db, window),
+  ]);
 
   const actorIds = [
     ...new Set(
@@ -389,8 +400,7 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
       validations: annotationCounts[0]?.validations ?? 0,
       disputes: annotationCounts[0]?.disputes ?? 0,
       withdrawals: annotationCounts[0]?.withdrawals ?? 0,
-      // RFC-75 arrives with plan 12c; there is no table to count until then.
-      proposals: 0,
+      proposals,
       pendingGroups,
       disputedNow,
     },

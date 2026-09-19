@@ -9,6 +9,7 @@ import {
 import { contributionSummary } from '../dataset/contributions.ts';
 import { coverageTotals } from '../dataset/coverage.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
+import { countOpenProposals } from '../dataset/proposals.ts';
 import { countContested, countDisputed, countPendingGroups } from '../dataset/queues.ts';
 import { itemQuery, toItem } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -394,15 +395,17 @@ async function curationSection(
   viewer: DashboardViewer,
 ): Promise<Dashboard['curation']> {
   if (!viewer.permissions.has('records.review')) return null;
-  const [coverage, pendingGroups, disputed, contested] = await Promise.all([
+  const [coverage, pendingGroups, disputed, contested, proposals] = await Promise.all([
     coverageTotals(ctx, visibility),
     countPendingGroups(ctx.db, visibility),
     countDisputed(ctx.db, visibility),
     countContested(ctx.db, visibility),
+    // RFC-75 R7. A proposal is about a species that does not exist yet, so
+    // RFC-33 has nothing to scope this count by: every reviewer sees the same
+    // queue, which is also what keeps the cached panel free of proposal rows.
+    countOpenProposals(ctx.db),
   ]);
-  // RFC-75 proposals arrive with plan 12c; until then the queue is empty
-  // rather than absent, so the panel keeps one shape.
-  return { coverage, queues: { pendingGroups, disputed, contested, proposals: 0 } };
+  return { coverage, queues: { pendingGroups, disputed, contested, proposals } };
 }
 
 /**

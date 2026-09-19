@@ -22,6 +22,7 @@ import { contributionRoutes } from './http/routes/contributions.ts';
 import { coverageRoutes } from './http/routes/coverage.ts';
 import { dashboardRoutes } from './http/routes/dashboard.ts';
 import { datasetRoutes } from './http/routes/dataset/index.ts';
+import { myProposalRoutes } from './http/routes/dataset/proposals.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import { meRoutes } from './http/routes/me.ts';
 import type { DoiClient } from './integrations/doi.ts';
@@ -105,6 +106,9 @@ export function createApp(deps: AppDeps) {
   // Same reason as above: the dashboard is permission-guarded, not
   // self-service (RFC-72 R1).
   app.route('/me', dashboardRoutes(ctx));
+  // Same reason again: a proposer's own queue carries `taxa.propose`
+  // (RFC-75 R5), so it is not self-service either.
+  app.route('/me', myProposalRoutes(ctx));
   app.route('/admin', adminRoutes(ctx));
   // The coverage metrics read the dataset but carry their own permission
   // (RFC-69 R5), so they sit beside the dataset router rather than inside it.

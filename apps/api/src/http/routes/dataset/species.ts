@@ -25,11 +25,16 @@ import { AppError } from '../../errors.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
+import { proposalRoutes } from './proposals.ts';
 
 /**
+ * The species routes, with the proposals router (RFC-75 R2, R3) mounted on
+ * the literal `/proposals` segment **before** every `/:id` handler below, so
+ * Hono can never read "proposals" as a species id.
  * @rfc RFC-60 R6, R7, R9, R10
  * @rfc RFC-63 R10
  * @rfc RFC-65 R6
+ * @rfc RFC-75 R2, R3
  */
 export function speciesRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
@@ -77,6 +82,7 @@ export function speciesRoutes(ctx: AuthContext) {
           201,
         ),
     )
+    .route('/proposals', proposalRoutes(ctx))
     .get(
       '/:id',
       requirePermission(ctx, 'dataset.read'),
