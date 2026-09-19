@@ -225,6 +225,13 @@
       "when": 1789809027080,
       "tag": "0031_taxa_propose_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789839600000,
+      "tag": "0032_permissions_health",
+      "breakpoints": true
     }
   ]
 }

@@ -49,6 +49,7 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `plots.manage` | Create and edit field plots and their species |
 | `contributions.read` | View any user's contributions |
 | `coverage.read` | View coverage metrics |
+| `health.read` | View platform health |
 
 ## Open questions
 
@@ -68,3 +69,4 @@ None.
 - 2026-09-18 — contributions.read (RFC-71, plan 11a).
 - 2026-09-18 — coverage.read (RFC-69 R5-R7, plan 11c).
 - 2026-09-19 — taxa.propose (RFC-75, plan 12c).
+- 2026-09-19 — health.read (RFC-52, plan 12d).

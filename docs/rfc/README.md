@@ -37,6 +37,7 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-42 | Audit retention | accepted |
 | RFC-50 | User administration | accepted |
 | RFC-51 | Audit query | accepted |
+| RFC-52 | Platform health | accepted |
 | RFC-60 | Taxonomy catalog | accepted |
 | RFC-61 | Bibliographic references | accepted |
 | RFC-62 | Trait dictionary | accepted |
