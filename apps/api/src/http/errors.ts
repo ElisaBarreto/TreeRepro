@@ -75,7 +75,11 @@ function numericResponseCode(err: Error | undefined): number | undefined {
  * The parts of an error that are safe to log. Query errors (Drizzle's
  * DrizzleQueryError) carry the SQL text and its parameters as own properties
  * and in `message`; parameters can hold hashes, tokens and blind indexes, so
- * only the driver's own message and code are kept.
+ * the SQL and its bound values are dropped and what is kept is the driver's
+ * own message and code. That message is not itself value-free — Postgres
+ * quotes the offending literal in some primary messages (22P02, `invalid
+ * input syntax for type uuid: "…"`) — which is the exposure RFC-02 R7 accepts
+ * for a log line.
  *
  * `code` and `responseCode` are read from the cause FIRST and from the error
  * itself second. Drizzle wraps the driver error as a cause; nodemailer does
@@ -114,19 +118,28 @@ export const ERROR_SUMMARY_MAX = 200;
 const QUERY_ERROR_PREFIX = 'Failed query:';
 
 /**
- * A one-line summary of a failure that is safe to STORE, not only to log:
- * `job_runs.error` is durable, plaintext at rest (unlike the encrypted user
- * columns a failing query may name) and read straight back out by the health
- * page of RFC-52, so a raw `error.message` there would park a Drizzle
- * "Failed query: … params: …" — SQL over `users.name` / `users.email` and its
- * bound values — in front of every operator for a year.
+ * A one-line summary of a failure, narrowed for a column that is durable and
+ * not only for a log line: `job_runs.error` is plaintext at rest (unlike the
+ * encrypted user columns a failing query may name) and read straight back out
+ * by the health page of RFC-52, so a raw `error.message` there would park a
+ * Drizzle "Failed query: … params: …" — SQL over `users.name` / `users.email`
+ * and its bound values — in front of every operator for a year.
  *
- * `name` and the codes always survive. The message only survives when it is
- * the driver's own (`sanitizeError` replaces it with the cause's) and does not
- * open with Drizzle's query preamble, which is what a query error carrying no
- * cause still looks like. The full sanitized error, message and stack included,
- * still reaches the log, so nothing is lost for diagnosis — only the durable
- * column is narrowed.
+ * What it guarantees is exactly that: no SQL text and no bound-parameter list.
+ * It is NOT a promise that no value can appear. `name` and the codes always
+ * survive, and so does the driver's own one-line message, which may itself
+ * quote an offending literal (Postgres 22P02: `invalid input syntax for type
+ * uuid: "…"`). That is the same exposure RFC-02 R7 already accepts for the
+ * log. It is unreachable at both call sites today — `audit_log_purge()` binds
+ * nothing, and `digestRecipients` binds a permission key and the admin role
+ * name, both constants — but a call site that bound user input would put that
+ * input here too, truncated.
+ *
+ * The message survives only when it is the driver's own (`sanitizeError`
+ * replaces it with the cause's) and does not open with Drizzle's query
+ * preamble, which is what a query error carrying no cause still looks like.
+ * The full sanitized error, message and stack included, still reaches the log,
+ * so nothing is lost for diagnosis — only the durable column is narrowed.
  * @rfc RFC-02 R7
  * @rfc RFC-74 R1
  */
