@@ -10,7 +10,7 @@ import { UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor, DbTransaction } from '../db/client.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { speciesProposals } from '../db/schema/proposals.ts';
-import { species } from '../db/schema/taxa.ts';
+import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
 import {
   approveProposal,
@@ -189,6 +189,36 @@ describe('RFC-75 R2 createProposal', () => {
     });
   });
 
+  it('answers PROPOSAL_EXISTS when the name is taken while the lookup is running', async () => {
+    const { user } = await createUser(t.db);
+    const interloper = await createUser(t.db);
+    const name = aName();
+    // The pre-check is not a lock, and the seam is deterministic rather than
+    // concurrent: `createProposal` runs the pre-check, then the lookup, then
+    // the insert. A client that writes the colliding row while it is "talking
+    // to GBIF" drives the caught 23505 exactly once, with no racing needed.
+    const racing = {
+      match: async () => {
+        await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
+          name,
+          proposerId: interloper.user.id,
+        });
+        return failedLookup;
+      },
+    };
+
+    const error = await createProposal({ db: t.db, taxonomy: racing }, UNRESTRICTED, {
+      name,
+      proposerId: user.id,
+    }).catch((e: unknown) => e);
+
+    const winner = await listMyProposals(t.db, interloper.user.id, { limit: 10 });
+    expect(error).toMatchObject({
+      code: 'PROPOSAL_EXISTS',
+      details: [{ path: 'name', message: winner.data[0]?.id }],
+    });
+  });
+
   it('still creates the proposal with a null lookup when every attempted GBIF call failed', async () => {
     const { user } = await createUser(t.db);
     const name = aName();
@@ -301,17 +331,49 @@ describe('RFC-75 R4 approveProposal', () => {
     expect(approved.species?.canonicalName).toBe(name);
 
     const speciesId = approved.species?.id ?? '';
-    const created = await t.db
+    const [createdSpecies] = await t.db
       .select({ id: species.id, genusId: species.genusId, nameSource: species.nameSource })
       .from(species)
       .where(eq(species.id, speciesId));
-    expect(created[0]?.genusId).not.toBeNull();
-    expect(created[0]?.nameSource).toBe('gbif');
+    expect(createdSpecies?.nameSource).toBe('gbif');
 
-    // RFC-60 R10: the species, the genus, the family and the alternative name
-    // each carry their own `taxa.created` row.
-    const speciesAudits = await auditRows(t.db, speciesId);
-    expect(speciesAudits.map((a) => a.action)).toEqual(['taxa.created']);
+    // The chain the body asked for, followed link by link: the species' genus
+    // is the genus of that name, and that genus' family is the family of that
+    // name. Asserting only that `genusId` is not null would pass against any
+    // pre-existing genus.
+    const [createdGenus] = await t.db
+      .select({ id: genera.id, name: genera.name, familyId: genera.familyId })
+      .from(genera)
+      .where(eq(genera.id, createdSpecies?.genusId ?? ''));
+    expect(createdGenus?.name).toBe(genusName);
+    const [createdFamily] = await t.db
+      .select({ id: families.id, name: families.name })
+      .from(families)
+      .where(eq(families.id, createdGenus?.familyId ?? ''));
+    expect(createdFamily?.name).toBe(familyName);
+
+    // The alternative name is a row of its own, not a field of the species.
+    const alternatives = await t.db
+      .select({ id: speciesNames.id, name: speciesNames.name, nameType: speciesNames.nameType })
+      .from(speciesNames)
+      .where(eq(speciesNames.speciesId, speciesId));
+    expect(alternatives).toEqual([{ id: expect.any(String), name: synonym, nameType: 'synonym' }]);
+
+    // RFC-60 R10: the family, the genus, the species and the alternative name
+    // each carry their own `taxa.created` row, on its own target.
+    for (const targetId of [
+      createdFamily?.id ?? '',
+      createdGenus?.id ?? '',
+      speciesId,
+      alternatives[0]?.id ?? '',
+    ]) {
+      const rows = await auditRows(t.db, targetId);
+      expect(
+        rows.map((a) => a.action),
+        targetId,
+      ).toEqual(['taxa.created']);
+      expect(rows[0]?.actorUserId, targetId).toBe(manager.user.id);
+    }
 
     const decision = await auditRows(t.db, proposal.id);
     expect(decision.map((a) => a.action).sort()).toEqual([
@@ -372,16 +434,37 @@ describe('RFC-75 R4 approveProposal', () => {
       proposerId: user.id,
     });
 
+    // The family and the genus are written before `createSpecies` raises, so
+    // they are what proves the whole approval is one transaction.
+    const familyName = `Testaceae-${tag()}`;
+    const genusName = `Testus-${tag()}`;
+
     const error = await approveProposal(t.db, {
       id: proposal.id,
       actorId: manager.user.id,
-      body: { canonicalName: hidden.canonicalName, nameSource: 'original' },
+      body: {
+        canonicalName: hidden.canonicalName,
+        nameSource: 'original',
+        genusName,
+        familyName,
+      },
     }).catch((e: unknown) => e);
 
     expect(error).toMatchObject({ code: 'SPECIES_NAME_TAKEN' });
     expect((error as AppError).details).toBeUndefined();
-    // The failed approval left the proposal open.
+    // The failed approval left the proposal open and wrote nothing at all:
+    // no orphan family, no orphan genus.
     expect((await getProposal(t.db, proposal.id))?.status).toBe('open');
+    const orphanFamilies = await t.db
+      .select({ id: families.id })
+      .from(families)
+      .where(eq(families.name, familyName));
+    const orphanGenera = await t.db
+      .select({ id: genera.id })
+      .from(genera)
+      .where(eq(genera.name, genusName));
+    expect(orphanFamilies).toEqual([]);
+    expect(orphanGenera).toEqual([]);
   });
 
   it('stores the decision note on a rejection and leaves the species null', async () => {
@@ -495,16 +578,20 @@ describe('RFC-75 R7 counts for the dashboard and the digest', () => {
         before + 1,
       );
 
-      // A window that closed before the row was written does not count it.
+      // A window that closed a millisecond before the row was written counts
+      // everything `before` counted and nothing more. The `start` is the same
+      // one `before` used — widening it would pull in sibling suites' rows and
+      // make the equality false while the code is right — and the frozen
+      // snapshot is what makes the equality deterministic at all.
       const [row] = await tx
         .select({ createdAt: speciesProposals.createdAt })
         .from(speciesProposals)
         .where(eq(speciesProposals.id, created.id));
       const earlier = await countProposalsCreated(tx, {
-        start: new Date(start.getTime() - 60_000),
+        start,
         end: new Date((row?.createdAt.getTime() ?? 0) - 1),
       });
-      expect(earlier).toBeLessThan(before + 1);
+      expect(earlier).toBe(before);
     });
   });
 });

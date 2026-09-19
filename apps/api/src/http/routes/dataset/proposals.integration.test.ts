@@ -129,13 +129,18 @@ describe('RFC-75 R3 GET /api/species/proposals', () => {
     });
     const { data: mine } = (await created.json()) as { data: { id: string } };
 
-    const res = await call(t.app, 'GET', '/api/species/proposals', { cookie: boss.cookie });
+    const res = await call(t.app, 'GET', '/api/species/proposals?limit=200', {
+      cookie: boss.cookie,
+    });
 
     // `/api/species/:id` would answer 400 VALIDATION_FAILED on the non-uuid
-    // id "proposals"; the list answers 200 with a paged envelope.
+    // id "proposals"; the list answers 200 with a paged envelope. R-E: the
+    // queue is a shared resource, so this is containment of an id this test
+    // created — never "everything fits on page one", which the default limit
+    // of 50 would have made this assert.
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { data: { id: string }[]; meta: unknown };
-    expect(body.meta).toEqual({ nextCursor: null });
+    const body = (await res.json()) as { data: { id: string }[]; meta: { nextCursor: unknown } };
+    expect(Object.keys(body.meta)).toEqual(['nextCursor']);
     expect(body.data.map((p) => p.id)).toContain(mine.id);
   });
 
