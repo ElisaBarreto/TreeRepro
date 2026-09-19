@@ -33,6 +33,8 @@ export const AUDIT_ACTIONS = [
   'admin.accessed',
   'taxa.created',
   'taxa.updated',
+  'proposals.created',
+  'proposals.decided',
   'references.created',
   'references.updated',
   'traits.created',

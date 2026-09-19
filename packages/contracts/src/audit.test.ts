@@ -56,3 +56,12 @@ describe('RFC-41 R3 action catalog', () => {
     expect(isAuditAction('Login')).toBe(false);
   });
 });
+
+describe('RFC-75 R2, R4 proposal audit actions', () => {
+  it('recognises proposals.created and proposals.decided', () => {
+    expect(isAuditAction('proposals.created')).toBe(true);
+    expect(isAuditAction('proposals.decided')).toBe(true);
+    expect(AUDIT_ACTIONS).toContain('proposals.created');
+    expect(AUDIT_ACTIONS).toContain('proposals.decided');
+  });
+});
