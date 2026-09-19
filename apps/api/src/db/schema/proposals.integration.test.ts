@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createSpecies } from '../../../test/helpers/dataset.ts';
 import { unwrapDbError, useTestDb, withRollback } from '../../../test/helpers/db.ts';
@@ -93,6 +94,31 @@ describe('RFC-75 R1 species_proposals', () => {
     });
   });
 
+  it('species_proposals_approved_check: a rejected proposal must not carry a species_id', async () => {
+    await withRollback(t.db, async (tx) => {
+      const { user } = await createUser(tx);
+      const sp = await createSpecies(tx);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sub) =>
+            sub.insert(speciesProposals).values({
+              proposedName: `Testus falsus-${tag()}`,
+              proposerId: user.id,
+              status: 'rejected',
+              decidedAt: new Date(),
+              decidedBy: user.id,
+              decisionNote: 'wrong direction',
+              speciesId: sp.id,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({
+        code: CHECK_VIOLATION,
+        constraint_name: 'species_proposals_approved_check',
+      });
+    });
+  });
+
   it('species_proposals_approved_check is an equivalence: both satisfying halves pass', async () => {
     await withRollback(t.db, async (tx) => {
       const { user } = await createUser(tx);
@@ -143,6 +169,36 @@ describe('RFC-75 R1 species_proposals', () => {
         code: UNIQUE_VIOLATION,
         constraint_name: 'species_proposals_open_name_idx',
       });
+    });
+  });
+
+  it('species_proposals_open_name_idx is partial: deciding a proposal frees its name (case-insensitively) for a new open one', async () => {
+    await withRollback(t.db, async (tx) => {
+      const { user } = await createUser(tx);
+      const name = `Testus liberatus-${tag()}`;
+      const [first] = await tx
+        .insert(speciesProposals)
+        .values({ proposedName: name, proposerId: user.id })
+        .returning();
+      await tx
+        .update(speciesProposals)
+        .set({
+          status: 'rejected',
+          decidedAt: new Date(),
+          decidedBy: user.id,
+          decisionNote: 'duplicate',
+        })
+        .where(eq(speciesProposals.id, first?.id ?? ''));
+
+      // The first row is now decided (status = 'rejected'), so it falls outside the
+      // partial index's `where status = 'open'` scope: a second OPEN proposal for the
+      // same name, in a different case, must be allowed. If the index were not
+      // partial (or mis-scoped), this insert would 23505 forever, even after rejection.
+      const [second] = await tx
+        .insert(speciesProposals)
+        .values({ proposedName: name.toUpperCase(), proposerId: user.id })
+        .returning();
+      expect(second).toMatchObject({ status: 'open', proposedName: name.toUpperCase() });
     });
   });
 
