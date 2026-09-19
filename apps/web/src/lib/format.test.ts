@@ -35,6 +35,16 @@ describe('RFC-13 R9 format helpers', () => {
     expect(formatNumber(0)).toBe('0');
   });
 
+  it('formatNumber falls back to three significant digits for a non-zero value below 0.001, so a measurement never renders as a false 0', () => {
+    expect(formatNumber(0.0004)).toBe('0.0004');
+    expect(formatNumber(0.000123)).toBe('0.000123');
+    expect(formatNumber(0.00000071)).toBe('0.00000071');
+    // Zero itself is not a small non-zero value: it stays exactly 0.
+    expect(formatNumber(0)).toBe('0');
+    // Negatives mirror positives instead of the misleading -0 the default path would give.
+    expect(formatNumber(-0.0004)).toBe('-0.0004');
+  });
+
   it('truncate leaves short text alone and ends long text with an ellipsis at the limit', () => {
     expect(truncate('short', 80)).toBe('short');
     const long = 'a'.repeat(100);

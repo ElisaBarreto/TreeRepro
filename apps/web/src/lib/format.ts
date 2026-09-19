@@ -50,10 +50,17 @@ export function formatDateTime(timestamp: string): string {
 
 /**
  * A number for display with thousands separators and at most three decimals
- * (`12,345` for a count, `1.25 mg` for a measurement).
+ * (`12,345` for a count, `1.25 mg` for a measurement). A non-zero value whose
+ * absolute value is below `0.001` would round to `0` under that rule — a
+ * false value, not a rounded one, since the measurement is real but too small
+ * to survive three decimal places — so that case instead shows three
+ * significant digits (`0.0004`, `0.000123`, `-0.0004`). Zero itself stays `0`.
  * @rfc RFC-13 R9
  */
 export function formatNumber(value: number): string {
+  if (value !== 0 && Math.abs(value) < 0.001) {
+    return value.toLocaleString('en-GB', { maximumSignificantDigits: 3 });
+  }
   return value.toLocaleString('en-GB', { maximumFractionDigits: 3 });
 }
 
