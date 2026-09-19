@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { fakeTaxonomyClient } from '../../test/helpers/taxonomy.ts';
 import {
   createTaxonomyClient,
   gbifToMatch,
@@ -73,6 +74,34 @@ describe('RFC-81 R2 gbifToMatch', () => {
       'NONE',
     );
   });
+
+  it('REGRESSION: a malformed 2xx body never throws — a best-effort mapper degrades, it does not 500 a proposal', () => {
+    // classification not an array at all
+    expect(() => gbifToMatch({ classification: 'not-an-array' })).not.toThrow();
+    expect(gbifToMatch({ classification: 'not-an-array' }).family).toBeNull();
+    // classification an array of non-object entries (null, a number, a string)
+    expect(() => gbifToMatch({ classification: [null, 1, 'x'] })).not.toThrow();
+    expect(gbifToMatch({ classification: [null, 1, 'x'] }).genus).toBeNull();
+    // the whole body is a scalar, not an object
+    expect(() => gbifToMatch('not-an-object')).not.toThrow();
+    expect(() => gbifToMatch(42)).not.toThrow();
+    expect(() => gbifToMatch(null)).not.toThrow();
+    // diagnostics/usage themselves malformed
+    expect(() => gbifToMatch({ usage: 'nope', diagnostics: 'nope' })).not.toThrow();
+    expect(gbifToMatch({ usage: 'nope', diagnostics: 'nope' })).toEqual({
+      matchType: 'NONE',
+      confidence: null,
+      usageKey: null,
+      scientificName: null,
+      canonicalName: null,
+      rank: null,
+      status: null,
+      family: null,
+      genus: null,
+      acceptedUsageKey: null,
+      note: null,
+    });
+  });
 });
 
 describe('RFC-81 R2 wcvpToMatch', () => {
@@ -113,6 +142,18 @@ describe('RFC-81 R2 wcvpToMatch', () => {
       acceptedUsageKey: null,
       note: null,
     });
+  });
+
+  it('REGRESSION: a malformed 2xx body never throws — a best-effort mapper degrades, it does not 500 a proposal', () => {
+    // results not an array at all
+    expect(() => wcvpToMatch({ results: 'not-an-array' })).not.toThrow();
+    expect(wcvpToMatch({ results: 'not-an-array' }).matchType).toBe('NONE');
+    // results an array of non-object entries (null, a number, a string)
+    expect(() => wcvpToMatch({ results: [null, 1, 'x'] })).not.toThrow();
+    // the whole body is a scalar, not an object
+    expect(() => wcvpToMatch('not-an-object')).not.toThrow();
+    expect(() => wcvpToMatch(42)).not.toThrow();
+    expect(() => wcvpToMatch(null)).not.toThrow();
   });
 
   it('REGRESSION (R-A): Pinus sylvestris returns MISAPPLIED before ACCEPTED — the first ACCEPTED row wins, not results[0]', () => {
@@ -310,5 +351,44 @@ describe('RFC-81 R1 verifyWcvpDataset', () => {
     });
     expect(key).toBeNull();
     expect(warnings.length).toBe(1);
+  });
+});
+
+describe('RFC-81 R3 fakeTaxonomyClient (apps/api/test/helpers/taxonomy.ts)', () => {
+  it('REGRESSION: the default (no answer registered) is a genuine no-match — two NONE matches, never the two-nulls "failed" shape', async () => {
+    // A real client's no-match is a TaxonMatch with matchType 'NONE' (NULL_MATCH),
+    // not `null` — `null` means the call failed. A fake whose default returns
+    // `{ backbone: null, wcvp: null, verdict: 'none' }` encodes a combination
+    // the real client can never produce (verdictOf only returns 'none' when
+    // at least one source answered), so every test reading that default would
+    // agree with a false model.
+    const client = fakeTaxonomyClient();
+    const result = await client.match('Name nobody registered an answer for');
+    expect(result.verdict).toBe('none');
+    expect(result.backbone).not.toBeNull();
+    expect(result.wcvp).not.toBeNull();
+    expect(result.backbone?.matchType).toBe('NONE');
+    expect(result.wcvp?.matchType).toBe('NONE');
+  });
+
+  it('failing still answers the real failed shape: both null, verdict failed', async () => {
+    const client = fakeTaxonomyClient();
+    client.failing = true;
+    expect(await client.match('anything')).toEqual({
+      backbone: null,
+      wcvp: null,
+      verdict: 'failed',
+    });
+  });
+
+  it('a registered answer for the exact name is returned verbatim', async () => {
+    const client = fakeTaxonomyClient();
+    const canned = {
+      backbone: gbifToMatch(fixture('backbone-exact')),
+      wcvp: null,
+      verdict: 'exact' as const,
+    };
+    client.answers.set('Quercus robur', canned);
+    expect(await client.match('Quercus robur')).toEqual(canned);
   });
 });

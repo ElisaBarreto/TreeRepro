@@ -28,6 +28,16 @@ const asString = (v: unknown): string | null => (typeof v === 'string' ? v : nul
 const asNumber = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 const asKey = (v: unknown): string | null =>
   typeof v === 'string' ? v : typeof v === 'number' ? String(v) : null;
+/**
+ * A malformed 2xx (GBIF answering with a shape we did not expect — a field
+ * that should be an array coming back as a string, an object, or an array
+ * with `null`/scalar entries) must degrade the mapper, never throw it: the
+ * lookup is best-effort (RFC-81 R1) and a throw here would 500 a
+ * contributor's proposal instead of falling back to a `NONE` match.
+ */
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const asRecord = (v: unknown): Record<string, unknown> =>
+  v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 
 /**
  * A note naming the matched rank when it is above species, and `null`
@@ -67,7 +77,7 @@ export function gbifToMatch(json: unknown): TaxonMatch {
     typeof rawType === 'string' && KNOWN_MATCH_TYPES.has(rawType) ? rawType : 'NONE'
   ) as TaxonMatch['matchType'];
   const usage = j.usage;
-  const classification = j.classification ?? [];
+  const classification = asArray(j.classification).map(asRecord);
   const family = asString(classification.find((c) => c.rank === 'FAMILY')?.name);
   const genus = asString(classification.find((c) => c.rank === 'GENUS')?.name);
   const rank = asString(usage?.rank);
@@ -125,10 +135,11 @@ const NULL_MATCH: TaxonMatch = {
  * @rfc RFC-81 R2
  */
 export function wcvpToMatch(json: unknown): TaxonMatch {
-  const results = (json as WcvpJson)?.results ?? [];
+  const results = asArray((json as WcvpJson)?.results).map(asRecord);
   if (results.length === 0) return NULL_MATCH;
-  const selected = results.find((r) => r.taxonomicStatus === 'ACCEPTED') ?? results[0];
-  const row = selected as WcvpRow;
+  const row: WcvpRow = asRecord(
+    results.find((r) => r.taxonomicStatus === 'ACCEPTED') ?? results[0],
+  );
   const rank = asString(row.rank);
   return {
     matchType: rank === 'SPECIES' ? 'EXACT' : 'HIGHERRANK',

@@ -12,7 +12,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 
 ## Rules
 
-- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, or a generic word for cross-cutting codes).
+- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, or a generic word for cross-cutting codes).
 - **R2** A code is never renamed, reused with a different meaning, or given a different status once published. Retiring a code keeps its row with "(retired)".
 - **R3** The catalog below is mirrored exactly by `ERROR_CODES` in `packages/contracts/src/error-codes.ts`; a test parses this table and fails on any difference.
 - **R4** Each code maps to exactly one HTTP status (RFC-11 R4).
@@ -95,3 +95,4 @@ None.
 - 2026-09-17 — PLOT_NOT_FOUND, PLOT_CODE_TAKEN, PLOT_SPECIES_EXISTS (RFC-67, plan 08b).
 - 2026-09-17 — DOI_LOOKUP_FAILED, REFERENCE_IS_PERSONAL (plan 09a).
 - 2026-09-19 — PROPOSAL_EXISTS, PROPOSAL_NOT_FOUND, PROPOSAL_DECIDED, TAXONOMY_LOOKUP_FAILED (RFC-75, RFC-81, plan 12c).
+- 2026-09-19 — R1's prefix list amended to admit `PROPOSAL_` and `TAXONOMY_`, added with the codes above but left off the list (code review).
