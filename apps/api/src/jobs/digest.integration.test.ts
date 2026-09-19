@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -21,6 +22,7 @@ import {
   computeDigest,
   DIGEST_LIST_LIMIT,
   DIGEST_MIN_INTERVAL_MS,
+  DIGEST_RUNNING_GUARD_MS,
   type DigestRunResult,
   type DigestWindow,
   digestRecipients,
@@ -65,6 +67,10 @@ const ANCHOR_DAYS = {
   runNotDue: 257,
   runRoundTrip: 263,
   runFailedSendMessage: 269,
+  runFailedSendAuth: 271,
+  runStillRunning: 277,
+  runStaleRunning: 281,
+  runQueryError: 283,
 } as const;
 
 const anchor = (daysAgo: number): Date => new Date(Date.now() - daysAgo * DAY);
@@ -608,6 +614,54 @@ async function digestRunCount(tx: DbTransaction): Promise<number> {
   return rows[0]?.n ?? 0;
 }
 
+/**
+ * A `digest` run opened at `startedAt` and never closed — exactly what a throw
+ * in `runDigest`'s tail leaves behind, once the sends have already gone out.
+ * @rfc RFC-74 R2
+ */
+async function seedRunningRun(tx: DbTransaction, startedAt: Date): Promise<string> {
+  const [row] = await tx
+    .insert(jobRuns)
+    .values({ kind: 'digest', startedAt, status: 'running' })
+    .returning({ id: jobRuns.id });
+  if (!row) throw new Error('seedRunningRun: no row');
+  return row.id;
+}
+
+/**
+ * The transaction with its `execute` replaced by a rejection, so a job's own
+ * queries fail while `job_runs` stays writable: a real query failure poisons
+ * the transaction and `finishRun` can then write nothing at all (which is what
+ * `retention.integration.test.ts` asserts), so the stored text could never be
+ * read back. Methods are bound to the real transaction; Drizzle's builders use
+ * private fields, which a bare `Reflect.get` through the proxy would break.
+ */
+function dbWithFailingQueries(tx: DbTransaction, error: Error): DbTransaction {
+  return new Proxy(tx, {
+    get(target, prop) {
+      if (prop === 'execute') return () => Promise.reject(error);
+      const value = Reflect.get(target, prop) as unknown;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+/**
+ * A Drizzle query error over the encrypted user columns, shaped exactly as the
+ * real one: the SQL and its bound parameters both as own properties and in the
+ * two-line message, with the driver error on `cause`.
+ */
+function queryErrorOverUsers(leaked: string): DrizzleQueryError {
+  const cause = Object.assign(new Error('permission denied for function pgp_sym_decrypt'), {
+    code: '42501',
+  });
+  return new DrizzleQueryError(
+    'select "users"."name", "users"."email" from "users" where "users"."email_bidx" = $1',
+    [leaked],
+    cause,
+  );
+}
+
 describe('RFC-74 R2, R5 runDigest', () => {
   const t = useTestDb();
 
@@ -811,7 +865,17 @@ describe('RFC-74 R2, R5 runDigest', () => {
       // call did not strip it. RFC-02 R7 redacts by key, not by value, so a
       // key-based guard alone would miss this.
       const leaked = 'someone@example.org';
-      mailer.failNext(new Error(`550 5.1.1 <${leaked}>: Recipient address rejected`));
+      // Shaped like nodemailer's own rejection: `code` and `responseCode` are
+      // set on the error ITSELF, with no `cause` — `createMailer` awaits
+      // `transport.sendMail` and never wraps — which is why reading a code
+      // only through `sanitizeError`'s cause path left this line with nothing
+      // but a name and a stack in production.
+      mailer.failNext(
+        Object.assign(new Error(`550 5.1.1 <${leaked}>: Recipient address rejected`), {
+          code: 'EENVELOPE',
+          responseCode: 550,
+        }),
+      );
       const { logger, lines } = captureLogger();
 
       const result = await runDigest({
@@ -824,13 +888,59 @@ describe('RFC-74 R2, R5 runDigest', () => {
       });
 
       expect(result).toMatchObject({ status: 'completed', failed: 1 });
-      const logs = lines as { msg: string }[];
+      const logs = lines as { msg: string; err?: { code?: string; responseCode?: number } }[];
       const failure = logs.find((l) => l.msg === 'digest send failed');
       expect(failure).toBeDefined();
       // The stack trace `sanitizeError` keeps is safe (node_modules paths of
       // its own carry an "@", e.g. `postgres@3.4.9`) — only the message,
       // where the address actually was, must be gone.
       expect(JSON.stringify(failure)).not.toContain(leaked);
+      // And the line must still SAY something. Asserting only the absence of
+      // the address is what let the line go contentless: with `message` gone
+      // and `code` read from a cause nodemailer never sets, every failed send
+      // of a nightly digest logged an identical name and stack, and an
+      // operator could not tell expired credentials from a timeout from one
+      // bad mailbox.
+      expect(failure?.err).toMatchObject({ code: 'EENVELOPE', responseCode: 550 });
+    });
+  });
+
+  it('logs the diagnosis of an auth failure, which carries no address to leak at all (R5)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runFailedSendAuth);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      // The scenario that made this worth fixing: SMTP credentials expire and
+      // every send of every nightly digest fails the same way. Nothing here is
+      // address-shaped, so a redaction that keeps nothing keeps nothing useful.
+      mailer.failNext(
+        Object.assign(new Error('Invalid login: 535 Authentication credentials invalid'), {
+          code: 'EAUTH',
+          responseCode: 535,
+        }),
+      );
+      const { logger, lines } = captureLogger();
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      expect(result).toMatchObject({ status: 'completed', failed: 1 });
+      const logs = lines as { msg: string; err?: Record<string, unknown> }[];
+      const failure = logs.find((l) => l.msg === 'digest send failed');
+      expect(failure?.err).toMatchObject({ name: 'Error', code: 'EAUTH', responseCode: 535 });
+      // The message is still dropped: the fix restores diagnosis, it does not
+      // reopen the channel the address travelled down.
+      expect(JSON.stringify(failure)).not.toContain('Invalid login');
     });
   });
 
@@ -944,7 +1054,9 @@ describe('RFC-74 R2, R5 runDigest', () => {
       expect(typeof last?.detail.windowEnd).toBe('string');
 
       const nextTick = new Date((last?.finishedAt?.getTime() ?? 0) + DIGEST_MIN_INTERVAL_MS);
-      const next = isDigestDue(last, nextTick);
+      // No run is left `running` in this transaction — the tick closed its own
+      // row — so the guard of R2's amendment has nothing to hold back.
+      const next = isDigestDue(last, nextTick, await latestRun(tx, 'digest', ['running']));
 
       expect(next.due).toBe(true);
       // The window the reader hands out starts exactly where the writer
@@ -952,6 +1064,116 @@ describe('RFC-74 R2, R5 runDigest', () => {
       expect(next.windowStart.getTime()).toBe(now.getTime());
       // And that is not the fallback answering by coincidence.
       expect(next.windowStart.getTime()).not.toBe(nextTick.getTime() - 24 * HOUR);
+    });
+  });
+
+  it('a digest run left running minutes ago makes the next tick not due (R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runStillRunning);
+      const now = new Date(at.getTime() + HOUR);
+      // The exact state a throw after the sends leaves behind: a success from
+      // two days ago, well past DIGEST_MIN_INTERVAL_MS and still carrying the
+      // window this run already covered, plus a run row nothing will close.
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      await twoRecipients(tx);
+      await seedRunningRun(tx, new Date(now.getTime() - 5 * 60_000));
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+      const auditBefore = new Set(await digestAuditIds(tx));
+      const runsBefore = await digestRunCount(tx);
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      // Without the guard this is `completed` with two e-mails out — the same
+      // window, to the same managers, an hour after the run that already sent
+      // it, and again every hour until the database heals.
+      expect(result).toMatchObject({ status: 'not_due', runId: null, recipients: 0, failed: 0 });
+      expect(mailer.sent).toEqual([]);
+      expect(await digestRunCount(tx)).toBe(runsBefore);
+      expect(new Set(await digestAuditIds(tx))).toEqual(auditBefore);
+    });
+  });
+
+  it('a digest run left running past the guard window does not postpone for ever (R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runStaleRunning);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      const recipients = await twoRecipients(tx);
+      // Nothing ever closes this row. A guard that merely asked "is any run
+      // still running" would silence the digest permanently.
+      await seedRunningRun(tx, new Date(now.getTime() - (DIGEST_RUNNING_GUARD_MS + HOUR)));
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(mailer.sent.map((m) => m.to)).toEqual(
+        expect.arrayContaining(recipients.map((r) => r.email)),
+      );
+    });
+  });
+
+  it('stores no SQL and no parameters in job_runs.error when a query fails (R1)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const at = anchor(ANCHOR_DAYS.runQueryError);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      const mailer = createFakeMailer();
+      const { logger } = captureLogger();
+      // `digestRecipients` selects the ENCRYPTED `users.name` / `users.email`
+      // columns, so a decryption or keyring failure inside `runDigest`'s try
+      // block throws a query error whose message is the SQL over those columns
+      // and its bound values. `job_runs.error` is durable, plaintext at rest
+      // and read straight back out by the health page of RFC-52.
+      const leaked = 'ada@example.org';
+      const error = queryErrorOverUsers(leaked);
+
+      await expect(
+        runDigest({
+          db: dbWithFailingQueries(tx, error),
+          mailer: mailer.mailer,
+          appOrigin: APP_ORIGIN,
+          logger,
+          enabled: true,
+          now,
+        }),
+      ).rejects.toBe(error);
+
+      // The run this tick opened, read back whatever its status.
+      const run = await latestRun(tx, 'digest');
+      expect(run).toMatchObject({ kind: 'digest', status: 'failed' });
+      const stored = run?.error ?? '';
+      expect(stored).not.toContain(leaked);
+      expect(stored).not.toContain('Failed query:');
+      expect(stored).not.toContain('params:');
+      expect(stored).not.toContain('users');
+      // Safe, but not empty: the driver's SQLSTATE and its own one-line
+      // message are what the health page has to work with. (Drizzle does not
+      // set `name` on its query error, so the class name is not among them —
+      // `errors.test.ts` pins that.)
+      expect(stored).toContain('42501');
+      expect(stored).toContain('permission denied for function pgp_sym_decrypt');
+      expect(mailer.sent).toEqual([]);
     });
   });
 });

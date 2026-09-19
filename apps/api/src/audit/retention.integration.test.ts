@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import { unwrapDbError, useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
@@ -82,6 +83,48 @@ describe('RFC-42 R4 purgeAudit records its own run', () => {
       expect(created).toHaveLength(1);
       expect(created[0]).toMatchObject({ status: 'completed', detail: { purged }, error: null });
       expect(created[0]?.finishedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  it('RFC-74 R1 stores no SQL and no parameters in job_runs.error when the purge query fails', async () => {
+    await withRollback(t.db, async (tx) => {
+      // `execute` alone is replaced, so `audit_log_purge()` fails while the
+      // transaction stays writable and `finishRun` can record the run. A real
+      // SQL failure aborts the transaction (the suite below), which is exactly
+      // why the stored text cannot be read back any other way. Methods are
+      // bound to the real transaction: Drizzle's builders use private fields,
+      // which a bare `Reflect.get` through the proxy would break.
+      const leaked = 'secret-parameter';
+      const cause = Object.assign(new Error('permission denied for function audit_log_purge'), {
+        code: '42501',
+      });
+      const error = new DrizzleQueryError('select audit_log_purge($1) as purged', [leaked], cause);
+      const failing = new Proxy(tx, {
+        get(target, prop) {
+          if (prop === 'execute') return () => Promise.reject(error);
+          const value = Reflect.get(target, prop) as unknown;
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const audits = () => tx.select().from(jobRuns).where(eq(jobRuns.kind, 'audit_purge'));
+      const before = new Set((await audits()).map((r) => r.id));
+
+      await expect(purgeAudit(failing)).rejects.toBe(error);
+
+      const created = (await audits()).filter((r) => !before.has(r.id));
+      expect(created).toHaveLength(1);
+      expect(created[0]?.status).toBe('failed');
+      // `job_runs.error` is durable, plaintext at rest and read straight back
+      // out by the health page of RFC-52, so a raw `error.message` would park
+      // the query and its bound values in front of every operator for a year.
+      const stored = created[0]?.error ?? '';
+      expect(stored).not.toContain(leaked);
+      expect(stored).not.toContain('Failed query:');
+      expect(stored).not.toContain('params:');
+      // Safe, but not empty: the SQLSTATE and the driver's own one-line
+      // message survive.
+      expect(stored).toContain('42501');
+      expect(stored).toContain('permission denied for function audit_log_purge');
     });
   });
 });

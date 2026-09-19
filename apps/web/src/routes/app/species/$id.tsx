@@ -26,7 +26,17 @@ function SpeciesRoute() {
       key={id}
       id={id}
       missing={missing === true}
-      onMissingChange={(next) => navigate({ search: next ? { missing: true } : {}, replace: true })}
+      // The toggle owns `missing` and nothing else: every other param is
+      // spread through. `record` is the digest e-mail's deep link (R5), and
+      // replacing the whole search dropped it on the first toggle, which left
+      // the drawer open (it is seeded state) but the URL no longer
+      // copy-pasteable.
+      onMissingChange={(next) =>
+        navigate({
+          search: (prev) => ({ ...prev, ...(next ? { missing: true } : { missing: undefined }) }),
+          replace: true,
+        })
+      }
       initialRecordId={record}
     />
   );

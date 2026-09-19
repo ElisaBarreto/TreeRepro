@@ -4,6 +4,7 @@ import {
   DIGEST_FIRST_TICK_MS,
   DIGEST_LIST_LIMIT,
   DIGEST_MIN_INTERVAL_MS,
+  DIGEST_RUNNING_GUARD_MS,
   DIGEST_TICK_MS,
   type DigestCounts,
   type DigestRunResult,
@@ -40,11 +41,11 @@ describe('RFC-74 R2 isDigestDue', () => {
   });
 
   it('the first run ever is due and covers the last 24 h', () => {
-    expect(isDigestDue(null, now)).toEqual({ due: true, windowStart: ago(24 * HOUR) });
+    expect(isDigestDue(null, now, null)).toEqual({ due: true, windowStart: ago(24 * HOUR) });
   });
 
   it('a success 23 h ago postpones the tick', () => {
-    expect(isDigestDue(success(23 * HOUR), now).due).toBe(false);
+    expect(isDigestDue(success(23 * HOUR), now, null).due).toBe(false);
   });
 
   it('a success 24 h ago is due, and the window starts where that run stopped', () => {
@@ -55,14 +56,14 @@ describe('RFC-74 R2 isDigestDue', () => {
     // `runs.integration.test.ts`, against a real `job_runs` table; nothing at
     // this level can verify it, since a failed run cannot even be expressed here.
     const last = success(24 * HOUR);
-    expect(isDigestDue(last, now)).toEqual({
+    expect(isDigestDue(last, now, null)).toEqual({
       due: true,
       windowStart: new Date(last.detail.windowEnd),
     });
   });
 
   it('a success 23 h 35 min ago is already due: the threshold is not a hard-coded 24 h', () => {
-    expect(isDigestDue(success(23.5 * HOUR + 5 * 60_000), now).due).toBe(true);
+    expect(isDigestDue(success(23.5 * HOUR + 5 * 60_000), now, null).due).toBe(true);
   });
 
   it('a success that recorded no window end falls back to the last 24 h', () => {
@@ -70,21 +71,71 @@ describe('RFC-74 R2 isDigestDue', () => {
     // `{ reason: 'disabled' }` and is a `skipped` run, so it is a `lastSuccess`
     // candidate carrying no window at all.
     expect(
-      isDigestDue({ finishedAt: ago(25 * HOUR), detail: { reason: 'disabled' } }, now),
+      isDigestDue({ finishedAt: ago(25 * HOUR), detail: { reason: 'disabled' } }, now, null),
     ).toEqual({ due: true, windowStart: ago(24 * HOUR) });
   });
 
   it('a window end that is not a usable timestamp falls back to the last 24 h', () => {
     expect(
-      isDigestDue({ finishedAt: ago(25 * HOUR), detail: { windowEnd: 'not a date' } }, now),
+      isDigestDue({ finishedAt: ago(25 * HOUR), detail: { windowEnd: 'not a date' } }, now, null),
     ).toEqual({ due: true, windowStart: ago(24 * HOUR) });
   });
 
   it('a run that never finished cannot postpone anything', () => {
-    expect(isDigestDue({ finishedAt: null, detail: {} }, now)).toEqual({
+    expect(isDigestDue({ finishedAt: null, detail: {} }, now, null)).toEqual({
       due: true,
       windowStart: ago(24 * HOUR),
     });
+  });
+});
+
+describe('RFC-74 R2 isDigestDue guards against a run left running', () => {
+  /** A run opened `ms` ago and never closed. */
+  const inFlight = (ms: number) => ({ startedAt: ago(ms) });
+
+  it('the guard is two ticks, so it outlasts the very next tick rather than landing on it', () => {
+    expect(DIGEST_RUNNING_GUARD_MS).toBe(2 * DIGEST_TICK_MS);
+    // The load-bearing half: the guard is measured from `started_at` and the
+    // next tick fires a full tick after the previous one did, so a guard of
+    // exactly one tick would expire on the boundary and suppress nothing.
+    expect(DIGEST_RUNNING_GUARD_MS).toBeGreaterThan(DIGEST_TICK_MS);
+    // And it stays far below the success interval: a stuck row must cost one
+    // repeated digest, never the digest itself.
+    expect(DIGEST_RUNNING_GUARD_MS).toBeLessThan(DIGEST_MIN_INTERVAL_MS);
+  });
+
+  it('a run still running from minutes ago postpones an otherwise due tick', () => {
+    // Exactly the state a throw in `runDigest`'s tail leaves behind: the sends
+    // are done, the last success is a day old and still due, and the run row
+    // never reached a terminal status.
+    const last = success(24 * HOUR);
+    expect(isDigestDue(last, now, null).due).toBe(true);
+    expect(isDigestDue(last, now, inFlight(5 * 60_000)).due).toBe(false);
+  });
+
+  it('postpones the very first tick too, when no success exists at all', () => {
+    expect(isDigestDue(null, now, inFlight(5 * 60_000)).due).toBe(false);
+  });
+
+  it('holds across the next tick, which is when the duplicate would have gone out', () => {
+    expect(isDigestDue(success(24 * HOUR), now, inFlight(DIGEST_TICK_MS)).due).toBe(false);
+  });
+
+  it('a running run older than the guard postpones nothing: a stuck row cannot disable the digest', () => {
+    const last = success(24 * HOUR);
+    expect(isDigestDue(last, now, inFlight(DIGEST_RUNNING_GUARD_MS)).due).toBe(true);
+    expect(isDigestDue(last, now, inFlight(7 * 24 * HOUR)).due).toBe(true);
+  });
+
+  it('never moves the window: a postponed tick still reads the last success back', () => {
+    const last = success(24 * HOUR);
+    expect(isDigestDue(last, now, inFlight(5 * 60_000)).windowStart).toEqual(
+      new Date(last.detail.windowEnd),
+    );
+  });
+
+  it('a run still running does not make a tick due that the interval already refused', () => {
+    expect(isDigestDue(success(23 * HOUR), now, inFlight(5 * 60_000)).due).toBe(false);
   });
 });
 

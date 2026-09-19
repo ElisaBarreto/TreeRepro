@@ -8,7 +8,7 @@ import { rolePermissions } from '../db/schema/role-permissions.ts';
 import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { users } from '../db/schema/users.ts';
-import { sanitizeError } from '../http/errors.ts';
+import { safeErrorSummary, sanitizeError } from '../http/errors.ts';
 import type { Logger } from '../logger.ts';
 import type { Mailer } from '../mail/mailer.ts';
 import { digestEmail } from '../mail/templates.ts';
@@ -21,6 +21,34 @@ import { finishRun, latestRun, startRun } from './runs.ts';
  * @rfc RFC-74 R2
  */
 export const DIGEST_MIN_INTERVAL_MS = 23.5 * 60 * 60 * 1000;
+
+/** How often the timer wakes up. @rfc RFC-74 R2 */
+export const DIGEST_TICK_MS = 60 * 60 * 1000;
+
+/** How long the first tick waits after start. @rfc RFC-74 R2 */
+export const DIGEST_FIRST_TICK_MS = 60_000;
+
+/**
+ * How long a `digest` run left `running` postpones the next tick.
+ *
+ * A run that throws in its tail — `recordAudit` or `finishRun`, both AFTER
+ * every e-mail has gone out — never reaches a terminal status, so the row
+ * stays `running` for ever and `latestRun(db, 'digest', ['completed',
+ * 'skipped'])` keeps answering the PREVIOUS success. That success finished
+ * more than `DIGEST_MIN_INTERVAL_MS` ago and still carries the old
+ * `windowEnd`, so without this guard the next tick recomputes the IDENTICAL
+ * window and mails every manager again — hourly, for as long as the database
+ * is unwell. R2's "a restart never doubles it" has to hold for a throw too.
+ *
+ * Two ticks, not one: the guard is compared against `started_at`, and the very
+ * next tick fires a full `DIGEST_TICK_MS` after the previous one did, so a
+ * one-tick window lands exactly on its own boundary and buys nothing. Two is
+ * the smallest value with margin. It is deliberately far below
+ * `DIGEST_MIN_INTERVAL_MS`: a row stuck `running` for ever must cost at most
+ * one repeated digest, never the digest itself.
+ * @rfc RFC-74 R2
+ */
+export const DIGEST_RUNNING_GUARD_MS = 2 * DIGEST_TICK_MS;
 
 /** The window of the first run ever, and of any run whose predecessor left none. @rfc RFC-74 R2 */
 const DIGEST_FIRST_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -81,12 +109,24 @@ export interface Digest {
  * The newest `digest` run that is `completed` or `skipped` — what
  * `latestRun(db, 'digest', ['completed', 'skipped'])` answers, so a `JobRunRow`
  * is passed straight in. A `failed` or `running` run is not one of these and
- * never postpones a tick.
+ * never sets the window; a `running` one postpones the tick through
+ * `DigestInFlightRun` instead.
  * @rfc RFC-74 R2
  */
 export interface DigestLastSuccess {
   finishedAt: Date | null;
   detail: Record<string, unknown>;
+}
+
+/**
+ * The newest `digest` run still `running` — what
+ * `latestRun(db, 'digest', ['running'])` answers, so a `JobRunRow` is passed
+ * straight in. Only `started_at` matters: such a run has no `finished_at` by
+ * definition, and no window to hand on.
+ * @rfc RFC-74 R2
+ */
+export interface DigestInFlightRun {
+  startedAt: Date;
 }
 
 /** One e-mail goes to each of these; the name and the address are decrypted (RFC-40 R8). @rfc RFC-74 R4 */
@@ -104,19 +144,32 @@ export interface DigestRecipient {
  * window end — a `DIGEST_ENABLED=false` tick is `skipped` with
  * `detail = { reason: 'disabled' }` (R6), so a `lastSuccess` without a window
  * is an ordinary state, not a corruption.
+ *
+ * `inFlight` is the second half of R2's "a restart never doubles it": a run
+ * that is still `running` and younger than `DIGEST_RUNNING_GUARD_MS` postpones
+ * this tick whatever the last success says, because that run may have mailed
+ * already. `null` is not optional — it must be passed deliberately, for the
+ * same reason `RunDigestInput.enabled` is required: the value that decides
+ * whether mail goes out must never be able to fail open by omission.
  * @rfc RFC-74 R2, R6
  */
 export function isDigestDue(
   lastSuccess: DigestLastSuccess | null,
   now: Date,
+  inFlight: DigestInFlightRun | null,
 ): { due: boolean; windowStart: Date } {
   const fallback = new Date(now.getTime() - DIGEST_FIRST_WINDOW_MS);
+  // A stale `running` row — one nothing will ever close — stops postponing
+  // once it ages past the guard, so a single stuck row can never disable the
+  // digest for good.
+  const running =
+    inFlight !== null && now.getTime() - inFlight.startedAt.getTime() < DIGEST_RUNNING_GUARD_MS;
   if (lastSuccess === null || lastSuccess.finishedAt === null)
-    return { due: true, windowStart: fallback };
+    return { due: !running, windowStart: fallback };
   const recorded = lastSuccess.detail.windowEnd;
   const windowEnd = typeof recorded === 'string' ? new Date(recorded) : null;
   return {
-    due: now.getTime() - lastSuccess.finishedAt.getTime() >= DIGEST_MIN_INTERVAL_MS,
+    due: !running && now.getTime() - lastSuccess.finishedAt.getTime() >= DIGEST_MIN_INTERVAL_MS,
     windowStart: windowEnd && !Number.isNaN(windowEnd.getTime()) ? windowEnd : fallback,
   };
 }
@@ -317,12 +370,6 @@ export async function digestRecipients(db: DbExecutor): Promise<DigestRecipient[
   return [...byId.values()];
 }
 
-/** How often the timer wakes up. @rfc RFC-74 R2 */
-export const DIGEST_TICK_MS = 60 * 60 * 1000;
-
-/** How long the first tick waits after start. @rfc RFC-74 R2 */
-export const DIGEST_FIRST_TICK_MS = 60_000;
-
 /** `not_due` is the tick that wrote no run at all. @rfc RFC-74 R2 */
 export type DigestRunStatus = 'completed' | 'skipped' | 'not_due';
 
@@ -376,8 +423,14 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
     return { runId, status: 'skipped', recipients: 0, failed: 0 };
   }
 
-  const lastSuccess = await latestRun(db, 'digest', ['completed', 'skipped']);
-  const { due, windowStart } = isDigestDue(lastSuccess, now);
+  // Two reads, not one: the last success sets the window, and the newest run
+  // still `running` says whether a tick this hour would be a repeat of one
+  // that already mailed (R2, `DIGEST_RUNNING_GUARD_MS`).
+  const [lastSuccess, inFlight] = await Promise.all([
+    latestRun(db, 'digest', ['completed', 'skipped']),
+    latestRun(db, 'digest', ['running']),
+  ]);
+  const { due, windowStart } = isDigestDue(lastSuccess, now, inFlight);
   if (!due) return { runId: null, status: 'not_due', recipients: 0, failed: 0 };
 
   const window: DigestWindow = { start: windowStart, end: now };
@@ -430,13 +483,21 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
         // The recipient is named by id, never an address — but `sanitizeError`
         // keeps `err.message` verbatim, and RFC-02 R7 redacts by KEY, not by
         // value: a real SMTP rejection ("550 5.1.1 <addr>: Recipient address
-        // rejected") would put a live address in `message`. `stack` is safe
-        // to keep (its first, message-bearing line is already filtered out
-        // by `sanitizeError`); only `message` is dropped here.
+        // rejected") would put a live address in `message`, so `message` is
+        // dropped here.
+        //
+        // `code` and `responseCode` take its place rather than leaving the
+        // line contentless. Both are fixed tokens nodemailer sets on the error
+        // itself — `EAUTH`, `ETIMEDOUT`, `EENVELOPE`, and the integer SMTP
+        // reply status — so neither can carry an address, and together they
+        // are what tells expired credentials apart from a five-second timeout
+        // apart from one bad mailbox when a nightly digest logs `failed: n`.
+        // `stack` is safe to keep as well: its first, message-bearing line is
+        // already filtered out by `sanitizeError`.
         const error = err instanceof Error ? err : new Error(String(err));
-        const { name, code, stack } = sanitizeError(error);
+        const { name, code, responseCode, stack } = sanitizeError(error);
         logger.error(
-          { err: { name, code, stack }, recipientId: recipient.id },
+          { err: { name, code, responseCode, stack }, recipientId: recipient.id },
           'digest send failed',
         );
       }
@@ -461,7 +522,16 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
     const error = err instanceof Error ? err : new Error(String(err));
     // Best effort, exactly as `purgeAudit` (RFC-42 R4): the run row is a
     // trace, and the job's own error is what the caller must see.
-    await finishRun(db, runId, { status: 'failed', error: error.message }).catch(() => undefined);
+    //
+    // `safeErrorSummary`, never `error.message`: anything in this try block
+    // can throw a Drizzle query error, and `digestRecipients` queries the
+    // ENCRYPTED `users.name` / `users.email` columns, so the raw message is
+    // "Failed query: <sql>\nparams: <values>" over exactly those. The column
+    // is durable, plaintext at rest and read back by the health page of
+    // RFC-52; the rethrow below still carries the whole error to the log.
+    await finishRun(db, runId, { status: 'failed', error: safeErrorSummary(error) }).catch(
+      () => undefined,
+    );
     throw error;
   }
 }

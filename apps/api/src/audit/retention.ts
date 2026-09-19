@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/client.ts';
-import { sanitizeError } from '../http/errors.ts';
+import { safeErrorSummary, sanitizeError } from '../http/errors.ts';
 import { finishRun, startRun } from '../jobs/runs.ts';
 import type { Logger } from '../logger.ts';
 
@@ -24,7 +24,14 @@ export async function purgeAudit(db: DbExecutor): Promise<number> {
     // Best effort: the run row is a trace, and a purge that failed mid
     // transaction leaves that transaction unable to accept the UPDATE. The
     // purge's own error is what the caller must see.
-    await finishRun(db, runId, { status: 'failed', error: error.message }).catch(() => undefined);
+    //
+    // `safeErrorSummary`, never `error.message`: a Drizzle query error's
+    // message is "Failed query: <sql>\nparams: <values>", and `job_runs.error`
+    // is durable, plaintext at rest and read back by the health page of
+    // RFC-52. The rethrow below still carries the whole error to the caller.
+    await finishRun(db, runId, { status: 'failed', error: safeErrorSummary(error) }).catch(
+      () => undefined,
+    );
     throw error;
   }
 }
