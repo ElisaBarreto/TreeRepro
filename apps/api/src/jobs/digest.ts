@@ -12,7 +12,7 @@ import { safeErrorSummary, sanitizeError } from '../http/errors.ts';
 import type { Logger } from '../logger.ts';
 import type { Mailer } from '../mail/mailer.ts';
 import { digestEmail } from '../mail/templates.ts';
-import { finishRun, latestRun, startRun } from './runs.ts';
+import { finishRun, latestRun, recordRunDetail, startRun } from './runs.ts';
 
 /**
  * How long a successful digest postpones the next one. The timer ticks hourly,
@@ -194,6 +194,54 @@ export function isDigestDue(
       !recentAttempt && now.getTime() - lastSuccess.finishedAt.getTime() >= DIGEST_MIN_INTERVAL_MS,
     windowStart: windowEnd && !Number.isNaN(windowEnd.getTime()) ? windowEnd : fallback,
   };
+}
+
+/** The `detail.phase` a run records once it is about to mail. @rfc RFC-74 R2 */
+const DIGEST_SENDING_PHASE = 'sending';
+
+/**
+ * The parts of an unsuccessful run's `job_runs` row that say whether it had
+ * begun mailing — a `JobRunRow` is passed straight in.
+ * @rfc RFC-74 R2
+ */
+export interface DigestAttemptDetail {
+  id: string;
+  detail: Record<string, unknown>;
+}
+
+/**
+ * The id of the run this one repeats, or null.
+ *
+ * A repeat is a run covering a window a previous one had ALREADY begun
+ * mailing: that run recorded `phase: 'sending'` with its own `windowStart`
+ * immediately before its send loop, and this run is about to start from the
+ * same instant. The same starting point means the same ground.
+ *
+ * `detail` is read back as `unknown` and both fields are checked, exactly as
+ * `isDigestDue` treats `windowEnd`: a jsonb column can hold anything, and a
+ * shape that fails silently here would make every repeat invisible again.
+ *
+ * KNOWN, DELIBERATE FALSE POSITIVE: a run that threw on its very FIRST send
+ * also recorded `phase: 'sending'`, so its successor calls itself a repeat
+ * although nobody received anything. Narrowing that would mean tracking
+ * delivery per recipient; the trade is taken on purpose, because a spurious
+ * resend line costs a reader one sentence while a missing one defeats the
+ * whole point of announcing it (R2).
+ *
+ * Only the NEWEST unsuccessful run is compared. With two stacked failures the
+ * third run names the second, not the first; every participant stays
+ * discoverable as a `sending` row carrying the same `windowStart`.
+ * @rfc RFC-74 R2, R5
+ */
+export function repeatedRunId(
+  lastAttempt: DigestAttemptDetail | null,
+  windowStart: Date,
+): string | null {
+  if (lastAttempt === null) return null;
+  if (lastAttempt.detail.phase !== DIGEST_SENDING_PHASE) return null;
+  const recorded = lastAttempt.detail.windowStart;
+  if (typeof recorded !== 'string' || recorded !== windowStart.toISOString()) return null;
+  return lastAttempt.id;
 }
 
 /**
@@ -472,6 +520,11 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
     windowEnd: window.end.toISOString(),
   };
 
+  // Decided before the run even opens, from the attempt already fetched above:
+  // a previous run that recorded `phase: 'sending'` over this same
+  // `windowStart` had begun mailing it (R2).
+  const repeatOf = repeatedRunId(lastAttempt, window.start);
+
   const runId = await startRun(db, 'digest');
   try {
     const digest = await computeDigest(db, window);
@@ -497,7 +550,33 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
         'digest has activity but no recipients',
       );
     }
-    const mail = digestEmail({ digest, appOrigin, date: windowDetail.windowEnd.slice(0, 10) });
+    const mail = digestEmail({
+      digest,
+      appOrigin,
+      date: windowDetail.windowEnd.slice(0, 10),
+      resent: repeatOf !== null,
+    });
+    if (repeatOf !== null) {
+      // R2: the repeat is not prevented — resending beats risking a skipped
+      // window — but it must never be silent. Three channels, because each
+      // reaches a different reader: the operator's log now, the health page
+      // of RFC-52 through `detail`, and the audit trail through `metadata`.
+      logger.warn(
+        {
+          runId,
+          repeatOf,
+          windowStart: windowDetail.windowStart,
+          windowEnd: windowDetail.windowEnd,
+        },
+        'digest repeats an unfinished run',
+      );
+    }
+    // The last thing before the first e-mail, and deliberately not at
+    // `startRun`: this row is what tells the NEXT run that this one had begun
+    // mailing. A run that dies before this line never mailed, and must not be
+    // read as a repeat (R2). `finishRun` replaces `detail` wholesale below, so
+    // `phase` never survives into a finished row.
+    await recordRunDetail(db, runId, { ...windowDetail, phase: 'sending' });
     let failed = 0;
     for (const recipient of recipients) {
       try {
@@ -534,13 +613,27 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
     await recordAudit(db, {
       actorUserId: null,
       action: 'digest.sent',
-      metadata: { recipients: recipients.length, failed, ...windowDetail },
+      // `repeatOf` is a uuid, so `assertSafeMetadata` (RFC-41 R7) accepts the
+      // key and the value carries no PII. Omitted entirely on an ordinary run
+      // rather than written as null, so its presence is the signal.
+      metadata: {
+        recipients: recipients.length,
+        failed,
+        ...windowDetail,
+        ...(repeatOf === null ? {} : { repeatOf }),
+      },
     });
     // R5: the run completes once every send has been ATTEMPTED, so a partial
     // failure is `completed` with `failed: n`, never a `failed` run.
     await finishRun(db, runId, {
       status: 'completed',
-      detail: { ...windowDetail, recipients: recipients.length, failed, counts: digest.counts },
+      detail: {
+        ...windowDetail,
+        recipients: recipients.length,
+        failed,
+        counts: digest.counts,
+        ...(repeatOf === null ? {} : { repeatOf }),
+      },
     });
     return { runId, status: 'completed', recipients: recipients.length, failed };
   } catch (err) {

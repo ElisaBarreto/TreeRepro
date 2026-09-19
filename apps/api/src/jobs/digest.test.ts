@@ -10,6 +10,7 @@ import {
   type DigestRunResult,
   hasActivity,
   isDigestDue,
+  repeatedRunId,
   startDigestTimer,
 } from './digest.ts';
 
@@ -150,6 +151,49 @@ describe('RFC-74 R2 isDigestDue guards against a run that recorded no success', 
 
   it('a run still running does not make a tick due that the interval already refused', () => {
     expect(isDigestDue(success(23 * HOUR), now, attempt(5 * 60_000)).due).toBe(false);
+  });
+});
+
+describe('RFC-74 R2 repeatedRunId', () => {
+  const WINDOW_START = new Date('2026-09-17T06:00:00.000Z');
+  const PREVIOUS = '018f2a00-0000-7000-8000-00000000000a';
+  const sending = (windowStart: Date) => ({
+    id: PREVIOUS,
+    detail: {
+      windowStart: windowStart.toISOString(),
+      windowEnd: now.toISOString(),
+      phase: 'sending',
+    },
+  });
+
+  it('names the previous run when it reached the send phase over the same window', () => {
+    expect(repeatedRunId(sending(WINDOW_START), WINDOW_START)).toBe(PREVIOUS);
+  });
+
+  it('is null when there is no unsuccessful run at all', () => {
+    expect(repeatedRunId(null, WINDOW_START)).toBeNull();
+  });
+
+  it('is null when the previous run never reached the send phase', () => {
+    // It died in `computeDigest` or `digestRecipients`: its detail is still
+    // empty, so nobody was mailed and this run is a fresh attempt, not a
+    // repeat. This is why the phase is recorded before the loop and not at
+    // `startRun`.
+    expect(repeatedRunId({ id: PREVIOUS, detail: {} }, WINDOW_START)).toBeNull();
+  });
+
+  it('is null when the previous run was mailing a different window', () => {
+    expect(repeatedRunId(sending(ago(48 * HOUR)), WINDOW_START)).toBeNull();
+  });
+
+  it('ignores a windowStart that is not a string, exactly as isDigestDue does', () => {
+    const odd = { id: PREVIOUS, detail: { windowStart: WINDOW_START, phase: 'sending' } };
+    expect(repeatedRunId(odd, WINDOW_START)).toBeNull();
+  });
+
+  it('ignores a phase it does not know', () => {
+    const detail = { windowStart: WINDOW_START.toISOString(), phase: 'computing' };
+    expect(repeatedRunId({ id: PREVIOUS, detail }, WINDOW_START)).toBeNull();
   });
 });
 

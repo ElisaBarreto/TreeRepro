@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { jobRuns } from '../db/schema/job-runs.ts';
-import { finishRun, latestRun, startRun } from './runs.ts';
+import { finishRun, latestRun, recordRunDetail, startRun } from './runs.ts';
 
 const HOUR = 3_600_000;
 
@@ -56,6 +56,52 @@ describe('RFC-74 R1 startRun / finishRun', () => {
       const [row] = await tx.select().from(jobRuns).where(eq(jobRuns.id, id));
       expect(row).toMatchObject({ status: 'failed', error: 'mailer unreachable', detail: {} });
       expect(row?.finishedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  it('recordRunDetail writes detail while leaving the run open (RFC-74 R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const id = await startRun(tx, 'digest');
+      await recordRunDetail(tx, id, { windowStart: 'a', windowEnd: 'b', phase: 'sending' });
+      const [row] = await tx.select().from(jobRuns).where(eq(jobRuns.id, id));
+      // The whole point: the run is still `running` and still unfinished, so
+      // nothing about this write can be mistaken for a terminal state.
+      expect(row).toMatchObject({
+        status: 'running',
+        error: null,
+        detail: { windowStart: 'a', windowEnd: 'b', phase: 'sending' },
+      });
+      expect(row?.finishedAt).toBeNull();
+      // And `finishRun` replaces it wholesale afterwards: `phase` never
+      // survives into a finished row.
+      await finishRun(tx, id, { status: 'completed', detail: { windowEnd: 'b', recipients: 2 } });
+      const [done] = await tx.select().from(jobRuns).where(eq(jobRuns.id, id));
+      expect(done?.detail).toEqual({ windowEnd: 'b', recipients: 2 });
+    });
+  });
+
+  it('a failed close keeps the detail the run had already recorded (RFC-74 R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const id = await startRun(tx, 'digest');
+      await recordRunDetail(tx, id, { windowStart: 'a', phase: 'sending' });
+      // No detail passed: the run threw, and its own failure must not erase
+      // the evidence that it had begun mailing — that record is the whole
+      // input to the next run's repeat check.
+      await finishRun(tx, id, { status: 'failed', error: 'audit insert rejected' });
+      const [row] = await tx.select().from(jobRuns).where(eq(jobRuns.id, id));
+      expect(row).toMatchObject({
+        status: 'failed',
+        error: 'audit insert rejected',
+        detail: { windowStart: 'a', phase: 'sending' },
+      });
+    });
+  });
+
+  it('recordRunDetail throws when the id updates no row', async () => {
+    await withRollback(t.db, async (tx) => {
+      await expect(recordRunDetail(tx, randomUUID(), { phase: 'sending' })).rejects.toThrow(
+        /recordRunDetail: no job run/,
+      );
     });
   });
 });

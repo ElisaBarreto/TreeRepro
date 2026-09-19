@@ -27,6 +27,7 @@ import {
   type DigestWindow,
   digestRecipients,
   isDigestDue,
+  repeatedRunId,
   runDigest,
 } from './digest.ts';
 import { latestRun } from './runs.ts';
@@ -73,6 +74,9 @@ const ANCHOR_DAYS = {
   runQueryError: 283,
   runFailedAfterSend: 289,
   runStaleFailed: 293,
+  runRepeat: 307,
+  runNotARepeat: 311,
+  runNoRepeatFlag: 313,
 } as const;
 
 const anchor = (daysAgo: number): Date => new Date(Date.now() - daysAgo * DAY);
@@ -627,6 +631,7 @@ async function seedAttempt(
   tx: DbTransaction,
   startedAt: Date,
   status: 'running' | 'failed',
+  detail: Record<string, unknown> = {},
 ): Promise<string> {
   const [row] = await tx
     .insert(jobRuns)
@@ -634,12 +639,31 @@ async function seedAttempt(
       kind: 'digest',
       startedAt,
       status,
+      detail,
       ...(status === 'failed' ? { finishedAt: startedAt, error: 'Error: seeded' } : {}),
     })
     .returning({ id: jobRuns.id });
   if (!row) throw new Error('seedAttempt: no row');
   return row.id;
 }
+
+/** The `digest.sent` row a tick wrote, diffed against the ids taken before it. */
+async function digestAuditWrittenSince(tx: DbTransaction, before: Set<string>) {
+  const written = (await digestAuditIds(tx)).filter((id) => !before.has(id));
+  expect(written).toHaveLength(1);
+  const [entry] = await tx
+    .select()
+    .from(auditLog)
+    .where(eq(auditLog.id, written[0] ?? ''));
+  return entry;
+}
+
+/**
+ * The window `runDigest` will cover for a test anchored at `at`: `seedLastRun`
+ * stops its window one hour before the anchor, and `isDigestDue` starts the
+ * next one exactly there.
+ */
+const windowStartFor = (at: Date): Date => new Date(at.getTime() - HOUR);
 
 /**
  * The transaction with the `audit_log` insert alone replaced by a rejection.
@@ -1242,6 +1266,18 @@ describe('RFC-74 R2, R5 runDigest', () => {
       // a guard that asked for `['running']` alone would never see it.
       const attempt = await latestRun(tx, 'digest');
       expect(attempt).toMatchObject({ kind: 'digest', status: 'failed' });
+      // The writer half of the repeat round trip, and the only test that has
+      // it: `recordRunDetail` really ran before the send loop, so the row this
+      // throw left behind says it had begun mailing and over which window.
+      // Feeding it straight back through the reader proves the two agree —
+      // asserting the shape alone would not.
+      expect(attempt?.detail).toMatchObject({
+        phase: 'sending',
+        windowStart: windowStartFor(at).toISOString(),
+        windowEnd: now.toISOString(),
+      });
+      const asRead = { id: attempt?.id ?? '', detail: attempt?.detail ?? {} };
+      expect(repeatedRunId(asRead, windowStartFor(at))).toBe(attempt?.id);
       // And the e-mail has already gone out, which is what makes a second tick
       // a duplicate rather than a retry.
       //
@@ -1275,6 +1311,146 @@ describe('RFC-74 R2, R5 runDigest', () => {
 
       expect(second).toMatchObject({ status: 'not_due', runId: null });
       expect(mailer.sent).toHaveLength(sentOnce);
+    });
+  });
+
+  it('names the previous run as a repeat, in the log, the run detail, the audit and the e-mail (R2, R5)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runRepeat);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      const recipients = await twoRecipients(tx);
+      // The real sequence: a run reached its send loop over THIS window and
+      // then died, and the two-tick guard has since expired, so this tick is
+      // due and is about to cover the same ground.
+      const windowStart = windowStartFor(at);
+      const previous = await seedAttempt(
+        tx,
+        new Date(now.getTime() - (DIGEST_ATTEMPT_GUARD_MS + HOUR)),
+        'failed',
+        {
+          windowStart: windowStart.toISOString(),
+          windowEnd: new Date(windowStart.getTime() + HOUR).toISOString(),
+          phase: 'sending',
+        },
+      );
+      const mailer = createFakeMailer();
+      const { logger, lines } = captureLogger();
+      const auditBefore = new Set(await digestAuditIds(tx));
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      expect(result.status).toBe('completed');
+      // Containment plus a live count, never a literal set: `digestRecipients`
+      // is dataset-wide, so sibling suites' review holders are mailed too.
+      const all = await digestRecipients(tx);
+      expect(mailer.sent).toHaveLength(all.length);
+      expect(mailer.sent.map((m) => m.to)).toEqual(
+        expect.arrayContaining(recipients.map((r) => r.email)),
+      );
+
+      // 1. the log
+      const logs = lines as { level: number; msg: string; repeatOf?: string; runId?: string }[];
+      const warned = logs.find((l) => l.msg === 'digest repeats an unfinished run');
+      expect(warned).toMatchObject({ level: 40, repeatOf: previous, runId: runIdOf(result) });
+      // 2. the run detail
+      const run = await runRow(tx, runIdOf(result));
+      expect(run?.detail).toMatchObject({ repeatOf: previous });
+      // 3. the audit metadata — a uuid, which `assertSafeMetadata` accepts;
+      // `recordAudit` runs it for real, so this is the confirmation.
+      const entry = await digestAuditWrittenSince(tx, auditBefore);
+      expect(entry?.metadata).toMatchObject({ repeatOf: previous });
+      expect(JSON.stringify(entry?.metadata)).not.toContain('@');
+      // 4. the e-mail body, subject untouched (R5 fixes it)
+      const [sent] = mailer.sent;
+      expect(sent?.subject).toBe(`TreeRepro digest — ${now.toISOString().slice(0, 10)}`);
+      expect(sent?.text.split('\n')[0]).toBe(
+        'Resent: the previous run for this window did not finish, so part of this summary may have reached you already.',
+      );
+    });
+  });
+
+  it('a previous run that never reached the send phase is not a repeat (R2)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runNotARepeat);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      await twoRecipients(tx);
+      // It died in `computeDigest` or `digestRecipients`: no phase was ever
+      // recorded, so nobody was mailed and this is a fresh attempt. A row born
+      // with its window at `startRun` could not tell the two apart.
+      await seedAttempt(tx, new Date(now.getTime() - (DIGEST_ATTEMPT_GUARD_MS + HOUR)), 'failed');
+      const mailer = createFakeMailer();
+      const { logger, lines } = captureLogger();
+      const auditBefore = new Set(await digestAuditIds(tx));
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(
+        (lines as { msg: string }[]).some((l) => l.msg === 'digest repeats an unfinished run'),
+      ).toBe(false);
+      const run = await runRow(tx, runIdOf(result));
+      expect(run?.detail).not.toHaveProperty('repeatOf');
+      const entry = await digestAuditWrittenSince(tx, auditBefore);
+      expect(entry?.metadata).not.toHaveProperty('repeatOf');
+      expect(mailer.sent[0]?.text).not.toContain('Resent');
+    });
+  });
+
+  it('an ordinary run says nothing about repeats at all (R2, R5)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runNoRepeatFlag);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      const { logger, lines } = captureLogger();
+      const auditBefore = new Set(await digestAuditIds(tx));
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      expect(result.status).toBe('completed');
+      expect(
+        (lines as { msg: string }[]).some((l) => l.msg === 'digest repeats an unfinished run'),
+      ).toBe(false);
+      const run = await runRow(tx, runIdOf(result));
+      expect(run?.detail).not.toHaveProperty('repeatOf');
+      // The send phase is still recorded on the way through, even when the run
+      // finishes: `finishRun` replaces `detail` wholesale afterwards, so the
+      // completed row carries the window and the counts, never `phase`.
+      expect(run?.detail).not.toHaveProperty('phase');
+      expect(run?.detail).toMatchObject({ recipients: expect.any(Number) });
+      const entry = await digestAuditWrittenSince(tx, auditBefore);
+      expect(entry?.metadata).not.toHaveProperty('repeatOf');
+      expect(mailer.sent[0]?.text).not.toContain('Resent');
     });
   });
 

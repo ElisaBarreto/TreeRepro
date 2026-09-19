@@ -115,6 +115,34 @@ describe('RFC-74 R5 digestEmail', () => {
     expect(mail.subject).not.toContain('@');
   });
 
+  it('opens with the resend line, and leaves the subject alone, when the run is a repeat', () => {
+    const mail = digestEmail({
+      digest: digest(),
+      appOrigin: APP_ORIGIN,
+      date: '2026-09-17',
+      resent: true,
+    });
+    // R5 fixes the subject; a repeat must not change what an inbox filter or
+    // a thread groups on.
+    expect(mail.subject).toBe('TreeRepro digest — 2026-09-17');
+    expect(mail.text.split('\n')[0]).toBe(
+      'Resent: the previous run for this window did not finish, so part of this summary may have reached you already.',
+    );
+    // The rest of the e-mail is untouched — the line is a prefix, not a mode.
+    expect(mail.text).toContain('Records added (contests and complements included): 2');
+    expect(mail.text).not.toContain('@');
+  });
+
+  it('carries no resend line on an ordinary run', () => {
+    for (const mail of [
+      digestEmail({ digest: digest(), appOrigin: APP_ORIGIN, date: '2026-09-17' }),
+      digestEmail({ digest: digest(), appOrigin: APP_ORIGIN, date: '2026-09-17', resent: false }),
+    ]) {
+      expect(mail.text).not.toContain('Resent');
+      expect(mail.text.split('\n')[0]).toContain('Activity on TreeRepro from');
+    }
+  });
+
   it('says so rather than showing an empty list when a set is empty', () => {
     const mail = digestEmail({
       digest: digest({ contests: [], disputes: [] }),

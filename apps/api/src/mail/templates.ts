@@ -65,22 +65,38 @@ function digestSection(title: string, items: readonly DigestItem[], appOrigin: s
 }
 
 /**
+ * The line a repeated run opens with. The previous run reached its send loop
+ * over this same window and never finished, so some of these recipients may
+ * have had part of it already (R2, R5).
+ * @rfc RFC-74 R5
+ */
+export const DIGEST_RESENT_LINE =
+  'Resent: the previous run for this window did not finish, so part of this summary may have reached you already.';
+
+/**
  * The daily digest as plain text: the window's counts, the queues as they
  * stand and the two lists, each item linking to its record drawer.
  *
  * Actor names appear decrypted — every recipient holds `dataset.read` — but
  * no e-mail address ever does, neither a recipient's nor an actor's (R5).
+ *
+ * `resent` prefixes `DIGEST_RESENT_LINE` and changes nothing else. The SUBJECT
+ * in particular is untouched: R5 fixes it as `TreeRepro digest — <date>`, and
+ * a repeat must not move what an inbox filter or a mail thread groups on.
  * @rfc RFC-74 R3, R5
  */
 export function digestEmail(input: {
   digest: Digest;
   appOrigin: string;
   date: string;
+  /** Whether this run repeats a window a previous one had already begun mailing. */
+  resent?: boolean;
 }): MailContent {
   const { counts, window, contests, disputes } = input.digest;
   return {
     subject: `TreeRepro digest — ${input.date}`,
     text: [
+      ...(input.resent === true ? [DIGEST_RESENT_LINE, ''] : []),
       `Activity on TreeRepro from ${formatUtc(window.start)} to ${formatUtc(window.end)}.`,
       '',
       // Spelt out because a contest and a complement are themselves records and
