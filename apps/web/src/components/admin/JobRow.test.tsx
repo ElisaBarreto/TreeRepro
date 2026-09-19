@@ -53,6 +53,18 @@ describe('RFC-52 R3 jobBadge', () => {
     ).toEqual({ tone: 'amber', label: 'stale' });
   });
 
+  it('ruling R-M: is green "running" when the newest run started within 26 hours', () => {
+    expect(
+      jobBadge(run({ status: 'running', startedAt: '2026-09-19T10:00:00.000Z' }), NOW),
+    ).toEqual({ tone: 'green', label: 'running' });
+  });
+
+  it('ruling R-M: is amber "stale" once a still-running run passes 26 hours', () => {
+    expect(
+      jobBadge(run({ status: 'running', startedAt: '2026-09-10T00:00:00.000Z' }), NOW),
+    ).toEqual({ tone: 'amber', label: 'stale' });
+  });
+
   it('is red "failed" when the newest run failed, whatever its age', () => {
     expect(jobBadge(run({ status: 'failed', startedAt: '2026-09-01T00:00:00.000Z' }), NOW)).toEqual(
       { tone: 'red', label: 'failed' },

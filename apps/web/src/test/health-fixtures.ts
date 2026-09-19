@@ -2,13 +2,16 @@ import type { JobRunSummary, PlatformHealth } from '@treerepro/contracts';
 import { IMPORT_BATCH } from './dataset-fixtures.ts';
 
 const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
 
 /**
- * Fourteen days ending 2026-09-19, oldest first, as RFC-52 R1's `byDay`
- * orders them.
+ * Fourteen days ending today, oldest first, as RFC-52 R1's `byDay` orders
+ * them. Relative to the real clock — like the job-run fixtures below, this
+ * is never compared against a real wall-clock rule, but a hardcoded date
+ * would still drift out of "the last 14 days" as a concept over time.
  */
 function byDay(): PlatformHealth['activity']['byDay'] {
-  const end = new Date('2026-09-19T00:00:00.000Z').getTime();
+  const end = Date.now();
   return Array.from({ length: 14 }, (_, i) => ({
     day: new Date(end - (13 - i) * DAY_MS).toISOString().slice(0, 10),
     records: i,
@@ -16,19 +19,34 @@ function byDay(): PlatformHealth['activity']['byDay'] {
   }));
 }
 
-/** A digest run that completed a few hours ago: green per RFC-52 R3. @rfc RFC-52 R1, R3 */
+/**
+ * A digest run that completed two hours ago: green per RFC-52 R3. Computed
+ * relative to `Date.now()`, never a hardcoded date — `HealthPage` renders
+ * `JobRow` without a `now` prop, so `jobBadge` compares this `startedAt`
+ * against the real clock at render time, and a fixed past date would
+ * eventually cross the 26-hour boundary and flip the badge from under the
+ * test.
+ * @rfc RFC-52 R1, R3
+ */
 export const JOB_RUN_HEALTHY: JobRunSummary = {
-  startedAt: '2026-09-19T02:00:00.000Z',
-  finishedAt: '2026-09-19T02:01:00.000Z',
+  startedAt: new Date(Date.now() - 2 * HOUR_MS).toISOString(),
+  finishedAt: new Date(Date.now() - 2 * HOUR_MS + 60_000).toISOString(),
   status: 'completed',
   detail: { recipients: 3 },
   error: null,
 };
 
-/** A failed audit purge: red per RFC-52 R3, whatever its age. @rfc RFC-52 R1, R3 */
+/**
+ * A failed audit purge, thirty hours ago: red per RFC-52 R3 whatever its
+ * age. Also clock-relative, for the same reason as `JOB_RUN_HEALTHY` — the
+ * badge is red regardless of age here, but a hardcoded `startedAt` would
+ * still make `formatDateTime(run.startedAt)` drift into an implausible
+ * "future" relative to the real clock over time.
+ * @rfc RFC-52 R1, R3
+ */
 export const JOB_RUN_FAILED: JobRunSummary = {
-  startedAt: '2026-09-18T03:00:00.000Z',
-  finishedAt: '2026-09-18T03:00:05.000Z',
+  startedAt: new Date(Date.now() - 30 * HOUR_MS).toISOString(),
+  finishedAt: new Date(Date.now() - 30 * HOUR_MS + 5_000).toISOString(),
   status: 'failed',
   detail: {},
   error: 'connection refused',
