@@ -40,6 +40,7 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `records.withdraw` | Withdraw any manual record |
 | `accepted.manage` | Set and clear the accepted value per species and trait |
 | `taxa.manage` | Create and edit families, genera, species and names |
+| `taxa.propose` | Propose a species for the catalog |
 | `references.manage` | Create and edit bibliographic references |
 | `traits.manage` | Create and edit traits and levels |
 | `dataset.export` | Download the accepted values |
@@ -66,3 +67,4 @@ None.
 - 2026-09-17 — records.review: meaning widened by RFC-70 R4 (plan 09a).
 - 2026-09-18 — contributions.read (RFC-71, plan 11a).
 - 2026-09-18 — coverage.read (RFC-69 R5-R7, plan 11c).
+- 2026-09-19 — taxa.propose (RFC-75, plan 12c).

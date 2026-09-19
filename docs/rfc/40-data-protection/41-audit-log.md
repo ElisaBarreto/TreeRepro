@@ -64,6 +64,8 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `plots.species_removed` | Species removed from a field plot (RFC-67 R5). |
 | `users.plots_changed` | Field plots assigned to or removed from a user, or restriction flag changed (RFC-67 R6). |
 | `digest.sent` | Daily digest e-mail run completed (RFC-74 R5). |
+| `proposals.created` | Species proposal submitted (RFC-75 R2). |
+| `proposals.decided` | Species proposal approved or rejected (RFC-75 R4). |
 
 ## Open questions
 
@@ -82,3 +84,4 @@ None.
 - 2026-09-17 — imports.completed (RFC-68, plan 08a).
 - 2026-09-17 — plots.*, users.plots_changed (RFC-67, plan 08b).
 - 2026-09-19 — digest.sent (RFC-74, plan 12b).
+- 2026-09-19 — proposals.created, proposals.decided (RFC-75, plan 12c).

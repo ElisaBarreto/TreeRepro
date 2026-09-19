@@ -73,6 +73,10 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `PLOT_SPECIES_EXISTS` | 409 | The species is already in the plot (RFC-67 R5). |
 | `DOI_LOOKUP_FAILED` | 502 | The DOI registry could not be reached (RFC-80 R3). |
 | `REFERENCE_IS_PERSONAL` | 409 | A personal-observation reference cannot be edited (RFC-61 R7). |
+| `PROPOSAL_EXISTS` | 409 | An open proposal already carries this name, case-insensitively (RFC-75 R2). |
+| `PROPOSAL_NOT_FOUND` | 404 | Proposal id does not exist (RFC-75 R3). |
+| `PROPOSAL_DECIDED` | 409 | The proposal already has a decision (RFC-75 R4). |
+| `TAXONOMY_LOOKUP_FAILED` | 502 | The taxonomy lookup could not be reached (RFC-81 R4). |
 
 ## Open questions
 
@@ -90,3 +94,4 @@ None.
 - 2026-09-17 — ROLE_IS_SYSTEM reworded: manager and contributor system roles (RFC-31, plan 08a).
 - 2026-09-17 — PLOT_NOT_FOUND, PLOT_CODE_TAKEN, PLOT_SPECIES_EXISTS (RFC-67, plan 08b).
 - 2026-09-17 — DOI_LOOKUP_FAILED, REFERENCE_IS_PERSONAL (plan 09a).
+- 2026-09-19 — PROPOSAL_EXISTS, PROPOSAL_NOT_FOUND, PROPOSAL_DECIDED, TAXONOMY_LOOKUP_FAILED (RFC-75, RFC-81, plan 12c).
