@@ -23,6 +23,10 @@ export const contact: HelpTopicSource = {
       <ul>
         <li>adding a species, a trait or a level that is missing;</li>
         <li>correcting a trait&rsquo;s description or unit;</li>
+        <li>
+          setting, changing or clearing the accepted value for a species and trait — including
+          freeing a record you need to withdraw;
+        </li>
         <li>assigning you to a field plot, or changing the plots you are assigned to;</li>
         <li>exporting data for an analysis;</li>
         <li>anything that looks like a bug: a page that fails, a number that cannot be right.</li>

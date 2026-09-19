@@ -48,8 +48,9 @@ export const contributions: HelpTopicSource = {
       <ul>
         <li>
           <strong>unreviewed</strong> — nobody&rsquo;s standing position on it is a validation or a
-          dispute. A new record starts here, and a record whose dispute was lifted returns here,
-          carrying its annotations with it.
+          dispute. A new record starts here, and so does a record whose dispute was lifted, carrying
+          its annotations with it — unless somebody&rsquo;s validation still stands, which makes it
+          confirmed instead.
         </li>
         <li>
           <strong>confirmed</strong> — somebody&rsquo;s latest word on it is a validation. The axis

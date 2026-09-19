@@ -122,20 +122,20 @@ export const workflow: HelpTopicSource = {
       <p>
         For every species and trait, the admin may mark one record as the{' '}
         <strong>accepted value</strong>: the single value the project stands behind, and the one the
-        export carries. That decision is the admin&rsquo;s alone: managers run the queues below, but
-        no manager account can set or clear an accepted value. Only a record with a value the
-        dictionary understands can be accepted, and the decision can be changed or cleared later.
-        The species page shows the accepted value next to the trait.
+        export carries. Managers run the queues below, but the manager role does not carry the
+        permission to set or clear an accepted value. Only a record with a value the dictionary
+        understands can be accepted, and the decision can be changed or cleared later. The species
+        page shows the accepted value next to the trait.
       </p>
       <p>
         Records under a standing dispute — yours included — go to the managers&rsquo;{' '}
         <strong>Disputed</strong> queue. A row there is the disputed record: its species, its trait,
         its own value, who disputed it, their note and the date. When a contest raised the dispute,
         that note is written for you and names the contesting record by its id. The competing value
-        is one click away rather than in the row — open the record from its value, and the{' '}
-        <strong>Responses</strong> list in the drawer opens each record answering it. A record
-        leaves that queue once the admin settles the accepted value for its species and trait: it
-        may still read <em>disputed</em> on the species page while no longer waiting in the queue.
+        is not in the row: open the record from its value, then open any record in the
+        drawer&rsquo;s <strong>Responses</strong> list. A record leaves that queue once the admin
+        settles the accepted value for its species and trait: it may still read <em>disputed</em> on
+        the species page while no longer waiting in the queue.
       </p>
       <p>
         A separate <strong>Pending</strong> queue is where imported values the dictionary cannot
