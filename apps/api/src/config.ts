@@ -56,6 +56,12 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v?.trim() || undefined)
     .pipe(z.string().email().optional()),
+  // RFC-81 R1: unset skips the WCVP call and the verdict comes from the
+  // GBIF backbone alone; the start-up check disables it too on any failure.
+  WCVP_GBIF_DATASET_KEY: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined),
 });
 
 const migratorEnvSchema = z.object({
@@ -117,6 +123,8 @@ export interface AppConfig {
   /** `DIGEST_ENABLED`; the E2E stack turns it off. @rfc RFC-74 R6 */
   digestEnabled: boolean;
   doiContactEmail?: string;
+  /** `WCVP_GBIF_DATASET_KEY`; unset disables the WCVP source. @rfc RFC-81 R1 */
+  wcvpGbifDatasetKey?: string;
 }
 
 export interface MigratorConfig {
@@ -236,6 +244,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     smtp,
     digestEnabled: e.DIGEST_ENABLED,
     doiContactEmail: e.DOI_CONTACT_EMAIL,
+    wcvpGbifDatasetKey: e.WCVP_GBIF_DATASET_KEY,
   };
 }
 

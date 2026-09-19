@@ -1,0 +1,37 @@
+{
+  "offset": 0,
+  "limit": 5,
+  "endOfRecords": true,
+  "results": [
+    {
+      "key": 207128214,
+      "nubKey": 2878688,
+      "nameKey": 9614407,
+      "taxonID": "174750",
+      "family": "Fagaceae",
+      "genus": "Quercus",
+      "species": "Quercus robur",
+      "familyKey": 336886132,
+      "genusKey": 207126580,
+      "speciesKey": 207128214,
+      "datasetKey": "f382f0ce-323a-4091-bb9f-add557f3a9a2",
+      "parentKey": 207126580,
+      "parent": "Quercus",
+      "scientificName": "Quercus robur L.",
+      "canonicalName": "Quercus robur",
+      "authorship": "L.",
+      "nameType": "SCIENTIFIC",
+      "rank": "SPECIES",
+      "origin": "SOURCE",
+      "taxonomicStatus": "ACCEPTED",
+      "nomenclaturalStatus": [],
+      "remarks": "Europe to Iran",
+      "publishedIn": "Sp. Pl.: 996 (1753)",
+      "numDescendants": 4,
+      "references": "https://powo.science.kew.org/taxon/urn:lsid:ipni.org:names:304293-2",
+      "lastCrawled": "2026-08-30T08:05:41.078+00:00",
+      "lastInterpreted": "2026-08-30T08:58:39.335+00:00",
+      "issues": ["SCIENTIFIC_NAME_ASSEMBLED"]
+    }
+  ]
+}

@@ -288,3 +288,17 @@ describe('RFC-74 R6 DIGEST_ENABLED', () => {
     );
   });
 });
+
+describe('RFC-81 R1 WCVP_GBIF_DATASET_KEY', () => {
+  it('is undefined when unset, so the WCVP call is skipped', () => {
+    expect(loadConfig(env()).wcvpGbifDatasetKey).toBeUndefined();
+  });
+
+  it('is trimmed, and an empty/blank value behaves the same as unset', () => {
+    expect(
+      loadConfig(env({ WCVP_GBIF_DATASET_KEY: ' f382f0ce-323a-4091-bb9f-add557f3a9a2 ' }))
+        .wcvpGbifDatasetKey,
+    ).toBe('f382f0ce-323a-4091-bb9f-add557f3a9a2');
+    expect(loadConfig(env({ WCVP_GBIF_DATASET_KEY: '   ' })).wcvpGbifDatasetKey).toBeUndefined();
+  });
+});

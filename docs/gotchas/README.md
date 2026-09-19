@@ -16,3 +16,4 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 | Testing (Vitest, testcontainers) | `testing.md` |
 | Dataset import | `import.md` |
 | Dataset curation | `dataset.md` |
+| GBIF taxonomy lookup | `taxonomy.md` |

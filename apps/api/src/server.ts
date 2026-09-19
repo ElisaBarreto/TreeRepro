@@ -10,6 +10,7 @@ import { loadConfig } from './config.ts';
 import { createDb } from './db/client.ts';
 import { createHealthChecks } from './http/health-checks.ts';
 import { createDoiClient } from './integrations/doi.ts';
+import { createTaxonomyClient, verifyWcvpDataset } from './integrations/taxonomy.ts';
 import { runDigest, startDigestTimer } from './jobs/digest.ts';
 import { createLogger } from './logger.ts';
 import { createMailer, createSmtpTransport } from './mail/mailer.ts';
@@ -36,6 +37,14 @@ const mailer = createMailer(createSmtpTransport(config.smtp), config.smtp.from);
 const breachChecker = createHibpChecker({ logger });
 const permissionCache = createPermissionCache(redis);
 const doi = createDoiClient({ contactEmail: config.doiContactEmail, version: APP_VERSION });
+// RFC-81 R1: verified once at start-up; any failure (unset key, network,
+// wrong dataset) disables the WCVP source for the process rather than
+// blocking start-up — there is no retry.
+const wcvpDatasetKey = await verifyWcvpDataset({
+  datasetKey: config.wcvpGbifDatasetKey,
+  logger,
+});
+const taxonomy = createTaxonomyClient({ wcvpDatasetKey, version: APP_VERSION });
 
 const app = createApp({
   config,
@@ -50,6 +59,7 @@ const app = createApp({
   breachChecker,
   permissionCache,
   doi,
+  taxonomy,
 });
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, (info) => {

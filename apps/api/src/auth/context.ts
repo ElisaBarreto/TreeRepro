@@ -1,6 +1,7 @@
 import type { PermissionCache } from '../access/permissions.ts';
 import type { Db } from '../db/client.ts';
 import type { DoiClient } from '../integrations/doi.ts';
+import type { TaxonomyClient } from '../integrations/taxonomy.ts';
 import type { Logger } from '../logger.ts';
 import type { Mailer } from '../mail/mailer.ts';
 import type { Redis } from '../redis/client.ts';
@@ -21,6 +22,8 @@ export interface AuthContext {
   permissionCache: PermissionCache;
   logger: Logger;
   doi: DoiClient;
+  /** @rfc RFC-81 R1 */
+  taxonomy: TaxonomyClient;
   appOrigin: string;
   now: () => number;
 }
