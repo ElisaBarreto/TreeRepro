@@ -1177,8 +1177,21 @@ export const LOOKUP_GENUS: Lookup = {
   verdict: 'none',
 };
 
+/**
+ * A backbone miss is `NO_MATCH` with one field filled: the live v2 match
+ * answers `diagnostics.confidence: 100` even when it matched nothing, and
+ * `gbifToMatch` copies it through (pinned in `taxonomy.test.ts`). WCVP has
+ * no confidence to report either way.
+ * @rfc RFC-81 R2
+ */
+export const BACKBONE_NO_MATCH: TaxonMatch = { ...NO_MATCH, confidence: 100 };
+
 /** Both calls answered and neither knew the name. @rfc RFC-81 R3 */
-export const LOOKUP_NONE: Lookup = { backbone: NO_MATCH, wcvp: NO_MATCH, verdict: 'none' };
+export const LOOKUP_NONE: Lookup = {
+  backbone: BACKBONE_NO_MATCH,
+  wcvp: NO_MATCH,
+  verdict: 'none',
+};
 
 /**
  * The commonest real outcome for a name outside WCVP: the backbone matches

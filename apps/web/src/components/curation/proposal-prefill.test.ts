@@ -69,7 +69,10 @@ describe('RFC-75 R4 proposalPrefill', () => {
             note: `matched the ${rank.toLowerCase()}`,
           },
           wcvp: null,
-          verdict: 'exact',
+          // `verdictOf` needs `rank === 'SPECIES'` for `exact`, so a match
+          // below species rank leaves the verdict `none` — which the prefill
+          // does not read, and which must not be misstated here.
+          verdict: 'none',
         },
       });
       expect(prefill.canonicalName, rank).toBe('Quercus robur var. fastigiata');
