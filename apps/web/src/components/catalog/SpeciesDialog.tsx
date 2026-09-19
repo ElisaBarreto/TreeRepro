@@ -87,7 +87,7 @@ export function SpeciesDialog({
 }: {
   species?: Species;
   onClose: () => void;
-  onSaved?: (species: Species) => void;
+  onSaved: (species: Species) => void;
 }) {
   const queryClient = useQueryClient();
   const ids = { family: useId(), newFamily: useId(), genus: useId() };
@@ -140,7 +140,7 @@ export function SpeciesDialog({
       input.kind === 'create' ? createSpecies(input.body) : updateSpecies(input.id, input.body),
     onSuccess: async (saved) => {
       await invalidateAfterCatalogWrite(queryClient, 'taxa');
-      onSaved?.(saved);
+      onSaved(saved);
     },
   });
   // The whole look-up, answer and fill alike, is the mutation: `applyLookup`

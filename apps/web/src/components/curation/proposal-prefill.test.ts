@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   BACKBONE_MATCH,
-  LOOKUP_EXACT,
+  LOOKUP_EXACT_WCVP_MISS,
   LOOKUP_FUZZY,
   LOOKUP_GENUS,
   LOOKUP_NONE,
+  LOOKUP_WCVP_FAILED,
+  LOOKUP_WCVP_GENUS_ONLY,
   PROPOSAL,
   PROPOSAL_LOOKUP_FAILED,
   WCVP_MATCH,
@@ -21,13 +23,58 @@ describe('RFC-75 R4 proposalPrefill', () => {
     });
   });
 
-  it('falls back to the backbone when WCVP has no match of its own', () => {
-    const prefill = proposalPrefill({
-      ...PROPOSAL,
-      lookup: { ...LOOKUP_EXACT, wcvp: null },
+  it('falls back to the backbone when the WCVP call failed', () => {
+    const prefill = proposalPrefill({ ...PROPOSAL, lookup: LOOKUP_WCVP_FAILED });
+    expect(prefill).toEqual({
+      canonicalName: 'Quercus robur',
+      nameSource: 'gbif',
+      genusName: 'Quercus',
+      familyName: 'Fagaceae',
     });
-    expect(prefill.nameSource).toBe('gbif');
-    expect(prefill.canonicalName).toBe('Quercus robur');
+  });
+
+  it('RFC-81 R3 a WCVP miss is an answer, not a match: the backbone still fills the form', () => {
+    // The commonest real outcome — backbone EXACT at species rank, WCVP
+    // answering `results: []`, which the API maps to a `matchType: 'NONE'`
+    // match rather than to `null`. Taking that match because it is non-null
+    // opened the approval with no genus, no family and provenance recorded
+    // as `original`, under a badge reading "exact match".
+    expect(proposalPrefill({ ...PROPOSAL, lookup: LOOKUP_EXACT_WCVP_MISS })).toEqual({
+      canonicalName: 'Quercus robur',
+      nameSource: 'gbif',
+      genusName: 'Quercus',
+      familyName: 'Fagaceae',
+    });
+  });
+
+  it('RFC-81 R3 a WCVP match above species rank does not beat a species-rank backbone', () => {
+    expect(proposalPrefill({ ...PROPOSAL, lookup: LOOKUP_WCVP_GENUS_ONLY })).toEqual({
+      canonicalName: 'Quercus robur',
+      nameSource: 'gbif',
+      genusName: 'Quercus',
+      familyName: 'Fagaceae',
+    });
+  });
+
+  it('RFC-81 R2 a rank below species is still the taxon proposed, so its name is taken', () => {
+    for (const rank of ['SUBSPECIES', 'VARIETY', 'SUBVARIETY', 'FORM', 'SUBFORM']) {
+      const prefill = proposalPrefill({
+        ...PROPOSAL,
+        proposedName: 'Quercus robur fastigiata',
+        lookup: {
+          backbone: {
+            ...BACKBONE_MATCH,
+            rank,
+            canonicalName: 'Quercus robur var. fastigiata',
+            note: `matched the ${rank.toLowerCase()}`,
+          },
+          wcvp: null,
+          verdict: 'exact',
+        },
+      });
+      expect(prefill.canonicalName, rank).toBe('Quercus robur var. fastigiata');
+      expect(prefill.nameSource, rank).toBe('gbif');
+    }
   });
 
   it('RFC-81 R3 a fuzzy backbone match still supplies the spelling GBIF settled on', () => {
@@ -69,16 +116,20 @@ describe('RFC-75 R4 proposalPrefill', () => {
     );
   });
 
-  it('prefers WCVP over the backbone only when the verdict is exact', () => {
+  it('prefers WCVP over the backbone when the WCVP match is itself exact', () => {
+    // Not "when the verdict is exact": the verdict is `exact` as soon as
+    // *either* source matched exactly, so it says nothing about which one
+    // did. A backbone that only approximated the name loses to a WCVP row
+    // that matched it.
     const prefill = proposalPrefill({
       ...PROPOSAL,
       lookup: {
-        verdict: 'fuzzy',
+        verdict: 'exact',
         backbone: { ...BACKBONE_MATCH, matchType: 'VARIANT', canonicalName: 'Quercus robur' },
         wcvp: { ...WCVP_MATCH, canonicalName: 'Quercus alba', genus: 'Quercus' },
       },
     });
-    expect(prefill.canonicalName).toBe('Quercus robur');
-    expect(prefill.nameSource).toBe('gbif');
+    expect(prefill.canonicalName).toBe('Quercus alba');
+    expect(prefill.nameSource).toBe('wcvp');
   });
 });

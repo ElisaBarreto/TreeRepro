@@ -1124,8 +1124,31 @@ export const LOOKUP_EXACT: Lookup = {
 };
 
 /**
+ * What a source that answered and found nothing looks like: a real
+ * `TaxonMatch` whose `matchType` is `NONE` and whose every other field is
+ * `null` — `NULL_MATCH` in `apps/api/src/integrations/taxonomy.ts`. It is
+ * **not** `null`: a `null` source means the call to it never completed. The
+ * two are different facts (RFC-81 R3), and modelling a miss as `null` is
+ * what let a `NONE` match pass for a real one.
+ * @rfc RFC-81 R2, R3
+ */
+export const NO_MATCH: TaxonMatch = {
+  matchType: 'NONE',
+  confidence: null,
+  usageKey: null,
+  scientificName: null,
+  canonicalName: null,
+  rank: null,
+  status: null,
+  family: null,
+  genus: null,
+  acceptedUsageKey: null,
+  note: null,
+};
+
+/**
  * A misspelling: the live backbone answers `VARIANT`, never `FUZZY`, and
- * WCVP — a plain name search — finds nothing at all.
+ * WCVP — a plain name search — answers with no row for it.
  * @rfc RFC-81 R3
  */
 export const LOOKUP_FUZZY: Lookup = {
@@ -1135,7 +1158,7 @@ export const LOOKUP_FUZZY: Lookup = {
     confidence: 93,
     scientificName: 'Quercus robur L.',
   },
-  wcvp: null,
+  wcvp: NO_MATCH,
   verdict: 'fuzzy',
 };
 
@@ -1150,12 +1173,55 @@ export const LOOKUP_GENUS: Lookup = {
     genus: 'Quercus',
     note: 'matched the genus',
   },
-  wcvp: null,
+  wcvp: NO_MATCH,
   verdict: 'none',
 };
 
 /** Both calls answered and neither knew the name. @rfc RFC-81 R3 */
-export const LOOKUP_NONE: Lookup = { backbone: null, wcvp: null, verdict: 'none' };
+export const LOOKUP_NONE: Lookup = { backbone: NO_MATCH, wcvp: NO_MATCH, verdict: 'none' };
+
+/**
+ * The commonest real outcome for a name outside WCVP: the backbone matches
+ * exactly at species rank and WCVP answers HTTP 200 with `results: []`. The
+ * verdict is `exact` — and everything the reviewer sees must come from the
+ * backbone, because the WCVP "match" names nothing at all.
+ * @rfc RFC-81 R3
+ */
+export const LOOKUP_EXACT_WCVP_MISS: Lookup = {
+  backbone: BACKBONE_MATCH,
+  wcvp: NO_MATCH,
+  verdict: 'exact',
+};
+
+/**
+ * The other one-sided shape, and a different fact: the backbone answered and
+ * the WCVP **call failed**, so there is no answer from it either way.
+ * @rfc RFC-81 R3
+ */
+export const LOOKUP_WCVP_FAILED: Lookup = {
+  backbone: BACKBONE_MATCH,
+  wcvp: null,
+  verdict: 'exact',
+};
+
+/**
+ * WCVP knows only the genus while the backbone matched the species. The
+ * better match is the backbone's, whichever source the verdict came from.
+ * @rfc RFC-81 R3
+ */
+export const LOOKUP_WCVP_GENUS_ONLY: Lookup = {
+  backbone: BACKBONE_MATCH,
+  wcvp: {
+    ...WCVP_MATCH,
+    matchType: 'HIGHERRANK',
+    usageKey: '207128000',
+    scientificName: 'Quercus L.',
+    canonicalName: 'Quercus',
+    rank: 'GENUS',
+    note: 'matched the genus',
+  },
+  verdict: 'exact',
+};
 
 /** An open proposal whose lookup matched both sources exactly. @rfc RFC-75 R6 */
 export const PROPOSAL: Proposal = {

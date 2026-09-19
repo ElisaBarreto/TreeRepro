@@ -6,6 +6,7 @@ import {
   LOOKUP_FUZZY,
   LOOKUP_GENUS,
   LOOKUP_NONE,
+  NO_MATCH,
   WCVP_MATCH,
 } from '../../test/dataset-fixtures.ts';
 import { LookupBadge, LookupCard } from './LookupCard.tsx';
@@ -32,10 +33,17 @@ describe('RFC-81 R2 LookupCard', () => {
     expect(card).not.toHaveTextContent('0');
   });
 
-  it('says the source had no answer rather than drawing an empty card', () => {
-    render(<LookupCard source="WCVP" match={null} />);
+  it('RFC-81 R3 a call that did not complete and an answer of "no such name" read differently', () => {
+    const { rerender } = render(<LookupCard source="WCVP" match={null} />);
     expect(screen.queryByRole('region')).not.toBeInTheDocument();
-    expect(screen.getByText('WCVP had no answer for this name.')).toBeInTheDocument();
+    expect(screen.getByText('WCVP did not answer: the call to it failed.')).toBeInTheDocument();
+
+    // `matchType: 'NONE'` is an answer — the source was reached and has no
+    // row for the name — and it must not draw a card of dashes, which would
+    // read as a match with nothing in it.
+    rerender(<LookupCard source="WCVP" match={NO_MATCH} />);
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(screen.getByText('WCVP answered and has no record of this name.')).toBeInTheDocument();
   });
 
   it('shows the note when a match carries one', () => {

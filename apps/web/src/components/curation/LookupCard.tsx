@@ -53,15 +53,25 @@ function Row({ label, value }: { label: string; value: string | null }) {
  * checklist suffix, and opens in a new tab with `rel="noopener noreferrer"`
  * so leaving the queue cannot reach back into it.
  *
- * A source that did not answer gets a sentence saying so rather than a card
- * of dashes: the two are different facts, and an empty card reads like a
- * match with nothing in it.
+ * Only a real match draws a card. The two ways of having none are the same
+ * pair this whole branch keeps apart (RFC-81 R3), and each gets its own
+ * sentence: `null` is a call that did not complete, and a `matchType` of
+ * `NONE` is a source that answered and has no row for the name — which
+ * arrives as a `TaxonMatch` with every other field `null` and would
+ * otherwise draw a card of dashes, reading like a match with nothing in it.
  * @rfc RFC-13 R5
- * @rfc RFC-81 R2
+ * @rfc RFC-81 R2, R3
  */
 export function LookupCard({ source, match }: { source: string; match: TaxonMatch | null }) {
   if (!match) {
-    return <p className="text-body text-mist-500">{`${source} had no answer for this name.`}</p>;
+    return (
+      <p className="text-body text-mist-500">{`${source} did not answer: the call to it failed.`}</p>
+    );
+  }
+  if (match.matchType === 'NONE') {
+    return (
+      <p className="text-body text-mist-500">{`${source} answered and has no record of this name.`}</p>
+    );
   }
   return (
     // A named `section` is a region: the drawer's two cards are the parts of

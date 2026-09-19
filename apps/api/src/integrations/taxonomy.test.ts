@@ -200,6 +200,42 @@ describe('RFC-81 R1 createTaxonomyClient', () => {
     ]);
   });
 
+  it('WCVP answering with no rows is a NONE match, not a null — the two are different facts (R-K)', async () => {
+    // The commonest real outcome for a name outside WCVP, and the shape the
+    // web layer has to tell apart from a failed call: HTTP 200 with
+    // `results: []` maps to a `TaxonMatch` whose `matchType` is `NONE` and
+    // whose every other field is `null`, while a failed call maps to `null`.
+    const client = createTaxonomyClient({
+      wcvpDatasetKey: 'f382f0ce-323a-4091-bb9f-add557f3a9a2',
+      version: '1.0',
+      fetchImpl: async (url) => {
+        const body = String(url).includes('/v2/species/match')
+          ? fixture('backbone-exact')
+          : fixture('wcvp-none');
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
+    });
+    const result = await client.match('Quercus robur');
+    expect(result.wcvp).not.toBeNull();
+    expect(result.wcvp).toEqual({
+      matchType: 'NONE',
+      confidence: null,
+      usageKey: null,
+      scientificName: null,
+      canonicalName: null,
+      rank: null,
+      status: null,
+      family: null,
+      genus: null,
+      acceptedUsageKey: null,
+      note: null,
+    });
+    // The backbone matched exactly at species rank, so the verdict is
+    // `exact` even though WCVP knows nothing about the name.
+    expect(result.backbone?.matchType).toBe('EXACT');
+    expect(result.verdict).toBe('exact');
+  });
+
   it('a network failure on one call is a null for that source, and the other still answers', async () => {
     const client = createTaxonomyClient({
       wcvpDatasetKey: 'f382f0ce-323a-4091-bb9f-add557f3a9a2',
