@@ -69,6 +69,11 @@ export function realignHashWhileSettling(): () => void {
   // stands without it.
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(align);
   observer?.observe(document.body);
+  // `body` alone is the weaker signal: it only resizes if the reflow changes
+  // the page's total height. The prose column is the element whose text
+  // actually re-wraps when the faces swap, so its box is guaranteed to move.
+  const prose = document.getElementById(id)?.closest('article');
+  if (prose) observer?.observe(prose);
   const stop = window.setTimeout(() => observer?.disconnect(), CORRECTION_WINDOW_MS);
 
   return () => {
