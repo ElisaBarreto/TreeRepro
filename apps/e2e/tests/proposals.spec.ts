@@ -34,15 +34,15 @@ test.describe('RFC-75 species proposals / RFC-81 taxonomy lookup (plan 12c)', ()
       await proposeDialog.getByLabel('Note (optional)').fill('Seen in the E2E test plot.');
       await proposeDialog.getByRole('button', { name: 'Propose', exact: true }).click();
 
-      // The stack has no outbound network and leaves WCVP_GBIF_DATASET_KEY
-      // unset (E2E stack constraint), so the lookup stores `null` — nothing
-      // here waits on or asserts a match; that is proven below, from the
-      // stored `lookup`, not recomputed.
+      // WCVP_GBIF_DATASET_KEY is unset in the E2E stack (compose.e2e.yml
+      // never sets it, so compose.yml's `x-api-env` default of `''` wins),
+      // so only the GBIF backbone call is attempted for this stamped,
+      // never-real name — nothing here waits on or asserts a match; that is
+      // proven below, from the stored `lookup`, not recomputed.
       await expect(proposeDialog).toBeHidden();
 
-      // ── The admin opens the queue, sees the lookup verdict is "lookup
-      // failed" (RFC-81 R3's `failed`, not `none`: the call never completed,
-      // it did not run and find nothing), and approves it ───────────────────
+      // ── The admin opens the queue and sees the lookup verdict rendered,
+      // then approves it ─────────────────────────────────────────────────
       await adminPage.goto('/app/curation/proposals');
       await expect(
         adminPage.getByRole('heading', { name: 'Species proposals', level: 1 }),
@@ -51,30 +51,41 @@ test.describe('RFC-75 species proposals / RFC-81 taxonomy lookup (plan 12c)', ()
       const table = adminPage.getByRole('table');
       const row = table.getByRole('row').filter({ hasText: speciesName });
       await expect(row).toBeVisible();
-      // R-K: `failed` means every attempted call failed (here, none could be
-      // attempted at all) — distinct from `none`, which means GBIF answered
-      // and found nothing. The badge text is asserted verbatim against
-      // apps/web/src/components/curation/LookupCard.tsx's VERDICT_LABELS.
-      await expect(row.getByText('lookup failed', { exact: true })).toBeVisible();
+      // The CI runner DOES have outbound network to api.gbif.org (unlike the
+      // verify container used for local checks), so whether the one attempted
+      // call (the backbone; WCVP is disabled above) lands as `none` — GBIF
+      // reachable, answered, and does not know this stamped name, badge "not
+      // found" — or `failed` — the call itself could not complete, badge
+      // "lookup failed" — depends on network conditions at run time, not on
+      // anything this test controls. Pinning either verdict would couple CI
+      // to a third party being reachable or not; asserting neither would lose
+      // proof the column renders a real verdict at all. The exact
+      // `failed`-versus-`none` distinction (R-K: `failed` means nobody
+      // checked, `none` means GBIF checked and found nothing) is asserted
+      // deterministically against captured fixtures in
+      // apps/web/src/components/curation/LookupCard.test.tsx, which is where
+      // it belongs — here we only prove one of the two renders.
+      const lookupCell = row.getByRole('cell').last();
+      await expect(lookupCell).toHaveText(/^(not found|lookup failed)$/);
 
       await row.getByRole('button', { name: speciesName, exact: true }).click();
 
       const drawer = adminPage.getByRole('dialog', { name: 'Proposal', exact: true });
       await expect(drawer).toBeVisible();
-      await expect(drawer.getByText('lookup failed', { exact: true })).toBeVisible();
-      await expect(
-        drawer.getByText(
-          'The lookup could not be completed, so nothing was checked against GBIF. This says nothing about the name.',
-        ),
-      ).toBeVisible();
+      // Same reasoning as the row above: the drawer's badge mirrors whichever
+      // of the two verdicts the queue showed.
+      await expect(drawer.getByText(/^(not found|lookup failed)$/)).toBeVisible();
 
       await drawer.getByRole('button', { name: 'Approve', exact: true }).click();
 
       const approveDialog = adminPage.getByRole('dialog', { name: 'Approve proposal' });
       await expect(approveDialog).toBeVisible();
-      // Prefilled from a `null` lookup (RFC-75 R4 / proposal-prefill.ts): the
-      // proposed name verbatim, source "original" — nothing here was matched
-      // against GBIF, so nothing here is attributed to GBIF or WCVP.
+      // Prefilled the same way under either verdict (RFC-75 R4 /
+      // proposal-prefill.ts): a `null` lookup and a lookup whose only
+      // attempted source (the backbone) matched nothing both fail
+      // `preferredSource`'s "answered with a match" test, so both fall back
+      // to the proposed name verbatim, source "original" — nothing here is
+      // attributed to GBIF or WCVP either way.
       await expect(approveDialog.getByLabel('Canonical name')).toHaveValue(speciesName);
       await expect(approveDialog.getByLabel('Name source')).toHaveValue('original');
       await approveDialog.getByRole('button', { name: 'Approve and create', exact: true }).click();

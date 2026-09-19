@@ -100,7 +100,9 @@ test.describe('RFC-67 / RFC-33 field plots and species scope (plan 08b)', () => 
 
       // Search for the species outside the plot -> not visible (No species match)
       await contributor.page.getByLabel('Search species').fill(speciesOutsidePlotName);
-      await expect(contributor.page.getByText('No species match.')).toBeVisible();
+      await expect(
+        contributor.page.getByText(`No species matches “${speciesOutsidePlotName}”.`),
+      ).toBeVisible();
 
       // Admin unticks the restriction
       await adminPage.goto(`/app/admin/users/${contributor.userId}`);
@@ -121,7 +123,9 @@ test.describe('RFC-67 / RFC-33 field plots and species scope (plan 08b)', () => 
 
       // Without ticking, default scope is 'plots' -> outside species is still not visible
       await contributor.page.getByLabel('Search species').fill(speciesOutsidePlotName);
-      await expect(contributor.page.getByText('No species match.')).toBeVisible();
+      await expect(
+        contributor.page.getByText(`No species matches “${speciesOutsidePlotName}”.`),
+      ).toBeVisible();
 
       // Contributor ticks "Show species outside my plots"
       await outsideCheckbox.check();
