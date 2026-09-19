@@ -24,7 +24,7 @@ export const gettingStarted: HelpTopicSource = {
         Every value in the dataset is a <strong>record</strong>: one species, one trait, one value,
         and the reference it comes from. Records are never edited and never overwritten. You add to
         them, you agree with them, or you disagree with them, and each of those leaves your name on
-        what you did. A manager then decides which record is the <strong>accepted value</strong> for
+        what you did. The admin then decides which record is the <strong>accepted value</strong> for
         that species and trait.
       </p>
 

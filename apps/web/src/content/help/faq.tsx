@@ -56,11 +56,13 @@ export const faq: HelpTopicSource = {
       <p>
         That is an ordinary and useful state, not a problem to avoid. The second person adds their
         own record and marks it a <strong>contest</strong>; the first record is automatically
-        disputed and goes to the managers&rsquo; Disputed queue, which shows both values, both
-        references and both names side by side.
+        disputed and goes to the managers&rsquo; Disputed queue. That queue lists the disputed
+        record — its value, who disputed it, and an automatic note naming the record that contests
+        it. Opening the record shows the contesting records under <strong>Responses</strong>, and
+        opening one of those shows its value and its reference.
       </p>
       <p>
-        A manager then decides which record is the accepted value for that species and trait. Both
+        The admin then decides which record is the accepted value for that species and trait. Both
         records stay in the dataset with their references — the disagreement is recorded, not
         resolved by deletion. If you decide the other value was right after all, withdraw your
         contest and the dispute lifts itself.

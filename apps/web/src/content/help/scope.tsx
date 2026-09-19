@@ -33,7 +33,8 @@ export const scope: HelpTopicSource = {
       <h2 id="outside">Showing species outside your plots</h2>
       <p>
         When you have plots, the <strong>Species</strong> page starts with their species only — the
-        ones you are most likely to know. The filters carry a{' '}
+        ones you are most likely to know. Managers and admins are the exception: they start with the
+        whole dataset even when plots are assigned to them. The filters carry a{' '}
         <strong>Show species outside my plots</strong> checkbox: tick it to search the whole
         dataset, untick it to come back to your own sites. The choice is kept in the address bar, so
         a link you copy carries the same list the other person will see.
@@ -52,7 +53,7 @@ export const scope: HelpTopicSource = {
         records already pointing at it keep their value and stay readable.
       </p>
       <p>
-        Most contributors never see inactive rows — they are simply filtered out. Curators and
+        Most contributors never see inactive rows — they are simply filtered out. Managers and
         admins see them marked <em>inactive</em>, and the species list has an Active/Inactive filter
         for them.
       </p>

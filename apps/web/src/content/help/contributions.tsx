@@ -47,7 +47,9 @@ export const contributions: HelpTopicSource = {
       <p>Every record carries one review status, worked out from its annotations:</p>
       <ul>
         <li>
-          <strong>unreviewed</strong> — nobody has annotated it yet. A new record starts here.
+          <strong>unreviewed</strong> — nobody&rsquo;s standing position on it is a validation or a
+          dispute. A new record starts here, and a record whose dispute was lifted returns here,
+          carrying its annotations with it.
         </li>
         <li>
           <strong>confirmed</strong> — somebody&rsquo;s latest word on it is a validation. The axis
@@ -56,8 +58,8 @@ export const contributions: HelpTopicSource = {
         <li>
           <strong>disputed</strong> — somebody&rsquo;s standing position on it is a dispute, whether
           written by a manager or raised automatically by a contest. It outranks a validation, and
-          it puts the record in the managers&rsquo; Disputed queue until they settle the accepted
-          value for that species and trait.
+          it puts the record in the managers&rsquo; Disputed queue until the admin settles the
+          accepted value for that species and trait.
         </li>
         <li>
           <strong>withdrawn</strong> — a withdrawal exists. This wins over everything else: a
@@ -65,7 +67,7 @@ export const contributions: HelpTopicSource = {
         </li>
       </ul>
       <p>
-        <strong>accepted</strong> is not one of these. It is a separate mark, made by a manager, for
+        <strong>accepted</strong> is not one of these. It is a separate mark, made by the admin, for
         the one record that is the project&rsquo;s current value for a species and trait — so a
         record can be confirmed and accepted, or accepted and later disputed. See{' '}
         <Link to={helpHref('workflow')}>Workflow</Link>.
@@ -79,7 +81,7 @@ export const contributions: HelpTopicSource = {
       </p>
       <p>
         You can withdraw records you entered by hand. Imported rows cannot be withdrawn, and neither
-        can a record that is currently the accepted value — ask a manager to change the accepted
+        can a record that is currently the accepted value — ask the admin to change the accepted
         value first.
       </p>
       <p>

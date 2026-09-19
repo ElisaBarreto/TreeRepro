@@ -79,8 +79,8 @@ export const vocabulary: HelpTopicSource = {
       <p>
         The small <strong>?</strong> next to a trait&rsquo;s name shows that trait&rsquo;s
         description from the dictionary: what exactly is being measured, and how. It is the same
-        text wherever the trait appears — on a species page, on a trait card, in the entry form —
-        because it comes from the dictionary, not from the screen you are on.
+        description wherever the trait appears — on a species page, on a trait card, in the entry
+        form — because it comes from the dictionary, not from the screen you are on.
       </p>
       <p>
         Read it before entering a value, especially for traits whose name is used differently
