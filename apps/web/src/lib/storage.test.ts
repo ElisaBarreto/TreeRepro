@@ -34,4 +34,21 @@ describe('RFC-73 R3 storage flags', () => {
     });
     expect(() => writeFlag(KEY, true)).not.toThrow();
   });
+
+  // A write that cannot be persisted must still hold for the rest of the
+  // session: otherwise the dismissed Getting started card comes straight
+  // back on the next remount, and hiding it never appears to work at all.
+  // Its own key, so the module-level fallback of one test cannot answer for
+  // another.
+  it('writeFlag then readFlag answers true within the session when storage throws both ways', () => {
+    const sessionKey = 'treerepro.test.unavailable';
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('SecurityError: storage is disabled');
+    });
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError: storage is disabled');
+    });
+    writeFlag(sessionKey, true);
+    expect(readFlag(sessionKey)).toBe(true);
+  });
 });
