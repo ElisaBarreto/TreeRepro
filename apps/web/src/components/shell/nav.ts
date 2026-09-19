@@ -140,6 +140,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: 'audit.read',
     section: 'admin',
   },
+  {
+    to: '/app/admin/health',
+    label: 'Health',
+    icon: 'pulse',
+    permission: 'health.read',
+    section: 'admin',
+  },
   { to: '/app/settings', label: 'Settings', icon: 'sliders', section: 'account' },
   // No permission: the help section is open to every signed-in user (RFC-73 R1).
   { to: '/app/help', label: 'Help', icon: 'help', section: 'account' },
