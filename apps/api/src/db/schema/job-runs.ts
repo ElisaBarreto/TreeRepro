@@ -1,3 +1,4 @@
+import { JOB_STATUSES } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
@@ -5,8 +6,12 @@ import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm
 export const JOB_KINDS = ['audit_purge', 'digest'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
-/** `skipped` means the job decided there was nothing to do. @rfc RFC-74 R1 */
-export const JOB_STATUSES = ['running', 'completed', 'failed', 'skipped'] as const;
+/**
+ * `skipped` means the job decided there was nothing to do. `JOB_STATUSES`
+ * itself now lives in `@treerepro/contracts` (`health.ts`), which needs it
+ * for `jobRunSummarySchema`; this type alias is kept here so
+ * `apps/api/src/jobs/runs.ts` needs no change.
+ */
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });

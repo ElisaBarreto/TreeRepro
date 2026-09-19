@@ -4,6 +4,7 @@ import type {
   CreateUserBody,
   DataEnvelope,
   PermissionEntry,
+  PlatformHealth,
   Role,
   SessionSummary,
   SetUserPlotsBody,
@@ -24,6 +25,7 @@ export const adminKeys = {
   roles: ['admin', 'roles'] as const,
   permissions: ['admin', 'permissions'] as const,
   audit: (params: QueryParams) => ['admin', 'audit', params] as const,
+  health: ['admin', 'health'] as const,
 };
 
 /** @rfc RFC-50 R2 */
@@ -137,5 +139,11 @@ export async function setUserPlots(id: string, body: SetUserPlotsBody): Promise<
     method: 'PUT',
     json: body,
   });
+  return data;
+}
+
+/** @rfc RFC-52 R1 */
+export async function fetchPlatformHealth(): Promise<PlatformHealth> {
+  const { data } = await apiFetch<DataEnvelope<PlatformHealth>>('/admin/health');
   return data;
 }

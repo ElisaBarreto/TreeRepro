@@ -31,6 +31,7 @@ export const PERMISSIONS = {
   'plots.manage': 'Create and edit field plots and their species',
   'contributions.read': "View any user's contributions",
   'coverage.read': 'View coverage metrics',
+  'health.read': 'View platform health',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

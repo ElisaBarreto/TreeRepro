@@ -8,10 +8,12 @@ import {
   ROLE_READERS,
 } from '../test/admin-fixtures.ts';
 import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
+import { PLATFORM_HEALTH } from '../test/health-fixtures.ts';
 import {
   adminKeys,
   createRole,
   deleteRole,
+  fetchPlatformHealth,
   fetchUser,
   inviteUser,
   listPermissions,
@@ -154,5 +156,15 @@ describe('RFC-51 R1 audit', () => {
     expect(adminKeys.roles).toEqual(['admin', 'roles']);
     expect(adminKeys.permissions).toEqual(['admin', 'permissions']);
     expect(adminKeys.audit({ action: 'x' })).toEqual(['admin', 'audit', { action: 'x' }]);
+    expect(adminKeys.health).toEqual(['admin', 'health']);
+  });
+});
+
+describe('RFC-52 R1 platform health', () => {
+  it('fetchPlatformHealth gets /admin/health and returns the payload', async () => {
+    mockJson(200, { data: PLATFORM_HEALTH });
+    await expect(fetchPlatformHealth()).resolves.toEqual(PLATFORM_HEALTH);
+    expect(lastRequest().url).toBe('/api/admin/health');
+    expect(lastRequest().init?.method ?? 'GET').toBe('GET');
   });
 });

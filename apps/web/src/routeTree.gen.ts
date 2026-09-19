@@ -21,6 +21,7 @@ import { Route as AppTaxaRouteImport } from './routes/app/taxa'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as AppAdminAuditRouteImport } from './routes/app/admin/audit'
+import { Route as AppAdminHealthRouteImport } from './routes/app/admin/health'
 import { Route as AppAdminRolesRouteImport } from './routes/app/admin/roles'
 import { Route as AppCurationCoverageRouteImport } from './routes/app/curation/coverage'
 import { Route as AppCurationDisputedRouteImport } from './routes/app/curation/disputed'
@@ -99,6 +100,11 @@ const ResetPasswordTokenRoute = ResetPasswordTokenRouteImport.update({
 const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
+  getParentRoute: () => AppAdminRoute,
+} as any)
+const AppAdminHealthRoute = AppAdminHealthRouteImport.update({
+  id: '/health',
+  path: '/health',
   getParentRoute: () => AppAdminRoute,
 } as any)
 const AppAdminRolesRoute = AppAdminRolesRouteImport.update({
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/health': typeof AppAdminHealthRoute
   '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
@@ -241,6 +248,7 @@ export interface FileRoutesByTo {
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/health': typeof AppAdminHealthRoute
   '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
@@ -275,6 +283,7 @@ export interface FileRoutesById {
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/app/': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
+  '/app/admin/health': typeof AppAdminHealthRoute
   '/app/admin/roles': typeof AppAdminRolesRoute
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
@@ -310,6 +319,7 @@ export interface FileRouteTypes {
     | '/reset-password/$token'
     | '/app/'
     | '/app/admin/audit'
+    | '/app/admin/health'
     | '/app/admin/roles'
     | '/app/curation/coverage'
     | '/app/curation/disputed'
@@ -341,6 +351,7 @@ export interface FileRouteTypes {
     | '/reset-password/$token'
     | '/app'
     | '/app/admin/audit'
+    | '/app/admin/health'
     | '/app/admin/roles'
     | '/app/curation/coverage'
     | '/app/curation/disputed'
@@ -374,6 +385,7 @@ export interface FileRouteTypes {
     | '/reset-password/$token'
     | '/app/'
     | '/app/admin/audit'
+    | '/app/admin/health'
     | '/app/admin/roles'
     | '/app/curation/coverage'
     | '/app/curation/disputed'
@@ -487,6 +499,13 @@ declare module '@tanstack/react-router' {
       path: '/audit'
       fullPath: '/app/admin/audit'
       preLoaderRoute: typeof AppAdminAuditRouteImport
+      parentRoute: typeof AppAdminRoute
+    }
+    '/app/admin/health': {
+      id: '/app/admin/health'
+      path: '/health'
+      fullPath: '/app/admin/health'
+      preLoaderRoute: typeof AppAdminHealthRouteImport
       parentRoute: typeof AppAdminRoute
     }
     '/app/admin/roles': {
@@ -627,6 +646,7 @@ declare module '@tanstack/react-router' {
 
 interface AppAdminRouteChildren {
   AppAdminAuditRoute: typeof AppAdminAuditRoute
+  AppAdminHealthRoute: typeof AppAdminHealthRoute
   AppAdminRolesRoute: typeof AppAdminRolesRoute
   AppAdminPlotsIdRoute: typeof AppAdminPlotsIdRoute
   AppAdminUsersIdRoute: typeof AppAdminUsersIdRoute
@@ -636,6 +656,7 @@ interface AppAdminRouteChildren {
 
 const AppAdminRouteChildren: AppAdminRouteChildren = {
   AppAdminAuditRoute: AppAdminAuditRoute,
+  AppAdminHealthRoute: AppAdminHealthRoute,
   AppAdminRolesRoute: AppAdminRolesRoute,
   AppAdminPlotsIdRoute: AppAdminPlotsIdRoute,
   AppAdminUsersIdRoute: AppAdminUsersIdRoute,

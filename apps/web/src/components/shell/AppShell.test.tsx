@@ -89,6 +89,10 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.getByRole('link', { name: 'Roles' })).toHaveAttribute('href', '/app/admin/roles');
     expect(screen.getByRole('link', { name: 'Plots' })).toHaveAttribute('href', '/app/admin/plots');
     expect(screen.getByRole('link', { name: 'Audit' })).toHaveAttribute('href', '/app/admin/audit');
+    expect(screen.getByRole('link', { name: 'Health' })).toHaveAttribute(
+      'href',
+      '/app/admin/health',
+    );
   });
 
   it('needs admin.access AND the entry permission — neither alone is enough', () => {
@@ -100,10 +104,35 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.queryByRole('link', { name: 'Roles' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Plots' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Audit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Health' })).not.toBeInTheDocument();
     unmount();
 
     renderWithProviders(<AppShell>child</AppShell>, { me: { ...ME, permissions: ['users.read'] } });
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+  });
+
+  it('RFC-52 shows Health under Admin with health.read, and never without it', () => {
+    // The Admin group is on screen (users.read renders Users), so this
+    // negative assertion is about the Health entry, not about an empty
+    // sidebar — the gate is `health.read`, which an admin.access holder does
+    // not get for free.
+    const { unmount } = renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['admin.access', 'users.read'] },
+    });
+    expect(screen.getByRole('navigation', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Users' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Health' })).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['admin.access', 'health.read'] },
+    });
+    const admin = screen.getByRole('navigation', { name: 'Admin' });
+    expect(within(admin).getByRole('link', { name: 'Health' })).toHaveAttribute(
+      'href',
+      '/app/admin/health',
+    );
     expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
   });
 
