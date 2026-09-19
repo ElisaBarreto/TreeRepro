@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | integrations |
 | Supersedes | — |
 
@@ -31,3 +31,4 @@ None.
 ## Changelog
 
 - 2026-09-19 — created (plan 12c).
+- 2026-09-19 — accepted.
