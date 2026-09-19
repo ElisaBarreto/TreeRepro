@@ -92,6 +92,15 @@ export function SpeciesDialog({
   const queryClient = useQueryClient();
   const ids = { family: useId(), newFamily: useId(), genus: useId() };
   const [canonicalName, setCanonicalName] = useState(species?.canonicalName ?? '');
+  // The canonical name as it stands *now*. `applyLookup` runs after an await,
+  // so the state it closed over is the one from the render that started the
+  // request; the ref is what tells a late answer it is about a name the form
+  // no longer holds.
+  const liveName = useRef(species?.canonicalName ?? '');
+  function changeCanonicalName(next: string) {
+    liveName.current = next;
+    setCanonicalName(next);
+  }
   const [nameSource, setNameSource] = useState<NameSource>(species?.nameSource ?? 'original');
   // What the last Look up found that the catalog does not hold; `null` until
   // one has run.
@@ -149,7 +158,13 @@ export function SpeciesDialog({
   // form with nothing said about it.
   const look = useMutation({
     mutationFn: async (name: string) => {
-      await applyLookup(await matchTaxon(name));
+      const lookup = await matchTaxon(name);
+      // The name stayed editable while the request was in flight. An answer
+      // about a name the form has moved on from is not this form's answer:
+      // applying it would fill the family and the genus of one species under
+      // another's name, and nothing on screen would say so.
+      if (liveName.current.trim() !== name) return;
+      await applyLookup(lookup, name);
     },
   });
   // A taken name is the canonical name's own error, not the form's.
@@ -171,7 +186,7 @@ export function SpeciesDialog({
   // reported in one line instead — the family's name into the inline "New
   // family" field, ready for the reviewer to create, and the genus's name in
   // the note, where the combobox's own `Create "…"` option takes over.
-  async function applyLookup(lookup: Lookup): Promise<void> {
+  async function applyLookup(lookup: Lookup, name: string): Promise<void> {
     const match = preferredMatch(lookup);
     if (!match || (match.family === null && match.genus === null)) {
       setLookupNote('GBIF named no family or genus for this name.');
@@ -187,7 +202,14 @@ export function SpeciesDialog({
         familyId = known.id;
         chooseFamily(known.id);
       } else {
+        // A family the catalog does not hold replaces the previous one
+        // rather than sitting beside it: leaving the old family selected
+        // would restrict the genus search below to a family this match has
+        // just contradicted, and leave its genus chosen if nothing matches.
         addFamily.reset();
+        familyId = '';
+        setFamily('');
+        setGenus(null);
         setNewFamily(match.family);
         missing.push(`the family ${match.family} (filled in above — press Create)`);
       }
@@ -201,6 +223,9 @@ export function SpeciesDialog({
           limit: 20,
         });
         for (const item of page.data) generaById.current.set(item.id, item);
+        // The catalog search is a second await, and a second chance for the
+        // name to have moved on.
+        if (liveName.current.trim() !== name) return;
         const known = page.data.find((g) => g.name.toLowerCase() === match.genus?.toLowerCase());
         if (known) setGenus(genusOption(known));
         else missing.push(`the genus ${match.genus}`);
@@ -289,7 +314,7 @@ export function SpeciesDialog({
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <SpeciesNameFields
           canonicalName={canonicalName}
-          onCanonicalNameChange={setCanonicalName}
+          onCanonicalNameChange={changeCanonicalName}
           nameSource={nameSource}
           onNameSourceChange={setNameSource}
           errors={{ canonicalName: errors.canonicalName, nameSource: errors.nameSource }}

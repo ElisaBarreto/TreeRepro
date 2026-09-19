@@ -3,7 +3,7 @@ import type { Lookup } from '@treerepro/contracts';
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
-import { createSpecies } from '../../test/helpers/dataset.ts';
+import { createFamily, createGenus, createSpecies } from '../../test/helpers/dataset.ts';
 import { withRollback } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { UNRESTRICTED, type Visibility } from '../access/visibility.ts';
@@ -385,6 +385,58 @@ describe('RFC-75 R4 approveProposal', () => {
       targetType: 'species_proposals',
       metadata: { decision: 'approved', speciesId },
     });
+  });
+
+  it('an existing genus is reused under its own family, and the family the body named is never created', async () => {
+    const { user } = await createUser(t.db);
+    const manager = await createUser(t.db);
+    const name = aName();
+    const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
+      name,
+      proposerId: user.id,
+    });
+    // The catalog already holds the genus, under a family of its own.
+    const ownFamily = await createFamily(t.db, { name: `Testaceae-${tag()}` });
+    const existingGenus = await createGenus(t.db, {
+      name: `Testus-${tag()}`,
+      familyId: ownFamily.id,
+    });
+    // The body names that genus but a different family — GBIF's opinion, or a
+    // typo. The genus is what places the species (RFC-60 R9: the species
+    // carries `genus_id` only), so the genus's own family stands.
+    const disagreeingFamily = `Otheraceae-${tag()}`;
+
+    const approved = await approveProposal(t.db, {
+      id: proposal.id,
+      actorId: manager.user.id,
+      body: {
+        canonicalName: name,
+        nameSource: 'gbif',
+        genusName: existingGenus.name,
+        familyName: disagreeingFamily,
+      },
+    });
+
+    const [createdSpecies] = await t.db
+      .select({ genusId: species.genusId })
+      .from(species)
+      .where(eq(species.id, approved.species?.id ?? ''));
+    expect(createdSpecies?.genusId).toBe(existingGenus.id);
+
+    // No orphan: the family named by the body was never inserted, because
+    // nothing would have pointed at it.
+    const orphans = await t.db
+      .select({ id: families.id })
+      .from(families)
+      .where(eq(families.name, disagreeingFamily));
+    expect(orphans).toEqual([]);
+
+    // And the existing genus was not re-parented behind other species' backs.
+    const [reread] = await t.db
+      .select({ familyId: genera.familyId })
+      .from(genera)
+      .where(eq(genera.id, existingGenus.id));
+    expect(reread?.familyId).toBe(ownFamily.id);
   });
 
   it('refuses a second decision with PROPOSAL_DECIDED', async () => {

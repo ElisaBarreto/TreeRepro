@@ -612,6 +612,18 @@ describe('RFC-60 R6 SpeciesSearchPage trait filters, order and the URL', () => {
     );
   });
 
+  it('RFC-75 R2 a two-letter term is searchable but not proposable — the dialog is not offered', async () => {
+    // The species search takes two letters; `createProposalBodySchema`
+    // takes three. Offering the action for a term the proposal contract
+    // would refuse opens a dialog prefilled with a value that cannot be
+    // submitted.
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'taxa.propose'] });
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    renderAt('/app/species?q=Qu');
+    expect(await screen.findByText('No species matches \u201cQu\u201d.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Propose this species' })).not.toBeInTheDocument();
+  });
+
   it('RFC-75 R2 with no search term the empty state stays the plain one', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'taxa.propose'] });
     dataset.searchSpecies.mockResolvedValue(page([]));

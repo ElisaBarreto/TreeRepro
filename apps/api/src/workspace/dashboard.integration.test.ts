@@ -290,7 +290,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
 
       const manager: DashboardViewer = {
         id: f.manager.id,
-        permissions: permissions('dataset.read', 'records.review'),
+        permissions: permissions('dataset.read', 'records.review', 'taxa.manage'),
         scope: { plots: [f.plot], restricted: true },
       };
       const reviewed = await getDashboard({ db: tx, redis }, f.visibility, manager);
@@ -321,6 +321,21 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       ]);
       expect(reviewed.curation?.coverage.percentWithData).toBeLessThanOrEqual(100);
       expect(reviewed.curation?.coverage.percentAccepted).toBeLessThanOrEqual(100);
+
+      // RFC-75 R7: the proposals queue is `taxa.manage` work — that is what
+      // `GET /api/species/proposals` requires (RFC-75 R3). A reviewer who
+      // does not hold it is counting a queue the API would refuse them, so
+      // the number is 0 while the record queues, which are theirs, still
+      // count.
+      const reviewerOnly: DashboardViewer = {
+        ...manager,
+        permissions: permissions('dataset.read', 'records.review'),
+      };
+      const withoutTaxa = await getDashboard({ db: tx, redis }, f.visibility, reviewerOnly);
+      expect(withoutTaxa.curation?.queues.proposals).toBe(0);
+      expect(withoutTaxa.curation?.queues.pendingGroups).toBe(
+        reviewed.curation?.queues.pendingGroups,
+      );
     });
   });
 

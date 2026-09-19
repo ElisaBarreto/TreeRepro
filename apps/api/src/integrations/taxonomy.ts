@@ -29,15 +29,48 @@ const asNumber = (v: unknown): number | null => (typeof v === 'number' ? v : nul
 const asKey = (v: unknown): string | null =>
   typeof v === 'string' ? v : typeof v === 'number' ? String(v) : null;
 /**
- * A malformed 2xx (GBIF answering with a shape we did not expect — a field
- * that should be an array coming back as a string, an object, or an array
- * with `null`/scalar entries) must degrade the mapper, never throw it: the
- * lookup is best-effort (RFC-81 R1) and a throw here would 500 a
- * contributor's proposal instead of falling back to a `NONE` match.
+ * The mappers stay total: a shape they did not expect degrades to nulls and
+ * never throws, because a stored `lookup` is re-read long after the call and
+ * a throw here would 500 a contributor's proposal. What a malformed body
+ * must *not* do is pass for an answer — that is decided one layer up, by the
+ * shape checks below, before either mapper is reached.
  */
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const asRecord = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Is this 2xx body the backbone answer RFC-81 R2 documents? A `NONE` match
+ * carries `diagnostics` and nothing else — no `usage`, no `classification` —
+ * so those two are optional, but anything present must have its documented
+ * shape. A body without a `diagnostics.matchType` string is not an answer
+ * about the name: mapping it would silently yield `matchType 'NONE'`, which
+ * R-K reserves for "GBIF checked and found nothing".
+ * @rfc RFC-81 R2, R3
+ */
+function isBackboneBody(json: unknown): boolean {
+  if (!isObject(json)) return false;
+  const { usage, acceptedUsage, classification, diagnostics } = json;
+  if (!isObject(diagnostics) || typeof diagnostics.matchType !== 'string') return false;
+  if (usage != null && !isObject(usage)) return false;
+  if (acceptedUsage != null && !isObject(acceptedUsage)) return false;
+  if (classification != null && (!Array.isArray(classification) || !classification.every(isObject)))
+    return false;
+  return true;
+}
+
+/**
+ * Is this 2xx body the WCVP answer RFC-81 R2 documents? `results` is
+ * required — a genuine miss sends `results: []`, so a body without it, or
+ * with rows that are not objects, is a malformed answer and not a miss.
+ * @rfc RFC-81 R2, R3
+ */
+function isWcvpBody(json: unknown): boolean {
+  return isObject(json) && Array.isArray(json.results) && json.results.every(isObject);
+}
 
 /**
  * A note naming the matched rank when it is above species, and `null`
@@ -164,7 +197,8 @@ export function wcvpToMatch(json: unknown): TaxonMatch {
  * both sources are absent (failed or not attempted) and at least one call
  * actually failed — the backbone is always attempted, so a `null` backbone
  * always means a real failure (R-K); `none` is reserved for a call that
- * succeeded and found nothing.
+ * succeeded and found nothing. A 2xx with a malformed body is counted as a
+ * failed call by the client, never as a source that found nothing.
  * @rfc RFC-81 R3
  */
 export function verdictOf(
@@ -197,8 +231,13 @@ export function createTaxonomyClient(o: {
         allowedHost: GBIF_HOST,
         fetchImpl: o.fetchImpl,
       });
-      const backbone = backboneRes.ok ? gbifToMatch(backboneRes.json) : null;
-      let failures = backboneRes.ok ? 0 : 1;
+      // A 2xx whose body is not the documented shape counts as a failed
+      // call, not as an answer: `none` and `failed` say different things
+      // about the same proposal (R-K) and only one of them is the
+      // platform's fault.
+      const backboneOk = backboneRes.ok && isBackboneBody(backboneRes.json);
+      const backbone = backboneOk ? gbifToMatch(backboneRes.json) : null;
+      let failures = backboneOk ? 0 : 1;
 
       let wcvp: TaxonMatch | null = null;
       if (o.wcvpDatasetKey) {
@@ -210,8 +249,9 @@ export function createTaxonomyClient(o: {
           allowedHost: GBIF_HOST,
           fetchImpl: o.fetchImpl,
         });
-        wcvp = wcvpRes.ok ? wcvpToMatch(wcvpRes.json) : null;
-        if (!wcvpRes.ok) failures += 1;
+        const wcvpOk = wcvpRes.ok && isWcvpBody(wcvpRes.json);
+        wcvp = wcvpOk ? wcvpToMatch(wcvpRes.json) : null;
+        if (!wcvpOk) failures += 1;
       }
 
       return { backbone, wcvp, verdict: verdictOf(backbone, wcvp, failures) };

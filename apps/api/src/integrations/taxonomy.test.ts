@@ -316,6 +316,81 @@ describe('RFC-81 R1 createTaxonomyClient', () => {
     const result = await client.match('Quercus robur');
     expect(result).toEqual({ backbone: null, wcvp: null, verdict: 'failed' });
   });
+
+  // A 2xx whose body is not the shape RFC-81 R2 documents is nobody's answer
+  // about the name: it is a source that did not answer usefully. R-K keeps
+  // `none` ("GBIF checked and found nothing") apart from `failed` ("nobody
+  // checked"), and a malformed body belongs on the `failed` side of that line
+  // — it is stored on the proposal and read months later.
+  const malformed = (body: unknown, key: string | null = null) =>
+    createTaxonomyClient({
+      wcvpDatasetKey: key,
+      version: '1.0',
+      fetchImpl: async () => new Response(JSON.stringify(body), { status: 200 }),
+    });
+
+  it('a malformed 2xx backbone body is a failure, not a NONE match, with WCVP disabled — R-K', async () => {
+    for (const body of [
+      'not-an-object',
+      42,
+      null,
+      [],
+      {},
+      { diagnostics: 'nope' },
+      { diagnostics: { confidence: 100 } },
+      { diagnostics: { matchType: 'EXACT' }, classification: 'not-an-array' },
+      { diagnostics: { matchType: 'EXACT' }, classification: [null, 1, 'x'] },
+      { diagnostics: { matchType: 'EXACT' }, usage: 'nope' },
+    ]) {
+      const result = await malformed(body).match('Quercus robur');
+      expect(result, JSON.stringify(body)).toEqual({
+        backbone: null,
+        wcvp: null,
+        verdict: 'failed',
+      });
+    }
+  });
+
+  it('a malformed 2xx WCVP body is a failure for that source; a valid empty results stays a NONE match', async () => {
+    const withWcvp = (wcvpBody: unknown) =>
+      createTaxonomyClient({
+        wcvpDatasetKey: 'f382f0ce-323a-4091-bb9f-add557f3a9a2',
+        version: '1.0',
+        fetchImpl: async (url) =>
+          new Response(
+            JSON.stringify(
+              String(url).includes('/v2/species/match') ? fixture('backbone-none') : wcvpBody,
+            ),
+            { status: 200 },
+          ),
+      });
+    // `results` missing entirely, or not an array, or holding non-object rows:
+    // the source is `null`, and with the backbone's genuine NONE the verdict
+    // is `none` — one call did answer (RFC-81 R3's partial-failure clause).
+    for (const body of [{}, { results: 'not-an-array' }, { results: [null, 1, 'x'] }, 42]) {
+      const result = await withWcvp(body).match('Quercus robur');
+      expect(result.wcvp, JSON.stringify(body)).toBeNull();
+      expect(result.backbone?.matchType, JSON.stringify(body)).toBe('NONE');
+      expect(result.verdict, JSON.stringify(body)).toBe('none');
+    }
+    // The structurally valid miss is still an answer.
+    const answered = await withWcvp(fixture('wcvp-none')).match('Quercus robur');
+    expect(answered.wcvp?.matchType).toBe('NONE');
+    expect(answered.verdict).toBe('none');
+  });
+
+  it('both bodies malformed is failed, never none — the conflation R-K exists to prevent', async () => {
+    const client = createTaxonomyClient({
+      wcvpDatasetKey: 'f382f0ce-323a-4091-bb9f-add557f3a9a2',
+      version: '1.0',
+      fetchImpl: async () => new Response(JSON.stringify({ unexpected: true }), { status: 200 }),
+    });
+    expect(await client.match('Quercus robur')).toEqual({
+      backbone: null,
+      wcvp: null,
+      verdict: 'failed',
+    });
+  });
 });
 
 describe('RFC-81 R1 verifyWcvpDataset', () => {

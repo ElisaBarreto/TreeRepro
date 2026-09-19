@@ -1,5 +1,10 @@
 import { useNavigate } from '@tanstack/react-router';
-import type { SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contracts';
+import {
+  createProposalBodySchema,
+  type SpeciesSort,
+  type SpeciesStatus,
+  type TraitDataMode,
+} from '@treerepro/contracts';
 import { useEffect, useState } from 'react';
 import { EXPORT_ACCEPTED_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
@@ -185,7 +190,12 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   // what the box holds this keystroke. Below the API's two-letter minimum
   // nothing was searched by name, so there is no term to name or to propose.
   const searched = params.q ?? '';
-  const canPropose = searched !== '' && hasPermission(me, 'taxa.propose');
+  // Eligibility is the proposal contract's own (RFC-75 R2: three characters),
+  // not the search's two: offering the action for a term the API would refuse
+  // opens a dialog prefilled with a value that cannot be submitted.
+  const canPropose =
+    createProposalBodySchema.safeParse({ name: searched }).success &&
+    hasPermission(me, 'taxa.propose');
 
   return (
     <>

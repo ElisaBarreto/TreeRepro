@@ -286,31 +286,47 @@ async function familyIdFor(tx: DbExecutor, name: string, actorId: string): Promi
   return (await createFamily(tx, { name: wanted, actorId })).id;
 }
 
-/** The genus of that name, created when it is missing. @rfc RFC-60 R9 */
+/**
+ * The genus the approved species is filed under, created when it is missing
+ * — and the family only then. The genus is resolved **first**: a species
+ * carries `genus_id` alone (RFC-60 R9), so an existing genus already places
+ * the species, under its own family, and the body's `familyName` has nothing
+ * left to attach itself to. Resolving the family first instead created one
+ * that the reused genus then discarded — a family row nothing points at,
+ * committed inside the approval, while the species went under a hierarchy
+ * the approval body never described. `familyName` is a prefill from the GBIF
+ * match, not an instruction to re-parent a genus other species already sit
+ * in: when it disagrees with the existing genus's family, the genus's own
+ * family stands and the name is ignored.
+ * @rfc RFC-75 R4
+ * @rfc RFC-60 R9
+ */
 async function genusIdFor(
   tx: DbExecutor,
-  name: string,
-  familyId: string | undefined,
+  body: ApproveProposalBody,
   actorId: string,
-): Promise<string> {
-  const wanted = normaliseName(name);
+): Promise<string | undefined> {
+  if (!body.genusName) return undefined;
+  const wanted = normaliseName(body.genusName);
   const [row] = await tx
     .select({ id: genera.id })
     .from(genera)
     .where(eq(genera.name, wanted))
     .limit(1);
   if (row) return row.id;
+  const familyId = body.familyName ? await familyIdFor(tx, body.familyName, actorId) : undefined;
   return (await createGenus(tx, { name: wanted, familyId, actorId })).id;
 }
 
 /**
- * Approving a proposal in one transaction: the family, the genus, the
- * species and each alternative name are created exactly as `POST
- * /api/species` creates them, each with its own `taxa.created` row, and the
- * decision and its `proposals.decided` row are written last. A canonical
- * name already taken by *any* species — including one the proposer could not
- * see — surfaces as `createSpecies`'s own 409 `SPECIES_NAME_TAKEN` and rolls
- * the whole approval back, leaving the proposal open.
+ * Approving a proposal in one transaction: the genus (and, only when the
+ * genus has to be created, its family), the species and each alternative
+ * name are created exactly as `POST /api/species` creates them, each with
+ * its own `taxa.created` row, and the decision and its `proposals.decided`
+ * row are written last. A canonical name already taken by *any* species —
+ * including one the proposer could not see — surfaces as `createSpecies`'s
+ * own 409 `SPECIES_NAME_TAKEN` and rolls the whole approval back, leaving
+ * the proposal open.
  * @rfc RFC-75 R4
  * @rfc RFC-60 R9, R10
  */
@@ -320,12 +336,7 @@ export async function approveProposal(
 ): Promise<Proposal> {
   return db.transaction(async (tx) => {
     await lockOpenProposal(tx, input.id);
-    const familyId = input.body.familyName
-      ? await familyIdFor(tx, input.body.familyName, input.actorId)
-      : undefined;
-    const genusId = input.body.genusName
-      ? await genusIdFor(tx, input.body.genusName, familyId, input.actorId)
-      : undefined;
+    const genusId = await genusIdFor(tx, input.body, input.actorId);
     const created = await createSpecies(tx, {
       canonicalName: input.body.canonicalName,
       nameSource: input.body.nameSource,

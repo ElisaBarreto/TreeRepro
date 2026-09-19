@@ -369,6 +369,75 @@ describe('RFC-81 R4 the Look up button', () => {
     expect(within(dialog).getByLabelText('Family')).toHaveValue(FAMILY.id);
   });
 
+  it('a lookup that answers after the name changed is discarded, never applied to the new name', async () => {
+    // The canonical name stays editable while the request is in flight, so
+    // the answer can arrive about a name the form no longer holds. Filling
+    // the family and genus from it would submit one species' taxonomy under
+    // another's name.
+    let answer: (lookup: unknown) => void = () => {};
+    proposals.matchTaxon.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const { dialog } = mount();
+    const nameBox = within(dialog).getByRole('textbox', { name: /canonical name/i });
+    await userEvent.type(nameBox, 'Adenanthera pavonina');
+    const lookUp = within(dialog).getByRole('button', { name: 'Look up' });
+    await userEvent.click(lookUp);
+    await waitFor(() => expect(proposals.matchTaxon).toHaveBeenCalledWith('Adenanthera pavonina'));
+
+    await userEvent.clear(nameBox);
+    await userEvent.type(nameBox, 'Quercus robur');
+    answer({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: FAMILY.name, genus: GENUS.name },
+    });
+    await waitFor(() => expect(lookUp).not.toHaveAttribute('aria-busy'));
+
+    expect(within(dialog).getByLabelText('Family')).toHaveValue('');
+    expect(within(dialog).queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Family and genus filled in/)).not.toBeInTheDocument();
+  });
+
+  it('a matched family the catalog lacks clears the family and genus already chosen', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: 'Fagaceae', genus: 'Quercus' },
+    });
+    const { dialog } = mount();
+    // A family and a genus of that family are already selected.
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: /^family/i }),
+      FAMILY.id,
+    );
+    await userEvent.type(within(dialog).getByRole('combobox', { name: /^genus/i }), 'Aden');
+    await userEvent.click(await screen.findByRole('option', { name: /Adenanthera/ }));
+    expect(within(dialog).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Quercus robur',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('textbox', { name: /new family name/i })).toHaveValue(
+        'Fagaceae',
+      ),
+    );
+    // The matched genus is searched catalog-wide, not inside a family the
+    // match has just contradicted...
+    expect(dataset.fetchGenera).toHaveBeenLastCalledWith({
+      familyId: undefined,
+      q: 'Quercus',
+      limit: 20,
+    });
+    // ...and the genus of the old family does not survive into the new one.
+    expect(within(dialog).queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
   it('RFC-60 R9 edit mode has no Look up button', () => {
     const { dialog } = mount(SPECIES);
     expect(within(dialog).queryByRole('button', { name: 'Look up' })).not.toBeInTheDocument();

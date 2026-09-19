@@ -403,7 +403,10 @@ async function curationSection(
     // RFC-75 R7. A proposal is about a species that does not exist yet, so
     // RFC-33 has nothing to scope this count by: every reviewer sees the same
     // queue, which is also what keeps the cached panel free of proposal rows.
-    countOpenProposals(ctx.db),
+    // Its permission is the queue's own, `taxa.manage` (RFC-75 R3), not the
+    // `records.review` the record queues beside it are gated on: a number
+    // for a queue whose API would answer 403 is worse than no number.
+    viewer.permissions.has('taxa.manage') ? countOpenProposals(ctx.db) : 0,
   ]);
   return { coverage, queues: { pendingGroups, disputed, contested, proposals } };
 }
