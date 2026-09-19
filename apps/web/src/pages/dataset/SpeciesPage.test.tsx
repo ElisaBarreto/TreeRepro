@@ -352,6 +352,28 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
   });
 });
 
+describe('RFC-74 R5 ?record= opens the drawer on mount', () => {
+  it('opens the record drawer on mount from ?record=<uuid>, the digest e-mail deep link', async () => {
+    renderAt(`/app/species/${SPECIES.id}?record=${RECORD.id}`);
+    const drawer = await screen.findByRole('dialog', { name: 'Record' });
+    expect(dataset.fetchRecord).toHaveBeenCalledWith(RECORD.id);
+    expect(await within(drawer).findByText('Dioecious')).toBeInTheDocument();
+  });
+
+  it('opens nothing when the record param is absent', async () => {
+    await openPage();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(dataset.fetchRecord).not.toHaveBeenCalled();
+  });
+
+  it('opens nothing for a malformed record param', async () => {
+    renderAt(`/app/species/${SPECIES.id}?record=not-a-uuid`);
+    await screen.findByRole('heading', { level: 1, name: /Adenanthera pavonina/ });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(dataset.fetchRecord).not.toHaveBeenCalled();
+  });
+});
+
 describe('RFC-65 R6 SpeciesPage trait panel follows the live summary', () => {
   // The summary as the page first loads it, with RECORD as the accepted
   // value, and the same summary once the accepted value is cleared.
