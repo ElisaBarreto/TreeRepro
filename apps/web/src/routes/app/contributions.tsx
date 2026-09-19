@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
 import {
-  CONTRIBUTION_KINDS,
   RECORD_INTENTS,
   REVIEW_STATUSES,
   type RecordIntent,
@@ -9,6 +8,7 @@ import {
 import { NoPermission } from '../../components/shell/NoPermission.tsx';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import {
+  CONTRIBUTION_TABS,
   ContributionsPage,
   type ContributionsSearch,
 } from '../../pages/workspace/ContributionsPage.tsx';
@@ -44,7 +44,7 @@ const INTENT_FILTERS: readonly (RecordIntent | 'none')[] = [...RECORD_INTENTS, '
  */
 function validateSearch(search: Record<string, unknown>): ContributionsSearch {
   return {
-    kind: oneOf(search.kind, CONTRIBUTION_KINDS),
+    kind: oneOf(search.kind, CONTRIBUTION_TABS),
     userId: uuid(search.userId),
     traitId: uuid(search.traitId),
     speciesId: uuid(search.speciesId),

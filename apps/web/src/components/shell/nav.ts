@@ -34,12 +34,15 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
  * shell filters by permission (RFC-13 R3). Three of the Curation entries
  * require `records.review`: the queues are manager work (RFC-65 R8–R10,
  * RFC-31 R10). Coverage requires `coverage.read` instead (RFC-69 R5,
- * plan 11c) — a manager permission of its own, not the queues'.
+ * plan 11c) — a manager permission of its own, not the queues'. Proposals
+ * requires `taxa.manage` (RFC-75 R3, plan 12c): deciding one creates a
+ * species, which is the catalog permission, not a review permission.
  * @rfc RFC-13 R3
  * @rfc RFC-60 R9
  * @rfc RFC-65 R8, R10
  * @rfc RFC-69 R5
  * @rfc RFC-71 R1
+ * @rfc RFC-75 R3
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app', label: 'Workspace', icon: 'home' },
@@ -92,6 +95,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'Coverage',
     icon: 'check',
     permission: 'coverage.read',
+    section: 'curation',
+  },
+  {
+    to: '/app/curation/proposals',
+    label: 'Proposals',
+    icon: 'clipboard',
+    permission: 'taxa.manage',
     section: 'curation',
   },
   {

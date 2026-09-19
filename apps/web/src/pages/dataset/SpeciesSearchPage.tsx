@@ -3,6 +3,7 @@ import type { SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contr
 import { useEffect, useState } from 'react';
 import { EXPORT_ACCEPTED_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
+import { ProposeSpeciesDialog } from '../../components/catalog/ProposeSpeciesDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { SpeciesList } from '../../components/dataset/SpeciesList.tsx';
@@ -145,6 +146,8 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     setForm(incoming);
   }
   const [creating, setCreating] = useState(false);
+  // The name the propose dialog opens with; `null` while it is closed.
+  const [proposing, setProposing] = useState<string | null>(null);
   const term = useDebouncedValue(form.q.trim(), 300);
   // `settled` is the debounce of the write itself: `formKey` follows `form`
   // synchronously, so without it this effect navigates on every keystroke.
@@ -178,6 +181,11 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   const list = usePagedList(datasetKeys.species(params), (cursor, limit) =>
     searchSpecies({ ...params, cursor, limit }),
   );
+  // The term the empty list actually answers — what was sent to the API, not
+  // what the box holds this keystroke. Below the API's two-letter minimum
+  // nothing was searched by name, so there is no term to name or to propose.
+  const searched = params.q ?? '';
+  const canPropose = searched !== '' && hasPermission(me, 'taxa.propose');
 
   return (
     <>
@@ -209,13 +217,32 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading ? <p className="text-body text-mist-500">Searching…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (
-          <EmptyState title="No species match." />
+          <EmptyState
+            title={searched === '' ? 'No species match.' : `No species matches “${searched}”.`}
+            description={
+              canPropose
+                ? 'If it belongs in the catalog, propose it: a reviewer checks the name against GBIF and adds the species.'
+                : undefined
+            }
+            action={
+              canPropose ? (
+                <Button onClick={() => setProposing(searched)}>Propose this species</Button>
+              ) : undefined
+            }
+          />
         ) : null}
         {list.items.length > 0 ? (
           <SpeciesList items={list.items} showTraitRecords={Boolean(form.traitId)} />
         ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
+      {proposing === null ? null : (
+        <ProposeSpeciesDialog
+          name={proposing}
+          onClose={() => setProposing(null)}
+          onProposed={() => setProposing(null)}
+        />
+      )}
       {creating ? (
         <SpeciesDialog
           onClose={() => setCreating(false)}

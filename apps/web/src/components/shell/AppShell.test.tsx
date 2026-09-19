@@ -182,6 +182,26 @@ describe('RFC-13 R3 AppShell navigation', () => {
     );
   });
 
+  it('RFC-75 R3 shows Proposals under Curation with taxa.manage, and never without it', () => {
+    const { unmount } = renderWithProviders(<AppShell>content</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read', 'records.review', 'taxa.propose'] },
+    });
+    // The Curation group is on screen (records.review renders Pending), so
+    // this negative assertion is about the entry, not about an empty sidebar.
+    expect(screen.getByRole('navigation', { name: 'Curation' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Proposals' })).not.toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<AppShell>content</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read', 'taxa.manage'] },
+    });
+    const curation = screen.getByRole('navigation', { name: 'Curation' });
+    expect(within(curation).getByRole('link', { name: 'Proposals' })).toHaveAttribute(
+      'href',
+      '/app/curation/proposals',
+    );
+  });
+
   it('RFC-31 R11 a contributor session (dataset.read, records.create, records.annotate) renders no Curation group', () => {
     renderWithProviders(<AppShell>content</AppShell>, {
       me: { ...ME, permissions: ['dataset.read', 'records.create', 'records.annotate'] },

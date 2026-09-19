@@ -39,6 +39,14 @@ describe('RFC-73 R1, R2 HelpTopicPage', () => {
     expect(within(list).getAllByRole('link')).toHaveLength(HELP_TOPICS.length);
   });
 
+  it('RFC-75 R2 the missing-species section sends the reader to the propose flow', async () => {
+    renderAt('/app/help/scope');
+    await screen.findByRole('heading', { level: 1, name: 'Scope' });
+    const link = screen.getByRole('link', { name: 'Species' });
+    expect(link).toHaveAttribute('href', '/app/species');
+    expect(screen.getByText(/Propose this species/)).toBeInTheDocument();
+  });
+
   it('gives every anchor of HELP_ANCHORS a heading id in its own topic', async () => {
     for (const topic of HELP_TOPICS) {
       const { container, unmount } = renderAt(`/app/help/${topic.slug}`);

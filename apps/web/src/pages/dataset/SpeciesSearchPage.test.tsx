@@ -591,4 +591,32 @@ describe('RFC-60 R6 SpeciesSearchPage trait filters, order and the URL', () => {
       ),
     );
   });
+
+  it('RFC-75 R2 an empty search names the term and offers Propose this species with taxa.propose', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    const { unmount } = renderAt('/app/species?q=Quercus%20robur');
+    expect(
+      await screen.findByText('No species matches \u201cQuercus robur\u201d.'),
+    ).toBeInTheDocument();
+    // Settled: the empty state is on screen, so the page has decided about
+    // the action beside it and this negative assertion is a real one.
+    expect(screen.queryByRole('button', { name: 'Propose this species' })).not.toBeInTheDocument();
+    unmount();
+
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'taxa.propose'] });
+    renderAt('/app/species?q=Quercus%20robur');
+    await userEvent.click(await screen.findByRole('button', { name: 'Propose this species' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Propose a species' });
+    expect(within(dialog).getByRole('textbox', { name: /species name/i })).toHaveValue(
+      'Quercus robur',
+    );
+  });
+
+  it('RFC-75 R2 with no search term the empty state stays the plain one', async () => {
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'taxa.propose'] });
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    await openPage();
+    expect(await screen.findByText('No species match.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Propose this species' })).not.toBeInTheDocument();
+  });
 });

@@ -4,10 +4,12 @@ import type { Species } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
+  BACKBONE_MATCH,
   FAMILIES,
   FAMILY,
   GENERA,
   GENUS,
+  LOOKUP_EXACT,
   MALVACEAE,
   SPECIES,
 } from '../../test/dataset-fixtures.ts';
@@ -30,6 +32,11 @@ const catalogOriginal: {
   invalidateAfterCatalogWrite?: typeof import('../../api/catalog.ts').invalidateAfterCatalogWrite;
 } = vi.hoisted(() => ({}));
 const dataset = vi.hoisted(() => ({ fetchFamilies: vi.fn(), fetchGenera: vi.fn() }));
+const proposals = vi.hoisted(() => ({ matchTaxon: vi.fn() }));
+vi.mock('../../api/proposals.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/proposals.ts')>()),
+  ...proposals,
+}));
 vi.mock('../../api/catalog.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/catalog.ts')>();
   catalogOriginal.invalidateAfterCatalogWrite = actual.invalidateAfterCatalogWrite;
@@ -48,6 +55,7 @@ beforeEach(() => {
   catalog.createGenus.mockReset();
   catalog.createFamily.mockReset();
   catalog.invalidateAfterCatalogWrite.mockClear();
+  proposals.matchTaxon.mockReset();
 });
 
 function mount(species?: Species) {
@@ -282,5 +290,66 @@ describe('RFC-60 R9 SpeciesDialog', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(await within(dialog).findByText('Too long')).toBeInTheDocument();
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-81 R4 the Look up button', () => {
+  it('fills the family and the genus from the match when the catalog has them', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: FAMILY.name, genus: GENUS.name },
+    });
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Adenanthera pavonina',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    await waitFor(() => expect(proposals.matchTaxon).toHaveBeenCalledWith('Adenanthera pavonina'));
+    await waitFor(() => expect(within(dialog).getByLabelText('Family')).toHaveValue(FAMILY.id));
+    expect(within(dialog).getByText(GENUS.name)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Family and genus filled in/)).toBeInTheDocument();
+  });
+
+  it('names what the catalog does not have instead of creating it, and opens the family field', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: 'Fagaceae', genus: 'Quercus' },
+    });
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Quercus robur',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('textbox', { name: /new family name/i })).toHaveValue(
+        'Fagaceae',
+      ),
+    );
+    expect(within(dialog).getByText(/the genus Quercus/)).toBeInTheDocument();
+    expect(catalog.createFamily).not.toHaveBeenCalled();
+    expect(catalog.createGenus).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed lookup and leaves the form alone', async () => {
+    proposals.matchTaxon.mockRejectedValue(new ApiError(502, 'TAXONOMY_LOOKUP_FAILED', 'upstream'));
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Quercus robur',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'The taxonomy lookup could not be completed. Try again.',
+    );
+    expect(within(dialog).getByLabelText('Family')).toHaveValue('');
+  });
+
+  it('RFC-60 R9 edit mode has no Look up button', () => {
+    const { dialog } = mount(SPECIES);
+    expect(within(dialog).queryByRole('button', { name: 'Look up' })).not.toBeInTheDocument();
   });
 });
