@@ -1021,6 +1021,23 @@ export const NO_PLOTS_DASHBOARD: Dashboard = {
   curation: null,
 };
 
+/** RFC-71 R4's seven counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
+export const ZERO_CONTRIBUTION_SUMMARY: ContributionSummary = {
+  records: 0,
+  contests: 0,
+  complements: 0,
+  validations: 0,
+  disputes: 0,
+  withdrawn: 0,
+  accepted: 0,
+};
+
+/** The dashboard answer for a brand-new contributor: the Getting started card's trigger case. @rfc RFC-73 R3 */
+export const NEW_CONTRIBUTOR_DASHBOARD: Dashboard = {
+  ...DASHBOARD,
+  contributor: { ...DASHBOARD.contributor, summary: ZERO_CONTRIBUTION_SUMMARY },
+};
+
 // --- Plan 10b (browsing: synonyms and common names) -----------------------
 
 /**

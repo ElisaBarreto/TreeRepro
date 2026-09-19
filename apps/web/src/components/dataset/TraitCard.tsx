@@ -1,4 +1,5 @@
 import type { Dictionary, TraitSummary } from '@treerepro/contracts';
+import { helpHref } from '../../content/help/href.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { Badge, Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
@@ -118,7 +119,14 @@ export function TraitCard({
         ) : null}
       </button>
       <span className="flex shrink-0 items-center gap-1">
-        {tip ? <HelpTip label={`What does ${name} mean?`}>{tip}</HelpTip> : null}
+        {tip ? (
+          <HelpTip
+            label={`What does ${name} mean?`}
+            learnMore={helpHref('vocabulary', 'descriptions')}
+          >
+            {tip}
+          </HelpTip>
+        ) : null}
         {onAdd ? (
           <Button
             variant="secondary"

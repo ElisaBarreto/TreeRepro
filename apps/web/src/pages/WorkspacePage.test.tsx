@@ -8,6 +8,7 @@ import {
   CURATED_RECORD_DETAIL,
   DASHBOARD,
   DASHBOARD_CURATION,
+  NEW_CONTRIBUTOR_DASHBOARD,
   NO_PLOTS_DASHBOARD,
   REVIEWER_DASHBOARD,
 } from '../test/dataset-fixtures.ts';
@@ -52,6 +53,7 @@ beforeEach(() => {
   auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read'] });
   dashboard.fetchDashboard.mockResolvedValue(DASHBOARD);
   dataset.fetchRecord.mockResolvedValue(CURATED_RECORD_DETAIL);
+  window.localStorage.clear();
 });
 
 describe('RFC-72 R1, R3 WorkspacePage', () => {
@@ -243,5 +245,16 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     dashboard.fetchDashboard.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     renderAt('/app/');
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+
+  it('shows the Getting started card only for a viewer whose contribution summary is all zeros (RFC-73 R3)', async () => {
+    const first = renderAt('/app/');
+    await screen.findByText(/TreeRepro is a collective data assembly/);
+    expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
+    first.unmount();
+
+    dashboard.fetchDashboard.mockResolvedValue(NEW_CONTRIBUTOR_DASHBOARD);
+    renderAt('/app/');
+    expect(await screen.findByRole('heading', { name: 'Getting started' })).toBeInTheDocument();
   });
 });

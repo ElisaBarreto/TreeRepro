@@ -25,6 +25,8 @@ import { Route as AppAdminRolesRouteImport } from './routes/app/admin/roles'
 import { Route as AppCurationCoverageRouteImport } from './routes/app/curation/coverage'
 import { Route as AppCurationDisputedRouteImport } from './routes/app/curation/disputed'
 import { Route as AppCurationPendingRouteImport } from './routes/app/curation/pending'
+import { Route as AppHelpIndexRouteImport } from './routes/app/help/index'
+import { Route as AppHelpTopicRouteImport } from './routes/app/help/$topic'
 import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
 import { Route as AppImportsIdRouteImport } from './routes/app/imports/$id'
 import { Route as AppReferencesIndexRouteImport } from './routes/app/references/index'
@@ -118,6 +120,16 @@ const AppCurationPendingRoute = AppCurationPendingRouteImport.update({
   path: '/curation/pending',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHelpIndexRoute = AppHelpIndexRouteImport.update({
+  id: '/help/',
+  path: '/help/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHelpTopicRoute = AppHelpTopicRouteImport.update({
+  id: '/help/$topic',
+  path: '/help/$topic',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppImportsIndexRoute = AppImportsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -196,10 +208,12 @@ export interface FileRoutesByFullPath {
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
+  '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
   '/app/traits/$id': typeof AppTraitsIdRoute
+  '/app/help/': typeof AppHelpIndexRoute
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
@@ -224,10 +238,12 @@ export interface FileRoutesByTo {
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
+  '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
   '/app/traits/$id': typeof AppTraitsIdRoute
+  '/app/help': typeof AppHelpIndexRoute
   '/app/imports': typeof AppImportsIndexRoute
   '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
@@ -255,10 +271,12 @@ export interface FileRoutesById {
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
+  '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
   '/app/traits/$id': typeof AppTraitsIdRoute
+  '/app/help/': typeof AppHelpIndexRoute
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
@@ -287,10 +305,12 @@ export interface FileRouteTypes {
     | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
+    | '/app/help/$topic'
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
     | '/app/traits/$id'
+    | '/app/help/'
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
@@ -315,10 +335,12 @@ export interface FileRouteTypes {
     | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
+    | '/app/help/$topic'
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
     | '/app/traits/$id'
+    | '/app/help'
     | '/app/imports'
     | '/app/references'
     | '/app/species'
@@ -345,10 +367,12 @@ export interface FileRouteTypes {
     | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
+    | '/app/help/$topic'
     | '/app/imports/$id'
     | '/app/references/$id'
     | '/app/species/$id'
     | '/app/traits/$id'
+    | '/app/help/'
     | '/app/imports/'
     | '/app/references/'
     | '/app/species/'
@@ -479,6 +503,20 @@ declare module '@tanstack/react-router' {
       path: '/curation/pending'
       fullPath: '/app/curation/pending'
       preLoaderRoute: typeof AppCurationPendingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/help/': {
+      id: '/app/help/'
+      path: '/help'
+      fullPath: '/app/help/'
+      preLoaderRoute: typeof AppHelpIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/help/$topic': {
+      id: '/app/help/$topic'
+      path: '/help/$topic'
+      fullPath: '/app/help/$topic'
+      preLoaderRoute: typeof AppHelpTopicRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/imports/': {
@@ -614,9 +652,11 @@ interface AppRouteChildren {
   AppCurationCoverageRoute: typeof AppCurationCoverageRoute
   AppCurationDisputedRoute: typeof AppCurationDisputedRoute
   AppCurationPendingRoute: typeof AppCurationPendingRoute
+  AppHelpTopicRoute: typeof AppHelpTopicRoute
   AppReferencesIdRoute: typeof AppReferencesIdRoute
   AppSpeciesIdRoute: typeof AppSpeciesIdRoute
   AppTraitsIdRoute: typeof AppTraitsIdRoute
+  AppHelpIndexRoute: typeof AppHelpIndexRoute
   AppReferencesIndexRoute: typeof AppReferencesIndexRoute
   AppSpeciesIndexRoute: typeof AppSpeciesIndexRoute
   AppTraitsIndexRoute: typeof AppTraitsIndexRoute
@@ -632,9 +672,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppCurationCoverageRoute: AppCurationCoverageRoute,
   AppCurationDisputedRoute: AppCurationDisputedRoute,
   AppCurationPendingRoute: AppCurationPendingRoute,
+  AppHelpTopicRoute: AppHelpTopicRoute,
   AppReferencesIdRoute: AppReferencesIdRoute,
   AppSpeciesIdRoute: AppSpeciesIdRoute,
   AppTraitsIdRoute: AppTraitsIdRoute,
+  AppHelpIndexRoute: AppHelpIndexRoute,
   AppReferencesIndexRoute: AppReferencesIndexRoute,
   AppSpeciesIndexRoute: AppSpeciesIndexRoute,
   AppTraitsIndexRoute: AppTraitsIndexRoute,

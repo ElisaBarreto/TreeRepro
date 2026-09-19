@@ -5,26 +5,37 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
+import { helpHref } from '../../content/help/index.ts';
 import { HelpTip } from './HelpTip.tsx';
 
 // `learnMore` renders a router `Link`, so only the tests that use it mount
-// through a minimal one-route router (the pattern RecordTable.test.tsx uses).
-function renderInRouter(ui: ReactElement) {
+// through a minimal router (the pattern RecordTable.test.tsx uses). The tree
+// also carries `/app/help/$topic`, so a "Learn more" target is a route that
+// really exists and the router's own resulting location can be asserted.
+function makeRouter(ui: ReactElement) {
   const rootRoute = createRootRoute();
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
     component: () => ui,
   });
-  const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute]),
+  const topicRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/app/help/$topic',
+    component: () => <p>topic</p>,
+  });
+  return createRouter({
+    routeTree: rootRoute.addChildren([indexRoute, topicRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
-  return render(<RouterProvider router={router} />);
+}
+
+function renderInRouter(ui: ReactElement) {
+  return render(<RouterProvider router={makeRouter(ui)} />);
 }
 
 describe('RFC-13 R11 HelpTip', () => {
@@ -103,6 +114,24 @@ describe('RFC-13 R11 HelpTip', () => {
     renderInRouter(<HelpTip learnMore="/">Explains things.</HelpTip>);
     fireEvent.click(await screen.findByRole('button', { name: 'What does this mean?' }));
     expect(screen.getByRole('link', { name: 'Learn more' })).toHaveAttribute('href', '/');
+  });
+
+  // RFC-73 R4: every tip's "Learn more" points at a *section* of a help
+  // topic. `Link`'s `to` is a pathname, not a URL, so a `#` embedded in it
+  // would be percent-encoded and the link would land on a route that does
+  // not exist. Asserting the href alone would not catch that; this asserts
+  // where the router actually goes.
+  it('RFC-73 R4 follows "Learn more" to the topic path and its hash', async () => {
+    const router = makeRouter(<HelpTip learnMore={helpHref('workflow', 'contest')}>Tip.</HelpTip>);
+    render(<RouterProvider router={router} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'What does this mean?' }));
+    const link = screen.getByRole('link', { name: 'Learn more' });
+    // The href matters on its own: a middle-click or "copy link address" never
+    // goes through the router.
+    expect(link).toHaveAttribute('href', '/app/help/workflow#contest');
+    await userEvent.click(link);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/help/workflow'));
+    expect(router.state.location.hash).toBe('contest');
   });
 
   it('renders no "Learn more" link without learnMore', () => {

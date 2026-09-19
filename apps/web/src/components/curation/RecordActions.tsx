@@ -8,6 +8,7 @@ import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { annotateRecord, resolveDoi, setAccepted } from '../../api/curation.ts';
 import { datasetKeys } from '../../api/dataset.ts';
+import { helpHref } from '../../content/help/href.ts';
 import { fieldErrors } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useRecordWrite } from '../../lib/use-record-write.ts';
@@ -282,7 +283,9 @@ export function RecordActions({
             >
               ✓ Validate
             </Button>
-            <HelpTip label="What does Validate mean?">{VALIDATE_HELP}</HelpTip>
+            <HelpTip label="What does Validate mean?" learnMore={helpHref('workflow', 'validate')}>
+              {VALIDATE_HELP}
+            </HelpTip>
             {validated ? (
               // Not the button's `title`: a disabled control gets no pointer
               // events, so several browsers never open that tooltip.
@@ -306,7 +309,12 @@ export function RecordActions({
             >
               + Add different record
             </Button>
-            <HelpTip label="What does Add different record mean?">{CONTEST_HELP}</HelpTip>
+            <HelpTip
+              label="What does Add different record mean?"
+              learnMore={helpHref('workflow', 'different')}
+            >
+              {CONTEST_HELP}
+            </HelpTip>
           </>
         ) : null}
         {canReview ? (

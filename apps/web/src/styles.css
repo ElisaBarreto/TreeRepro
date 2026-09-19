@@ -69,3 +69,50 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/*
+ * `Prose` (RFC-73 R2): long-form help text, styled by child selectors so an
+ * author writes plain `<h2 id="contest">` and the id survives for a
+ * `#anchor` link to land on. Rules in a stylesheet, never a `style`
+ * attribute in markup (RFC-13 R5).
+ */
+@layer components {
+  .prose-treerepro {
+    @apply max-w-[72ch] text-body text-canopy-900;
+  }
+  .prose-treerepro h2 {
+    /* `scroll-mt` so a heading reached by a `#anchor` is not flush against
+       the top of the viewport. */
+    @apply mt-9 mb-3 scroll-mt-6 font-display text-section font-semibold text-canopy-950;
+  }
+  .prose-treerepro > :first-child {
+    @apply mt-0;
+  }
+  .prose-treerepro p {
+    @apply mb-4;
+  }
+  .prose-treerepro ul {
+    @apply mb-4 list-disc pl-6;
+  }
+  .prose-treerepro ol {
+    @apply mb-4 list-decimal pl-6;
+  }
+  .prose-treerepro li {
+    @apply mb-2 pl-1;
+  }
+  .prose-treerepro li:last-child {
+    @apply mb-0;
+  }
+  .prose-treerepro strong {
+    @apply font-semibold text-canopy-950;
+  }
+  .prose-treerepro a {
+    @apply font-medium text-canopy-900 underline underline-offset-2 hover:text-canopy-700;
+  }
+  .prose-treerepro a:focus-visible {
+    @apply rounded-sm outline-2 outline-offset-2 outline-pollen-500;
+  }
+  .prose-treerepro code {
+    @apply rounded-sm bg-mist-50 px-1.5 py-0.5 text-cell text-canopy-950;
+  }
+}

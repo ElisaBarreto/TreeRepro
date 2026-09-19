@@ -12,6 +12,7 @@ import {
 } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
+import { withRouter } from '../../test/router.tsx';
 import { AddEntriesDialog } from './AddEntriesDialog.tsx';
 
 const curation = vi.hoisted(() => ({
@@ -51,14 +52,19 @@ function mount(props: Partial<Parameters<typeof AddEntriesDialog>[0]> = {}) {
   const onCreated = vi.fn();
   const onOpenRecord = vi.fn();
   const onClose = vi.fn();
+  // Through a router: the trait tip carries a "Learn more" link into the
+  // vocabulary topic (RFC-73 R4), and a router `Link` needs one. Every test
+  // here already awaits the dialog, which is when the router has mounted.
   renderWithProviders(
-    <AddEntriesDialog
-      speciesId={SPECIES.id}
-      onClose={onClose}
-      onCreated={onCreated}
-      onOpenRecord={onOpenRecord}
-      {...props}
-    />,
+    withRouter(
+      <AddEntriesDialog
+        speciesId={SPECIES.id}
+        onClose={onClose}
+        onCreated={onCreated}
+        onOpenRecord={onOpenRecord}
+        {...props}
+      />,
+    ),
     { me: ME },
   );
   return { onCreated, onOpenRecord, onClose };

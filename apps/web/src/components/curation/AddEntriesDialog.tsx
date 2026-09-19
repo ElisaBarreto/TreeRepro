@@ -9,6 +9,7 @@ import { type FormEvent, Fragment, type ReactNode, useId, useState } from 'react
 import { ApiError } from '../../api/client.ts';
 import { createRecords } from '../../api/curation.ts';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
+import { helpHref } from '../../content/help/href.ts';
 import { categoriesWithActiveTraits, traitDescription } from '../../lib/dictionary.ts';
 import { fieldErrors } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
@@ -252,7 +253,12 @@ export function AddEntriesDialog({
                 .filter((part) => part !== undefined)
                 .join(' › ')}{' '}
               {description ? (
-                <HelpTip label="What does this trait mean?">{description}</HelpTip>
+                <HelpTip
+                  label="What does this trait mean?"
+                  learnMore={helpHref('vocabulary', 'descriptions')}
+                >
+                  {description}
+                </HelpTip>
               ) : null}
             </p>
             {errors.traitId ? <p className="text-label text-red-700">{errors.traitId}</p> : null}
@@ -285,7 +291,12 @@ export function AddEntriesDialog({
               error={errors.traitId}
               trailing={
                 description ? (
-                  <HelpTip label="What does this trait mean?">{description}</HelpTip>
+                  <HelpTip
+                    label="What does this trait mean?"
+                    learnMore={helpHref('vocabulary', 'descriptions')}
+                  >
+                    {description}
+                  </HelpTip>
                 ) : undefined
               }
             >
