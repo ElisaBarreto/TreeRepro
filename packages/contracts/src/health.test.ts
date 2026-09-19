@@ -181,7 +181,19 @@ describe('RFC-52 R2 no PII in the health payload', () => {
       paths.push([key]);
       collectKeyPaths(child, [key], paths);
     }
-    expect(paths.length).toBeGreaterThan(10);
+    // Known DEEP paths, not a count. A count cannot tell a walk from a
+    // shallow one: stop descending into arrays and nullables and the walk
+    // still yields thirty paths (measured), so any threshold this schema
+    // could plausibly carry is met by a walker that never reaches
+    // `imports.*` or `jobs.<kind>.*` — exactly where a PII field would hide.
+    // These four pin one descent each: into an object, into an array's
+    // element, through a nullable's inner type, and into an array nested in
+    // an array's element.
+    const joined = paths.map((path) => path.join('.'));
+    expect(joined).toContain('imports.fileName');
+    expect(joined).toContain('jobs.digest.status');
+    expect(joined).toContain('activity.byDay.day');
+    expect(joined).toContain('imports.unknownLevels.trait');
     for (const path of paths) {
       const last = path[path.length - 1] as string;
       expect(forbidden.has(last)).toBe(false);

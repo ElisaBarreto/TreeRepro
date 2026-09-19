@@ -86,14 +86,22 @@ describe('RFC-52 R1 computePlatformHealth', () => {
       const before = await computePlatformHealth(tx);
       const today = await todayInDb(tx);
 
-      // Users: one of each status. Every other row below is created by
-      // `author`, so the active delta is exactly one.
+      // Users: one of each status, plus a second `invited` one that never
+      // signed in (see the audit rows below). Every other row in this fixture
+      // is created by `author`, so the active delta is exactly one.
       const { user: author } = await createUser(tx);
       const { user: invitee } = await createUser(tx, { status: 'invited' });
       await createUser(tx, { status: 'suspended' });
+      const { user: neverIn } = await createUser(tx, { status: 'invited' });
 
       // Sign-ins: two entries for `author` inside seven days collapse to one
       // distinct actor; `invitee`'s twenty-day-old entry only reaches thirty.
+      //
+      // `neverIn` never signed in: its entry is an hour old and in the window
+      // on `at` alone, so it is counted by both deltas below unless the
+      // `action = 'auth.login.success'` predicate holds. Without that row the
+      // query could drop the predicate entirely — every other audit row this
+      // fixture writes is a successful login — and still answer 1 and 2.
       await tx.insert(auditLog).values([
         { actorUserId: author.id, action: 'auth.login.success', at: new Date(Date.now() - HOUR) },
         { actorUserId: author.id, action: 'auth.login.success', at: new Date(Date.now() - DAY) },
@@ -102,6 +110,7 @@ describe('RFC-52 R1 computePlatformHealth', () => {
           action: 'auth.login.success',
           at: new Date(Date.now() - 20 * DAY),
         },
+        { actorUserId: neverIn.id, action: 'auth.login.failure', at: new Date(Date.now() - HOUR) },
       ]);
 
       // Dataset: two species and two traits, one of each inactive.
@@ -178,8 +187,13 @@ describe('RFC-52 R1 computePlatformHealth', () => {
 
       // Users.
       expect(after.users.active - before.users.active).toBe(1);
-      expect(after.users.invited - before.users.invited).toBe(1);
+      expect(after.users.invited - before.users.invited).toBe(2);
       expect(after.users.suspended - before.users.suspended).toBe(1);
+      // RFC-52 R1: DISTINCT actors over `auth.login.success` alone. `author`
+      // has two entries in seven days and counts once; `invitee` reaches
+      // thirty days only; `neverIn` has an entry an hour old that is not a
+      // successful login and must count in neither window — that row is what
+      // pins the `action` predicate, without which both deltas rise by one.
       expect(after.users.signedInLast7d - before.users.signedInLast7d).toBe(1);
       expect(after.users.signedInLast30d - before.users.signedInLast30d).toBe(2);
 

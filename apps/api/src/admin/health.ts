@@ -104,6 +104,21 @@ function toHealthImport(row: ImportBatchRow): HealthImport {
 }
 
 /**
+ * Runs a drizzle query builder now and hands back an ordinary promise.
+ *
+ * A builder is a LAZY thenable — `QueryPromise.then()` calls `execute()` — so
+ * a builder awaited twice runs its statement twice. Every statement below is
+ * awaited once in the `Promise.all` that keeps them concurrent and once more
+ * where its result is read, so each must be a real, already-running promise
+ * before that. The services (`countPendingGroups`, `latestRun`, …) are
+ * ordinary async functions and need none of this; they go through here anyway
+ * so that no reader has to know which of the fourteen is which.
+ */
+function started<T>(query: PromiseLike<T>): Promise<T> {
+  return Promise.resolve(query);
+}
+
+/**
  * Every number of RFC-52 R1, uncached, over any executor — a pool or a
  * transaction.
  *
@@ -135,92 +150,133 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
     sql`${column} > ${start7.toISOString()}::timestamptz
       and ${column} <= ${end.toISOString()}::timestamptz`;
 
-  const [
-    [users],
-    [signIns],
-    [dataset],
-    coverage,
-    [activity],
-    byDay,
-    proposals7d,
-    pendingGroups,
-    disputed,
-    contested,
-    openProposals,
-    digestRun,
-    auditPurgeRun,
-    importRows,
-  ] = await Promise.all([
+  // Every statement is started here and awaited together below, so the
+  // concurrency is exactly the `Promise.all` it always was — but each result
+  // is named where it is produced rather than matched to a position in a
+  // fourteen-long destructure, where inserting a statement anywhere but at
+  // the end silently re-assigns every name after it.
+  const usersP = started(
     db.execute(sql`
-      select
-        count(*) filter (where u.status = 'active')::int as active,
-        count(*) filter (where u.status = 'invited')::int as invited,
-        count(*) filter (where u.status = 'suspended')::int as suspended
-      from users u`) as unknown as Promise<[UsersRow | undefined]>,
-    // RFC-52 R1: distinct sign-ins over both windows in one statement. The
-    // `at >` predicate is served by `audit_log_at_idx (at desc)`, which bounds
-    // the scan to thirty days before the unindexed `action` filter applies.
+    select
+      count(*) filter (where u.status = 'active')::int as active,
+      count(*) filter (where u.status = 'invited')::int as invited,
+      count(*) filter (where u.status = 'suspended')::int as suspended
+    from users u`),
+  ) as unknown as Promise<[UsersRow | undefined]>;
+
+  // RFC-52 R1: distinct sign-ins over both windows in one statement. The
+  // `at >` predicate is served by `audit_log_at_idx (at desc)`, which bounds
+  // the scan to thirty days before the unindexed `action` filter applies.
+  const signInsP = started(
     db.execute(sql`
-      select
-        count(distinct a.actor_user_id) filter (
-          where a.at > ${start7.toISOString()}::timestamptz)::int as last_7d,
-        count(distinct a.actor_user_id)::int as last_30d
-      from audit_log a
-      where a.action = 'auth.login.success'
-        and a.at > ${start30.toISOString()}::timestamptz
-        and a.at <= ${end.toISOString()}::timestamptz`) as unknown as Promise<
-      [SignInsRow | undefined]
-    >,
-    // The same definitions `computeDatasetStats` gives these numbers
-    // (RFC-72 R1): `records` is the stored coverage counter, never a scan of
-    // `trait_records`, and `bibliographic_references` has no `active` column.
+    select
+      count(distinct a.actor_user_id) filter (
+        where a.at > ${start7.toISOString()}::timestamptz)::int as last_7d,
+      count(distinct a.actor_user_id)::int as last_30d
+    from audit_log a
+    where a.action = 'auth.login.success'
+      and a.at > ${start30.toISOString()}::timestamptz
+      and a.at <= ${end.toISOString()}::timestamptz`),
+  ) as unknown as Promise<[SignInsRow | undefined]>;
+
+  // The same definitions `computeDatasetStats` gives these numbers
+  // (RFC-72 R1): `records` is the stored coverage counter, never a scan of
+  // `trait_records`, and `bibliographic_references` has no `active` column.
+  const datasetP = started(
     db.execute(sql`
-      select
-        (select count(*)::int from species) as species,
-        (select count(*)::int from species s where s.active) as active_species,
-        (select count(*)::int from traits) as traits,
-        (select count(*)::int from traits t where t.active) as active_traits,
-        (select count(*)::int from bibliographic_references) as references,
-        (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
-          as records`) as unknown as Promise<[DatasetRow | undefined]>,
-    computeCoverageTotals(db, ACTIVE_CATALOG),
+    select
+      (select count(*)::int from species) as species,
+      (select count(*)::int from species s where s.active) as active_species,
+      (select count(*)::int from traits) as traits,
+      (select count(*)::int from traits t where t.active) as active_traits,
+      (select count(*)::int from bibliographic_references) as references,
+      (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
+        as records`),
+  ) as unknown as Promise<[DatasetRow | undefined]>;
+
+  const coverageP = started(computeCoverageTotals(db, ACTIVE_CATALOG));
+
+  // RFC-52's Open questions: neither `trait_records` nor `record_annotations`
+  // has an index on `created_at`, so this statement and `byDayP` below scan
+  // both tables. Bounded by the sixty second cache entry and by the route
+  // being admin-only; the follow-up if that stops being enough is an index on
+  // each, which is a schema change.
+  const activityP = started(
     db.execute(sql`
-      select
-        (select count(*)::int from trait_records r where ${within(sql`r.created_at`)}) as records_7d,
-        (select count(*)::int from record_annotations a where ${within(sql`a.created_at`)})
-          as annotations_7d`) as unknown as Promise<[ActivityRow | undefined]>,
-    // Fourteen rows always, ending today: the series is the left side, so a
-    // day on which nothing happened is present with zeros rather than absent.
+    select
+      (select count(*)::int from trait_records r where ${within(sql`r.created_at`)}) as records_7d,
+      (select count(*)::int from record_annotations a where ${within(sql`a.created_at`)})
+        as annotations_7d`),
+  ) as unknown as Promise<[ActivityRow | undefined]>;
+
+  // Fourteen rows always, ending today: the series is the left side, so a
+  // day on which nothing happened is present with zeros rather than absent.
+  const byDayP = started(
     db.execute(sql`
-      select
-        to_char(d.day, 'YYYY-MM-DD') as day,
-        coalesce(r.n, 0)::int as records,
-        coalesce(a.n, 0)::int as annotations
-      from (
-        select generate_series(
-          current_date - ${BY_DAY_SPAN - 1}::int, current_date, interval '1 day')::date as day) d
-      left join (
-        select r.created_at::date as day, count(*)::int as n
-        from trait_records r
-        where r.created_at >= current_date - ${BY_DAY_SPAN - 1}::int
-        group by 1) r on r.day = d.day
-      left join (
-        select a.created_at::date as day, count(*)::int as n
-        from record_annotations a
-        where a.created_at >= current_date - ${BY_DAY_SPAN - 1}::int
-        group by 1) a on a.day = d.day
-      order by d.day`) as unknown as Promise<ByDayRow[]>,
-    // RFC-52 R1: proposals CREATED in the window, which is not the open queue
-    // three lines below.
-    countProposalsCreated(db, { start: start7, end }),
-    countPendingGroups(db, UNRESTRICTED),
-    countDisputed(db, UNRESTRICTED),
-    countContested(db, UNRESTRICTED),
-    countOpenProposals(db),
-    latestRun(db, 'digest'),
-    latestRun(db, 'audit_purge'),
+    select
+      to_char(d.day, 'YYYY-MM-DD') as day,
+      coalesce(r.n, 0)::int as records,
+      coalesce(a.n, 0)::int as annotations
+    from (
+      select generate_series(
+        current_date - ${BY_DAY_SPAN - 1}::int, current_date, interval '1 day')::date as day) d
+    left join (
+      select r.created_at::date as day, count(*)::int as n
+      from trait_records r
+      where r.created_at >= current_date - ${BY_DAY_SPAN - 1}::int
+      group by 1) r on r.day = d.day
+    left join (
+      select a.created_at::date as day, count(*)::int as n
+      from record_annotations a
+      where a.created_at >= current_date - ${BY_DAY_SPAN - 1}::int
+      group by 1) a on a.day = d.day
+    order by d.day`),
+  ) as unknown as Promise<ByDayRow[]>;
+
+  // RFC-52 R1 / ruling R-H: proposals CREATED in the window, which is not
+  // `openProposalsP` below.
+  const proposals7dP = started(countProposalsCreated(db, { start: start7, end }));
+  const pendingGroupsP = started(countPendingGroups(db, UNRESTRICTED));
+  const disputedP = started(countDisputed(db, UNRESTRICTED));
+  const contestedP = started(countContested(db, UNRESTRICTED));
+  const openProposalsP = started(countOpenProposals(db));
+  const digestRunP = started(latestRun(db, 'digest'));
+  const auditPurgeRunP = started(latestRun(db, 'audit_purge'));
+  const importRowsP = started(
     db.select().from(importBatches).orderBy(desc(importBatches.id)).limit(IMPORT_LIMIT),
+  );
+
+  await Promise.all([
+    usersP,
+    signInsP,
+    datasetP,
+    coverageP,
+    activityP,
+    byDayP,
+    proposals7dP,
+    pendingGroupsP,
+    disputedP,
+    contestedP,
+    openProposalsP,
+    digestRunP,
+    auditPurgeRunP,
+    importRowsP,
   ]);
+
+  const [users] = await usersP;
+  const [signIns] = await signInsP;
+  const [dataset] = await datasetP;
+  const coverage = await coverageP;
+  const [activity] = await activityP;
+  const byDay = await byDayP;
+  const proposals7d = await proposals7dP;
+  const pendingGroups = await pendingGroupsP;
+  const disputed = await disputedP;
+  const contested = await contestedP;
+  const openProposals = await openProposalsP;
+  const digestRun = await digestRunP;
+  const auditPurgeRun = await auditPurgeRunP;
+  const importRows = await importRowsP;
 
   return {
     users: {

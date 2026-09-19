@@ -36,8 +36,11 @@ export const NAV_SECTIONS: readonly { key: NavSection; label: string | null }[] 
  * RFC-31 R10). Coverage requires `coverage.read` instead (RFC-69 R5,
  * plan 11c) — a manager permission of its own, not the queues'. Proposals
  * requires `taxa.manage` (RFC-75 R3, plan 12c): deciding one creates a
- * species, which is the catalog permission, not a review permission.
+ * species, which is the catalog permission, not a review permission. Health
+ * requires `health.read` (RFC-52 R1, plan 12d) — admin-only, and held by no
+ * role but the administrator's, so `admin.access` alone does not show it.
  * @rfc RFC-13 R3
+ * @rfc RFC-52 R1
  * @rfc RFC-60 R9
  * @rfc RFC-65 R8, R10
  * @rfc RFC-69 R5

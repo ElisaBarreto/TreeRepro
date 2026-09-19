@@ -91,7 +91,24 @@ export function HealthPage() {
     <>
       <PageHeader
         title="Platform health"
-        description="Users, dataset, activity, queues, background jobs and the newest imports, in one snapshot."
+        description={
+          <>
+            Users, dataset, activity, queues, background jobs and the newest imports, in one
+            snapshot.
+            {health.data ? (
+              // RFC-52 R1 caches the payload for a minute, so these numbers
+              // can be up to that old. Without the stamp the operator has no
+              // way to tell a fresh snapshot from a cached one.
+              <>
+                {' Computed '}
+                <time dateTime={health.data.computedAt}>
+                  {formatDateTime(health.data.computedAt)}
+                </time>
+                {' UTC, and cached for up to one minute.'}
+              </>
+            ) : null}
+          </>
+        }
       />
       <div className="flex flex-col gap-6">
         {health.error ? <Alert tone="error">{pageErrorMessage(health.error)}</Alert> : null}
@@ -116,21 +133,28 @@ export function HealthPage() {
               <h2 id="health-dataset-heading" className={SECTION_HEADING}>
                 Dataset
               </h2>
+              {/*
+                RFC-52 R1: this group mixes two populations — the first four
+                numbers count the whole catalog, deactivated rows included,
+                the last four only the active one. Every label says which, so
+                two adjacent numbers over different populations do not read as
+                a bug.
+              */}
               <ul aria-label="Dataset totals" className={TILE_GRID}>
-                <StatTile label="Species" value={health.data.dataset.species} />
-                <StatTile label="Active species" value={health.data.dataset.activeSpecies} />
-                <StatTile label="Traits" value={health.data.dataset.traits} />
-                <StatTile label="Active traits" value={health.data.dataset.activeTraits} />
-                <StatTile label="References" value={health.data.dataset.references} />
-                <StatTile label="Records" value={health.data.dataset.records} />
+                <StatTile label="Species (all)" value={health.data.dataset.species} />
+                <StatTile label="Traits (all)" value={health.data.dataset.traits} />
+                <StatTile label="References (all)" value={health.data.dataset.references} />
+                <StatTile label="Records (all)" value={health.data.dataset.records} />
+                <StatTile label="Species (active)" value={health.data.dataset.activeSpecies} />
+                <StatTile label="Traits (active)" value={health.data.dataset.activeTraits} />
                 <MeterTile
-                  label="Accepted of populated cells"
+                  label="Accepted of populated cells (active)"
                   meterLabel="Species × trait cells with an accepted value, of the cells with any record"
                   value={health.data.dataset.acceptedCells}
                   max={health.data.dataset.coverageCells}
                 />
                 <MeterTile
-                  label="Populated of active grid"
+                  label="Populated of grid (active)"
                   meterLabel="Species × trait cells with a record, of the active species × active trait grid"
                   value={health.data.dataset.coverageCells}
                   max={health.data.dataset.activeSpecies * health.data.dataset.activeTraits}
@@ -140,9 +164,15 @@ export function HealthPage() {
 
             <section aria-labelledby="health-activity-heading" className="flex flex-col gap-3">
               <h2 id="health-activity-heading" className={SECTION_HEADING}>
-                Activity, last 7 days
+                Activity
               </h2>
-              <ul aria-label="Activity totals" className={TILE_GRID}>
+              {/*
+                The window belongs to the tiles, not to the section: the table
+                below them spans 14 days, and a heading reading "last 7 days"
+                over it said so of both.
+              */}
+              <p className="text-meta text-mist-500">Last 7 days</p>
+              <ul aria-label="Activity totals, last 7 days" className={TILE_GRID}>
                 <StatTile label="Records" value={health.data.activity.records7d} />
                 <StatTile label="Annotations" value={health.data.activity.annotations7d} />
                 <StatTile label="Proposals" value={health.data.activity.proposals7d} />

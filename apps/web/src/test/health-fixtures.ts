@@ -1,4 +1,9 @@
-import type { JobRunSummary, PlatformHealth } from '@treerepro/contracts';
+import {
+  type HealthImport,
+  healthImportSchema,
+  type JobRunSummary,
+  type PlatformHealth,
+} from '@treerepro/contracts';
 import { IMPORT_BATCH } from './dataset-fixtures.ts';
 
 const DAY_MS = 86_400_000;
@@ -52,6 +57,24 @@ export const JOB_RUN_FAILED: JobRunSummary = {
   error: 'connection refused',
 };
 
+// The import fixture minus the one field the health payload drops.
+const { runBy: _runBy, ...IMPORT_BATCH_WITHOUT_RUN_BY } = IMPORT_BATCH;
+
+/**
+ * `IMPORT_BATCH` as `GET /api/admin/health` answers it: the RFC-64 R11 item
+ * without `runBy`, which is a person's name and so PII (RFC-52 R2).
+ *
+ * Derived from the import fixture rather than written out, so the two can
+ * never drift, and pushed through `healthImportSchema` rather than merely
+ * spread, so the SHAPE is enforced rather than asserted by a comment — a
+ * strict schema rejects a stray `runBy` where TypeScript does not (its
+ * excess-property check fires on fresh object literals only, and
+ * `imports: [IMPORT_BATCH]` passed an identifier, which is how a person's
+ * name reached a fixture of a payload that can never carry one).
+ * @rfc RFC-52 R1, R2
+ */
+export const HEALTH_IMPORT: HealthImport = healthImportSchema.parse(IMPORT_BATCH_WITHOUT_RUN_BY);
+
 /**
  * `GET /api/admin/health` on synthetic data with a populated grid.
  * @rfc RFC-52 R1
@@ -71,7 +94,7 @@ export const PLATFORM_HEALTH: PlatformHealth = {
   activity: { records7d: 42, annotations7d: 8, proposals7d: 3, byDay: byDay() },
   queues: { pendingGroups: 4, disputed: 2, contested: 1, proposals: 5 },
   jobs: { auditPurge: JOB_RUN_FAILED, digest: JOB_RUN_HEALTHY },
-  imports: [IMPORT_BATCH],
+  imports: [HEALTH_IMPORT],
   computedAt: '2026-09-19T12:00:00.000Z',
 };
 
