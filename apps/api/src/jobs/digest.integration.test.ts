@@ -64,6 +64,7 @@ const ANCHOR_DAYS = {
   runFailedSend: 251,
   runNotDue: 257,
   runRoundTrip: 263,
+  runFailedSendMessage: 269,
 } as const;
 
 const anchor = (daysAgo: number): Date => new Date(Date.now() - daysAgo * DAY);
@@ -628,6 +629,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
         logger,
+        enabled: true,
         now,
       });
 
@@ -711,6 +713,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
         logger,
+        enabled: true,
         now,
       });
 
@@ -720,12 +723,29 @@ describe('RFC-74 R2, R5 runDigest', () => {
       expect(run?.status).toBe('skipped');
       // The window is still recorded: a skipped window must not be covered
       // twice, and `isDigestDue` needs a `windowEnd` to start the next one from.
-      expect(run?.detail).toMatchObject({
+      // Pinned exactly (not `toMatchObject`): an accidental extra key here
+      // would pass a looser assertion.
+      expect(run?.detail).toEqual({
         windowStart: new Date(at.getTime() - HOUR).toISOString(),
         windowEnd: now.toISOString(),
         reason: 'no_activity',
+        counts: {
+          records: 0,
+          contests: 0,
+          complements: 0,
+          validations: 0,
+          disputes: 0,
+          withdrawals: 0,
+          proposals: 0,
+          // Current dataset-wide queue sizes (RFC-65 R8, R10): no window can
+          // isolate them, so only their presence is asserted here.
+          pendingGroups: expect.any(Number),
+          disputedNow: expect.any(Number),
+        },
       });
-      expect(await digestAuditIds(tx)).toEqual([...auditBefore]);
+      // A SELECT with no ORDER BY: compared as a set, never an array, so an
+      // incidental reordering of a page's own audit rows cannot fail this.
+      expect(new Set(await digestAuditIds(tx))).toEqual(auditBefore);
     });
   });
 
@@ -746,6 +766,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
         logger,
+        enabled: true,
         now,
       });
 
@@ -775,8 +796,50 @@ describe('RFC-74 R2, R5 runDigest', () => {
     });
   });
 
+  it('drops a rejection message that names an address before it reaches the log (R5)', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const at = anchor(ANCHOR_DAYS.runFailedSendMessage);
+      const now = new Date(at.getTime() + HOUR);
+      await seedLastRun(tx, at);
+      await activityAt(tx, at);
+      await twoRecipients(tx);
+      const mailer = createFakeMailer();
+      // A real SMTP rejection, unlike `mailerRejecting`'s fixed message: the
+      // address is IN the message, exactly where `sanitizeError` (which
+      // keeps `err.message` verbatim) would carry it into the log if this
+      // call did not strip it. RFC-02 R7 redacts by key, not by value, so a
+      // key-based guard alone would miss this.
+      const leaked = 'someone@example.org';
+      mailer.failNext(new Error(`550 5.1.1 <${leaked}>: Recipient address rejected`));
+      const { logger, lines } = captureLogger();
+
+      const result = await runDigest({
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        logger,
+        enabled: true,
+        now,
+      });
+
+      expect(result).toMatchObject({ status: 'completed', failed: 1 });
+      const logs = lines as { msg: string }[];
+      const failure = logs.find((l) => l.msg === 'digest send failed');
+      expect(failure).toBeDefined();
+      // The stack trace `sanitizeError` keeps is safe (node_modules paths of
+      // its own carry an "@", e.g. `postgres@3.4.9`) — only the message,
+      // where the address actually was, must be gone.
+      expect(JSON.stringify(failure)).not.toContain(leaked);
+    });
+  });
+
   it('skips every tick with reason "disabled" before the due check even runs (R6)', async () => {
     await withRollback(t.db, async (tx) => {
+      // Two dataset-wide reads of `digestAuditIds` compared before/after, same
+      // as `runQuiet` and `runRoundTrip`: only honest while no sibling suite
+      // can commit between them.
+      await freezeSnapshot(tx);
       const mailer = createFakeMailer();
       const { logger } = captureLogger();
       const auditBefore = new Set(await digestAuditIds(tx));
@@ -809,7 +872,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
       // refused to write anything at all.
       expect(second.runId).not.toBe(first.runId);
       expect(mailer.sent).toEqual([]);
-      expect(await digestAuditIds(tx)).toEqual([...auditBefore]);
+      expect(new Set(await digestAuditIds(tx))).toEqual(auditBefore);
     });
   });
 
@@ -823,7 +886,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
       await twoRecipients(tx);
       const mailer = createFakeMailer();
       const { logger } = captureLogger();
-      const tick = { db: tx, mailer: mailer.mailer, appOrigin: APP_ORIGIN, logger };
+      const tick = { db: tx, mailer: mailer.mailer, appOrigin: APP_ORIGIN, logger, enabled: true };
 
       const first = await runDigest({ ...tick, now });
       expect(first.status).toBe('completed');
@@ -869,6 +932,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
         logger,
+        enabled: true,
         now,
       });
       expect(result.status).toBe('completed');

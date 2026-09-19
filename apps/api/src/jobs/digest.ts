@@ -342,8 +342,13 @@ export interface RunDigestInput {
   mailer: Mailer;
   appOrigin: string;
   logger: Logger;
-  /** `DIGEST_ENABLED` (R6); enabled unless this is explicitly `false`. */
-  enabled?: boolean;
+  /**
+   * `DIGEST_ENABLED` (R6). REQUIRED, not optional: an omitted flag would
+   * fail open and mail everyone, which is the wrong default for the input
+   * that decides whether mail goes out at all — the same reasoning that
+   * made `logger` required, applied with more force.
+   */
+  enabled: boolean;
   /** The instant this tick happens; defaults to now, and the tests inject it. */
   now?: Date;
 }
@@ -404,6 +409,16 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
     }
 
     const recipients = await digestRecipients(db);
+    if (recipients.length === 0) {
+      // R4 says nothing else: the run still completes and audits normally.
+      // But activity happened and nobody was told — every `records.review`
+      // holder and every admin is gone, or was stripped of the permission —
+      // and that is a misconfiguration nobody else is watching for.
+      logger.warn(
+        { windowStart: windowDetail.windowStart, windowEnd: windowDetail.windowEnd },
+        'digest has activity but no recipients',
+      );
+    }
     const mail = digestEmail({ digest, appOrigin, date: windowDetail.windowEnd.slice(0, 10) });
     let failed = 0;
     for (const recipient of recipients) {
@@ -412,11 +427,16 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
       } catch (err) {
         failed += 1;
         // R5: a failed send is logged and counted, and the tick carries on.
-        // The recipient is named by id: an address written to a log would
-        // outlive the mail itself (RFC-02 R7).
+        // The recipient is named by id, never an address — but `sanitizeError`
+        // keeps `err.message` verbatim, and RFC-02 R7 redacts by KEY, not by
+        // value: a real SMTP rejection ("550 5.1.1 <addr>: Recipient address
+        // rejected") would put a live address in `message`. `stack` is safe
+        // to keep (its first, message-bearing line is already filtered out
+        // by `sanitizeError`); only `message` is dropped here.
         const error = err instanceof Error ? err : new Error(String(err));
+        const { name, code, stack } = sanitizeError(error);
         logger.error(
-          { err: sanitizeError(error), recipientId: recipient.id },
+          { err: { name, code, stack }, recipientId: recipient.id },
           'digest send failed',
         );
       }
