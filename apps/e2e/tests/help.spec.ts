@@ -21,17 +21,20 @@ test.describe('RFC-73 R1, R2 help topic anchors (plan 12a)', () => {
       // `toBeVisible()` alone would also pass if the `#contest` hash failed
       // to scroll: the heading renders on the page regardless of where the
       // viewport sits. What this test is actually pinning down is that the
-      // browser scrolled to it, so the heading's bounding box is checked
-      // against the viewport as well — the "Contest" heading sits well down
+      // browser scrolled to it, so where the heading sits relative to the
+      // viewport is asserted as well — the "Contest" heading sits well down
       // `workflow.tsx`'s body, past what a fresh, unscrolled load would show.
       await expect(heading).toBeVisible();
-      const box = await heading.boundingBox();
-      const viewport = page.viewportSize();
-      if (!box || !viewport) {
-        throw new Error('the Contest heading or the page viewport had no box to compare');
-      }
-      expect(box.y).toBeGreaterThanOrEqual(0);
-      expect(box.y).toBeLessThan(viewport.height);
+
+      // `toBeInViewport`, not one-shot `boundingBox()` arithmetic: the
+      // landing is corrected once the web fonts settle (`hashAnchor.ts`),
+      // and this matcher retries until it has, where a single measurement
+      // races that correction. `ratio: 1` asks for the WHOLE heading, which
+      // is what "into view" means and what `scroll-mt-6` leaves room for —
+      // 24px of clearance above it, ~690px below, so nothing but a broken
+      // anchor can fail it. The plain default would accept a one-pixel
+      // sliver, and a sliver is not a heading the reader can read.
+      await expect(heading).toBeInViewport({ ratio: 1 });
     } finally {
       await admin.close();
     }
