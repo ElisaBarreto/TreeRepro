@@ -6,7 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { createAppQueryClient, createSessionErrorHandler } from '../lib/session.ts';
 import { routeTree } from '../routeTree.gen.ts';
@@ -32,6 +32,30 @@ export function withRouter(ui: ReactElement): ReactElement {
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   return <RouterProvider router={router} />;
+}
+
+/**
+ * Renders `ui` under `withRouter` beside a sentinel, then awaits the
+ * sentinel — the safe way to write a "never renders" assertion about `ui`.
+ * `withRouter`'s route mounts on its own tick, so a synchronous `queryBy…`
+ * taken right after `render(withRouter(...))` runs before that tick and
+ * answers "not found" whether or not `ui` would ever have rendered, which
+ * makes the assertion vacuous. Because the sentinel sits beside `ui` inside
+ * the very component `withRouter` renders, its appearance proves that commit
+ * — the one holding `ui`'s own render decision — has already happened, so the
+ * query that follows is checked against the real result.
+ * @rfc RFC-01 R2
+ */
+export async function renderSettled(ui: ReactElement) {
+  render(
+    withRouter(
+      <>
+        {ui}
+        <span data-testid="settled" />
+      </>,
+    ),
+  );
+  await screen.findByTestId('settled');
 }
 
 /**

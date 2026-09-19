@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import type { ContributionSummary } from '@treerepro/contracts';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { helpHref } from '../../content/help/href.ts';
 import { readFlag, writeFlag } from '../../lib/storage.ts';
 import { Button } from '../ui/index.ts';
@@ -8,19 +8,16 @@ import { Button } from '../ui/index.ts';
 const HIDDEN_STORAGE_KEY = 'treerepro.gettingStarted.hidden';
 const LINK_CLASS = 'font-medium text-canopy-900 underline-offset-2 hover:underline';
 
-// RFC-71 R4's seven counts; the card never shows for a viewer with any
-// contribution, so a single non-zero field turns this false permanently for
-// that viewer (the flag only ever hides a card that would otherwise show).
+// RFC-71 R4's seven counts, read off the object rather than named one by
+// one: an eighth count added to the contract later is then covered without
+// anyone remembering this function, and so is a field that is not a number
+// at all — both make this false, which hides the card, the safe direction
+// for something only ever meant for a viewer with nothing to their name.
+// The card never shows for a viewer with any contribution, so a single
+// non-zero field turns this false permanently for that viewer (the flag only
+// ever hides a card that would otherwise show).
 function hasNoContribution(summary: ContributionSummary): boolean {
-  return (
-    summary.records === 0 &&
-    summary.contests === 0 &&
-    summary.complements === 0 &&
-    summary.validations === 0 &&
-    summary.disputes === 0 &&
-    summary.withdrawn === 0 &&
-    summary.accepted === 0
-  );
+  return Object.values(summary).every((count) => count === 0);
 }
 
 /**
@@ -35,6 +32,7 @@ function hasNoContribution(summary: ContributionSummary): boolean {
  */
 export function GettingStartedCard({ summary }: { summary: ContributionSummary }) {
   const [hidden, setHidden] = useState(() => readFlag(HIDDEN_STORAGE_KEY));
+  const headingId = useId();
 
   if (hidden || !hasNoContribution(summary)) return null;
 
@@ -45,13 +43,10 @@ export function GettingStartedCard({ summary }: { summary: ContributionSummary }
 
   return (
     <section
-      aria-labelledby="getting-started-heading"
+      aria-labelledby={headingId}
       className="flex flex-col gap-4 rounded-xl border border-canopy-700/15 bg-white p-6"
     >
-      <h2
-        id="getting-started-heading"
-        className="font-display text-section font-semibold text-canopy-950"
-      >
+      <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
         Getting started
       </h2>
       <p className="text-body text-mist-500">

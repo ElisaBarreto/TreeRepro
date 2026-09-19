@@ -17,13 +17,13 @@ const raw = import.meta.glob('../../**/*.{ts,tsx}', {
 }) as Record<string, string>;
 
 // Vite keys a glob relative to the importing file, so this test's own
-// siblings come back as `./href.ts` while everything else carries `../../`.
-// Both are rewritten to one path under `src/`, so the lists below can be
-// written the way a reader would say them.
+// siblings come back as `./href.ts`, most of the app carries `../../`, and a
+// module directly under `content/` carries a single `../`. Resolving each
+// key against this file's own directory rewrites all three to one path under
+// `src/`, so the lists below can be written the way a reader would say them
+// and a failure names a real file rather than `content/help/../foo.ts`.
 function underSrc(file: string): string {
-  return file.startsWith('../../')
-    ? file.slice('../../'.length)
-    : `content/help/${file.replace(/^\.\//, '')}`;
+  return new URL(file, 'file:///content/help/').pathname.slice(1);
 }
 
 // This file quotes the patterns it looks for, so scanning itself would check
@@ -48,6 +48,10 @@ const LEARN_MORE = new RegExp(
 // against what `CALL` understood, so a computed slug fails loudly instead of
 // dropping out of the scan.
 const ANY_CALL = /helpHref\(/g;
+// A `<HelpTip` opening tag with its whole attribute list, self-closing or
+// not. `=>` is accepted inside the list so an arrow-function prop cannot cut
+// the tag short, and the lazy quantifier still stops at the tag's own `>`.
+const HELP_TIP_TAG = /<HelpTip\b(?:=>|[^>])*?>/g;
 
 // The three places a `helpHref(` this test cannot read is expected and safe:
 // its own definition, and the index page (with its test) mapping over
@@ -75,8 +79,13 @@ function scan(pattern: RegExp): Wiring[] {
   return found;
 }
 
-// The tips of plan 09b, by the file that holds them (RFC-73 R4). The scope
-// toggle has no tip, so it has no wiring; adding one is not this plan's work.
+// The tips of plan 09b, by the file that holds them (RFC-73 R4). The plan
+// listed two further wirings that are deliberately absent, because R4 binds
+// "every HelpTip of plan 09b" — a closed set — and neither names a tip in it:
+// `scope#outside`, because the species-list scope toggle carries no tip at
+// all, and `references#personal-observation`, because `SourcesField` has one
+// tip, already wired to `references#doi`, not a second one. Adding either tip
+// is not this plan's work; the test below holds every tip that does exist.
 const WIRED_FILES: readonly [string, string][] = [
   ['components/curation/RecordActions.tsx', 'workflow#validate'],
   ['components/curation/RecordActions.tsx', 'workflow#different'],
@@ -110,6 +119,20 @@ describe('RFC-73 R4 help anchors', () => {
     }
   });
 
+  // An exemption that has gone stale is a silent escape: the guard above
+  // would skip that whole file for a call it no longer makes. Checking each
+  // entry still earns its place makes growing this list a conscious edit.
+  it.each(UNREADABLE_OK)('still calls helpHref unreadably, so %s earns its exemption', (file) => {
+    const source = sources.find(([f]) => f === file)?.[1];
+    expect(source, `${file} is exempt from the guard but no longer exists`).toBeDefined();
+    const all = (source as string).match(ANY_CALL)?.length ?? 0;
+    const understood = Array.from((source as string).matchAll(CALL)).length;
+    expect(
+      understood,
+      `${file} no longer calls helpHref with anything this test cannot read; drop it from UNREADABLE_OK`,
+    ).toBeLessThan(all);
+  });
+
   it('gives every help tip of plan 09b its "Learn more" target', () => {
     const found = scan(LEARN_MORE);
     for (const [file, target] of WIRED_FILES) {
@@ -117,6 +140,29 @@ describe('RFC-73 R4 help anchors', () => {
       expect(
         found.some((w) => w.file === file && w.slug === slug && w.anchor === anchor),
         `${file} has no learnMore to ${target}`,
+      ).toBe(true);
+    }
+  });
+
+  // `WIRED_FILES` is hand-kept, so on its own it only ever checks the tips
+  // someone remembered to list. RFC-73 R4 is about the tips themselves: a tip
+  // added tomorrow, in a file nobody thought to add above, must still carry a
+  // target or its "Learn more" is missing with nothing to say so. That makes
+  // the list above a second net rather than the only one.
+  //
+  // Test files are skipped: `HelpTip.test.tsx` renders a tip without a target
+  // on purpose, to check what the component does when it has none.
+  it('gives every help tip the app renders a learnMore target', () => {
+    const tags = sources
+      .filter(([file]) => !file.endsWith('.test.ts') && !file.endsWith('.test.tsx'))
+      .flatMap(([file, source]) =>
+        Array.from(source.matchAll(HELP_TIP_TAG), (match) => [file, match[0]] as const),
+      );
+    expect(tags.length).toBeGreaterThan(0);
+    for (const [file, tag] of tags) {
+      expect(
+        tag.includes('learnMore='),
+        `${file} renders a <HelpTip> with no learnMore (RFC-73 R4)`,
       ).toBe(true);
     }
   });
