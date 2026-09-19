@@ -165,6 +165,7 @@ describe('RFC-31 R3, R4, R5 role services', () => {
     expect(manager?.permissions).toEqual(
       [
         'contributions.read',
+        'coverage.read',
         'dataset.read',
         'dataset.read_inactive',
         'imports.read',

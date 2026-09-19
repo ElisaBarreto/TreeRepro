@@ -16,6 +16,7 @@ import { type QueryParams, withQuery } from './query.ts';
 export const plotKeys = {
   all: ['plots'] as const,
   list: (params: QueryParams) => ['plots', 'list', params] as const,
+  fullList: ['plots', 'list', 'all'] as const,
   detail: (id: string) => ['plots', 'detail', id] as const,
   species: (id: string, params: QueryParams) => ['plots', id, 'species', params] as const,
   users: (id: string, params: QueryParams) => ['plots', id, 'users', params] as const,
@@ -28,6 +29,24 @@ export function listPlots(params: {
   limit?: number;
 }): Promise<Page<Plot>> {
   return apiFetch<Page<Plot>>(withQuery('/plots', params));
+}
+
+/**
+ * Every plot, following `nextCursor` to exhaustion, for the selects that must
+ * offer the whole list rather than a page of it — a single page silently drops
+ * every plot past its limit, and the chooser then cannot express a filter the
+ * API would accept. `fetchFamilies` pages the same way for the same reason.
+ * @rfc RFC-67 R3
+ */
+export async function fetchAllPlots(): Promise<Plot[]> {
+  const all: Plot[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await listPlots({ cursor, limit: 200 });
+    all.push(...page.data);
+    cursor = page.meta.nextCursor ?? undefined;
+  } while (cursor);
+  return all;
 }
 
 /** @rfc RFC-67 R3 */

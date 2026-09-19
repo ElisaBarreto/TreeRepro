@@ -217,6 +217,32 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
 }
 
 /**
+ * A trait category of its own, for tests that must know every trait in a
+ * category: the seeded categories hold the shared dictionary and gain traits
+ * whenever a sibling test file calls `createTrait` without a category.
+ *
+ * `sortOrder` defaults far behind the seeded categories (which are numbered by
+ * their line in `seed/trait-dictionary.csv`), because the dictionary is
+ * ordered by it and sibling test files read the head of that list.
+ */
+export async function createTraitCategory(
+  db: DbExecutor,
+  options: { key?: string; label?: string; sortOrder?: number } = {},
+): Promise<{ key: string; label: string }> {
+  const key = options.key ?? `test_category_${suffix()}`;
+  const [row] = await db
+    .insert(traitCategories)
+    .values({
+      key,
+      label: options.label ?? `Test category ${key}`,
+      sortOrder: options.sortOrder ?? 10_000,
+    })
+    .returning({ key: traitCategories.key, label: traitCategories.label });
+  if (!row) throw new Error('createTraitCategory: no row');
+  return row;
+}
+
+/**
  * A trait of its own for tests that edit the dictionary or read the global
  * queues: seeded traits are shared by every test file and must stay untouched.
  */

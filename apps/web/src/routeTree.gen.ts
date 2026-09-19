@@ -22,6 +22,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ResetPasswordTokenRouteImport } from './routes/reset-password.$token'
 import { Route as AppAdminAuditRouteImport } from './routes/app/admin/audit'
 import { Route as AppAdminRolesRouteImport } from './routes/app/admin/roles'
+import { Route as AppCurationCoverageRouteImport } from './routes/app/curation/coverage'
 import { Route as AppCurationDisputedRouteImport } from './routes/app/curation/disputed'
 import { Route as AppCurationPendingRouteImport } from './routes/app/curation/pending'
 import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
@@ -101,6 +102,11 @@ const AppAdminRolesRoute = AppAdminRolesRouteImport.update({
   id: '/roles',
   path: '/roles',
   getParentRoute: () => AppAdminRoute,
+} as any)
+const AppCurationCoverageRoute = AppCurationCoverageRouteImport.update({
+  id: '/curation/coverage',
+  path: '/curation/coverage',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppCurationDisputedRoute = AppCurationDisputedRouteImport.update({
   id: '/curation/disputed',
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/app/': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
   '/app/admin/roles': typeof AppAdminRolesRoute
+  '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -214,6 +221,7 @@ export interface FileRoutesByTo {
   '/app': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
   '/app/admin/roles': typeof AppAdminRolesRoute
+  '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/app/': typeof AppIndexRoute
   '/app/admin/audit': typeof AppAdminAuditRoute
   '/app/admin/roles': typeof AppAdminRolesRoute
+  '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -275,6 +284,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/app/admin/audit'
     | '/app/admin/roles'
+    | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -302,6 +312,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/app/admin/audit'
     | '/app/admin/roles'
+    | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -331,6 +342,7 @@ export interface FileRouteTypes {
     | '/app/'
     | '/app/admin/audit'
     | '/app/admin/roles'
+    | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
     | '/app/imports/$id'
@@ -447,6 +459,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/admin/roles'
       preLoaderRoute: typeof AppAdminRolesRouteImport
       parentRoute: typeof AppAdminRoute
+    }
+    '/app/curation/coverage': {
+      id: '/app/curation/coverage'
+      path: '/curation/coverage'
+      fullPath: '/app/curation/coverage'
+      preLoaderRoute: typeof AppCurationCoverageRouteImport
+      parentRoute: typeof AppRoute
     }
     '/app/curation/disputed': {
       id: '/app/curation/disputed'
@@ -592,6 +611,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppTaxaRoute: typeof AppTaxaRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppCurationCoverageRoute: typeof AppCurationCoverageRoute
   AppCurationDisputedRoute: typeof AppCurationDisputedRoute
   AppCurationPendingRoute: typeof AppCurationPendingRoute
   AppReferencesIdRoute: typeof AppReferencesIdRoute
@@ -609,6 +629,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppTaxaRoute: AppTaxaRoute,
   AppIndexRoute: AppIndexRoute,
+  AppCurationCoverageRoute: AppCurationCoverageRoute,
   AppCurationDisputedRoute: AppCurationDisputedRoute,
   AppCurationPendingRoute: AppCurationPendingRoute,
   AppReferencesIdRoute: AppReferencesIdRoute,

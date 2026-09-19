@@ -29,6 +29,7 @@ export const PERMISSIONS = {
     'Work the harmonisation and disputed queues; neutralise or dispute any record with a note',
   'plots.manage': 'Create and edit field plots and their species',
   'contributions.read': "View any user's contributions",
+  'coverage.read': 'View coverage metrics',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
