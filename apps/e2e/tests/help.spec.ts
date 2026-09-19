@@ -9,7 +9,14 @@ test.describe('RFC-73 R1, R2 help topic anchors (plan 12a)', () => {
     try {
       const page = await admin.newPage();
       await page.goto('/app/help/workflow#contest');
-      const heading = page.getByRole('heading', { name: 'Contest', exact: true });
+      // By id, not by the visible "Contest" text: the scroll mechanism
+      // (`@tanstack/router-core`'s `setupScrollRestoration`) resolves the
+      // hash with `document.getElementById(hash)`, and the id is what
+      // `workflow.tsx`'s `anchors` array, `HELP_ANCHORS`, `anchors.test.ts`
+      // and every `helpHref('workflow', 'contest')` call site key on too.
+      // RFC-73 R5's owner copy review is still open, so the heading's text
+      // may still change; the id is the stable, load-bearing part.
+      const heading = page.locator('#contest');
 
       // `toBeVisible()` alone would also pass if the `#contest` hash failed
       // to scroll: the heading renders on the page regardless of where the
