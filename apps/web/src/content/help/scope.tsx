@@ -73,8 +73,17 @@ export const scope: HelpTopicSource = {
         <li>It is genuinely not in the dataset yet.</li>
       </ul>
       <p>
-        In the last case, write to the admin with the species name, the authority, and a plot if it
-        belongs to one. Species are added centrally, so there is nothing to submit from here.{' '}
+        In the last case, you can ask for it. Search the <Link to="/app/species">Species</Link> page
+        for the name: when nothing matches it, the empty state offers{' '}
+        <strong>Propose this species</strong>, which sends the name and an optional note — where you
+        saw it, the authority — to the reviewers. They check it against GBIF and, when configured,
+        the World Checklist of Vascular Plants before deciding, and the answer shows on the{' '}
+        <strong>Proposals</strong> tab of <Link to="/app/contributions">My contributions</Link>:
+        approved, with a link to the new species, or rejected with a note saying why.
+      </p>
+      <p>
+        If that button is not offered to you, proposing is not part of your role. Write to the admin
+        instead, with the species name, the authority, and a plot if it belongs to one.{' '}
         <Link to={helpHref('contact')}>Contact</Link> has the address.
       </p>
     </>

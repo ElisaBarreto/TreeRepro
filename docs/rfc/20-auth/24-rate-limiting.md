@@ -24,6 +24,7 @@ Authentication routes are brute-force targets and every route can be flooded. Li
   | `password/forgot` | email + IP; IP | 3 per 15 minutes; 10 per 15 minutes |
   | `invite/accept`, `password/reset` | IP | 10 per 15 minutes |
   | `references/resolve` | user id | 60 per minute |
+  | `taxonomy/match` | user id | 30 per minute |
 
   The `invite/accept`/`password/reset` limit is configurable (`RATE_LIMIT_TOKEN_IP`), defaulting to 10 when unset.
 
@@ -42,3 +43,4 @@ None.
 - 2026-09-12 — accepted.
 - 2026-09-17 — R3: DOI check limiter (plan 09a).
 - 2026-09-18 — R3: `invite/accept`/`password/reset` limit is configurable, 10 by default.
+- 2026-09-19 — R3: `taxonomy/match` limiter, 30 per minute per user (RFC-81 R4, plan 12c).

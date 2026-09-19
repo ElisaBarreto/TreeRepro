@@ -4,10 +4,12 @@ import type { Species } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
+  BACKBONE_MATCH,
   FAMILIES,
   FAMILY,
   GENERA,
   GENUS,
+  LOOKUP_EXACT,
   MALVACEAE,
   SPECIES,
 } from '../../test/dataset-fixtures.ts';
@@ -30,6 +32,11 @@ const catalogOriginal: {
   invalidateAfterCatalogWrite?: typeof import('../../api/catalog.ts').invalidateAfterCatalogWrite;
 } = vi.hoisted(() => ({}));
 const dataset = vi.hoisted(() => ({ fetchFamilies: vi.fn(), fetchGenera: vi.fn() }));
+const proposals = vi.hoisted(() => ({ matchTaxon: vi.fn() }));
+vi.mock('../../api/proposals.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/proposals.ts')>()),
+  ...proposals,
+}));
 vi.mock('../../api/catalog.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/catalog.ts')>();
   catalogOriginal.invalidateAfterCatalogWrite = actual.invalidateAfterCatalogWrite;
@@ -48,6 +55,7 @@ beforeEach(() => {
   catalog.createGenus.mockReset();
   catalog.createFamily.mockReset();
   catalog.invalidateAfterCatalogWrite.mockClear();
+  proposals.matchTaxon.mockReset();
 });
 
 function mount(species?: Species) {
@@ -282,5 +290,156 @@ describe('RFC-60 R9 SpeciesDialog', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(await within(dialog).findByText('Too long')).toBeInTheDocument();
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-81 R4 the Look up button', () => {
+  it('fills the family and the genus from the match when the catalog has them', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: FAMILY.name, genus: GENUS.name },
+    });
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Adenanthera pavonina',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    await waitFor(() => expect(proposals.matchTaxon).toHaveBeenCalledWith('Adenanthera pavonina'));
+    await waitFor(() => expect(within(dialog).getByLabelText('Family')).toHaveValue(FAMILY.id));
+    expect(within(dialog).getByText(GENUS.name)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Family and genus filled in/)).toBeInTheDocument();
+  });
+
+  it('names what the catalog does not have instead of creating it, and opens the family field', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: 'Fagaceae', genus: 'Quercus' },
+    });
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Quercus robur',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('textbox', { name: /new family name/i })).toHaveValue(
+        'Fagaceae',
+      ),
+    );
+    expect(within(dialog).getByText(/the genus Quercus/)).toBeInTheDocument();
+    expect(catalog.createFamily).not.toHaveBeenCalled();
+    expect(catalog.createGenus).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed lookup and leaves the form alone', async () => {
+    proposals.matchTaxon.mockRejectedValue(new ApiError(502, 'TAXONOMY_LOOKUP_FAILED', 'upstream'));
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Quercus robur',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'The taxonomy lookup could not be completed. Try again.',
+    );
+    expect(within(dialog).getByLabelText('Family')).toHaveValue('');
+  });
+
+  it('a genus lookup that fails still says what happened, rather than half-applying in silence', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: FAMILY.name, genus: GENUS.name },
+    });
+    dataset.fetchGenera.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
+    const { dialog } = mount();
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Adenanthera pavonina',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    expect(
+      await within(dialog).findByText(/the catalog could not be searched/),
+    ).toBeInTheDocument();
+    // The half that did succeed is still applied: the family was matched
+    // before the genus search failed.
+    expect(within(dialog).getByLabelText('Family')).toHaveValue(FAMILY.id);
+  });
+
+  it('a lookup that answers after the name changed is discarded, never applied to the new name', async () => {
+    // The canonical name stays editable while the request is in flight, so
+    // the answer can arrive about a name the form no longer holds. Filling
+    // the family and genus from it would submit one species' taxonomy under
+    // another's name.
+    let answer: (lookup: unknown) => void = () => {};
+    proposals.matchTaxon.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const { dialog } = mount();
+    const nameBox = within(dialog).getByRole('textbox', { name: /canonical name/i });
+    await userEvent.type(nameBox, 'Adenanthera pavonina');
+    const lookUp = within(dialog).getByRole('button', { name: 'Look up' });
+    await userEvent.click(lookUp);
+    await waitFor(() => expect(proposals.matchTaxon).toHaveBeenCalledWith('Adenanthera pavonina'));
+
+    await userEvent.clear(nameBox);
+    await userEvent.type(nameBox, 'Quercus robur');
+    answer({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: FAMILY.name, genus: GENUS.name },
+    });
+    await waitFor(() => expect(lookUp).not.toHaveAttribute('aria-busy'));
+
+    expect(within(dialog).getByLabelText('Family')).toHaveValue('');
+    expect(within(dialog).queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Family and genus filled in/)).not.toBeInTheDocument();
+  });
+
+  it('a matched family the catalog lacks clears the family and genus already chosen', async () => {
+    proposals.matchTaxon.mockResolvedValue({
+      ...LOOKUP_EXACT,
+      wcvp: null,
+      backbone: { ...BACKBONE_MATCH, family: 'Fagaceae', genus: 'Quercus' },
+    });
+    const { dialog } = mount();
+    // A family and a genus of that family are already selected.
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: /^family/i }),
+      FAMILY.id,
+    );
+    await userEvent.type(within(dialog).getByRole('combobox', { name: /^genus/i }), 'Aden');
+    await userEvent.click(await screen.findByRole('option', { name: /Adenanthera/ }));
+    expect(within(dialog).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Quercus robur',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Look up' }));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('textbox', { name: /new family name/i })).toHaveValue(
+        'Fagaceae',
+      ),
+    );
+    // The matched genus is searched catalog-wide, not inside a family the
+    // match has just contradicted...
+    expect(dataset.fetchGenera).toHaveBeenLastCalledWith({
+      familyId: undefined,
+      q: 'Quercus',
+      limit: 20,
+    });
+    // ...and the genus of the old family does not survive into the new one.
+    expect(within(dialog).queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('RFC-60 R9 edit mode has no Look up button', () => {
+    const { dialog } = mount(SPECIES);
+    expect(within(dialog).queryByRole('button', { name: 'Look up' })).not.toBeInTheDocument();
   });
 });

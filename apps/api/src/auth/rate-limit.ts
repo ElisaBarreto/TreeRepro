@@ -42,6 +42,10 @@ export const RATE_LIMITS = {
   forgotEmailIp: { limit: 3, windowMs: QUARTER_HOUR },
   forgotIp: { limit: 10, windowMs: QUARTER_HOUR },
   tokenIp: { limit: TOKEN_IP_LIMIT, windowMs: QUARTER_HOUR },
+  // The first non-auth bucket: `GET /api/taxonomy/match` reaches GBIF on the
+  // platform's behalf, so it is limited per user (RFC-81 R4), opted into
+  // explicitly by that route rather than applied globally.
+  taxonomyMatchUser: { limit: 30, windowMs: MINUTE },
 } as const satisfies Record<string, RateLimitRule>;
 
 // KEYS[1] = sorted set; ARGV = now(ms), window(ms), limit, member.

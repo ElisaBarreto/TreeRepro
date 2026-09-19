@@ -18,6 +18,7 @@ x-api-env: &api-env
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM: ${SMTP_FROM:-TreeRepro <no-reply@localhost>}
   SMTP_USER: ${SMTP_USER:-}
+  WCVP_GBIF_DATASET_KEY: ${WCVP_GBIF_DATASET_KEY:-}
 
 services:
   postgres:

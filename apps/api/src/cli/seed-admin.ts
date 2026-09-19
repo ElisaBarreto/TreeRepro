@@ -18,6 +18,7 @@ import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
 import { createDoiClient } from '../integrations/doi.ts';
+import { createTaxonomyClient } from '../integrations/taxonomy.ts';
 import { createLogger } from '../logger.ts';
 import { createMailer, createSmtpTransport } from '../mail/mailer.ts';
 import { createRedis } from '../redis/client.ts';
@@ -51,6 +52,9 @@ const ctx: AuthContext = {
   permissionCache: createPermissionCache(redis),
   logger,
   doi: createDoiClient({ contactEmail: config.doiContactEmail, version: APP_VERSION }),
+  // This CLI never proposes a species; the WCVP source is left disabled
+  // rather than spending a start-up network call it does not need.
+  taxonomy: createTaxonomyClient({ wcvpDatasetKey: null, version: APP_VERSION }),
   appOrigin: config.appOrigin,
   now: Date.now,
 };

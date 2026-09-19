@@ -9,9 +9,11 @@ import type {
   Genus,
   ImportBatch,
   ImportReject,
+  Lookup,
   MapResult,
   PendingGroup,
   PendingTrait,
+  Proposal,
   RecordDetail,
   RecordItem,
   Reference,
@@ -19,6 +21,7 @@ import type {
   ReferenceRef,
   Species,
   SpeciesTraits,
+  TaxonMatch,
   TaxonRef,
   Trait,
   TraitDetail,
@@ -1079,4 +1082,208 @@ export const SPECIES_WITH_SYNONYM_ONLY: Species = {
       gbifUsageKey: null,
     },
   ],
+};
+
+// --- Plan 12c (species proposals and the GBIF lookup) ---------------------
+
+/** The GBIF backbone's answer for a name it matches at species rank. @rfc RFC-81 R2 */
+export const BACKBONE_MATCH: TaxonMatch = {
+  matchType: 'EXACT',
+  confidence: 99,
+  usageKey: '2878688',
+  scientificName: 'Quercus robur L.',
+  canonicalName: 'Quercus robur',
+  rank: 'SPECIES',
+  status: 'ACCEPTED',
+  family: 'Fagaceae',
+  genus: 'Quercus',
+  acceptedUsageKey: null,
+  note: null,
+};
+
+/** The WCVP answer for the same name — no confidence, WCVP reports none. @rfc RFC-81 R2 */
+export const WCVP_MATCH: TaxonMatch = {
+  matchType: 'EXACT',
+  confidence: null,
+  usageKey: '207128214',
+  scientificName: 'Quercus robur L.',
+  canonicalName: 'Quercus robur',
+  rank: 'SPECIES',
+  status: 'ACCEPTED',
+  family: 'Fagaceae',
+  genus: 'Quercus',
+  acceptedUsageKey: null,
+  note: null,
+};
+
+/** Both sources agree at species rank: the only shape that is `exact`. @rfc RFC-81 R3 */
+export const LOOKUP_EXACT: Lookup = {
+  backbone: BACKBONE_MATCH,
+  wcvp: WCVP_MATCH,
+  verdict: 'exact',
+};
+
+/**
+ * What a source that answered and found nothing looks like: a real
+ * `TaxonMatch` whose `matchType` is `NONE` and whose every other field is
+ * `null` — `NULL_MATCH` in `apps/api/src/integrations/taxonomy.ts`. It is
+ * **not** `null`: a `null` source means the call to it never completed. The
+ * two are different facts (RFC-81 R3), and modelling a miss as `null` is
+ * what let a `NONE` match pass for a real one.
+ * @rfc RFC-81 R2, R3
+ */
+export const NO_MATCH: TaxonMatch = {
+  matchType: 'NONE',
+  confidence: null,
+  usageKey: null,
+  scientificName: null,
+  canonicalName: null,
+  rank: null,
+  status: null,
+  family: null,
+  genus: null,
+  acceptedUsageKey: null,
+  note: null,
+};
+
+/**
+ * A misspelling: the live backbone answers `VARIANT`, never `FUZZY`, and
+ * WCVP — a plain name search — answers with no row for it.
+ * @rfc RFC-81 R3
+ */
+export const LOOKUP_FUZZY: Lookup = {
+  backbone: {
+    ...BACKBONE_MATCH,
+    matchType: 'VARIANT',
+    confidence: 93,
+    scientificName: 'Quercus robur L.',
+  },
+  wcvp: NO_MATCH,
+  verdict: 'fuzzy',
+};
+
+/** An `EXACT` match at genus rank — which is not an exact match. @rfc RFC-81 R3 */
+export const LOOKUP_GENUS: Lookup = {
+  backbone: {
+    ...BACKBONE_MATCH,
+    usageKey: '2877951',
+    scientificName: 'Quercus L.',
+    canonicalName: 'Quercus',
+    rank: 'GENUS',
+    genus: 'Quercus',
+    note: 'matched the genus',
+  },
+  wcvp: NO_MATCH,
+  verdict: 'none',
+};
+
+/**
+ * A backbone miss is `NO_MATCH` with one field filled: the live v2 match
+ * answers `diagnostics.confidence: 100` even when it matched nothing, and
+ * `gbifToMatch` copies it through (pinned in `taxonomy.test.ts`). WCVP has
+ * no confidence to report either way.
+ * @rfc RFC-81 R2
+ */
+export const BACKBONE_NO_MATCH: TaxonMatch = { ...NO_MATCH, confidence: 100 };
+
+/** Both calls answered and neither knew the name. @rfc RFC-81 R3 */
+export const LOOKUP_NONE: Lookup = {
+  backbone: BACKBONE_NO_MATCH,
+  wcvp: NO_MATCH,
+  verdict: 'none',
+};
+
+/**
+ * The commonest real outcome for a name outside WCVP: the backbone matches
+ * exactly at species rank and WCVP answers HTTP 200 with `results: []`. The
+ * verdict is `exact` — and everything the reviewer sees must come from the
+ * backbone, because the WCVP "match" names nothing at all.
+ * @rfc RFC-81 R3
+ */
+export const LOOKUP_EXACT_WCVP_MISS: Lookup = {
+  backbone: BACKBONE_MATCH,
+  wcvp: NO_MATCH,
+  verdict: 'exact',
+};
+
+/**
+ * The other one-sided shape, and a different fact: the backbone answered and
+ * the WCVP **call failed**, so there is no answer from it either way.
+ * @rfc RFC-81 R3
+ */
+export const LOOKUP_WCVP_FAILED: Lookup = {
+  backbone: BACKBONE_MATCH,
+  wcvp: null,
+  verdict: 'exact',
+};
+
+/**
+ * WCVP knows only the genus while the backbone matched the species. The
+ * better match is the backbone's, whichever source the verdict came from.
+ * @rfc RFC-81 R3
+ */
+export const LOOKUP_WCVP_GENUS_ONLY: Lookup = {
+  backbone: BACKBONE_MATCH,
+  wcvp: {
+    ...WCVP_MATCH,
+    matchType: 'HIGHERRANK',
+    usageKey: '207128000',
+    scientificName: 'Quercus L.',
+    canonicalName: 'Quercus',
+    rank: 'GENUS',
+    note: 'matched the genus',
+  },
+  verdict: 'exact',
+};
+
+/** An open proposal whose lookup matched both sources exactly. @rfc RFC-75 R6 */
+export const PROPOSAL: Proposal = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e01',
+  proposedName: 'Quercus robur',
+  note: 'Seen on plot A12, not in the catalog.',
+  status: 'open',
+  proposer: { id: USER.id, name: 'Ada' },
+  lookup: LOOKUP_EXACT,
+  lookupAt: '2026-09-19T09:00:00.000Z',
+  species: null,
+  decidedBy: null,
+  decidedAt: null,
+  decisionNote: null,
+  createdAt: '2026-09-19T09:00:00.000Z',
+};
+
+/**
+ * A proposal whose lookup never completed: `lookup` is `null`, which is the
+ * `failed` verdict of RFC-81 R3 and reads "lookup failed", not "not found".
+ * @rfc RFC-81 R3
+ */
+export const PROPOSAL_LOOKUP_FAILED: Proposal = {
+  ...PROPOSAL,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e02',
+  proposedName: 'Pinus sylvestris',
+  note: null,
+  lookup: null,
+  lookupAt: null,
+};
+
+/** An approved proposal, carrying the species it created. @rfc RFC-75 R6 */
+export const APPROVED_PROPOSAL: Proposal = {
+  ...PROPOSAL,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e03',
+  status: 'approved',
+  species: { id: SPECIES.id, canonicalName: SPECIES.canonicalName },
+  decidedBy: { id: USER.id, name: 'Grace' },
+  decidedAt: '2026-09-19T10:00:00.000Z',
+};
+
+/** A rejected proposal, carrying the note the reviewer left. @rfc RFC-75 R6 */
+export const REJECTED_PROPOSAL: Proposal = {
+  ...PROPOSAL,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e04',
+  proposedName: 'Quercus imaginarius',
+  status: 'rejected',
+  lookup: LOOKUP_NONE,
+  decidedBy: { id: USER.id, name: 'Grace' },
+  decidedAt: '2026-09-19T10:00:00.000Z',
+  decisionNote: 'No such taxon; check the spelling.',
 };

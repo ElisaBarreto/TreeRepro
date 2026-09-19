@@ -11,6 +11,7 @@ import { createRedis, type Redis } from '../../src/redis/client.ts';
 import { fakeDoiClient } from './doi.ts';
 import { captureLogger } from './logger.ts';
 import { createFakeMailer, type FakeMailer } from './mail.ts';
+import { fakeTaxonomyClient } from './taxonomy.ts';
 
 export const TEST_ORIGIN = 'http://localhost';
 export const TEST_SESSION_SECRET = Buffer.alloc(32, 3);
@@ -26,6 +27,7 @@ export interface TestApp {
   readonly permissionCache: PermissionCache;
   readonly mail: FakeMailer;
   readonly doi: ReturnType<typeof fakeDoiClient>;
+  readonly taxonomy: ReturnType<typeof fakeTaxonomyClient>;
   /** Passwords the fake breach checker reports as breached. */
   readonly breached: Set<string>;
   /** Captured log lines of the default app. */
@@ -53,6 +55,9 @@ export function useTestApp(): TestApp {
     const mfa = createMfaStore(r, TEST_SESSION_SECRET);
     const limiter = createRateLimiter(r, () => clock.now);
     const permissionCache = createPermissionCache(r);
+    // A fresh fake per built app, so mutating one app's canned answers never
+    // bleeds into another app built over the same pool.
+    const taxonomy = fakeTaxonomyClient();
     const deps: AppDeps = {
       config: { appOrigin: TEST_ORIGIN },
       logger,
@@ -64,12 +69,13 @@ export function useTestApp(): TestApp {
       limiter,
       mailer: mail.mailer,
       doi,
+      taxonomy,
       breachChecker: { isBreached: async (p) => breached.has(p) },
       permissionCache,
       now: () => clock.now,
       ...overrides,
     };
-    return { app: createApp(deps), deps, lines, sessions, mfa, limiter, permissionCache };
+    return { app: createApp(deps), deps, lines, sessions, mfa, limiter, permissionCache, taxonomy };
   }
 
   beforeAll(async () => {
@@ -88,6 +94,7 @@ export function useTestApp(): TestApp {
       permissionCache: built.permissionCache,
       mail,
       doi,
+      taxonomy: built.taxonomy,
       breached,
       lines: built.lines,
       clock,
@@ -132,6 +139,9 @@ export function useTestApp(): TestApp {
     get doi() {
       return get('doi');
     },
+    get taxonomy() {
+      return get('taxonomy');
+    },
     get breached() {
       return get('breached');
     },
@@ -165,6 +175,7 @@ export function ctxOf(t: TestApp): AuthContext {
     permissionCache: t.permissionCache,
     logger: t.deps.logger,
     doi: t.doi,
+    taxonomy: t.taxonomy,
     appOrigin: TEST_ORIGIN,
     now: () => t.clock.now,
   };

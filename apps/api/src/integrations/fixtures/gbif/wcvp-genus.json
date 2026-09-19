@@ -1,0 +1,35 @@
+{
+  "offset": 0,
+  "limit": 5,
+  "endOfRecords": true,
+  "results": [
+    {
+      "key": 207126580,
+      "nubKey": 2877951,
+      "nameKey": 9604989,
+      "taxonID": "171386",
+      "family": "Fagaceae",
+      "genus": "Quercus",
+      "familyKey": 336886132,
+      "genusKey": 207126580,
+      "datasetKey": "f382f0ce-323a-4091-bb9f-add557f3a9a2",
+      "parentKey": 336886132,
+      "parent": "Fagaceae",
+      "scientificName": "Quercus L.",
+      "canonicalName": "Quercus",
+      "authorship": "L.",
+      "nameType": "SCIENTIFIC",
+      "rank": "GENUS",
+      "origin": "SOURCE",
+      "taxonomicStatus": "ACCEPTED",
+      "nomenclaturalStatus": [],
+      "remarks": "Temp. Northern Hemisphere to Malesia and Colombia",
+      "publishedIn": "Sp. Pl.: 994 (1753)",
+      "numDescendants": 833,
+      "references": "https://powo.science.kew.org/taxon/urn:lsid:ipni.org:names:325819-2",
+      "lastCrawled": "2026-08-30T08:05:41.078+00:00",
+      "lastInterpreted": "2026-08-30T08:58:37.627+00:00",
+      "issues": ["SCIENTIFIC_NAME_ASSEMBLED"]
+    }
+  ]
+}

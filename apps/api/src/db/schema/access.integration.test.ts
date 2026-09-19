@@ -91,6 +91,7 @@ describe('RFC-31 R1, R2 roles tables', () => {
       'dataset.read',
       'records.annotate',
       'records.create',
+      'taxa.propose',
     ]);
     expect(await keys('manager')).toEqual([
       'contributions.read',
@@ -102,6 +103,7 @@ describe('RFC-31 R1, R2 roles tables', () => {
       'records.create',
       'records.review',
       'records.withdraw',
+      'taxa.propose',
     ]);
   });
 });

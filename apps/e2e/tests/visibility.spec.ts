@@ -38,7 +38,7 @@ test.describe('RFC-33 species visibility (issue #69)', () => {
       await contributor.page.goto('/app/species');
       await expect(contributor.page.getByLabel('Status')).toHaveCount(0);
       await contributor.page.getByLabel('Search species').fill(name);
-      await expect(contributor.page.getByText('No species match.')).toBeVisible();
+      await expect(contributor.page.getByText(`No species matches “${name}”.`)).toBeVisible();
 
       // Admin: filters explicitly to Inactive and sees the species, labelled.
       await adminPage.goto('/app/species');

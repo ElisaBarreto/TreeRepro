@@ -1,0 +1,58 @@
+{
+  "usage": {
+    "key": "2877951",
+    "name": "Quercus L.",
+    "canonicalName": "Quercus",
+    "authorship": "L.",
+    "rank": "GENUS",
+    "status": "ACCEPTED",
+    "type": "SCIENTIFIC",
+    "formattedName": "<i>Quercus</i> L."
+  },
+  "classification": [
+    {
+      "key": "6",
+      "name": "Plantae",
+      "rank": "KINGDOM"
+    },
+    {
+      "key": "7707728",
+      "name": "Tracheophyta",
+      "rank": "PHYLUM"
+    },
+    {
+      "key": "220",
+      "name": "Magnoliopsida",
+      "rank": "CLASS"
+    },
+    {
+      "key": "1354",
+      "name": "Fagales",
+      "rank": "ORDER"
+    },
+    {
+      "key": "4689",
+      "name": "Fagaceae",
+      "rank": "FAMILY"
+    },
+    {
+      "key": "2877951",
+      "name": "Quercus",
+      "rank": "GENUS"
+    }
+  ],
+  "diagnostics": {
+    "matchType": "EXACT",
+    "confidence": 94,
+    "timeTaken": 33,
+    "timings": {
+      "nameNRank": 0,
+      "sciNameMatch": 33,
+      "nameParse": 0,
+      "luceneMatch": 33
+    }
+  },
+  "synonym": false,
+  "left": 646734,
+  "right": 647972
+}

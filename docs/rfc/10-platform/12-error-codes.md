@@ -12,7 +12,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 
 ## Rules
 
-- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, or a generic word for cross-cutting codes).
+- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, or a generic word for cross-cutting codes).
 - **R2** A code is never renamed, reused with a different meaning, or given a different status once published. Retiring a code keeps its row with "(retired)".
 - **R3** The catalog below is mirrored exactly by `ERROR_CODES` in `packages/contracts/src/error-codes.ts`; a test parses this table and fails on any difference.
 - **R4** Each code maps to exactly one HTTP status (RFC-11 R4).
@@ -73,6 +73,10 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `PLOT_SPECIES_EXISTS` | 409 | The species is already in the plot (RFC-67 R5). |
 | `DOI_LOOKUP_FAILED` | 502 | The DOI registry could not be reached (RFC-80 R3). |
 | `REFERENCE_IS_PERSONAL` | 409 | A personal-observation reference cannot be edited (RFC-61 R7). |
+| `PROPOSAL_EXISTS` | 409 | An open proposal already carries this name, case-insensitively (RFC-75 R2). |
+| `PROPOSAL_NOT_FOUND` | 404 | Proposal id does not exist (RFC-75 R3). |
+| `PROPOSAL_DECIDED` | 409 | The proposal already has a decision (RFC-75 R4). |
+| `TAXONOMY_LOOKUP_FAILED` | 502 | The taxonomy lookup could not be reached (RFC-81 R4). |
 
 ## Open questions
 
@@ -90,3 +94,5 @@ None.
 - 2026-09-17 — ROLE_IS_SYSTEM reworded: manager and contributor system roles (RFC-31, plan 08a).
 - 2026-09-17 — PLOT_NOT_FOUND, PLOT_CODE_TAKEN, PLOT_SPECIES_EXISTS (RFC-67, plan 08b).
 - 2026-09-17 — DOI_LOOKUP_FAILED, REFERENCE_IS_PERSONAL (plan 09a).
+- 2026-09-19 — PROPOSAL_EXISTS, PROPOSAL_NOT_FOUND, PROPOSAL_DECIDED, TAXONOMY_LOOKUP_FAILED (RFC-75, RFC-81, plan 12c).
+- 2026-09-19 — R1's prefix list amended to admit `PROPOSAL_` and `TAXONOMY_`, added with the codes above but left off the list (code review).

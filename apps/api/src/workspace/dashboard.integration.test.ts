@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { dashboardSchema, type PermissionKey } from '@treerepro/contracts';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
@@ -15,8 +15,10 @@ import { useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
+import { countOpenProposals } from '../dataset/proposals.ts';
 import { countContested, countDisputed, countPendingGroups } from '../dataset/queues.ts';
 import type { DbTransaction } from '../db/client.ts';
+import { speciesProposals } from '../db/schema/proposals.ts';
 import { species } from '../db/schema/taxa.ts';
 import { cachedJson, forgetCached } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
@@ -277,9 +279,18 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       const contributor = await getDashboard({ db: tx, redis }, f.visibility, f.viewerScope);
       expect(contributor.curation).toBeNull();
 
+      // RFC-75 R7: one open proposal of this test's own, so the queue number
+      // is not trivially the sibling suites' standing total. The snapshot is
+      // frozen, so `openProposals` cannot move underneath the comparison.
+      const openBefore = await countOpenProposals(tx);
+      await tx.insert(speciesProposals).values({
+        proposedName: `Testus dashboardus ${randomBytes(6).toString('hex')}`,
+        proposerId: f.manager.id,
+      });
+
       const manager: DashboardViewer = {
         id: f.manager.id,
-        permissions: permissions('dataset.read', 'records.review'),
+        permissions: permissions('dataset.read', 'records.review', 'taxa.manage'),
         scope: { plots: [f.plot], restricted: true },
       };
       const reviewed = await getDashboard({ db: tx, redis }, f.visibility, manager);
@@ -291,7 +302,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
         pendingGroups: await countPendingGroups(tx, f.visibility),
         disputed: await countDisputed(tx, f.visibility),
         contested: await countContested(tx, f.visibility),
-        proposals: 0,
+        proposals: openBefore + 1,
       });
       // The contract is strict at every nested object, so parsing a viewer who
       // has all four sections populated is what proves the answer carries no
@@ -310,6 +321,21 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       ]);
       expect(reviewed.curation?.coverage.percentWithData).toBeLessThanOrEqual(100);
       expect(reviewed.curation?.coverage.percentAccepted).toBeLessThanOrEqual(100);
+
+      // RFC-75 R7: the proposals queue is `taxa.manage` work — that is what
+      // `GET /api/species/proposals` requires (RFC-75 R3). A reviewer who
+      // does not hold it is counting a queue the API would refuse them, so
+      // the number is 0 while the record queues, which are theirs, still
+      // count.
+      const reviewerOnly: DashboardViewer = {
+        ...manager,
+        permissions: permissions('dataset.read', 'records.review'),
+      };
+      const withoutTaxa = await getDashboard({ db: tx, redis }, f.visibility, reviewerOnly);
+      expect(withoutTaxa.curation?.queues.proposals).toBe(0);
+      expect(withoutTaxa.curation?.queues.pendingGroups).toBe(
+        reviewed.curation?.queues.pendingGroups,
+      );
     });
   });
 

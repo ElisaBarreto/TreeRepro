@@ -4,6 +4,7 @@ import type { MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADMIN_USER } from '../../test/admin-fixtures.ts';
 import {
+  APPROVED_PROPOSAL,
   CONTESTING_CONTRIBUTION,
   CONTRIBUTION_ANNOTATION,
   CONTRIBUTION_RECORD,
@@ -11,6 +12,8 @@ import {
   CURATED_RECORD_DETAIL,
   DICTIONARY,
   GENERATED_CONTRIBUTION_ANNOTATION,
+  PROPOSAL,
+  REJECTED_PROPOSAL,
   SPECIES,
 } from '../../test/dataset-fixtures.ts';
 import { ME, USER } from '../../test/fixtures.ts';
@@ -39,6 +42,7 @@ const dataset = vi.hoisted(() => ({
   fetchRecord: vi.fn(),
 }));
 const admin = vi.hoisted(() => ({ fetchUser: vi.fn() }));
+const proposals = vi.hoisted(() => ({ fetchMyProposals: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/contributions.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/contributions.ts')>()),
@@ -51,6 +55,10 @@ vi.mock('../../api/dataset.ts', async (importOriginal) => ({
 vi.mock('../../api/admin.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/admin.ts')>()),
   ...admin,
+}));
+vi.mock('../../api/proposals.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/proposals.ts')>()),
+  ...proposals,
 }));
 
 const CONTRIBUTOR: MeResponse = { ...ME, permissions: ['dataset.read'] };
@@ -68,10 +76,12 @@ beforeEach(() => {
     ...Object.values(contributions),
     ...Object.values(dataset),
     ...Object.values(admin),
+    ...Object.values(proposals),
   ]) {
     mock.mockReset();
   }
   auth.fetchMe.mockResolvedValue(CONTRIBUTOR);
+  proposals.fetchMyProposals.mockResolvedValue(page([PROPOSAL]));
   contributions.fetchMyContributions.mockResolvedValue(page([CONTRIBUTION_RECORD]));
   contributions.fetchMySummary.mockResolvedValue(CONTRIBUTION_SUMMARY);
   contributions.fetchUserContributions.mockResolvedValue(page([CONTRIBUTION_RECORD]));
@@ -302,5 +312,60 @@ describe('RFC-13 R3 without dataset.read', () => {
     expect(contributions.fetchMyContributions).not.toHaveBeenCalled();
     expect(contributions.fetchMySummary).not.toHaveBeenCalled();
     expect(screen.queryByRole('link', { name: 'My contributions' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-75 R5 the Proposals tab', () => {
+  const PROPOSER: MeResponse = { ...ME, permissions: ['dataset.read', 'taxa.propose'] };
+
+  it('appears only with taxa.propose', async () => {
+    const { unmount } = renderAt('/app/contributions');
+    // The Records tab is on screen, so the tab strip has rendered and this
+    // negative assertion is about the entry, not about an empty page.
+    expect(await screen.findByRole('link', { name: 'Records' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Proposals' })).not.toBeInTheDocument();
+    unmount();
+
+    auth.fetchMe.mockResolvedValue(PROPOSER);
+    renderAt('/app/contributions');
+    expect(await screen.findByRole('link', { name: 'Proposals' })).toBeInTheDocument();
+  });
+
+  it('lists the viewer\u2019s proposals with their status, decision note and species link', async () => {
+    auth.fetchMe.mockResolvedValue(PROPOSER);
+    proposals.fetchMyProposals.mockResolvedValue(
+      page([PROPOSAL, APPROVED_PROPOSAL, REJECTED_PROPOSAL]),
+    );
+    renderAt('/app/contributions?kind=proposals');
+    const rows = (await screen.findAllByRole('row')).slice(1);
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0] as HTMLElement).getByText('open')).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('approved')).toBeInTheDocument();
+    expect(
+      within(rows[1] as HTMLElement).getByRole('link', { name: SPECIES.canonicalName }),
+    ).toHaveAttribute('href', `/app/species/${SPECIES.id}`);
+    const rejected = rows[2] as HTMLElement;
+    expect(within(rejected).getByText('rejected')).toBeInTheDocument();
+    expect(rejected).toHaveTextContent('No such taxon; check the spelling.');
+    expect(contributions.fetchMyContributions).not.toHaveBeenCalled();
+  });
+
+  it('says so when the viewer has proposed nothing', async () => {
+    auth.fetchMe.mockResolvedValue(PROPOSER);
+    proposals.fetchMyProposals.mockResolvedValue(page([]));
+    renderAt('/app/contributions?kind=proposals');
+    expect(await screen.findByText('You have not proposed a species yet.')).toBeInTheDocument();
+  });
+
+  it('RFC-71 R5 another user\u2019s contributions have no Proposals tab: there is no route for it', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...MANAGER_WITH_USERS,
+      permissions: [...MANAGER_WITH_USERS.permissions, 'taxa.propose'],
+    });
+    admin.fetchUser.mockResolvedValue(ADMIN_USER);
+    renderAt(`/app/contributions?userId=${OTHER_ID}`);
+    expect(await screen.findByRole('link', { name: 'Records' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Proposals' })).not.toBeInTheDocument();
+    expect(proposals.fetchMyProposals).not.toHaveBeenCalled();
   });
 });

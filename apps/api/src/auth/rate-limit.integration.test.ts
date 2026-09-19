@@ -69,5 +69,6 @@ describe('RFC-24 R1, R2 sliding window limiter', () => {
     expect(RATE_LIMITS.forgotEmailIp).toEqual({ limit: 3, windowMs: 15 * 60_000 });
     expect(RATE_LIMITS.forgotIp).toEqual({ limit: 10, windowMs: 15 * 60_000 });
     expect(RATE_LIMITS.tokenIp).toEqual({ limit: 10, windowMs: 15 * 60_000 });
+    expect(RATE_LIMITS.taxonomyMatchUser).toEqual({ limit: 30, windowMs: 60_000 });
   });
 });

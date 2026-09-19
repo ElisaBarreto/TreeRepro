@@ -3,7 +3,7 @@ import {
   type CreateSpeciesBody,
   createSpeciesBodySchema,
   type Genus,
-  NAME_SOURCES,
+  type Lookup,
   type NameSource,
   type Species,
   type UpdateSpeciesBody,
@@ -20,8 +20,9 @@ import {
 } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchFamilies, fetchGenera } from '../../api/dataset.ts';
+import { matchTaxon } from '../../api/proposals.ts';
 import { fieldErrors, isValidationError } from '../../lib/errors.ts';
-import { NAME_SOURCE_LABELS } from '../../lib/format.ts';
+import { preferredMatch } from '../curation/proposal-prefill.ts';
 import {
   Alert,
   Button,
@@ -37,6 +38,7 @@ import {
   genusCreateErrorMessage,
   speciesErrorMessage,
 } from './errors.ts';
+import { SpeciesNameFields } from './SpeciesNameFields.tsx';
 
 const LOCAL_MESSAGES: Record<string, string> = { canonicalName: 'Enter the canonical name.' };
 
@@ -60,9 +62,23 @@ function genusOption(genus: Genus): ComboboxOption {
  * closing without a request when nothing changed. Mounted only while open.
  * Edit mode also shows an "Active — visible to contributors" checkbox
  * (RFC-33 R7); create has none, the API defaulting a fresh species to active.
+ *
+ * Create mode carries a **Look up** button (RFC-81 R4): it asks
+ * `GET /api/taxonomy/match` what GBIF calls the typed name and fills the
+ * family and the genus from the answer. It fills only taxa the catalog
+ * already holds — the family select and the genus combobox address rows by
+ * id — and says in one line what GBIF named that is still missing, rather
+ * than creating taxa nobody asked for.
+ *
+ * Approving a proposal into a species is `ApproveProposalDialog`, not a mode
+ * of this one: it posts to a different route, and its genus and family are
+ * names the API resolves rather than ids this form has to find first. The
+ * two share the canonical name and its source through `SpeciesNameFields`,
+ * which is all they genuinely have in common.
  * @rfc RFC-13 R3, R6
  * @rfc RFC-60 R9
  * @rfc RFC-33 R7
+ * @rfc RFC-81 R4
  */
 export function SpeciesDialog({
   species,
@@ -74,15 +90,21 @@ export function SpeciesDialog({
   onSaved: (species: Species) => void;
 }) {
   const queryClient = useQueryClient();
-  const ids = {
-    name: useId(),
-    source: useId(),
-    family: useId(),
-    newFamily: useId(),
-    genus: useId(),
-  };
+  const ids = { family: useId(), newFamily: useId(), genus: useId() };
   const [canonicalName, setCanonicalName] = useState(species?.canonicalName ?? '');
+  // The canonical name as it stands *now*. `applyLookup` runs after an await,
+  // so the state it closed over is the one from the render that started the
+  // request; the ref is what tells a late answer it is about a name the form
+  // no longer holds.
+  const liveName = useRef(species?.canonicalName ?? '');
+  function changeCanonicalName(next: string) {
+    liveName.current = next;
+    setCanonicalName(next);
+  }
   const [nameSource, setNameSource] = useState<NameSource>(species?.nameSource ?? 'original');
+  // What the last Look up found that the catalog does not hold; `null` until
+  // one has run.
+  const [lookupNote, setLookupNote] = useState<string | null>(null);
   // Edit mode only: create has no `active` in its body, and a fresh species
   // is always active by the API's default.
   const [active, setActive] = useState(species?.active ?? true);
@@ -130,6 +152,21 @@ export function SpeciesDialog({
       onSaved(saved);
     },
   });
+  // The whole look-up, answer and fill alike, is the mutation: `applyLookup`
+  // awaits the catalog, so leaving it to run loose in `onSuccess` would turn
+  // a failed genus search into an unhandled rejection and a half-applied
+  // form with nothing said about it.
+  const look = useMutation({
+    mutationFn: async (name: string) => {
+      const lookup = await matchTaxon(name);
+      // The name stayed editable while the request was in flight. An answer
+      // about a name the form has moved on from is not this form's answer:
+      // applying it would fill the family and the genus of one species under
+      // another's name, and nothing on screen would say so.
+      if (liveName.current.trim() !== name) return;
+      await applyLookup(lookup, name);
+    },
+  });
   // A taken name is the canonical name's own error, not the form's.
   const nameTaken = save.error instanceof ApiError && save.error.code === 'SPECIES_NAME_TAKEN';
   const errors: Record<string, string> = { ...fieldErrors(save.error), ...local };
@@ -142,6 +179,72 @@ export function SpeciesDialog({
     for (const item of page.data) generaById.current.set(item.id, item);
     return page.data.map(genusOption);
   };
+
+  // Fills the family select and the genus combobox from a lookup answer.
+  // Both controls address a catalog row by id, so only a taxon the catalog
+  // already holds can be selected; what GBIF named and the catalog lacks is
+  // reported in one line instead — the family's name into the inline "New
+  // family" field, ready for the reviewer to create, and the genus's name in
+  // the note, where the combobox's own `Create "…"` option takes over.
+  async function applyLookup(lookup: Lookup, name: string): Promise<void> {
+    const match = preferredMatch(lookup);
+    if (!match || (match.family === null && match.genus === null)) {
+      setLookupNote('GBIF named no family or genus for this name.');
+      return;
+    }
+    const missing: string[] = [];
+    let familyId = family;
+    if (match.family !== null) {
+      const known = (families.data ?? []).find(
+        (f) => f.name.toLowerCase() === match.family?.toLowerCase(),
+      );
+      if (known) {
+        familyId = known.id;
+        chooseFamily(known.id);
+      } else {
+        // A family the catalog does not hold replaces the previous one
+        // rather than sitting beside it: leaving the old family selected
+        // would restrict the genus search below to a family this match has
+        // just contradicted, and leave its genus chosen if nothing matches.
+        addFamily.reset();
+        familyId = '';
+        setFamily('');
+        setGenus(null);
+        setNewFamily(match.family);
+        missing.push(`the family ${match.family} (filled in above — press Create)`);
+      }
+    }
+    const matched = `Matched ${match.scientificName ?? match.canonicalName ?? 'nothing'}.`;
+    if (match.genus !== null) {
+      try {
+        const page = await fetchGenera({
+          familyId: familyId || undefined,
+          q: match.genus,
+          limit: 20,
+        });
+        for (const item of page.data) generaById.current.set(item.id, item);
+        // The catalog search is a second await, and a second chance for the
+        // name to have moved on.
+        if (liveName.current.trim() !== name) return;
+        const known = page.data.find((g) => g.name.toLowerCase() === match.genus?.toLowerCase());
+        if (known) setGenus(genusOption(known));
+        else missing.push(`the genus ${match.genus}`);
+      } catch {
+        // The lookup itself answered; it is the catalog side that failed.
+        // Whatever was filled in above stands, and the line says the rest
+        // is unknown rather than leaving the form half-applied in silence.
+        setLookupNote(
+          `${matched} GBIF names the genus ${match.genus}, but the catalog could not be searched just now — pick or create the genus yourself.`,
+        );
+        return;
+      }
+    }
+    setLookupNote(
+      missing.length === 0
+        ? `${matched} Family and genus filled in.`
+        : `${matched} The catalog does not have ${missing.join(' or ')}.`,
+    );
+  }
   const createGenusInline = async (name: string) => {
     const created = await createGenus({ name, familyId: family || undefined });
     generaById.current.set(created.id, created);
@@ -209,29 +312,34 @@ export function SpeciesDialog({
       closeDisabled={save.isPending}
     >
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-        <Field id={ids.name} label="Canonical name" error={errors.canonicalName}>
-          <Input
-            id={ids.name}
-            value={canonicalName}
-            maxLength={200}
-            onChange={(e) => setCanonicalName(e.target.value)}
-            invalid={Boolean(errors.canonicalName)}
-          />
-        </Field>
-        <Field id={ids.source} label="Name source" error={errors.nameSource}>
-          <Select
-            id={ids.source}
-            value={nameSource}
-            onChange={(e) => setNameSource(e.target.value as NameSource)}
-            invalid={Boolean(errors.nameSource)}
-          >
-            {NAME_SOURCES.map((source) => (
-              <option key={source} value={source}>
-                {NAME_SOURCE_LABELS[source]}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <SpeciesNameFields
+          canonicalName={canonicalName}
+          onCanonicalNameChange={changeCanonicalName}
+          nameSource={nameSource}
+          onNameSourceChange={setNameSource}
+          errors={{ canonicalName: errors.canonicalName, nameSource: errors.nameSource }}
+          hint={lookupNote ?? undefined}
+          trailing={
+            species === undefined ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                pending={look.isPending}
+                disabled={canonicalName.trim().length < 3}
+                onClick={() => {
+                  setLookupNote(null);
+                  look.mutate(canonicalName.trim());
+                }}
+              >
+                Look up
+              </Button>
+            ) : undefined
+          }
+        >
+          {look.isError ? (
+            <Alert tone="error">The taxonomy lookup could not be completed. Try again.</Alert>
+          ) : null}
+        </SpeciesNameFields>
         {newFamily === null ? (
           <Field
             id={ids.family}

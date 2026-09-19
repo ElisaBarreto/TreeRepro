@@ -211,6 +211,20 @@
       "when": 1789770367909,
       "tag": "0029_job_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1789809003593,
+      "tag": "0030_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789809027080,
+      "tag": "0031_taxa_propose_permission",
+      "breakpoints": true
     }
   ]
 }

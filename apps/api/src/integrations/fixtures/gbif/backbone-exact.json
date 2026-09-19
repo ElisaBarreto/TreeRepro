@@ -1,0 +1,75 @@
+{
+  "usage": {
+    "key": "2878688",
+    "name": "Quercus robur L.",
+    "canonicalName": "Quercus robur",
+    "authorship": "L.",
+    "rank": "SPECIES",
+    "status": "ACCEPTED",
+    "genericName": "Quercus",
+    "specificEpithet": "robur",
+    "type": "SCIENTIFIC",
+    "formattedName": "<i>Quercus</i> <i>robur</i> L."
+  },
+  "classification": [
+    {
+      "key": "6",
+      "name": "Plantae",
+      "rank": "KINGDOM"
+    },
+    {
+      "key": "7707728",
+      "name": "Tracheophyta",
+      "rank": "PHYLUM"
+    },
+    {
+      "key": "220",
+      "name": "Magnoliopsida",
+      "rank": "CLASS"
+    },
+    {
+      "key": "1354",
+      "name": "Fagales",
+      "rank": "ORDER"
+    },
+    {
+      "key": "4689",
+      "name": "Fagaceae",
+      "rank": "FAMILY"
+    },
+    {
+      "key": "2877951",
+      "name": "Quercus",
+      "rank": "GENUS"
+    },
+    {
+      "key": "2878688",
+      "name": "Quercus robur",
+      "rank": "SPECIES"
+    }
+  ],
+  "diagnostics": {
+    "matchType": "EXACT",
+    "confidence": 97,
+    "timeTaken": 13,
+    "timings": {
+      "nameNRank": 0,
+      "sciNameMatch": 13,
+      "nameParse": 1,
+      "luceneMatch": 12
+    }
+  },
+  "additionalStatus": [
+    {
+      "clbDatasetKey": "53131",
+      "datasetAlias": "IUCN",
+      "datasetKey": "19491596-35ae-4a91-9a98-85cf505f1bd3",
+      "status": "LEAST_CONCERN",
+      "statusCode": "LC",
+      "sourceId": "63532"
+    }
+  ],
+  "synonym": false,
+  "left": 647921,
+  "right": 647929
+}

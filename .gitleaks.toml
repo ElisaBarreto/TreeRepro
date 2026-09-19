@@ -1,0 +1,77 @@
+# Gitleaks config for this repo.
+#
+# `.github/workflows/security.yml`'s `gitleaks` job runs
+# `gitleaks/gitleaks-action` with no `GITLEAKS_CONFIG`/`GITLEAKS_CONFIG_TOML`
+# env var and no `--config` argument (the action passes none — see its
+# `src/gitleaks.js` `Scan()`), so the underlying `gitleaks detect` falls back
+# to its own default config-resolution order: `--config`/`-c`, then
+# `GITLEAKS_CONFIG`, then `GITLEAKS_CONFIG_TOML`, then
+# `(source path)/.gitleaks.toml` — and the action never passes `--source`
+# either, so that source path is `.`, i.e. the repo root the job checks out.
+# That is why this file lives here and needs no workflow change to be picked
+# up (gitleaks/gitleaks `cmd/root.go`, verified against the pinned action
+# version's `v3.0.0` `dist/index.js` / `src/gitleaks.js`, `src/index.js`).
+[extend]
+# Extend, don't replace: every built-in rule (including generic-api-key)
+# stays active. This file only adds an allowlist entry to that one rule.
+useDefault = true
+
+# The WCVP GBIF dataset key is the PUBLIC identifier of a public GBIF
+# checklist dataset, not a secret — anyone can resolve it at
+# https://api.gbif.org/v1/dataset/f382f0ce-323a-4091-bb9f-add557f3a9a2
+# (title "The World Checklist of Vascular Plants (WCVP)", type CHECKLIST).
+# RFC-81 R1 (docs/rfc/80-integrations/81-taxonomy-lookup.md) records it
+# deliberately as the value of `WCVP_GBIF_DATASET_KEY`. It only *looks* like
+# a leaked API key to `generic-api-key` because it is a high-entropy
+# UUID-shaped string sitting next to a name ending in `_KEY` — exactly that
+# rule's pattern.
+#
+# Scoped narrowly on purpose:
+#   - by VALUE: only this one literal UUID, never a general UUID/entropy
+#     regex, so an unrelated high-entropy value is unaffected.
+#   - by PATH: only the exact files where this key is known to legitimately
+#     appear, listed individually — never a directory glob like
+#     `apps/api/src/**` — so the same rule stays fully live for everything
+#     else those directories contain.
+#   - by CONDITION "and": both the value AND the path must match. A real
+#     secret accidentally pasted into one of these same files still fails
+#     the job, because its value would not match this regex.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "WCVP GBIF dataset key (public dataset id, RFC-81 R1) in its known, deliberate locations — not a secret"
+condition = "and"
+regexes = ['''f382f0ce-323a-4091-bb9f-add557f3a9a2''']
+paths = [
+  '''^\.env\.example$''',
+  '''^docs/gotchas/taxonomy\.md$''',
+  '''^apps/api/src/config\.test\.ts$''',
+  '''^apps/api/src/integrations/taxonomy\.test\.ts$''',
+  '''^apps/api/src/integrations/fixtures/gbif/wcvp-dataset\.json$''',
+  '''^apps/api/src/integrations/fixtures/gbif/wcvp-exact\.json$''',
+  '''^apps/api/src/integrations/fixtures/gbif/wcvp-genus\.json$''',
+  '''^apps/api/src/integrations/fixtures/gbif/wcvp-misapplied-first\.json$''',
+]
+
+# A second, unrelated public GBIF dataset key: `19491596-35ae-4a91-9a98-
+# 85cf505f1bd3` is GBIF's own id for "The IUCN Red List of Threatened
+# Species" (confirmed against GBIF's own `/v2/species/match/metadata`,
+# `ancillaryIndexes`, `datasetAlias: "IUCN"`). Unlike the WCVP key above, we
+# did not choose or configure this value — it is a `datasetKey` GBIF itself
+# returns inside a live backbone match's `additionalStatus` block, captured
+# verbatim in these two fixtures (RFC-81 R1/R2, R-A/R-I in
+# .superpowers/sdd/2026-09-17-platform-12c-proposals/constraints.md). The
+# same reasoning applies (public identifier, not a secret; high entropy next
+# to a `Key` field name is exactly what makes it look like one), but it gets
+# its own entry because a fixture recapture can surface other such ids GBIF
+# happens to include that day — this entry names the two files it is in
+# today, not a rule for GBIF dataset keys in general.
+[[rules.allowlists]]
+description = "IUCN Red List GBIF dataset key, present because GBIF's own backbone response includes it — not a secret"
+condition = "and"
+regexes = ['''19491596-35ae-4a91-9a98-85cf505f1bd3''']
+paths = [
+  '''^apps/api/src/integrations/fixtures/gbif/backbone-exact\.json$''',
+  '''^apps/api/src/integrations/fixtures/gbif/backbone-variant\.json$''',
+]

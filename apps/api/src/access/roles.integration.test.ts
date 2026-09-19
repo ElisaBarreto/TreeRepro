@@ -158,6 +158,7 @@ describe('RFC-31 R3, R4, R5 role services', () => {
       'dataset.read',
       'records.annotate',
       'records.create',
+      'taxa.propose',
     ]);
 
     const managerId = await systemRoleId(t.db, 'manager');
@@ -173,6 +174,7 @@ describe('RFC-31 R3, R4, R5 role services', () => {
         'records.create',
         'records.review',
         'records.withdraw',
+        'taxa.propose',
       ].sort(),
     );
 

@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   'records.withdraw': 'Withdraw any manual record',
   'accepted.manage': 'Set and clear the accepted value per species and trait',
   'taxa.manage': 'Create and edit families, genera, species and names',
+  'taxa.propose': 'Propose a species for the catalog',
   'references.manage': 'Create and edit bibliographic references',
   'traits.manage': 'Create and edit traits and levels',
   'dataset.export': 'Download the accepted values',

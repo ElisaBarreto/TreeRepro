@@ -13,5 +13,6 @@ export * from './health.ts';
 export * from './pagination.ts';
 export * from './permissions.ts';
 export * from './plots.ts';
+export * from './proposals.ts';
 export * from './roles.ts';
 export * from './users.ts';

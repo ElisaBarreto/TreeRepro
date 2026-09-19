@@ -1,0 +1,12 @@
+{
+  "diagnostics": {
+    "matchType": "NONE",
+    "issues": [],
+    "confidence": 100,
+    "timeTaken": 2,
+    "timings": {
+      "sciNameMatch": 3
+    }
+  },
+  "synonym": false
+}

@@ -45,6 +45,8 @@ export const AUDIT_ACTIONS = [
   'plots.species_removed',
   'users.plots_changed',
   'digest.sent',
+  'proposals.created',
+  'proposals.decided',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
