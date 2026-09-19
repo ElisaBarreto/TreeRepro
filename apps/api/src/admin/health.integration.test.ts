@@ -190,14 +190,26 @@ describe('RFC-52 R1 computePlatformHealth', () => {
       expect(after.dataset.activeTraits - before.dataset.activeTraits).toBe(1);
       expect(after.dataset.references - before.dataset.references).toBe(1);
       expect(after.dataset.records - before.dataset.records).toBe(4);
-      // Ruling R-G: `coverageCells` is coverage's `withData` (cells holding at
+      // RFC-52 R1: `coverageCells` is coverage's `withData` (cells holding at
       // least one record), `acceptedCells` its `accepted` — not the grid size,
       // which would make the web meter a constant one.
-      expect(after.dataset.coverageCells - before.dataset.coverageCells).toBe(4);
-      expect(after.dataset.acceptedCells - before.dataset.acceptedCells).toBe(2);
+      //
+      // Both are measured over the ACTIVE catalog, which is what the four
+      // cells of the fixture are for: only (speciesOn, traitOn) is active on
+      // both axes, so of the four cells that gained a record exactly one is
+      // counted, and of the two that gained an accepted value exactly one.
+      // Under the full grid these would be 4 and 2 — the numbers this file
+      // asserted while health asked for `UNRESTRICTED`.
+      expect(after.dataset.coverageCells - before.dataset.coverageCells).toBe(1);
+      expect(after.dataset.acceptedCells - before.dataset.acceptedCells).toBe(1);
       expect(after.dataset.acceptedCells).toBeLessThanOrEqual(after.dataset.coverageCells);
+      // The invariant RFC-52 R1 states, and the denominator the health page's
+      // completeness meter divides by: a coverage scope wider than the active
+      // catalog breaks it, so this is the assertion that stops that regression
+      // coming back. `species * traits` here would pass either way and pin
+      // nothing.
       expect(after.dataset.coverageCells).toBeLessThanOrEqual(
-        after.dataset.species * after.dataset.traits,
+        after.dataset.activeSpecies * after.dataset.activeTraits,
       );
 
       // Activity.

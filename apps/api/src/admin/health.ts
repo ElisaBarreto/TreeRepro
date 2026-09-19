@@ -1,6 +1,6 @@
 import type { HealthImport, JobRunSummary, PlatformHealth } from '@treerepro/contracts';
 import { desc, type SQL, sql } from 'drizzle-orm';
-import { UNRESTRICTED } from '../access/visibility.ts';
+import { UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { computeCoverageTotals } from '../dataset/coverage.ts';
 import { toImportBatch } from '../dataset/import.ts';
 import { countOpenProposals, countProposalsCreated } from '../dataset/proposals.ts';
@@ -24,6 +24,24 @@ const HEALTH_KEY = 'health';
 
 /** How many import batches RFC-52 R1 lists. */
 const IMPORT_LIMIT = 5;
+
+/**
+ * The grid health measures coverage over: the ACTIVE catalog, the same for
+ * every caller (RFC-52 R1).
+ *
+ * Deliberately NOT `UNRESTRICTED`. That visibility builds the grid over every
+ * species and every trait, deactivated ones included, and `coverageCells` —
+ * the cells holding at least one record — would then be bounded by
+ * `species * traits` rather than by `activeSpecies * activeTraits`, the
+ * denominator the health page reads it against. A deactivated species keeps
+ * its records, so that is an ordinary state, not a corner case.
+ *
+ * The consequence is a documented one (RFC-52 R1): an admin holds
+ * `dataset.read_inactive` and so sees the FULL grid on the coverage page,
+ * whose totals therefore differ from these. The queue counters below stay
+ * unrestricted — those are queues to work through, not a grid to fill.
+ */
+const ACTIVE_CATALOG: Visibility = { inactive: false, plotIds: null };
 
 /** The activity window of RFC-52 R1, and the span `byDay` covers, in days. */
 const ACTIVITY_WINDOW_DAYS = 7;
@@ -97,10 +115,11 @@ function toHealthImport(row: ImportBatchRow): HealthImport {
  * `repeatable read` transaction and asserts deltas. Callers in the application
  * read the cached form.
  *
- * Nothing here is viewer-scoped: the queue counters and the coverage totals
- * are asked for the unrestricted visibility and no number is gated on a
- * permission, because `health.read` is admin-only and one global payload is
- * what makes a single shared entry correct.
+ * Nothing here is viewer-scoped and no number is gated on a permission,
+ * because `health.read` is admin-only and one global payload is what makes a
+ * single shared entry correct. The queue counters are asked for the
+ * unrestricted visibility; the coverage totals are asked for `ACTIVE_CATALOG`,
+ * for the reason given there — one scope each, the same for every caller.
  *
  * Every counter is the one that already exists — `countPendingGroups`,
  * `countDisputed`, `countContested`, `countOpenProposals`,
@@ -164,7 +183,7 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
         (select count(*)::int from bibliographic_references) as references,
         (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
           as records`) as unknown as Promise<[DatasetRow | undefined]>,
-    computeCoverageTotals(db, UNRESTRICTED),
+    computeCoverageTotals(db, ACTIVE_CATALOG),
     db.execute(sql`
       select
         (select count(*)::int from trait_records r where ${within(sql`r.created_at`)}) as records_7d,
