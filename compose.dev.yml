@@ -28,6 +28,20 @@ services:
     command: ["pnpm", "--filter", "@treerepro/api", "dev"]
     environment:
       NODE_ENV: development
+    # RFC-64 R12: `import:records --replace` empties tables that RFC-63 R4 keeps
+    # append-only, which `treerepro_app` cannot do. The migrator secret is added
+    # here, in the development override only, so a production container has no
+    # credential that could run a replacing import even if the code let it.
+    secrets:
+      [
+        db_app_password,
+        redis_password,
+        pii_encryption_key_v1,
+        pii_hmac_key,
+        session_secret,
+        smtp_password,
+        db_migrator_password,
+      ]
     volumes:
       - .:/workspace
       - node-modules:/workspace/node_modules

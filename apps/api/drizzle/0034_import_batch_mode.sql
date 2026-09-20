@@ -1,0 +1,2 @@
+ALTER TABLE "import_batches" ADD COLUMN "mode" text DEFAULT 'append' NOT NULL;--> statement-breakpoint
+ALTER TABLE "import_batches" ADD CONSTRAINT "import_batches_mode_check" CHECK ("import_batches"."mode" in ('append', 'replace'));

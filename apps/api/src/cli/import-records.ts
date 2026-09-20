@@ -1,21 +1,23 @@
-// `pnpm import:records --file <csv> [--run-by <email>] [--force]` — loads the
+// `pnpm import:records --file <csv> [--run-by <email>] [--force] [--replace]` — loads the
 // compiled dataset (RFC-64). Exit codes: 0 completed, 1 refused or failed, 2 usage.
 import { parseArgs } from 'node:util';
 import { findUserByEmail } from '../auth/users.ts';
-import { loadConfig } from '../config.ts';
+import { loadConfig, loadMigratorConfig } from '../config.ts';
 import { batchReport, ImportRefusedError, importRecords } from '../dataset/import.ts';
+import { isReplaceAllowed } from '../dataset/reset.ts';
 import { createDb } from '../db/client.ts';
 import { configurePii } from '../security/pii.ts';
 
-const USAGE = 'usage: import-records --file <csv> [--run-by <email>] [--force]\n';
+const USAGE = 'usage: import-records --file <csv> [--run-by <email>] [--force] [--replace]\n';
 
-let values: { file?: string; 'run-by'?: string; force: boolean };
+let values: { file?: string; 'run-by'?: string; force: boolean; replace: boolean };
 try {
   ({ values } = parseArgs({
     options: {
       file: { type: 'string' },
       'run-by': { type: 'string' },
       force: { type: 'boolean', default: false },
+      replace: { type: 'boolean', default: false },
     },
     strict: true,
   }));
@@ -29,8 +31,18 @@ if (!values.file) {
 }
 
 const config = loadConfig();
+// R12: the reset empties tables the schema protects as append-only (RFC-63 R4),
+// which `treerepro_app` cannot do and must not be able to do. A replacing run
+// therefore uses the migrator role for the whole import, so the wipe and the
+// load stay in one transaction. Production is refused outright, and its
+// container carries no migrator secret either, so the flag cannot work there.
+if (values.replace && !isReplaceAllowed(config.nodeEnv)) {
+  process.stderr.write('--replace is not available in production\n');
+  process.exit(1);
+}
 configurePii(config.pii.keyring.expose(), config.pii.hmacKey.expose());
-const { db, close } = createDb(config.db.url.expose(), { max: 1 });
+const dbUrl = values.replace ? loadMigratorConfig().db.url : config.db.url;
+const { db, close } = createDb(dbUrl.expose(), { max: 1 });
 
 let exitCode = 0;
 const startedAt = Date.now();
@@ -42,11 +54,19 @@ try {
     else
       process.stderr.write(`warning: no user with email ${values['run-by']}; run_by stays null\n`);
   }
-  const batch = await importRecords(db, { filePath: values.file, runBy, force: values.force });
+  const batch = await importRecords(db, {
+    filePath: values.file,
+    runBy,
+    force: values.force,
+    replace: values.replace,
+  });
   const report = await batchReport(db, batch.id);
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   const lines = [
     `File ${batch.fileName} (sha256 ${batch.fileSha256})`,
+    values.replace
+      ? 'Mode: replace (everything earlier imports loaded was cleared)'
+      : 'Mode: append',
     `Batch ${batch.id} completed in ${seconds}s`,
     `Rows: ${batch.rowsTotal} total, ${batch.rowsInserted} inserted, ${batch.rowsDuplicate} duplicate, ${batch.rowsRejected} rejected, ${batch.rowsPending} pending harmonisation`,
     `Harmonisation: ${Object.entries(report.harmonisation)

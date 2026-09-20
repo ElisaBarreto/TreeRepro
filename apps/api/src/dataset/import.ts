@@ -27,6 +27,7 @@ import {
   isUuid,
   pageOf,
 } from '../http/cursor.ts';
+import { resetDataset } from './reset.ts';
 
 /** The 15 columns of the compiled dataset, in file order. @rfc RFC-64 R2 */
 export const IMPORT_COLUMNS = [
@@ -321,6 +322,11 @@ export interface ImportInput {
   force?: boolean;
   /** See `pipelineWithIdleGuard` in `db/copy.ts`. Default {@link DEFAULT_COPY_IDLE_TIMEOUT_MS}; tests lower it to fail fast. */
   copyIdleTimeoutMs?: number;
+  /**
+   * Empty everything earlier imports loaded before staging this file, in the
+   * same transaction (RFC-64 R12). Accounts and the trait dictionary survive.
+   */
+  replace?: boolean;
 }
 
 /**
@@ -339,7 +345,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
   }
   validateHeader(await readFirstLine(input.filePath));
   const fileSha256 = await sha256File(input.filePath);
-  if (!input.force) {
+  if (!input.force && !input.replace) {
     const [done] = await db
       .select({ id: importBatches.id })
       .from(importBatches)
@@ -355,13 +361,21 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
   }
   const [batch] = await db
     .insert(importBatches)
-    .values({ fileName: basename(input.filePath), fileSha256, runBy: input.runBy ?? null })
+    .values({
+      fileName: basename(input.filePath),
+      fileSha256,
+      runBy: input.runBy ?? null,
+      mode: input.replace ? 'replace' : 'append',
+    })
     .returning({ id: importBatches.id });
   if (!batch) throw new Error('importRecords: batch insert returned no row');
 
   const sql = db.$client;
   try {
     await sql.begin(async (tx) => {
+      // R12: empty what earlier imports loaded, inside this transaction, so a
+      // failure below rolls the wipe back and leaves the old dataset in place.
+      if (input.replace) await resetDataset(tx, batch.id);
       // R4 staging
       await tx`
         create temporary table import_staging (
