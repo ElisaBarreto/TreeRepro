@@ -39,7 +39,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `AUTH_TOTP_ALREADY_ENABLED` | 409 | TOTP setup requested while enabled (RFC-23 R2). |
 | `AUTH_TOTP_NOT_ENABLED` | 409 | TOTP disable requested while off (RFC-23 R7). |
 | `USER_EMAIL_TAKEN` | 409 | Another account already uses this email (RFC-20 R3). |
-| `PERMISSION_DENIED` | 403 | Session user lacks the route's permission or the resource rule refused (RFC-32 R4). |
+| `PERMISSION_DENIED` | 403 | Session user lacks the route's permission or the resource rule refused (RFC-32 R4); or a role assignment or edit exceeds the actor's delegation ceiling or changes their own roles (RFC-31 R12–R14). |
 | `PERMISSION_UNKNOWN` | 400 | A permission key is not in the catalog; `details` lists them (RFC-31 R3). |
 | `ROLE_NOT_FOUND` | 404 | Role id does not exist (RFC-31 R4, R6). |
 | `ROLE_NAME_TAKEN` | 409 | Another role has this name, case-insensitively (RFC-31 R3). |
@@ -96,3 +96,4 @@ None.
 - 2026-09-17 — DOI_LOOKUP_FAILED, REFERENCE_IS_PERSONAL (plan 09a).
 - 2026-09-19 — PROPOSAL_EXISTS, PROPOSAL_NOT_FOUND, PROPOSAL_DECIDED, TAXONOMY_LOOKUP_FAILED (RFC-75, RFC-81, plan 12c).
 - 2026-09-19 — R1's prefix list amended to admit `PROPOSAL_` and `TAXONOMY_`, added with the codes above but left off the list (code review).
+- 2026-09-20 — PERMISSION_DENIED also answers the RFC-31 R12–R14 delegation refusals (issue #118).
