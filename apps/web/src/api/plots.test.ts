@@ -1,15 +1,26 @@
+import type { Plot } from '@treerepro/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
 import { fetchAllPlots, listPlots } from './plots.ts';
 
 installFetchMock();
 
-const PLOT = {
+const AT = '2026-09-17T00:00:00.000Z';
+const PLOT: Plot = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e01',
   code: 'RIV-01',
   name: 'Riverside plot',
+  description: '',
+  latitude: null,
+  longitude: null,
+  country: null,
+  biome: null,
+  speciesCount: 0,
+  createdAt: AT,
+  updatedAt: AT,
 };
-const OTHER = {
+const OTHER: Plot = {
+  ...PLOT,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e02',
   code: 'HIL-02',
   name: 'Hillside plot',

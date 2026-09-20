@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   authUserSchema,
   changePasswordBodySchema,
+  forgotPasswordResponseSchema,
   inviteAcceptBodySchema,
+  inviteAcceptResponseSchema,
   loginBodySchema,
   loginTotpBodySchema,
   passwordSchema,
@@ -75,5 +77,28 @@ describe('RFC-02 R2 auth request schemas are strict', () => {
         createdAt: '2026-09-12T10:00:00.000Z',
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('RFC-20 R6 invitation acceptance answer', () => {
+  const user = {
+    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e',
+    email: 'ada@example.org',
+    name: 'Ada',
+    status: 'active',
+    totpEnabled: false,
+    createdAt: '2026-09-12T00:00:00.000Z',
+  };
+
+  it('is the user alone, not a login response', () => {
+    expect(inviteAcceptResponseSchema.safeParse({ user }).success).toBe(true);
+    expect(inviteAcceptResponseSchema.safeParse({ status: 'ok', user }).success).toBe(false);
+  });
+});
+
+describe('RFC-21 R5 forgot-password answer', () => {
+  it('is { status: "sent" }, whether or not the account exists', () => {
+    expect(forgotPasswordResponseSchema.safeParse({ status: 'sent' }).success).toBe(true);
+    expect(forgotPasswordResponseSchema.safeParse({ status: 'ok' }).success).toBe(false);
   });
 });

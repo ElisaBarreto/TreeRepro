@@ -59,8 +59,9 @@ describe('RFC-23 R6 loginTotp', () => {
 
 describe('RFC-22 R9-R10 session helpers', () => {
   it('fetchMe reads GET /auth/me', async () => {
-    mockJson(200, { data: { user: USER, permissions: ['roles.read'] } });
-    expect(await fetchMe()).toEqual({ user: USER, permissions: ['roles.read'] });
+    const me = { user: USER, permissions: ['roles.read'], scope: { plots: [], restricted: false } };
+    mockJson(200, { data: me });
+    expect(await fetchMe()).toEqual(me);
     const { url, init } = lastRequest();
     expect(url).toBe('/api/auth/me');
     expect(init?.method).toBe('GET');
@@ -77,7 +78,7 @@ describe('RFC-22 R9-R10 session helpers', () => {
 
 describe('RFC-20 R6, RFC-21 R5-R6 invitation and password recovery calls', () => {
   it('acceptInvite posts token and password and returns the user', async () => {
-    mockJson(200, { data: { status: 'ok', user: USER } });
+    mockJson(200, { data: { user: USER } });
     await expect(acceptInvite('t'.repeat(43), 'a long enough passphrase')).resolves.toEqual(USER);
     expect(lastRequest().url).toBe('/api/auth/invite/accept');
     expect(JSON.parse(String(lastRequest().init?.body))).toEqual({

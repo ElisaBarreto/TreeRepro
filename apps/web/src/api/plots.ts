@@ -1,16 +1,23 @@
-import type {
-  CreatePlotBody,
-  DataEnvelope,
-  Plot,
-  PlotDetail,
-  PlotSpeciesBody,
-  PlotUser,
-  SpeciesListItem,
-  UpdatePlotBody,
+import {
+  type CreatePlotBody,
+  dataEnvelopeSchema,
+  listEnvelopeSchema,
+  type Plot,
+  type PlotDetail,
+  type PlotSpeciesBody,
+  type PlotUser,
+  plotDetailSchema,
+  plotSchema,
+  plotUserSchema,
+  type SpeciesListItem,
+  speciesListItemSchema,
+  type UpdatePlotBody,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
 import { type QueryParams, withQuery } from './query.ts';
+
+const plotDetailEnvelope = dataEnvelopeSchema(plotDetailSchema);
 
 /** Query keys of the plot pages; every fetcher below owns one. @rfc RFC-67 R3 */
 export const plotKeys = {
@@ -28,7 +35,7 @@ export function listPlots(params: {
   cursor?: string;
   limit?: number;
 }): Promise<Page<Plot>> {
-  return apiFetch<Page<Plot>>(withQuery('/plots', params));
+  return apiFetch(withQuery('/plots', params), listEnvelopeSchema(plotSchema));
 }
 
 /**
@@ -51,7 +58,7 @@ export async function fetchAllPlots(): Promise<Plot[]> {
 
 /** @rfc RFC-67 R3 */
 export async function fetchPlot(id: string): Promise<PlotDetail> {
-  const { data } = await apiFetch<DataEnvelope<PlotDetail>>(`/plots/${id}`);
+  const { data } = await apiFetch(`/plots/${id}`, plotDetailEnvelope);
   return data;
 }
 
@@ -60,7 +67,10 @@ export function fetchPlotSpecies(
   id: string,
   params: { q?: string; cursor?: string; limit?: number },
 ): Promise<Page<SpeciesListItem>> {
-  return apiFetch<Page<SpeciesListItem>>(withQuery(`/plots/${id}/species`, params));
+  return apiFetch(
+    withQuery(`/plots/${id}/species`, params),
+    listEnvelopeSchema(speciesListItemSchema),
+  );
 }
 
 /** @rfc RFC-67 R4 */
@@ -68,21 +78,18 @@ export function fetchPlotUsers(
   id: string,
   params: { cursor?: string; limit?: number },
 ): Promise<Page<PlotUser>> {
-  return apiFetch<Page<PlotUser>>(withQuery(`/plots/${id}/users`, params));
+  return apiFetch(withQuery(`/plots/${id}/users`, params), listEnvelopeSchema(plotUserSchema));
 }
 
 /** @rfc RFC-67 R5 */
 export async function createPlot(body: CreatePlotBody): Promise<PlotDetail> {
-  const { data } = await apiFetch<DataEnvelope<PlotDetail>>('/plots', {
-    method: 'POST',
-    json: body,
-  });
+  const { data } = await apiFetch('/plots', plotDetailEnvelope, { method: 'POST', json: body });
   return data;
 }
 
 /** @rfc RFC-67 R5 */
 export async function updatePlot(id: string, body: UpdatePlotBody): Promise<PlotDetail> {
-  const { data } = await apiFetch<DataEnvelope<PlotDetail>>(`/plots/${id}`, {
+  const { data } = await apiFetch(`/plots/${id}`, plotDetailEnvelope, {
     method: 'PATCH',
     json: body,
   });
@@ -91,7 +98,7 @@ export async function updatePlot(id: string, body: UpdatePlotBody): Promise<Plot
 
 /** @rfc RFC-67 R5 */
 export async function addPlotSpecies(plotId: string, body: PlotSpeciesBody): Promise<PlotDetail> {
-  const { data } = await apiFetch<DataEnvelope<PlotDetail>>(`/plots/${plotId}/species`, {
+  const { data } = await apiFetch(`/plots/${plotId}/species`, plotDetailEnvelope, {
     method: 'POST',
     json: body,
   });
@@ -100,9 +107,8 @@ export async function addPlotSpecies(plotId: string, body: PlotSpeciesBody): Pro
 
 /** @rfc RFC-67 R5 */
 export async function removePlotSpecies(plotId: string, speciesId: string): Promise<PlotDetail> {
-  const { data } = await apiFetch<DataEnvelope<PlotDetail>>(
-    `/plots/${plotId}/species/${speciesId}`,
-    { method: 'DELETE' },
-  );
+  const { data } = await apiFetch(`/plots/${plotId}/species/${speciesId}`, plotDetailEnvelope, {
+    method: 'DELETE',
+  });
   return data;
 }

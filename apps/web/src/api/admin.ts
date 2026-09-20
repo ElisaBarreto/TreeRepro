@@ -1,22 +1,34 @@
 import {
   type AuditLogEntry,
+  auditLogEntrySchema,
   type CreateRoleBody,
   type CreateUserBody,
-  type DataEnvelope,
+  dataEnvelopeSchema,
+  listEnvelopeSchema,
+  okStatusSchema,
   type PermissionEntry,
   type PlatformHealth,
+  permissionEntrySchema,
   platformHealthSchema,
   type Role,
+  roleSchema,
   type SessionSummary,
   type SetUserPlotsBody,
+  sessionSummarySchema,
   type UpdateRoleBody,
   type UpdateUserBody,
   type User,
   type UserStatus,
+  userSchema,
 } from '@treerepro/contracts';
+import { z } from 'zod';
 import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
 import { type QueryParams, withQuery } from './query.ts';
+
+const userEnvelope = dataEnvelopeSchema(userSchema);
+const roleEnvelope = dataEnvelopeSchema(roleSchema);
+const okEnvelope = dataEnvelopeSchema(okStatusSchema);
 
 /** Query keys of the admin pages; every fetcher below owns one. @rfc RFC-50 R2 */
 export const adminKeys = {
@@ -35,24 +47,21 @@ export function listUsers(params: {
   cursor?: string;
   limit?: number;
 }): Promise<Page<User>> {
-  return apiFetch<Page<User>>(withQuery('/admin/users', params));
+  return apiFetch(withQuery('/admin/users', params), listEnvelopeSchema(userSchema));
 }
 /** @rfc RFC-50 R4 */
 export async function fetchUser(id: string): Promise<User> {
-  const { data } = await apiFetch<DataEnvelope<User>>(`/admin/users/${id}`);
+  const { data } = await apiFetch(`/admin/users/${id}`, userEnvelope);
   return data;
 }
 /** @rfc RFC-50 R3 */
 export async function inviteUser(body: CreateUserBody): Promise<User> {
-  const { data } = await apiFetch<DataEnvelope<User>>('/admin/users', {
-    method: 'POST',
-    json: body,
-  });
+  const { data } = await apiFetch('/admin/users', userEnvelope, { method: 'POST', json: body });
   return data;
 }
 /** @rfc RFC-50 R5 */
 export async function updateUser(id: string, body: UpdateUserBody): Promise<User> {
-  const { data } = await apiFetch<DataEnvelope<User>>(`/admin/users/${id}`, {
+  const { data } = await apiFetch(`/admin/users/${id}`, userEnvelope, {
     method: 'PATCH',
     json: body,
   });
@@ -60,54 +69,54 @@ export async function updateUser(id: string, body: UpdateUserBody): Promise<User
 }
 /** @rfc RFC-50 R6 */
 export async function suspendUser(id: string): Promise<User> {
-  const { data } = await apiFetch<DataEnvelope<User>>(`/admin/users/${id}/suspend`, {
+  const { data } = await apiFetch(`/admin/users/${id}/suspend`, userEnvelope, {
     method: 'POST',
   });
   return data;
 }
 /** @rfc RFC-50 R7 */
 export async function reactivateUser(id: string): Promise<User> {
-  const { data } = await apiFetch<DataEnvelope<User>>(`/admin/users/${id}/reactivate`, {
+  const { data } = await apiFetch(`/admin/users/${id}/reactivate`, userEnvelope, {
     method: 'POST',
   });
   return data;
 }
 /** @rfc RFC-50 R8 */
 export async function resendInvite(id: string): Promise<User> {
-  const { data } = await apiFetch<DataEnvelope<User>>(`/admin/users/${id}/resend-invite`, {
+  const { data } = await apiFetch(`/admin/users/${id}/resend-invite`, userEnvelope, {
     method: 'POST',
   });
   return data;
 }
 /** @rfc RFC-50 R9 */
 export async function listUserSessions(id: string): Promise<SessionSummary[]> {
-  const { data } = await apiFetch<DataEnvelope<SessionSummary[]>>(`/admin/users/${id}/sessions`);
+  const { data } = await apiFetch(
+    `/admin/users/${id}/sessions`,
+    dataEnvelopeSchema(z.array(sessionSummarySchema)),
+  );
   return data;
 }
 /** @rfc RFC-50 R9 */
 export async function revokeUserSession(id: string, sessionId: string): Promise<void> {
-  await apiFetch(`/admin/users/${id}/sessions/${sessionId}`, { method: 'DELETE' });
+  await apiFetch(`/admin/users/${id}/sessions/${sessionId}`, okEnvelope, { method: 'DELETE' });
 }
 /** @rfc RFC-50 R9 */
 export async function revokeAllUserSessions(id: string): Promise<void> {
-  await apiFetch(`/admin/users/${id}/sessions`, { method: 'DELETE' });
+  await apiFetch(`/admin/users/${id}/sessions`, okEnvelope, { method: 'DELETE' });
 }
 /** @rfc RFC-50 R10 */
 export async function listRoles(): Promise<Role[]> {
-  const { data } = await apiFetch<DataEnvelope<Role[]>>('/admin/roles');
+  const { data } = await apiFetch('/admin/roles', dataEnvelopeSchema(z.array(roleSchema)));
   return data;
 }
 /** @rfc RFC-50 R10 */
 export async function createRole(body: CreateRoleBody): Promise<Role> {
-  const { data } = await apiFetch<DataEnvelope<Role>>('/admin/roles', {
-    method: 'POST',
-    json: body,
-  });
+  const { data } = await apiFetch('/admin/roles', roleEnvelope, { method: 'POST', json: body });
   return data;
 }
 /** @rfc RFC-50 R10 */
 export async function updateRole(id: string, body: UpdateRoleBody): Promise<Role> {
-  const { data } = await apiFetch<DataEnvelope<Role>>(`/admin/roles/${id}`, {
+  const { data } = await apiFetch(`/admin/roles/${id}`, roleEnvelope, {
     method: 'PATCH',
     json: body,
   });
@@ -115,11 +124,14 @@ export async function updateRole(id: string, body: UpdateRoleBody): Promise<Role
 }
 /** @rfc RFC-50 R10 */
 export async function deleteRole(id: string): Promise<void> {
-  await apiFetch(`/admin/roles/${id}`, { method: 'DELETE' });
+  await apiFetch(`/admin/roles/${id}`, okEnvelope, { method: 'DELETE' });
 }
 /** @rfc RFC-30 R5 */
 export async function listPermissions(): Promise<PermissionEntry[]> {
-  const { data } = await apiFetch<DataEnvelope<PermissionEntry[]>>('/admin/permissions');
+  const { data } = await apiFetch(
+    '/admin/permissions',
+    dataEnvelopeSchema(z.array(permissionEntrySchema)),
+  );
   return data;
 }
 /** @rfc RFC-51 R1 */
@@ -131,12 +143,12 @@ export function queryAudit(params: {
   cursor?: string;
   limit?: number;
 }): Promise<Page<AuditLogEntry>> {
-  return apiFetch<Page<AuditLogEntry>>(withQuery('/admin/audit', params));
+  return apiFetch(withQuery('/admin/audit', params), listEnvelopeSchema(auditLogEntrySchema));
 }
 
 /** @rfc RFC-67 R6 */
 export async function setUserPlots(id: string, body: SetUserPlotsBody): Promise<User> {
-  const { data } = await apiFetch<DataEnvelope<User>>(`/admin/users/${id}/plots`, {
+  const { data } = await apiFetch(`/admin/users/${id}/plots`, userEnvelope, {
     method: 'PUT',
     json: body,
   });
@@ -144,15 +156,13 @@ export async function setUserPlots(id: string, body: SetUserPlotsBody): Promise<
 }
 
 /**
- * Parses the payload against `platformHealthSchema`: unlike every other
- * fetcher in this module, `HealthPage` reads deep into this shape
- * (`health.data.users.active` and further) on first render, so a malformed
- * or partial response must reject the query rather than reach that render
- * and throw. `parse` throws on a mismatch, which TanStack Query turns into
- * `health.error`, taking the page's existing `Alert tone="error"` path.
+ * `HealthPage` reads deep into this shape (`health.data.users.active` and
+ * further) on first render; `apiFetch`'s parse rejects a malformed or
+ * partial response before it gets there, which TanStack Query turns into
+ * `health.error`, the page's existing `Alert tone="error"` path.
  * @rfc RFC-52 R1
  */
 export async function fetchPlatformHealth(): Promise<PlatformHealth> {
-  const { data } = await apiFetch<DataEnvelope<PlatformHealth>>('/admin/health');
-  return platformHealthSchema.parse(data);
+  const { data } = await apiFetch('/admin/health', dataEnvelopeSchema(platformHealthSchema));
+  return data;
 }

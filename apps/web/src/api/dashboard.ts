@@ -1,4 +1,4 @@
-import type { Dashboard, DataEnvelope } from '@treerepro/contracts';
+import { type Dashboard, dashboardSchema, dataEnvelopeSchema } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 
 /**
@@ -15,5 +15,5 @@ export const dashboardKeys = {
 
 /** @rfc RFC-72 R1 */
 export async function fetchDashboard(): Promise<Dashboard> {
-  return (await apiFetch<DataEnvelope<Dashboard>>('/me/dashboard')).data;
+  return (await apiFetch('/me/dashboard', dataEnvelopeSchema(dashboardSchema))).data;
 }

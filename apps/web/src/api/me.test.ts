@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ADMIN_USER } from '../test/admin-fixtures.ts';
 import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
 import { USER } from '../test/fixtures.ts';
 import { listSessions, revokeSession, updateName } from './me.ts';
@@ -7,9 +8,7 @@ installFetchMock();
 
 describe('RFC-50 R11 updateName', () => {
   it('patches /me and returns the user', async () => {
-    mockJson(200, {
-      data: { ...USER, name: 'Ada L.', roles: [], updatedAt: USER.createdAt, suspendedAt: null },
-    });
+    mockJson(200, { data: { ...ADMIN_USER, name: 'Ada L.' } });
     const user = await updateName('Ada L.');
     expect(user.name).toBe('Ada L.');
     expect(lastRequest().init?.method).toBe('PATCH');

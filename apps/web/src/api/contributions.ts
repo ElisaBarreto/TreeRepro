@@ -1,18 +1,32 @@
-import type {
-  ContributionAnnotation,
-  ContributionKind,
-  ContributionRecord,
-  ContributionSummary,
-  DataEnvelope,
-  RecordIntent,
-  ReviewStatus,
+import {
+  type ContributionAnnotation,
+  type ContributionKind,
+  type ContributionRecord,
+  type ContributionSummary,
+  contributionAnnotationSchema,
+  contributionRecordSchema,
+  contributionSummarySchema,
+  dataEnvelopeSchema,
+  listEnvelopeSchema,
+  type RecordIntent,
+  type ReviewStatus,
 } from '@treerepro/contracts';
+import { z } from 'zod';
 import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
 import { type QueryParams, withQuery } from './query.ts';
 
 /** One row of a contributions page: a record (R2) or an annotation (R3). */
 export type ContributionItem = ContributionRecord | ContributionAnnotation;
+
+/**
+ * A page holds one kind of row at a time (`kind` in the query); the union
+ * lets one fetcher serve both.
+ */
+const contributionsPage = listEnvelopeSchema(
+  z.union([contributionRecordSchema, contributionAnnotationSchema]),
+);
+const summaryEnvelope = dataEnvelopeSchema(contributionSummarySchema);
 
 /**
  * The query of RFC-71 R1 as the web app sends it: `kind` decides which of
@@ -49,12 +63,12 @@ export const contributionKeys = {
 
 /** @rfc RFC-71 R1, R2, R3 */
 export function fetchMyContributions(params: ContributionsQuery): Promise<Page<ContributionItem>> {
-  return apiFetch<Page<ContributionItem>>(withQuery('/me/contributions', params));
+  return apiFetch(withQuery('/me/contributions', params), contributionsPage);
 }
 
 /** @rfc RFC-71 R4 */
 export async function fetchMySummary(): Promise<ContributionSummary> {
-  return (await apiFetch<DataEnvelope<ContributionSummary>>('/me/contributions/summary')).data;
+  return (await apiFetch('/me/contributions/summary', summaryEnvelope)).data;
 }
 
 /** @rfc RFC-71 R5 */
@@ -62,18 +76,12 @@ export function fetchUserContributions(
   userId: string,
   params: ContributionsQuery,
 ): Promise<Page<ContributionItem>> {
-  return apiFetch<Page<ContributionItem>>(
-    withQuery(`/admin/users/${userId}/contributions`, params),
-  );
+  return apiFetch(withQuery(`/admin/users/${userId}/contributions`, params), contributionsPage);
 }
 
 /** @rfc RFC-71 R5 */
 export async function fetchUserSummary(userId: string): Promise<ContributionSummary> {
-  return (
-    await apiFetch<DataEnvelope<ContributionSummary>>(
-      `/admin/users/${userId}/contributions/summary`,
-    )
-  ).data;
+  return (await apiFetch(`/admin/users/${userId}/contributions/summary`, summaryEnvelope)).data;
 }
 
 /**

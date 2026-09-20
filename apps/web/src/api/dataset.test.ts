@@ -1,4 +1,6 @@
+import type { SpeciesListItem } from '@treerepro/contracts';
 import { describe, expect, it, vi } from 'vitest';
+import { FAMILY, GENERA, GENUS, SPECIES } from '../test/dataset-fixtures.ts';
 import { installFetchMock, lastRequest, mockJson } from '../test/fetch.ts';
 import {
   datasetKeys,
@@ -13,25 +15,15 @@ import {
 
 installFetchMock();
 
-const FAMILY = { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d01', name: 'Fabaceae' };
-const GENUS = { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d02', name: 'Adenanthera', family: FAMILY };
-const SPECIES = {
-  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d03',
-  canonicalName: 'Adenanthera pavonina',
-  nameSource: 'wcvp',
-  active: true,
-  genus: { id: GENUS.id, name: GENUS.name },
-  family: FAMILY,
-  matchedName: null,
-  unresolvedTaxon: false,
-};
+const { names: _names, plots: _plots, recordCount: _recordCount, ...listFields } = SPECIES;
+const SPECIES_ITEM: SpeciesListItem = { ...listFields, traitRecordCount: null };
 
 describe('RFC-60 R6 searchSpecies', () => {
   it('serialises the filters and sends unresolved only when true', async () => {
-    mockJson(200, { data: [SPECIES], meta: { nextCursor: null } });
+    mockJson(200, { data: [SPECIES_ITEM], meta: { nextCursor: null } });
     const page = await searchSpecies({ q: 'ad', unresolved: true });
     expect(lastRequest().url).toBe('/api/species?q=ad&unresolved=true');
-    expect(page.data).toEqual([SPECIES]);
+    expect(page.data).toEqual([SPECIES_ITEM]);
     expect(page.meta.nextCursor).toBeNull();
 
     mockJson(200, { data: [], meta: { nextCursor: null } });
@@ -60,7 +52,7 @@ describe('RFC-60 R6 searchSpecies', () => {
 
 describe('RFC-60 R7 fetchSpecies', () => {
   it('unwraps the data envelope', async () => {
-    mockJson(200, { data: { ...SPECIES, names: [], recordCount: 0, traitCount: 0 } });
+    mockJson(200, { data: SPECIES });
     const species = await fetchSpecies(SPECIES.id);
     expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}`);
     expect(species.canonicalName).toBe('Adenanthera pavonina');
@@ -103,7 +95,7 @@ describe('RFC-60 R8 fetchFamilies and fetchGenera', () => {
   });
 
   it('fetchGenera passes the family and the prefix', async () => {
-    mockJson(200, { data: [GENUS], meta: { nextCursor: null } });
+    mockJson(200, { data: [GENERA[0]], meta: { nextCursor: null } });
     const page = await fetchGenera({ familyId: FAMILY.id, q: 'Ad', limit: 20 });
     expect(lastRequest().url).toBe(`/api/genera?familyId=${FAMILY.id}&q=Ad&limit=20`);
     expect(page.data[0]?.family).toEqual(FAMILY);

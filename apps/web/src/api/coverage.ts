@@ -1,9 +1,12 @@
-import type {
-  Coverage,
-  CoverageTopQuery,
-  CoverageTraitRow,
-  DataEnvelope,
+import {
+  type Coverage,
+  type CoverageTopQuery,
+  type CoverageTraitRow,
+  coverageSchema,
+  coverageTraitRowSchema,
+  dataEnvelopeSchema,
 } from '@treerepro/contracts';
+import { z } from 'zod';
 import { apiFetch } from './client.ts';
 import { type QueryParams, withQuery } from './query.ts';
 
@@ -27,7 +30,7 @@ export async function fetchCoverage(params: {
   categoryKey?: string;
   plotId?: string;
 }): Promise<Coverage> {
-  return (await apiFetch<DataEnvelope<Coverage>>(withQuery('/coverage', params))).data;
+  return (await apiFetch(withQuery('/coverage', params), dataEnvelopeSchema(coverageSchema))).data;
 }
 
 /**
@@ -37,6 +40,9 @@ export async function fetchCoverage(params: {
  * @rfc RFC-69 R7
  */
 export async function fetchCoverageTop(params: CoverageTopQuery = {}): Promise<CoverageTraitRow[]> {
-  return (await apiFetch<DataEnvelope<CoverageTraitRow[]>>(withQuery('/coverage/top', params)))
-    .data;
+  const { data } = await apiFetch(
+    withQuery('/coverage/top', params),
+    dataEnvelopeSchema(z.array(coverageTraitRowSchema)),
+  );
+  return data;
 }

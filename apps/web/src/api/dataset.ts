@@ -1,34 +1,41 @@
-import type {
-  DataEnvelope,
-  Dictionary,
-  Genus,
-  ImportBatch,
-  ImportBatchKind,
-  ImportReject,
-  ListMeta,
-  RecordDetail,
-  RecordItem,
-  Reference,
-  ReferenceDetail,
-  Species,
-  SpeciesListItem,
-  SpeciesSort,
-  SpeciesStatus,
-  SpeciesTraits,
-  TaxonRef,
-  TraitDataMode,
-  TraitDetail,
-  TraitSpeciesItem,
-  TraitSpeciesMode,
-  TraitValueType,
+import {
+  type Dictionary,
+  dataEnvelopeSchema,
+  dictionarySchema,
+  genusSchema,
+  type ImportBatch,
+  type ImportBatchKind,
+  importBatchSchema,
+  importRejectSchema,
+  type ListEnvelope,
+  listEnvelopeSchema,
+  type RecordDetail,
+  type ReferenceDetail,
+  recordDetailSchema,
+  recordSchema,
+  referenceDetailSchema,
+  referenceSchema,
+  type Species,
+  type SpeciesSort,
+  type SpeciesStatus,
+  type SpeciesTraits,
+  speciesListItemSchema,
+  speciesSchema,
+  speciesTraitsSchema,
+  type TaxonRef,
+  type TraitDataMode,
+  type TraitDetail,
+  type TraitSpeciesMode,
+  type TraitValueType,
+  taxonRefSchema,
+  traitDetailSchema,
+  traitSpeciesItemSchema,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import { type QueryParams as Params, withQuery } from './query.ts';
 
-export interface Page<T> {
-  data: T[];
-  meta: ListMeta;
-}
+/** One page of a list, as `listEnvelopeSchema` parses it. @rfc RFC-11 R2 */
+export type Page<T> = ListEnvelope<T>;
 
 /** Query keys of the dataset pages; every fetcher below owns one. @rfc RFC-60 R6 */
 export const datasetKeys = {
@@ -78,11 +85,11 @@ export function searchSpecies(params: {
   cursor?: string;
   limit?: number;
 }) {
-  return apiFetch<Page<SpeciesListItem>>(withQuery('/species', params));
+  return apiFetch(withQuery('/species', params), listEnvelopeSchema(speciesListItemSchema));
 }
 /** @rfc RFC-60 R7 */
 export async function fetchSpecies(id: string): Promise<Species> {
-  return (await apiFetch<DataEnvelope<Species>>(`/species/${id}`)).data;
+  return (await apiFetch(`/species/${id}`, dataEnvelopeSchema(speciesSchema))).data;
 }
 /**
  * `includeMissing` adds every visible active trait with no record yet, as a
@@ -96,8 +103,9 @@ export async function fetchSpeciesTraits(
   options?: { includeMissing?: boolean },
 ): Promise<SpeciesTraits> {
   return (
-    await apiFetch<DataEnvelope<SpeciesTraits>>(
+    await apiFetch(
       withQuery(`/species/${id}/traits`, { includeMissing: options?.includeMissing }),
+      dataEnvelopeSchema(speciesTraitsSchema),
     )
   ).data;
 }
@@ -109,11 +117,11 @@ export function fetchRecords(params: {
   cursor?: string;
   limit?: number;
 }) {
-  return apiFetch<Page<RecordItem>>(withQuery('/records', params));
+  return apiFetch(withQuery('/records', params), listEnvelopeSchema(recordSchema));
 }
 /** @rfc RFC-63 R8 */
 export async function fetchRecord(id: string): Promise<RecordDetail> {
-  return (await apiFetch<DataEnvelope<RecordDetail>>(`/records/${id}`)).data;
+  return (await apiFetch(`/records/${id}`, dataEnvelopeSchema(recordDetailSchema))).data;
 }
 /**
  * The trait dictionary, whole by default. `categoryKey`, `valueType` and `q`
@@ -125,11 +133,11 @@ export async function fetchRecord(id: string): Promise<RecordDetail> {
 export async function fetchDictionary(
   params: { categoryKey?: string; valueType?: TraitValueType; q?: string } = {},
 ): Promise<Dictionary> {
-  return (await apiFetch<DataEnvelope<Dictionary>>(withQuery('/traits', params))).data;
+  return (await apiFetch(withQuery('/traits', params), dataEnvelopeSchema(dictionarySchema))).data;
 }
 /** @rfc RFC-62 R7 */
 export async function fetchTrait(id: string): Promise<TraitDetail> {
-  return (await apiFetch<DataEnvelope<TraitDetail>>(`/traits/${id}`)).data;
+  return (await apiFetch(`/traits/${id}`, dataEnvelopeSchema(traitDetailSchema))).data;
 }
 /**
  * One page of the species of a trait: `mode=with` those that have a record
@@ -151,7 +159,10 @@ export function fetchTraitSpecies(
     limit?: number;
   },
 ) {
-  return apiFetch<Page<TraitSpeciesItem>>(withQuery(`/traits/${id}/species`, params));
+  return apiFetch(
+    withQuery(`/traits/${id}/species`, params),
+    listEnvelopeSchema(traitSpeciesItemSchema),
+  );
 }
 /**
  * `categoryKey` and `traitId` are the references list's own filters (RFC-61
@@ -166,18 +177,21 @@ export function searchReferences(params: {
   cursor?: string;
   limit?: number;
 }) {
-  return apiFetch<Page<Reference>>(withQuery('/references', params));
+  return apiFetch(withQuery('/references', params), listEnvelopeSchema(referenceSchema));
 }
 /** @rfc RFC-61 R4 */
 export async function fetchReference(id: string): Promise<ReferenceDetail> {
-  return (await apiFetch<DataEnvelope<ReferenceDetail>>(`/references/${id}`)).data;
+  return (await apiFetch(`/references/${id}`, dataEnvelopeSchema(referenceDetailSchema))).data;
 }
 /** @rfc RFC-60 R8 */
 export async function fetchFamilies(): Promise<TaxonRef[]> {
   const all: TaxonRef[] = [];
   let cursor: string | undefined;
   do {
-    const page = await apiFetch<Page<TaxonRef>>(withQuery('/families', { cursor, limit: 200 }));
+    const page = await apiFetch(
+      withQuery('/families', { cursor, limit: 200 }),
+      listEnvelopeSchema(taxonRefSchema),
+    );
     all.push(...page.data);
     cursor = page.meta.nextCursor ?? undefined;
   } while (cursor);
@@ -190,20 +204,23 @@ export function fetchGenera(params: {
   cursor?: string;
   limit?: number;
 }) {
-  return apiFetch<Page<Genus>>(withQuery('/genera', params));
+  return apiFetch(withQuery('/genera', params), listEnvelopeSchema(genusSchema));
 }
 /**
  * @rfc RFC-64 R11
  * @rfc RFC-68 R7
  */
 export function fetchImports(params: { kind?: ImportBatchKind; cursor?: string; limit?: number }) {
-  return apiFetch<Page<ImportBatch>>(withQuery('/imports', params));
+  return apiFetch(withQuery('/imports', params), listEnvelopeSchema(importBatchSchema));
 }
 /** @rfc RFC-64 R11 */
 export async function fetchImport(id: string): Promise<ImportBatch> {
-  return (await apiFetch<DataEnvelope<ImportBatch>>(`/imports/${id}`)).data;
+  return (await apiFetch(`/imports/${id}`, dataEnvelopeSchema(importBatchSchema))).data;
 }
 /** @rfc RFC-64 R11 */
 export function fetchImportRejects(id: string, params: { cursor?: string; limit?: number }) {
-  return apiFetch<Page<ImportReject>>(withQuery(`/imports/${id}/rejects`, params));
+  return apiFetch(
+    withQuery(`/imports/${id}/rejects`, params),
+    listEnvelopeSchema(importRejectSchema),
+  );
 }
