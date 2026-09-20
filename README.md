@@ -14,7 +14,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `apps/e2e` — Playwright end-to-end tests (no `src`; not part of `rfc:check` or Vitest).
 - `packages/contracts` — Zod schemas and constants shared by API and web.
 - `packages/config` — shared tsconfig bases.
-- `tools/rfc-lint` — enforces `@rfc` linkage in code.
+- `tools/rfc-lint` — enforces `@rfc` linkage in code and cross-checks the SPA's permission gates against the API (RFC-32 R8).
 - `infra/` — Dockerfiles, Caddyfiles, Postgres init, secrets (gitignored).
 - `docs/rfc/` — business rules, the source of truth.
 - `docs/gotchas/<area>.md` — concrete code/infra pitfalls.
@@ -57,7 +57,7 @@ Every PR must pass `Verify`, `Images` (build + Trivy), `E2E` (Playwright against
 1. **RFC first** (RFC-00). A business rule lives in `docs/rfc/<category>/NN-slug.md` as a numbered rule `**Rn**`. Change order: RFC → failing test → code. Every exported symbol in `apps/*/src` and `packages/*/src` has a JSDoc `@rfc RFC-NN Rx` tag.
 2. **TDD** (RFC-01). No production code without a failing test first. No database mocks.
 3. **Never trust the frontend** (RFC-02). Validation, computation and authorization happen only in `apps/api`. Strict Zod schemas on every input.
-4. **Security from day one** (RFC-02, RFC-40). Secrets only from `/run/secrets`. PII encrypted at the application level. Logs redacted. Every route guarded: every route is public, self-service (`requireSession`) or permission-guarded (`requirePermission`), enforced by a meta-test (RFC-32).
+4. **Security from day one** (RFC-02, RFC-40). Secrets only from `/run/secrets`. PII encrypted at the application level. Logs redacted. Every route guarded: every route is public, self-service (`requireSession`) or permission-guarded (`requirePermission`), enforced by a meta-test (RFC-32); every route behind a dataset-reading permission takes the viewer's `Visibility`, enforced by a second meta-test (RFC-33 R10). Lessons of the 2026-09-19 audit: `docs/gotchas/security.md`.
 5. **English everywhere.** Code, comments, docs, UI, commits.
 6. **Latest stable versions, pinned exact.** No legacy versions.
 7. **Claim an issue before working on it.** Whoever picks up an issue assigns it to themselves and adds the `in-progress` label first, so an issue carrying both is known to be in someone's hands and one without is free to take. Closing the issue keeps the label (GitHub never removes labels on close), which is fine: `is:open label:in-progress` is the list of claimed work. Dropping an issue without closing it means removing the label and the assignment, so it reads as free again.

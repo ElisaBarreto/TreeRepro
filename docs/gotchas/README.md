@@ -12,6 +12,7 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 | Host, backups, restore, disk encryption | `infra.md` |
 | TypeScript | `typescript.md` |
 | GitHub Actions / security automation | `github-security.md` |
+| Security (access policy, visibility, PII) | `security.md` |
 | Web (React, Vite, Testing Library) | `web.md` |
 | Testing (Vitest, testcontainers) | `testing.md` |
 | Dataset import | `import.md` |
