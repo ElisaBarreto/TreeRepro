@@ -39,9 +39,15 @@ export async function cachedJson<T>(
   ttlSeconds: number,
   compute: () => Promise<T>,
 ): Promise<CachedEntry<T>> {
+  const fills = fillsOf(redis);
+  // Before the GET as well as after it: a caller that enters while the key is
+  // being filled joins that fill outright. Reading Redis first would let a
+  // fill that fails while the GET is pending release the key, so the GET's
+  // miss would start a second compute for a request that arrived in time.
+  const active = fills.get(key);
+  if (active) return active as Promise<CachedEntry<T>>;
   const cached = await redis.get(key);
   if (cached !== null) return JSON.parse(cached) as CachedEntry<T>;
-  const fills = fillsOf(redis);
   const pending = fills.get(key);
   if (pending) return pending as Promise<CachedEntry<T>>;
   const fill = (async () => {

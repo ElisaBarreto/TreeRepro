@@ -73,9 +73,11 @@ describe('RFC-10 R15 cachedJson', () => {
     await started.wait;
     await t.redis.ping();
     expect(calls).toBe(1);
+    // A caller that enters while the fill is running joins it before reading Redis.
+    const late = cachedJson(t.redis, key, 60, compute);
     fill.open();
 
-    const entries = await pending;
+    const entries = [...(await pending), await late];
     expect(calls).toBe(1);
     for (const entry of entries) expect(entry).toEqual(entries[0]);
     expect(entries[0]?.value).toEqual({ n: 1 });
@@ -101,10 +103,14 @@ describe('RFC-10 R15 cachedJson', () => {
     // answered after that would start a fill of its own (as it should); the
     // PING barrier makes all three join before the fill fails.
     await t.redis.ping();
+    // Enters while the fill is running: it must join that fill — and fail with
+    // it — rather than read Redis after the failure released the key and
+    // start a fill of its own.
+    const late = cachedJson(t.redis, key, 60, compute);
     fill.open();
 
-    const settled = await Promise.allSettled(pending);
-    expect(settled.map((s) => s.status)).toEqual(['rejected', 'rejected', 'rejected']);
+    const settled = await Promise.allSettled([...pending, late]);
+    expect(settled.map((s) => s.status)).toEqual(['rejected', 'rejected', 'rejected', 'rejected']);
     for (const s of settled) {
       if (s.status === 'rejected') expect((s.reason as Error).message).toBe('fill failed');
     }
