@@ -33,10 +33,63 @@ export interface GateLintOptions {
 const HAS_PERMISSION_RE = /hasPermission\((?:[^()]|\([^()]*\))*?,\s*'([^']*)'\s*,?\s*\)/g;
 const NAV_PERMISSION_RE = /\bpermission:\s*'([^']*)'/g;
 const INCLUDES_RE = /permissions\.includes\(\s*'([^']*)'\s*\)/g;
-// A route guard, or a check inside a handler or a service (RFC-32 R7).
+// A route guard, or a check on a resolved permission set inside a handler or
+// a service (RFC-32 R7): `permissions.has(…)`, `currentPermissions(c).has(…)`.
 const REQUIRE_PERMISSION_RE = /requirePermission\(\s*ctx\s*,\s*'([^']*)'/g;
-const HAS_RE = /\.has\(\s*'([a-z]+\.[a-z][a-z_]*)'\s*\)/g;
+const HAS_RE = /[pP]ermissions(?:\(\w*\))?\.has\(\s*'([^']*)'\s*\)/g;
 const CATALOG_ROW_RE = /^\|\s*`([^`]+)`\s*\|/gm;
+
+/**
+ * Blanks `//` and `/* *\/` comments so a gate quoted in prose is not read as
+ * one, keeping every newline (line numbers stay true) and every string
+ * literal (a `//` inside a URL is not a comment). Regular-expression literals
+ * are not tracked: a `//` inside one is taken for a comment to the end of
+ * that line, which no gate shares.
+ */
+export function stripComments(source: string): string {
+  let out = '';
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    const ch = source[i] as string;
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < n && source[i] !== '\n') {
+        out += ' ';
+        i++;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      const end = source.indexOf('*/', i + 2);
+      const stop = end === -1 ? n : end + 2;
+      for (; i < stop; i++) out += source[i] === '\n' ? '\n' : ' ';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      out += ch;
+      i++;
+      while (i < n && source[i] !== ch) {
+        if (source[i] === '\\') {
+          out += source[i];
+          i++;
+        }
+        if (i < n) {
+          out += source[i];
+          i++;
+        }
+      }
+      if (i < n) {
+        out += ch;
+        i++;
+      }
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
 
 function lineOf(source: string, index: number): number {
   let line = 1;
@@ -46,10 +99,11 @@ function lineOf(source: string, index: number): number {
 
 /** Every permission key the web app tests, in source order. */
 export function findGates(source: string): Gate[] {
+  const code = stripComments(source);
   const gates: Gate[] = [];
   for (const re of [HAS_PERMISSION_RE, NAV_PERMISSION_RE, INCLUDES_RE]) {
-    for (const match of source.matchAll(re)) {
-      gates.push({ line: lineOf(source, match.index), key: match[1] ?? '' });
+    for (const match of code.matchAll(re)) {
+      gates.push({ line: lineOf(code, match.index), key: match[1] ?? '' });
     }
   }
   return gates.sort((a, b) => a.line - b.line);
@@ -60,9 +114,10 @@ export function findGates(source: string): Gate[] {
  * guard or tested with `.has('<key>')` on a resolved permission set.
  */
 export function findEnforcedPermissions(source: string): Set<string> {
+  const code = stripComments(source);
   const keys = new Set<string>();
   for (const re of [REQUIRE_PERMISSION_RE, HAS_RE]) {
-    for (const match of source.matchAll(re)) keys.add(match[1] ?? '');
+    for (const match of code.matchAll(re)) keys.add(match[1] ?? '');
   }
   return keys;
 }

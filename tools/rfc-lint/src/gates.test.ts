@@ -8,6 +8,7 @@ import {
   GATE_EXEMPT_KEYS,
   lintGates,
   loadPermissionCatalog,
+  stripComments,
 } from './gates.ts';
 
 function makeTree(files: Record<string, string>): string {
@@ -57,6 +58,17 @@ describe('RFC-32 R8 findGates', () => {
     ]);
   });
 
+  it('ignores a gate quoted in a comment and keeps the line numbers', () => {
+    const src = [
+      "// hasPermission(me, 'users.delete') used to sit here",
+      '/*',
+      " * permission: 'users.delete'",
+      ' */',
+      "const url = 'https://example.org'; hasPermission(me, 'users.read'); // permissions.includes('users.delete')",
+    ].join('\n');
+    expect(findGates(src)).toEqual([{ line: 5, key: 'users.read' }]);
+  });
+
   it('keeps two gates on one line apart', () => {
     const src = "hasPermission(me, 'a.b') && hasPermission(me, 'c.d')";
     expect(findGates(src).map((g) => g.key)).toEqual(['a.b', 'c.d']);
@@ -76,7 +88,8 @@ describe('RFC-32 R8 findEnforcedPermissions', () => {
       '    ),',
       "  canWithdrawAny: currentPermissions(c).has('records.withdraw'),",
       "  inactive: permissions.has('dataset.read_inactive'),",
-      "  if (seen.has('not a key')) return;",
+      "  if (seen.has('taxa.manage')) return; // not a permission set",
+      "  // permissions.has('users.delete') was checked here once",
     ].join('\n');
     expect([...findEnforcedPermissions(src)]).toEqual([
       'dataset.read',
@@ -85,6 +98,17 @@ describe('RFC-32 R8 findEnforcedPermissions', () => {
       'records.withdraw',
       'dataset.read_inactive',
     ]);
+  });
+});
+
+describe('RFC-32 R8 stripComments', () => {
+  it('blanks comments, keeps strings and newlines', () => {
+    const src = 'a; // c\nb; /* d\ne */ f; \'x // y\'; "/* z */"; `//`';
+    expect(stripComments(src)).toBe('a;     \nb;     \n     f; \'x // y\'; "/* z */"; `//`');
+  });
+
+  it('keeps an escaped quote inside a string', () => {
+    expect(stripComments("'it\\'s // fine' // gone")).toBe("'it\\'s // fine'        ");
   });
 });
 
