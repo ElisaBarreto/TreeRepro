@@ -56,6 +56,70 @@ describe('RFC-32 R8 tokenize', () => {
     ]);
   });
 
+  it('reads the slash of a closing or self-closing JSX tag as punctuation, never as a regex', () => {
+    expect(
+      tokenize("</div>\nok('a.b')").map((t) => [t.kind, 'value' in t ? t.value : '', t.line]),
+    ).toEqual([
+      ['punct', '<', 1],
+      ['punct', '/', 1],
+      ['ident', 'div', 1],
+      ['punct', '>', 1],
+      ['ident', 'ok', 2],
+      ['punct', '(', 2],
+      ['string', 'a.b', 2],
+      ['punct', ')', 2],
+    ]);
+    expect(kinds("<Foo {...p} /> x('a.b')")).toEqual([
+      'punct:<',
+      'ident:Foo',
+      'punct:{',
+      'punct:.',
+      'punct:.',
+      'punct:.',
+      'ident:p',
+      'punct:}',
+      'punct:/',
+      'punct:>',
+      'ident:x',
+      'punct:(',
+      'string:a.b',
+      'punct:)',
+    ]);
+    expect(kinds("</p>{c ? /x'y/ : null}<b/>")).toEqual([
+      'punct:<',
+      'punct:/',
+      'ident:p',
+      'punct:>',
+      'punct:{',
+      'ident:c',
+      'punct:?',
+      'regex:',
+      'punct::',
+      'ident:null',
+      'punct:}',
+      'punct:<',
+      'ident:b',
+      'punct:/',
+      'punct:>',
+    ]);
+  });
+
+  it('reads a slash with no closing slash on its line as punctuation and keeps the line count', () => {
+    expect(
+      tokenize("a = ?/ b\nx('a.b')").map((t) => [t.kind, 'value' in t ? t.value : '', t.line]),
+    ).toEqual([
+      ['ident', 'a', 1],
+      ['punct', '=', 1],
+      ['punct', '?', 1],
+      ['punct', '/', 1],
+      ['ident', 'b', 1],
+      ['ident', 'x', 2],
+      ['punct', '(', 2],
+      ['string', 'a.b', 2],
+      ['punct', ')', 2],
+    ]);
+  });
+
   it('reads a regular-expression literal as one token, quotes and slashes included', () => {
     expect(kinds("const r = /['\\/]+/g; x('a.b')")).toEqual([
       'ident:const',

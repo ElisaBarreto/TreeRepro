@@ -70,6 +70,20 @@ describe('RFC-32 R8 findGates', () => {
     expect(findGates(src)).toEqual([{ line: 5, key: 'users.read' }]);
   });
 
+  it('finds a gate between a closing tag and a self-closing one', () => {
+    const src = [
+      '<p>Done</p>',
+      "{hasPermission(me, 'users.read') ? <Button {...props} /> : null}",
+      "<Row permission: 'x' />",
+      "{me.permissions.includes('audit.read') && <Link />}",
+    ].join('\n');
+    expect(findGates(src)).toEqual([
+      { line: 2, key: 'users.read' },
+      { line: 3, key: 'x' },
+      { line: 4, key: 'audit.read' },
+    ]);
+  });
+
   it('keeps two gates on one line apart', () => {
     const src = "hasPermission(me, 'a.b') && hasPermission(me, 'c.d')";
     expect(findGates(src).map((g) => g.key)).toEqual(['a.b', 'c.d']);

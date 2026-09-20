@@ -3,9 +3,10 @@
  * read code and nothing else: comments vanish, a string or template literal
  * is one opaque token (so code quoted inside one is never read as code), a
  * regular-expression literal is one opaque token (so a quote inside one
- * cannot open a string). It is not a parser: JSX text is tokenised as code,
- * which is harmless except for an apostrophe in prose, which opens a string
- * that ends at the end of that line.
+ * cannot open a string), and the slash of a JSX closing or self-closing tag
+ * is punctuation. It is not a parser: JSX text is tokenised as code, which is
+ * harmless except for an apostrophe in prose, which opens a string that ends
+ * at the end of that line.
  */
 export type Token =
   | { kind: 'ident'; value: string; line: number }
@@ -38,6 +39,36 @@ const REGEX_AFTER_KEYWORDS = new Set([
   'yield',
   'await',
 ]);
+
+const isPunct = (t: Token | undefined, value: string): boolean =>
+  t?.kind === 'punct' && t.value === value;
+
+/**
+ * The index after the regular-expression literal (flags included) that opens
+ * at `start`, or -1 when no unescaped closing slash follows on the same line.
+ */
+function regexEnd(source: string, start: number): number {
+  const n = source.length;
+  let k = start + 1;
+  let inClass = false;
+  while (k < n) {
+    const c = source[k];
+    if (c === '\n') return -1;
+    if (c === '\\') {
+      k += 2;
+      continue;
+    }
+    if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) {
+      k++;
+      while (k < n && IDENT_PART.test(source[k] ?? '')) k++;
+      return k;
+    }
+    k++;
+  }
+  return -1;
+}
 
 function regexMayStart(previous: Token | undefined): boolean {
   if (!previous) return true;
@@ -149,25 +180,19 @@ export function tokenize(source: string): Token[] {
       i = skipTemplate(i);
       continue;
     }
-    if (ch === '/' && regexMayStart(tokens[tokens.length - 1])) {
-      let k = i + 1;
-      let inClass = false;
-      while (k < n && at(k) !== '\n') {
-        const c = at(k);
-        if (c === '\\') {
-          k += 2;
-          continue;
-        }
-        if (c === '[') inClass = true;
-        else if (c === ']') inClass = false;
-        else if (c === '/' && !inClass) break;
-        k++;
+    // A JSX closing tag (`</div>`) or self-closing tag (`<Foo {...p} />`) puts
+    // a slash where a regular expression could otherwise start; both are
+    // punctuation. A regex must close on its own line: a slash that finds no
+    // closing one before the newline is punctuation too, so a stray slash
+    // never swallows the rest of the line (nor the newline itself).
+    const previous = tokens[tokens.length - 1];
+    if (ch === '/' && !isPunct(previous, '<') && next !== '>' && regexMayStart(previous)) {
+      const end = regexEnd(source, i);
+      if (end !== -1) {
+        tokens.push({ kind: 'regex', line });
+        i = end;
+        continue;
       }
-      k++;
-      while (k < n && IDENT_PART.test(at(k))) k++;
-      tokens.push({ kind: 'regex', line });
-      i = k;
-      continue;
     }
     if (IDENT_START.test(ch)) {
       let k = i + 1;
