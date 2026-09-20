@@ -38,6 +38,10 @@ export type AcceptedDecision = (typeof ACCEPTED_DECISIONS)[number];
 
 /** @rfc RFC-64 R3 */
 export const IMPORT_BATCH_STATUSES = ['running', 'completed', 'failed'] as const;
+
+/** How a batch treated what earlier imports had loaded. @rfc RFC-64 R12 */
+export const IMPORT_BATCH_MODES = ['append', 'replace'] as const;
+export type ImportBatchMode = (typeof IMPORT_BATCH_MODES)[number];
 export type ImportBatchStatus = (typeof IMPORT_BATCH_STATUSES)[number];
 
 /**

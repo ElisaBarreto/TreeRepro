@@ -1,5 +1,6 @@
 import {
   IMPORT_BATCH_KINDS,
+  IMPORT_BATCH_MODES,
   IMPORT_BATCH_STATUSES,
   IMPORT_REJECT_REASONS,
 } from '@treerepro/contracts';
@@ -28,6 +29,7 @@ export const importBatches = pgTable(
     startedAt: ts('started_at').notNull().defaultNow(),
     finishedAt: ts('finished_at'),
     status: text('status', { enum: IMPORT_BATCH_STATUSES }).notNull().default('running'),
+    mode: text('mode', { enum: IMPORT_BATCH_MODES }).notNull().default('append'),
     error: text('error'),
     rowsTotal: count('rows_total'),
     rowsInserted: count('rows_inserted'),
@@ -38,6 +40,7 @@ export const importBatches = pgTable(
   },
   (t) => [
     index('import_batches_sha_idx').on(t.fileSha256),
+    check('import_batches_mode_check', sql`${t.mode} in ('append', 'replace')`),
     check(
       'import_batches_kind_check',
       sql`${t.kind} in ('records', 'species_status', 'plots', 'plot_species', 'user_plots', 'synonyms', 'references', 'distribution')`,
