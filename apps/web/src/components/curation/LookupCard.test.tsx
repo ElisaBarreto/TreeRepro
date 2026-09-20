@@ -26,6 +26,17 @@ describe('RFC-81 R2 LookupCard', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
+  it('RFC-81 R2 percent-encodes a key the source chose, so it cannot reshape the link', () => {
+    render(
+      <LookupCard
+        source="GBIF backbone"
+        match={{ ...BACKBONE_MATCH, usageKey: '4R5YN/../?x#y' }}
+      />,
+    );
+    const link = screen.getByRole('link', { name: /gbif/i });
+    expect(link).toHaveAttribute('href', 'https://www.gbif.org/species/4R5YN%2F..%2F%3Fx%23y');
+  });
+
   it('RFC-81 R2 WCVP reports no confidence, and that reads as no number rather than zero', () => {
     render(<LookupCard source="WCVP" match={WCVP_MATCH} />);
     const card = screen.getByRole('region', { name: 'WCVP' });

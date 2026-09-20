@@ -19,6 +19,7 @@ The backend is the only authority (RFC-02 R1). Every route that is not public an
 - **R5** Guard classes. Every registered route is exactly one of: public (RFC-22 R1), self-service — behind `requireSession` only —, or permission-guarded — behind `requirePermission`. The self-service list: `POST /api/auth/logout`, `POST /api/auth/logout-all`, `GET /api/auth/me`, `POST /api/auth/password/change`, `POST /api/auth/totp/setup`, `POST /api/auth/totp/confirm`, `POST /api/auth/totp/disable`, `GET /api/me/sessions`, `DELETE /api/me/sessions/:id`, `PATCH /api/me` (RFC-50 R11). Every route that is neither public nor in the self-service list is permission-guarded, wherever its path lives (`/api/admin/*`, `/api/species`, …). A test enumerates the registered routes and fails on any route outside its class.
 - **R6** `GET /api/auth/me` returns the user's effective permissions, sorted, in `permissions` (RFC-22 R10).
 - **R7** Resource-level rules are the visibility rules of RFC-33, applied inside the services with the `Visibility` value the route derives; `options.resource` stays available for future per-row checks.
+- **R8** SPA gates mirror the API. Every permission key the web app tests — `hasPermission(…, '<key>')`, a navigation entry's `permission: '<key>'`, `permissions.includes('<key>')` under `apps/web/src` — is a catalog key (RFC-30 R2) that the API enforces: named by a route guard, `requirePermission(ctx, '<key>')`, or tested on the resolved set inside a handler or a service — exactly `permissions.has('<key>')` on that identifier or `currentPermissions(c).has('<key>')`, never another receiver (R7; `records.withdraw`, `plots.manage`, `dataset.read_inactive` are checked this way) — anywhere under `apps/api/src`. The lint reads tokens, not text: a key quoted in a comment or a string is neither a gate nor a check. One key shapes the SPA without any check of its own and is the only exception: `admin.access` (RFC-30 R4). `tools/rfc-lint` (`pnpm rfc:check`) enforces the rule and fails on a key outside the catalog, a key the API never checks, or an exception the SPA no longer tests.
 
 ## Open questions
 
@@ -31,3 +32,4 @@ None.
 - 2026-09-12 — R1, R5: PATCH /api/me; no deleted status (RFC-50).
 - 2026-09-13 — R5 wording: guard class is decided by the guard, not by the path prefix (plan 06).
 - 2026-09-17 — R7: visibility rules live in RFC-33 (plan 08a).
+- 2026-09-20 — R8: SPA gates cross-checked against the API's permission checks by `tools/rfc-lint` (security audit 2026-09-19, plan #120 step 3).

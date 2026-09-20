@@ -85,7 +85,7 @@ export function LookupCard({ source, match }: { source: string; match: TaxonMatc
         <h4 className="font-display text-card font-semibold text-canopy-950">{source}</h4>
         {match.usageKey === null ? null : (
           <a
-            href={`https://www.gbif.org/species/${match.usageKey}`}
+            href={`https://www.gbif.org/species/${encodeURIComponent(match.usageKey)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-meta font-semibold text-canopy-800 underline"
