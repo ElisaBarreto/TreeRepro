@@ -41,9 +41,10 @@ export interface RequestOptions {
  * same parse checks (issue #116). A request that has nothing to read still
  * names what it expects — `dataEnvelopeSchema(okStatusSchema)`, the
  * acknowledgement of RFC-22 R9 — and a 204 reaches the schema as `undefined`.
- * A mismatch is an `ApiError` with code `RESPONSE_INVALID`, the response's
- * own status, and the failing paths as `details`, the way the API reports a
- * request that fails validation (RFC-11 R3).
+ * A mismatch — or a successful status with no JSON body to parse — is an
+ * `ApiError` with code `RESPONSE_INVALID`, the response's own status, and
+ * the failing paths as `details`, the way the API reports a request that
+ * fails validation (RFC-11 R3).
  * @rfc RFC-13 R1
  * @rfc RFC-11 R2-R3
  */
@@ -70,7 +71,18 @@ export async function apiFetch<Schema extends z.ZodType>(
   }
 
   if (response.ok) {
-    const body: unknown = response.status === 204 ? undefined : await response.json();
+    let body: unknown;
+    try {
+      body = response.status === 204 ? undefined : await response.json();
+    } catch (cause) {
+      throw new ApiError(
+        response.status,
+        'RESPONSE_INVALID',
+        'Unexpected response from the server',
+        [{ path: '', message: 'Expected a JSON body' }],
+        cause,
+      );
+    }
     const parsed = schema.safeParse(body);
     if (parsed.success) return parsed.data;
     throw new ApiError(

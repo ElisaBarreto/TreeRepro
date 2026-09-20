@@ -56,6 +56,16 @@ describe('RFC-13 R1 response validation', () => {
     expect(error.cause).toBeInstanceOf(ZodError);
   });
 
+  it('rejects a 200 whose body is not JSON with RESPONSE_INVALID', async () => {
+    fetchMock.mockResolvedValue(new Response('<html>', { status: 200 }));
+    const error = (await apiFetch('/things/1', thing).catch((e: unknown) => e)) as ApiError;
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.code).toBe('RESPONSE_INVALID');
+    expect(error.status).toBe(200);
+    expect(error.details).toEqual([{ path: '', message: 'Expected a JSON body' }]);
+    expect((error.cause as Error).name).toBe('SyntaxError');
+  });
+
   it('rejects a 204 where the schema expects a body', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     const error = (await apiFetch('/things/1', thing).catch((e: unknown) => e)) as ApiError;
