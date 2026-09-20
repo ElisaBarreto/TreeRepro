@@ -42,7 +42,10 @@ if (values.replace && !isReplaceAllowed(config.nodeEnv)) {
 }
 configurePii(config.pii.keyring.expose(), config.pii.hmacKey.expose());
 const dbUrl = values.replace ? loadMigratorConfig().db.url : config.db.url;
-const { db, close } = createDb(dbUrl.expose(), { max: 1 });
+// R13 reserves one connection to hold the advisory lock for the whole run,
+// so the pool needs a second one for the import itself; with `max: 1` the
+// reservation starves the work it is guarding and the run hangs.
+const { db, close } = createDb(dbUrl.expose(), { max: 2 });
 
 let exitCode = 0;
 const startedAt = Date.now();

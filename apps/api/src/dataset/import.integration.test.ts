@@ -270,6 +270,36 @@ describe('RFC-64 importRecords', () => {
     expect(second.nextCursor).toBeNull();
   });
 
+  it('R6 collapses internal whitespace so a multi-word level still matches', async () => {
+    // `diaspore_type` has the level `whole plant`. Trimming alone leaves the
+    // doubled space, and the match is an equality on the key, so the value
+    // would land as unknown_level.
+    const dir = await mkdtemp(join(tmpdir(), 'import-ws-'));
+    const file = join(dir, 'whitespace.csv');
+    const row = IMPORT_COLUMNS.map((c) =>
+      c === 'primary_reference'
+        ? 'WSREF'
+        : c === 'wcvp_species'
+          ? 'Fixturia spatia'
+          : c === 'final_standard_trait'
+            ? 'diaspore_type'
+            : c === 'trait_value_type'
+              ? 'categorical'
+              : c === 'harmonised_value'
+                ? 'whole   plant'
+                : '',
+    ).join(',');
+    await writeFile(file, `${IMPORT_COLUMNS.join(',')}\n${row}\n`, 'utf8');
+
+    const batch = await importRecords(t.db, { filePath: file });
+    const [record] = await t.db
+      .select()
+      .from(traitRecords)
+      .where(eq(traitRecords.importBatchId, batch.id));
+    expect(record).toMatchObject({ harmonisation: 'harmonised', valueText: 'whole plant' });
+    expect(record?.levelId).not.toBeNull();
+  });
+
   it('R2 a wrong header is refused before any batch row exists', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'bad-header.csv');
