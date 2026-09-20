@@ -145,10 +145,27 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     expect(within(region).getByRole('status')).toHaveTextContent('Name saved.');
   });
 
+  it('RFC-31 R13 the roles on the viewer’s own page are read-only, whatever they may do to others', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    await openUser(ADMIN_USER);
+    const region = screen.getByRole('region', { name: 'Roles' });
+    expect(within(region).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(region).queryByRole('button', { name: 'Save roles' })).not.toBeInTheDocument();
+    expect(within(region).getByText('admin')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Name' })).toBeInTheDocument();
+  });
+
   it('RFC-50 R5, RFC-31 R7 saves roles; ROLE_LAST_ADMIN is mapped', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
-    const BOTH_ROLES: User = {
+    // Another administrator: the viewer's own roles are read-only (RFC-31 R13).
+    const OTHER_ADMIN: User = {
       ...ADMIN_USER,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e77',
+      email: 'dan@example.org',
+      name: 'Dan',
+    };
+    const BOTH_ROLES: User = {
+      ...OTHER_ADMIN,
       roles: [
         { id: ROLE_ADMIN.id, name: 'admin' },
         { id: ROLE_READERS.id, name: 'Readers' },
@@ -157,7 +174,7 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     admin.updateUser
       .mockRejectedValueOnce(new ApiError(409, 'ROLE_LAST_ADMIN', 'x'))
       .mockResolvedValueOnce(BOTH_ROLES);
-    await openUser(ADMIN_USER);
+    await openUser(OTHER_ADMIN);
     const region = screen.getByRole('region', { name: 'Roles' });
     // The accessible name is the whole label (name, badge, description): match its start.
     const adminBox = await within(region).findByRole('checkbox', { name: /^admin\b/ });
@@ -165,7 +182,7 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     await userEvent.click(adminBox);
     await userEvent.click(within(region).getByRole('button', { name: 'Save roles' }));
     await waitFor(() =>
-      expect(admin.updateUser).toHaveBeenCalledWith(ADMIN_USER.id, { roles: [] }),
+      expect(admin.updateUser).toHaveBeenCalledWith(OTHER_ADMIN.id, { roles: [] }),
     );
     expect(await within(region).findByRole('alert')).toHaveTextContent(
       'This is the last active administrator.',
@@ -177,7 +194,7 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     admin.fetchUser.mockResolvedValue(BOTH_ROLES);
     await userEvent.click(within(region).getByRole('button', { name: 'Save roles' }));
     await waitFor(() =>
-      expect(admin.updateUser).toHaveBeenLastCalledWith(ADMIN_USER.id, {
+      expect(admin.updateUser).toHaveBeenLastCalledWith(OTHER_ADMIN.id, {
         roles: [ROLE_ADMIN.id, ROLE_READERS.id],
       }),
     );

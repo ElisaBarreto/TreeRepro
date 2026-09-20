@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
 import {
+  addPlotSpecies,
+  assignPlots,
   createAcceptedValue,
   createFamily,
   createGenus,
+  createPlot,
   createRecord,
   createReference,
   createSpecies,
   createTrait,
+  createVisibilityFixture,
 } from '../../../../test/helpers/dataset.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
@@ -159,6 +163,61 @@ describe('RFC-66 GET /api/export/accepted.csv', () => {
     expect([...mine].slice(0, 2)).toEqual(cat.key < quant.key ? [a1.id, a2.id] : [a2.id, a1.id]);
     const audit = await lastAudit(t.db, 'dataset.exported', { actorUserId: user.id });
     expect(audit?.metadata).toEqual({ format: 'csv', scope: 'accepted' });
+  });
+
+  it('RFC-33 R9, RFC-66 R2 two viewers: a plot-bound viewer without dataset.read_inactive gets only the visible rows, an unrestricted viewer gets every row', async () => {
+    const unrestrictedRole = await createRole(t.db, {
+      permissions: ['dataset.export', 'dataset.read_inactive'],
+    });
+    const restrictedRole = await createRole(t.db, { permissions: ['dataset.export'] });
+    const { user: manager } = await createUser(t.db, { roles: [unrestrictedRole.id] });
+    const { user: contributor } = await createUser(t.db, { roles: [restrictedRole.id] });
+    const f = await createVisibilityFixture(t.db, manager.id);
+    // A fourth row: an active species on an active trait, outside the contributor's plot.
+    const outsideSpecies = await createSpecies(t.db);
+    const outsidePlot = await createRecord(t.db, {
+      speciesId: outsideSpecies.id,
+      traitId: f.activeTrait.id,
+      valueText: 'one',
+      levelId: f.activeTrait.levels[0]?.id,
+      primaryReferenceId: f.reference.id,
+      origin: 'manual',
+      createdBy: manager.id,
+    });
+    const plot = await createPlot(t.db);
+    await addPlotSpecies(t.db, plot.id, [f.shownSpecies.id, f.hiddenSpecies.id]);
+    await assignPlots(t.db, contributor.id, [plot.id], true);
+    const accepted: [string, string, { id: string }][] = [
+      [f.hiddenSpecies.id, f.activeTrait.id, f.onHiddenSpecies],
+      [f.shownSpecies.id, f.inactiveTrait.id, f.onInactiveTrait],
+      [f.shownSpecies.id, f.activeTrait.id, f.visible],
+      [outsideSpecies.id, f.activeTrait.id, outsidePlot],
+    ];
+    for (const [speciesId, traitId, record] of accepted) {
+      await createAcceptedValue(t.db, {
+        speciesId,
+        traitId,
+        recordId: record.id,
+        actorId: manager.id,
+      });
+    }
+    const recordIds = async (cookie: string) => {
+      const res = await call(t.app, 'GET', '/api/export/accepted.csv', { cookie });
+      expect(res.status).toBe(200);
+      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
+      return text
+        .slice(1)
+        .split('\r\n')
+        .slice(1, -1)
+        .map((line) => parseLine(line)[13]);
+    };
+    const all = [f.onHiddenSpecies.id, f.onInactiveTrait.id, f.visible.id, outsidePlot.id];
+
+    const m = await recordIds((await loginAs(t, manager)).cookie);
+    expect(all.filter((id) => m.includes(id))).toEqual(all);
+
+    const c = await recordIds((await loginAs(t, contributor)).cookie);
+    expect(all.filter((id) => c.includes(id))).toEqual([f.visible.id]);
   });
 
   it('R7 an unauthenticated request keeps the JSON error envelope', async () => {

@@ -30,13 +30,15 @@ type Pending = 'suspend' | 'reactivate' | null;
 
 /**
  * One user: the header facts, then the sections the session's permissions
- * allow (name and roles with `users.update`, sessions with `sessions.read`);
+ * allow (name and roles with `users.update` — roles read-only on the viewer's
+ * own page, RFC-31 R13 —, sessions with `sessions.read`);
  * suspend / reactivate (`users.suspend`) behind a confirmation, resend
  * invitation (`users.invite`) for an invited user. Every write puts the
  * answered user in the detail cache and refreshes the lists.
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-50 R4, R6, R7, R8
  * @rfc RFC-71 R5
+ * @rfc RFC-31 R13
  */
 export function UserPage({ id }: { id: string }) {
   const me = useMe();
@@ -118,7 +120,8 @@ export function UserPage({ id }: { id: string }) {
       {resend.isSuccess ? <Alert tone="success">{`Invitation sent to ${u.email}.`}</Alert> : null}
       {resend.isError ? <Alert tone="error">{userErrorMessage(resend.error)}</Alert> : null}
       {canUpdate ? <UserNameSection user={u} /> : null}
-      <UserRolesSection user={u} canEdit={canUpdate} />
+      {/* Nobody changes their own roles (RFC-31 R13): the API refuses it, so the page does not offer it. */}
+      <UserRolesSection user={u} canEdit={canUpdate && u.id !== me.user.id} />
       <UserPlotsSection user={u} canEdit={canUpdate} />
       {hasPermission(me, 'sessions.read') ? (
         <UserSessionsSection userId={u.id} canRevoke={hasPermission(me, 'sessions.revoke')} />

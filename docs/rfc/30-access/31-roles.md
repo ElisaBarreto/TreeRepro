@@ -10,6 +10,8 @@
 
 Roles are named sets of permissions created by administrators. A user holds any number of roles; effective permissions are the union (RFC-32). One role is special: `admin`, created by the system, which always holds everything.
 
+`users.update` and `roles.manage` are the permissions that hand out permissions. Without a ceiling each of them is `admin` in disguise: a holder assigns themselves the admin role, or writes the whole catalog into a role they hold. R12–R14 cap them, so that delegating either to a manager delegates exactly that and nothing more.
+
 ## Rules
 
 - **R1** Table `roles`: `id` uuid primary key default `uuidv7()`; `name` text not null, unique case-insensitively (unique index on `lower(name)`); `description` text not null default `''`; `is_system` boolean not null default `false`; `created_at`, `updated_at` timestamptz not null default `now()`. Table `role_permissions`: `role_id` uuid references `roles` on delete cascade, `permission_key` text references `permissions`, primary key (`role_id`, `permission_key`). Table `user_roles`: `user_id` uuid references `users`, `role_id` uuid references `roles` on delete cascade, `created_at` timestamptz not null default `now()`, primary key (`user_id`, `role_id`).
@@ -23,6 +25,9 @@ Roles are named sets of permissions created by administrators. A user holds any 
 - **R9** `pnpm seed:admin` assigns `admin` to the invited user (RFC-20 R8); running it again for the same invited user keeps the role.
 - **R10** Permission sets of the seeded roles. `contributor`: `dataset.read`, `records.create`, `records.annotate`, `taxa.propose`. `manager`: the contributor set plus `dataset.read_inactive`, `records.review`, `records.withdraw`, `imports.read`, `contributions.read`, `coverage.read`. Managers do not hold `traits.manage`: a missing level is escalated to the admin.
 - **R11** `GET /api/admin/roles` items carry `isSystem` and, for a system role with stored permissions, its permission keys; the web role list renders system roles read-only.
+- **R12** Delegation ceiling: an actor never hands out more than they hold. The actor's effective permissions are RFC-32 R1, resolved from the database at the time of the call. `setUserRoles`: the `admin` system role is added to or removed from a user only by an actor who holds `admin`; every other role added must have a stored permission set contained in the actor's effective permissions; removing a role is never limited by the ceiling. `createRole` and `updateRole`: every permission the call writes into the role that the role does not already store must be held by the actor. An actor who holds `admin` holds everything, so the ceiling never binds them. The CLI's `null` actor (R8) is unrestricted.
+- **R13** Self-change: an actor never changes their own roles — `setUserRoles` with `userId` equal to the actor is refused, whatever the set — and never changes the permission set of a role they hold, unless they hold `admin`; `updateRole` on a held role may still change `name` and `description`. A holder of `admin` who wants a different set asks another administrator.
+- **R14** A refusal under R12 or R13 answers 403 `PERMISSION_DENIED` with the RFC-32 R4 message and records `roles.delegation_refused` (RFC-41): target `user` with `metadata: { reason, added, removed }` for `setUserRoles`, target `role` with `metadata: { reason }` for `createRole` and `updateRole` (a `createRole` refusal has no role id yet and carries `targetId: null`); `reason` is one of `admin_role`, `ceiling`, `own_roles`, `held_role`. The check runs inside the service's transaction, after the resource errors of R3–R6 (an unknown user or role, a system role) and on the snapshot the write uses; a refusal rolls the transaction back and the entry is written afterwards on the caller's connection — a caller whose connection is itself a transaction (`updateUser`, RFC-50 R5) does the same on the root connection once its own transaction has rolled back, so exactly one entry commits and nothing else is written. The web app does not offer what the API refuses: the roles section of a user's own page is read-only (RFC-13 R3).
 
 ## Open questions
 
@@ -37,3 +42,4 @@ None.
 - 2026-09-18 — R10: manager gains `contributions.read` (RFC-71, plan 11a).
 - 2026-09-18 — R10: manager gains `coverage.read` (RFC-69 R5-R7, plan 11c).
 - 2026-09-19 — R10: contributor and manager gain `taxa.propose` (RFC-75, plan 12c).
+- 2026-09-20 — R12–R14 added, Context amended: delegation ceiling, self-change, refusal audit (security audit 2026-09-19, issue #118 F-02, plan #120 step 1).

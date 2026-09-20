@@ -66,6 +66,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `digest.sent` | Daily digest e-mail run completed (RFC-74 R5). |
 | `proposals.created` | Species proposal submitted (RFC-75 R2). |
 | `proposals.decided` | Species proposal approved or rejected (RFC-75 R4). |
+| `roles.delegation_refused` | A role assignment or edit refused by the delegation ceiling or the self-change rule (RFC-31 R12–R14); nothing changed. |
 
 ## Open questions
 
@@ -85,3 +86,4 @@ None.
 - 2026-09-17 — plots.*, users.plots_changed (RFC-67, plan 08b).
 - 2026-09-19 — digest.sent (RFC-74, plan 12b).
 - 2026-09-19 — proposals.created, proposals.decided (RFC-75, plan 12c).
+- 2026-09-20 — roles.delegation_refused (RFC-31 R14, issue #118 F-02).

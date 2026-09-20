@@ -1,6 +1,7 @@
 import { roleSchema } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
+import { lastAudit } from '../../../../test/helpers/audit.ts';
 import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
@@ -83,6 +84,39 @@ describe('RFC-50 R10 role routes', () => {
     expect(
       (await call(t.app, 'POST', '/api/admin/roles', { cookie, body: { name: uniq() } })).status,
     ).toBe(400);
+  });
+
+  it('RFC-31 R12, R13, R14 a roles.manage holder cannot widen their own role: 403 and an audit entry', async () => {
+    const own = await createRole(t.db, { permissions: ['roles.manage', 'roles.read'] });
+    const { user: actor } = await createUser(t.db, { roles: [own.id] });
+    const cookie = (await loginAs(t, actor)).cookie;
+    const res = await call(t.app, 'PATCH', `/api/admin/roles/${own.id}`, {
+      cookie,
+      body: { permissions: ['roles.manage', 'roles.read', 'users.update'] },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('PERMISSION_DENIED');
+    expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: own.id })).toMatchObject({
+      actorUserId: actor.id,
+      targetType: 'role',
+      metadata: { reason: 'held_role' },
+    });
+    const got = await call(t.app, 'GET', `/api/admin/roles/${own.id}`, { cookie });
+    expect((await got.json()).data.permissions).toEqual(['roles.manage', 'roles.read']);
+    const other = await createRole(t.db);
+    const beyond = await call(t.app, 'POST', '/api/admin/roles', {
+      cookie,
+      body: { name: uniq(), permissions: ['users.update'] },
+    });
+    expect(beyond.status).toBe(403);
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
+    ).toMatchObject({ targetType: 'role', targetId: null, metadata: { reason: 'ceiling' } });
+    const within = await call(t.app, 'PATCH', `/api/admin/roles/${other.id}`, {
+      cookie,
+      body: { permissions: ['roles.manage'] },
+    });
+    expect(within.status).toBe(200);
   });
 
   it('roles.read reads but cannot manage', async () => {
