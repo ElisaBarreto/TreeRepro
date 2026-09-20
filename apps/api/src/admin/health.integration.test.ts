@@ -39,9 +39,10 @@ const HOUR = 3_600_000;
  *
  * - the numbers are asserted as DELTAS around this file's own fixture, taken
  *   through the UNCACHED `computePlatformHealth` inside `withRollback` plus a
- *   `repeatable read` snapshot — the fixture is invisible to siblings because
- *   it rolls back, and siblings' commits are invisible to the delta because
- *   the snapshot is frozen. Never a literal, never the cached function;
+ *   `repeatable read` snapshot pinned before `before` runs — the fixture is
+ *   invisible to siblings because it rolls back, and siblings' commits are
+ *   invisible to the delta because the snapshot is frozen before either
+ *   call reads the clock. Never a literal, never the cached function;
  * - the queue counters are compared against the services themselves, not
  *   against a fixture of this file's own (the `queues.integration.test.ts`
  *   precedent);
@@ -51,13 +52,23 @@ const HOUR = 3_600_000;
  *   suite wins, and the entry read back would hold their numbers.
  */
 
-/** `set transaction isolation level repeatable read`, checked to have bound. */
+/**
+ * `set transaction isolation level repeatable read`, checked to have bound,
+ * then the snapshot actually taken. `SET` and `SHOW` take none: the snapshot
+ * is pinned by the first SELECT, which without the `select 1` would be the
+ * first statement of `before` — sent after `computePlatformHealth` has read
+ * its `end` bound from the JS clock. A sibling's row committed in that gap,
+ * with a `created_at` past `before`'s `end` and inside `after`'s, is in the
+ * snapshot but in only one of the two windows, and a windowed delta such as
+ * `activity.records7d` moves by one more than the fixture (issue #123).
+ */
 async function freezeSnapshot(tx: DbTransaction): Promise<void> {
   await tx.execute(sql`set transaction isolation level repeatable read`);
   const [isolation] = (await tx.execute(sql`show transaction_isolation`)) as unknown as [
     { transaction_isolation: string } | undefined,
   ];
   expect(isolation?.transaction_isolation).toBe('repeatable read');
+  await tx.execute(sql`select 1`);
 }
 
 /** The database's own `current_date`, which decides what `byDay` calls today. */
