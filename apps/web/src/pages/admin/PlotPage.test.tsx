@@ -71,7 +71,6 @@ const SPECIES_ITEM: SpeciesListItem = {
 const PLOT_USER: PlotUser = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d43',
   name: 'Carlos Contributor',
-  email: 'carlos@example.org',
   status: 'active',
   restricted: true,
 };
@@ -111,11 +110,24 @@ describe('RFC-67 R3-R5 PlotPage', () => {
     // Species section
     expect(await screen.findByText('Bowdichia virgilioides')).toBeInTheDocument();
 
-    // Users section
+    // Users section: name, status and scope only — the address is users.read
+    // data and never part of the item (RFC-02 R14)
     const userLink = screen.getByRole('link', { name: 'Carlos Contributor' });
     expect(userLink).toHaveAttribute('href', `/app/admin/users/${PLOT_USER.id}`);
-    expect(screen.getByText('carlos@example.org')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Email' })).not.toBeInTheDocument();
     expect(screen.getByText('Restricted')).toBeInTheDocument();
+  });
+
+  it('RFC-02 R14 links the user name only when the viewer holds users.read', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...ADMIN_ME,
+      permissions: ['admin.access', 'dataset.read', 'plots.manage'],
+    });
+
+    renderAt(`/app/admin/plots/${PLOT_DETAIL.id}`);
+
+    expect(await screen.findByText('Carlos Contributor')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Carlos Contributor' })).not.toBeInTheDocument();
   });
 
   it('removes species after confirmation in confirm dialog', async () => {

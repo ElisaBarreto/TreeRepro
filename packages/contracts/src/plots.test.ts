@@ -109,11 +109,21 @@ describe('RFC-67 R1, R5 plot contracts', () => {
     const parsed = plotUserSchema.parse({
       id: userId,
       name: 'User 1',
-      email: 'user@example.com',
       status: 'active',
       restricted: true,
     });
     expect(parsed.restricted).toBe(true);
+  });
+
+  it('RFC-02 R14 plotUserSchema rejects an item that carries an e-mail address', () => {
+    const rejected = plotUserSchema.safeParse({
+      id: userId,
+      name: 'User 1',
+      email: 'user@example.com',
+      status: 'active',
+      restricted: true,
+    });
+    expect(rejected.success).toBe(false);
   });
 });
 
