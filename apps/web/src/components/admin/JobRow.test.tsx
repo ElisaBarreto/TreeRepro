@@ -111,8 +111,8 @@ describe('RFC-52 R1, R3 JobRow', () => {
   });
 
   it('shows the run error on a failed job', () => {
-    renderRow(run({ status: 'failed', error: 'connection refused' }));
+    renderRow(run({ status: 'failed', error: 'Error ECONNREFUSED' }));
     expect(screen.getByText('failed')).toBeInTheDocument();
-    expect(screen.getByText('connection refused')).toBeInTheDocument();
+    expect(screen.getByText('Error ECONNREFUSED')).toBeInTheDocument();
   });
 });

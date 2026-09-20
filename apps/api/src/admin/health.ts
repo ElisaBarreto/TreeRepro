@@ -80,7 +80,11 @@ interface ByDayRow {
   annotations: number;
 }
 
-/** The newest run of a kind as RFC-52 R1 reports it; `null` when the job never ran. */
+/**
+ * The newest run of a kind as RFC-52 R1 reports it; `null` when the job never
+ * ran. `error` is published as stored: it is a failure code, never a message,
+ * by `job_runs_error_check` (RFC-74 R1).
+ */
 function toJobRun(row: JobRunRow | null): JobRunSummary | null {
   if (row === null) return null;
   return {

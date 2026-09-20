@@ -9,10 +9,10 @@ import type { AppEnv } from './env.ts';
 import {
   AppError,
   createErrorHandler,
-  ERROR_SUMMARY_MAX,
   errorBody,
+  FAILURE_CODE_PATTERN,
+  failureCode,
   RateLimitedError,
-  safeErrorSummary,
   sanitizeError,
 } from './errors.ts';
 
@@ -160,7 +160,7 @@ describe('RFC-02 R7 sanitizeError reads the codes an unwrapped driver sets', () 
     const err = new DrizzleQueryError('insert into users values ($1)', ['secret-value'], cause);
     // Drizzle leaves `name` at the base class's 'Error': the class name is not
     // available to identify a query error by, which is why the guard in
-    // `safeErrorSummary` keys on the message's shape instead.
+    // `failureCode` cannot tell one from an ordinary error by name.
     expect(sanitizeError(err)).toMatchObject({ name: 'Error', message: 'boom', code: '23505' });
   });
 
@@ -170,39 +170,69 @@ describe('RFC-02 R7 sanitizeError reads the codes an unwrapped driver sets', () 
   });
 });
 
-describe('RFC-02 R7 safeErrorSummary', () => {
-  it('keeps the name, the code and the driver message of a query error, never the SQL or the params', () => {
+describe('RFC-74 R1 failureCode', () => {
+  it('keeps the name and the driver code of a query error, never the SQL, the params or the message', () => {
     const cause = Object.assign(new Error('boom'), { code: '23505' });
-    const summary = safeErrorSummary(
+    const code = failureCode(
       new DrizzleQueryError('insert into users values ($1)', ['secret-value'], cause),
     );
-    expect(summary).toBe('Error 23505: boom');
-    expect(summary).not.toContain('secret-value');
-    expect(summary).not.toContain('Failed query:');
+    expect(code).toBe('Error 23505');
+    expect(code).not.toContain('secret-value');
+    expect(code).not.toContain('boom');
   });
 
-  it('drops the message of a query error that carries no cause at all', () => {
-    // `sanitizeError` swaps in the cause's message; without a cause the raw
-    // two-line "Failed query: … params: …" would survive, and this is the one
-    // path that puts it in a durable column.
-    const err = new Error('Failed query: select * from users where email = $1\nparams: ada@x.org');
-    err.name = 'DrizzleQueryError';
-    const summary = safeErrorSummary(err);
-    expect(summary).toBe('DrizzleQueryError');
-    expect(summary).not.toContain('ada@x.org');
+  it('drops a driver message that quotes the offending literal', () => {
+    // Postgres 22P02 puts the bad value in its primary message; the SQLSTATE
+    // alone says what went wrong.
+    const cause = Object.assign(new Error('invalid input syntax for type uuid: "ada@x.org"'), {
+      code: '22P02',
+    });
+    const code = failureCode(new DrizzleQueryError('select 1', [], cause));
+    expect(code).toBe('Error 22P02');
+    expect(code).not.toContain('ada@x.org');
   });
 
-  it('keeps an ordinary message, and the SMTP response code when there is one', () => {
-    expect(safeErrorSummary(new Error('db down'))).toBe('Error: db down');
+  it('keeps the SMTP code and response code of a mail failure', () => {
     const smtp = Object.assign(new Error('Greeting never received'), {
       code: 'ETIMEDOUT',
       responseCode: 421,
     });
-    expect(safeErrorSummary(smtp)).toBe('Error ETIMEDOUT 421: Greeting never received');
+    expect(failureCode(smtp)).toBe('Error ETIMEDOUT 421');
   });
 
-  it('truncates, so one pathological message cannot fill a durable column', () => {
-    const summary = safeErrorSummary(new Error('x'.repeat(5_000)));
-    expect(summary).toHaveLength(ERROR_SUMMARY_MAX);
+  it('reduces an error with no code to its name', () => {
+    expect(failureCode(new Error('db down'))).toBe('Error');
+    expect(failureCode(new RangeError('too deep'))).toBe('RangeError');
+  });
+
+  it('keeps only token-shaped identifiers, so free text cannot ride in on a name or a code', () => {
+    const err = Object.assign(new Error('Failed query: select * from users where email = $1'), {
+      code: 'boom: ada@x.org',
+      responseCode: 4.5,
+    });
+    err.name = 'Failed query: select 1';
+    expect(failureCode(err)).toBe('Error');
+  });
+
+  it('FAILURE_CODE_PATTERN is the grammar of RFC-74 R1: one to three tokens, single spaces', () => {
+    for (const ok of ['Error', 'Error 23505', 'Error ETIMEDOUT 421', 'RangeError']) {
+      expect(ok).toMatch(FAILURE_CODE_PATTERN);
+    }
+    for (const bad of [
+      'Error  23505',
+      ' Error',
+      'Error ETIMEDOUT 421 extra',
+      'Error: db down',
+      '',
+      'x'.repeat(65),
+    ]) {
+      expect(bad).not.toMatch(FAILURE_CODE_PATTERN);
+    }
+  });
+
+  it('always fits the column pattern, whatever the error carries', () => {
+    const err = Object.assign(new Error('x'.repeat(5_000)), { code: 'E'.repeat(5_000) });
+    err.name = 'N'.repeat(5_000);
+    expect(failureCode(err)).toMatch(FAILURE_CODE_PATTERN);
   });
 });

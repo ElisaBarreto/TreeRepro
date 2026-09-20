@@ -654,7 +654,7 @@ async function seedAttempt(
       startedAt,
       status,
       detail,
-      ...(status === 'failed' ? { finishedAt: startedAt, error: 'Error: seeded' } : {}),
+      ...(status === 'failed' ? { finishedAt: startedAt, error: 'Error 42501' } : {}),
     })
     .returning({ id: jobRuns.id });
   if (!row) throw new Error('seedAttempt: no row');
@@ -1235,17 +1235,12 @@ describe('RFC-74 R2, R5 runDigest', () => {
       // The run this tick opened, read back whatever its status.
       const run = await latestRun(tx, 'digest');
       expect(run).toMatchObject({ kind: 'digest', status: 'failed' });
-      const stored = run?.error ?? '';
-      expect(stored).not.toContain(leaked);
-      expect(stored).not.toContain('Failed query:');
-      expect(stored).not.toContain('params:');
-      expect(stored).not.toContain('users');
-      // Safe, but not empty: the driver's SQLSTATE and its own one-line
-      // message are what the health page has to work with. (Drizzle does not
-      // set `name` on its query error, so the class name is not among them —
-      // `errors.test.ts` pins that.)
-      expect(stored).toContain('42501');
-      expect(stored).toContain('permission denied for function pgp_sym_decrypt');
+      // The failure's identifiers only — the class name and the SQLSTATE —
+      // never the message: neither the query with its bound values nor the
+      // driver's own line. (Drizzle leaves `name` at the base class's
+      // `Error`; `errors.test.ts` pins that.)
+      expect(run?.error).toBe('Error 42501');
+      expect(run?.error).not.toContain(leaked);
       expect(mailer.sent).toEqual([]);
     });
   });

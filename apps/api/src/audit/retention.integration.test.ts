@@ -115,16 +115,11 @@ describe('RFC-42 R4 purgeAudit records its own run', () => {
       expect(created).toHaveLength(1);
       expect(created[0]?.status).toBe('failed');
       // `job_runs.error` is durable, plaintext at rest and read straight back
-      // out by the health page of RFC-52, so a raw `error.message` would park
-      // the query and its bound values in front of every operator for a year.
-      const stored = created[0]?.error ?? '';
-      expect(stored).not.toContain(leaked);
-      expect(stored).not.toContain('Failed query:');
-      expect(stored).not.toContain('params:');
-      // Safe, but not empty: the SQLSTATE and the driver's own one-line
-      // message survive.
-      expect(stored).toContain('42501');
-      expect(stored).toContain('permission denied for function audit_log_purge');
+      // out by the health page of RFC-52, so it holds the failure's
+      // identifiers only: the class name and the SQLSTATE, never the message
+      // — neither the query with its bound values nor the driver's own line.
+      // (Drizzle leaves `name` at the base class's `Error`.)
+      expect(created[0]?.error).toBe('Error 42501');
     });
   });
 });
