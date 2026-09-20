@@ -193,8 +193,11 @@ describe('RFC-64 R12 importRecords --replace', () => {
     expect(a.status).toBe('completed');
     expect(b.status).toBe('completed');
     const batches = await t.db.select().from(importBatches);
-    // Whichever ran second is the survivor's peer; both ids still resolve.
-    expect(batches.map((x) => x.id)).toEqual(expect.arrayContaining([b.id]));
+    // The replacing run survives either order: if it went first the append
+    // added to it, and if it went second it deleted the append's batch. The
+    // appending run's row only survives the first order, so asserting on it
+    // would make this test depend on who won the lock.
+    expect(batches.map((x) => x.id)).toEqual(expect.arrayContaining([a.id]));
     expect(batches.every((x) => x.status === 'completed')).toBe(true);
   }, 60_000);
 
