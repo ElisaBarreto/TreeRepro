@@ -1,4 +1,5 @@
 import type { ErrorDetail } from '@treerepro/contracts';
+import type { z } from 'zod';
 
 /**
  * @rfc RFC-13 R1
@@ -33,13 +34,24 @@ export interface RequestOptions {
 /**
  * The only place in the web app that calls fetch. Same origin, cookies included,
  * every failure surfaces as ApiError.
+ *
+ * A successful answer is returned only as the given schema parses it: the
+ * result type is the schema's output, never a cast, so a fetcher cannot claim
+ * a shape the API does not send — and neither can a test fixture, which the
+ * same parse checks (issue #116). A request that has nothing to read still
+ * names what it expects — `dataEnvelopeSchema(okStatusSchema)`, the
+ * acknowledgement of RFC-22 R9 — and a 204 reaches the schema as `undefined`.
+ * A mismatch is an `ApiError` with code `RESPONSE_INVALID`, the response's
+ * own status, and the failing paths as `details`, the way the API reports a
+ * request that fails validation (RFC-11 R3).
  * @rfc RFC-13 R1
  * @rfc RFC-11 R2-R3
  */
-export async function apiFetch<T = unknown>(
+export async function apiFetch<Schema extends z.ZodType>(
   path: string,
+  schema: Schema,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<z.output<Schema>> {
   if (!path.startsWith('/')) throw new Error('apiFetch: path must start with /');
   const headers: Record<string, string> = { accept: 'application/json' };
   if (options.json !== undefined) headers['content-type'] = 'application/json';
@@ -57,8 +69,21 @@ export async function apiFetch<T = unknown>(
     throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the server', undefined, cause);
   }
 
-  if (response.status === 204) return undefined as T;
-  if (response.ok) return (await response.json()) as T;
+  if (response.ok) {
+    const body: unknown = response.status === 204 ? undefined : await response.json();
+    const parsed = schema.safeParse(body);
+    if (parsed.success) return parsed.data;
+    throw new ApiError(
+      response.status,
+      'RESPONSE_INVALID',
+      'Unexpected response from the server',
+      parsed.error.issues.map((issue) => ({
+        path: issue.path.map(String).join('.'),
+        message: issue.message,
+      })),
+      parsed.error,
+    );
+  }
 
   const body: unknown = await response.json().catch(() => null);
   // The envelope is read structurally: this module sits on main.tsx's synchronous

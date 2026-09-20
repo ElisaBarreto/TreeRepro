@@ -1,21 +1,28 @@
 import type { QueryClient } from '@tanstack/react-query';
-import type {
-  AcceptedState,
-  AnnotateRecordBody,
-  CreateRecordBody,
-  CreateRecordsResult,
-  DataEnvelope,
-  DisputedRecord,
-  MapPendingBody,
-  MapResult,
-  PendingGroup,
-  PendingTrait,
-  RecordDetail,
-  ResolveDoiResult,
-  SetAcceptedBody,
+import {
+  type AcceptedState,
+  type AnnotateRecordBody,
+  acceptedStateSchema,
+  type CreateRecordBody,
+  type CreateRecordsResult,
+  createRecordsResultSchema,
+  dataEnvelopeSchema,
+  disputedRecordSchema,
+  listEnvelopeSchema,
+  type MapPendingBody,
+  type MapResult,
+  mapResultSchema,
+  type PendingTrait,
+  pendingGroupSchema,
+  pendingTraitSchema,
+  type RecordDetail,
+  type ResolveDoiResult,
+  recordDetailSchema,
+  resolveDoiResultSchema,
+  type SetAcceptedBody,
 } from '@treerepro/contracts';
+import { z } from 'zod';
 import { apiFetch } from './client.ts';
-import type { Page } from './dataset.ts';
 import { withQuery } from './query.ts';
 
 /**
@@ -40,18 +47,25 @@ export const EXPORT_ACCEPTED_URL = '/api/export/accepted.csv';
 /** @rfc RFC-70 R1, R3 */
 export async function createRecords(body: CreateRecordBody): Promise<CreateRecordsResult> {
   return (
-    await apiFetch<DataEnvelope<CreateRecordsResult>>('/records', { method: 'POST', json: body })
+    await apiFetch('/records', dataEnvelopeSchema(createRecordsResultSchema), {
+      method: 'POST',
+      json: body,
+    })
   ).data;
 }
 /** @rfc RFC-80 R4 */
 export async function resolveDoi(doi: string): Promise<ResolveDoiResult> {
-  return (await apiFetch<DataEnvelope<ResolveDoiResult>>(withQuery('/references/resolve', { doi })))
-    .data;
+  return (
+    await apiFetch(
+      withQuery('/references/resolve', { doi }),
+      dataEnvelopeSchema(resolveDoiResultSchema),
+    )
+  ).data;
 }
 /** @rfc RFC-65 R3 */
 export async function annotateRecord(id: string, body: AnnotateRecordBody): Promise<RecordDetail> {
   return (
-    await apiFetch<DataEnvelope<RecordDetail>>(`/records/${id}/annotations`, {
+    await apiFetch(`/records/${id}/annotations`, dataEnvelopeSchema(recordDetailSchema), {
       method: 'POST',
       json: body,
     })
@@ -60,7 +74,10 @@ export async function annotateRecord(id: string, body: AnnotateRecordBody): Prom
 /** @rfc RFC-65 R6 */
 export async function fetchAccepted(speciesId: string, traitId: string): Promise<AcceptedState> {
   return (
-    await apiFetch<DataEnvelope<AcceptedState>>(`/species/${speciesId}/traits/${traitId}/accepted`)
+    await apiFetch(
+      `/species/${speciesId}/traits/${traitId}/accepted`,
+      dataEnvelopeSchema(acceptedStateSchema),
+    )
   ).data;
 }
 /** @rfc RFC-65 R6 */
@@ -70,32 +87,35 @@ export async function setAccepted(
   body: SetAcceptedBody,
 ): Promise<AcceptedState> {
   return (
-    await apiFetch<DataEnvelope<AcceptedState>>(
+    await apiFetch(
       `/species/${speciesId}/traits/${traitId}/accepted`,
-      {
-        method: 'PUT',
-        json: body,
-      },
+      dataEnvelopeSchema(acceptedStateSchema),
+      { method: 'PUT', json: body },
     )
   ).data;
 }
 /** @rfc RFC-65 R8 */
 export async function fetchPendingTraits(): Promise<PendingTrait[]> {
-  return (await apiFetch<DataEnvelope<PendingTrait[]>>('/records/pending/traits')).data;
+  return (
+    await apiFetch('/records/pending/traits', dataEnvelopeSchema(z.array(pendingTraitSchema)))
+  ).data;
 }
 /** @rfc RFC-65 R8 */
 export function fetchPendingGroups(params: { traitId: string; cursor?: string; limit?: number }) {
-  return apiFetch<Page<PendingGroup>>(withQuery('/records/pending', params));
+  return apiFetch(withQuery('/records/pending', params), listEnvelopeSchema(pendingGroupSchema));
 }
 /** @rfc RFC-65 R9 */
 export async function mapPending(body: MapPendingBody): Promise<MapResult> {
   return (
-    await apiFetch<DataEnvelope<MapResult>>('/records/pending/map', { method: 'POST', json: body })
+    await apiFetch('/records/pending/map', dataEnvelopeSchema(mapResultSchema), {
+      method: 'POST',
+      json: body,
+    })
   ).data;
 }
 /** `intent: 'contest'` narrows the queue to disputes a contest generated. @rfc RFC-65 R10 */
 export function fetchDisputed(params: { cursor?: string; limit?: number; intent?: 'contest' }) {
-  return apiFetch<Page<DisputedRecord>>(withQuery('/records/disputed', params));
+  return apiFetch(withQuery('/records/disputed', params), listEnvelopeSchema(disputedRecordSchema));
 }
 
 /**

@@ -202,9 +202,10 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
 
   // RFC-52's Open questions: neither `trait_records` nor `record_annotations`
   // has an index on `created_at`, so this statement and `byDayP` below scan
-  // both tables. Bounded by the sixty second cache entry and by the route
+  // both tables — about 3 ms each over the imported dataset when measured
+  // (issue #116). Bounded by the sixty second cache entry and by the route
   // being admin-only; the follow-up if that stops being enough is an index on
-  // each, which is a schema change.
+  // each, which is a schema change, and the RFC names when to re-measure.
   const activityP = started(
     db.execute(sql`
     select

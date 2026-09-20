@@ -1,16 +1,22 @@
 import type { QueryClient } from '@tanstack/react-query';
-import type {
-  ApproveProposalBody,
-  CreateProposalBody,
-  DataEnvelope,
-  Lookup,
-  Proposal,
-  ProposalStatus,
-  RejectProposalBody,
+import {
+  type ApproveProposalBody,
+  type CreateProposalBody,
+  dataEnvelopeSchema,
+  type Lookup,
+  listEnvelopeSchema,
+  lookupSchema,
+  type Proposal,
+  type ProposalStatus,
+  proposalSchema,
+  type RejectProposalBody,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
 import { withQuery } from './query.ts';
+
+const proposalEnvelope = dataEnvelopeSchema(proposalSchema);
+const proposalsPage = listEnvelopeSchema(proposalSchema);
 
 /**
  * Query keys of the proposal screens. The queue and the viewer's own list
@@ -27,9 +33,8 @@ export const proposalKeys = {
 
 /** @rfc RFC-75 R2 */
 export async function createProposal(body: CreateProposalBody): Promise<Proposal> {
-  return (
-    await apiFetch<DataEnvelope<Proposal>>('/species/proposals', { method: 'POST', json: body })
-  ).data;
+  return (await apiFetch('/species/proposals', proposalEnvelope, { method: 'POST', json: body }))
+    .data;
 }
 
 /** @rfc RFC-75 R3 */
@@ -38,7 +43,7 @@ export function fetchProposals(params: {
   cursor?: string;
   limit?: number;
 }): Promise<Page<Proposal>> {
-  return apiFetch<Page<Proposal>>(withQuery('/species/proposals', params));
+  return apiFetch(withQuery('/species/proposals', params), proposalsPage);
 }
 
 /** @rfc RFC-75 R5 */
@@ -46,13 +51,13 @@ export function fetchMyProposals(params: {
   cursor?: string;
   limit?: number;
 }): Promise<Page<Proposal>> {
-  return apiFetch<Page<Proposal>>(withQuery('/me/proposals', params));
+  return apiFetch(withQuery('/me/proposals', params), proposalsPage);
 }
 
 /** @rfc RFC-75 R4 */
 export async function approveProposal(id: string, body: ApproveProposalBody): Promise<Proposal> {
   return (
-    await apiFetch<DataEnvelope<Proposal>>(`/species/proposals/${id}/approve`, {
+    await apiFetch(`/species/proposals/${id}/approve`, proposalEnvelope, {
       method: 'POST',
       json: body,
     })
@@ -62,7 +67,7 @@ export async function approveProposal(id: string, body: ApproveProposalBody): Pr
 /** @rfc RFC-75 R4 */
 export async function rejectProposal(id: string, body: RejectProposalBody): Promise<Proposal> {
   return (
-    await apiFetch<DataEnvelope<Proposal>>(`/species/proposals/${id}/reject`, {
+    await apiFetch(`/species/proposals/${id}/reject`, proposalEnvelope, {
       method: 'POST',
       json: body,
     })
@@ -76,7 +81,8 @@ export async function rejectProposal(id: string, body: RejectProposalBody): Prom
  * @rfc RFC-81 R4
  */
 export async function matchTaxon(name: string): Promise<Lookup> {
-  return (await apiFetch<DataEnvelope<Lookup>>(withQuery('/taxonomy/match', { name }))).data;
+  return (await apiFetch(withQuery('/taxonomy/match', { name }), dataEnvelopeSchema(lookupSchema)))
+    .data;
 }
 
 /**

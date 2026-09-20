@@ -75,9 +75,31 @@ export const authUserSchema = z.strictObject({
   createdAt: z.iso.datetime(),
 });
 
+/**
+ * The signed-in member of the login response: what the password step and
+ * the TOTP step answer once a session exists.
+ * @rfc RFC-22 R3
+ * @rfc RFC-23 R6
+ */
+export const signedInSchema = z.strictObject({ status: z.literal('ok'), user: authUserSchema });
+
+/**
+ * Accepting an invitation also signs the user in, but answers the user
+ * alone — no `status`, unlike the login steps.
+ * @rfc RFC-20 R6
+ */
+export const inviteAcceptResponseSchema = z.strictObject({ user: authUserSchema });
+
+/**
+ * The one answer of `POST /api/auth/password/forgot`, whether or not the
+ * account exists — `sent`, not the `ok` of RFC-22 R9.
+ * @rfc RFC-21 R5
+ */
+export const forgotPasswordResponseSchema = z.strictObject({ status: z.literal('sent') });
+
 /** @rfc RFC-22 R3 */
 export const loginResponseSchema = z.union([
-  z.strictObject({ status: z.literal('ok'), user: authUserSchema }),
+  signedInSchema,
   z.strictObject({ status: z.literal('totp_required') }),
 ]);
 
@@ -125,6 +147,9 @@ export type ChangePasswordBody = z.infer<typeof changePasswordBodySchema>;
 export type TotpConfirmBody = z.infer<typeof totpConfirmBodySchema>;
 export type TotpDisableBody = z.infer<typeof totpDisableBodySchema>;
 export type AuthUser = z.infer<typeof authUserSchema>;
+export type SignedIn = z.infer<typeof signedInSchema>;
+export type InviteAcceptResponse = z.infer<typeof inviteAcceptResponseSchema>;
+export type ForgotPasswordResponse = z.infer<typeof forgotPasswordResponseSchema>;
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
 export type MeResponse = z.infer<typeof meResponseSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;

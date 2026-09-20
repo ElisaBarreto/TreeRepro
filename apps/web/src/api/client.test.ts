@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ZodError, z } from 'zod';
 import { ApiError, apiFetch } from './client.ts';
+
+const thing = z.strictObject({ data: z.strictObject({ id: z.string() }) });
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -15,10 +18,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('RFC-13 R1 apiFetch', () => {
   it('prefixes /api, sends cookies and a JSON body', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { data: { id: '1' } }));
-    const result = await apiFetch<{ data: { id: string } }>('/things', {
-      method: 'POST',
-      json: { a: 1 },
-    });
+    const result = await apiFetch('/things', thing, { method: 'POST', json: { a: 1 } });
     expect(result).toEqual({ data: { id: '1' } });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/things');
@@ -29,13 +29,46 @@ describe('RFC-13 R1 apiFetch', () => {
   });
 
   it('rejects paths that do not start with /', async () => {
-    await expect(apiFetch('things')).rejects.toThrow(/must start with \//);
+    await expect(apiFetch('things', z.unknown())).rejects.toThrow(/must start with \//);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns undefined for 204 responses', async () => {
+  it('hands a 204 to the schema as undefined', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
-    expect(await apiFetch('/things/1', { method: 'DELETE' })).toBeUndefined();
+    expect(await apiFetch('/things/1', z.undefined(), { method: 'DELETE' })).toBeUndefined();
+  });
+});
+
+describe('RFC-13 R1 response validation', () => {
+  it('returns the body parsed by the schema', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { data: { id: '1' } }));
+    await expect(apiFetch('/things/1', thing)).resolves.toEqual({ data: { id: '1' } });
+  });
+
+  it('rejects a body the schema refuses with RESPONSE_INVALID, the status and the failing paths', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { data: { id: 1, name: 'Ada' } }));
+    const error = (await apiFetch('/things/1', thing).catch((e: unknown) => e)) as ApiError;
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(200);
+    expect(error.code).toBe('RESPONSE_INVALID');
+    expect(error.message).toBe('Unexpected response from the server');
+    expect(error.details?.map((d) => d.path).sort()).toEqual(['data', 'data.id']);
+    expect(error.cause).toBeInstanceOf(ZodError);
+  });
+
+  it('rejects a 204 where the schema expects a body', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    const error = (await apiFetch('/things/1', thing).catch((e: unknown) => e)) as ApiError;
+    expect(error.code).toBe('RESPONSE_INVALID');
+    expect(error.status).toBe(204);
+  });
+
+  it('rejects a body where none was expected', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { data: { id: '1' } }));
+    const error = (await apiFetch('/things/1', z.undefined(), { method: 'DELETE' }).catch(
+      (e: unknown) => e,
+    )) as ApiError;
+    expect(error.code).toBe('RESPONSE_INVALID');
   });
 });
 
@@ -50,7 +83,7 @@ describe('RFC-11 R3 error envelope handling', () => {
         },
       }),
     );
-    const error = await apiFetch('/things').catch((e: unknown) => e);
+    const error = await apiFetch('/things', z.unknown()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     const apiError = error as ApiError;
     expect(apiError.status).toBe(400);
@@ -61,7 +94,7 @@ describe('RFC-11 R3 error envelope handling', () => {
 
   it('maps a non-envelope failure to UNKNOWN_ERROR with the status', async () => {
     fetchMock.mockResolvedValue(new Response('Bad Gateway', { status: 502 }));
-    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    const error = (await apiFetch('/things', z.unknown()).catch((e: unknown) => e)) as ApiError;
     expect(error.code).toBe('UNKNOWN_ERROR');
     expect(error.status).toBe(502);
   });
@@ -70,7 +103,7 @@ describe('RFC-11 R3 error envelope handling', () => {
     fetchMock.mockResolvedValue(
       jsonResponse(400, { error: { code: 'NEW_CODE', message: 'Something new' } }),
     );
-    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    const error = (await apiFetch('/things', z.unknown()).catch((e: unknown) => e)) as ApiError;
     expect(error.code).toBe('NEW_CODE');
     expect(error.message).toBe('Something new');
     expect(error.details).toBeUndefined();
@@ -78,7 +111,7 @@ describe('RFC-11 R3 error envelope handling', () => {
 
   it('maps a malformed envelope to UNKNOWN_ERROR', async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, { error: { code: 1 } }));
-    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    const error = (await apiFetch('/things', z.unknown()).catch((e: unknown) => e)) as ApiError;
     expect(error.code).toBe('UNKNOWN_ERROR');
     expect(error.status).toBe(400);
   });
@@ -93,13 +126,13 @@ describe('RFC-11 R3 error envelope handling', () => {
         },
       }),
     );
-    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    const error = (await apiFetch('/things', z.unknown()).catch((e: unknown) => e)) as ApiError;
     expect(error.details).toEqual([{ path: 'name', message: 'Required' }]);
   });
 
   it('maps a network failure to NETWORK_ERROR with status 0', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
-    const error = (await apiFetch('/things').catch((e: unknown) => e)) as ApiError;
+    const error = (await apiFetch('/things', z.unknown()).catch((e: unknown) => e)) as ApiError;
     expect(error.code).toBe('NETWORK_ERROR');
     expect(error.status).toBe(0);
   });
