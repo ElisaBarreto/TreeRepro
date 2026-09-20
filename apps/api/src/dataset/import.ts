@@ -486,25 +486,52 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
 
       // R6, R8 records
       const inserted = await tx`
-        with resolved as (
-          select s.row_no, sp.id as species_id, t.id as trait_id, t.value_type, s.value as value_text,
-            nullif(trim(s.original_value_clean), '') as raw_value,
-            nullif(trim(s.original_trait_name), '') as original_trait_name,
-            nullif(trim(s.original_species_name), '') as original_species_name,
-            nullif(trim(s.secondary_source_species_name), '') as secondary_source_species_name,
-            nullif(trim(s.broad_category), '') as raw_category,
+        with parts as (
+          -- R6: a categorical value containing ';' reports several states. Split it
+          -- into one row per part here, before the level match below, so each part is
+          -- harmonised on its own. Parts are trimmed and empty ones dropped; a value
+          -- whose parts are all empty falls back to a single '' (an empty record).
+          -- Quantitative values are never split.
+          select s.row_no, s.species_name, s.primary_key, s.secondary_key,
+            s.original_value_clean, s.original_trait_name, s.original_species_name,
+            s.secondary_source_species_name, s.broad_category,
+            t.id as trait_id, t.value_type, pv.value_text
+          from import_staging s
+          join traits t on t.key = s.trait_key
+          cross join lateral (
+            select case
+              when t.value_type = 'categorical' and position(';' in s.value) > 0
+                then coalesce(
+                  nullif(
+                    array(
+                      select btrim(x)
+                      from unnest(string_to_array(s.value, ';')) as x
+                      where btrim(x) <> ''
+                    ), '{}'),
+                  array['']::text[])
+              else array[s.value]
+            end as vals
+          ) split
+          cross join lateral unnest(split.vals) as pv(value_text)
+          where s.primary_key is not null or s.secondary_key is not null
+        ),
+        resolved as (
+          select p.row_no, sp.id as species_id, p.trait_id, p.value_type, p.value_text,
+            nullif(trim(p.original_value_clean), '') as raw_value,
+            nullif(trim(p.original_trait_name), '') as original_trait_name,
+            nullif(trim(p.original_species_name), '') as original_species_name,
+            nullif(trim(p.secondary_source_species_name), '') as secondary_source_species_name,
+            nullif(trim(p.broad_category), '') as raw_category,
             pr.id as primary_reference_id, sr.id as secondary_reference_id,
             lv.id as level_id,
-            case when t.value_type = 'quantitative' and length(s.value) <= ${NUMBER_MAX_LENGTH} and s.value ~ ${NUMBER_PATTERN_SQL}
-                 then (case when abs(s.value::numeric) < 1e308 then s.value::numeric end) end as numeric_value
-          from import_staging s
-          join species sp on sp.canonical_name = s.species_name
-          join traits t on t.key = s.trait_key
-          left join bibliographic_references pr on pr.citation_key = s.primary_key
-          left join bibliographic_references sr on sr.citation_key = s.secondary_key
-          left join trait_levels lv on lv.trait_id = t.id and t.value_type = 'categorical'
-                                   and lower(lv.key) = lower(s.value)
-          where s.primary_key is not null or s.secondary_key is not null
+            case when p.value_type = 'quantitative' and length(p.value_text) <= ${NUMBER_MAX_LENGTH} and p.value_text ~ ${NUMBER_PATTERN_SQL}
+                 then (case when abs(p.value_text::numeric) < 1e308 then p.value_text::numeric end) end as numeric_value
+          from parts p
+          join species sp on sp.canonical_name = p.species_name
+          left join bibliographic_references pr on pr.citation_key = p.primary_key
+          left join bibliographic_references sr on sr.citation_key = p.secondary_key
+          left join trait_levels lv on lv.trait_id = p.trait_id and p.value_type = 'categorical'
+                                   and lower(lv.key) = lower(p.value_text)
         )
         insert into trait_records (
           species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
@@ -513,7 +540,6 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
         select species_id, trait_id, level_id, numeric_value, value_text,
           case when value_text = '' then 'empty'
                when value_type = 'categorical' and level_id is not null then 'harmonised'
-               when value_type = 'categorical' and position(';' in value_text) > 0 then 'multi_value'
                when value_type = 'categorical' then 'unknown_level'
                when numeric_value is not null then 'harmonised'
                else 'not_numeric' end,
@@ -523,6 +549,11 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
         order by row_no
         on conflict on constraint trait_records_claim_key do nothing`;
 
+      // R8: `inserted` counts records, which R6 may multiply. A duplicate is a
+      // staged row that produced no record at all, so count distinct staged rows.
+      const [{ insertedRows }] = (await tx`
+        select count(distinct import_row_no)::int as "insertedRows" from trait_records
+        where import_batch_id = ${batch.id}`) as [{ insertedRows: number }];
       const [{ pending }] = (await tx`
         select count(*)::int as pending from trait_records
         where import_batch_id = ${batch.id} and harmonisation <> 'harmonised'`) as [
@@ -531,7 +562,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
       const unknownLevels = (await tx`
         select t.key as trait, r.value_text as value, count(*)::int as count
         from trait_records r join traits t on t.id = r.trait_id
-        where r.import_batch_id = ${batch.id} and r.harmonisation in ('unknown_level', 'multi_value')
+        where r.import_batch_id = ${batch.id} and r.harmonisation = 'unknown_level'
         group by t.key, r.value_text
         order by count desc, t.key, r.value_text
         limit 30`) as { trait: string; value: string; count: number }[];
@@ -545,7 +576,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
             finished_at = clock_timestamp(),
             rows_total = ${total},
             rows_inserted = ${inserted.count},
-            rows_duplicate = ${total - rejected.count - inserted.count},
+            rows_duplicate = ${total - rejected.count - insertedRows},
             rows_rejected = ${rejected.count},
             rows_pending = ${pending},
             unknown_levels = ${JSON.stringify(

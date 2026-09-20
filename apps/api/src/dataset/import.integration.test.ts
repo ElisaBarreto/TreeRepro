@@ -26,6 +26,14 @@ const FIXTURE = fileURLToPath(
 describe('RFC-64 importRecords', () => {
   const t = useTestDb();
 
+  async function recordsAt(batchId: string, rowNo: number) {
+    return t.db
+      .select()
+      .from(traitRecords)
+      .where(and(eq(traitRecords.importBatchId, batchId), eq(traitRecords.importRowNo, rowNo)))
+      .orderBy(traitRecords.valueText);
+  }
+
   async function recordAt(batchId: string, rowNo: number) {
     const [row] = await t.db
       .select()
@@ -40,10 +48,10 @@ describe('RFC-64 importRecords', () => {
       fileName: 'records-small.csv',
       status: 'completed',
       rowsTotal: 27,
-      rowsInserted: 22,
+      rowsInserted: 23,
       rowsDuplicate: 2,
       rowsRejected: 3,
-      rowsPending: 7,
+      rowsPending: 6,
       runBy: null,
       error: null,
     });
@@ -55,10 +63,7 @@ describe('RFC-64 importRecords', () => {
       new Date(batch.startedAt).getTime(),
     );
     expect(batch.unknownLevels).toEqual(
-      expect.arrayContaining([
-        { trait: 'pollinator_group', value: 'bees', count: 1 },
-        { trait: 'growth_form', value: 'shrub;tree', count: 1 },
-      ]),
+      expect.arrayContaining([{ trait: 'pollinator_group', value: 'bees', count: 1 }]),
     );
 
     // R5 taxonomy
@@ -129,7 +134,21 @@ describe('RFC-64 importRecords', () => {
       harmonisation: 'unknown_level',
       levelId: null,
     });
-    expect(await recordAt(batch.id, 4)).toMatchObject({ harmonisation: 'multi_value' });
+    // R6 a categorical value containing ';' reports several states: one record per part,
+    // each harmonised on its own, both keeping the staged row's raw_value.
+    const split = await recordsAt(batch.id, 4);
+    expect(split).toHaveLength(2);
+    expect(split[0]).toMatchObject({
+      harmonisation: 'harmonised',
+      valueText: 'shrub',
+      rawValue: 'shrub/tree',
+    });
+    expect(split[1]).toMatchObject({
+      harmonisation: 'harmonised',
+      valueText: 'tree',
+      rawValue: 'shrub/tree',
+    });
+    expect(split[0]?.levelId).not.toBe(split[1]?.levelId);
     expect(await recordAt(batch.id, 5)).toMatchObject({
       harmonisation: 'not_numeric',
       numericValue: null,
@@ -208,9 +227,9 @@ describe('RFC-64 importRecords', () => {
     // R10 report
     const report = await batchReport(t.db, batch.id);
     expect(report.harmonisation).toEqual({
-      harmonised: 15,
+      harmonised: 17,
       unknown_level: 1,
-      multi_value: 1,
+      multi_value: 0,
       not_numeric: 4,
       empty: 1,
     });
