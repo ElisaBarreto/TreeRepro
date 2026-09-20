@@ -20,7 +20,13 @@ describe('RFC-68 R14 parseCsv', () => {
     expect(rows).toEqual([{ a: '1', b: 'x, y' }]);
   });
 
-  it('refuses an unterminated quoted field rather than mis-parsing', () => {
+  it('keeps a newline inside a quoted field in that field (RFC 4180)', () => {
+    // A full citation is exactly the kind of value that carries one.
+    const rows = parseCsv('a,b\n1,"line one\nline two"\n');
+    expect(rows).toEqual([{ a: '1', b: 'line one\nline two' }]);
+  });
+
+  it('refuses a file whose quotes never close rather than mis-parsing', () => {
     expect(() => parseCsv('a,b\n1,"x\n')).toThrow(/unterminated/i);
   });
 
@@ -52,7 +58,9 @@ describe('RFC-68 R14 preparePlotSpecies', () => {
     ]);
     const out = preparePlotSpecies(parseCsv(csv));
     expect(out.rows).toEqual([['ABU-01', 'Yus yus']]);
-    expect(out.anomalies.some((a) => a.kind === 'malformed_plot_code')).toBe(true);
+    const bad = out.anomalies.filter((a) => a.kind === 'malformed_plot_code');
+    expect(bad).toHaveLength(1);
+    expect(bad[0]?.detail).toMatch(/^row 2:/);
   });
 });
 
@@ -81,9 +89,11 @@ describe('RFC-68 R14 prepareSynonyms', () => {
       ['ABU-03', 'Clara nomen', '', '', 'Species three', '', '', '', ''],
     ]);
     const out = prepareSynonyms(parseCsv(csv));
-    const a = out.anomalies.find((x) => x.kind === 'ambiguous_local_name');
-    expect(a?.detail).toContain('Ambigua nomen');
-    // Writing either pair would assert a mapping the data does not support.
+    const amb = out.anomalies.filter((x) => x.kind === 'ambiguous_local_name');
+    expect(amb.some((x) => x.detail.includes('Ambigua nomen'))).toBe(true);
+    // Writing either pair would assert a mapping the data does not support,
+    // and R14 requires each dropped pair to be listed, not just the name.
+    expect(amb.filter((x) => x.detail.startsWith('dropped'))).toHaveLength(2);
     expect(out.rows.map((r) => r[1])).toEqual(['Clara nomen']);
   });
 

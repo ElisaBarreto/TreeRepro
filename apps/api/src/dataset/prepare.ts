@@ -43,26 +43,32 @@ function trimOnly(value: string | undefined): string {
 /**
  * Reads a whole CSV into records keyed by header name. The repository has no
  * CSV parser by design — Postgres parses the bulk files through COPY — but
- * these three exports are small and have to be reshaped before any database
- * sees them. None of them puts a newline inside a quoted field, so splitting
- * on newlines and reusing `parseCsvLine` is sound; a line whose quotes do not
- * close is refused rather than silently mis-parsed into the wrong columns.
+ * these exports are small and must be reshaped before any database sees them.
+ * Records are assembled by quote parity, so a newline inside a quoted field
+ * stays in that field: RFC 4180 allows it, and a citation is exactly where one
+ * would turn up. `parseCsvLine` then splits the completed record. A file whose
+ * quotes never close is refused rather than mis-parsed into the wrong columns.
  * @rfc RFC-68 R14
  */
 export function parseCsv(text: string): Record<string, string>[] {
-  const lines = text
-    .replace(/^﻿/, '')
-    .split('\n')
-    .map((l) => l.replace(/\r$/, ''))
-    .filter((l) => l.length > 0);
-  const [head, ...rest] = lines;
+  const records: string[] = [];
+  let buffer = '';
+  for (const raw of text.replace(/^\uFEFF/, '').split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    buffer = buffer === '' ? line : `${buffer}\n${line}`;
+    // Escaped quotes come in pairs, so a complete record has an even count; an
+    // odd one means the field is still open and the newline belongs inside it.
+    if ((buffer.match(/"/g)?.length ?? 0) % 2 === 0) {
+      records.push(buffer);
+      buffer = '';
+    }
+  }
+  if (buffer !== '') throw new Error('Unterminated quoted field at end of file');
+  const [head, ...rest] = records.filter((r) => r.length > 0);
   if (!head) return [];
   const columns = parseCsvLine(head).map((c) => c.trim());
-  return rest.map((line, i) => {
-    if ((line.match(/"/g)?.length ?? 0) % 2 !== 0) {
-      throw new Error(`Unterminated quoted field on line ${i + 2}`);
-    }
-    const cells = parseCsvLine(line);
+  return rest.map((record) => {
+    const cells = parseCsvLine(record);
     const row: Record<string, string> = {};
     columns.forEach((name, j) => {
       row[name] = cells[j] ?? '';
@@ -145,9 +151,11 @@ export function preparePlotSpecies(rows: Record<string, string>[]): Prepared {
     }
     // The same check `preparePlots` applies: a pair naming a plot that will not
     // be in plots.import.csv could only reject as unknown_plot.
+    // One entry per dropped row, not per distinct code: R14 promises every
+    // dropped row is listed, and rows cannot be recovered from a summary.
     const bad = checkPlotCode(plot);
     if (bad) {
-      if (!anomalies.some((a) => a.detail === bad.detail)) anomalies.push(bad);
+      anomalies.push({ kind: bad.kind, detail: `row ${i + 2}: ${bad.detail}` });
       return;
     }
     pairs.add(`${plot}\u0000${species}`);
@@ -201,8 +209,13 @@ export function prepareSynonyms(rows: Record<string, string>[]): Prepared {
     }
   }
   for (const pair of [...pairs]) {
-    const local = pair.split('\u0000')[1] ?? '';
-    if (ambiguous.has(local)) pairs.delete(pair);
+    const [accepted, local] = pair.split('\u0000') as [string, string];
+    if (!ambiguous.has(local)) continue;
+    pairs.delete(pair);
+    anomalies.push({
+      kind: 'ambiguous_local_name',
+      detail: `dropped ${local} -> ${accepted}: the name is ambiguous`,
+    });
   }
   return {
     header: ['wcvp_canonical_name', 'synonym_or_common_name', 'name_type', 'source'],
@@ -226,18 +239,22 @@ export function preparePlots(
 ): Prepared {
   const anomalies: Anomaly[] = [];
   const codes = new Set<string>();
-  const consider = (raw: string) => {
+  const consider = (raw: string, where: string) => {
     const code = norm(raw);
     if (!code) return;
     const bad = checkPlotCode(code);
     if (bad) {
-      if (!anomalies.some((a) => a.detail === bad.detail)) anomalies.push(bad);
+      anomalies.push({ kind: bad.kind, detail: `${where}: ${bad.detail}` });
       return;
     }
     codes.add(code);
   };
-  for (const r of speciesRows) consider(r['plot.id'] ?? '');
-  for (const r of piRows) for (const c of (r.PlotCode ?? '').split('|')) consider(c);
+  speciesRows.forEach((r, i) => {
+    consider(r['plot.id'] ?? '', `Species_per_plot row ${i + 2}`);
+  });
+  piRows.forEach((r, i) => {
+    for (const c of (r.PlotCode ?? '').split('|')) consider(c, `PIs_per_plot row ${i + 2}`);
+  });
   return {
     header: ['plot_id', 'name', 'description', 'latitude', 'longitude', 'country', 'biome'],
     rows: [...codes].sort().map((c) => [c, c, '', '', '', '', '']),

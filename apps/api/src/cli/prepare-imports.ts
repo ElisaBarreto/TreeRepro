@@ -48,7 +48,9 @@ async function read(name: string): Promise<Record<string, string>[]> {
 }
 
 function toCsv(p: Prepared): string {
-  const quote = (cell: string) => (/[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell);
+  // A field holding CR or LF must be quoted, or a reader takes it as a record
+  // boundary — `parseCsv` can carry a carriage return through from the source.
+  const quote = (cell: string) => (/[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell);
   return [p.header, ...p.rows]
     .map((row) => row.map(quote).join(','))
     .join('\n')
@@ -87,8 +89,17 @@ try {
     `${RECORDS}: header ${matches ? 'matches RFC-64 R2 — import it as it is' : 'DOES NOT match RFC-64 R2'}\n`,
   );
   if (!matches) exitCode = 1;
-} catch {
-  process.stdout.write(`${RECORDS}: not found in ${source} — skipped\n`);
+} catch (err) {
+  // R14 treats the records file as report-only and does not require it to
+  // exist, so a missing file is fine. Anything else — an unreadable file, or
+  // `readFirstLine` refusing a first line beyond its limit — is a real failure
+  // and must not be reported as "not found" with a success exit code.
+  if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+    process.stdout.write(`${RECORDS}: not found in ${source} — skipped\n`);
+  } else {
+    process.stderr.write(`${RECORDS}: could not be read — ${(err as Error).message}\n`);
+    exitCode = 1;
+  }
 }
 
 const speciesRows = await read(SPECIES_PER_PLOT);
