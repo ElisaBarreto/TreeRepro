@@ -74,14 +74,27 @@ describe('RFC-68 R14 prepareSynonyms', () => {
     ]);
   });
 
-  it('flags a local name resolving to more than one WCVP name', () => {
+  it('flags a local name resolving to more than one WCVP name and emits neither pair', () => {
     const csv = speciesPerPlot([
       ['ABU-01', 'Ambigua nomen', '', '', 'Species one', '', '', '', ''],
       ['ABU-02', 'Ambigua nomen', '', '', 'Species two', '', '', '', ''],
+      ['ABU-03', 'Clara nomen', '', '', 'Species three', '', '', '', ''],
     ]);
     const out = prepareSynonyms(parseCsv(csv));
     const a = out.anomalies.find((x) => x.kind === 'ambiguous_local_name');
     expect(a?.detail).toContain('Ambigua nomen');
+    // Writing either pair would assert a mapping the data does not support.
+    expect(out.rows.map((r) => r[1])).toEqual(['Clara nomen']);
+  });
+
+  it('reports a blank required field instead of skipping the row in silence', () => {
+    const csv = speciesPerPlot([
+      ['ABU-01', '', '', '', 'Species one', '', '', '', ''],
+      ['ABU-02', 'Local name', '', '', '', '', '', '', ''],
+    ]);
+    const out = prepareSynonyms(parseCsv(csv));
+    expect(out.anomalies.filter((x) => x.kind === 'blank_field')).toHaveLength(2);
+    expect(out.rows).toEqual([]);
   });
 });
 
@@ -171,5 +184,20 @@ describe('RFC-68 R14 decodeExcelSerial', () => {
   it('decodes with the 1899-12-30 epoch', () => {
     expect(decodeExcelSerial(37226)).toBe('2001-12-01');
     expect(decodeExcelSerial(37135)).toBe('2001-09-01');
+  });
+
+  it('returns null rather than throwing on a value outside the date range', () => {
+    // 1e11 days past 1899 is far outside what Date can represent, and unlike
+    // a larger literal it is still an exact Number.
+    expect(decodeExcelSerial(100_000_000_000)).toBeNull();
+  });
+});
+
+describe('RFC-68 R14 preparePlots, out-of-range codes', () => {
+  it('classifies an undecodable digit-only code as malformed, without crashing the run', () => {
+    const pis = parseCsv('FirstName,LastName,WorkEmail,PlotCode\nA,B,a@b.c,100000000000\n');
+    const out = preparePlots([], pis);
+    expect(out.anomalies.some((a) => a.kind === 'malformed_plot_code')).toBe(true);
+    expect(out.rows).toEqual([]);
   });
 });

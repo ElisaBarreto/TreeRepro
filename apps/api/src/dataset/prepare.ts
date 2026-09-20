@@ -71,9 +71,16 @@ export function parseCsv(text: string): Record<string, string>[] {
   });
 }
 
-/** Excel's serial epoch is 1899-12-30. @rfc RFC-68 R14 */
-export function decodeExcelSerial(serial: number): string {
+/**
+ * Excel's serial epoch is 1899-12-30. Null when the serial is outside the
+ * range `Date` can represent: a digit-only cell need not be a plausible
+ * serial, and `toISOString` throws on an invalid date, which would end the
+ * whole run instead of reporting one anomalous code.
+ * @rfc RFC-68 R14
+ */
+export function decodeExcelSerial(serial: number): string | null {
   const ms = Date.UTC(1899, 11, 30) + serial * 86_400_000;
+  if (!Number.isFinite(ms) || Number.isNaN(new Date(ms).getTime())) return null;
   return new Date(ms).toISOString().slice(0, 10);
 }
 
@@ -92,6 +99,12 @@ function checkPlotCode(code: string): Anomaly | null {
   if (PLOT_CODE.test(code)) return null;
   if (/^[0-9]+$/.test(code)) {
     const date = decodeExcelSerial(Number(code));
+    if (date === null) {
+      return {
+        kind: 'malformed_plot_code',
+        detail: `${code} is digits only but decodes to no plausible date`,
+      };
+    }
     const [y, m] = date.split('-');
     const month = [
       '',
@@ -156,10 +169,16 @@ export function prepareSynonyms(rows: Record<string, string>[]): Prepared {
   const anomalies: Anomaly[] = [];
   const pairs = new Set<string>();
   const resolvesTo = new Map<string, Set<string>>();
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const local = norm(r['species.cor']);
     const accepted = norm(r.wcvp_species);
-    if (!local || !accepted) continue;
+    if (!local || !accepted) {
+      anomalies.push({
+        kind: 'blank_field',
+        detail: `row ${i + 2}: ${!local ? 'species.cor' : 'wcvp_species'} is blank`,
+      });
+      return;
+    }
     let seen = resolvesTo.get(local);
     if (!seen) {
       seen = new Set();
@@ -167,14 +186,23 @@ export function prepareSynonyms(rows: Record<string, string>[]): Prepared {
     }
     seen.add(accepted);
     if (local !== accepted) pairs.add(`${accepted}\u0000${local}`);
-  }
+  });
+  // An ambiguous local name loses every one of its pairs, not just the second:
+  // emitting either would assert a mapping the data does not support, and the
+  // command promises a file without the rows it reported.
+  const ambiguous = new Set<string>();
   for (const [local, accepted] of resolvesTo) {
     if (accepted.size > 1) {
+      ambiguous.add(local);
       anomalies.push({
         kind: 'ambiguous_local_name',
         detail: `${local} resolves to ${[...accepted].sort().join(', ')}`,
       });
     }
+  }
+  for (const pair of [...pairs]) {
+    const local = pair.split('\u0000')[1] ?? '';
+    if (ambiguous.has(local)) pairs.delete(pair);
   }
   return {
     header: ['wcvp_canonical_name', 'synonym_or_common_name', 'name_type', 'source'],

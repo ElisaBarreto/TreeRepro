@@ -55,14 +55,26 @@ function toCsv(p: Prepared): string {
     .concat('\n');
 }
 
-function report(name: string, anomalies: Anomaly[]): void {
+/**
+ * `full` prints every detail. RFC-68 R14 promises that `--skip-anomalies`
+ * lists every dropped row, so the operator can account for each one; the
+ * preview is only for the refusal case, where nothing has been dropped yet
+ * and the point is to show what is wrong.
+ * @rfc RFC-68 R14
+ */
+function report(name: string, anomalies: Anomaly[], full: boolean): void {
   if (anomalies.length === 0) return;
   const byKind = new Map<string, Anomaly[]>();
   for (const a of anomalies) byKind.set(a.kind, [...(byKind.get(a.kind) ?? []), a]);
   for (const [kind, list] of byKind) {
     process.stderr.write(`  ${name}: ${list.length} ${kind}\n`);
-    for (const a of list.slice(0, 10)) process.stderr.write(`      ${a.detail}\n`);
-    if (list.length > 10) process.stderr.write(`      … and ${list.length - 10} more\n`);
+    const shown = full ? list : list.slice(0, 10);
+    for (const a of shown) process.stderr.write(`      ${a.detail}\n`);
+    if (!full && list.length > shown.length) {
+      process.stderr.write(
+        `      … and ${list.length - shown.length} more; --skip-anomalies lists them all\n`,
+      );
+    }
   }
 }
 
@@ -93,7 +105,7 @@ const outputs: [string, Prepared][] = [
 for (const [name, prepared] of outputs) {
   if (prepared.anomalies.length > 0) {
     process.stderr.write(`anomalies in ${name}:\n`);
-    report(name, prepared.anomalies);
+    report(name, prepared.anomalies, values['skip-anomalies']);
     if (!values['skip-anomalies']) {
       process.stderr.write(
         `  not written; re-run with --skip-anomalies to write it without those rows\n`,
