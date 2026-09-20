@@ -1,3 +1,6 @@
+import { sql } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
 
 /** @rfc RFC-66 R2 */
@@ -59,6 +62,13 @@ interface ExportRow {
 
 const BATCH = 500;
 
+// Renders the drizzle `sql` template below to text plus positional parameters.
+// The dataset reads share one home for the visibility predicates
+// (`speciesVisible`, `traitVisible`: RFC-33 R2), and those are drizzle
+// fragments; the streaming cursor, on the other hand, is postgres.js's. So the
+// query is written with drizzle and handed to postgres.js already rendered.
+const dialect = new PgDialect();
+
 /**
  * The current accepted value per species and trait as a CSV stream: a
  * postgres.js cursor feeds a `ReadableStream` batch by batch, so the file is
@@ -66,11 +76,16 @@ const BATCH = 500;
  * `batch` is injectable so tests can force several small batches instead of
  * one that swallows every row.
  * @rfc RFC-66 R2, R3, R4, R5
+ * @rfc RFC-33 R2, R3
  */
-export function acceptedCsv(db: Db, options: { batch?: number } = {}): ReadableStream<Uint8Array> {
+export function acceptedCsv(
+  db: Db,
+  visibility: Visibility,
+  options: { batch?: number } = {},
+): ReadableStream<Uint8Array> {
   const client = db.$client;
   const encoder = new TextEncoder();
-  const cursor = client<ExportRow[]>`
+  const query = dialect.sqlToQuery(sql`
     with current as (
       select distinct on (a.species_id, a.trait_id)
         a.species_id, a.trait_id, a.record_id, a.decision, a.created_at
@@ -93,9 +108,15 @@ export function acceptedCsv(db: Db, options: { batch?: number } = {}): ReadableS
     left join bibliographic_references pr on pr.id = r.primary_reference_id
     left join bibliographic_references sr on sr.id = r.secondary_reference_id
     where cur.decision = 'accepted'
-    order by f.name nulls last, g.name nulls last, s.canonical_name, t.key`.cursor(
-    options.batch ?? BATCH,
-  );
+      and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
+      and ${traitVisible(visibility, sql`t.active`)}
+    order by f.name nulls last, g.name nulls last, s.canonical_name, t.key`);
+  // `unsafe` only in postgres.js's sense of "text I did not template": the
+  // text is the constant above with `$n` placeholders, and every value —
+  // the viewer's plot ids — travels as a bound parameter.
+  const cursor = client
+    .unsafe<ExportRow[]>(query.sql, query.params as Parameters<typeof client.unsafe>[1])
+    .cursor(options.batch ?? BATCH);
   const batches = cursor[Symbol.asyncIterator]();
   // postgres.js's cursor iterator implements `return()` as "resolve the
   // previous batch's continuation with CLOSE"; `next()` consumes that

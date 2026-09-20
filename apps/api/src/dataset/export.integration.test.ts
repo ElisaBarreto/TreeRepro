@@ -8,6 +8,7 @@ import {
   createTrait,
 } from '../../test/helpers/dataset.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { createDb } from '../db/client.ts';
 import { acceptedCsv } from './export.ts';
 
@@ -53,7 +54,7 @@ describe('RFC-66 acceptedCsv connection safety', () => {
       });
     }
 
-    const reader = acceptedCsv(db, { batch: 2 }).getReader();
+    const reader = acceptedCsv(db, UNRESTRICTED, { batch: 2 }).getReader();
     await reader.read();
     // Do not await this read before cancelling: it races the in-flight batch
     // fetch that `reader.cancel()` must wait for (RFC-66; the CRITICAL finding).
