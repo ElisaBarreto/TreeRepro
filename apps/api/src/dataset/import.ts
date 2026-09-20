@@ -27,7 +27,7 @@ import {
   isUuid,
   pageOf,
 } from '../http/cursor.ts';
-import { resetDataset } from './reset.ts';
+import { isReplaceAllowed, resetDataset } from './reset.ts';
 
 /** The 15 columns of the compiled dataset, in file order. @rfc RFC-64 R2 */
 export const IMPORT_COLUMNS = [
@@ -83,11 +83,15 @@ export function describeError(err: unknown): string {
 
 /** Why an import did not start. @rfc RFC-64 R2, R3 */
 export class ImportRefusedError extends Error {
-  readonly reason: 'dictionary_empty' | 'header_mismatch' | 'already_imported';
+  readonly reason:
+    | 'dictionary_empty'
+    | 'header_mismatch'
+    | 'already_imported'
+    | 'replace_not_allowed';
   readonly batchId: string | undefined;
 
   constructor(
-    reason: 'dictionary_empty' | 'header_mismatch' | 'already_imported',
+    reason: 'dictionary_empty' | 'header_mismatch' | 'already_imported' | 'replace_not_allowed',
     message: string,
     batchId?: string,
   ) {
@@ -330,10 +334,19 @@ export interface ImportInput {
 }
 
 /**
+ * R13's session advisory lock. Arbitrary but fixed: two runs only exclude each
+ * other if they agree on the number.
+ * @rfc RFC-64 R13
+ */
+const IMPORT_LOCK_KEY = 4664;
+
+/**
  * Streams the CSV into a temporary table with COPY, then resolves names,
  * harmonises values and inserts records with set-based SQL in one
  * transaction. See RFC-64 for every rule; the SQL follows its order.
  * @rfc RFC-64 R2-R9
+ * @rfc RFC-64 R12
+ * @rfc RFC-64 R13
  */
 export async function importRecords(db: Db, input: ImportInput): Promise<ImportBatch> {
   const [dictionary] = await db.select({ n: count() }).from(traits);
@@ -343,8 +356,35 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
       'The trait dictionary is empty; run seed:traits first',
     );
   }
+  // R12: the CLI checks this too, for an early message, but the refusal has to
+  // live here — `importRecords` is exported, and reaching `resetDataset`
+  // through any other caller would empty the dataset just the same.
+  if (input.replace && !isReplaceAllowed(process.env.NODE_ENV ?? 'development')) {
+    throw new ImportRefusedError(
+      'replace_not_allowed',
+      'A replacing import is not available in production',
+    );
+  }
   validateHeader(await readFirstLine(input.filePath));
   const fileSha256 = await sha256File(input.filePath);
+  // R13: one import at a time, on a connection of its own so the unlock runs
+  // where the lock was taken — which means the pool must allow at least two. It is held from before the batch row exists
+  // until its status is final, so a replacing run (R12) can never delete the
+  // batch of an import that is still going.
+  const lock = await db.$client.reserve();
+  try {
+    await lock`select pg_advisory_lock(${IMPORT_LOCK_KEY})`;
+    return await runImport(db, input, fileSha256);
+  } finally {
+    await lock`select pg_advisory_unlock(${IMPORT_LOCK_KEY})`;
+    lock.release();
+  }
+}
+
+/** The body of {@link importRecords}, run while R13's lock is held. */
+async function runImport(db: Db, input: ImportInput, fileSha256: string): Promise<ImportBatch> {
+  // Inside R13's lock: two runs of the same file would otherwise both pass
+  // this check before either had written its batch row.
   if (!input.force && !input.replace) {
     const [done] = await db
       .select({ id: importBatches.id })
@@ -429,7 +469,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
           trait_key = nullif(trim(final_standard_trait), ''),
           primary_key = nullif(trim(primary_reference), ''),
           secondary_key = nullif(trim(secondary_reference), ''),
-          value = trim(coalesce(harmonised_value, ''))`;
+          value = regexp_replace(trim(coalesce(harmonised_value, '')), '\\s+', ' ', 'g')`;
       await tx`create index on import_staging (species_name)`;
       await tx`create index on import_staging (trait_key)`;
       // autovacuum ignores temp tables, so the planner never sees updated

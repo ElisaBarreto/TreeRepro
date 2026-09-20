@@ -30,6 +30,7 @@ describe('RFC-64 R12 importRecords --replace', () => {
   const DB_NAME = 'treerepro_reset_test';
   let handle: { db: Db; close: () => Promise<void> } | undefined;
   let admin: { db: Db; close: () => Promise<void> } | undefined;
+  let dbUrl = '';
   const t = { db: undefined as unknown as Db };
 
   beforeAll(async () => {
@@ -40,7 +41,8 @@ describe('RFC-64 R12 importRecords --replace', () => {
     const url = new URL(superuser);
     url.pathname = `/${DB_NAME}`;
     await runMigrations(url.toString());
-    handle = createDb(url.toString(), { max: 1 });
+    dbUrl = url.toString();
+    handle = createDb(dbUrl, { max: 2 }); // R13 reserves one for the lock
     // RFC-62 R2: the importer refuses outright without a dictionary.
     await seedDictionary(handle.db);
     t.db = handle.db;
@@ -153,6 +155,48 @@ describe('RFC-64 R12 importRecords --replace', () => {
     expect(byId.get(baseline.id)).toBe('replace');
     expect(byId.get(appended.id)).toBe('append');
   });
+
+  it('R12 refuses a replacing import at the boundary, not only in the CLI', async () => {
+    // `importRecords` is exported; a caller that is not the CLI must not be
+    // able to reach the wipe in production.
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await expect(importRecords(t.db, { filePath: FIXTURE, replace: true })).rejects.toMatchObject(
+        { name: 'ImportRefusedError', reason: 'replace_not_allowed' },
+      );
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+    // Refused before anything was written: the dataset is still there.
+    expect((await counts()).records).toBeGreaterThan(0);
+  });
+
+  it('R13 serialises concurrent imports so neither loses its batch', async () => {
+    await importRecords(t.db, { filePath: FIXTURE, replace: true });
+    // Without the lock a replacing run deletes the other run's batch row while
+    // it is still going, and that run ends with 'batch vanished'.
+    // Two CLI runs are two processes with two pools. Sharing one pool here
+    // would deadlock on connections, not on the lock: each run reserves one
+    // connection for R13 and needs another for its own work.
+    const other = createDb(dbUrl, { max: 2 });
+    let a: Awaited<ReturnType<typeof importRecords>>;
+    let b: Awaited<ReturnType<typeof importRecords>>;
+    try {
+      [a, b] = await Promise.all([
+        importRecords(t.db, { filePath: FIXTURE, replace: true }),
+        importRecords(other.db, { filePath: FIXTURE, force: true }),
+      ]);
+    } finally {
+      await other.close();
+    }
+    expect(a.status).toBe('completed');
+    expect(b.status).toBe('completed');
+    const batches = await t.db.select().from(importBatches);
+    // Whichever ran second is the survivor's peer; both ids still resolve.
+    expect(batches.map((x) => x.id)).toEqual(expect.arrayContaining([b.id]));
+    expect(batches.every((x) => x.status === 'completed')).toBe(true);
+  }, 60_000);
 
   it('refuses in production only', () => {
     expect(isReplaceAllowed('production')).toBe(false);
