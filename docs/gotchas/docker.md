@@ -75,6 +75,20 @@
 **Cause:** `api`'s `/tmp` is a `tmpfs` mount (`read_only: true`, `tmpfs: [/tmp]`, RFC-02 R11). `docker compose cp` writes through the container's *image* filesystem layer via the Docker API, not through a live process inside the container; on a path that is actually a separate `tmpfs` mount, the copy either errors or (depending on the Compose/Docker version) reports success while writing nowhere the running container can see.
 **Fix:** Stream the file into the container through a live process instead, which writes directly into the mounted tmpfs: `docker compose exec -T api sh -c 'cat > /tmp/sample_data.csv' < ./docs/exemplos/sample_data.csv` (small files only — the tmpfs is memory-backed and finite). For anything larger, or in production, bind-mount the host directory that holds the file read-only and point the CLI at that path instead of copying into the container at all (`docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-records.js --file /imports/sample_data.csv`).
 
+## Reaching Postgres or Redis from another machine
+**Symptom:** `psql -h <laptop LAN address> -p 5432` or a Redis GUI on another machine gets `connection refused` against the dev stack, while the same client works with `-h 127.0.0.1` on the laptop itself.
+**Cause:** `compose.dev.yml` publishes Postgres and Redis on the loopback only (`127.0.0.1:5432:5432`, `127.0.0.1:6379:6379`), the same way it publishes the API and Mailpit. The passwords are random and Postgres enforces SCRAM, but a development database may hold real PII imported from a CSV, and a port open on `0.0.0.0` offers the service to whichever network the laptop is on (issue #119). Production publishes neither port.
+**Fix:** Open the port on purpose, per machine, never in the committed files. Create a gitignored `compose.local.yml` and append it to `COMPOSE_FILE` in `.env` (`COMPOSE_FILE=compose.yml:compose.dev.yml:compose.local.yml`):
+
+```yaml
+services:
+  postgres:
+    ports: !override
+      - "5432:5432"
+```
+
+`!override` matters: Compose merges `ports` lists by appending, so without it the loopback binding stays next to the new one and the service declares the port twice (`docker compose config` shows both entries). Verify with `docker compose config | grep -A4 'ports:'` — the `host_ip: 127.0.0.1` line is gone for the service you opened. Close it again by removing the file from `COMPOSE_FILE`.
+
 ## Never expose the API port directly
 **Symptom:** Per-IP rate limits can be dodged and audit IPs are wrong.
 **Cause:** The API trusts the last `X-Forwarded-For` entry (RFC-22 R12) because Caddy sanitizes it, so a client that reaches the API without Caddy chooses its own IP.
