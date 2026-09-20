@@ -8,7 +8,6 @@ import {
   GATE_EXEMPT_KEYS,
   lintGates,
   loadPermissionCatalog,
-  stripComments,
 } from './gates.ts';
 
 function makeTree(files: Record<string, string>): string {
@@ -31,6 +30,8 @@ const CATALOG_MD = [
   '| `admin.access` | Open the admin area |',
   '| `dataset.read` | Browse |',
   '| `dataset.read_inactive` | See inactive rows |',
+  '| `users.invite` | Invite users |',
+  '| `users.suspend` | Suspend users |',
   '',
 ].join('\n');
 
@@ -76,7 +77,7 @@ describe('RFC-32 R8 findGates', () => {
 });
 
 describe('RFC-32 R8 findEnforcedPermissions', () => {
-  it('reads the key of every requirePermission guard and every .has check', () => {
+  it('reads the key of every requirePermission guard and every check on the resolved set', () => {
     const src = [
       "  .get('/', requirePermission(ctx, 'dataset.read'), async (c) => {",
       '  .post(',
@@ -88,8 +89,6 @@ describe('RFC-32 R8 findEnforcedPermissions', () => {
       '    ),',
       "  canWithdrawAny: currentPermissions(c).has('records.withdraw'),",
       "  inactive: permissions.has('dataset.read_inactive'),",
-      "  if (seen.has('taxa.manage')) return; // not a permission set",
-      "  // permissions.has('users.delete') was checked here once",
     ].join('\n');
     expect([...findEnforcedPermissions(src)]).toEqual([
       'dataset.read',
@@ -99,16 +98,19 @@ describe('RFC-32 R8 findEnforcedPermissions', () => {
       'dataset.read_inactive',
     ]);
   });
-});
 
-describe('RFC-32 R8 stripComments', () => {
-  it('blanks comments, keeps strings and newlines', () => {
-    const src = 'a; // c\nb; /* d\ne */ f; \'x // y\'; "/* z */"; `//`';
-    expect(stripComments(src)).toBe('a;     \nb;     \n     f; \'x // y\'; "/* z */"; `//`');
-  });
-
-  it('keeps an escaped quote inside a string', () => {
-    expect(stripComments("'it\\'s // fine' // gone")).toBe("'it\\'s // fine'        ");
+  it('counts no receiver but the resolved set, and nothing quoted in a comment or a string', () => {
+    const src = [
+      "  if (rolePermissions.has('users.read')) return;",
+      "  if (viewer.permissions.has('users.invite')) return;",
+      "  if (seen.has('taxa.manage')) return;",
+      "  // permissions.has('users.delete') was checked here once",
+      "  /* requirePermission(ctx, 'users.suspend') */",
+      '  log.info("permissions.has(\'sessions.read\')");',
+      "  const why = `requirePermission(ctx, 'sessions.revoke')`;",
+      "  const re = /'/; permissions.has('audit.read');",
+    ].join('\n');
+    expect([...findEnforcedPermissions(src)]).toEqual(['audit.read']);
   });
 });
 
@@ -120,6 +122,8 @@ describe('RFC-32 R8 loadPermissionCatalog', () => {
       'admin.access',
       'dataset.read',
       'dataset.read_inactive',
+      'users.invite',
+      'users.suspend',
     ]);
   });
 
@@ -183,8 +187,22 @@ describe('RFC-32 R8 lintGates', () => {
         file: 'apps/web/src/pages/A.tsx',
         line: 2,
         message:
-          'SPA gate "users.read" names a permission the API never checks (no requirePermission or .has of it under apps/api/src)',
+          'SPA gate "users.read" names a permission the API never checks (no requirePermission or permissions.has of it under apps/api/src)',
       },
+    ]);
+  });
+
+  it('does not take a .has on another receiver, or one quoted in a string, as enforcement', () => {
+    const dir = makeTree({
+      ...base,
+      'apps/web/src/pages/A.tsx':
+        "hasPermission(me, 'admin.access')\nhasPermission(me, 'users.invite')\nhasPermission(me, 'users.suspend')\n",
+      'apps/api/src/access/roles.ts':
+        "if (rolePermissions.has('users.invite')) grant();\nlog.info(\"permissions.has('users.suspend')\");\n",
+    });
+    expect(lintGates(options(dir)).map((v) => `${v.file}:${v.line}: ${v.message}`)).toEqual([
+      'apps/web/src/pages/A.tsx:2: SPA gate "users.invite" names a permission the API never checks (no requirePermission or permissions.has of it under apps/api/src)',
+      'apps/web/src/pages/A.tsx:3: SPA gate "users.suspend" names a permission the API never checks (no requirePermission or permissions.has of it under apps/api/src)',
     ]);
   });
 
