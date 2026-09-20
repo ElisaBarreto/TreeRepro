@@ -49,12 +49,12 @@ describe('RFC-74 R1 startRun / finishRun', () => {
     });
   });
 
-  it('finishRun records a failure with its message', async () => {
+  it('finishRun records a failure with its code', async () => {
     await withRollback(t.db, async (tx) => {
       const id = await startRun(tx, 'digest');
-      await finishRun(tx, id, { status: 'failed', error: 'mailer unreachable' });
+      await finishRun(tx, id, { status: 'failed', error: 'Error ETIMEDOUT 421' });
       const [row] = await tx.select().from(jobRuns).where(eq(jobRuns.id, id));
-      expect(row).toMatchObject({ status: 'failed', error: 'mailer unreachable', detail: {} });
+      expect(row).toMatchObject({ status: 'failed', error: 'Error ETIMEDOUT 421', detail: {} });
       expect(row?.finishedAt).toBeInstanceOf(Date);
     });
   });
@@ -87,11 +87,11 @@ describe('RFC-74 R1 startRun / finishRun', () => {
       // No detail passed: the run threw, and its own failure must not erase
       // the evidence that it had begun mailing — that record is the whole
       // input to the next run's repeat check.
-      await finishRun(tx, id, { status: 'failed', error: 'audit insert rejected' });
+      await finishRun(tx, id, { status: 'failed', error: 'Error 23505' });
       const [row] = await tx.select().from(jobRuns).where(eq(jobRuns.id, id));
       expect(row).toMatchObject({
         status: 'failed',
-        error: 'audit insert rejected',
+        error: 'Error 23505',
         detail: { windowStart: 'a', phase: 'sending' },
       });
     });

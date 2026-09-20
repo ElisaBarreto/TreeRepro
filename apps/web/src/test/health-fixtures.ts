@@ -54,7 +54,7 @@ export const JOB_RUN_FAILED: JobRunSummary = {
   finishedAt: new Date(Date.now() - 30 * HOUR_MS + 5_000).toISOString(),
   status: 'failed',
   detail: {},
-  error: 'connection refused',
+  error: 'Error ECONNREFUSED',
 };
 
 // The import fixture minus the one field the health payload drops.

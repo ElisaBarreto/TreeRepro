@@ -12,7 +12,11 @@ export interface JobRunResult {
    * evidence the next run has that this one had begun mailing (RFC-74 R2).
    */
   detail?: Record<string, unknown>;
-  /** The failure message for a `failed` run. */
+  /**
+   * The failure code of a `failed` run — `failureCode(err)` in
+   * `http/errors.ts`, identifiers only, never a message: the column's check
+   * refuses anything else, and the health page of RFC-52 publishes it.
+   */
   error?: string;
 }
 

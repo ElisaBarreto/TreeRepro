@@ -111,46 +111,49 @@ export function sanitizeError(err: Error): {
   };
 }
 
-/** How much of a failure `safeErrorSummary` keeps. @rfc RFC-02 R7 */
-export const ERROR_SUMMARY_MAX = 200;
-
-/** The first line Drizzle gives a query error; the parameters follow on the next one. */
-const QUERY_ERROR_PREFIX = 'Failed query:';
-
 /**
- * A one-line summary of a failure, narrowed for a column that is durable and
- * not only for a log line: `job_runs.error` is plaintext at rest (unlike the
- * encrypted user columns a failing query may name) and read straight back out
- * by the health page of RFC-52, so a raw `error.message` there would park a
- * Drizzle "Failed query: … params: …" — SQL over `users.name` / `users.email`
- * and its bound values — in front of every operator for a year.
- *
- * What it guarantees is exactly that: no SQL text and no bound-parameter list.
- * It is NOT a promise that no value can appear. `name` and the codes always
- * survive, and so does the driver's own one-line message, which may itself
- * quote an offending literal (Postgres 22P02: `invalid input syntax for type
- * uuid: "…"`). That is the same exposure RFC-02 R7 already accepts for the
- * log. It is unreachable at both call sites today — `audit_log_purge()` binds
- * nothing, and `digestRecipients` binds a permission key and the admin role
- * name, both constants — but a call site that bound user input would put that
- * input here too, truncated.
- *
- * The message survives only when it is the driver's own (`sanitizeError`
- * replaces it with the cause's) and does not open with Drizzle's query
- * preamble, which is what a query error carrying no cause still looks like.
- * The full sanitized error, message and stack included, still reaches the log,
- * so nothing is lost for diagnosis — only the durable column is narrowed.
- * @rfc RFC-02 R7
+ * What `job_runs.error` may hold: one to three identifiers separated by
+ * single spaces, at most 200 characters. The column's `job_runs_error_check`
+ * states the same pattern in SQL, so a value that escaped this function could
+ * not be stored either.
  * @rfc RFC-74 R1
  */
-export function safeErrorSummary(err: Error): string {
-  const { name, message, code, responseCode } = sanitizeError(err);
-  const head = [name, code, responseCode === undefined ? undefined : String(responseCode)]
-    .filter((part): part is string => part !== undefined && part !== '')
+export const FAILURE_CODE_PATTERN = /^[A-Za-z0-9_ ]{1,200}$/;
+
+/** One identifier: an error class name, a SQLSTATE, an errno, an SMTP reply code. */
+const TOKEN = /^[A-Za-z0-9_]{1,64}$/;
+
+/**
+ * The identifiers of a failure and nothing else — `<name> [<code>]
+ * [<responseCode>]`, e.g. `Error 23505`, `Error ETIMEDOUT 421`, `RangeError`
+ * — for a column that is durable, plaintext at rest and published to an
+ * administrator's browser by the health page of RFC-52: `job_runs.error`.
+ *
+ * The message never survives, not even its first line. A Drizzle query error
+ * puts the SQL and its bound values there — over the encrypted `users.name` /
+ * `users.email` columns when `digestRecipients` fails — and the driver's own
+ * one-line message can quote an offending literal (Postgres 22P02, `invalid
+ * input syntax for type uuid: "…"`). That is the exposure RFC-02 R7 accepts
+ * for a log line and RFC-74 R1 refuses for this column. Nothing is lost for
+ * diagnosis: both writers rethrow, so the full sanitized error, message and
+ * stack included, still reaches the log.
+ *
+ * Each part is kept only when it is a single token (`TOKEN`), so free text
+ * cannot ride in on an unusual `name` or `code`; a name that is not one
+ * reads `Error`. The result therefore always matches `FAILURE_CODE_PATTERN`.
+ * @rfc RFC-74 R1
+ */
+export function failureCode(err: Error): string {
+  const { name, code, responseCode } = sanitizeError(err);
+  const token = (part: string | undefined): string | undefined =>
+    part !== undefined && TOKEN.test(part) ? part : undefined;
+  return [
+    token(name) ?? 'Error',
+    token(code),
+    token(responseCode === undefined ? undefined : String(responseCode)),
+  ]
+    .filter((part): part is string => part !== undefined)
     .join(' ');
-  const firstLine = message.split('\n')[0]?.trim() ?? '';
-  const detail = firstLine === '' || firstLine.startsWith(QUERY_ERROR_PREFIX) ? '' : firstLine;
-  return (detail === '' ? head : `${head}: ${detail}`).slice(0, ERROR_SUMMARY_MAX);
 }
 
 /**

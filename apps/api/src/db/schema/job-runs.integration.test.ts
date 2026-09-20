@@ -48,6 +48,38 @@ describe('RFC-74 R1 job_runs', () => {
       });
     });
   });
+
+  it('accepts a failure code and rejects an exception message in error (23514)', async () => {
+    await withRollback(t.db, async (tx) => {
+      // The column holds identifiers only — `Error 23505`, `Error ETIMEDOUT
+      // 421` — so that whatever a job writes there, the health page of RFC-52
+      // can never publish an exception message to an administrator's browser.
+      // The rule is structural, unlike the one on `detail` (RFC-52 R2), which
+      // rests on the writers.
+      await tx.execute(
+        sql`insert into job_runs (kind, status, error) values ('digest', 'failed', 'Error ETIMEDOUT 421')`,
+      );
+      for (const message of [
+        'Error 23505: duplicate key value violates unique constraint "users_email_bidx"',
+        'Failed query: select 1',
+        '',
+        `Error ${'x'.repeat(200)}`,
+      ]) {
+        await expect(
+          unwrapDbError(
+            tx.transaction((sp) =>
+              sp.execute(
+                sql`insert into job_runs (kind, status, error) values ('digest', 'failed', ${message})`,
+              ),
+            ),
+          ),
+        ).rejects.toMatchObject({
+          code: CHECK_VIOLATION,
+          constraint_name: 'job_runs_error_check',
+        });
+      }
+    });
+  });
 });
 
 describe('RFC-74 R7 job_runs is append-only by grant', () => {

@@ -9,7 +9,7 @@ import { rolePermissions } from '../db/schema/role-permissions.ts';
 import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { users } from '../db/schema/users.ts';
-import { safeErrorSummary, sanitizeError } from '../http/errors.ts';
+import { failureCode, sanitizeError } from '../http/errors.ts';
 import type { Logger } from '../logger.ts';
 import type { Mailer } from '../mail/mailer.ts';
 import { digestEmail } from '../mail/templates.ts';
@@ -651,13 +651,14 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
     // Best effort, exactly as `purgeAudit` (RFC-42 R4): the run row is a
     // trace, and the job's own error is what the caller must see.
     //
-    // `safeErrorSummary`, never `error.message`: anything in this try block
-    // can throw a Drizzle query error, and `digestRecipients` queries the
+    // `failureCode`, never `error.message`: anything in this try block can
+    // throw a Drizzle query error, and `digestRecipients` queries the
     // ENCRYPTED `users.name` / `users.email` columns, so the raw message is
     // "Failed query: <sql>\nparams: <values>" over exactly those. The column
     // is durable, plaintext at rest and read back by the health page of
-    // RFC-52; the rethrow below still carries the whole error to the log.
-    await finishRun(db, runId, { status: 'failed', error: safeErrorSummary(error) }).catch(
+    // RFC-52, so it holds the failure's identifiers only (RFC-74 R1); the
+    // rethrow below still carries the whole error to the log.
+    await finishRun(db, runId, { status: 'failed', error: failureCode(error) }).catch(
       () => undefined,
     );
     throw error;
