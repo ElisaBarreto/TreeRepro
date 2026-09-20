@@ -263,19 +263,10 @@ describe('RFC-67 R3, R5 plots service', () => {
     ]);
 
     const res = await listPlotUsers(t.db, plot.id, { limit: 10 });
-    expect(res.data).toHaveLength(2);
-    expect(res.data[0]).toMatchObject({
-      id: u2.id,
-      name: 'Aaron Contributor',
-      restricted: true,
-      status: 'active',
-    });
-    expect(res.data[1]).toMatchObject({
-      id: u1.id,
-      name: 'Zara Researcher',
-      restricted: false,
-      status: 'active',
-    });
+    expect(res.data).toEqual([
+      { id: u2.id, name: 'Aaron Contributor', restricted: true, status: 'active' },
+      { id: u1.id, name: 'Zara Researcher', restricted: false, status: 'active' },
+    ]);
 
     // Unknown plot throws PLOT_NOT_FOUND
     await expect(

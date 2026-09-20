@@ -152,8 +152,11 @@ export async function listPlotSpecies(
 }
 
 /**
- * Lists users assigned to a field plot, sorted by decrypted name.
+ * Lists users assigned to a field plot, sorted by decrypted name. The item
+ * never carries the e-mail address (RFC-02 R14): the route is `plots.manage`,
+ * and the address stays behind `users.read`.
  * @rfc RFC-67 R4
+ * @rfc RFC-02 R14
  */
 export async function listPlotUsers(
   db: DbExecutor,
@@ -167,7 +170,6 @@ export async function listPlotUsers(
     .select({
       id: users.id,
       name: users.name,
-      email: users.email,
       status: users.status,
       restricted: users.restrictToAssignedPlots,
     })

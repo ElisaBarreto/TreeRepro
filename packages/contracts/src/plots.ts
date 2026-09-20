@@ -112,13 +112,14 @@ export const plotSpeciesMemberParamSchema = z.strictObject({
 });
 
 /**
- * User membership representation on a field plot.
+ * User membership representation on a field plot. No e-mail address: the
+ * address is `users.read` data wherever it appears.
  * @rfc RFC-67 R4
+ * @rfc RFC-02 R14
  */
 export const plotUserSchema = z.strictObject({
   id: z.uuid(),
   name: z.string(),
-  email: z.string(),
   status: z.enum(USER_STATUSES),
   restricted: z.boolean(),
 });

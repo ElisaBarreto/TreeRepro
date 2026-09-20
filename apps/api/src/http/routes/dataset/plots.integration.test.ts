@@ -5,6 +5,7 @@ import { createPlot, createSpecies } from '../../../../test/helpers/dataset.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
+import { userPlots } from '../../../db/schema/plots.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 const zero = '00000000-0000-7000-8000-000000000000';
@@ -92,12 +93,16 @@ describe('RFC-67 R3-R5 plot routes', () => {
     });
     expect(usersForbidden.status).toBe(403);
 
-    // Manager can read plot users
+    // Manager can read plot users; the item names the user without the
+    // address, which stays behind users.read (RFC-02 R14, RFC-67 R4)
+    await t.db.insert(userPlots).values({ plotId: plot.id, userId: reader.user.id });
     const usersRes = await call(t.app, 'GET', `/api/plots/${plot.id}/users`, {
       cookie: manager.cookie,
     });
     expect(usersRes.status).toBe(200);
-    expect((await usersRes.json()).data).toEqual([]);
+    expect((await usersRes.json()).data).toEqual([
+      { id: reader.user.id, name: reader.user.name, status: 'active', restricted: false },
+    ]);
 
     // Add species to plot
     const sp = await createSpecies(t.db);
