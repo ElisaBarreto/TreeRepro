@@ -44,3 +44,6 @@ CLAUDE.md
 
 # tanstack router temp files
 .tanstack/
+
+# local datasets (large; never committed)
+data/
