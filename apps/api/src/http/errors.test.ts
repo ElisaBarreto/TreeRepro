@@ -214,6 +214,22 @@ describe('RFC-74 R1 failureCode', () => {
     expect(failureCode(err)).toBe('Error');
   });
 
+  it('FAILURE_CODE_PATTERN is the grammar of RFC-74 R1: one to three tokens, single spaces', () => {
+    for (const ok of ['Error', 'Error 23505', 'Error ETIMEDOUT 421', 'RangeError']) {
+      expect(ok).toMatch(FAILURE_CODE_PATTERN);
+    }
+    for (const bad of [
+      'Error  23505',
+      ' Error',
+      'Error ETIMEDOUT 421 extra',
+      'Error: db down',
+      '',
+      'x'.repeat(65),
+    ]) {
+      expect(bad).not.toMatch(FAILURE_CODE_PATTERN);
+    }
+  });
+
   it('always fits the column pattern, whatever the error carries', () => {
     const err = Object.assign(new Error('x'.repeat(5_000)), { code: 'E'.repeat(5_000) });
     err.name = 'N'.repeat(5_000);

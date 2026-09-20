@@ -111,17 +111,16 @@ export function sanitizeError(err: Error): {
   };
 }
 
-/**
- * What `job_runs.error` may hold: one to three identifiers separated by
- * single spaces, at most 200 characters. The column's `job_runs_error_check`
- * states the same pattern in SQL, so a value that escaped this function could
- * not be stored either.
- * @rfc RFC-74 R1
- */
-export const FAILURE_CODE_PATTERN = /^[A-Za-z0-9_ ]{1,200}$/;
-
 /** One identifier: an error class name, a SQLSTATE, an errno, an SMTP reply code. */
 const TOKEN = /^[A-Za-z0-9_]{1,64}$/;
+
+/**
+ * What `job_runs.error` may hold: one to three `TOKEN`s separated by single
+ * spaces. The column's `job_runs_error_check` states the same grammar in SQL,
+ * so a value that escaped this function could not be stored either.
+ * @rfc RFC-74 R1
+ */
+export const FAILURE_CODE_PATTERN = /^[A-Za-z0-9_]{1,64}( [A-Za-z0-9_]{1,64}){0,2}$/;
 
 /**
  * The identifiers of a failure and nothing else — `<name> [<code>]

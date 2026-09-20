@@ -7,9 +7,9 @@
 -- still does not fit the pattern is dropped rather than kept as text.
 UPDATE job_runs
 SET error = CASE
-  WHEN split_part(error, ': ', 1) ~ '^[A-Za-z0-9_ ]{1,200}$' THEN split_part(error, ': ', 1)
+  WHEN split_part(error, ': ', 1) ~ '^[A-Za-z0-9_]{1,64}( [A-Za-z0-9_]{1,64}){0,2}$' THEN split_part(error, ': ', 1)
   ELSE NULL
 END
-WHERE error IS NOT NULL AND error !~ '^[A-Za-z0-9_ ]{1,200}$';
+WHERE error IS NOT NULL AND error !~ '^[A-Za-z0-9_]{1,64}( [A-Za-z0-9_]{1,64}){0,2}$';
 --> statement-breakpoint
-ALTER TABLE "job_runs" ADD CONSTRAINT "job_runs_error_check" CHECK ("job_runs"."error" is null or "job_runs"."error" ~ '^[A-Za-z0-9_ ]{1,200}$');
+ALTER TABLE "job_runs" ADD CONSTRAINT "job_runs_error_check" CHECK ("job_runs"."error" is null or "job_runs"."error" ~ '^[A-Za-z0-9_]{1,64}( [A-Za-z0-9_]{1,64}){0,2}$');

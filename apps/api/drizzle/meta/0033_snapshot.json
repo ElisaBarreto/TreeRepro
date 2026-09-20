@@ -1274,7 +1274,7 @@
         },
         "job_runs_error_check": {
           "name": "job_runs_error_check",
-          "value": "\"job_runs\".\"error\" is null or \"job_runs\".\"error\" ~ '^[A-Za-z0-9_ ]{1,200}$'"
+          "value": "\"job_runs\".\"error\" is null or \"job_runs\".\"error\" ~ '^[A-Za-z0-9_]{1,64}( [A-Za-z0-9_]{1,64}){0,2}$'"
         }
       },
       "isRLSEnabled": false

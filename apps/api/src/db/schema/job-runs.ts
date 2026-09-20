@@ -46,12 +46,16 @@ export const jobRuns = pgTable(
       'job_runs_status_check',
       sql`${t.status} in ('running', 'completed', 'failed', 'skipped')`,
     ),
-    // `error` holds a failure code — identifiers separated by single spaces,
-    // `FAILURE_CODE_PATTERN` in `http/errors.ts` — never an exception message,
+    // `error` holds a failure code — one to three identifiers separated by
+    // single spaces, `FAILURE_CODE_PATTERN` in `http/errors.ts` — never an
+    // exception message,
     // so that the health page of RFC-52 can publish it as it is. The pattern
     // is stated here as well as in `failureCode`, so the guarantee is the
     // column's and not only the writers'.
-    check('job_runs_error_check', sql`${t.error} is null or ${t.error} ~ '^[A-Za-z0-9_ ]{1,200}$'`),
+    check(
+      'job_runs_error_check',
+      sql`${t.error} is null or ${t.error} ~ '^[A-Za-z0-9_]{1,64}( [A-Za-z0-9_]{1,64}){0,2}$'`,
+    ),
   ],
 );
 
