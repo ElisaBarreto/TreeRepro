@@ -164,6 +164,48 @@ describe('RFC-50 R4, R5 GET and PATCH /api/admin/users/:id', () => {
   });
 });
 
+describe('RFC-31 R12, R13, R14 delegation over PATCH /api/admin/users/:id', () => {
+  const t = useTestApp();
+
+  it('a users.update holder cannot grant admin: 403, an audit entry, and the name sent in the same request stays as it was', async () => {
+    const role = await createRole(t.db, { permissions: ['users.update'] });
+    const { user: actor } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, actor);
+    const { user: target, email } = await createUser(t.db, { name: 'Ada' });
+    const admin = await adminRoleId(t.db);
+    const res = await call(t.app, 'PATCH', `/api/admin/users/${target.id}`, {
+      cookie,
+      body: { name: 'Ada L.', roles: [admin] },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('PERMISSION_DENIED');
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { targetId: target.id }),
+    ).toMatchObject({
+      actorUserId: actor.id,
+      targetType: 'user',
+      metadata: { reason: 'admin_role', added: [admin], removed: [] },
+    });
+    expect(await lastAudit(t.db, 'users.updated', { targetId: target.id })).toBeUndefined();
+    expect((await findUserByEmail(t.db, email))?.name).toBe('Ada');
+  });
+
+  it('a users.update holder cannot change their own roles', async () => {
+    const role = await createRole(t.db, { permissions: ['users.update'] });
+    const { user: actor } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, actor);
+    const res = await call(t.app, 'PATCH', `/api/admin/users/${actor.id}`, {
+      cookie,
+      body: { roles: [role.id] },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('PERMISSION_DENIED');
+    expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: actor.id })).toMatchObject(
+      { actorUserId: actor.id, metadata: { reason: 'own_roles' } },
+    );
+  });
+});
+
 describe('RFC-50 R6, R7 suspend and reactivate over HTTP', () => {
   const t = useTestApp();
 

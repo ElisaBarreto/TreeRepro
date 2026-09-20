@@ -43,7 +43,10 @@ describe('RFC-31 R3, R4, R5 role services', () => {
   });
 
   it('creates a role with trimmed name and permissions, audits, and serializes it', async () => {
-    const { user: actor } = await createUser(t.db);
+    // The actor holds what the new role receives (R12).
+    const { user: actor } = await createUser(t.db, {
+      roles: [(await insertRole(t.db, { permissions: ['users.read', 'audit.read'] })).id],
+    });
     const name = uniq();
     const role = await createRole(ctx(), {
       name: `  ${name} `,
@@ -342,5 +345,238 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
       await second.close();
       await t.db.delete(userRoles).where(inArray(userRoles.userId, pair));
     }
+  });
+});
+
+describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
+  const t = useTestApp();
+  const ctx = () => ({
+    db: t.db,
+    permissionCache: t.permissionCache,
+    logger: t.deps.logger,
+    now: () => t.clock.now,
+  });
+  /** A `users.update` + `roles.manage` holder: the actor the ceiling exists for. */
+  const delegator = async () => {
+    const role = await insertRole(t.db, {
+      permissions: ['users.update', 'roles.manage', 'users.read', 'audit.read'],
+    });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { user, role };
+  };
+
+  it('R12 a non-admin actor cannot grant the admin role, and the refusal is audited', async () => {
+    const { user: actor } = await delegator();
+    const { user: target } = await createUser(t.db);
+    const admin = await adminRoleId(t.db);
+    expect(
+      await code(
+        setUserRoles(ctx(), { userId: target.id, roleIds: [admin], actorUserId: actor.id }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(await userIdsWithRole(t.db, admin)).not.toContain(target.id);
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { targetId: target.id }),
+    ).toMatchObject({
+      actorUserId: actor.id,
+      targetType: 'user',
+      metadata: { reason: 'admin_role', added: [admin], removed: [] },
+    });
+    expect(await lastAudit(t.db, 'users.roles_changed', { targetId: target.id })).toBeUndefined();
+  });
+
+  it('R12 a non-admin actor cannot remove the admin role either', async () => {
+    const { user: actor } = await delegator();
+    const admin = await adminRoleId(t.db);
+    const { user: target } = await createUser(t.db, { roles: [admin] });
+    expect(
+      await code(setUserRoles(ctx(), { userId: target.id, roleIds: [], actorUserId: actor.id })),
+    ).toBe('PERMISSION_DENIED');
+    expect(await userIdsWithRole(t.db, admin)).toContain(target.id);
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { targetId: target.id }),
+    ).toMatchObject({ metadata: { reason: 'admin_role', added: [], removed: [admin] } });
+  });
+
+  it('R12 an admin actor grants admin', async () => {
+    const admin = await adminRoleId(t.db);
+    const { user: actor } = await createUser(t.db, { roles: [admin] });
+    const { user: target } = await createUser(t.db);
+    await setUserRoles(ctx(), { userId: target.id, roleIds: [admin], actorUserId: actor.id });
+    expect(await userIdsWithRole(t.db, admin)).toContain(target.id);
+  });
+
+  it('R12 a role is assigned only within the actor’s permissions; removal is never limited', async () => {
+    const { user: actor } = await delegator();
+    const within = await insertRole(t.db, { permissions: ['users.read'] });
+    const beyond = await insertRole(t.db, { permissions: ['users.read', 'dataset.export'] });
+    const { user: target } = await createUser(t.db, { roles: [beyond.id] });
+    expect(
+      await code(
+        setUserRoles(ctx(), {
+          userId: target.id,
+          roleIds: [beyond.id, within.id],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('ok');
+    const { user: other } = await createUser(t.db);
+    expect(
+      await code(
+        setUserRoles(ctx(), { userId: other.id, roleIds: [beyond.id], actorUserId: actor.id }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: other.id })).toMatchObject(
+      { metadata: { reason: 'ceiling', added: [beyond.id], removed: [] } },
+    );
+    expect(await userIdsWithRole(t.db, beyond.id)).not.toContain(other.id);
+    expect(
+      await code(setUserRoles(ctx(), { userId: target.id, roleIds: [], actorUserId: actor.id })),
+    ).toBe('ok');
+    expect(await userIdsWithRole(t.db, beyond.id)).not.toContain(target.id);
+  });
+
+  it('R13 an actor never changes their own roles, even to the same set', async () => {
+    const { user: actor, role } = await delegator();
+    expect(
+      await code(
+        setUserRoles(ctx(), { userId: actor.id, roleIds: [role.id], actorUserId: actor.id }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: actor.id })).toMatchObject(
+      { actorUserId: actor.id, metadata: { reason: 'own_roles' } },
+    );
+    const admin = await adminRoleId(t.db);
+    const { user: adminActor } = await createUser(t.db, { roles: [admin] });
+    expect(
+      await code(
+        setUserRoles(ctx(), {
+          userId: adminActor.id,
+          roleIds: [admin],
+          actorUserId: adminActor.id,
+        }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+  });
+
+  it('R13 an actor never changes the permission set of a role they hold, but may rename it; an admin may', async () => {
+    const { user: actor, role } = await delegator();
+    expect(
+      await code(
+        updateRole(ctx(), { id: role.id, permissions: ['users.read'], actorUserId: actor.id }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect((await getRole(t.db, role.id))?.permissions).toContain('roles.manage');
+    expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: role.id })).toMatchObject({
+      actorUserId: actor.id,
+      targetType: 'role',
+      metadata: { reason: 'held_role' },
+    });
+    expect(
+      await code(updateRole(ctx(), { id: role.id, description: 'mine', actorUserId: actor.id })),
+    ).toBe('ok');
+    const { user: adminActor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    expect(
+      await code(
+        updateRole(ctx(), { id: role.id, permissions: ['users.read'], actorUserId: adminActor.id }),
+      ),
+    ).toBe('ok');
+  });
+
+  it('R12 updateRole adds only permissions the actor holds; a permission the actor lacks may stay or go', async () => {
+    const { user: actor } = await delegator();
+    const role = await insertRole(t.db, { permissions: ['dataset.export'] });
+    expect(
+      await code(
+        updateRole(ctx(), {
+          id: role.id,
+          permissions: ['dataset.export', 'traits.manage'],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: role.id })).toMatchObject({
+      targetType: 'role',
+      metadata: { reason: 'ceiling' },
+    });
+    expect((await getRole(t.db, role.id))?.permissions).toEqual(['dataset.export']);
+    expect(
+      await code(
+        updateRole(ctx(), {
+          id: role.id,
+          permissions: ['dataset.export', 'users.read'],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('ok');
+    expect(
+      await code(updateRole(ctx(), { id: role.id, permissions: [], actorUserId: actor.id })),
+    ).toBe('ok');
+  });
+
+  it('R12 createRole writes only permissions the actor holds', async () => {
+    const { user: actor } = await delegator();
+    expect(
+      await code(
+        createRole(ctx(), {
+          name: uniq(),
+          permissions: ['users.read', 'traits.manage'],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
+    ).toMatchObject({ targetType: 'role', targetId: null, metadata: { reason: 'ceiling' } });
+    const role = await createRole(ctx(), {
+      name: uniq(),
+      permissions: ['users.read'],
+      actorUserId: actor.id,
+    });
+    expect(role.permissions).toEqual(['users.read']);
+  });
+
+  it('R14 the resource errors come first: an unknown user, role or a system role answers 404 / 409, not 403', async () => {
+    const { user: actor, role } = await delegator();
+    const unknown = '019b4a2e-5f3c-7c8e-8d1a-2f3b4c5d6e7f';
+    expect(
+      await code(
+        setUserRoles(ctx(), { userId: actor.id, roleIds: [unknown], actorUserId: actor.id }),
+      ),
+    ).toBe('ROLE_NOT_FOUND');
+    expect(
+      await code(setUserRoles(ctx(), { userId: unknown, roleIds: [], actorUserId: actor.id })),
+    ).toBe('NOT_FOUND');
+    expect(
+      await code(
+        updateRole(ctx(), { id: unknown, permissions: ['users.read'], actorUserId: actor.id }),
+      ),
+    ).toBe('ROLE_NOT_FOUND');
+    expect(
+      await code(
+        updateRole(ctx(), {
+          id: await adminRoleId(t.db),
+          permissions: ['users.read'],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('ROLE_IS_SYSTEM');
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
+    ).toBeUndefined();
+    expect((await getRole(t.db, role.id))?.permissions).toContain('roles.manage');
+  });
+
+  it('R12 the null actor (CLI) is unrestricted', async () => {
+    const admin = await adminRoleId(t.db);
+    const { user: target } = await createUser(t.db);
+    await setUserRoles(ctx(), { userId: target.id, roleIds: [admin], actorUserId: null });
+    expect(await userIdsWithRole(t.db, admin)).toContain(target.id);
+    const role = await createRole(ctx(), {
+      name: uniq(),
+      permissions: [...PERMISSION_KEYS],
+      actorUserId: null,
+    });
+    expect(role.permissions).toEqual([...PERMISSION_KEYS].sort());
   });
 });

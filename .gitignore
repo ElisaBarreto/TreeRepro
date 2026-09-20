@@ -12,6 +12,8 @@ build/
 .env
 .env.*
 !.env.example
+# per-machine compose overrides (docs/gotchas/docker.md)
+compose.local.yml
 infra/secrets/*
 !infra/secrets/.gitkeep
 !infra/secrets/README.md

@@ -1,6 +1,6 @@
 import type { PlotRef, User, UserRoleRef, UserStatus } from '@treerepro/contracts';
 import { and, asc, desc, eq, inArray, lt, type SQL, sql } from 'drizzle-orm';
-import { assertNotLastAdmin, setUserRoles } from '../access/roles.ts';
+import { assertNotLastAdmin, recordingRefusal, setUserRoles } from '../access/roles.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { AuthContext, RequestMeta } from '../auth/context.ts';
 import { inviteUser } from '../auth/flows/invitation.ts';
@@ -205,38 +205,46 @@ export async function setUserPlots(
   });
 }
 
-/** @rfc RFC-50 R5 */
+/**
+ * @rfc RFC-50 R5
+ * @rfc RFC-31 R14
+ */
 export async function updateUser(
   ctx: AuthContext,
   input: AdminActor & { id: string; name?: string; roleIds?: string[] },
 ): Promise<User> {
   const now = new Date(ctx.now());
-  const user = await ctx.db.transaction(async (tx) => {
-    const current = await lockUser(tx, input.id);
-    if (input.name !== undefined) {
-      const changed = await updateName(tx, { current, name: input.name, now });
-      if (changed) {
-        await recordAudit(tx, {
-          actorUserId: input.actorUserId,
-          action: 'users.updated',
-          targetType: 'user',
-          targetId: current.id,
-          ip: input.ip,
-          userAgent: input.userAgent,
-          metadata: { fields: ['name'] },
-        });
+  // `recordingRefusal` on the root connection: `setUserRoles` writes a
+  // refusal's audit entry into `tx`, which the rollback below discards
+  // (RFC-31 R14).
+  const user = await recordingRefusal(ctx.db, () =>
+    ctx.db.transaction(async (tx) => {
+      const current = await lockUser(tx, input.id);
+      if (input.name !== undefined) {
+        const changed = await updateName(tx, { current, name: input.name, now });
+        if (changed) {
+          await recordAudit(tx, {
+            actorUserId: input.actorUserId,
+            action: 'users.updated',
+            targetType: 'user',
+            targetId: current.id,
+            ip: input.ip,
+            userAgent: input.userAgent,
+            metadata: { fields: ['name'] },
+          });
+        }
       }
-    }
-    if (input.roleIds !== undefined) {
-      await setUserRoles(
-        { ...ctx, db: tx },
-        { userId: current.id, roleIds: input.roleIds, actorUserId: input.actorUserId },
-      );
-    }
-    const row = await findUserById(tx, current.id);
-    if (!row) throw notFound();
-    return withRoles(tx, row);
-  });
+      if (input.roleIds !== undefined) {
+        await setUserRoles(
+          { ...ctx, db: tx },
+          { userId: current.id, roleIds: input.roleIds, actorUserId: input.actorUserId },
+        );
+      }
+      const row = await findUserById(tx, current.id);
+      if (!row) throw notFound();
+      return withRoles(tx, row);
+    }),
+  );
   // setUserRoles invalidated inside the transaction; a cache fill that raced
   // the commit would hold the old roles, so invalidate once more (RFC-32 R3).
   if (input.roleIds !== undefined) await ctx.permissionCache.invalidate([input.id]);

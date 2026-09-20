@@ -19,15 +19,19 @@ export function requirePermission(
   key: PermissionKey,
   options: RequirePermissionOptions = {},
 ): MiddlewareHandler<AppEnv> {
-  return markGuard(async (c, next) => {
-    const user = c.get('user');
-    if (!user) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
-    const permissions = await resolvePermissions(ctx, user.id);
-    if (!permissions.has(key)) throw DENIED();
-    if (options.resource && !(await options.resource(c))) throw DENIED();
-    c.set('permissions', permissions);
-    await next();
-  }, 'permission');
+  return markGuard(
+    async (c, next) => {
+      const user = c.get('user');
+      if (!user) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
+      const permissions = await resolvePermissions(ctx, user.id);
+      if (!permissions.has(key)) throw DENIED();
+      if (options.resource && !(await options.resource(c))) throw DENIED();
+      c.set('permissions', permissions);
+      await next();
+    },
+    'permission',
+    key,
+  );
 }
 
 /** For handlers behind `requirePermission`. @rfc RFC-32 R4 */

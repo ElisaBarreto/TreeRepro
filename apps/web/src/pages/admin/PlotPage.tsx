@@ -31,13 +31,17 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  * section. The plot's title is registered as the shell's trailing crumb, so
  * the breadcrumb reads `Admin › Plots › <code> — <name>` once the plot
  * resolved (RFC-13 R3).
+ * The users section names each user without an address and links the name
+ * to the user page only when the viewer holds `users.read` (RFC-02 R14).
  * @rfc RFC-67 R3, R4, R5
  * @rfc RFC-13 R2, R3
+ * @rfc RFC-02 R14
  */
 export function PlotPage({ id }: { id: string }) {
   const me = useMe();
   const queryClient = useQueryClient();
   const canManage = hasPermission(me, 'plots.manage');
+  const canReadUsers = hasPermission(me, 'users.read');
 
   const [editing, setEditing] = useState(false);
 
@@ -113,7 +117,6 @@ export function PlotPage({ id }: { id: string }) {
                   <Thead>
                     <Tr>
                       <Th>Name</Th>
-                      <Th>Email</Th>
                       <Th>Status</Th>
                       <Th>Scope</Th>
                     </Tr>
@@ -122,15 +125,18 @@ export function PlotPage({ id }: { id: string }) {
                     {usersList.items.map((u) => (
                       <Tr key={u.id}>
                         <Td>
-                          <Link
-                            to="/app/admin/users/$id"
-                            params={{ id: u.id }}
-                            className="font-medium text-canopy-900 underline-offset-2 hover:underline"
-                          >
-                            {u.name}
-                          </Link>
+                          {canReadUsers ? (
+                            <Link
+                              to="/app/admin/users/$id"
+                              params={{ id: u.id }}
+                              className="font-medium text-canopy-900 underline-offset-2 hover:underline"
+                            >
+                              {u.name}
+                            </Link>
+                          ) : (
+                            <span className="font-medium text-canopy-900">{u.name}</span>
+                          )}
                         </Td>
-                        <Td>{u.email}</Td>
                         <Td>
                           <UserStatusBadge status={u.status} />
                         </Td>

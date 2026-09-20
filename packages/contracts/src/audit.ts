@@ -47,6 +47,7 @@ export const AUDIT_ACTIONS = [
   'digest.sent',
   'proposals.created',
   'proposals.decided',
+  'roles.delegation_refused',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
