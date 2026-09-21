@@ -1,8 +1,17 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate, useRouter } from '@tanstack/react-router';
+import { useState } from 'react';
 import { meQueryOptions } from '../lib/session.ts';
 import { HomePage } from '../pages/HomePage.tsx';
 
-/** A signed-in visitor belongs in the workspace. @rfc RFC-13 R2 */
+/**
+ * A signed-in visitor belongs in the workspace. After a sign-in the page
+ * plays the landing beats of the reveal and then asks for the navigation as
+ * a view transition, which carries the emblem into the sidebar (landing.css);
+ * under reduced motion it asks for a plain one at once. Should `/app`'s guard
+ * send the visitor straight back here, the page is mounted afresh: the route
+ * match is unchanged, so nothing else would reset a landing left mid-reveal.
+ * @rfc RFC-13 R2, R7
+ */
 export const Route = createFileRoute('/')({
   beforeLoad: async ({ context }) => {
     // staleTime: 0 forces a real API check; after sign-out the cached `me`
@@ -18,5 +27,15 @@ export const Route = createFileRoute('/')({
 
 function Home() {
   const navigate = useNavigate();
-  return <HomePage onSignedIn={() => void navigate({ to: '/app' })} />;
+  const router = useRouter();
+  const [attempt, setAttempt] = useState(0);
+  return (
+    <HomePage
+      key={attempt}
+      onSignedIn={async (_user, transition) => {
+        await navigate({ to: '/app', viewTransition: transition === 'reveal' });
+        if (router.state.location.pathname === '/') setAttempt((n) => n + 1);
+      }}
+    />
+  );
 }

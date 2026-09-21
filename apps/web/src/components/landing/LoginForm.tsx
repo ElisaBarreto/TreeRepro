@@ -42,7 +42,10 @@ export function loginErrorMessage(error: unknown): string {
 /**
  * Email + password, then a verification code when the account has TOTP enabled.
  * Holds no session state: the parent decides what happens after `onSignedIn`.
- * @rfc RFC-13 R6, R9
+ * A submit while a request is in flight is ignored, and after a successful
+ * sign-in the form stays pending for good — the page is leaving (the sign-in
+ * reveal, RFC-13 R7) and must not post the credentials a second time.
+ * @rfc RFC-13 R6, R7, R9
  * @rfc RFC-22 R2-R3
  * @rfc RFC-23 R6
  */
@@ -54,19 +57,22 @@ export function LoginForm({ onSignedIn }: LoginFormProps) {
   const ids = { email: useId(), password: useId(), code: useId() };
 
   async function run(request: () => Promise<{ status: string; user?: AuthUser }>) {
+    if (pending) return;
     setPending(true);
     setError(null);
     try {
       const result = await request();
       if (result.status === 'totp_required') {
         setStep('totp');
+        setPending(false);
       } else if (result.user) {
         onSignedIn(result.user);
+      } else {
+        setPending(false);
       }
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === 'AUTH_MFA_EXPIRED') setStep('credentials');
       setError(loginErrorMessage(cause));
-    } finally {
       setPending(false);
     }
   }

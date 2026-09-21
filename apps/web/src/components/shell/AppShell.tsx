@@ -149,7 +149,9 @@ function BreadcrumbTrail({
  * current entry is the one `currentEntry` picks for the pathname and search.
  * The breadcrumb is `Group › Entry › crumbs…`, the trailing crumbs coming
  * from pages that call `useBreadcrumb` (RFC-13 R3 amendment, plan 10a).
- * @rfc RFC-13 R2, R3, R4
+ * The sidebar emblem carries the view transition name the landing stage
+ * shares, so the sign-in reveal ends on it (RFC-13 R7).
+ * @rfc RFC-13 R2, R3, R4, R7
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
@@ -192,7 +194,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             to="/app"
             className="flex items-center gap-3 rounded-[10px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
           >
-            <Emblem size={40} />
+            <Emblem size={40} className="[view-transition-name:tr-emblem]" />
             <span className="flex flex-col">
               <span className="font-display text-card font-bold tracking-[-0.01em] text-white">
                 TreeRepro

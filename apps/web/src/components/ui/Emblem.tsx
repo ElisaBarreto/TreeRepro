@@ -10,8 +10,10 @@ export interface EmblemProps {
  * The TreeRepro emblem — a tree in fruit inside a disc — as a still image.
  * The landing page wraps it in motion (`TreeEmblem`); the workspace shows
  * it as is in the sidebar. Gradient ids come from `useId` so several
- * emblems on one page do not share (and hijack) each other's paint.
- * @rfc RFC-13 R5
+ * emblems on one page do not share (and hijack) each other's paint. The
+ * `tr-canopy` group and the `tr-fruit` circles are hooks for the sign-in
+ * reveal's bloom and pop (landing.css); they style nothing on their own.
+ * @rfc RFC-13 R5, R7
  */
 export function Emblem({ size, className }: EmblemProps) {
   const id = useId();
@@ -70,23 +72,25 @@ export function Emblem({ size, className }: EmblemProps) {
         strokeWidth="2"
         strokeLinecap="round"
       />
-      <path
-        d="M100 152 C96 140 95 128 96 112 C90 106 78 100 72 92 M96 112 C104 104 112 100 122 96 M100 152 C106 156 112 157 118 156 M100 152 C93 156 87 157 80 155"
-        fill="none"
-        stroke={url('trunk')}
-        strokeWidth="9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="76" cy="86" r="34" fill={url('c1')} />
-      <circle cx="126" cy="90" r="32" fill={url('c2')} />
-      <circle cx="100" cy="64" r="32" fill={url('c3')} />
-      <circle cx="92" cy="98" r="18" fill={url('c2')} opacity="0.9" />
-      <circle cx="70" cy="98" r="4.5" fill={url('fruit')} />
-      <circle cx="118" cy="74" r="4.5" fill={url('fruit')} />
-      <circle cx="136" cy="102" r="4" fill={url('fruit')} />
-      <circle cx="88" cy="70" r="3.5" fill={url('fruit')} />
-      <circle cx="106" cy="108" r="3.5" fill={url('fruit')} />
+      <g className="tr-canopy">
+        <path
+          d="M100 152 C96 140 95 128 96 112 C90 106 78 100 72 92 M96 112 C104 104 112 100 122 96 M100 152 C106 156 112 157 118 156 M100 152 C93 156 87 157 80 155"
+          fill="none"
+          stroke={url('trunk')}
+          strokeWidth="9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="76" cy="86" r="34" fill={url('c1')} />
+        <circle cx="126" cy="90" r="32" fill={url('c2')} />
+        <circle cx="100" cy="64" r="32" fill={url('c3')} />
+        <circle cx="92" cy="98" r="18" fill={url('c2')} opacity="0.9" />
+        <circle className="tr-fruit" cx="70" cy="98" r="4.5" fill={url('fruit')} />
+        <circle className="tr-fruit" cx="118" cy="74" r="4.5" fill={url('fruit')} />
+        <circle className="tr-fruit" cx="136" cy="102" r="4" fill={url('fruit')} />
+        <circle className="tr-fruit" cx="88" cy="70" r="3.5" fill={url('fruit')} />
+        <circle className="tr-fruit" cx="106" cy="108" r="3.5" fill={url('fruit')} />
+      </g>
       <path
         d="M144 118 c4 2 6 6 4 10 c-4 -1 -6 -5 -4 -10 z"
         fill="var(--color-pollen-400)"

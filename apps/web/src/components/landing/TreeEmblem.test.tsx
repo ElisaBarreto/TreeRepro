@@ -52,4 +52,12 @@ describe('RFC-13 R7 TreeEmblem', () => {
     fireEvent.mouseMove(document, { clientX: 356, clientY: 100 });
     expect((ref.current as HTMLDivElement).style.transform).toBe('');
   });
+
+  it('names its stage for the view transition and keeps the rings and the glow in wrappers the reveal can move', () => {
+    const ref = createRef<HTMLDivElement>();
+    const { container } = render(<TreeEmblem ref={ref} />);
+    expect(ref.current).toHaveClass('[view-transition-name:tr-emblem]');
+    expect(container.querySelectorAll('.tr-rings > .tr-ring')).toHaveLength(3);
+    expect(container.querySelector('.tr-glow-wrap > .tr-glow')).not.toBeNull();
+  });
 });
