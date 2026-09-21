@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe('RFC-13 R7 sign-in reveal beats', () => {
-  it('recedes now, grows at 350 ms and leaves at 1550 ms', () => {
+  it('recedes now, grows on the grow beat and leaves on the leave beat', () => {
     const onPhase = vi.fn();
     const onLeave = vi.fn();
     runReveal({ onPhase, onLeave });

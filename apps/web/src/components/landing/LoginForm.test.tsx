@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
@@ -80,16 +80,31 @@ describe('RFC-22 R2-R3 LoginForm', () => {
     }
   });
 
-  it('disables the button while the request is in flight', async () => {
-    let resolve: (value: unknown) => void = () => {};
-    auth.login.mockReturnValue(new Promise((r) => (resolve = r)));
+  it('disables the button while the request is in flight and re-enables it on an error', async () => {
+    let reject: (reason: unknown) => void = () => {};
+    auth.login.mockReturnValue(new Promise((_, r) => (reject = r)));
     render(<LoginForm onSignedIn={vi.fn()} />);
     const typing = await fillCredentials();
     const button = screen.getByRole('button', { name: 'Sign in' });
     await typing.click(button);
     expect(button).toBeDisabled();
-    resolve({ status: 'ok', user });
+    reject(new ApiError(401, 'AUTH_INVALID_CREDENTIALS', 'x'));
     await waitFor(() => expect(button).toBeEnabled());
+  });
+
+  it('RFC-13 R7 stays disabled after a successful sign-in and ignores a second submit', async () => {
+    auth.login.mockResolvedValue({ status: 'ok', user });
+    const onSignedIn = vi.fn();
+    render(<LoginForm onSignedIn={onSignedIn} />);
+    const typing = await fillCredentials();
+    const button = screen.getByRole('button', { name: 'Sign in' });
+    await typing.click(button);
+    await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+    // the page is leaving: the form must not post the credentials again
+    expect(button).toBeDisabled();
+    fireEvent.submit(button.closest('form') as HTMLFormElement);
+    await waitFor(() => expect(auth.login).toHaveBeenCalledTimes(1));
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
   });
 });
 

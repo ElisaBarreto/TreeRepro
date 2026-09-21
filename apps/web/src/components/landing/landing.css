@@ -180,8 +180,9 @@
 /*
  * Sign-in reveal (RFC-13 R7). HomePage adds `tr-recede` to the card as soon
  * as sign-in resolves, then `tr-gone` to the card and `tr-grow` to the
- * emblem's travel wrapper 350 ms later, and at 1750 ms navigates to /app as
- * a view transition (below). `--tr-dx` / `--tr-dy` are the vector from the
+ * emblem's travel wrapper 350 ms later, and at 2750 ms navigates to /app as
+ * a view transition (below) — by then every landing animation below has
+ * ended, so the snapshot the transition takes is the tree at rest. `--tr-dx` / `--tr-dy` are the vector from the
  * stage to the centre of the viewport, set through the CSSOM. The travel and
  * the landing both ease in and out (`--tr-glide`): no jump at either end.
  */
@@ -233,43 +234,43 @@
   transform: scale(2.6);
   opacity: 0;
 }
-/* on arrival the canopy swells once and the fruits pop, one after the other */
+/* on arrival (1.2 s in) the canopy swells once and the fruits pop, one after the other; the last pop ends at 2.4 s, on the leave beat */
 .tr-canopy {
   transform-box: view-box;
   transform-origin: 100px 150px;
 }
 .tr-grow .tr-canopy {
-  animation: tr-bloom 1.4s cubic-bezier(0.45, 0.05, 0.2, 1) 0.85s both;
+  animation: tr-bloom 1.2s cubic-bezier(0.45, 0.05, 0.2, 1) 1.05s both;
 }
 .tr-fruit {
   transform-box: fill-box;
   transform-origin: center;
 }
 .tr-grow .tr-fruit {
-  animation: tr-pop 0.9s cubic-bezier(0.45, 0.05, 0.2, 1) 1.1s both;
+  animation: tr-pop 0.8s cubic-bezier(0.45, 0.05, 0.2, 1) 1.2s both;
 }
 /* the fruits are the fifth to ninth circles of the canopy group */
 .tr-grow .tr-fruit:nth-of-type(6) {
-  animation-delay: 1.22s;
+  animation-delay: 1.3s;
 }
 .tr-grow .tr-fruit:nth-of-type(7) {
-  animation-delay: 1.34s;
+  animation-delay: 1.4s;
 }
 .tr-grow .tr-fruit:nth-of-type(8) {
-  animation-delay: 1.46s;
+  animation-delay: 1.5s;
 }
 .tr-grow .tr-fruit:nth-of-type(9) {
-  animation-delay: 1.58s;
+  animation-delay: 1.6s;
 }
 
 /*
  * The view transition of the / → /app navigation: the workspace opens from
  * the centre as a widening circle over the landing snapshot, which stays put
  * (no crossfade, normal blending, or the two would add up to a wash), and
- * 1 s in — the tree has held its full size for about a second by then, its
- * canopy swell and fruit pops just over —
- * the emblem (`tr-emblem` on the landing stage and on the sidebar emblem)
- * glides into its slot in the sidebar over 900 ms.
+ * 400 ms in — the tree has been at its full size for 1.6 s by then, its
+ * canopy swell and fruit pops over — the emblem (`tr-emblem` on the landing
+ * stage and on the sidebar emblem) glides into its slot in the sidebar over
+ * 900 ms.
  */
 ::view-transition-old(root) {
   animation: none;
@@ -281,14 +282,14 @@
 }
 ::view-transition-group(tr-emblem) {
   animation-duration: 0.9s;
-  animation-delay: 1s;
+  animation-delay: 0.4s;
   animation-timing-function: cubic-bezier(0.45, 0.05, 0.2, 1);
   animation-fill-mode: both;
 }
 ::view-transition-old(tr-emblem),
 ::view-transition-new(tr-emblem) {
   animation-duration: 0.9s;
-  animation-delay: 1s;
+  animation-delay: 0.4s;
   animation-fill-mode: both;
 }
 

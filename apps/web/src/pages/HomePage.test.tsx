@@ -94,6 +94,23 @@ describe('RFC-13 R7 sign-in reveal', () => {
     expect(onSignedIn).toHaveBeenCalledWith(USER, 'reveal');
   });
 
+  it('shuts the receded form away and ignores a second sign-in while the reveal runs', async () => {
+    auth.login.mockResolvedValue({ status: 'ok', user: USER });
+    const onSignedIn = vi.fn();
+    const { container } = renderWithProviders(<HomePage onSignedIn={onSignedIn} />);
+    await submitSignIn();
+    const formSide = container.querySelector('.tr-form-side') as HTMLElement;
+    expect(formSide).toHaveAttribute('inert');
+    act(() => vi.advanceTimersByTime(REVEAL.grow));
+
+    // a second submit slipping through must neither restart the beats nor post again
+    await submitSignIn();
+    expect(container.querySelector('.tr-travel')).toHaveClass('tr-grow');
+    expect(auth.login).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(REVEAL.leave - REVEAL.grow));
+    expect(onSignedIn).toHaveBeenCalledTimes(1);
+  });
+
   it('drops the beats still to come when the page unmounts', async () => {
     auth.login.mockResolvedValue({ status: 'ok', user: USER });
     const onSignedIn = vi.fn();

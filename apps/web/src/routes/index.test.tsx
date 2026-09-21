@@ -70,6 +70,19 @@ describe('RFC-13 R7 the / route after sign-in', () => {
     expect(await screen.findByRole('heading', { name: 'Workspace' })).toBeInTheDocument();
   });
 
+  it('starts the page afresh when /app bounces the visitor back to /', async () => {
+    // the session never resolves: /app's guard redirects to / every time
+    auth.fetchMe.mockReset().mockRejectedValue(new ApiError(401, 'AUTH_UNAUTHENTICATED', 'x'));
+    const { router } = renderAt('/');
+    await signIn();
+    // /'s guard, /app's guard, then /'s guard again on the way back
+    await waitFor(() => expect(auth.fetchMe).toHaveBeenCalledTimes(3), { timeout: 4000 });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    const card = await screen.findByRole('region', { name: 'Sign in to TreeRepro' });
+    await waitFor(() => expect(card).not.toHaveClass('tr-recede'));
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+  });
+
   it('reaches /app at once and plainly under prefers-reduced-motion', async () => {
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
     const { router } = renderAt('/');

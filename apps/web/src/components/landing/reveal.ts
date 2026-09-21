@@ -1,13 +1,16 @@
 /**
  * The beats of the sign-in reveal, in ms from the moment sign-in resolves:
  * the form recedes at once, the emblem sets off for the centre of the
- * viewport at `grow` (1.2 s), holds there, and at `leave` the page hands over
- * to the `/app` navigation (a view transition, see landing.css) — the tree
- * keeps its full size a while longer under the opening workspace before it
- * shrinks into the sidebar. Pure: HomePage owns the DOM side.
+ * viewport at `grow` (1.2 s), holds there while its canopy swells and its
+ * fruits pop (landing.css: every one of those ends by `leave`, because the
+ * navigation snapshots the page and a frozen half-pop would travel into the
+ * sidebar), and at `leave` the page hands over to the `/app` navigation — a
+ * view transition in which the tree keeps its full size a little longer
+ * under the opening workspace before it shrinks into the sidebar. Pure:
+ * HomePage owns the DOM side.
  * @rfc RFC-13 R7
  */
-export const REVEAL = { recede: 0, grow: 350, leave: 1750 } as const;
+export const REVEAL = { recede: 0, grow: 350, leave: 2750 } as const;
 
 export type RevealPhase = 'recede' | 'grow';
 

@@ -39,6 +39,7 @@ export function HomePage({ onSignedIn }: HomePageProps) {
   useEffect(() => () => cancelReveal.current(), []);
 
   function signedIn(user: AuthUser) {
+    if (phase !== 'idle') return; // the reveal is already on its way
     if (prefersReducedMotion()) {
       onSignedIn(user, 'none');
       return;
@@ -88,7 +89,11 @@ export function HomePage({ onSignedIn }: HomePageProps) {
           </p>
         </div>
 
-        <div className="tr-form-side relative flex flex-1 flex-col justify-center gap-9 px-6 pt-6 pb-9 md:py-16 md:pr-18 md:pl-10">
+        {/* inert once the form has receded: invisible, so out of reach for the keyboard and assistive tech too */}
+        <div
+          inert={phase !== 'idle'}
+          className="tr-form-side relative flex flex-1 flex-col justify-center gap-9 px-6 pt-6 pb-9 md:py-16 md:pr-18 md:pl-10"
+        >
           <header className="tr-rise tr-rise-1 flex flex-col gap-1.5">
             <h1 className="font-display text-xs font-semibold uppercase tracking-[0.28em] text-mist-400">
               TreeRepro
