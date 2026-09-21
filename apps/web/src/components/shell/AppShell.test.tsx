@@ -245,6 +245,13 @@ describe('RFC-13 R3 AppShell navigation', () => {
 });
 
 describe('RFC-13 R3 AppShell chrome', () => {
+  it('RFC-13 R7 the sidebar emblem is where the sign-in reveal lands', () => {
+    renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    expect(screen.getByRole('img', { name: /TreeRepro emblem/ })).toHaveClass(
+      '[view-transition-name:tr-emblem]',
+    );
+  });
+
   it('shows the emblem, the wordmark and the user name and email', () => {
     renderWithProviders(<AppShell>child</AppShell>, { me: ME });
     expect(screen.getByRole('img', { name: /TreeRepro/ })).toBeInTheDocument();

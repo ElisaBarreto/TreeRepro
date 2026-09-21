@@ -21,6 +21,10 @@ const SEEDS = [
 /**
  * The landing emblem: a tree in fruit inside a disc, wrapped in a pulsing glow
  * and three rings, floating, letting seeds go, and leaning toward the pointer.
+ * The stage is the sign-in reveal's view transition target (`tr-emblem`, the
+ * name the sidebar emblem shares); the rings and the glow sit in wrappers so
+ * the reveal can ripple and bloom them without fighting their own spin and
+ * pulse animations, which already own `transform`.
  * @rfc RFC-13 R7
  */
 export function TreeEmblem({ ref }: TreeEmblemProps) {
@@ -60,15 +64,16 @@ export function TreeEmblem({ ref }: TreeEmblemProps) {
         if (typeof ref === 'function') ref(node);
         else if (ref) ref.current = node;
       }}
-      className="tr-stage relative flex size-44 items-center justify-center md:size-64"
+      className="tr-stage relative flex size-44 items-center justify-center [view-transition-name:tr-emblem] md:size-64"
     >
-      <div
-        aria-hidden="true"
-        className="tr-glow pointer-events-none absolute -inset-12 rounded-full blur-[28px]"
-      />
-      <div aria-hidden="true" className="tr-ring tr-ring-1" />
-      <div aria-hidden="true" className="tr-ring tr-ring-2" />
-      <div aria-hidden="true" className="tr-ring tr-ring-3" />
+      <div aria-hidden="true" className="tr-glow-wrap pointer-events-none absolute -inset-12">
+        <div className="tr-glow absolute inset-0 rounded-full blur-[28px]" />
+      </div>
+      <div aria-hidden="true" className="tr-rings pointer-events-none absolute inset-0">
+        <div className="tr-ring tr-ring-1" />
+        <div className="tr-ring tr-ring-2" />
+        <div className="tr-ring tr-ring-3" />
+      </div>
 
       <div className="tr-float relative size-36 drop-shadow-[0_18px_24px_rgba(0,0,0,0.45)] md:size-52">
         <Emblem size="100%" />

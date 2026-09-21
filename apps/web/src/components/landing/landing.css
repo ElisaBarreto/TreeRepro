@@ -1,7 +1,7 @@
 /*
- * Motion and effects of the landing page only (docs/specs/2026-09-12-visual-identity.md).
- * Everything else in the app stays still; every animation here stops under
- * prefers-reduced-motion.
+ * Motion and effects of the landing page only (docs/specs/2026-09-12-visual-identity.md),
+ * including the sign-in reveal that leaves it (RFC-13 R7). Everything else in
+ * the app stays still; every animation here stops under prefers-reduced-motion.
  */
 
 /* Call to action: amber pill whose gradient slides on hover, with a pollen glow. */
@@ -177,19 +177,182 @@
   }
 }
 
+/*
+ * Sign-in reveal (RFC-13 R7). HomePage adds `tr-recede` to the card as soon
+ * as sign-in resolves, then `tr-gone` to the card and `tr-grow` to the
+ * emblem's travel wrapper 350 ms later, and at 1750 ms navigates to /app as
+ * a view transition (below). `--tr-dx` / `--tr-dy` are the vector from the
+ * stage to the centre of the viewport, set through the CSSOM. The travel and
+ * the landing both ease in and out (`--tr-glide`): no jump at either end.
+ */
+.tr-travel,
+.tr-glow-wrap {
+  --tr-glide: cubic-bezier(0.45, 0.05, 0.2, 1);
+}
+.tr-form-side,
+.tr-caption {
+  transition:
+    opacity 0.45s cubic-bezier(0.55, 0, 0.2, 1),
+    transform 0.45s cubic-bezier(0.55, 0, 0.2, 1);
+}
+.tr-recede .tr-form-side,
+.tr-recede .tr-caption {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+.tr-card-surface {
+  transition:
+    opacity 0.6s cubic-bezier(0.55, 0, 0.2, 1),
+    transform 0.6s cubic-bezier(0.55, 0, 0.2, 1);
+}
+.tr-gone .tr-card-surface {
+  opacity: 0;
+  transform: scale(0.97);
+}
+.tr-travel {
+  transition: transform 1.2s var(--tr-glide);
+  will-change: transform;
+}
+.tr-grow {
+  transform: translate(var(--tr-dx, 0px), var(--tr-dy, 0px)) scale(1.65);
+}
+/* the glow blooms and the rings ripple outward as the tree sets off */
+.tr-glow-wrap {
+  transition: transform 1.2s var(--tr-glide);
+}
+.tr-grow .tr-glow-wrap {
+  transform: scale(2.1);
+}
+.tr-rings {
+  transition:
+    transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.8s ease-out;
+}
+.tr-grow .tr-rings {
+  transform: scale(2.6);
+  opacity: 0;
+}
+/* on arrival the canopy swells once and the fruits pop, one after the other */
+.tr-canopy {
+  transform-box: view-box;
+  transform-origin: 100px 150px;
+}
+.tr-grow .tr-canopy {
+  animation: tr-bloom 1.4s cubic-bezier(0.45, 0.05, 0.2, 1) 0.85s both;
+}
+.tr-fruit {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.tr-grow .tr-fruit {
+  animation: tr-pop 0.9s cubic-bezier(0.45, 0.05, 0.2, 1) 1.1s both;
+}
+/* the fruits are the fifth to ninth circles of the canopy group */
+.tr-grow .tr-fruit:nth-of-type(6) {
+  animation-delay: 1.22s;
+}
+.tr-grow .tr-fruit:nth-of-type(7) {
+  animation-delay: 1.34s;
+}
+.tr-grow .tr-fruit:nth-of-type(8) {
+  animation-delay: 1.46s;
+}
+.tr-grow .tr-fruit:nth-of-type(9) {
+  animation-delay: 1.58s;
+}
+
+/*
+ * The view transition of the / → /app navigation: the workspace opens from
+ * the centre as a widening circle over the landing snapshot, which stays put
+ * (no crossfade, normal blending, or the two would add up to a wash), and
+ * 1 s in — the tree has held its full size for about a second by then, its
+ * canopy swell and fruit pops just over —
+ * the emblem (`tr-emblem` on the landing stage and on the sidebar emblem)
+ * glides into its slot in the sidebar over 900 ms.
+ */
+::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: tr-iris 0.95s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  mix-blend-mode: normal;
+}
+::view-transition-group(tr-emblem) {
+  animation-duration: 0.9s;
+  animation-delay: 1s;
+  animation-timing-function: cubic-bezier(0.45, 0.05, 0.2, 1);
+  animation-fill-mode: both;
+}
+::view-transition-old(tr-emblem),
+::view-transition-new(tr-emblem) {
+  animation-duration: 0.9s;
+  animation-delay: 1s;
+  animation-fill-mode: both;
+}
+
+@keyframes tr-bloom {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.07);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes tr-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.8);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes tr-iris {
+  from {
+    clip-path: circle(0 at 50% 50%);
+  }
+  to {
+    /* 75vmax reaches every corner: the half-diagonal is at most 71vmax */
+    clip-path: circle(75vmax at 50% 50%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tr-rise,
   .tr-glow,
   .tr-ring,
   .tr-float,
   .tr-seed,
-  .tr-cta:disabled::after {
+  .tr-cta:disabled::after,
+  .tr-grow .tr-canopy,
+  .tr-grow .tr-fruit {
     animation: none;
   }
   .tr-stage,
   .tr-cta,
   .tr-cta::before,
-  .tr-cta-arrow {
+  .tr-cta-arrow,
+  .tr-form-side,
+  .tr-caption,
+  .tr-card-surface,
+  .tr-travel,
+  .tr-glow-wrap,
+  .tr-rings {
     transition: none;
+  }
+  /* named, not (*): a named pseudo-element selector outranks the universal one */
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-group(tr-emblem),
+  ::view-transition-old(tr-emblem),
+  ::view-transition-new(tr-emblem) {
+    animation: none;
   }
 }
