@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createImportBatch,
@@ -683,5 +683,87 @@ describe('RFC-63 R9 records list sort (spec §2)', () => {
         cursor: referencesPage.nextCursor ?? '',
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('order defaults to desc (controller ruling: RFC-63 R9 names one default, "added desc") for every sort', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const low = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '1',
+      numericValue: 1,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const high = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    // No `order` given: value sort still answers descending, same as added's default.
+    const value = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 50,
+      sort: 'value',
+    });
+    expect(value.data.map((r) => r.id)).toEqual([high.id, low.id]);
+  });
+
+  it('value sort pages two values that differ only past the 15th significant digit, without dropping or repeating a row', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    // The literal numeric text lands in the query verbatim (not a bound
+    // parameter), so PostgreSQL parses it at full precision — unlike a JS
+    // `number`, which cannot represent 19 significant digits and would
+    // round both values to the same double, hiding exactly the bug this
+    // guards against (records.ts's `valueSortKey` reads PostgreSQL's exact
+    // `::text` cast, never `numericValue`'s `mode: 'number'` JS double).
+    const [lowRow] = await t.db.execute(sql`
+      insert into trait_records (species_id, trait_id, value_text, harmonisation, numeric_value, primary_reference_id, origin, created_by)
+      values (${sp.id}, ${trait.id}, 'hp-low', 'harmonised', 1.234567890123456781, ${ref.id}, 'manual', ${user.id})
+      returning id`);
+    const [highRow] = await t.db.execute(sql`
+      insert into trait_records (species_id, trait_id, value_text, harmonisation, numeric_value, primary_reference_id, origin, created_by)
+      values (${sp.id}, ${trait.id}, 'hp-high', 'harmonised', 1.234567890123456789, ${ref.id}, 'manual', ${user.id})
+      returning id`);
+    const low = (lowRow as { id: string }).id;
+    const high = (highRow as { id: string }).id;
+
+    const full = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 50,
+      sort: 'value',
+      order: 'asc',
+    });
+    expect(full.data.map((r) => r.id)).toEqual([low, high]);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'value',
+        order: 'asc',
+        cursor,
+      });
+      seen.push(...page.data.map((r) => r.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(seen).toEqual([low, high]);
   });
 });

@@ -56,6 +56,17 @@ const extraReferencesSql = sql<ExtraReference[]>`(select coalesce(jsonb_agg(json
   where rr.record_id = ${traitRecords.id})`;
 
 /**
+ * The `value` sort's numeric key (RFC-63 R9): the single/mean/min/max fields
+ * coalesced, or PostgreSQL's numeric `Infinity` — never a real record's
+ * value — for a categorical or still-unharmonised record (see
+ * {@link SORT_KEYS}'s doc comment for why). Read back through
+ * `itemColumns.valueSortKey`'s `::text` cast, never through
+ * `numericValue`'s `mode: 'number'` JS double, which would round a
+ * high-precision value before it went into the cursor.
+ */
+const VALUE_SORT_KEY_SQL = sql`coalesce(${traitRecords.numericValue}, ${traitRecords.meanValue}, ${traitRecords.minValue}, ${traitRecords.maxValue}, 'Infinity'::numeric)`;
+
+/**
  * The single/min/max/mean/sd/n fields of a record as one object (spec R-5),
  * or null when none is set — a purely categorical or level-based record.
  */
@@ -164,6 +175,8 @@ const itemColumns = {
   secondaryObserverName: secondaryRefObserver.name,
   authorName: author.name,
   extraReferences: extraReferencesSql,
+  /** RFC-63 R9's `value` sort key, exact (see {@link VALUE_SORT_KEY_SQL}). */
+  valueSortKey: sql<string>`(${VALUE_SORT_KEY_SQL})::text`,
 };
 
 export type ItemRow = {
@@ -185,6 +198,7 @@ export type ItemRow = {
   secondaryObserverName: string | null;
   authorName: string | null;
   extraReferences: ExtraReference[];
+  valueSortKey: string;
   review: ReviewStatus;
   validationCount: number;
   contestCount: number;
@@ -312,10 +326,7 @@ export function itemQuery(db: DbExecutor, visibility: Visibility) {
  * `origin` is `not null` (RFC-63 R1): no sentinel needed.
  */
 const SORT_KEYS: Record<Exclude<RecordSort, 'added'>, SQL[]> = {
-  value: [
-    sql`coalesce(${traitRecords.numericValue}, ${traitRecords.meanValue}, ${traitRecords.minValue}, ${traitRecords.maxValue}, 'Infinity'::numeric)`,
-    sql`coalesce(${traitLevels.key}, '')`,
-  ],
+  value: [VALUE_SORT_KEY_SQL, sql`coalesce(${traitLevels.key}, '')`],
   references: [
     sql`coalesce(${primaryRef.shortCitation}, '')`,
     sql`coalesce(${primaryRef.citationKey}, '')`,
@@ -342,14 +353,14 @@ function anyText(): boolean {
  * The cursor values of one row for `sort`, read off the fields `itemQuery`
  * already selects — the same coalescing {@link SORT_KEYS} applies in SQL, so
  * the cursor a page's last row emits matches the predicate the next page
- * decodes it into.
+ * decodes it into. `value`'s numeric part comes from `valueSortKey`
+ * (`itemColumns`'s `::text` cast of {@link VALUE_SORT_KEY_SQL}), never
+ * recomputed from `numericValue`'s `mode: 'number'` JS double — a
+ * high-precision value would round on that trip and no longer match the
+ * exact text PostgreSQL compares the next page's cursor against.
  */
 function sortKeyParts(sort: Exclude<RecordSort, 'added'>, row: ItemRow): string[] {
-  if (sort === 'value') {
-    const rec = row.record;
-    const numeric = rec.numericValue ?? rec.meanValue ?? rec.minValue ?? rec.maxValue;
-    return [numeric === null ? 'Infinity' : String(numeric), row.levelKey ?? ''];
-  }
+  if (sort === 'value') return [row.valueSortKey, row.levelKey ?? ''];
   if (sort === 'references') return [row.primaryShortCitation ?? '', row.primaryKey ?? ''];
   return [row.record.origin];
 }
@@ -424,10 +435,11 @@ function sortCursorCondition(
  * Either `speciesId` and `traitId` together, or `referenceId` alone (primary,
  * secondary or `record_references`). `sort` is `value`, `references`,
  * `origin` or `added` (spec §2); `added` keeps the keyset cursor on the id
- * (today's cursor, unchanged, always `desc` by default), the other sorts
- * page under a composite keyset cursor of the sort key(s) and the id
- * (RFC-11 R6), `id` breaking ties. `order` defaults to `desc` for `added`
- * and `asc` for every other sort.
+ * (today's cursor, unchanged), the other sorts page under a composite
+ * keyset cursor of the sort key(s) and the id (RFC-11 R6), `id` breaking
+ * ties. `order` defaults to `desc` for every sort (RFC-63 R9 names one
+ * default, "added desc"; the controller ruling reads that as the general
+ * default, not just `added`'s).
  * @rfc RFC-63 R9
  * @rfc RFC-33 R2, R3
  */
@@ -467,10 +479,13 @@ export async function listRecords(
   }
 
   const sort = input.sort ?? 'added';
+  // RFC-63 R9 names one default, "added desc"; the controller ruling reads
+  // that as the general default too, so every sort defaults to `desc` when
+  // `order` is omitted, `added` included.
+  const order = input.order ?? 'desc';
+  const dir = order === 'asc' ? asc : desc;
 
   if (sort === 'added') {
-    const order = input.order ?? 'desc';
-    const dir = order === 'asc' ? asc : desc;
     if (input.cursor) {
       const after = decodeCursor(input.cursor);
       conditions.push(order === 'asc' ? gt(traitRecords.id, after) : lt(traitRecords.id, after));
@@ -483,8 +498,6 @@ export async function listRecords(
     return { data: page.map(toItem), nextCursor };
   }
 
-  const order = input.order ?? 'asc';
-  const dir = order === 'asc' ? asc : desc;
   if (input.cursor) conditions.push(sortCursorCondition(sort, order, input.cursor));
   const rows = await itemQuery(db, visibility)
     .where(and(...conditions))
