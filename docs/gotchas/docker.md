@@ -108,3 +108,8 @@ services:
 **Symptom:** `ERR_PNPM_OUTDATED_LOCKFILE` (or an importer-mismatch error) inside `api.Dockerfile` / `web.Dockerfile` although `pnpm install --frozen-lockfile` passes on the host.
 **Cause:** Both Dockerfiles copy each workspace manifest before `pnpm install`; a lockfile importer whose `package.json` is missing fails the install.
 **Fix:** Add `COPY <pkg>/package.json <pkg>/` next to the `tools/rfc-lint/package.json` line in both files (`apps/e2e` did this on plan 05c).
+
+## A GitHub Actions layer cache makes the `Images` job slower
+**Symptom:** Adding `cache-from`/`cache-to: type=gha,mode=max` to the `docker/build-push-action` steps in `ci.yml` took the `Images` job from ~1m15s to ~3m30s, and it became the slowest job the `Deploy` job waits on.
+**Cause:** Both images build in ~30 s without a cache, and a PR changes the source layers anyway, so a hit saves a few seconds; the export, however, runs on every build — ~16 s preparing plus ~30–40 s uploading every intermediate layer (the `node_modules` layer above all) per image (issue #165).
+**Fix:** No layer cache on these builds. Reconsider only if a build grows to minutes of real work.
