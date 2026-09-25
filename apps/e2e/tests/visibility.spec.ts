@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { apiCall } from './api.ts';
+import { searchSpecies } from './species-search.ts';
 import { adminContext, inviteAndActivate } from './users.ts';
 
 interface CreatedSpecies {
@@ -37,12 +38,12 @@ test.describe('RFC-33 species visibility (issue #69)', () => {
       // simply absent from the results.
       await contributor.page.goto('/app/species');
       await expect(contributor.page.getByLabel('Status')).toHaveCount(0);
-      await contributor.page.getByLabel('Search species').fill(name);
+      await searchSpecies(contributor.page, name);
       await expect(contributor.page.getByText(`No species matches “${name}”.`)).toBeVisible();
 
       // Admin: filters explicitly to Inactive and sees the species, labelled.
       await adminPage.goto('/app/species');
-      await adminPage.getByLabel('Search species').fill(name);
+      await searchSpecies(adminPage, name);
       await adminPage.getByLabel('Status').selectOption('inactive');
       await expect(adminPage.getByRole('link', { name })).toBeVisible();
       await expect(adminPage.getByText('inactive', { exact: true })).toBeVisible();
@@ -52,7 +53,7 @@ test.describe('RFC-33 species visibility (issue #69)', () => {
       // contributor above does not.
       await manager.page.goto('/app/species');
       await expect(manager.page.getByLabel('Status')).toBeVisible();
-      await manager.page.getByLabel('Search species').fill(name);
+      await searchSpecies(manager.page, name);
       await expect(manager.page.getByRole('link', { name })).toBeVisible();
       await expect(manager.page.getByText('inactive', { exact: true })).toBeVisible();
     } finally {

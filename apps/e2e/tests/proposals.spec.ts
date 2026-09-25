@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { searchSpecies } from './species-search.ts';
 import { adminContext, inviteAndActivate } from './users.ts';
 
 test.describe('RFC-75 species proposals / RFC-81 taxonomy lookup (plan 12c)', () => {
@@ -23,7 +24,7 @@ test.describe('RFC-75 species proposals / RFC-81 taxonomy lookup (plan 12c)', ()
       // and proposes it ────────────────────────────────────────────────────
       await page.goto('/app/species');
       await expect(page.getByRole('heading', { name: 'Species', level: 1 })).toBeVisible();
-      await page.getByLabel('Search species').fill(speciesName);
+      await searchSpecies(page, speciesName);
 
       const proposeButton = page.getByRole('button', { name: 'Propose this species' });
       await expect(proposeButton).toBeVisible();

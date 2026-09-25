@@ -1,5 +1,6 @@
 import { type BrowserContext, expect, test } from '@playwright/test';
 import { apiCall } from './api.ts';
+import { searchSpecies } from './species-search.ts';
 import { adminContext } from './users.ts';
 
 interface SpeciesRow {
@@ -51,7 +52,7 @@ test.describe('RFC-60 R4, R6 synonym added through the UI, found by the two-tier
 
       // ── Search by the synonym text finds the species, not by its own name ─
       await page.goto('/app/species');
-      await page.getByLabel('Search species').fill(synonymName);
+      await searchSpecies(page, synonymName);
 
       const row = page.getByRole('row').filter({ hasText: canonicalName });
       await expect(row.getByRole('link', { name: canonicalName, exact: true })).toBeVisible();
