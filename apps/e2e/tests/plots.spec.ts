@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { apiCall } from './api.ts';
+import { searchSpecies } from './species-search.ts';
 import { adminContext, inviteAndActivate } from './users.ts';
 
 interface CreatedSpecies {
@@ -95,11 +96,11 @@ test.describe('RFC-67 / RFC-33 field plots and species scope (plan 08b)', () => 
       await expect(contributor.page.getByLabel('Show species outside my plots')).toHaveCount(0);
 
       // Search for the species inside the plot -> visible
-      await contributor.page.getByLabel('Search species').fill(speciesInPlotName);
+      await searchSpecies(contributor.page, speciesInPlotName);
       await expect(contributor.page.getByRole('link', { name: speciesInPlotName })).toBeVisible();
 
       // Search for the species outside the plot -> not visible (No species match)
-      await contributor.page.getByLabel('Search species').fill(speciesOutsidePlotName);
+      await searchSpecies(contributor.page, speciesOutsidePlotName);
       await expect(
         contributor.page.getByText(`No species matches “${speciesOutsidePlotName}”.`),
       ).toBeVisible();
@@ -122,7 +123,7 @@ test.describe('RFC-67 / RFC-33 field plots and species scope (plan 08b)', () => 
       await expect(outsideCheckbox).not.toBeChecked();
 
       // Without ticking, default scope is 'plots' -> outside species is still not visible
-      await contributor.page.getByLabel('Search species').fill(speciesOutsidePlotName);
+      await searchSpecies(contributor.page, speciesOutsidePlotName);
       await expect(
         contributor.page.getByText(`No species matches “${speciesOutsidePlotName}”.`),
       ).toBeVisible();

@@ -1,5 +1,6 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test';
 import { apiCall } from './api.ts';
+import { searchSpecies } from './species-search.ts';
 import { adminContext } from './users.ts';
 
 /**
@@ -120,7 +121,7 @@ test.describe('RFC-60 R6 / RFC-69 species trait filters and breadcrumb (plan 10a
       await expect(hasData).not.toBeChecked();
       await expect(hasData).toBeEnabled();
 
-      await page.getByLabel('Search species').fill(prefix);
+      await searchSpecies(page, prefix);
 
       // ── …and the list answers with the species that has no data for it ───
       await expect(page.getByRole('link', { name: missingName, exact: true })).toBeVisible();
@@ -146,7 +147,7 @@ test.describe('RFC-60 R6 / RFC-69 species trait filters and breadcrumb (plan 10a
 
       // ── The other side of the same filter, and clearing it ───────────────
       await page.goto(deepLink);
-      await page.getByLabel('Search species').fill(prefix);
+      await searchSpecies(page, prefix);
       await page.getByRole('radio', { name: 'Has data' }).check();
       // The page writes the whole search to the address bar on the same
       // 300ms debounce the name waits for, so a filter changed just after a
