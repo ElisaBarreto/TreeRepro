@@ -105,7 +105,7 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
     expect(dataset.fetchReference).toHaveBeenCalledWith(REFERENCE.id);
     expect(
       screen.getByText(
-        'Used as the primary article in 1 record and as the secondary article in 1 record.',
+        'Used as the primary reference in 1 record and as the secondary reference in 1 record.',
       ),
     ).toBeInTheDocument();
     expect(definition('Title')).toHaveTextContent('Breeding systems of tropical trees');
@@ -133,7 +133,7 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
     await openPage();
     expect(
       screen.getByText(
-        'Used as the primary article in 1,237 records and as the secondary article in 3 records.',
+        'Used as the primary reference in 1,237 records and as the secondary reference in 3 records.',
       ),
     ).toBeInTheDocument();
   });
@@ -145,7 +145,7 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(BARE.citationKey);
     expect(
       screen.getByText(
-        'Used as the primary article in 1 record and as the secondary article in 0 records.',
+        'Used as the primary reference in 1 record and as the secondary reference in 0 records.',
       ),
     ).toBeInTheDocument();
     for (const label of ['Title', 'Authors', 'Year', 'Journal', 'DOI', 'URL']) {
@@ -262,7 +262,7 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
       }),
     );
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(
-      'Records citing this article',
+      'Records citing this reference',
     );
     const rows = within(await screen.findByRole('table')).getAllByRole('row');
     expect(rows).toHaveLength(3);
@@ -352,7 +352,7 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
   it('says so when no record cites the article', async () => {
     dataset.fetchRecords.mockResolvedValue(page([]));
     await openPage();
-    expect(await screen.findByText('No records cite this article yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No records cite this reference yet.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
@@ -375,7 +375,7 @@ describe('RFC-13 R4, R6 ReferencePage errors', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Reference');
     expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
-    expect(screen.queryByText('No records cite this article yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No records cite this reference yet.')).not.toBeInTheDocument();
     expect(dataset.fetchRecords).not.toHaveBeenCalled();
   });
 
@@ -400,7 +400,7 @@ describe('RFC-13 R4, R6 ReferencePage errors', () => {
       'You do not have permission to do this.',
     );
     expect(definition('Title')).toHaveTextContent('Breeding systems of tropical trees');
-    expect(screen.queryByText('No records cite this article yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No records cite this reference yet.')).not.toBeInTheDocument();
   });
 });
 

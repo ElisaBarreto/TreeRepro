@@ -173,14 +173,14 @@ function ReferenceRecords({
   return (
     <section className="flex flex-col gap-3">
       <h2 className="font-display text-section font-semibold text-canopy-950">
-        Records citing this article
+        Records citing this reference
       </h2>
       {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
       {list.isLoading && !list.error ? (
         <p className="text-body text-mist-500">Loading records…</p>
       ) : null}
       {!list.isLoading && !list.error && list.items.length === 0 ? (
-        <EmptyState title="No records cite this article yet." />
+        <EmptyState title="No records cite this reference yet." />
       ) : null}
       {list.items.length > 0 ? (
         <RecordTable
@@ -247,7 +247,7 @@ export function ReferencePage({ id }: { id: string }) {
     <>
       <PageHeader
         title={<span className="break-words">{referenceLabel(data)}</span>}
-        description={`Used as the primary article in ${records(data.primaryCount)} and as the secondary article in ${records(data.secondaryCount)}.`}
+        description={`Used as the primary reference in ${records(data.primaryCount)} and as the secondary reference in ${records(data.secondaryCount)}.`}
         actions={
           hasPermission(me, 'references.manage') ? (
             <Button variant="secondary" onClick={() => setEditing(true)}>

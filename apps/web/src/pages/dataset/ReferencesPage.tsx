@@ -101,7 +101,7 @@ export function ReferencesPage({
     <>
       <PageHeader
         title="References"
-        description="Articles cited by the records, most used first. Search by citation key or title."
+        description="References cited by the records, most used first. Search by citation key or title."
         actions={
           hasPermission(me, 'references.manage') ? (
             <Button onClick={() => setCreating(true)}>New reference</Button>
@@ -171,7 +171,7 @@ export function ReferencesPage({
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading ? <p className="text-body text-mist-500">Searching…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (
-          <EmptyState title="No articles match." />
+          <EmptyState title="No references match." />
         ) : null}
         {list.items.length > 0 ? <ReferenceTable items={list.items} /> : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
@@ -185,7 +185,7 @@ function ReferenceTable({ items }: { items: Reference[] }) {
     <Table>
       <Thead>
         <Tr>
-          <Th>Article</Th>
+          <Th>Reference</Th>
           <Th className="text-right">As primary</Th>
           <Th className="text-right">As secondary</Th>
           <Th>Year</Th>

@@ -104,7 +104,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     await openPage();
     expect(
       screen.getByText(
-        'Articles cited by the records, most used first. Search by citation key or title.',
+        'References cited by the records, most used first. Search by citation key or title.',
       ),
     ).toBeInTheDocument();
     const link = await screen.findByRole('link', { name: 'Smith2001' });
@@ -122,7 +122,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
         .map((th) => th.textContent),
-    ).toEqual(['Article', 'As primary', 'As secondary', 'Year', 'DOI / ISBN']);
+    ).toEqual(['Reference', 'As primary', 'As secondary', 'Year', 'DOI / ISBN']);
     expect(
       rows
         .slice(1)
@@ -192,10 +192,10 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     );
     await openPage();
     expect(screen.getByText('Searching…')).toBeInTheDocument();
-    expect(screen.queryByText('No articles match.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
 
     resolvePage(page([]));
-    expect(await screen.findByText('No articles match.')).toBeInTheDocument();
+    expect(await screen.findByText('No references match.')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
@@ -233,7 +233,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You do not have permission to do this.',
     );
-    expect(screen.queryByText('No articles match.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
     first.unmount();
 
     dataset.searchReferences.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
