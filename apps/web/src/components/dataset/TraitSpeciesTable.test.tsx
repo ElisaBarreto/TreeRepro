@@ -50,15 +50,9 @@ const headers = (row: HTMLElement) =>
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell');
 
 describe('RFC-62 R8 TraitSpeciesTable in `with` mode', () => {
-  it('names the species, its family, its records and the value a curator accepted', async () => {
+  it('names the species, its family and its records', async () => {
     const { rows } = await renderTable([TRAIT_SPECIES_WITH_DATA], 'with');
-    expect(headers(rows[0] as HTMLElement)).toEqual([
-      'Species',
-      'Family',
-      'Records',
-      'Accepted value',
-      'Source',
-    ]);
+    expect(headers(rows[0] as HTMLElement)).toEqual(['Species', 'Family', 'Records']);
     const row = cells(rows[1] as HTMLElement);
     expect(
       within(row[0] as HTMLElement).getByRole('link', { name: 'Adenanthera pavonina' }),
@@ -67,14 +61,9 @@ describe('RFC-62 R8 TraitSpeciesTable in `with` mode', () => {
     expect(row[2]).toHaveTextContent('4');
     // The levels this species has values on, in the order the API sent them.
     expect(row[2]).toHaveTextContent('dioecious 3 · hermaphrodite 1');
-    expect(row[3]).toHaveTextContent('dioecious');
-    expect(within(row[4] as HTMLElement).getByRole('link', { name: 'Renner2014' })).toHaveAttribute(
-      'href',
-      `/app/references/${TRAIT_SPECIES_WITH_DATA.accepted?.reference.id}`,
-    );
   });
 
-  it('dashes the family, the accepted value and its source when there is none', async () => {
+  it('dashes the family when there is none', async () => {
     const { rows } = await renderTable(
       [{ ...TRAIT_SPECIES_UNDECIDED, family: null }],
       'with',
@@ -82,9 +71,7 @@ describe('RFC-62 R8 TraitSpeciesTable in `with` mode', () => {
     );
     const row = cells(rows[1] as HTMLElement);
     expect(row[1]).toHaveTextContent('—');
-    expect(row[3]).toHaveTextContent('—');
-    expect(row[4]).toHaveTextContent('—');
-    expect(within(row[4] as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
+    expect(row).toHaveLength(3);
   });
 
   it('takes the numeric summary from the trait unit, and reads the span bare without one', async () => {

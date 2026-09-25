@@ -296,16 +296,17 @@ export const dictionarySchema = z.array(
 
 /**
  * `GET /api/traits/:id`: the trait entry plus its category, the species
- * counted with and without a value, the accepted-value count, and the
- * distribution over harmonised records — `levels` for a categorical trait,
- * `numeric` (nullable, no harmonised records yet) for a quantitative one.
+ * counted with and without a value, the count of species with a validated
+ * record, and the distribution over harmonised records — `levels` for a
+ * categorical trait, `numeric` (nullable, no harmonised records yet) for a
+ * quantitative one.
  * @rfc RFC-62 R7
  */
 export const traitDetailSchema = traitSchema.extend({
   category: z.strictObject({ key: z.string(), label: z.string() }),
   speciesWithData: z.number().int().nonnegative(),
   speciesMissing: z.number().int().nonnegative(),
-  acceptedCount: z.number().int().nonnegative(),
+  validatedCount: z.number().int().nonnegative(),
   distribution: z.union([
     z.strictObject({
       levels: z.array(
@@ -346,21 +347,16 @@ export const listTraitSpeciesQuerySchema = cursorQuerySchema.extend({
 
 /**
  * A species row of `GET /api/traits/:id/species`: the species list item plus,
- * in `with` mode, the accepted value (its reference, which carries
- * `shortCitation` itself, RFC-61 R1) and a per-species summary of its
- * records on the trait — `levels` for a categorical trait, `numeric` for a
- * quantitative one. `missing` mode leaves all three `null`.
+ * in `with` mode, its record count, whether it has a validated record on the
+ * trait, and a per-species summary of its records — `levels` for a
+ * categorical trait, `numeric` for a quantitative one. `missing` mode leaves
+ * all three `null`.
  * @rfc RFC-62 R8
  */
 export const traitSpeciesItemSchema = speciesListItemSchema.extend({
   recordCount: z.number().int().nonnegative().nullable(),
-  accepted: z
-    .strictObject({
-      recordId: z.uuid(),
-      valueText: z.string(),
-      reference: referenceRefSchema,
-    })
-    .nullable(),
+  /** At least one of the species' records on the trait is validated (spec R-1). @rfc RFC-62 R8 */
+  validated: z.boolean().nullable(),
   summary: z
     .union([
       z.strictObject({

@@ -92,7 +92,7 @@ describe('RFC-62 R7 TraitPage header', () => {
     expect(definition('Unit')).toHaveTextContent('mg');
     expect(definition('Species with data')).toHaveTextContent('3');
     expect(definition('Species missing data')).toHaveTextContent('9');
-    expect(definition('Accepted values')).toHaveTextContent('1');
+    expect(definition('Species validated')).toHaveTextContent('1');
   });
 
   it('reads "—" for a trait without a unit and flags an inactive one', async () => {
@@ -182,7 +182,7 @@ describe('RFC-62 R7 TraitPage distribution', () => {
 });
 
 describe('RFC-62 R8 TraitPage species tabs', () => {
-  it('opens on the species with data, one row per species with its records, value and source', async () => {
+  it('opens on the species with data, one row per species with its records', async () => {
     await openPage();
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual([
@@ -204,7 +204,7 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
         .map((th) => th.textContent),
-    ).toEqual(['Species', 'Family', 'Records', 'Accepted value', 'Source']);
+    ).toEqual(['Species', 'Family', 'Records']);
     const cells = within(rows[1] as HTMLElement).getAllByRole('cell');
     expect(
       within(cells[0] as HTMLElement).getByRole('link', { name: 'Adenanthera pavonina' }),
@@ -212,21 +212,15 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     expect(cells[1]).toHaveTextContent('Fabaceae');
     expect(cells[2]).toHaveTextContent('4');
     expect(cells[2]).toHaveTextContent('dioecious 3 · hermaphrodite 1');
-    expect(cells[3]).toHaveTextContent('dioecious');
-    expect(
-      within(cells[4] as HTMLElement).getByRole('link', { name: 'Renner2014' }),
-    ).toHaveAttribute('href', `/app/references/${TRAIT_SPECIES_WITH_DATA.accepted?.reference.id}`);
   });
 
-  it('reads "—" where no value was accepted and prints a numeric summary with the unit', async () => {
+  it('prints a numeric summary with the unit', async () => {
     dataset.fetchTraitSpecies.mockResolvedValue(page([TRAIT_SPECIES_UNDECIDED]));
     await openPage(SEED_MASS_DETAIL);
     const cells = within((await screen.findAllByRole('row'))[1] as HTMLElement).getAllByRole(
       'cell',
     );
     expect(cells[2]).toHaveTextContent('0.5 – 3 mg');
-    expect(cells[3]).toHaveTextContent('—');
-    expect(cells[4]).toHaveTextContent('—');
   });
 
   it('counts and summaries are independent: no count still shows the summary, no summary just the count', async () => {
@@ -278,7 +272,6 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     expect(
       within(rows[1] as HTMLElement).getByRole('link', { name: 'Add the first entry' }),
     ).toHaveAttribute('href', `/app/species/${TRAIT_SPECIES_MISSING.id}?missing=true`);
-    expect(screen.queryByText('Accepted value')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('tab', { name: 'Species with data' }));
     await waitFor(() =>

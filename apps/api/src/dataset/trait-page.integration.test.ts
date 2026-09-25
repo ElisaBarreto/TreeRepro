@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   addPlotSpecies,
-  createAcceptedValue,
+  createAnnotation,
   createGenus,
   createPlot,
   createRecord,
@@ -18,7 +18,6 @@ import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
 import { forgetCached } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
-import { ensurePersonalObservation } from './references.ts';
 import { getTraitDetail, listTraitSpecies } from './trait-page.ts';
 
 /** Both viewer classes of RFC-62 R7's distribution cache, for a `finally`. */
@@ -133,7 +132,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
       expect(detail?.category).toEqual({ key: 'flower_color', label: category?.label });
       expect(detail?.speciesWithData).toBe(3);
       expect(detail?.speciesMissing).toBeGreaterThanOrEqual(0);
-      expect(detail?.acceptedCount).toBe(0);
+      expect(detail?.validatedCount).toBe(0);
       expect(detail?.distribution).toEqual({
         levels: [
           { level: { id: alpha.id, key: 'alpha' }, speciesCount: 2, recordCount: 3 },
@@ -146,7 +145,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
-  it('counts the species whose current accepted value is on the trait, not every decision ever made', async () => {
+  it('counts the species with a validated record on the trait, once each; a withdrawal takes one out', async () => {
     const { user } = await createUser(t.db);
     const reference = await createReference(t.db);
     const trait = await createTrait(t.db, { levels: ['alpha'] });
@@ -169,31 +168,28 @@ describe('RFC-62 R7 getTraitDetail', () => {
 
     try {
       const detail = async () => await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
-      expect((await detail())?.acceptedCount).toBe(0);
+      expect((await detail())?.validatedCount).toBe(0);
 
-      await createAcceptedValue(t.db, {
-        speciesId: one.id,
-        traitId: trait.id,
-        actorId: user.id,
-        recordId: firstRecord.id,
-      });
-      await createAcceptedValue(t.db, {
-        speciesId: two.id,
-        traitId: trait.id,
-        actorId: user.id,
+      await createAnnotation(t.db, { recordId: firstRecord.id, actorId: user.id, kind: 'confirm' });
+      await createAnnotation(t.db, {
         recordId: secondRecord.id,
-      });
-      expect((await detail())?.acceptedCount).toBe(2);
-
-      // The newest decision for a species wins: clearing it takes that
-      // species back out of the count.
-      await createAcceptedValue(t.db, {
-        speciesId: two.id,
-        traitId: trait.id,
         actorId: user.id,
-        decision: 'cleared',
+        kind: 'confirm',
       });
-      expect((await detail())?.acceptedCount).toBe(1);
+      // A second validation of the same record does not count its species twice.
+      await createAnnotation(t.db, {
+        recordId: secondRecord.id,
+        actorId: user.id,
+        kind: 'confirm',
+      });
+      expect((await detail())?.validatedCount).toBe(2);
+
+      await createAnnotation(t.db, {
+        recordId: secondRecord.id,
+        actorId: user.id,
+        kind: 'withdraw',
+      });
+      expect((await detail())?.validatedCount).toBe(1);
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
     }
@@ -434,14 +430,9 @@ describe('RFC-62 R7 getTraitDetail', () => {
         levelId: alpha.id,
         referenceId: reference.id,
       });
-      // The only accepted value is on the species outside the plot.
+      // The only validated record is on the species outside the plot.
       if (s === outside) {
-        await createAcceptedValue(t.db, {
-          speciesId: s.id,
-          traitId: trait.id,
-          actorId: user.id,
-          recordId: written.id,
-        });
+        await createAnnotation(t.db, { recordId: written.id, actorId: user.id, kind: 'confirm' });
       }
     }
 
@@ -461,7 +452,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
             trait.id,
           );
           expect(plotBound?.speciesWithData).toBe(2);
-          expect(plotBound?.acceptedCount).toBe(1);
+          expect(plotBound?.validatedCount).toBe(1);
           expect(plotBound?.distribution).toEqual({
             levels: [{ level: { id: alpha.id, key: 'alpha' }, speciesCount: 2, recordCount: 2 }],
           });
@@ -481,7 +472,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
 describe('RFC-62 R8 listTraitSpecies', () => {
   const t = useTestDb();
 
-  it('with: every species that has a record, its count, its accepted value and a summary of its records', async () => {
+  it('with: every species that has a record, its count and a summary of its records', async () => {
     const { user } = await createUser(t.db);
     const first = await createReference(t.db);
     const second = await createReference(t.db);
@@ -489,7 +480,7 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     const alpha = levelOf(trait, 'alpha');
     const beta = levelOf(trait, 'beta');
     const one = await createSpecies(t.db);
-    const accepted = await record(t.db, {
+    const firstRecord = await record(t.db, {
       actor: user,
       speciesId: one.id,
       traitId: trait.id,
@@ -522,12 +513,7 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       harmonisation: 'unknown_level',
       referenceId: first.id,
     });
-    await createAcceptedValue(t.db, {
-      speciesId: one.id,
-      traitId: trait.id,
-      actorId: user.id,
-      recordId: accepted.id,
-    });
+    await createAnnotation(t.db, { recordId: firstRecord.id, actorId: user.id, kind: 'confirm' });
 
     const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
       mode: 'with',
@@ -537,16 +523,7 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     expect(data[0]).toMatchObject({
       canonicalName: one.canonicalName,
       recordCount: 4,
-      accepted: {
-        recordId: accepted.id,
-        valueText: 'alpha',
-        reference: {
-          id: first.id,
-          citationKey: first.citationKey,
-          shortCitation: null,
-          kind: 'publication',
-        },
-      },
+      validated: true,
       summary: {
         levels: [
           { key: 'alpha', count: 2 },
@@ -554,50 +531,10 @@ describe('RFC-62 R8 listTraitSpecies', () => {
         ],
       },
     });
+    expect(data[0]).not.toHaveProperty('accepted');
   });
 
-  it('RFC-61 R4, R7 with: an accepted value from a personal observation carries its observer, decrypted', async () => {
-    const { user } = await createUser(t.db);
-    const { user: observer } = await createUser(t.db, {
-      name: `Observer-${Math.random().toString(16).slice(2)}`,
-    });
-    const observation = await ensurePersonalObservation(t.db, observer.id);
-    const trait = await createTrait(t.db, { levels: ['alpha'] });
-    const alpha = levelOf(trait, 'alpha');
-    const one = await createSpecies(t.db);
-    const accepted = await record(t.db, {
-      actor: user,
-      speciesId: one.id,
-      traitId: trait.id,
-      valueText: 'alpha',
-      levelId: alpha.id,
-      referenceId: observation.id,
-    });
-    await createAcceptedValue(t.db, {
-      speciesId: one.id,
-      traitId: trait.id,
-      actorId: user.id,
-      recordId: accepted.id,
-    });
-
-    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
-      mode: 'with',
-      limit: 50,
-    });
-    expect(data.find((s) => s.id === one.id)?.accepted).toEqual({
-      recordId: accepted.id,
-      valueText: 'alpha',
-      reference: {
-        id: observation.id,
-        citationKey: `personal-observation:${observer.id}`,
-        kind: 'personal_observation',
-        observer: { id: observer.id, name: observer.name },
-        shortCitation: null,
-      },
-    });
-  });
-
-  it('with: a species no curator has decided on carries a null accepted value and a numeric summary', async () => {
+  it('with: a quantitative species carries a numeric summary', async () => {
     const { user } = await createUser(t.db);
     const reference = await createReference(t.db);
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
@@ -620,7 +557,7 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     expect(data[0]).toMatchObject({
       id: one.id,
       recordCount: 2,
-      accepted: null,
+      validated: false,
       summary: { numeric: { min: 2, max: 7 } },
     });
   });
@@ -650,7 +587,10 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       limit: 50,
     });
     expect(data.map((s) => s.id)).toEqual([without.id]);
-    expect(data[0]).toMatchObject({ recordCount: null, accepted: null, summary: null });
+    expect(data[0]).toEqual(
+      expect.objectContaining({ recordCount: null, validated: null, summary: null }),
+    );
+    expect(data[0]).not.toHaveProperty('accepted');
   });
 
   it('is plot-scoped in both modes: a plot-bound viewer browses only their own plots', async () => {

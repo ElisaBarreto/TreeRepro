@@ -81,7 +81,7 @@ function Facts({ trait }: { trait: TraitDetail }) {
     { label: 'Unit', value: trait.unit ?? DASH },
     { label: 'Species with data', value: formatNumber(trait.speciesWithData) },
     { label: 'Species missing data', value: formatNumber(trait.speciesMissing) },
-    { label: 'Accepted values', value: formatNumber(trait.acceptedCount) },
+    { label: 'Species validated', value: formatNumber(trait.validatedCount) },
   ];
   return (
     <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-cell">
@@ -300,7 +300,7 @@ function TraitSpecies({
 /**
  * One trait (RFC-62 R7): what it is — its category, unit, description, value
  * type and whether it is still active — how many species have data for it,
- * lack it or have an accepted value, and how its harmonised records are
+ * lack it or have a validated record, and how its harmonised records are
  * distributed. Below that, the species themselves, with data and without
  * (RFC-62 R8), each tab a paginated table narrowed by the taxonomy filters;
  * a species with no record yet links to its own page opened on the traits it

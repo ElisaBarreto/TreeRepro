@@ -4,13 +4,13 @@ import type {
   TraitSpeciesItem,
   TraitSpeciesMode,
 } from '@treerepro/contracts';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { globalSpeciesVisible, levelVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
-import { users } from '../db/schema/users.ts';
 import { cachedJson } from '../redis/cache.ts';
 import type { Redis } from '../redis/client.ts';
+import { validatedPairsSql } from './coverage.ts';
 import { getTrait, requireTrait } from './dictionary.ts';
 import { searchSpecies } from './taxa.ts';
 
@@ -104,7 +104,7 @@ async function computeDistribution(
 /**
  * `GET /api/traits/:id`: the trait entry, its category, how many visible
  * species have a value for it, how many are still missing one, how many have
- * an accepted value, and the distribution of its harmonised records.
+ * a validated record, and the distribution of its harmonised records.
  * `null` when the trait does not exist or the viewer cannot see it (RFC-33
  * R2) — the route answers 404.
  *
@@ -145,17 +145,13 @@ export async function getTraitDetail(
             and not exists (select 1 from species_trait_coverage c
                              where c.species_id = s.id and c.trait_id = ${id}::uuid)
         ) as species_missing,
-        (select count(*)::int from (
-           -- Served by accepted_values_trait_idx (trait_id, species_id, id
-           -- desc): the filter and the ordering below, in one index (#97).
-           select distinct on (a.species_id) a.species_id, a.decision
-             from accepted_values a
-             join species s on s.id = a.species_id
-            where a.trait_id = ${id}::uuid
-              and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
-            order by a.species_id, a.id desc
-         ) newest where newest.decision = 'accepted') as accepted_count
-    `) as unknown as Promise<{ species_missing: number; accepted_count: number }[]>,
+        (select count(*)::int
+           from (${validatedPairsSql()}) v
+           join species s on s.id = v.species_id
+          where v.trait_id = ${id}::uuid
+            and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+        ) as validated_count
+    `) as unknown as Promise<{ species_missing: number; validated_count: number }[]>,
     cachedJson(
       ctx.redis,
       distributionKey(id, visibility),
@@ -175,7 +171,7 @@ export async function getTraitDetail(
     // one figure in the list and another in the header.
     speciesWithData: trait.speciesCount,
     speciesMissing: counts[0]?.species_missing ?? 0,
-    acceptedCount: counts[0]?.accepted_count ?? 0,
+    validatedCount: counts[0]?.validated_count ?? 0,
     distribution: distribution.value,
     computedAt: distribution.computedAt,
   };
@@ -211,35 +207,21 @@ interface SpeciesNumericRow {
   numeric_max: number | null;
 }
 
-interface AcceptedRow {
-  species_id: string;
-  decision: 'accepted' | 'cleared';
-  record_id: string | null;
-  value_text: string | null;
-  reference_id: string | null;
-  citation_key: string | null;
-  short_citation: string | null;
-  kind: 'publication' | 'personal_observation' | null;
-  // A plain uuid, safe to select in raw SQL; the observer's *name* is
-  // encrypted (RFC-40) and can only be decrypted through Drizzle's query
-  // builder, never through `db.execute`, so it is fetched separately
-  // (`observerNames`) and merged in {@link collectAccepted}.
-  observer_user_id: string | null;
-}
-
 type Summary = TraitSpeciesItem['summary'];
 
 /** What the page's species have on the trait, keyed by species id. */
 interface Enrichment {
   recordCount: Map<string, number>;
   summary: Map<string, Summary>;
-  accepted: Map<string, TraitSpeciesItem['accepted']>;
+  validated: Map<string, boolean>;
 }
 
 /**
- * The records and accepted values of the species of one page, in two queries
- * bounded to that page's ids (at most `limit` ≤ 200, the coverage index's
- * `(species_id, trait_id)` prefix) rather than to the trait as a whole.
+ * The records of the species of one page, in one query bounded to that
+ * page's ids (at most `limit` ≤ 200, the coverage index's `(species_id,
+ * trait_id)` prefix) rather than to the trait as a whole, plus one further
+ * query for which of those species has a validated record on the trait
+ * (spec R-1, RFC-62 R8), the same bound applied to {@link validatedPairsSql}.
  */
 async function enrich(
   db: DbExecutor,
@@ -250,25 +232,15 @@ async function enrich(
 ): Promise<Enrichment> {
   const recordCount = new Map<string, number>();
   const summary = new Map<string, Summary>();
-  const accepted = new Map<string, TraitSpeciesItem['accepted']>();
 
-  const acceptedRows = db.execute(sql`
-    select distinct on (a.species_id)
-      a.species_id, a.decision, a.record_id, r.value_text,
-      b.id as reference_id, b.citation_key, b.short_citation, b.kind,
-      b.observer_user_id
-    from accepted_values a
-    left join trait_records r on r.id = a.record_id
-    -- A record always names a primary or a secondary reference (RFC-63 R2's
-    -- check constraint); the row shows whichever one it has.
-    left join bibliographic_references b
-      on b.id = coalesce(r.primary_reference_id, r.secondary_reference_id)
-    where a.trait_id = ${traitId}::uuid and a.species_id = any(${sql.param(ids)}::uuid[])
-    order by a.species_id, a.id desc
-  `) as unknown as Promise<AcceptedRow[]>;
+  const validatedRows = db.execute(sql`
+    select v.species_id
+    from (${validatedPairsSql()}) v
+    where v.trait_id = ${traitId}::uuid and v.species_id = any(${sql.param(ids)}::uuid[])
+  `) as unknown as Promise<{ species_id: string }[]>;
 
   if (valueType === 'quantitative') {
-    const [rows, decisions] = await Promise.all([
+    const [rows, validatedResult] = await Promise.all([
       db.execute(sql`
         select r.species_id, count(*)::int as record_count,
           min(r.numeric_value)::float8 as numeric_min,
@@ -277,7 +249,7 @@ async function enrich(
         where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
         group by r.species_id
       `) as unknown as Promise<SpeciesNumericRow[]>,
-      acceptedRows,
+      validatedRows,
     ]);
     for (const r of rows) {
       recordCount.set(r.species_id, r.record_count);
@@ -288,11 +260,11 @@ async function enrich(
           : { numeric: { min: r.numeric_min, max: r.numeric_max } },
       );
     }
-    await collectAccepted(db, decisions, accepted);
-    return { recordCount, summary, accepted };
+    const validated = new Map(validatedResult.map((r) => [r.species_id, true]));
+    return { recordCount, summary, validated };
   }
 
-  const [rows, decisions] = await Promise.all([
+  const [rows, validatedResult] = await Promise.all([
     db.execute(sql`
       select r.species_id, l.key as level_key, count(*)::int as count
       from trait_records r
@@ -302,7 +274,7 @@ async function enrich(
       group by r.species_id, l.key
       order by count desc, l.key
     `) as unknown as Promise<SpeciesLevelRow[]>,
-    acceptedRows,
+    validatedRows,
   ]);
   const levels = new Map<string, { key: string; count: number }[]>();
   for (const r of rows) {
@@ -316,64 +288,8 @@ async function enrich(
     ]);
   }
   for (const [speciesId, entries] of levels) summary.set(speciesId, { levels: entries });
-  await collectAccepted(db, decisions, accepted);
-  return { recordCount, summary, accepted };
-}
-
-/**
- * The observer names of a batch of accepted rows, decrypted through Drizzle's
- * query builder (never `db.execute`, which returns `users.name` still
- * encrypted, RFC-40). Empty input skips the query entirely, so an ordinary
- * publication-only page never pays for it.
- */
-async function observerNames(db: DbExecutor, rows: AcceptedRow[]): Promise<Map<string, string>> {
-  const ids = [...new Set(rows.map((r) => r.observer_user_id).filter((id) => id !== null))];
-  if (ids.length === 0) return new Map();
-  const found = await db
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(inArray(users.id, ids));
-  return new Map(found.map((u) => [u.id, u.name]));
-}
-
-/**
- * The newest decision per species wins, and only an acceptance is a value.
- * `observer` on the accepted reference follows the same rule as
- * `toReference` (`references.ts`): present only when the reference has one.
- */
-async function collectAccepted(
-  db: DbExecutor,
-  rows: AcceptedRow[],
-  into: Map<string, TraitSpeciesItem['accepted']>,
-): Promise<void> {
-  const names = await observerNames(db, rows);
-  for (const r of rows) {
-    if (
-      r.decision !== 'accepted' ||
-      r.record_id === null ||
-      r.value_text === null ||
-      r.reference_id === null ||
-      r.citation_key === null ||
-      r.kind === null
-    ) {
-      continue;
-    }
-    const observerName = r.observer_user_id ? names.get(r.observer_user_id) : undefined;
-    into.set(r.species_id, {
-      recordId: r.record_id,
-      valueText: r.value_text,
-      reference: {
-        id: r.reference_id,
-        citationKey: r.citation_key,
-        kind: r.kind,
-        observer:
-          r.observer_user_id && observerName
-            ? { id: r.observer_user_id, name: observerName }
-            : null,
-        shortCitation: r.short_citation,
-      },
-    });
-  }
+  const validated = new Map(validatedResult.map((r) => [r.species_id, true]));
+  return { recordCount, summary, validated };
 }
 
 /**
@@ -390,9 +306,9 @@ async function collectAccepted(
  * browse their own.
  *
  * In `with` mode each row carries the species' own records on the trait and
- * the value a curator accepted from them; `missing` mode has no records to
- * describe, so all three are null. Throws `TRAIT_NOT_FOUND` when the trait is
- * unknown or invisible.
+ * whether one of them is validated (spec R-1); `missing` mode has no records
+ * to describe, so all three are null. Throws `TRAIT_NOT_FOUND` when the trait
+ * is unknown or invisible.
  * @rfc RFC-62 R8
  * @rfc RFC-33 R2, R6
  */
@@ -417,7 +333,7 @@ export async function listTraitSpecies(
   });
   if (input.mode === 'missing' || data.length === 0) {
     return {
-      data: data.map((s) => ({ ...s, recordCount: null, accepted: null, summary: null })),
+      data: data.map((s) => ({ ...s, recordCount: null, validated: null, summary: null })),
       nextCursor,
     };
   }
@@ -432,7 +348,7 @@ export async function listTraitSpecies(
     data: data.map((s) => ({
       ...s,
       recordCount: enrichment.recordCount.get(s.id) ?? 0,
-      accepted: enrichment.accepted.get(s.id) ?? null,
+      validated: enrichment.validated.get(s.id) ?? false,
       summary: enrichment.summary.get(s.id) ?? null,
     })),
     nextCursor,

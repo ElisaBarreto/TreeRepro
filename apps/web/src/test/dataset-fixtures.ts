@@ -485,7 +485,7 @@ export const SEXUAL_SYSTEM_DETAIL: TraitDetail = {
   category: { key: 'reproductive_system', label: 'Reproductive system' },
   speciesWithData: 12,
   speciesMissing: 4,
-  acceptedCount: 7,
+  validatedCount: 7,
   distribution: {
     levels: [
       {
@@ -510,7 +510,7 @@ export const SEED_MASS_DETAIL: TraitDetail = {
   category: { key: 'seed', label: 'Seed' },
   speciesWithData: 3,
   speciesMissing: 9,
-  acceptedCount: 1,
+  validatedCount: 1,
   distribution: { numeric: { min: 0.5, median: 1.25, max: 3, speciesCount: 3 } },
   computedAt: '2026-09-18T08:00:00.000Z',
 };
@@ -526,12 +526,12 @@ export const SEED_LENGTH_DETAIL: TraitDetail = {
   category: { key: 'seed', label: 'Seed' },
   speciesWithData: 0,
   speciesMissing: 12,
-  acceptedCount: 0,
+  validatedCount: 0,
   distribution: { numeric: null },
   computedAt: '2026-09-18T08:00:00.000Z',
 };
 
-/** A species row of `mode=with`: records, an accepted value and its summary. @rfc RFC-62 R8 */
+/** A species row of `mode=with`: records and their summary. @rfc RFC-62 R8 */
 export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   id: SPECIES.id,
   canonicalName: SPECIES.canonicalName,
@@ -545,11 +545,7 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   traitCount: 3,
   traitRecordCount: 4,
   recordCount: 4,
-  accepted: {
-    recordId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d30',
-    valueText: 'dioecious',
-    reference: PRIMARY_REFERENCE,
-  },
+  validated: true,
   summary: {
     levels: [
       { key: 'dioecious', count: 3 },
@@ -558,7 +554,7 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   },
 };
 
-/** A `mode=with` row whose records no curator has accepted a value from. @rfc RFC-62 R8 */
+/** A quantitative `mode=with` row. @rfc RFC-62 R8 */
 export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
   ...TRAIT_SPECIES_WITH_DATA,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d07',
@@ -566,12 +562,12 @@ export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
   genus: { id: ADANSONIA_GENUS.id, name: ADANSONIA_GENUS.name },
   family: MALVACEAE,
   recordCount: 1,
-  accepted: null,
+  validated: false,
   summary: { numeric: { min: 0.5, max: 3 } },
 };
 
 /**
- * A `mode=missing` row: no records, so no count, value or summary.
+ * A `mode=missing` row: no records, so no count or summary.
  * `traitRecordCount` stays 0 — `searchSpecies` always supplies `traitId` here,
  * so its coverage counter is never null, and the coverage row itself does not
  * exist in missing mode by construction (RFC-60 R6, RFC-62 R8).
@@ -586,7 +582,7 @@ export const TRAIT_SPECIES_MISSING: TraitSpeciesItem = {
   traitCount: 0,
   traitRecordCount: 0,
   recordCount: null,
-  accepted: null,
+  validated: null,
   summary: null,
 };
 

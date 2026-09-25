@@ -138,7 +138,7 @@ export function speciesVisible(
  * `speciesVisible` with the plot dimension dropped, for the counts that are
  * global summaries rather than a viewer's own slice of the dataset: the
  * trait dictionary's `speciesCount` (RFC-62 R5), the trait page's
- * `speciesWithData`, `speciesMissing`, `acceptedCount` and `distribution`
+ * `speciesWithData`, `speciesMissing`, `validatedCount` and `distribution`
  * (RFC-62 R7), and RFC-60 R6's `species.trait_count`. Such a number varies
  * only along the active/inactive dimension: a plot-bound viewer reads the
  * restricted class and still counts species outside their plots. Scoping it
