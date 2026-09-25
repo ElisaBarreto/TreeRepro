@@ -5,6 +5,7 @@ export interface MailMessage {
   to: string;
   subject: string;
   text: string;
+  html: string;
 }
 
 export interface Mailer {
@@ -30,8 +31,11 @@ export function createSmtpTransport(settings: SmtpSettings): Transporter {
 }
 
 /**
+ * Multipart: nodemailer puts `text` before `html`, so a client that cannot
+ * render the HTML shows the plain text (RFC-10 R16).
  * @rfc RFC-20 R4
  * @rfc RFC-21 R5
+ * @rfc RFC-10 R16
  */
 export function createMailer(transport: Pick<Transporter, 'sendMail'>, from: string): Mailer {
   return {
@@ -41,6 +45,7 @@ export function createMailer(transport: Pick<Transporter, 'sendMail'>, from: str
         to: message.to,
         subject: message.subject,
         text: message.text,
+        html: message.html,
       });
     },
   };

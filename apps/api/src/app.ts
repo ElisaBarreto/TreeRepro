@@ -32,7 +32,7 @@ import type { Mailer } from './mail/mailer.ts';
 import type { Redis } from './redis/client.ts';
 
 export interface AppDeps {
-  config: Pick<AppConfig, 'appOrigin'>;
+  config: Pick<AppConfig, 'appOrigin' | 'inviteContactEmail'>;
   logger: Logger;
   doi: DoiClient;
   taxonomy: TaxonomyClient;
@@ -73,6 +73,7 @@ export function createApp(deps: AppDeps) {
     doi: deps.doi,
     taxonomy: deps.taxonomy,
     appOrigin: deps.config.appOrigin,
+    inviteContactEmail: deps.config.inviteContactEmail,
     now: deps.now ?? Date.now,
   };
   // Request id, security headers, 404 and error handling sit on the root so

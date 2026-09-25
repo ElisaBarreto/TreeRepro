@@ -31,6 +31,15 @@ describe('RFC-20 R4 inviteUser', () => {
     expect(audit).toMatchObject({ actorUserId: null, targetType: 'user', targetId: user.id });
   });
 
+  it('names the configured contact for an expired link in both parts of the email', async () => {
+    const ctx = { ...ctxOf(t), inviteContactEmail: 'help@treerepro.test' };
+    const before = t.mail.sent.length;
+    await inviteUser(ctx, { email: randomEmail(), name: 'Ada', actorUserId: null });
+    const mail = t.mail.sent[before];
+    expect(mail?.text).toContain('ask help@treerepro.test for a new invitation');
+    expect(mail?.html).toContain('ask help@treerepro.test for a new invitation');
+  });
+
   it('R7 re-inviting an invited user supersedes the token; any other status is refused', async () => {
     const ctx = ctxOf(t);
     const email = randomEmail();

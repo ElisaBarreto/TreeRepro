@@ -54,7 +54,13 @@ export async function inviteUser(
     return { user, raw, expiresAt };
   });
   const link = `${ctx.appOrigin}/invite/${result.raw}`;
-  const mail = inviteEmail({ name: result.user.name, link, expiresAt: result.expiresAt });
+  const mail = inviteEmail({
+    name: result.user.name,
+    link,
+    expiresAt: result.expiresAt,
+    appOrigin: ctx.appOrigin,
+    contactEmail: ctx.inviteContactEmail,
+  });
   try {
     await ctx.mailer.send({ to: result.user.email, ...mail });
   } catch (cause) {
