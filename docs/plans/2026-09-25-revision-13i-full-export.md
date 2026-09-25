@@ -12,6 +12,11 @@
 
 **Depends on:** 13a (RFC-66 amended for R-17), 13e (the interim `records.csv` route this plan replaces), 13f (`record_code`, `min_value`…`n`, `record_references`), 13g (the `resolve` annotation kind, contest records carrying a value, the withdrawal rules). Start only after 13g is merged to `main`.
 
+## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
+
+1. **Platform-only scope** (spec R-21, RFC-66 R9 as added by 13a). `GET /api/export/dataset.zip?scope=all|platform` (default `all`; other values → 400 `VALIDATION_FAILED`, path `scope`). With `platform`, `records.csv` holds only records whose `origin = 'manual'` (`TR_` codes) and `annotations.csv` still holds every validation and contest by users, on `TR_` and `EB_` records alike. File name `treerepro-platform-<date>.zip`; audit metadata `{ format: 'zip', scope: 'platform' }`. Add one integration test per scope (a `TR_` and an `EB_` record, one validation on the `EB_` one: platform → one row in records.csv, one in annotations.csv) and a second download link "Export platform contributions (ZIP)" next to the full one.
+2. **Share the annotations query.** Plan 13k writes the same annotation rows (plus `orphan`) to the replace sheet; export the builder used for `annotations.csv` (e.g. `annotationRowsQuery(db, { recordOrigin?: 'imported' | 'manual' })`) so 13k can reuse it. Name it in this plan's Interfaces.
+
 ## Global Constraints
 
 - README non-negotiable rules: RFC first, TDD (failing test → code), **no DB mocks** (testcontainers), every exported symbol in `apps/*/src` carries `@rfc RFC-NN Rx`, English everywhere, strict inputs, PII (`users.name`) decrypted only in the API (RFC-40 R8), every route guarded (RFC-32) and visibility-resolving (RFC-33 R10).

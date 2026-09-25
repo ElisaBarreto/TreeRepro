@@ -73,6 +73,19 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
     `n_validations` and `n_contests` count distinct users. `references` is the `; `-joined list.
   - `annotations.csv`: one row per validation and per contest: `record_code, kind (validation|contest), user_name, date, reference, contest_record_code`. User names only, never e-mail addresses.
 
+### 1.7b Imports after the test phase
+
+- **R-19 Incremental import.** Later imports add records with new `EB_n` IDs. A row whose `ID` already exists in the database is skipped and counted as `already imported` in the report (not a reject), so a full file with old and new rows can be sent again.
+- **R-20 Replace that preserves the platform.** `import:records --replace-imported` replaces the imported (`EB_`) records and keeps everything users produced. In one transaction:
+  1. write the **annotation sheet** `replace-<batch>-annotations.csv`: every validation, contest, resolve and withdrawal on an `EB_` record, and every `TR_` contest responding to an `EB_` record (`record_code, kind, user_name, date, reference, contest_record_code`);
+  2. delete the `EB_` records and their annotations only (species, genera, families, references, plots, plot species, user plots, synonyms, proposals and every `TR_` record stay; the file adds what is missing);
+  3. import the new file;
+  4. **re-link by `record_code`**: annotations and `TR_` contests pointing to an `EB_n` present in the new file are attached to the new record; the ones whose `EB_n` is gone are marked `orphan` in the sheet and dropped, and an orphaned `TR_` contest becomes an independent record (intent and target cleared);
+  5. recompute the counters (`species_trait_coverage`, `species.trait_count`, reference usage counts, `reference_traits`).
+
+  Runs as `treerepro_migrator` through the runbook's one-off container, production included, after a `pg_dump`. The old total `--replace` (RFC-64 R12) is refused whenever a `TR_` record exists — it is for the test phase only.
+- **R-21 Platform-only export.** `GET /api/export/dataset.zip?scope=platform` gives `records.csv` with the `TR_` records only and `annotations.csv` with every validation and contest made by users (on `TR_` and `EB_` records). No scheduled copy: the daily encrypted backup already holds everything.
+
 ### 1.8 Home page
 
 - **R-18** The intro text takes the full width of its card and reads, with live numbers:
@@ -105,6 +118,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 | **13g** contest & withdrawal | 2.2, 3, 6, 9, 10, 11 | R-3, R-6…R-15; Disputed page (Keep both, Withdraw level) | `dataset/curation.ts` (annotations), `records.ts`, `queues.ts`, `taxa.ts` (filters), counter triggers, `DisputedPage`, species filters | 13e, 13f |
 | **13h** species page | 2.1, 2.3, 2.4, 2.6 | §2 | `TraitCard`, `TraitPanel`, `RecordTable`, `ui/Table`, `RecordActions`, `AddEntriesDialog`, `ContestDialog`, `ValueField` | 13g, 13d |
 | **13i** full export | 5, 12 | R-17 | `dataset/export.ts`, export route, the link on the species search | 13g |
+| **13k** preserving reimport | R-20 | `--replace-imported`, annotation sheet, re-link by code, counter recompute, runbook | `dataset/import.ts` (+ a new `dataset/replace-imported.ts`), import CLI, RFC-64 | 13f, 13g, 13i |
 | **13j** help pages | 1.3 | Text from `data/text for pages/Text for help me pages.docx`, tightened, describing the final behaviour | `content/help/*` | 13h |
 
 ```
@@ -112,7 +126,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
      ├─▶ 13d ───────────────┐
      ├─▶ 13e ─┐             ▼
      └─▶ 13f ─┴─▶ 13g ─┬─▶ 13h ─▶ 13j
-                       └─▶ 13i
+                       └─▶ 13i ─▶ 13k
 13c (anytime)
 ```
 
@@ -124,7 +138,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 | 1 | 13b, 13c, 13d, 13e, 13f | 5 |
 | 2 | 13g | 1 |
 | 3 | 13h, 13i | 2 |
-| 4 | 13j | 1 |
+| 4 | 13j, 13k | 2 |
 
 ## 4. Collision points
 

@@ -12,6 +12,12 @@
 
 **Depends on:** 13a merged (RFC amendments for R-2, R-4, R-5). Runs in wave 1 beside 13b, 13c, 13d, 13e. 13g starts after this plan and 13e merge.
 
+## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
+
+1. **A stored ID is skipped, not rejected** (spec R-19, RFC-64 R14 as added by 13a). Later imports are incremental and may resend old rows. In the import, a row whose `ID` equals a stored `record_code`, or is the base of stored suffixed codes (`EB_4` when `EB_4a` exists), is skipped and counted in a new column `import_batches.rows_already_imported bigint not null default 0` (same migration as `record_code`); the CLI report prints `already imported: <n>`. A repeated ID inside the same file is still rejected (`duplicate_record_id`). Change the forced re-import test accordingly: the 22 stored rows count as `rowsAlreadyImported: 22`, `rowsRejected` stays at the fixture's own rejects, and no second record is created. Everything else in this plan that says "every stored ID now rejects its row" is superseded.
+2. **Runbook:** the one-off reimport of this test phase stays the total `--replace` (no user data yet). Add a closing line: after this phase, reimports use `--replace-imported` (plan 13k); the total `--replace` becomes refused once any `TR_` record exists (RFC-64 R12 as amended).
+3. **Withdraw response and `nextRecordCodes`** — unchanged from spec §6.
+
 ## Global Constraints
 
 - Branch `feat/revision-13f-record-schema` from an up-to-date `origin/main` (after 13a). Claim the 13f issue first (README rule 7: assign yourself, add `in-progress`).

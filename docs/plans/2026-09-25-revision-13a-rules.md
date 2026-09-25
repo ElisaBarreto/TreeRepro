@@ -12,6 +12,16 @@
 
 **Depends on:** the spec branch `docs/record-model-revision` being merged into `main`, because the changelog lines cite the spec path. Every other plan of the revision (13b–13j) depends on this one.
 
+## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
+
+1. **Record withdraw** answers `200 { data: null }` (already edited in the rule text below).
+2. **Split IDs** take letter suffixes `EB_1a`, `EB_1b` / `TR_7a`, `TR_7b` (already edited in RFC-63 R12 below). Fix RFC-64 R7's wording to match wherever it still says `-<n>`.
+3. **Add three rules** (spec R-19, R-20, R-21), in the same tasks that edit RFC-64 and RFC-66, and add them to the mapping table:
+   - **RFC-64 R14 — Incremental import.** A row whose `ID` is already stored as a `record_code` (bare, or as the base of a suffixed code such as `EB_4a`) is skipped and counted in `import_batches.rows_already_imported` (new column, `bigint default 0`), never rejected; the report prints it as `already imported`. A repeated ID *within the file* is still rejected (`duplicate_record_id`). Supersedes 13a's earlier "a stored ID rejects the row" wording in RFC-64 R7.
+   - **RFC-64 R15 — Replace that preserves the platform.** Text: copy spec R-20 verbatim (steps 1–5, the migrator/runbook sentence). Amend RFC-64 R12: the total `--replace` is refused (exit 1) whenever a `trait_records` row with `origin = 'manual'` exists.
+   - **RFC-66 R9 — Platform-only export.** `GET /api/export/dataset.zip?scope=platform`: `records.csv` holds only `TR_` records; `annotations.csv` holds every validation and contest (on `TR_` and `EB_` records). `scope` is `all` (default) or `platform`; anything else → 400 `VALIDATION_FAILED` path `scope`. Audited with `scope` in the metadata.
+   Mapping rows: R-19 → RFC-64 R14 (13f), R-20 → RFC-64 R15 + R12 (13k), R-21 → RFC-66 R9 (13i).
+
 ## Global Constraints
 
 - English everywhere. Changelog lines are dated `2026-09-25`. If the work lands on a later day, use that day.
