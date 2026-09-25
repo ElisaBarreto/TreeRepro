@@ -319,7 +319,7 @@ export async function createAnnotation(
       recordId: input.recordId,
       actorId: input.actorId,
       kind: input.kind,
-      note: input.note ?? (input.kind === 'dispute' || input.kind === 'withdraw' ? 'test' : null),
+      note: input.note ?? null,
       referenceId: input.referenceId ?? null,
       generated: input.generated ?? false,
       ...(input.createdAt ? { createdAt: input.createdAt } : {}),

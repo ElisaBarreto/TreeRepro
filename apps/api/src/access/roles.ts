@@ -1,4 +1,5 @@
 import {
+  ADMIN_ONLY_PERMISSIONS,
   isPermissionKey,
   PERMISSION_KEYS,
   type PermissionKey,
@@ -41,6 +42,7 @@ export function toRole(row: RoleRow, permissionKeys: readonly string[]): Role {
   };
 }
 
+/** Catalog keys only (R3), and never an admin-only key (R15). @rfc RFC-31 R3, R15 */
 function validatePermissions(keys: string[]): PermissionKey[] {
   const unknown = keys.filter((k) => !isPermissionKey(k));
   if (unknown.length > 0) {
@@ -50,7 +52,16 @@ function validatePermissions(keys: string[]): PermissionKey[] {
       unknown.map((k) => ({ path: 'permissions', message: k })),
     );
   }
-  return [...new Set(keys as PermissionKey[])].sort();
+  const unique = [...new Set(keys as PermissionKey[])].sort();
+  const adminOnly = unique.filter((k) => ADMIN_ONLY_PERMISSIONS.includes(k));
+  if (adminOnly.length > 0) {
+    throw new AppError(
+      'VALIDATION_FAILED',
+      'Only the admin role holds this permission',
+      adminOnly.map((k) => ({ path: 'permissions', message: k })),
+    );
+  }
+  return unique;
 }
 
 function normalizeName(name: string): string {
@@ -233,7 +244,7 @@ export async function userIdsWithRole(db: DbExecutor, roleId: string): Promise<s
   return rows.map((r) => r.userId);
 }
 
-/** @rfc RFC-31 R3, R12, R14 */
+/** @rfc RFC-31 R3, R12, R14, R15 */
 export async function createRole(
   ctx: AccessContext,
   input: RoleInput & { actorUserId: string | null },
@@ -286,7 +297,7 @@ async function requireEditable(db: DbExecutor, id: string): Promise<RoleRow> {
   return row;
 }
 
-/** @rfc RFC-31 R4, R12, R13, R14 */
+/** @rfc RFC-31 R4, R12, R13, R14, R15 */
 export async function updateRole(
   ctx: AccessContext,
   input: {

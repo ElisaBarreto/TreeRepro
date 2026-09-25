@@ -28,8 +28,14 @@ export type HarmonisationStatus = (typeof HARMONISATION_STATUSES)[number];
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
 
-/** @rfc RFC-63 R7 */
-export const ANNOTATION_KINDS = ['confirm', 'dispute', 'neutral', 'withdraw'] as const;
+/**
+ * `record_annotations` stores `confirm` and `withdraw`; `dispute` and
+ * `neutral` rows written before plan 13g stay and every rule ignores them.
+ * `resolve` (Keep both) is a `contest_events` row, never a record annotation:
+ * it is here only for the contributions list (RFC-71 R3).
+ * @rfc RFC-63 R7
+ */
+export const ANNOTATION_KINDS = ['confirm', 'dispute', 'neutral', 'withdraw', 'resolve'] as const;
 export type AnnotationKind = (typeof ANNOTATION_KINDS)[number];
 
 /** @rfc RFC-64 R3 */

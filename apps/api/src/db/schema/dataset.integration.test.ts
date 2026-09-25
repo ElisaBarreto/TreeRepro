@@ -548,33 +548,6 @@ describe('RFC-63 R4 append-only records and curation tables', () => {
     });
   });
 
-  it('RFC-63 R4 record_annotations checks: a dispute needs a note', async () => {
-    await withRollback(t.db, async (tx) => {
-      const sp1 = await createSpecies(tx);
-      const trait = await traitByKey(tx, 'flower_color');
-      const ref = await createReference(tx);
-      const batch = await createImportBatch(tx);
-      const { user } = await createUser(tx);
-      const record = await createRecord(tx, {
-        speciesId: sp1.id,
-        traitId: trait.id,
-        valueText: 'x',
-        harmonisation: 'unknown_level',
-        primaryReferenceId: ref.id,
-        importBatchId: batch.id,
-      });
-      await expect(
-        unwrapDbError(
-          tx.transaction((sp) =>
-            sp
-              .insert(recordAnnotations)
-              .values({ recordId: record.id, actorId: user.id, kind: 'dispute' }),
-          ),
-        ),
-      ).rejects.toMatchObject({ code: '23514' }); // dispute needs a note
-    });
-  });
-
   it('RFC-64 R3 import batches default to running with zero counts', async () => {
     await withRollback(t.db, async (tx) => {
       const [batch] = await tx
@@ -692,7 +665,7 @@ describe('RFC-61 R1, R7, R10 reference kinds', () => {
 
 describe('RFC-63 R1, R2 intent and responses', () => {
   const t = useTestDb();
-  it('intent and responds_to come together; a response must share species and trait', async () => {
+  it('R2 responds_to needs an intent, a complement needs responds_to; a response must share species and trait', async () => {
     await withRollback(t.db, async (tx) => {
       const { user } = await createUser(tx);
       const ref = await createReference(tx);
@@ -709,21 +682,36 @@ describe('RFC-63 R1, R2 intent and responses', () => {
         origin: 'manual',
         createdBy: user.id,
       });
-      // intent without respondsToRecordId violates the check
+      const row = (valueText: string, extra: Partial<NewTraitRecordRow>): NewTraitRecordRow => ({
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText,
+        levelId: trait.levels[1]?.id,
+        harmonisation: 'harmonised',
+        origin: 'manual',
+        createdBy: user.id,
+        primaryReferenceId: ref.id,
+        ...extra,
+      });
+      // RFC-63 R14: a categorical contest record responds to no record
+      const [contest] = await tx
+        .insert(traitRecords)
+        .values(row('epsilon', { intent: 'contest' }))
+        .returning();
+      expect(contest).toMatchObject({ intent: 'contest', respondsToRecordId: null });
+      // a complement without respondsToRecordId violates the check
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
-            sp.insert(traitRecords).values({
-              speciesId: sp1.id,
-              traitId: trait.id,
-              valueText: 'beta',
-              levelId: trait.levels[1]?.id,
-              harmonisation: 'harmonised',
-              origin: 'manual',
-              createdBy: user.id,
-              primaryReferenceId: ref.id,
-              intent: 'contest',
-            }),
+            sp.insert(traitRecords).values(row('gamma', { intent: 'complement' })),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514' });
+      // respondsToRecordId without an intent violates the check
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values(row('delta', { respondsToRecordId: base.id })),
           ),
         ),
       ).rejects.toMatchObject({ code: '23514' });

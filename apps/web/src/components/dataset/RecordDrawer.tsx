@@ -25,6 +25,7 @@ const ANNOTATION_TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
   dispute: 'red',
   neutral: 'neutral',
   withdraw: 'neutral',
+  resolve: 'neutral',
 };
 // A contest says the value is wrong, a complement that both hold (RFC-70 R1);
 // the verb reads the same on the record that answers and on the answers listed.

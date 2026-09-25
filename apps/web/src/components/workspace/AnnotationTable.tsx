@@ -11,6 +11,7 @@ const TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
   dispute: 'red',
   neutral: 'neutral',
   withdraw: 'neutral',
+  resolve: 'neutral',
 };
 
 /**

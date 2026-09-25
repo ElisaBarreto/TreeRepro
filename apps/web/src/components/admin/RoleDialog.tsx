@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
+  ADMIN_ONLY_PERMISSIONS,
   type CreateRoleBody,
   createRoleBodySchema,
   type PermissionEntry,
@@ -31,18 +32,21 @@ export function roleErrorMessage(error: unknown): string {
 }
 
 const RETIRED = /\(retired\)$/;
+const ADMIN_ONLY: ReadonlySet<string> = new Set(ADMIN_ONLY_PERMISSIONS);
 
 /**
  * The catalog grouped by resource prefix (`users.read` → `users`), catalog
- * order kept, retired keys (description ending in "(retired)") left out.
+ * order kept, retired keys (description ending in "(retired)") and the
+ * admin-only keys (RFC-31 R15) left out.
  * @rfc RFC-30 R1, R2
+ * @rfc RFC-31 R15
  */
 export function groupPermissions(
   entries: PermissionEntry[],
 ): { resource: string; entries: PermissionEntry[] }[] {
   const groups: { resource: string; entries: PermissionEntry[] }[] = [];
   for (const entry of entries) {
-    if (RETIRED.test(entry.description)) continue;
+    if (RETIRED.test(entry.description) || ADMIN_ONLY.has(entry.key)) continue;
     const resource = entry.key.split('.')[0] ?? entry.key;
     const group = groups.find((g) => g.resource === resource);
     if (group) group.entries.push(entry);
@@ -55,9 +59,10 @@ export function groupPermissions(
  * Create (`POST /api/admin/roles`) or edit (`PATCH`, every field sent) a
  * role: name, description, permission checkboxes grouped by resource.
  * Retired keys the role already holds are kept in the payload though
- * hidden, so an edit never silently drops them. Mounted only while open.
+ * hidden, so an edit never silently drops them; an admin-only key is dropped,
+ * since the API refuses it (RFC-31 R15). Mounted only while open.
  * @rfc RFC-50 R10
- * @rfc RFC-31 R3, R4
+ * @rfc RFC-31 R3, R4, R15
  * @rfc RFC-13 R6
  */
 export function RoleDialog({
@@ -100,7 +105,7 @@ export function RoleDialog({
       ...(catalog.data ?? [])
         .map((e) => e.key)
         .filter((key) => visible.has(key) && checked.has(key)),
-      ...(role?.permissions ?? []).filter((key) => !visible.has(key)),
+      ...(role?.permissions ?? []).filter((key) => !visible.has(key) && !ADMIN_ONLY.has(key)),
     ];
     const parsed = createRoleBodySchema.safeParse({
       name: String(form.get('name') ?? ''),

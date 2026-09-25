@@ -84,7 +84,8 @@ export const createRecordsResultSchema = z.strictObject({
 /** @rfc RFC-65 R3 */
 export const annotateRecordBodySchema = z
   .strictObject({
-    kind: z.enum(ANNOTATION_KINDS),
+    // RFC-63 R7: Keep both is a contest event, never a record annotation.
+    kind: z.enum(ANNOTATION_KINDS).exclude(['resolve']),
     note: curationNoteSchema.optional(),
     reference: sourceRefSchema.optional(),
   })

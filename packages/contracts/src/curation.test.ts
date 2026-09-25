@@ -162,6 +162,13 @@ describe('RFC-65 R3 annotateRecordBodySchema', () => {
     );
   });
 
+  it('RFC-63 R7 refuses resolve: Keep both is never a record annotation', () => {
+    const parsed = annotateRecordBodySchema.safeParse({ kind: 'resolve' });
+    expect(parsed.success ? [] : parsed.error.issues.map((i) => i.path.join('.'))).toEqual([
+      'kind',
+    ]);
+  });
+
   it('refuses reference with kind: dispute', () => {
     expect(
       annotateRecordBodySchema.safeParse({

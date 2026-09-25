@@ -121,7 +121,9 @@ describe('RFC-13 R2, RFC-50 R10 RolesPage', () => {
     await userEvent.type(within(dialog).getByLabelText('Name'), 'Curators');
     await userEvent.type(within(dialog).getByLabelText('Description'), 'Annotate records');
     await userEvent.click(within(dialog).getByRole('checkbox', { name: /Browse species/ }));
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: /Confirm, dispute/ }));
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: /Validate and contest records/ }),
+    );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create role' }));
     await waitFor(() =>
       expect(admin.createRole).toHaveBeenCalledWith({

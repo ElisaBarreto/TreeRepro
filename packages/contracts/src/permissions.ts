@@ -17,8 +17,9 @@ export const PERMISSIONS = {
   'dataset.read': 'Browse species, traits, references and records',
   'imports.read': 'View import batches and their rejections',
   'records.create': 'Add trait records and map pending values',
-  'records.annotate': 'Confirm, dispute and comment on records',
+  'records.annotate': 'Validate and contest records',
   'records.withdraw': 'Withdraw any manual record',
+  'records.withdraw_imported': 'Withdraw any imported record',
   'accepted.manage': 'Set and clear the accepted value per species and trait (retired)',
   'taxa.manage': 'Create and edit families, genera, species and names',
   'taxa.propose': 'Propose a species for the catalog',
@@ -27,7 +28,7 @@ export const PERMISSIONS = {
   'dataset.export': 'Download the dataset',
   'dataset.read_inactive': 'See inactive species, traits and levels',
   'records.review':
-    'Work the harmonisation and disputed queues; neutralise or dispute any record with a note',
+    'Work the harmonisation and contested queues; resolve contests and withdraw levels',
   'plots.manage': 'Create and edit field plots and their species',
   'contributions.read': "View any user's contributions",
   'coverage.read': 'View coverage metrics',
@@ -42,6 +43,16 @@ export const PERMISSION_KEYS: readonly PermissionKey[] = Object.keys(
 ) as PermissionKey[];
 
 const keySet: ReadonlySet<string> = new Set(PERMISSION_KEYS);
+
+/**
+ * Held only through the `admin` system role: no custom role may hold them, so
+ * the role services refuse them and the roles page does not offer them.
+ * @rfc RFC-31 R15
+ */
+export const ADMIN_ONLY_PERMISSIONS: readonly PermissionKey[] = [
+  'dataset.export',
+  'records.withdraw_imported',
+];
 
 /** @rfc RFC-30 R1 */
 export function isPermissionKey(value: string): value is PermissionKey {
