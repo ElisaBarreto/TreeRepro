@@ -65,6 +65,35 @@ describe('RFC-63 R9 listRecordsQuerySchema', () => {
       'speciesId',
     ]);
   });
+
+  it('sort is value, references, origin or added; order is asc or desc', () => {
+    expect(
+      listRecordsQuerySchema.safeParse({
+        speciesId: uuid,
+        traitId: uuid,
+        sort: 'value',
+        order: 'asc',
+      }).success,
+    ).toBe(true);
+    const badSort = listRecordsQuerySchema.safeParse({
+      speciesId: uuid,
+      traitId: uuid,
+      sort: 'species',
+    });
+    expect(badSort.success).toBe(false);
+    expect(badSort.success ? [] : badSort.error.issues.map((i) => i.path.join('.'))).toEqual([
+      'sort',
+    ]);
+    const badOrder = listRecordsQuerySchema.safeParse({
+      speciesId: uuid,
+      traitId: uuid,
+      order: 'ascending',
+    });
+    expect(badOrder.success).toBe(false);
+    expect(badOrder.success ? [] : badOrder.error.issues.map((i) => i.path.join('.'))).toEqual([
+      'order',
+    ]);
+  });
 });
 
 describe('RFC-63 R8 recordSchema', () => {

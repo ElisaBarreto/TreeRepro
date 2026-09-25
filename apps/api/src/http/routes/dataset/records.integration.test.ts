@@ -93,6 +93,60 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
     expect(noSpecies.status).toBe(404);
     expect((await noSpecies.json()).error.code).toBe('SPECIES_NOT_FOUND');
   });
+
+  it('accepts sort and order, and refuses an unknown value for either (RFC-63 R9)', async () => {
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, user);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const ref = await createReference(t.db);
+    const r1 = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: '1',
+      numericValue: 1,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const r2 = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const sorted = await call(
+      t.app,
+      'GET',
+      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&sort=value&order=asc`,
+      { cookie },
+    );
+    expect(sorted.status).toBe(200);
+    expect((await sorted.json()).data.map((r: { id: string }) => r.id)).toEqual([r1.id, r2.id]);
+
+    const badSort = await call(
+      t.app,
+      'GET',
+      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&sort=species`,
+      { cookie },
+    );
+    expect(badSort.status).toBe(400);
+    expect((await badSort.json()).error.details[0].path).toBe('sort');
+
+    const badOrder = await call(
+      t.app,
+      'GET',
+      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&order=ascending`,
+      { cookie },
+    );
+    expect(badOrder.status).toBe(400);
+    expect((await badOrder.json()).error.details[0].path).toBe('order');
+  });
 });
 
 /** A signed-in user holding exactly these permissions. */

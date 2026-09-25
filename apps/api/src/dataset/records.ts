@@ -1,11 +1,14 @@
-import type {
-  QuantitativeValue,
-  RecordDetail,
-  RecordItem,
-  ReferenceKind,
-  ReviewStatus,
+import {
+  type QuantitativeValue,
+  RECORD_ORIGINS,
+  type RecordDetail,
+  type RecordItem,
+  type RecordSort,
+  type ReferenceKind,
+  type ReviewStatus,
+  type SortOrder,
 } from '@treerepro/contracts';
-import { and, desc, eq, lt, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -16,7 +19,14 @@ import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
-import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
+import {
+  decodeCompositeCursor,
+  decodeCursor,
+  encodeCompositeCursor,
+  encodeCursor,
+  isUuid,
+  pageOf,
+} from '../http/cursor.ts';
 import { contestCountSql, recordContestedSql } from './contests.ts';
 
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
@@ -279,9 +289,145 @@ export function itemQuery(db: DbExecutor, visibility: Visibility) {
 }
 
 /**
+ * The records list's non-`added` sort keys (RFC-63 R9), each paired with a
+ * row-value keyset predicate (RFC-11 R6): `id` breaks every tie.
+ *
+ * `value`'s two keys cover both trait kinds at once: a categorical record's
+ * level is null under `trait_records_one_value_check` whenever it carries a
+ * numeric field, and vice versa, so within one species×trait the inactive
+ * branch is always the same sentinel and never affects the order. A
+ * `referenceId` list, though, can span several traits and so mix kinds in one
+ * page: the numeric key is coalesced to PostgreSQL's numeric `Infinity` —
+ * never a real record's value — for a categorical or still-unharmonised
+ * record, so every such record sorts after every quantitative value
+ * ascending (before it, descending); the level key is coalesced to `''` for
+ * a quantitative record. Either sentinel keeps `NULL` out of the row-value
+ * comparison, which a `NULL` operand would otherwise make neither true nor
+ * false and so silently drop rows from a keyset page.
+ *
+ * `references` sorts by the primary reference's `short_citation`, then its
+ * `citation_key` (RFC-63 R16); a record with no primary reference sorts as
+ * if both were `''`.
+ *
+ * `origin` is `not null` (RFC-63 R1): no sentinel needed.
+ */
+const SORT_KEYS: Record<Exclude<RecordSort, 'added'>, SQL[]> = {
+  value: [
+    sql`coalesce(${traitRecords.numericValue}, ${traitRecords.meanValue}, ${traitRecords.minValue}, ${traitRecords.maxValue}, 'Infinity'::numeric)`,
+    sql`coalesce(${traitLevels.key}, '')`,
+  ],
+  references: [
+    sql`coalesce(${primaryRef.shortCitation}, '')`,
+    sql`coalesce(${primaryRef.citationKey}, '')`,
+  ],
+  origin: [sql`${traitRecords.origin}`],
+};
+
+/** A cursor part shaped like {@link SORT_KEYS}'s numeric `value` key. */
+function isNumericSortKey(part: string): boolean {
+  return part === 'Infinity' || /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(part);
+}
+
+/** A cursor part naming one of `RECORD_ORIGINS`. */
+function isRecordOrigin(part: string): boolean {
+  return (RECORD_ORIGINS as readonly string[]).includes(part);
+}
+
+/** Any string: a text key has no shape to check beyond the arity itself. */
+function anyText(): boolean {
+  return true;
+}
+
+/**
+ * The cursor values of one row for `sort`, read off the fields `itemQuery`
+ * already selects — the same coalescing {@link SORT_KEYS} applies in SQL, so
+ * the cursor a page's last row emits matches the predicate the next page
+ * decodes it into.
+ */
+function sortKeyParts(sort: Exclude<RecordSort, 'added'>, row: ItemRow): string[] {
+  if (sort === 'value') {
+    const rec = row.record;
+    const numeric = rec.numericValue ?? rec.meanValue ?? rec.minValue ?? rec.maxValue;
+    return [numeric === null ? 'Infinity' : String(numeric), row.levelKey ?? ''];
+  }
+  if (sort === 'references') return [row.primaryShortCitation ?? '', row.primaryKey ?? ''];
+  return [row.record.origin];
+}
+
+/**
+ * The composite cursor of a non-`added` sort carries the sort's name ahead of
+ * its key values and id, one part longer than the plain keyset the helpers
+ * check by arity ({@link decodeCompositeCursor}) — so a cursor minted under
+ * one sort, or under `added`'s plain uuid cursor, always fails to decode
+ * under another and answers 400 `VALIDATION_FAILED` rather than silently
+ * reusing the wrong columns.
+ * @rfc RFC-63 R9
+ * @rfc RFC-11 R6
+ */
+function encodeSortCursor(sort: Exclude<RecordSort, 'added'>, row: ItemRow): string {
+  return encodeCompositeCursor([sort, ...sortKeyParts(sort, row), row.record.id]);
+}
+
+/**
+ * The keyset predicate for a non-`added` sort: `(k1, k2, id) > (…)` ascending,
+ * `<` descending — a total order because every key is sentinel-coalesced
+ * (see {@link SORT_KEYS}) and `id` never repeats. Each branch casts its own
+ * cursor tuple, `noUncheckedIndexedAccess`-safe, and leads with a validator
+ * pinning the sort's own name so a cursor of another sort or of `added`'s
+ * plain uuid cursor is refused rather than silently mis-decoded.
+ * @rfc RFC-63 R9
+ * @rfc RFC-11 R6
+ */
+function sortCursorCondition(
+  sort: Exclude<RecordSort, 'added'>,
+  order: SortOrder,
+  cursor: string,
+): SQL {
+  const cmp = (lhs: SQL[], rhs: SQL[]): SQL => {
+    const l = sql.join(lhs, sql`, `);
+    const r = sql.join(rhs, sql`, `);
+    return order === 'asc' ? sql`(${l}) > (${r})` : sql`(${l}) < (${r})`;
+  };
+  if (sort === 'value') {
+    const [, k1, k2, id] = decodeCompositeCursor(cursor, 4, [
+      (p) => p === 'value',
+      isNumericSortKey,
+      anyText,
+      isUuid,
+    ]) as [string, string, string, string];
+    return cmp(
+      [...SORT_KEYS.value, sql`${traitRecords.id}`],
+      [sql`${k1}::numeric`, sql`${k2}`, sql`${id}::uuid`],
+    );
+  }
+  if (sort === 'references') {
+    const [, k1, k2, id] = decodeCompositeCursor(cursor, 4, [
+      (p) => p === 'references',
+      anyText,
+      anyText,
+      isUuid,
+    ]) as [string, string, string, string];
+    return cmp(
+      [...SORT_KEYS.references, sql`${traitRecords.id}`],
+      [sql`${k1}`, sql`${k2}`, sql`${id}::uuid`],
+    );
+  }
+  const [, k1, id] = decodeCompositeCursor(cursor, 3, [
+    (p) => p === 'origin',
+    isRecordOrigin,
+    isUuid,
+  ]) as [string, string, string];
+  return cmp([...SORT_KEYS.origin, sql`${traitRecords.id}`], [sql`${k1}`, sql`${id}::uuid`]);
+}
+
+/**
  * Either `speciesId` and `traitId` together, or `referenceId` alone (primary,
- * secondary or `record_references`); ordered `id` descending with a keyset
- * cursor.
+ * secondary or `record_references`). `sort` is `value`, `references`,
+ * `origin` or `added` (spec §2); `added` keeps the keyset cursor on the id
+ * (today's cursor, unchanged, always `desc` by default), the other sorts
+ * page under a composite keyset cursor of the sort key(s) and the id
+ * (RFC-11 R6), `id` breaking ties. `order` defaults to `desc` for `added`
+ * and `asc` for every other sort.
  * @rfc RFC-63 R9
  * @rfc RFC-33 R2, R3
  */
@@ -294,6 +440,8 @@ export async function listRecords(
     referenceId?: string;
     cursor?: string;
     limit: number;
+    sort?: RecordSort;
+    order?: SortOrder;
   },
 ): Promise<{ data: RecordItem[]; nextCursor: string | null }> {
   const conditions: SQL[] = [
@@ -317,12 +465,32 @@ export async function listRecords(
   } else {
     throw new Error('listRecords: speciesId+traitId or referenceId is required');
   }
-  if (input.cursor) conditions.push(lt(traitRecords.id, decodeCursor(input.cursor)));
+
+  const sort = input.sort ?? 'added';
+
+  if (sort === 'added') {
+    const order = input.order ?? 'desc';
+    const dir = order === 'asc' ? asc : desc;
+    if (input.cursor) {
+      const after = decodeCursor(input.cursor);
+      conditions.push(order === 'asc' ? gt(traitRecords.id, after) : lt(traitRecords.id, after));
+    }
+    const rows = await itemQuery(db, visibility)
+      .where(and(...conditions))
+      .orderBy(dir(traitRecords.id))
+      .limit(input.limit + 1);
+    const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
+    return { data: page.map(toItem), nextCursor };
+  }
+
+  const order = input.order ?? 'asc';
+  const dir = order === 'asc' ? asc : desc;
+  if (input.cursor) conditions.push(sortCursorCondition(sort, order, input.cursor));
   const rows = await itemQuery(db, visibility)
     .where(and(...conditions))
-    .orderBy(desc(traitRecords.id))
+    .orderBy(...SORT_KEYS[sort].map((k) => dir(k)), dir(traitRecords.id))
     .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeSortCursor(sort, r));
   return { data: page.map(toItem), nextCursor };
 }
 

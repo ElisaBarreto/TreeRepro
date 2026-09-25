@@ -6,6 +6,7 @@ import {
   createRecord,
   createReference,
   createSpecies,
+  createTrait,
   createVisibilityFixture,
   levelByKey,
   traitByKey,
@@ -393,5 +394,294 @@ describe('RFC-63 R8, R9 record code, quantitative value and references (spec R-2
         shortCitation: null,
       },
     ]);
+  });
+});
+
+describe('RFC-63 R9 records list sort (spec §2)', () => {
+  const t = useTestDb();
+
+  it('sorts by value, references, origin and added in both orders, and pages every order with limit 1', async () => {
+    const { user } = await createUser(t.db);
+    const refZ = await createReference(t.db, { citationKey: `zeta-${Date.now()}` });
+    const refA = await createReference(t.db, { citationKey: `alpha-${Date.now()}` });
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const batch = await createImportBatch(t.db);
+    // r10 and r2 share refA (alpha); r9 and r9b share refZ (zeta) and tie on
+    // value (9) — both ties exercise the id tiebreak; r9b vs r9 also differ
+    // in origin, separating them under that sort.
+    const r10 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '10',
+      numericValue: 10,
+      primaryReferenceId: refA.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const r9 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '9',
+      numericValue: 9,
+      primaryReferenceId: refZ.id,
+      importBatchId: batch.id,
+    });
+    const r9b = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      // A distinct `valueText` only to dodge `trait_records_claim_key`
+      // (species, trait, valueText, rawValue, primaryReferenceId,
+      // secondaryReferenceId) — the sort keys below (numericValue,
+      // primaryReferenceId, origin) still tie with r9's.
+      valueText: '9b',
+      numericValue: 9,
+      primaryReferenceId: refZ.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const r2 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      primaryReferenceId: refA.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const ids = async (
+      sort?: 'value' | 'references' | 'origin' | 'added',
+      order?: 'asc' | 'desc',
+    ) =>
+      (
+        await listRecords(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          limit: 50,
+          sort,
+          order,
+        })
+      ).data.map((r) => r.id);
+
+    const expected: Record<string, string[]> = {
+      'added:desc': [r2.id, r9b.id, r9.id, r10.id],
+      'added:asc': [r10.id, r9.id, r9b.id, r2.id],
+      'value:asc': [r2.id, r9.id, r9b.id, r10.id],
+      'value:desc': [r10.id, r9b.id, r9.id, r2.id],
+      'references:asc': [r10.id, r2.id, r9.id, r9b.id],
+      'references:desc': [r9b.id, r9.id, r2.id, r10.id],
+      'origin:asc': [r9.id, r10.id, r9b.id, r2.id],
+      'origin:desc': [r2.id, r9b.id, r10.id, r9.id],
+    };
+
+    for (const [key, want] of Object.entries(expected)) {
+      const [sort, order] = key.split(':') as [
+        'value' | 'references' | 'origin' | 'added',
+        'asc' | 'desc',
+      ];
+      expect(await ids(sort, order), key).toEqual(want);
+
+      // Full paging with limit 1 returns every record exactly once, in order.
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listRecords(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          limit: 1,
+          sort,
+          order,
+          cursor,
+        });
+        seen.push(...page.data.map((r) => r.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      expect(seen, key).toEqual(want);
+    }
+  });
+
+  it('value sort orders a categorical trait by level key, with the id tiebreak', async () => {
+    const trait = await createTrait(t.db); // categorical, levels 'alpha' and 'beta' (createTrait default)
+    const alpha = trait.levels.find((l) => l.key === 'alpha');
+    const beta = trait.levels.find((l) => l.key === 'beta');
+    if (!alpha || !beta) throw new Error('createTrait: expected alpha and beta levels');
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    const a1 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'alpha',
+      levelId: alpha.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+    const a2 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      // A distinct `valueText` only to dodge `trait_records_claim_key`; the
+      // level (the sort key) still ties with a1's.
+      valueText: 'alpha (2)',
+      levelId: alpha.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: (await createUser(t.db)).user.id,
+    });
+    const b1 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'beta',
+      levelId: beta.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+
+    const ids = async (order: 'asc' | 'desc') =>
+      (
+        await listRecords(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          limit: 50,
+          sort: 'value',
+          order,
+        })
+      ).data.map((r) => r.id);
+
+    // a1 and a2 tie on the level key ('alpha'); the id (creation order) breaks it.
+    expect(await ids('asc')).toEqual([a1.id, a2.id, b1.id]);
+    expect(await ids('desc')).toEqual([b1.id, a2.id, a1.id]);
+  });
+
+  it('value sort of a referenceId list mixes a categorical and a quantitative trait without NULL reaching the comparison', async () => {
+    const ref = await createReference(t.db);
+    const quantTrait = await createTrait(t.db, { valueType: 'quantitative' });
+    const catTrait = await createTrait(t.db);
+    const alpha = catTrait.levels.find((l) => l.key === 'alpha');
+    if (!alpha) throw new Error('createTrait: expected an alpha level');
+    const sp1 = await createSpecies(t.db);
+    const sp2 = await createSpecies(t.db);
+    const numeric = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: quantTrait.id,
+      valueText: '5',
+      numericValue: 5,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+    const categorical = await createRecord(t.db, {
+      speciesId: sp2.id,
+      traitId: catTrait.id,
+      valueText: 'alpha',
+      levelId: alpha.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+
+    // Ascending: the categorical record's sentinel (PostgreSQL numeric
+    // Infinity) sorts after every real quantitative value.
+    const asc = await listRecords(t.db, UNRESTRICTED, {
+      referenceId: ref.id,
+      limit: 50,
+      sort: 'value',
+      order: 'asc',
+    });
+    expect(asc.data.map((r) => r.id)).toEqual([numeric.id, categorical.id]);
+
+    const desc = await listRecords(t.db, UNRESTRICTED, {
+      referenceId: ref.id,
+      limit: 50,
+      sort: 'value',
+      order: 'desc',
+    });
+    expect(desc.data.map((r) => r.id)).toEqual([categorical.id, numeric.id]);
+
+    // Full paging with limit 1 still returns both exactly once.
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listRecords(t.db, UNRESTRICTED, {
+        referenceId: ref.id,
+        limit: 1,
+        sort: 'value',
+        order: 'asc',
+        cursor,
+      });
+      seen.push(...page.data.map((r) => r.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(seen).toEqual([numeric.id, categorical.id]);
+  });
+
+  it('a cursor of another sort, or added’s plain cursor, is refused', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    for (const n of [1, 2]) {
+      await createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        valueText: String(n),
+        numericValue: n,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+    }
+
+    // `added`'s plain uuid cursor decoded as a composite cursor.
+    const addedPage = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 1,
+    });
+    await expect(
+      listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'value',
+        cursor: addedPage.nextCursor ?? '',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+    // A `value` cursor decoded under `references` (same arity, tagged with
+    // the sort's own name so the mismatch is still caught).
+    const valuePage = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 1,
+      sort: 'value',
+      order: 'asc',
+    });
+    await expect(
+      listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'references',
+        order: 'asc',
+        cursor: valuePage.nextCursor ?? '',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+    // A `references` cursor decoded under `origin` (different arity).
+    const referencesPage = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 1,
+      sort: 'references',
+      order: 'asc',
+    });
+    await expect(
+      listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'origin',
+        order: 'asc',
+        cursor: referencesPage.nextCursor ?? '',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 });

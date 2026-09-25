@@ -488,12 +488,21 @@ export const recordDetailSchema = recordSchema.extend({
   ),
 });
 
+/** Sortable columns of the record panel (spec §2). @rfc RFC-63 R9 */
+export const RECORD_SORTS = ['value', 'references', 'origin', 'added'] as const;
+export type RecordSort = (typeof RECORD_SORTS)[number];
+/** @rfc RFC-63 R9 */
+export const SORT_ORDERS = ['asc', 'desc'] as const;
+export type SortOrder = (typeof SORT_ORDERS)[number];
+
 /** @rfc RFC-63 R9 */
 export const listRecordsQuerySchema = cursorQuerySchema
   .extend({
     speciesId: z.uuid().optional(),
     traitId: z.uuid().optional(),
     referenceId: z.uuid().optional(),
+    sort: z.enum(RECORD_SORTS).optional(),
+    order: z.enum(SORT_ORDERS).optional(),
   })
   .refine(
     (q) =>

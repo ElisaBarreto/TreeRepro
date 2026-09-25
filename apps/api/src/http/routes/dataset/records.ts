@@ -113,6 +113,8 @@ export function recordRoutes(ctx: AuthContext) {
           referenceId: q.referenceId,
           cursor: q.cursor,
           limit: q.limit,
+          sort: q.sort,
+          order: q.order,
         });
         return c.json({ data, meta: { nextCursor } });
       },
