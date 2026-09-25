@@ -19,6 +19,8 @@ x-api-env: &api-env
   SMTP_FROM: ${SMTP_FROM:-TreeRepro <no-reply@localhost>}
   SMTP_USER: ${SMTP_USER:-}
   WCVP_GBIF_DATASET_KEY: ${WCVP_GBIF_DATASET_KEY:-}
+  # RFC-20 R4: who an expired invitation says to ask; empty names an administrator.
+  INVITE_CONTACT_EMAIL: ${INVITE_CONTACT_EMAIL:-}
 
 services:
   postgres:

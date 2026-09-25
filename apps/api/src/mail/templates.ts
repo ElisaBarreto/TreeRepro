@@ -43,11 +43,7 @@ const INVITE_STEPS: readonly (readonly [string, string])[] = [
 
 /** What the workspace offers, as `[title, detail, dot colour]`. */
 const INVITE_FEATURES: readonly (readonly [string, string, string])[] = [
-  [
-    'Explore species',
-    'Search by family, genus and trait, and see which data each species has and which it still lacks.',
-    C.pollen500,
-  ],
+  ['Explore species', 'Search by family, genus and trait.', C.pollen500],
   [
     'Add what you know',
     'Record trait values, backed by a reference or by your own observation.',
@@ -65,6 +61,7 @@ function inviteHtml(input: {
   link: string;
   expires: string;
   appOrigin: string;
+  expiredLine: string;
 }): string {
   const emblem = escapeHtml(`${input.appOrigin}/email-emblem.png`);
   const hero = `<tr><td class="tr-hero-pad" align="center" style="padding:48px 40px 44px;background-color:${C.canopy900};background-image:radial-gradient(120% 90% at 50% 0%,${C.canopy700} 0%,${C.canopy800} 35%,${C.canopy900} 100%);">
@@ -73,8 +70,8 @@ ${spacer(24)}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:7px 14px;border:1px solid ${C.pollen400};border-radius:999px;font-family:${BODY_FONT};font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.pollen300};">You are invited</td></tr></table>
 ${spacer(20)}
 ${h1(`Welcome to TreeRepro, ${input.name}`, C.mist50, 32)}
-<p style="margin:0 0 28px;font-family:${BODY_FONT};font-size:17px;line-height:26px;color:${C.mist100};">A place for the reproductive traits of trees, built and checked by the people who collect them. Your seat is ready.</p>
-${mailButton(input.link, 'Accept and set your password')}
+<p style="margin:0 0 28px;font-family:${BODY_FONT};font-size:17px;line-height:26px;color:${C.mist100};">Collaborate with us in assembling the largest repository of tree reproductive traits across all stages — flowers, fruits and seeds.</p>
+${mailButton(input.link, 'Join')}
 ${spacer(16)}
 <p style="margin:0;font-family:${BODY_FONT};font-size:13px;color:${C.mist300};">Valid until <strong style="color:${C.mist50};">${escapeHtml(input.expires)}</strong></p>
 </td></tr>`;
@@ -90,8 +87,8 @@ ${spacer(16)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 -6px 22px;"><tr>${steps}</tr></table>
 ${heading('What waits for you inside')}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${features}</table>
-<p style="margin:0 0 24px;font-family:${BODY_FONT};font-size:13px;color:${C.muted};">What you can do depends on the role an administrator gave you.</p>
-${mailFallbackLink(input.link, 'If the link has expired, ask an administrator for a new invitation.')}`;
+${spacer(10)}
+${mailFallbackLink(input.link, input.expiredLine)}`;
   return emailLayout({
     appOrigin: input.appOrigin,
     title: 'You have been invited to TreeRepro',
@@ -112,8 +109,11 @@ export function inviteEmail(input: {
   link: string;
   expiresAt: Date;
   appOrigin: string;
+  /** `INVITE_CONTACT_EMAIL`: who to ask for a new invitation; unset names an administrator. */
+  contactEmail?: string | undefined;
 }): MailContent {
   const expires = formatUtc(input.expiresAt);
+  const expiredLine = `If the link has expired, ask ${input.contactEmail ?? 'an administrator'} for a new invitation.`;
   return {
     subject: 'You have been invited to TreeRepro',
     text: [
@@ -123,11 +123,11 @@ export function inviteEmail(input: {
       '',
       input.link,
       '',
-      `The link expires on ${expires}. If it has expired, ask an administrator for a new invitation.`,
+      `The link expires on ${expires}. ${expiredLine}`,
       '',
       'TreeRepro',
     ].join('\n'),
-    html: inviteHtml({ ...input, expires }),
+    html: inviteHtml({ ...input, expires, expiredLine }),
   };
 }
 

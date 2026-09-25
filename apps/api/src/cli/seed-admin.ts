@@ -56,6 +56,7 @@ const ctx: AuthContext = {
   // rather than spending a start-up network call it does not need.
   taxonomy: createTaxonomyClient({ wcvpDatasetKey: null, version: APP_VERSION }),
   appOrigin: config.appOrigin,
+  inviteContactEmail: config.inviteContactEmail,
   now: Date.now,
 };
 

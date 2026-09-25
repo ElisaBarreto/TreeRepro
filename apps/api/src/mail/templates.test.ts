@@ -44,7 +44,20 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
     expect(mail.html).toContain('Welcome to TreeRepro, Ada');
     expect(mail.html.match(/href="http:\/\/localhost\/invite\/abc"/g)).toHaveLength(2);
     expect(mail.html).toContain('2026-09-15 10:00 UTC');
-    expect(mail.html).toContain('Accept and set your password');
+    expect(mail.html).toContain('>Join &rarr;<');
+    expect(mail.html).toContain(
+      'Collaborate with us in assembling the largest repository of tree reproductive traits',
+    );
+  });
+
+  it('RFC-20 R4 an expired invitation points to the configured contact, else to an administrator', () => {
+    const base = { name: 'Ada', link: 'http://localhost/invite/abc', expiresAt, appOrigin: ORIGIN };
+    const withContact = inviteEmail({ ...base, contactEmail: 'help@treerepro.test' });
+    expect(withContact.text).toContain('ask help@treerepro.test for a new invitation');
+    expect(withContact.html).toContain('ask help@treerepro.test for a new invitation');
+    const without = inviteEmail(base);
+    expect(without.text).toContain('ask an administrator for a new invitation');
+    expect(without.html).toContain('ask an administrator for a new invitation');
   });
 
   it('the password reset links to the reset page and says to ignore it if not requested', () => {
