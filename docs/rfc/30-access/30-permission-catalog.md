@@ -38,12 +38,11 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `records.create` | Add trait records and map pending values |
 | `records.annotate` | Confirm, dispute and comment on records |
 | `records.withdraw` | Withdraw any manual record |
-| `accepted.manage` | Set and clear the accepted value per species and trait |
 | `taxa.manage` | Create and edit families, genera, species and names |
 | `taxa.propose` | Propose a species for the catalog |
 | `references.manage` | Create and edit bibliographic references |
 | `traits.manage` | Create and edit traits and levels |
-| `dataset.export` | Download the accepted values |
+| `dataset.export` | Download the dataset |
 | `dataset.read_inactive` | See inactive species, traits and levels |
 | `records.review` | Work the harmonisation and disputed queues; neutralise or dispute any record with a note |
 | `plots.manage` | Create and edit field plots and their species |
@@ -70,3 +69,4 @@ None.
 - 2026-09-18 — coverage.read (RFC-69 R5-R7, plan 11c).
 - 2026-09-19 — taxa.propose (RFC-75, plan 12c).
 - 2026-09-19 — health.read (RFC-52, plan 12d).
+- 2026-09-25 — accepted.manage removed and dataset.export reworded with the accepted value (spec R-1, plan 13e).

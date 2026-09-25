@@ -165,7 +165,7 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
   it('shows the contribution summary as a label/value list linking to /app/contributions', async () => {
     renderAt('/app/');
     const list = await screen.findByRole('list', { name: 'Your contributions' });
-    expect(within(list).getAllByRole('listitem')).toHaveLength(7);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(6);
     expect(list).toHaveTextContent('Records');
     expect(list).toHaveTextContent(String(DASHBOARD.contributor.summary.records));
     expect(screen.getByRole('link', { name: 'View your contributions' })).toHaveAttribute(

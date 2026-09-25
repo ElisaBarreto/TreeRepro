@@ -13,7 +13,6 @@ import type { Sql, TransactionSql } from 'postgres';
  * @rfc RFC-64 R12
  */
 export const RESET_TABLES = [
-  'accepted_values',
   'record_annotations',
   'reference_traits',
   'species_proposals',
@@ -42,8 +41,6 @@ const APPEND_ONLY_TRIGGERS: readonly [string, string][] = [
   ['trait_records', 'trait_records_no_truncate'],
   ['record_annotations', 'record_annotations_append_only'],
   ['record_annotations', 'record_annotations_no_truncate'],
-  ['accepted_values', 'accepted_values_append_only'],
-  ['accepted_values', 'accepted_values_no_truncate'],
 ];
 
 /**

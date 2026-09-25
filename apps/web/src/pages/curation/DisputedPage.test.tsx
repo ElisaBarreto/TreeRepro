@@ -103,7 +103,7 @@ describe('RFC-65 R10 DisputedPage', () => {
   it('without ?intent, the page keeps its plain title, description and unfiltered fetch', async () => {
     renderAt('/app/curation/disputed');
     expect(await screen.findByRole('heading', { name: 'Disputed records' })).toBeInTheDocument();
-    expect(screen.getByText(/wait for the disputer to step back/)).toBeInTheDocument();
+    expect(screen.getByText(/wait for the disputer to step back/i)).toBeInTheDocument();
     await waitFor(() =>
       expect(curation.fetchDisputed).toHaveBeenCalledWith(
         expect.objectContaining({ intent: undefined }),

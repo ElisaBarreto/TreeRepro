@@ -46,7 +46,6 @@ describe('RFC-30 R1, R2 groupPermissions', () => {
       'dataset',
       'imports',
       'records',
-      'accepted',
       'taxa',
       'references',
       'traits',

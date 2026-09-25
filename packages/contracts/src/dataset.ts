@@ -32,10 +32,6 @@ export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
 export const ANNOTATION_KINDS = ['confirm', 'dispute', 'neutral', 'withdraw'] as const;
 export type AnnotationKind = (typeof ANNOTATION_KINDS)[number];
 
-/** @rfc RFC-63 R7 */
-export const ACCEPTED_DECISIONS = ['accepted', 'cleared'] as const;
-export type AcceptedDecision = (typeof ACCEPTED_DECISIONS)[number];
-
 /** @rfc RFC-64 R3 */
 export const IMPORT_BATCH_STATUSES = ['running', 'completed', 'failed'] as const;
 
