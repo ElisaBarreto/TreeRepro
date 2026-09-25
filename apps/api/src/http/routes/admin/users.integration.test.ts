@@ -71,23 +71,33 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
 
   it('invites with 201, audits with the admin as actor, and refuses a taken email', async () => {
     const { admin, cookie } = await adminCookie(t);
+    const role = await createRole(t.db, { permissions: ['users.read'] });
     const email = randomEmail();
     const res = await call(t.app, 'POST', '/api/admin/users', {
       cookie,
-      body: { email, name: 'Grace' },
+      body: { email, name: 'Grace', roles: [role.id] },
     });
     expect(res.status).toBe(201);
     const { data } = await res.json();
-    expect(data).toMatchObject({ email, name: 'Grace', status: 'invited', roles: [] });
+    expect(data).toMatchObject({
+      email,
+      name: 'Grace',
+      status: 'invited',
+      roles: [{ id: role.id, name: role.name }],
+    });
     expect(t.mail.sent.at(-1)?.to).toBe(email);
     expect(await lastAudit(t.db, 'auth.invite.created', { targetId: data.id })).toMatchObject({
       actorUserId: admin.id,
       targetId: data.id,
     });
+    expect(await lastAudit(t.db, 'users.roles_changed', { targetId: data.id })).toMatchObject({
+      actorUserId: admin.id,
+      metadata: { added: [role.id], removed: [] },
+    });
     const taken = await createUser(t.db);
     const dup = await call(t.app, 'POST', '/api/admin/users', {
       cookie,
-      body: { email: taken.email, name: 'X' },
+      body: { email: taken.email, name: 'X', roles: [role.id] },
     });
     expect(dup.status).toBe(409);
     expect((await dup.json()).error.code).toBe('USER_EMAIL_TAKEN');
@@ -95,16 +105,19 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
 
   it('answers 502 MAIL_SEND_FAILED when the email fails, keeps the user, and can re-send', async () => {
     const { cookie } = await adminCookie(t);
+    const role = await createRole(t.db, { permissions: ['users.read'] });
     const email = randomEmail();
     t.mail.failNext(new Error('smtp down'));
     const res = await call(t.app, 'POST', '/api/admin/users', {
       cookie,
-      body: { email, name: 'Grace' },
+      body: { email, name: 'Grace', roles: [role.id] },
     });
     expect(res.status).toBe(502);
     expect((await res.json()).error.code).toBe('MAIL_SEND_FAILED');
     const user = await findUserByEmail(t.db, email);
     expect(user?.status).toBe('invited');
+    const kept = await call(t.app, 'GET', `/api/admin/users/${user?.id}`, { cookie });
+    expect((await kept.json()).data.roles).toEqual([{ id: role.id, name: role.name }]);
     const sent = t.mail.sent.length;
     const resend = await call(t.app, 'POST', `/api/admin/users/${user?.id}/resend-invite`, {
       cookie,
@@ -118,6 +131,83 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
     });
     expect(wrong.status).toBe(409);
     expect((await wrong.json()).error.code).toBe('USER_INVALID_STATUS');
+  });
+});
+
+describe('RFC-50 R3, RFC-31 R12, R14 roles of an invitation', () => {
+  const t = useTestApp();
+
+  async function inviter(permissions: PermissionKey[]) {
+    const role = await createRole(t.db, { permissions });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { actor: user, cookie: (await loginAs(t, user)).cookie };
+  }
+
+  it('refuses an invitation without a role: 400 at path roles, nothing created', async () => {
+    const { cookie } = await adminCookie(t);
+    for (const body of [
+      { email: randomEmail(), name: 'Grace' },
+      { email: randomEmail(), name: 'Grace', roles: [] },
+    ]) {
+      const res = await call(t.app, 'POST', '/api/admin/users', { cookie, body });
+      expect(res.status).toBe(400);
+      const { error } = await res.json();
+      expect(error.code).toBe('VALIDATION_FAILED');
+      expect(error.details).toContainEqual(expect.objectContaining({ path: 'roles' }));
+      expect(await findUserByEmail(t.db, body.email)).toBeNull();
+    }
+  });
+
+  it('answers 404 ROLE_NOT_FOUND for an unknown role and leaves no user nor email', async () => {
+    const { cookie } = await adminCookie(t);
+    const email = randomEmail();
+    const sent = t.mail.sent.length;
+    const res = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [UNKNOWN] },
+    });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe('ROLE_NOT_FOUND');
+    expect(await findUserByEmail(t.db, email)).toBeNull();
+    expect(t.mail.sent).toHaveLength(sent);
+  });
+
+  it('a non-admin cannot invite an admin: 403, one refusal entry, no user nor email', async () => {
+    const { actor, cookie } = await inviter(['users.invite']);
+    const admin = await adminRoleId(t.db);
+    const email = randomEmail();
+    const sent = t.mail.sent.length;
+    const res = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [admin] },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('PERMISSION_DENIED');
+    expect(await findUserByEmail(t.db, email)).toBeNull();
+    expect(t.mail.sent).toHaveLength(sent);
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
+    ).toMatchObject({ targetType: 'user', metadata: { reason: 'admin_role', added: [admin] } });
+  });
+
+  it('a non-admin invites within their ceiling and is refused above it', async () => {
+    const { cookie } = await inviter(['users.invite', 'users.read']);
+    const within = await createRole(t.db, { permissions: ['users.read'] });
+    const above = await createRole(t.db, { permissions: ['users.update'] });
+    const ok = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email: randomEmail(), name: 'Grace', roles: [within.id] },
+    });
+    expect(ok.status).toBe(201);
+    expect((await ok.json()).data.roles).toEqual([{ id: within.id, name: within.name }]);
+    const email = randomEmail();
+    const refused = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [above.id] },
+    });
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).error.code).toBe('PERMISSION_DENIED');
+    expect(await findUserByEmail(t.db, email)).toBeNull();
   });
 });
 

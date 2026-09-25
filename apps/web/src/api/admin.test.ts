@@ -53,14 +53,10 @@ describe('RFC-50 R2-R4 users', () => {
     expect(lastRequest().url).toBe(`/api/admin/users/${INVITED_USER.id}`);
 
     mockJson(201, { data: INVITED_USER });
-    await expect(inviteUser({ email: 'bea@example.org', name: 'Bea' })).resolves.toEqual(
-      INVITED_USER,
-    );
+    const body = { email: 'bea@example.org', name: 'Bea', roles: [INVITED_USER.id] };
+    await expect(inviteUser(body)).resolves.toEqual(INVITED_USER);
     expect(lastRequest().init?.method).toBe('POST');
-    expect(JSON.parse(String(lastRequest().init?.body))).toEqual({
-      email: 'bea@example.org',
-      name: 'Bea',
-    });
+    expect(JSON.parse(String(lastRequest().init?.body))).toEqual(body);
   });
 });
 
