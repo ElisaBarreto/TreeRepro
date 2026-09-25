@@ -201,7 +201,7 @@ export const RECORD: RecordItem = {
   review: 'confirmed',
   primaryReference: PRIMARY_REFERENCE,
   secondaryReference: SECONDARY_REFERENCE,
-  references: [PRIMARY_REFERENCE],
+  references: [PRIMARY_REFERENCE, SECONDARY_REFERENCE],
   origin: 'import',
   createdAt: '2026-09-01T10:30:00.000Z',
   createdBy: null,
