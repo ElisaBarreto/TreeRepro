@@ -223,7 +223,10 @@ describe('RFC-61 R6, R10 a curator writes a book by its ISBN', () => {
 
   it('an ISBN on update is taken by a book only, and stays unique', async () => {
     const { user } = await createUser(t.db);
-    const publication = await createReference(t.db, { citationKey: `P_${tag()}`, actorId: user.id });
+    const publication = await createReference(t.db, {
+      citationKey: `P_${tag()}`,
+      actorId: user.id,
+    });
     await expect(
       updateReference(t.db, { id: publication.id, isbn: randomIsbn(), actorId: user.id }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'isbn' }] });
@@ -243,7 +246,11 @@ describe('RFC-61 R6, R10 a curator writes a book by its ISBN', () => {
     await expect(
       updateReference(t.db, { id: book.id, isbn: b, actorId: user.id }),
     ).rejects.toMatchObject({ code: 'REFERENCE_ISBN_TAKEN' });
-    const fixed = await updateReference(t.db, { id: book.id, isbn: randomIsbn(), actorId: user.id });
+    const fixed = await updateReference(t.db, {
+      id: book.id,
+      isbn: randomIsbn(),
+      actorId: user.id,
+    });
     expect(fixed.isbn).not.toBe(a);
   });
 });

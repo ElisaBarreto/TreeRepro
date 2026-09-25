@@ -666,7 +666,12 @@ describe('RFC-61 R1, R7, R10 reference kinds', () => {
       for (const values of [
         { citationKey: `b-${rand()}`, kind: 'book' as const, fullCitation: 'Doe (2001). Seeds.' },
         { citationKey: `b-${rand()}`, kind: 'book' as const, isbn },
-        { citationKey: `b-${rand()}`, kind: 'book' as const, isbn: '030640615X', fullCitation: 'x' },
+        {
+          citationKey: `b-${rand()}`,
+          kind: 'book' as const,
+          isbn: '030640615X',
+          fullCitation: 'x',
+        },
         // A publication carrying an ISBN.
         { citationKey: `b-${rand()}`, isbn, fullCitation: 'Doe (2001). Seeds.' },
       ]) {

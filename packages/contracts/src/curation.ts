@@ -14,8 +14,8 @@ import {
   traitRefSchema,
   userRefSchema,
 } from './dataset.ts';
-import { cursorQuerySchema } from './pagination.ts';
 import { isValidIsbn } from './isbn.ts';
+import { cursorQuerySchema } from './pagination.ts';
 
 /** Free text attached to a write: 1–2,000 characters, trimmed. @rfc RFC-65 R1 */
 export const curationNoteSchema = z.string().trim().min(1).max(2000);

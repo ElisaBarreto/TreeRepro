@@ -224,7 +224,10 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     ).toEqual([id]);
     const [again] = await t.db.select().from(bibliographicReferences).where(byId);
     expect(again?.fullCitation).toBe(citation);
-    const audits = await t.db.select().from(auditLog).where(eq(auditLog.targetId, id ?? ''));
+    const audits = await t.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.targetId, id ?? ''));
     expect(audits.map((a) => [a.action, a.metadata])).toEqual([
       ['references.created', { source: 'isbn' }],
     ]);
