@@ -1,0 +1,13 @@
+[sshd]
+# Ubuntu 24.04 runs sshd as ssh.service; the stock filter matches sshd.service and never sees a failure.
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd
+# 3 failures in 10 minutes: banned 1 hour, doubled on every repeat, capped at 1 week.
+maxretry = 3
+findtime = 10m
+bantime = 1h
+bantime.increment = true
+bantime.factor = 2
+bantime.maxtime = 1w
+# Trusted addresses go in /etc/fail2ban/jail.d/ignoreip.local on the server only (never committed):
+# [DEFAULT]
+# ignoreip = 127.0.0.1/8 ::1 <address>
