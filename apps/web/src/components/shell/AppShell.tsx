@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 import { logout } from '../../api/auth.ts';
 import { forgetSession, hasPermission, useMe } from '../../lib/session.ts';
-import { Alert, Button, Emblem, Icon } from '../ui/index.ts';
+import { Alert, Button, Drawer, Emblem, Icon } from '../ui/index.ts';
 import { BreadcrumbProvider, type Crumb, useCrumbs } from './Breadcrumb.tsx';
 import { currentEntry, NAV_ENTRIES, NAV_SECTIONS, type NavEntry } from './nav.ts';
 
@@ -30,11 +30,13 @@ function NavGroup({
   heading,
   entries,
   current,
+  onNavigate,
 }: {
   name: string;
   heading: string | null;
   entries: NavEntry[];
   current: NavEntry | undefined;
+  onNavigate?: () => void;
 }) {
   return (
     <nav aria-label={name} className="flex flex-col gap-1">
@@ -51,6 +53,7 @@ function NavGroup({
           activeOptions={{ exact: true }}
           aria-current={current === e ? 'page' : undefined}
           className={LINK}
+          onClick={onNavigate}
         >
           <Icon name={e.icon} />
           <span>{e.label}</span>
@@ -113,13 +116,16 @@ function BreadcrumbTrail({
   });
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-cell text-mist-500">
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 items-center gap-2 text-cell text-mist-500"
+    >
       {segments.map((segment, index) => {
         const isLast = index === segments.length - 1;
         return (
           <Fragment key={segment.key}>
             {isLast ? (
-              <span aria-current="page" className="font-semibold text-canopy-900">
+              <span aria-current="page" className="truncate font-semibold text-canopy-900">
                 {segment.label}
               </span>
             ) : segment.to ? (
@@ -127,12 +133,12 @@ function BreadcrumbTrail({
                 to={segment.to}
                 search={segment.search}
                 activeOptions={CRUMB_ACTIVE_OPTIONS}
-                className={CRUMB_LINK}
+                className={`truncate ${CRUMB_LINK}`}
               >
                 {segment.label}
               </Link>
             ) : (
-              <span>{segment.label}</span>
+              <span className="truncate">{segment.label}</span>
             )}
             {!isLast ? <Icon name="chevronRight" size={16} className="text-mist-300" /> : null}
           </Fragment>
@@ -151,13 +157,18 @@ function BreadcrumbTrail({
  * from pages that call `useBreadcrumb` (RFC-13 R3 amendment, plan 10a).
  * The sidebar emblem carries the view transition name the landing stage
  * shares, so the sign-in reveal ends on it (RFC-13 R7).
- * @rfc RFC-13 R2, R3, R4, R7
+ * Below `lg` the sidebar is hidden and a menu button in the top bar opens
+ * the same entries in a modal drawer from the left, which closes when an
+ * entry is followed; the top bar drops the user's name and email and the
+ * Sign out label, and the padding tightens (RFC-13 R12).
+ * @rfc RFC-13 R2, R3, R4, R7, R12
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pathname, search } = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
   const signOut = useMutation({
     mutationFn: logout,
     // A failed logout (5xx/429) leaves the session in place — no navigation,
@@ -185,11 +196,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   const crumbGroup = current?.section
     ? NAV_SECTIONS.find((s) => s.key === current.section)?.label
     : null;
+  const navGroups = (onNavigate?: () => void) =>
+    groups.map((g) => (
+      <NavGroup
+        key={g.name}
+        name={g.name}
+        heading={g.heading}
+        entries={g.entries}
+        current={current}
+        onNavigate={onNavigate}
+      />
+    ));
 
   return (
     <BreadcrumbProvider>
       <div className="flex min-h-screen bg-mist-50 text-canopy-950">
-        <aside className="flex w-[264px] shrink-0 flex-col gap-7 bg-canopy-900 px-4 py-6 text-mist-100">
+        <aside className="hidden w-[264px] shrink-0 flex-col gap-7 bg-canopy-900 px-4 py-6 text-mist-100 lg:flex">
           <Link
             to="/app"
             className="flex items-center gap-3 rounded-[10px] px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
@@ -204,20 +226,26 @@ export function AppShell({ children }: { children: ReactNode }) {
               </span>
             </span>
           </Link>
-          {groups.map((g) => (
-            <NavGroup
-              key={g.name}
-              name={g.name}
-              heading={g.heading}
-              entries={g.entries}
-              current={current}
-            />
-          ))}
+          {navGroups()}
         </aside>
+        <Drawer open={menuOpen} title="Menu" side="left" onClose={() => setMenuOpen(false)}>
+          <div className="flex flex-col gap-7">{navGroups(() => setMenuOpen(false))}</div>
+        </Drawer>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-16 items-center justify-between gap-4 border-b border-canopy-700/10 bg-white px-10">
-            <BreadcrumbTrail crumbGroup={crumbGroup} current={current} />
-            <div className="flex items-center gap-4">
+          <header className="flex h-16 items-center justify-between gap-4 border-b border-canopy-700/10 bg-white px-4 sm:px-6 lg:px-10">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                type="button"
+                aria-label="Open menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(true)}
+                className="-ml-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-canopy-900 transition-colors hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 lg:hidden"
+              >
+                <Icon name="menu" />
+              </button>
+              <BreadcrumbTrail crumbGroup={crumbGroup} current={current} />
+            </div>
+            <div className="flex shrink-0 items-center gap-4">
               {signOut.isError ? <Alert tone="error">Could not sign out. Try again.</Alert> : null}
               <div className="flex items-center gap-2.5">
                 <span
@@ -226,7 +254,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 >
                   {initials(me.user.name)}
                 </span>
-                <span className="flex flex-col leading-tight">
+                <span className="hidden flex-col leading-tight sm:flex">
                   <span className="text-cell font-semibold text-canopy-950">{me.user.name}</span>
                   <span className="text-label text-mist-500">{me.user.email}</span>
                 </span>
@@ -236,13 +264,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                 size="sm"
                 pending={signOut.isPending}
                 onClick={() => signOut.mutate()}
+                aria-label="Sign out"
               >
                 <Icon name="logout" size={18} />
-                Sign out
+                <span className="hidden sm:inline">Sign out</span>
               </Button>
             </div>
           </header>
-          <main className="flex-1 px-10 py-8">{children}</main>
+          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">{children}</main>
         </div>
       </div>
     </BreadcrumbProvider>

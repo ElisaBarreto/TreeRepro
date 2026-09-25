@@ -257,3 +257,22 @@ describe('RFC-13 R10 Drawer is modal', () => {
     expect(opener).toHaveFocus();
   });
 });
+
+describe('RFC-13 R12 Drawer side', () => {
+  it('opens from the right by default and from the left with side="left"', () => {
+    const { rerender } = render(
+      <Drawer open title="Panel" onClose={() => {}}>
+        <p>Body</p>
+      </Drawer>,
+    );
+    expect(screen.getByRole('dialog', { name: 'Panel' }).parentElement).toHaveClass('justify-end');
+    rerender(
+      <Drawer open title="Panel" side="left" onClose={() => {}}>
+        <p>Body</p>
+      </Drawer>,
+    );
+    expect(screen.getByRole('dialog', { name: 'Panel' }).parentElement).toHaveClass(
+      'justify-start',
+    );
+  });
+});

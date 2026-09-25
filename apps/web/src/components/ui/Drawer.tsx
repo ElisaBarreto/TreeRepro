@@ -9,6 +9,8 @@ export interface DrawerProps {
   onClose: () => void;
   /** `md` fits a detail view; `lg` fits a table. */
   size?: 'md' | 'lg';
+  /** `left` is the workspace menu below `lg`: the sidebar's dark surface, sidebar width (RFC-13 R12). */
+  side?: 'left' | 'right';
   children: ReactNode;
 }
 
@@ -16,6 +18,23 @@ const SIZES: Record<NonNullable<DrawerProps['size']>, string> = {
   md: 'max-w-xl',
   lg: 'max-w-4xl',
 };
+
+const SIDES = {
+  right: {
+    root: 'justify-end',
+    panel: 'w-full bg-white text-canopy-950',
+    header: 'border-canopy-700/10',
+    close: 'text-mist-500 hover:bg-mist-50 hover:text-canopy-900',
+    body: 'px-6 py-5',
+  },
+  left: {
+    root: 'justify-start',
+    panel: 'w-[264px] max-w-[85vw] bg-canopy-900 text-mist-100',
+    header: 'border-white/10 text-white',
+    close: 'text-mist-300 hover:bg-white/10 hover:text-white',
+    body: 'px-4 py-6',
+  },
+} as const;
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -31,9 +50,18 @@ const FOCUSABLE =
  * stack returns it to the modal left on top, or to the opener once none
  * remains. Tab and Shift+Tab cycle among the panel's focusable elements;
  * Escape and a backdrop click close it. Renders nothing while closed.
- * @rfc RFC-13 R5, R7, R10
+ * `side="left"` opens it from the left as the workspace menu (R12).
+ * @rfc RFC-13 R5, R7, R10, R12
  */
-export function Drawer({ open, title, onClose, size = 'md', children }: DrawerProps) {
+export function Drawer({
+  open,
+  title,
+  onClose,
+  size = 'md',
+  side = 'right',
+  children,
+}: DrawerProps) {
+  const look = SIDES[side];
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -76,7 +104,7 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
     // biome-ignore lint/a11y/useKeyWithClickEvents: same — the keyboard handler lives on the panel, which holds focus
     <div
       ref={rootRef}
-      className="fixed inset-0 z-40 flex justify-end bg-canopy-950/60"
+      className={`fixed inset-0 z-40 flex bg-canopy-950/60 ${look.root}`}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -88,9 +116,11 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className={`flex h-full w-full flex-col bg-white text-canopy-950 shadow-xl ${SIZES[size]}`}
+        className={`flex h-full flex-col shadow-xl ${look.panel} ${side === 'right' ? SIZES[size] : ''}`}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-canopy-700/10 px-6 py-5">
+        <header
+          className={`flex items-start justify-between gap-4 border-b px-6 py-5 ${look.header}`}
+        >
           <h2 id={titleId} className="font-display text-section font-semibold">
             {title}
           </h2>
@@ -99,12 +129,12 @@ export function Drawer({ open, title, onClose, size = 'md', children }: DrawerPr
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-mist-500 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+            className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 ${look.close}`}
           >
             <Icon name="close" />
           </button>
         </header>
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        <div className={`flex-1 overflow-y-auto ${look.body}`}>{children}</div>
       </section>
     </div>,
     document.body,
