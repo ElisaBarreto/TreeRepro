@@ -31,6 +31,14 @@ main() {
 
   docker compose build --pull
   docker compose up -d --remove-orphans --wait
+  # cachedJson entries outlive the API container and may hold the previous release's
+  # shape (#163). Sessions, login/rate-limit counters, TOTP setup and perms are kept.
+  docker compose exec -T redis sh -c '
+    set -eu -o pipefail
+    export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
+    for p in "stats:*" "dashboard:*" "coverage:*" "dictionary:*" "trait:*" "health"; do
+      redis-cli --no-auth-warning --scan --pattern "$p" | xargs -r redis-cli --no-auth-warning del >/dev/null
+    done'
   docker image prune -f >/dev/null
   echo "deployed $sha"
 }
