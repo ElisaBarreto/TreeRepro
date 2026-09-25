@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 import {
-  createAcceptedValue,
   createRecord,
   createReference,
   createSpecies,
@@ -10,7 +9,7 @@ import {
 import { createUser } from '../../test/helpers/users.ts';
 import { UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { createDb } from '../db/client.ts';
-import { acceptedCsv } from './export.ts';
+import { recordsCsv } from './export.ts';
 
 /** Rejects after `ms` if `promise` has not settled by then. */
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -22,7 +21,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-describe('RFC-66 acceptedCsv connection safety', () => {
+describe('RFC-66 R5 recordsCsv connection safety', () => {
   let handle: ReturnType<typeof createDb> | undefined;
 
   afterAll(async () => {
@@ -37,7 +36,7 @@ describe('RFC-66 acceptedCsv connection safety', () => {
     const { user } = await createUser(db);
     for (let i = 0; i < 5; i++) {
       const sp = await createSpecies(db);
-      const rec = await createRecord(db, {
+      await createRecord(db, {
         speciesId: sp.id,
         traitId: trait.id,
         valueText: 'red',
@@ -46,15 +45,9 @@ describe('RFC-66 acceptedCsv connection safety', () => {
         origin: 'manual',
         createdBy: user.id,
       });
-      await createAcceptedValue(db, {
-        speciesId: sp.id,
-        traitId: trait.id,
-        recordId: rec.id,
-        actorId: user.id,
-      });
     }
 
-    const reader = acceptedCsv(db, UNRESTRICTED, { batch: 2 }).getReader();
+    const reader = recordsCsv(db, UNRESTRICTED, { batch: 2 }).getReader();
     await reader.read();
     // Do not await this read before cancelling: it races the in-flight batch
     // fetch that `reader.cancel()` must wait for (RFC-66; the CRITICAL finding).

@@ -15,7 +15,7 @@ import {
   annotateRecord,
   createRecords,
   curationKeys,
-  EXPORT_ACCEPTED_URL,
+  EXPORT_RECORDS_URL,
   fetchDisputed,
   fetchPendingGroups,
   fetchPendingTraits,
@@ -98,7 +98,7 @@ describe('RFC-65 R8–R10 queues', () => {
 describe('query keys and invalidation', () => {
   it('curationKeys nest under the dataset prefixes; invalidateAfterRecordWrite marks records and the species stale', async () => {
     expect(curationKeys.pendingGroups('t')).toEqual(['records', 'pending', 'groups', 't']);
-    expect(EXPORT_ACCEPTED_URL).toBe('/api/export/accepted.csv');
+    expect(EXPORT_RECORDS_URL).toBe('/api/export/records.csv');
     const client = new QueryClient();
     client.setQueryData(['records', { speciesId: 's' }], { data: [], meta: { nextCursor: null } });
     client.setQueryData(['records', 'r1'], RECORD_DETAIL);

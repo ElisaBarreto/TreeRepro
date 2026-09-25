@@ -36,8 +36,8 @@ export const curationKeys = {
   disputed: (params: { intent?: 'contest' }) => ['records', 'disputed', params] as const,
 };
 
-/** The file download of RFC-66; a plain link, the session cookie authenticates it. @rfc RFC-66 R1 */
-export const EXPORT_ACCEPTED_URL = '/api/export/accepted.csv';
+/** The file download of RFC-66; a plain link, the session cookie authenticates it. @rfc RFC-66 R8 */
+export const EXPORT_RECORDS_URL = '/api/export/records.csv';
 
 /** @rfc RFC-70 R1, R3 */
 export async function createRecords(body: CreateRecordBody): Promise<CreateRecordsResult> {
