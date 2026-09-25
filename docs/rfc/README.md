@@ -31,28 +31,28 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-23 | TOTP second factor | accepted |
 | RFC-24 | Rate limiting | accepted |
 | RFC-30 | Permission catalog | accepted |
-| RFC-31 | Roles | accepted |
+| RFC-31 | Roles | draft |
 | RFC-32 | Authorization enforcement | accepted |
-| RFC-33 | Data visibility | accepted |
+| RFC-33 | Data visibility | draft |
 | RFC-42 | Audit retention | accepted |
 | RFC-50 | User administration | accepted |
 | RFC-51 | Audit query | accepted |
-| RFC-52 | Platform health | accepted |
-| RFC-60 | Taxonomy catalog | accepted |
-| RFC-61 | Bibliographic references | accepted |
-| RFC-62 | Trait dictionary | accepted |
-| RFC-63 | Trait records and provenance | accepted |
-| RFC-64 | Bulk import | accepted |
-| RFC-65 | Curation | accepted |
-| RFC-66 | Dataset export | accepted |
+| RFC-52 | Platform health | draft |
+| RFC-60 | Taxonomy catalog | draft |
+| RFC-61 | Bibliographic references | draft |
+| RFC-62 | Trait dictionary | draft |
+| RFC-63 | Trait records and provenance | draft |
+| RFC-64 | Bulk import | draft |
+| RFC-65 | Curation | draft |
+| RFC-66 | Dataset export | draft |
 | RFC-67 | Field plots | accepted |
 | RFC-68 | Supplementary imports | accepted |
-| RFC-69 | Coverage summary | accepted |
-| RFC-70 | Contribution workflow | accepted |
-| RFC-71 | My contributions | accepted |
-| RFC-72 | Workspace dashboard | accepted |
-| RFC-73 | Help and onboarding | accepted |
-| RFC-74 | Daily digest | accepted |
+| RFC-69 | Coverage summary | draft |
+| RFC-70 | Contribution workflow | draft |
+| RFC-71 | My contributions | draft |
+| RFC-72 | Workspace dashboard | draft |
+| RFC-73 | Help and onboarding | draft |
+| RFC-74 | Daily digest | draft |
 | RFC-75 | Species proposals | accepted |
-| RFC-80 | DOI resolution | accepted |
+| RFC-80 | DOI resolution | draft |
 | RFC-81 | Taxonomy lookup | accepted |
