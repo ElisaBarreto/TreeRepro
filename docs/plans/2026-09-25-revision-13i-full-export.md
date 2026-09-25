@@ -19,6 +19,7 @@
 3. **Long downloads**: no new enforcement; add a line to the runbook/README export section documenting that the production Caddy `read`/`write` timeouts bound how long an export can hold its cursor, and state the current values.
  The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
 4. **CSV formula guard** also prefixes values that start with LF (and CR), since imported `raw_value` may start with a line break.
+5. **Owner ruling 2026-09-25 — contests state the correct levels** (spec R-8 as amended; RFC-63 R14, RFC-70 R2, R3, R9, R10): `annotations.csv` gives, for every contest that is not withdrawn (resolved ones included), one `contest` row per visible record it contests — every visible record of each level a categorical contest names, or a quantitative contest's responded record — with `contest_record_code` the codes of the records the contest created, joined by `; ` and empty when it created none (RFC-66 R2 as amended); `contested` and `n_contests` read 13g's contests by level instead of joining `responds_to_record_id`, and a categorical contest record's `responds_to` column is empty. Where task bodies assume a contest responds to one record's level, the amended rules win.
 
 ## Global Constraints
 
