@@ -273,6 +273,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Button
                 variant="secondary"
                 size="sm"
+                // 44px touch target on phones, where the label is hidden.
+                className="max-sm:size-11 max-sm:px-0"
                 pending={signOut.isPending}
                 onClick={() => signOut.mutate()}
                 aria-label="Sign out"

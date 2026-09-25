@@ -129,7 +129,7 @@ export function Drawer({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 ${look.close}`}
+            className={`inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 ${look.close}`}
           >
             <Icon name="close" />
           </button>
