@@ -53,9 +53,9 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `REFERENCE_NOT_FOUND` | 404 | Reference id does not exist (RFC-61 R4). |
 | `RECORD_NOT_FOUND` | 404 | Record id does not exist (RFC-63 R9). |
 | `IMPORT_NOT_FOUND` | 404 | Import batch id does not exist (RFC-64 R11). |
-| `RECORD_DUPLICATE` | 409 | The claim already exists; `details[0].message` is the existing record id (RFC-65 R2). |
-| `RECORD_WITHDRAWN` | 409 | The record is withdrawn: no annotation, no acceptance (RFC-65 R3, R6). |
-| `RECORD_NOT_WITHDRAWABLE` | 409 | Only manual records can be withdrawn (RFC-65 R4). |
+| `RECORD_DUPLICATE` | 409 | The claim already exists; `details[0].message` is the existing record id (RFC-70 R3) (retired). |
+| `RECORD_WITHDRAWN` | 409 | The record is withdrawn: no annotation, no acceptance (RFC-65 R3) (retired). |
+| `RECORD_NOT_WITHDRAWABLE` | 409 | Only manual records can be withdrawn (RFC-65 R4) (retired). |
 | `RECORD_IS_ACCEPTED` | 409 | The record is the current accepted value; change it first (RFC-65 R4) (retired). |
 | `RECORD_NOT_HARMONISED` | 409 | Only a harmonised record can be the accepted value (RFC-65 R6) (retired). |
 | `FAMILY_NOT_FOUND` | 404 | Family id does not exist (RFC-60 R9). |
@@ -100,3 +100,4 @@ None.
 - 2026-09-20 — PERMISSION_DENIED also answers the RFC-31 R12–R14 delegation refusals (issue #118).
 - 2026-09-25 — RECORD_IS_ACCEPTED and RECORD_NOT_HARMONISED retired with the accepted value (spec R-1, plan 13e).
 - 2026-09-25 — REFERENCE_ISBN_TAKEN, named by RFC-61 R6 as amended for book references (spec R-16, plan 13d).
+- 2026-09-25 — RECORD_DUPLICATE, RECORD_WITHDRAWN and RECORD_NOT_WITHDRAWABLE retired: a claim-key collision is reported in `duplicates` (RFC-70 R3), a withdrawn record answers 404 `RECORD_NOT_FOUND` (RFC-65 R3), and the withdrawal permission split answers 403 `PERMISSION_DENIED` (RFC-65 R4) (plan 13g).
