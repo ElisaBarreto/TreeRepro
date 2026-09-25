@@ -4,7 +4,7 @@ import { traitVisible, UNRESTRICTED, type Visibility } from '../access/visibilit
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
-import { traitRecords } from '../db/schema/records.ts';
+import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
 import { users } from '../db/schema/users.ts';
@@ -163,7 +163,8 @@ export async function searchReferences(
  * visibility on purpose: it is a counter like `primaryCount` and
  * `secondaryCount` on the same row, and counters are the same for every
  * viewer (RFC-33 R3; the choice RFC-60 R7 makes for a species), so for a
- * restricted viewer the visible `traits` need not add up to it.
+ * restricted viewer the visible `traits` need not add up to it. `recordCount`
+ * includes the records naming the reference in `record_references` (spec R-4).
  * @rfc RFC-61 R4, R9
  * @rfc RFC-33 R2, R3
  */
@@ -182,13 +183,17 @@ export async function getReference(
     .where(eq(bibliographicReferences.id, id))
     .limit(1);
   if (!row) return null;
-  const [counts, traitRows] = await Promise.all([
+  const [counts, extraCounts, traitRows] = await Promise.all([
     db
       .select({ recordCount: count() })
       .from(traitRecords)
       .where(
         or(eq(traitRecords.primaryReferenceId, id), eq(traitRecords.secondaryReferenceId, id)),
       ),
+    db
+      .select({ recordCount: count() })
+      .from(recordReferences)
+      .where(eq(recordReferences.referenceId, id)),
     db
       .select({
         id: traits.id,
@@ -204,7 +209,7 @@ export async function getReference(
   ]);
   return {
     ...toReference(row.ref, row.observer?.id ? row.observer : null),
-    recordCount: counts[0]?.recordCount ?? 0,
+    recordCount: (counts[0]?.recordCount ?? 0) + (extraCounts[0]?.recordCount ?? 0),
     traits: traitRows.map((t) => ({
       trait: { id: t.id, key: t.key, valueType: t.valueType, unit: t.unit },
       recordCount: t.recordCount,

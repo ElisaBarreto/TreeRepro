@@ -13,6 +13,7 @@ import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
+import { recordReferences } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { updateReference } from './catalog.ts';
 import {
@@ -445,6 +446,28 @@ describe('RFC-61 R4 references', () => {
     );
     expect(unrestricted?.traits).toHaveLength(3);
     expect(unrestricted).toMatchObject({ recordCount: 4, primaryCount: 4, secondaryCount: 0 });
+  });
+
+  it('spec R-4 a record_references row counts in the detail as it does in the counters', async () => {
+    const { user } = await createUser(t.db);
+    const primary = await createReference(t.db);
+    const extra = await createReference(t.db);
+    const sp = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'flower_color');
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'x',
+      primaryReferenceId: primary.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await t.db.insert(recordReferences).values({ recordId: rec.id, referenceId: extra.id });
+    expect(await getReference(t.db, extra.id)).toMatchObject({
+      recordCount: 1,
+      primaryCount: 1,
+      traits: [{ trait: { id: trait.id }, recordCount: 1 }],
+    });
   });
 });
 

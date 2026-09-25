@@ -117,6 +117,9 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       createdBy: { id: a.id, name: 'Test User' },
       intent: null,
       respondsTo: null,
+      recordCode: expect.stringMatching(/^TR_\d+$/),
+      quantitative: null,
+      references: [expect.objectContaining({ id: reference.id })],
       responseCount: 0,
     });
   });

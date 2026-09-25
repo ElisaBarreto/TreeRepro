@@ -1,12 +1,18 @@
-import type { RecordDetail, RecordItem, ReviewStatus } from '@treerepro/contracts';
-import { and, desc, eq, lt, or, type SQL, sql } from 'drizzle-orm';
+import type {
+  QuantitativeValue,
+  RecordDetail,
+  RecordItem,
+  ReferenceKind,
+  ReviewStatus,
+} from '@treerepro/contracts';
+import { and, desc, eq, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches } from '../db/schema/imports.ts';
-import { traitRecords } from '../db/schema/records.ts';
+import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
@@ -18,6 +24,42 @@ const author = alias(users, 'author');
 const primaryRefObserver = alias(users, 'primary_ref_observer');
 const secondaryRefObserver = alias(users, 'secondary_ref_observer');
 const annotationRefObserver = alias(users, 'annotation_ref_observer');
+
+type ExtraReference = {
+  id: string;
+  citationKey: string;
+  kind: ReferenceKind;
+  shortCitation: string | null;
+};
+
+/**
+ * A record's `record_references`, ordered by citation key, as one JSON array
+ * per row. They are never personal observations — `resolveSources` gives a
+ * personal observation alone and refuses one named by id (RFC-61 R7) — so
+ * `observer` is always null and no encrypted name is read here.
+ */
+const extraReferencesSql = sql<ExtraReference[]>`(select coalesce(jsonb_agg(jsonb_build_object(
+    'id', b.id, 'citationKey', b.citation_key, 'kind', b.kind, 'shortCitation', b.short_citation)
+    order by b.citation_key), '[]'::jsonb)
+  from ${recordReferences} rr join ${bibliographicReferences} b on b.id = rr.reference_id
+  where rr.record_id = ${traitRecords.id})`;
+
+/**
+ * The single/min/max/mean/sd/n fields of a record as one object (spec R-5),
+ * or null when none is set — a purely categorical or level-based record.
+ */
+function quantitativeOf(rec: typeof traitRecords.$inferSelect): QuantitativeValue | null {
+  const fields = {
+    single: rec.numericValue,
+    min: rec.minValue,
+    max: rec.maxValue,
+    mean: rec.meanValue,
+    sd: rec.sdValue,
+    n: rec.n,
+  };
+  const given = Object.entries(fields).filter(([, v]) => v !== null);
+  return given.length > 0 ? (Object.fromEntries(given) as QuantitativeValue) : null;
+}
 
 /**
  * The review axis of one record, derived from its annotations: withdrawn >
@@ -59,6 +101,7 @@ const itemColumns = {
   secondaryObserverId: secondaryRefObserver.id,
   secondaryObserverName: secondaryRefObserver.name,
   authorName: author.name,
+  extraReferences: extraReferencesSql,
 };
 
 export type ItemRow = {
@@ -79,48 +122,69 @@ export type ItemRow = {
   secondaryObserverId: string | null;
   secondaryObserverName: string | null;
   authorName: string | null;
+  extraReferences: ExtraReference[];
   review: ReviewStatus;
 };
 
 /** @rfc RFC-63 R8 */
 export function toItem(r: ItemRow): RecordItem {
   const rec = r.record;
+  const primaryReference =
+    rec.primaryReferenceId && r.primaryKey && r.primaryKind
+      ? {
+          id: rec.primaryReferenceId,
+          citationKey: r.primaryKey,
+          kind: r.primaryKind,
+          observer:
+            r.primaryObserverId && r.primaryObserverName
+              ? { id: r.primaryObserverId, name: r.primaryObserverName }
+              : null,
+          shortCitation: r.primaryShortCitation,
+        }
+      : null;
+  const secondaryReference =
+    rec.secondaryReferenceId && r.secondaryKey && r.secondaryKind
+      ? {
+          id: rec.secondaryReferenceId,
+          citationKey: r.secondaryKey,
+          kind: r.secondaryKind,
+          observer:
+            r.secondaryObserverId && r.secondaryObserverName
+              ? { id: r.secondaryObserverId, name: r.secondaryObserverName }
+              : null,
+          shortCitation: r.secondaryShortCitation,
+        }
+      : null;
+  // The item's `references` (spec R-4, owner amendment 4): the primary
+  // reference first, then the legacy secondary one when present, then the
+  // `record_references` rows (already ordered by citation key). A reference
+  // named twice — e.g. the secondary one repeated in `record_references` —
+  // is kept once, in its earliest slot.
+  const seenReferenceIds = new Set<string>();
+  const references = [
+    primaryReference,
+    secondaryReference,
+    ...r.extraReferences.map((x) => ({ ...x, observer: null })),
+  ].filter((ref): ref is NonNullable<typeof ref> => {
+    if (!ref || seenReferenceIds.has(ref.id)) return false;
+    seenReferenceIds.add(ref.id);
+    return true;
+  });
   return {
     id: rec.id,
+    recordCode: rec.recordCode,
     speciesId: rec.speciesId,
     species: { id: rec.speciesId, canonicalName: r.speciesName },
     trait: { id: rec.traitId, key: r.traitKey, valueType: r.traitValueType, unit: r.traitUnit },
     valueText: rec.valueText,
     level: rec.levelId && r.levelKey ? { id: rec.levelId, key: r.levelKey } : null,
     numericValue: rec.numericValue,
+    quantitative: quantitativeOf(rec),
     harmonisation: rec.harmonisation,
     review: r.review,
-    primaryReference:
-      rec.primaryReferenceId && r.primaryKey && r.primaryKind
-        ? {
-            id: rec.primaryReferenceId,
-            citationKey: r.primaryKey,
-            kind: r.primaryKind,
-            observer:
-              r.primaryObserverId && r.primaryObserverName
-                ? { id: r.primaryObserverId, name: r.primaryObserverName }
-                : null,
-            shortCitation: r.primaryShortCitation,
-          }
-        : null,
-    secondaryReference:
-      rec.secondaryReferenceId && r.secondaryKey && r.secondaryKind
-        ? {
-            id: rec.secondaryReferenceId,
-            citationKey: r.secondaryKey,
-            kind: r.secondaryKind,
-            observer:
-              r.secondaryObserverId && r.secondaryObserverName
-                ? { id: r.secondaryObserverId, name: r.secondaryObserverName }
-                : null,
-            shortCitation: r.secondaryShortCitation,
-          }
-        : null,
+    primaryReference,
+    secondaryReference,
+    references,
     origin: rec.origin,
     createdAt: rec.createdAt.toISOString(),
     createdBy: rec.createdBy && r.authorName ? { id: rec.createdBy, name: r.authorName } : null,
@@ -145,8 +209,9 @@ export function itemQuery(db: DbExecutor) {
 }
 
 /**
- * Either `speciesId` and `traitId` together, or `referenceId` alone (primary
- * or secondary); ordered `id` descending with a keyset cursor.
+ * Either `speciesId` and `traitId` together, or `referenceId` alone (primary,
+ * secondary or `record_references`); ordered `id` descending with a keyset
+ * cursor.
  * @rfc RFC-63 R9
  * @rfc RFC-33 R2, R3
  */
@@ -169,10 +234,11 @@ export async function listRecords(
     );
   } else if (input.referenceId) {
     conditions.push(
-      or(
-        eq(traitRecords.primaryReferenceId, input.referenceId),
-        eq(traitRecords.secondaryReferenceId, input.referenceId),
-      ) as SQL,
+      sql`${traitRecords.id} in (
+        select r.id from ${traitRecords} r
+        where r.primary_reference_id = ${input.referenceId} or r.secondary_reference_id = ${input.referenceId}
+        union all
+        select rr.record_id from ${recordReferences} rr where rr.reference_id = ${input.referenceId})`,
     );
   } else {
     throw new Error('listRecords: speciesId+traitId or referenceId is required');

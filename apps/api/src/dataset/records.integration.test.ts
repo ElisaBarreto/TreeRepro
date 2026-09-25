@@ -14,7 +14,7 @@ import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
-import { traitRecords } from '../db/schema/records.ts';
+import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { getRecord, listRecords, reviewStatusSql } from './records.ts';
 import { ensurePersonalObservation } from './references.ts';
 
@@ -84,6 +84,11 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       createdBy: null,
       intent: null,
       respondsTo: null,
+      recordCode: expect.stringMatching(/^TR_\d+$/),
+      quantitative: null,
+      references: [
+        { id: ref.id, citationKey: ref.citationKey, kind: 'publication', observer: null, shortCitation: null },
+      ],
     });
     expect(byTrait.data[0]?.secondaryReference).toEqual({
       id: ref.id,
@@ -279,5 +284,74 @@ describe('RFC-33 R3, R4 listRecords and getRecord by viewer', () => {
     expect(await getRecord(t.db, RESTRICTED, f.onHiddenSpecies.id)).toBeNull();
     expect(await getRecord(t.db, RESTRICTED, f.onInactiveTrait.id)).toBeNull();
     expect(await getRecord(t.db, UNRESTRICTED, f.onHiddenSpecies.id)).not.toBeNull();
+  });
+});
+
+describe('RFC-63 R8, R9 record code, quantitative value and references (spec R-2, R-4, R-5)', () => {
+  const t = useTestDb();
+
+  it('lists the primary reference first, then record_references; a reference lists the records it appears on', async () => {
+    const { user } = await createUser(t.db);
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const primary = await createReference(t.db);
+    const extra = await createReference(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      valueText: 'min=2;max=8',
+      minValue: 2,
+      maxValue: 8,
+      primaryReferenceId: primary.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await t.db.insert(recordReferences).values({ recordId: rec.id, referenceId: extra.id });
+
+    const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
+    expect(detail?.recordCode).toMatch(/^TR_\d+$/);
+    expect(detail?.quantitative).toEqual({ min: 2, max: 8 });
+    expect(detail?.references).toEqual([
+      { id: primary.id, citationKey: primary.citationKey, kind: 'publication', observer: null, shortCitation: null },
+      { id: extra.id, citationKey: extra.citationKey, kind: 'publication', observer: null, shortCitation: null },
+    ]);
+
+    const byExtra = await listRecords(t.db, UNRESTRICTED, { referenceId: extra.id, limit: 10 });
+    expect(byExtra.data.map((r) => r.id)).toEqual([rec.id]);
+  });
+
+  // Owner amendment 4 (RFC-63 R8): the item's `references` is primary, then
+  // the legacy `secondary_reference_id` when present, THEN `record_references`
+  // rows by citation key — not primary followed straight by `record_references`.
+  it('spec R-4: references order is primary, then secondary, then record_references, with no duplicate reference', async () => {
+    const { user } = await createUser(t.db);
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const primary = await createReference(t.db);
+    const secondary = await createReference(t.db);
+    const extra = await createReference(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      valueText: '5',
+      numericValue: 5,
+      primaryReferenceId: primary.id,
+      secondaryReferenceId: secondary.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await t.db.insert(recordReferences).values([
+      { recordId: rec.id, referenceId: extra.id },
+      // The same reference as `secondaryReferenceId`: must appear once, in
+      // the secondary slot, not a second time from `record_references`.
+      { recordId: rec.id, referenceId: secondary.id },
+    ]);
+
+    const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
+    expect(detail?.references).toEqual([
+      { id: primary.id, citationKey: primary.citationKey, kind: 'publication', observer: null, shortCitation: null },
+      { id: secondary.id, citationKey: secondary.citationKey, kind: 'publication', observer: null, shortCitation: null },
+      { id: extra.id, citationKey: extra.citationKey, kind: 'publication', observer: null, shortCitation: null },
+    ]);
   });
 });
