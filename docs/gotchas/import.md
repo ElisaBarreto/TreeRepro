@@ -98,7 +98,7 @@
    docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
      "select tgname, tgenabled from pg_trigger where tgname in ('trait_records_append_only', 'trait_records_no_truncate', 'record_annotations_append_only', 'record_annotations_no_truncate') order by 1"
    ```
-6. **Reload what the replace emptied** (README commands, same files as the first load, in this order). Plots, plot species, user plots, synonyms and references are generated from the owner's raw exports (`PIs_per_plot_filtered.csv`, `Species_per_plot_filtered.csv`, `refs_with_citations_filtered.csv`, …) the same way as any other load, through `prepare:imports` (README):
+6. **Reload what the replace emptied** (CLAUDE.md commands, same files as the first load, in this order). Plots, plot species, user plots, synonyms and references are generated from the owner's raw exports (`PIs_per_plot_filtered.csv`, `Species_per_plot_filtered.csv`, `refs_with_citations_filtered.csv`, …) the same way as any other load, through `prepare:imports` (CLAUDE.md):
    ```sh
    pnpm --filter @treerepro/api prepare:imports --source <dir> --out <dir>
    ```

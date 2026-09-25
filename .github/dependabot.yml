@@ -35,7 +35,7 @@ updates:
       prefix: "chore(ci)"
 
   # Base images: minor/patch and digest bumps only. A major (node 24 → 26,
-  # postgres 18 → 19) changes the runtime the code is pinned to (README
+  # postgres 18 → 19) changes the runtime the code is pinned to (CLAUDE.md
   # "Stack", package.json engines, .node-version) and is a deliberate change.
   - package-ecosystem: docker
     directory: /infra/docker

@@ -35,8 +35,8 @@ playwright-report/
 # superpowers scratch (sdd ledgers, briefs, review packages)
 .superpowers/
 
-# AI-assistant local files (never committed; the repository is agent-independent)
-CLAUDE.md
+# AI-assistant local files (never committed; the shared handbook is CLAUDE.md)
+CLAUDE.local.md
 .claude/
 
 # git worktrees for parallel tasks

@@ -79,4 +79,4 @@ CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default 
 ## Dependabot proposes a major base-image bump
 **Symptom:** A PR like "bump node from 24.21.0-alpine to 26.8-alpine" shows up and its checks are green.
 **Cause:** Docker tags have no "engines" field; Dependabot cannot know Node 24 is the pinned runtime.
-**Fix:** `.github/dependabot.yml` ignores `version-update:semver-major` for the `docker` and `docker-compose` ecosystems. A major runtime bump is a deliberate PR that also updates README "Stack", `package.json` engines and `.node-version`. Close the Dependabot PR with `@dependabot ignore this major version` so it is not reopened.
+**Fix:** `.github/dependabot.yml` ignores `version-update:semver-major` for the `docker` and `docker-compose` ecosystems. A major runtime bump is a deliberate PR that also updates CLAUDE.md "Stack", `package.json` engines and `.node-version`. Close the Dependabot PR with `@dependabot ignore this major version` so it is not reopened.

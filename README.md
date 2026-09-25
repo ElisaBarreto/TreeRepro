@@ -1,75 +1,31 @@
-# TreeRepro
+# 🌳 TreeRepro
 
-Scientific data-collection platform. Everything sits behind login. GDPR applies to user data. This file is the project handbook: durable rules and pointers only, never a log.
+**Help complete what we know about how trees reproduce.**
 
-## Stack (exact versions pinned in package.json; rationale in RFC-10)
+TreeRepro is a collective data assembly of reproductive trait data for trees, covering every reproductive stage: flowers, fruits and seeds. Its core data comes from open-access papers and data repositories. The dataset is shared with a community of specialist scientists who fill the gaps and validate the records already there.
 
-Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite 8 + TanStack Router/Query + Tailwind 4 (`apps/web`) · Drizzle ORM + PostgreSQL 18 · Redis 8 (ioredis) · Zod 4 · Vitest 5 + testcontainers · Playwright · Biome 2 · Docker Compose + Caddy 2.
+## What it does
 
-## Layout
+- **One curated dataset.** Every record belongs to a species, a trait and a bibliographic reference. Species names follow the World Checklist of Vascular Plants, and traits come from a versioned dictionary.
+- **Built for specialists.** Contributors add records, back them with a DOI or their own field observation, and confirm or contest what others have entered.
+- **Curation in the open.** Managers work the harmonisation and dispute queues, and every change can be traced back to the person who made it.
+- **Find the gaps.** Search species by taxonomy, trait or field plot, and see which traits still have no data.
+- **Share the results.** Anyone with the right access can export the dataset as CSV.
 
-- `apps/api` — the only process that touches Postgres, Redis and secrets.
-- `apps/api/seed` — the trait dictionary (versioned vocabulary).
-- `apps/web` — UI only. Calls `/api/*` on the same origin. Contains no business rules. The workspace lives under `/app` (settings, admin pages at `/app/admin/users`, `/app/admin/users/$id`, `/app/admin/roles`, `/app/admin/audit` (plan 05b, `admin.access`), and field plots at `/app/admin/plots`, `/app/admin/plots/$id` (plan 08b, `plots.manage`); dataset search and species detail at `/app/species` and `/app/species/$id` from plan 06); public pages are `/`, `/invite/:token`, `/forgot-password`, `/reset-password/:token` (RFC-13). Curation pages (plan 07b): `/app/curation/pending` (harmonisation queue; `?traitId=` opens it on a trait) and `/app/curation/disputed`, plus an Unresolved taxa entry on `/app/species?unresolved=true`; the species page gains an Add value action and, on the record drawer, confirm / dispute / withdraw; an Export records (CSV) link (`dataset.export`) sits on the species search header. Catalog editors (plan 07c): `/app/traits` with `traits.manage` — new trait, edit trait, add / rename / reorder / activate levels; `/app/references` and `/app/references/$id` with `references.manage` — new and edit reference; `/app/species` and `/app/species/$id` with `taxa.manage` — new species, edit species (genus and family created inline), add alternative name; `/app/taxa` with `taxa.manage` — families and genera (create, rename, move). Contributor actions (plan 09b): the species page header reads **Add entries for another trait** (a `+` on every trait card opens the same form with the trait fixed), a **Show traits with no data** checkbox (`?missing=true`) adds a card with **Add the first entry** for every active trait the species has no record for, each trait card carries a `?` with the dictionary's description (and the unit for a quantitative trait), and the record drawer's actions become **✓ Validate** (optionally with a supporting DOI) and **+ Add different record**, which opens the contest / complement dialog; a claim with no DOI is recorded as the contributor's personal observation, and Neutral and Dispute stay behind `records.review`. Browsing (plan 10a): the species search groups its filters as **Taxonomy** / **Traits** / **Scope**, the Traits group being a category select, a trait select filtered to it and a **Has data** / **Missing data** pair, with an **Order by** select (Name / Most incomplete first) below them; every filter is a URL search param, so `/app/species?traitId=…&traitData=missing` opens the list pre-filtered and a filtered list can be shared; the list gains a **Traits** column (the coverage count of RFC-69 R1) and, while a trait filter is set, a **Records** column; and the shell breadcrumb is hierarchical (`Data › Species › <species>`), each page registering its trailing crumbs with `useBreadcrumb`.
-- `apps/e2e` — Playwright end-to-end tests (no `src`; not part of `rfc:check` or Vitest).
-- `packages/contracts` — Zod schemas and constants shared by API and web.
-- `packages/config` — shared tsconfig bases.
-- `tools/rfc-lint` — enforces `@rfc` linkage in code and cross-checks the SPA's permission gates against the API (RFC-32 R8).
-- `infra/` — Dockerfiles, Caddyfiles, Postgres init, host hardening (`infra/host/`, installed by hand, see `docs/gotchas/infra.md`), secrets (gitignored).
-- `docs/rfc/` — business rules, the source of truth.
-- `docs/gotchas/<area>.md` — concrete code/infra pitfalls.
-- `docs/specs`, `docs/plans` — design docs and implementation plans.
+## Who it is for
 
-## Commands
+TreeRepro is invitation only. It serves the researchers taking part in the project, organised by role: contributors, managers and administrators. If you would like to take part, contact the project coordinator at elisabpereira@gmail.com.
 
-- `pnpm install` — install (run `pnpm approve-builds` if pnpm reports ignored build scripts).
-- `pnpm lint` / `pnpm lint:fix` — Biome.
-- `pnpm typecheck` — `tsc --noEmit` in every package.
-- `pnpm test` — unit + integration + API tests. Needs Docker running (testcontainers).
-- `pnpm test:e2e` — end-to-end suite (Playwright, Chromium) against the production images on an isolated Compose stack (`compose.e2e.yml`, ports 8080 / 8026, project `treerepro-e2e`, secrets in a temp dir). Needs Docker and `pnpm --filter @treerepro/e2e exec playwright install chromium` once. `E2E_KEEP=1` leaves the stack up (extra arguments go to Playwright, `pnpm test:e2e -- --headed`); tear it down afterwards with `E2E_SECRETS_DIR=<dir> docker compose -p treerepro-e2e -f compose.yml -f compose.e2e.yml down -v --remove-orphans` (any existing directory satisfies the interpolation).
-- `pnpm rfc:check` — verify every export links to an existing RFC rule.
-- `pnpm build` — build contracts, api, web.
-- `docker compose up` — full dev stack. First time: `cp .env.example .env && ./scripts/gen-secrets.sh`.
-- `scripts/deploy.sh <sha>` — production deploy on the server (run by the CI `Deploy` job after every push to `main`; setup in `docs/gotchas/infra.md`).
-- `pnpm --filter @treerepro/api db:generate` — generate a migration from the Drizzle schema.
-- `pnpm seed:admin --email <email> --name <name>` — invite the first user and assign the `admin` role (prints the invitation link; needs the dev stack or a reachable Postgres/Redis/SMTP). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:admin --email … --name …`. In production: `docker compose exec api node dist/cli/seed-admin.js --email … --name …`.
-- `pnpm --filter @treerepro/api seed:traits` — load the trait dictionary (`apps/api/seed/trait-dictionary.csv`); idempotent, but a level renamed through the API reappears under its old key on the next run unless the CSV is updated too (see `docs/gotchas/dataset.md`). The file may carry an optional seventh column `active` (`true`/`false`, default `true`) so a trait can be loaded already deactivated (RFC-62 R2). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:traits`. In production: `docker compose exec api node dist/cli/seed-traits.js`.
-- `pnpm --filter @treerepro/api prepare:imports --source <dir> --out <dir> [--skip-anomalies]` — turns the raw exports into the headers the `import:*` commands expect — `plot-species`, `synonyms`, `plots`, `references` and `user-plots` (`.import.csv`) (RFC-68 R14); reads and writes files only, never a database. It reports anything suspicious — a plot code that is an Excel date serial (with the date it decodes to and the code that implies), a plot code outside `AAA-NN`, a blank required field, one reference key carrying two DOIs, a local name resolving to two accepted names — and refuses to write the affected file unless `--skip-anomalies`, which then lists every dropped row. `sample_data.csv` is checked against RFC-64 R2 and reported, never rewritten.
-- `pnpm --filter @treerepro/api import:records --file <csv> [--run-by <email>] [--force]` — import a compiled-dataset CSV (RFC-64); prints the batch report. The file must be reachable from *inside* the container `api` runs in — `api`'s filesystem is `read_only` with `/tmp` as `tmpfs`, so `docker compose cp` and a plain `docker compose exec` cannot place it there (see `docs/gotchas/docker.md`). Production, mounting the host directory that holds the file read-only (reuses `api`'s image, env and secrets; `--no-deps` skips re-verifying `migrate`/`redis`, which a running production stack already has): `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-records.js --file /imports/sample_data.csv`. Dev stack, for small files only: stream the file into the container's tmpfs `/tmp` with `docker compose exec -T api sh -c 'cat > /tmp/sample_data.csv' < ./docs/exemplos/sample_data.csv`, then `docker compose exec api pnpm --filter @treerepro/api import:records --file /tmp/sample_data.csv`.
-- `pnpm --filter @treerepro/api import:species-status --file <csv> [--run-by <email>]` — sets `species.active` from a two-column file `wcvp_species,active` (RFC-68 R8); idempotent; the file must be reachable inside the container as for `import:records`. Production: `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-species-status.js --file /imports/species-status.csv`.
-- `pnpm --filter @treerepro/api import:plots --file <csv> [--run-by <email>]` — inserts missing field plots (`plot_id,name,description,latitude,longitude,country,biome`, RFC-68 R9); an existing code is a duplicate (metadata is not updated; use the UI); file must be reachable inside the container as for `import:records`. Production: `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-plots.js --file /imports/plots.csv`.
-- `pnpm --filter @treerepro/api import:plot-species --file <csv> [--run-by <email>]` — associates species to field plots (`plot_id,wcvp_species`, RFC-68 R10); idempotent; file must be reachable inside the container as for `import:records`. Production: `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-plot-species.js --file /imports/plot-species.csv`.
-- `pnpm --filter @treerepro/api import:user-plots --file <csv> [--run-by <email>]` — assigns users to field plots (`user_email,plot_id`, RFC-68 R11); stages the file untouched, hashes distinct emails inside the transaction, and associates users to plots (the restriction flag is not imported: set on the user page); file must be reachable inside the container as for `import:records`. Production: `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-user-plots.js --file /imports/user-plots.csv`.
-- `pnpm --filter @treerepro/api import:synonyms --file <csv> [--run-by <email>]` — imports synonyms and common names for existing species, matched by canonical name (`wcvp_canonical_name,synonym_or_common_name,name_type,source`, RFC-68 R12); `name_type` is `synonym` or `common_<lang>` (two lowercase letters); a name equal to the species' canonical name, or already stored for it, is a duplicate; file must be reachable inside the container as for `import:records`. Production: `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-synonyms.js --file /imports/synonyms.csv`.
-- `pnpm --filter @treerepro/api import:references --file <csv> [--run-by <email>]` — fills `short_citation`, `full_citation`, `doi` and `url` on existing references, matched by `reference_key` against `citation_key`, only where the stored value is currently null (`reference_key,short_citation,full_citation,doi,url`, RFC-68 R13); a filled field is never overwritten and a DOI already held by a different reference is rejected; file must be reachable inside the container as for `import:records`. Production: `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-references.js --file /imports/references.csv`.
-- Admin API (`/api/admin/users`, `/api/admin/roles`, `/api/admin/audit`, `/api/admin/permissions`, `/api/admin/health`; every route permission-guarded) and `PATCH /api/me`: RFC-50, RFC-51, RFC-52. Users are never erased — offboarding is suspension (RFC-50 R12). Audit entries older than 2 years are purged by the API's daily timer through `audit_log_purge()` (RFC-42). A daily digest e-mails every `records.review` holder and every admin yesterday's activity and the current queue sizes (RFC-74); both timers record every run — completed, skipped or failed — in `job_runs`. `manager` and `contributor` are seeded system roles alongside `admin` (RFC-31 R10): `manager` adds `dataset.read_inactive` (see inactive species, traits and levels) and `records.review` (work the harmonisation and disputed queues) to the `contributor` set; the curation queues (`/app/curation/*`) need `records.review`.
-- Curation API (manual records, confirm/dispute/withdraw annotations, the harmonisation and disputed queues, catalog writes on families, genera, species, references, traits and levels; every route permission-guarded): RFC-65. `GET /api/references/resolve` (DOI resolution live indicator): RFC-80. `GET /api/export/records.csv` (`dataset.export`, every visible non-withdrawn record, streamed RFC 4180 CSV, audited): RFC-66.
-- `./scripts/github-admin.sh` — owner only: apply the GitHub security settings and the `main` ruleset (`--check` to inspect).
+## Under the hood
 
-## License and contributions
+A TypeScript web application (React on the front end, a Hono API, PostgreSQL) that runs in Docker. Business rules are written first as numbered RFCs in [`docs/rfc/`](docs/rfc/), and the code links back to them. Security and personal-data protection (GDPR) are built in from the start.
 
-PolyForm Noncommercial 1.0.0 (`LICENSE.md`): the project is public so the participating scientists can validate and improve it; use is limited to noncommercial purposes. Contribution terms and workflow: `CONTRIBUTING.md`.
+Setup, commands and project rules for developers are in [`CLAUDE.md`](CLAUDE.md).
 
-## Security automation
+## Contributing
 
-Every PR must pass `Verify`, `Images` (build + Trivy), `E2E` (Playwright against the production images), `CodeQL`, `Dependency review`, `Gitleaks`, `Zizmor` and `Trivy config`; the `main` ruleset (`infra/github/ruleset-main.json`, applied by the owner with `scripts/github-admin.sh`) enforces it. All of the required checks except `Dependency review` (PR-only) re-run weekly on `main` (same `ci.yml` schedule trigger), Scorecard grades the repo weekly, and Dependabot proposes updates weekly after a 7-day release cooldown (`.github/dependabot.yml`); pnpm applies the same cooldown locally (`minimumReleaseAge` in `pnpm-workspace.yaml`). Actions are pinned by commit SHA. Report vulnerabilities per `SECURITY.md`. Details and admin-only settings: `docs/gotchas/github-security.md`.
+The source is public so the participating scientists can read it, check it against the rules and help improve it. See [`CONTRIBUTING.md`](CONTRIBUTING.md), and report security problems privately as described in [`SECURITY.md`](SECURITY.md).
 
-## Non-negotiable rules
+## License
 
-1. **RFC first** (RFC-00). A business rule lives in `docs/rfc/<category>/NN-slug.md` as a numbered rule `**Rn**`. Change order: RFC → failing test → code. Every exported symbol in `apps/*/src` and `packages/*/src` has a JSDoc `@rfc RFC-NN Rx` tag.
-2. **TDD** (RFC-01). No production code without a failing test first. No database mocks.
-3. **Never trust the frontend** (RFC-02). Validation, computation and authorization happen only in `apps/api`. Strict Zod schemas on every input.
-4. **Security from day one** (RFC-02, RFC-40). Secrets only from `/run/secrets`. PII encrypted at the application level. Logs redacted. Every route guarded: every route is public, self-service (`requireSession`) or permission-guarded (`requirePermission`), enforced by a meta-test (RFC-32); every route behind a dataset-reading permission takes the viewer's `Visibility`, enforced by a second meta-test (RFC-33 R10). Lessons of the 2026-09-19 audit: `docs/gotchas/security.md`.
-5. **English everywhere.** Code, comments, docs, UI, commits.
-6. **Latest stable versions, pinned exact.** No legacy versions.
-7. **Claim an issue before working on it, release it when you stop.** Whoever picks up an issue assigns it to themselves and adds the `in-progress` label first, so an issue carrying both is known to be in someone's hands and one without is free to take. The label means *someone is working on this right now* and nothing else, so `label:in-progress` is the list of claimed work and a closed issue never carries it. GitHub does not remove labels on close, so finishing an issue — closing it by hand or through a PR's `Closes #n` — includes `gh issue edit <n> --remove-label in-progress` for every issue the merge closed; a closed issue still labelled is a mistake, fix it on sight. Dropping an issue without closing it means removing the label and the assignment, so it reads as free again.
-
-## Where things go
-
-| Kind | Place |
-|---|---|
-| Business rule (formula, state, contract, policy) | `docs/rfc/NN-*.md` |
-| Code/infra pitfall specific to this project | `docs/gotchas/<area>.md` |
-| Design decision | `docs/specs/` |
-| Implementation plan | `docs/plans/` |
-| Durable project rules | this `README.md` — never a log |
+[PolyForm Noncommercial 1.0.0](LICENSE.md): free to use, change and share for noncommercial purposes.
