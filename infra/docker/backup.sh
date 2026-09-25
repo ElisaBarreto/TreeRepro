@@ -10,9 +10,14 @@ set -o pipefail
 : "${R2_ENDPOINT:?R2_ENDPOINT is required}"
 : "${R2_BUCKET:?R2_BUCKET is required}"
 : "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
+# The signed upload and its acknowledgement must travel over TLS.
+case "$R2_ENDPOINT" in https://*) ;; *) echo "R2_ENDPOINT must be https://" >&2; exit 1 ;; esac
 PGPASSWORD="$(cat /run/secrets/db_backup_password)"
 export PGPASSWORD
-stamp="$(date -u +%Y-%m-%dT%H%M%SZ)"
+# One clock read, so the weekly/monthly copies follow the dump's own date.
+# shellcheck disable=SC2046
+set -- $(date -u '+%Y-%m-%dT%H%M%SZ %u %d')
+stamp=$1 weekday=$2 monthday=$3
 target="/backups/treerepro-${stamp}.sql.age"
 pg_dump --host postgres --username treerepro_backup --dbname treerepro --no-owner --no-privileges --format=plain \
   | age --recipient "$BACKUP_AGE_RECIPIENT" --output "$target"
@@ -23,14 +28,14 @@ echo "backup written: $target"
 # this host cannot wipe the copies. A failed upload fails the backup (no ping).
 name="$(basename "$target")"
 prefixes="daily"
-[ "$(date -u +%u)" = 7 ] && prefixes="$prefixes weekly"
-[ "$(date -u +%d)" = 01 ] && prefixes="$prefixes monthly"
+[ "$weekday" = 7 ] && prefixes="$prefixes weekly"
+[ "$monthday" = 01 ] && prefixes="$prefixes monthly"
 sha="$(sha256sum "$target" | cut -d' ' -f1)"
 for prefix in $prefixes; do
   # Credentials through a config on stdin, never on the command line.
   # ponytail: single PUT caps a dump at 5 GiB (R2 limit); switch to multipart if the dump nears it.
   printf 'user = "%s:%s"\n' "$R2_ACCESS_KEY_ID" "$(cat /run/secrets/r2_secret_access_key)" \
-    | curl -fsS -K - --retry 3 --connect-timeout 20 --max-time 1800 --aws-sigv4 "aws:amz:auto:s3" \
+    | curl -fsS --proto =https -K - --retry 3 --connect-timeout 20 --max-time 1800 --aws-sigv4 "aws:amz:auto:s3" \
       -H "x-amz-content-sha256: $sha" -T "$target" \
       "$R2_ENDPOINT/$R2_BUCKET/$prefix/$name"
   echo "backup uploaded: $prefix/$name"
