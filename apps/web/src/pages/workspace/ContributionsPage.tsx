@@ -98,7 +98,7 @@ const INTENT_TONES: Record<RecordIntent, 'red' | 'neutral'> = {
   complement: 'neutral',
 };
 
-// RFC-71 R4's seven counts, in the order the rule lists them.
+// RFC-71 R4's six counts, in the order the rule lists them.
 function tilesOf(summary: ContributionSummary): StatTile[] {
   return [
     { label: 'Records', value: summary.records },
@@ -107,7 +107,6 @@ function tilesOf(summary: ContributionSummary): StatTile[] {
     { label: 'Validations', value: summary.validations },
     { label: 'Disputes', value: summary.disputes },
     { label: 'Withdrawn', value: summary.withdrawn },
-    { label: 'Accepted', value: summary.accepted },
   ];
 }
 
@@ -299,7 +298,6 @@ export function ContributionsPage({
               header: 'Status',
               cell: (record) => (
                 <span className="flex flex-wrap items-center gap-1.5">
-                  {record.isAccepted ? <Badge tone="green">accepted</Badge> : null}
                   {record.intent ? (
                     <Badge tone={INTENT_TONES[record.intent]}>{record.intent}</Badge>
                   ) : null}
@@ -308,7 +306,7 @@ export function ContributionsPage({
                       {record.responseCount === 1 ? '1 answer' : `${record.responseCount} answers`}
                     </span>
                   ) : null}
-                  {!record.isAccepted && !record.intent && record.responseCount === 0 ? DASH : null}
+                  {!record.intent && record.responseCount === 0 ? DASH : null}
                 </span>
               ),
             }}

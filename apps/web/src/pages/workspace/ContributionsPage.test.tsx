@@ -111,7 +111,6 @@ describe('RFC-71 R1, R2, R4 the contributions page', () => {
       'Validations7',
       'Disputes1',
       'Withdrawn1',
-      'Accepted4',
     ]);
     expect(router.state.location.search).toEqual({});
   });
@@ -136,18 +135,17 @@ describe('RFC-71 R1, R2, R4 the contributions page', () => {
       .getAllByRole('columnheader')
       .map((th) => th.textContent);
     expect(headers).toContain('Status');
-    const [, accepted, contesting] = within(table).getAllByRole('row') as HTMLElement[];
-    expect(within(accepted as HTMLElement).getByText('accepted')).toBeInTheDocument();
-    expect(within(accepted as HTMLElement).getByText('disputed')).toBeInTheDocument();
-    expect(within(accepted as HTMLElement).queryByText('contest')).not.toBeInTheDocument();
+    const [, answered, contesting] = within(table).getAllByRole('row') as HTMLElement[];
+    expect(within(answered as HTMLElement).getByText('disputed')).toBeInTheDocument();
+    expect(within(answered as HTMLElement).queryByText('contest')).not.toBeInTheDocument();
     expect(within(contesting as HTMLElement).getByText('contest')).toBeInTheDocument();
-    expect(within(contesting as HTMLElement).queryByText('accepted')).not.toBeInTheDocument();
-    // `responseCount` of RFC-71 R2: one record answers the accepted one.
-    expect(within(accepted as HTMLElement).getByText('1 answer')).toBeInTheDocument();
+    expect(within(table).queryByText('accepted')).not.toBeInTheDocument();
+    // `responseCount` of RFC-71 R2: one record answers this one.
+    expect(within(answered as HTMLElement).getByText('1 answer')).toBeInTheDocument();
     expect(within(contesting as HTMLElement).queryByText(/answer/)).not.toBeInTheDocument();
 
     await userEvent.click(
-      within(accepted as HTMLElement).getByRole('button', { name: 'about two' }),
+      within(answered as HTMLElement).getByRole('button', { name: 'about two' }),
     );
     await waitFor(() => expect(dataset.fetchRecord).toHaveBeenCalledWith(CONTRIBUTION_RECORD.id));
     expect(await screen.findByRole('dialog', { name: 'Record' })).toBeInTheDocument();

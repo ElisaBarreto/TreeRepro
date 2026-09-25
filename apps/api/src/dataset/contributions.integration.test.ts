@@ -1,7 +1,6 @@
 import type { ContributionAnnotation, ContributionRecord } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import {
-  createAcceptedValue,
   createAnnotation,
   createRecord,
   createReference,
@@ -118,14 +117,12 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       createdBy: { id: a.id, name: 'Test User' },
       intent: null,
       respondsTo: null,
-      isAccepted: false,
       responseCount: 0,
     });
   });
 
-  it('marks the record the latest accepted decision points at and counts its responses', async () => {
+  it('counts the responses to each record and carries no accepted flag', async () => {
     const { user: a } = await createUser(t.db);
-    const { user: curator } = await createUser(t.db);
     const { species, trait, reference } = await scene(t.db);
     const mine = async (valueText: string) =>
       createRecord(t.db, {
@@ -139,34 +136,6 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       });
     const a1 = await mine('alpha');
     const a2 = await mine('beta');
-    const accepted = async () => {
-      const rows = await listRecordsOf(t.db, UNRESTRICTED, a.id);
-      return Object.fromEntries(rows.data.map((r) => [r.id, r.isAccepted]));
-    };
-
-    expect(await accepted()).toEqual({ [a1.id]: false, [a2.id]: false });
-    await createAcceptedValue(t.db, {
-      speciesId: species.id,
-      traitId: trait.id,
-      actorId: curator.id,
-      recordId: a1.id,
-    });
-    expect(await accepted()).toEqual({ [a1.id]: true, [a2.id]: false });
-    // Only the newest decision counts: the previous one must not keep a1 accepted.
-    await createAcceptedValue(t.db, {
-      speciesId: species.id,
-      traitId: trait.id,
-      actorId: curator.id,
-      recordId: a2.id,
-    });
-    expect(await accepted()).toEqual({ [a1.id]: false, [a2.id]: true });
-    await createAcceptedValue(t.db, {
-      speciesId: species.id,
-      traitId: trait.id,
-      actorId: curator.id,
-      decision: 'cleared',
-    });
-    expect(await accepted()).toEqual({ [a1.id]: false, [a2.id]: false });
 
     const { user: b } = await createUser(t.db);
     for (const [valueText, intent] of [
@@ -188,6 +157,7 @@ describe('RFC-71 R2 listContributions kind=records', () => {
     const rows = await listRecordsOf(t.db, UNRESTRICTED, a.id);
     expect(rows.data.find((r) => r.id === a1.id)?.responseCount).toBe(2);
     expect(rows.data.find((r) => r.id === a2.id)?.responseCount).toBe(0);
+    expect(rows.data[0]).not.toHaveProperty('isAccepted');
   });
 
   it('filters by trait, by species and by review status', async () => {
@@ -681,7 +651,7 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
 describe('RFC-71 R4 contributionSummary', () => {
   const t = useTestDb();
 
-  it('counts records, intents, stances, withdrawals and accepted values', async () => {
+  it('counts records, intents, stances and withdrawals', async () => {
     const { user: a } = await createUser(t.db);
     const { user: b } = await createUser(t.db);
     const { species, trait, reference } = await scene(t.db);
@@ -706,7 +676,7 @@ describe('RFC-71 R4 contributionSummary', () => {
       intent: 'contest',
       respondsToRecordId: target.id,
     });
-    const complement = await createRecord(t.db, {
+    await createRecord(t.db, {
       speciesId: species.id,
       traitId: trait.id,
       valueText: 'gamma',
@@ -730,12 +700,6 @@ describe('RFC-71 R4 contributionSummary', () => {
     }
     await createAnnotation(t.db, { recordId: target.id, actorId: a.id, kind: 'dispute' });
     await createAnnotation(t.db, { recordId: contest.id, actorId: b.id, kind: 'withdraw' });
-    await createAcceptedValue(t.db, {
-      speciesId: species.id,
-      traitId: trait.id,
-      actorId: b.id,
-      recordId: complement.id,
-    });
 
     expect(await contributionSummary(t.db, a.id)).toEqual({
       records: 2,
@@ -744,7 +708,6 @@ describe('RFC-71 R4 contributionSummary', () => {
       validations: 3,
       disputes: 1,
       withdrawn: 1,
-      accepted: 1,
     });
     expect(await contributionSummary(t.db, (await createUser(t.db)).user.id)).toEqual({
       records: 0,
@@ -753,7 +716,6 @@ describe('RFC-71 R4 contributionSummary', () => {
       validations: 0,
       disputes: 0,
       withdrawn: 0,
-      accepted: 0,
     });
   });
 });
@@ -791,7 +753,6 @@ describe('RFC-71 R2-R4 visibility', () => {
       validations: 1,
       disputes: 0,
       withdrawn: 0,
-      accepted: 0,
     });
   });
 });

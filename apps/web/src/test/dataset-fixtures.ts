@@ -815,17 +815,15 @@ export const DISPUTED_RECORD: DisputedRecord = {
 
 /**
  * The viewer's own manual record, as `/api/me/contributions?kind=records`
- * answers it: the current accepted value of its species and trait, with one
- * record answering it.
+ * answers it, with one record answering it.
  * @rfc RFC-71 R2
  */
 export const CONTRIBUTION_RECORD: ContributionRecord = {
   ...PENDING_RECORD,
-  isAccepted: true,
   responseCount: 1,
 };
 
-/** The viewer's own record contesting {@link RECORD}; nobody has accepted it. @rfc RFC-71 R2 */
+/** The viewer's own record contesting {@link RECORD}. @rfc RFC-71 R2 */
 export const CONTESTING_CONTRIBUTION: ContributionRecord = {
   ...PENDING_RECORD,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d54',
@@ -835,7 +833,6 @@ export const CONTESTING_CONTRIBUTION: ContributionRecord = {
   intent: 'contest',
   respondsTo: { id: RECORD.id },
   createdAt: '2026-09-07T08:00:00.000Z',
-  isAccepted: false,
   responseCount: 0,
 };
 
@@ -878,7 +875,6 @@ export const CONTRIBUTION_SUMMARY: ContributionSummary = {
   validations: 7,
   disputes: 1,
   withdrawn: 1,
-  accepted: 4,
 };
 
 // ---------------------------------------------------------------------------
@@ -975,7 +971,7 @@ export const NO_PLOTS_DASHBOARD: Dashboard = {
   curation: null,
 };
 
-/** RFC-71 R4's seven counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
+/** RFC-71 R4's six counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
 export const ZERO_CONTRIBUTION_SUMMARY: ContributionSummary = {
   records: 0,
   contests: 0,
@@ -983,7 +979,6 @@ export const ZERO_CONTRIBUTION_SUMMARY: ContributionSummary = {
   validations: 0,
   disputes: 0,
   withdrawn: 0,
-  accepted: 0,
 };
 
 /** The dashboard answer for a brand-new contributor: the Getting started card's trigger case. @rfc RFC-73 R3 */

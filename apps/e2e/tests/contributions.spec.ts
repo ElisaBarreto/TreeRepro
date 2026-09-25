@@ -158,16 +158,14 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await tileShows('Validations', '1');
       await tileShows('Disputes', '1');
       await tileShows('Withdrawn', '0');
-      await tileShows('Accepted', '0');
 
       // R2: the Records tab (open by default) lists the contest as the
       // contributor's own manual record, badged with its intent; it is not
-      // the accepted value.
+      // validated by anyone.
       const recordsTable = page.getByRole('table');
       const recordRow = recordsTable.getByRole('row').filter({ hasText: speciesName });
       await expect(recordRow).toContainText(traitName);
       await expect(recordRow.getByText('contest', { exact: true })).toBeVisible();
-      await expect(recordRow.getByText('accepted', { exact: true })).toHaveCount(0);
 
       // R3: the Annotations tab lists both annotations the contributor wrote
       // on the seeded record — the validation and the dispute the contest

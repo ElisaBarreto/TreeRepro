@@ -29,7 +29,6 @@ const summary = {
   validations: 2,
   disputes: 0,
   withdrawn: 1,
-  accepted: 2,
 };
 
 // Named separately (not indexed out of the array below) so the strictness

@@ -96,11 +96,11 @@ describe('RFC-71 R1 listContributionsQuerySchema', () => {
 });
 
 describe('RFC-71 R2 contributionRecordSchema', () => {
-  it('is a record item plus isAccepted and responseCount', () => {
-    const contribution = { ...record, isAccepted: true, responseCount: 2 };
+  it('is a record item plus responseCount', () => {
+    const contribution = { ...record, responseCount: 2 };
     expect(contributionRecordSchema.parse(contribution)).toEqual(contribution);
     expect(contributionRecordSchema.safeParse(record).success).toBe(false);
-    expect(contributionRecordSchema.safeParse({ ...contribution, isAccepted: 'yes' }).success).toBe(
+    expect(contributionRecordSchema.safeParse({ ...contribution, isAccepted: true }).success).toBe(
       false,
     );
     expect(contributionRecordSchema.safeParse({ ...contribution, responseCount: -1 }).success).toBe(
@@ -133,7 +133,7 @@ describe('RFC-71 R3 contributionAnnotationSchema', () => {
 });
 
 describe('RFC-71 R4 contributionSummarySchema', () => {
-  it('is seven non-negative integer counts', () => {
+  it('is six non-negative integer counts, and no longer accepted', () => {
     const summary = {
       records: 3,
       contests: 1,
@@ -141,12 +141,12 @@ describe('RFC-71 R4 contributionSummarySchema', () => {
       validations: 2,
       disputes: 0,
       withdrawn: 1,
-      accepted: 2,
     };
     expect(contributionSummarySchema.parse(summary)).toEqual(summary);
     expect(contributionSummarySchema.safeParse({ ...summary, records: -1 }).success).toBe(false);
     expect(contributionSummarySchema.safeParse({ ...summary, records: 1.5 }).success).toBe(false);
     expect(contributionSummarySchema.safeParse({ ...summary, extra: 1 }).success).toBe(false);
+    expect(contributionSummarySchema.safeParse({ ...summary, accepted: 2 }).success).toBe(false);
     const { records: _records, ...missingRecords } = summary;
     expect(contributionSummarySchema.safeParse(missingRecords).success).toBe(false);
   });
