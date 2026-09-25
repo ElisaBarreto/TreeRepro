@@ -48,4 +48,4 @@
 
 ## 4. Out of scope
 
-Public pages (landing, invite, password recovery) keep their own sizes; a dark theme; responsive collapse of the sidebar below tablet width.
+Public pages (landing, invite, password recovery) keep their own sizes; a dark theme. (The sidebar's collapse below `lg` came later: RFC-13 R12, issue #160.)
