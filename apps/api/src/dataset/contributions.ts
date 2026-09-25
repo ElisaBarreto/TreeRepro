@@ -41,12 +41,12 @@ function withdrawnSql(recordId: SQL): SQL<boolean> {
  * The filters of RFC-71 R1, all of them predicates on the record: for
  * `kind=annotations` they apply to the annotated record (R3).
  */
-function recordFilters(input: ListContributionsQuery): SQL[] {
+function recordFilters(visibility: Visibility, input: ListContributionsQuery): SQL[] {
   const conditions: SQL[] = [];
   if (input.traitId) conditions.push(eq(traitRecords.traitId, input.traitId));
   if (input.speciesId) conditions.push(eq(traitRecords.speciesId, input.speciesId));
   if (input.review) {
-    conditions.push(sql`${reviewStatusSql(traitRecords.id)} = ${input.review}`);
+    conditions.push(sql`${reviewStatusSql(visibility, traitRecords.id)} = ${input.review}`);
   }
   if (input.intent) {
     conditions.push(
@@ -87,10 +87,10 @@ async function listRecordContributions(
     eq(traitRecords.origin, 'manual'),
     speciesVisible(visibility),
     traitVisible(visibility),
-    ...recordFilters(input),
+    ...recordFilters(visibility, input),
   ];
   if (input.cursor) conditions.push(lt(traitRecords.id, decodeCursor(input.cursor)));
-  const rows = await itemQuery(db)
+  const rows = await itemQuery(db, visibility)
     .where(and(...conditions))
     .orderBy(desc(traitRecords.id))
     .limit(input.limit + 1);
@@ -117,7 +117,7 @@ async function listAnnotationContributions(
     eq(recordAnnotations.actorId, userId),
     speciesVisible(visibility),
     traitVisible(visibility),
-    ...recordFilters(input),
+    ...recordFilters(visibility, input),
   ];
   if (input.cursor) conditions.push(lt(recordAnnotations.id, decodeCursor(input.cursor)));
   const rows = await db
@@ -153,7 +153,7 @@ async function listAnnotationContributions(
   const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.id));
   if (page.length === 0) return { data: [], nextCursor };
   // The record items come through the shared join, as the disputed queue does.
-  const items = await itemQuery(db).where(
+  const items = await itemQuery(db, visibility).where(
     inArray(
       traitRecords.id,
       page.map((r) => r.recordId),

@@ -377,7 +377,7 @@ export async function listDisputed(
   if (page.length === 0) return { data: [], nextCursor };
   const recordIds = page.map((r) => r.record_id);
   const [items, actors, contests] = await Promise.all([
-    itemQuery(db).where(inArray(traitRecords.id, recordIds)),
+    itemQuery(db, visibility).where(inArray(traitRecords.id, recordIds)),
     db
       .select({ id: users.id, name: users.name })
       .from(users)

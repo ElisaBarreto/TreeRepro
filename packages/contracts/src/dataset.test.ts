@@ -78,7 +78,7 @@ describe('RFC-63 R8 recordSchema', () => {
       level: { id: uuid, key: 'blue' },
       numericValue: null,
       harmonisation: 'harmonised',
-      review: 'unreviewed',
+      review: 'unvalidated',
       primaryReference: {
         id: uuid,
         citationKey: 'A_2020',
@@ -92,6 +92,9 @@ describe('RFC-63 R8 recordSchema', () => {
       createdBy: null,
       intent: null,
       respondsTo: null,
+      validationCount: 0,
+      contestCount: 0,
+      contested: false,
       recordCode: 'EB_1',
       quantitative: null,
       references: [],
@@ -110,7 +113,7 @@ describe('RFC-63 R8 recordSchema', () => {
       'not_numeric',
       'empty',
     ]);
-    expect(REVIEW_STATUSES).toEqual(['unreviewed', 'confirmed', 'disputed', 'withdrawn']);
+    expect(REVIEW_STATUSES).toEqual(['contested', 'validated', 'unvalidated']);
   });
 });
 
@@ -130,9 +133,10 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
               notNumeric: 0,
               empty: 0,
             },
-            levels: [{ levelId: uuid, key: 'blue', count: 2 }],
+            levels: [{ levelId: uuid, key: 'blue', count: 2, validationCount: 1, contested: true }],
             numeric: null,
             validated: false,
+            contested: true,
           },
           {
             trait: { id: uuid, key: 'petal_length', valueType: 'quantitative', unit: 'mm' },
@@ -147,6 +151,7 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
             levels: null,
             numeric: { min: 1.5, max: 2.5, mean: 2, count: 2 },
             validated: true,
+            contested: false,
           },
         ],
       },

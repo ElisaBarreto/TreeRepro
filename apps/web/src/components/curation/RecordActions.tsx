@@ -63,7 +63,7 @@ const DOI_SUMMARY = 'Add a supporting DOI (optional)';
  * The reviewer actions Neutral and Dispute (with the note the API requires)
  * need `records.review` on top of `records.annotate` (RFC-70 R4); Withdraw
  * stays with the author and the `records.withdraw` holder (RFC-65 R4). A
- * withdrawn record has no actions, and a viewer with nothing to do sees no
+ * withdrawn record never reaches the drawer (RFC-63 R13); a viewer with nothing to do sees no
  * section at all, so the drawer never carries an empty heading. After a
  * write the drawer's record query is replaced with the answer and the lists
  * and summaries are invalidated (`useRecordWrite`).
@@ -140,8 +140,7 @@ export function RecordActions({
     setChecked({ doi: value, check: resolvedCheck(result, value) });
   }
 
-  const withdrawn = record.review === 'withdrawn';
-  const canAnnotate = hasPermission(me, 'records.annotate') && !withdrawn;
+  const canAnnotate = hasPermission(me, 'records.annotate');
   const canReview = canAnnotate && hasPermission(me, 'records.review');
   // A different value is a record of its own, so the button that opens the
   // form needs what `POST /api/records` needs (RFC-70 R1); validating only
@@ -199,13 +198,6 @@ export function RecordActions({
     if (doiComplaint !== null && detailsRef.current) detailsRef.current.open = true;
   }, [doiComplaint]);
 
-  if (withdrawn) {
-    return (
-      <DrawerSection title="Actions">
-        <p className="text-body text-mist-500">This record is withdrawn.</p>
-      </DrawerSection>
-    );
-  }
   if (!canAnnotate) return null;
 
   function submitNote(event: FormEvent<HTMLFormElement>) {

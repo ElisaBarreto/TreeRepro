@@ -56,8 +56,8 @@ describe('RFC-71 R1 ContributionFilters', () => {
   it('reports the review and intent choices (RFC-63 R6, RFC-70 R1)', async () => {
     const onChange = vi.fn();
     renderWithProviders(<ContributionFilters kind="records" value={{}} onChange={onChange} />);
-    await userEvent.selectOptions(await screen.findByLabelText('Review'), 'disputed');
-    expect(onChange).toHaveBeenLastCalledWith({ review: 'disputed' });
+    await userEvent.selectOptions(await screen.findByLabelText('Review'), 'contested');
+    expect(onChange).toHaveBeenLastCalledWith({ review: 'contested' });
     await userEvent.selectOptions(await screen.findByLabelText('Intent'), 'none');
     expect(onChange).toHaveBeenLastCalledWith({ intent: 'none' });
   });
@@ -115,11 +115,11 @@ describe('RFC-71 R1 ContributionFilters', () => {
         onChange={onChange}
       />,
     );
-    await userEvent.selectOptions(await screen.findByLabelText('Review'), 'confirmed');
+    await userEvent.selectOptions(await screen.findByLabelText('Review'), 'validated');
     expect(onChange).toHaveBeenCalledWith({
       traitId: SEED_MASS_ID,
       from: '2026-09-01',
-      review: 'confirmed',
+      review: 'validated',
     });
   });
 });

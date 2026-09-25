@@ -196,16 +196,6 @@ describe('RFC-70 R6 RecordDrawer responses', () => {
     await screen.findByText('Dioecious');
     expect(screen.queryByRole('region', { name: 'Responses' })).not.toBeInTheDocument();
   });
-
-  it('still lists the responses of a withdrawn record, which has no actions left', async () => {
-    dataset.fetchRecord.mockResolvedValue({ ...RESPONDED_RECORD_DETAIL, review: 'withdrawn' });
-    renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, {
-      ...ME,
-      permissions: ['dataset.read', 'records.annotate'],
-    });
-    expect(await screen.findByRole('region', { name: 'Responses' })).toBeInTheDocument();
-    expect(screen.getByText('This record is withdrawn.')).toBeInTheDocument();
-  });
 });
 
 describe('RFC-70 R4 RecordDrawer annotations', () => {

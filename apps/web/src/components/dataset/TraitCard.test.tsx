@@ -42,6 +42,8 @@ describe('RFC-63 R10 TraitCard', () => {
         levelId: `018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d${20 + i}`,
         key: `level_${i}`,
         count: 7 - i,
+        validationCount: 0,
+        contested: false,
       })),
     };
     render(<TraitCard summary={many} onOpen={() => {}} />);

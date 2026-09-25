@@ -221,11 +221,11 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'TRY-6.0' })).toBeVisible();
     expect(rows[1]).toHaveTextContent('import');
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('confirmed')).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('Validated')).toBeInTheDocument();
     expect(rows[1]).toHaveTextContent('2026-09-01');
     expect(within(rows[2] as HTMLElement).getByRole('button', { name: 'about two' })).toBeVisible();
     expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
-    expect(within(rows[2] as HTMLElement).getByText('disputed')).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getByText('Contested')).toBeInTheDocument();
     expect(rows[2]).toHaveTextContent('manual');
     // The trait is the panel's title, so the rows do not repeat it.
     expect(within(rows[0] as HTMLElement).queryByText('Trait')).not.toBeInTheDocument();
@@ -290,7 +290,7 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(within(drawer).getByText('4821')).toBeInTheDocument();
     expect(within(drawer).getByText('2026-09-01')).toBeInTheDocument();
     expect(within(drawer).getByText('harmonised')).toBeInTheDocument();
-    expect(within(drawer).getByText('confirmed')).toBeInTheDocument();
+    expect(within(drawer).getByText('Validated')).toBeInTheDocument();
     expect(within(drawer).getByText('No annotations yet')).toBeInTheDocument();
 
     // Escape closes only the drawer on top; the panel stays.

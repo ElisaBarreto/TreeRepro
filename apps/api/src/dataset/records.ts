@@ -17,6 +17,7 @@ import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
+import { contestCountSql, recordContestedSql } from './contests.ts';
 
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
 const secondaryRef = alias(bibliographicReferences, 'secondary_ref');
@@ -62,25 +63,27 @@ function quantitativeOf(rec: typeof traitRecords.$inferSelect): QuantitativeValu
 }
 
 /**
- * The review axis of one record, derived from its annotations: withdrawn >
- * disputed > confirmed > unreviewed, where a scientist's stance is their
- * latest non-withdraw annotation. `recordId` is wrapped as an `sql` fragment
- * before use: Drizzle's single-table `buildSelection` rewrites a bare top-level
- * `Column` argument (`traitRecords.id`) to an unqualified identifier, which
- * would then resolve inside this function's own correlated subquery over
- * `record_annotations` to that table's own `id` instead of the record being
- * checked — handled here so every caller can pass a bare column.
+ * The review state of one record for the viewer (RFC-63 R6): contested (the
+ * record or its level is contested, RFC-63 R14) > validated (at least one
+ * `confirm`) > unvalidated. `dispute` and `neutral` rows are ignored; a
+ * withdrawn record has no state (it is invisible), so callers filter it out.
+ * `recordId` is wrapped as an `sql` fragment before use: Drizzle's
+ * single-table `buildSelection` rewrites a bare top-level `Column` argument
+ * (`traitRecords.id`) to an unqualified identifier, which would then resolve
+ * inside this function's own correlated subqueries to another table's `id`
+ * instead of the record being checked — handled here so every caller can pass
+ * a bare column.
  * @rfc RFC-63 R6
  */
-export function reviewStatusSql(recordId: SQL | typeof traitRecords.id): SQL<ReviewStatus> {
+export function reviewStatusSql(
+  v: Visibility,
+  recordId: SQL | typeof traitRecords.id,
+): SQL<ReviewStatus> {
   const id = sql`${recordId}`;
-  const stances = sql`(select distinct on (a.actor_id) a.kind from ${recordAnnotations} a
-    where a.record_id = ${id} and a.kind <> 'withdraw' order by a.actor_id, a.id desc)`;
   return sql<ReviewStatus>`case
-    when exists (select 1 from ${recordAnnotations} w where w.record_id = ${id} and w.kind = 'withdraw') then 'withdrawn'
-    when exists (select 1 from ${stances} s where s.kind = 'dispute') then 'disputed'
-    when exists (select 1 from ${stances} s where s.kind = 'confirm') then 'confirmed'
-    else 'unreviewed' end`;
+    when ${recordContestedSql(v, id)} then 'contested'
+    when exists (select 1 from ${recordAnnotations} rs_v where rs_v.record_id = ${id} and rs_v.kind = 'confirm') then 'validated'
+    else 'unvalidated' end`;
 }
 
 /**
@@ -173,6 +176,9 @@ export type ItemRow = {
   authorName: string | null;
   extraReferences: ExtraReference[];
   review: ReviewStatus;
+  validationCount: number;
+  contestCount: number;
+  contested: boolean;
 };
 
 /** @rfc RFC-63 R8 */
@@ -239,13 +245,28 @@ export function toItem(r: ItemRow): RecordItem {
     createdBy: rec.createdBy && r.authorName ? { id: rec.createdBy, name: r.authorName } : null,
     intent: rec.intent ?? null,
     respondsTo: rec.respondsToRecordId ? { id: rec.respondsToRecordId } : null,
+    validationCount: r.validationCount,
+    contestCount: r.contestCount,
+    contested: r.contested,
   };
 }
 
-/** The joined select behind every record item; the queues reuse it. @rfc RFC-63 R8 */
-export function itemQuery(db: DbExecutor) {
+/**
+ * The joined select behind every record item; the queues reuse it. `review`
+ * and `contested` are the viewer's (RFC-63 R6, R14).
+ * @rfc RFC-63 R8
+ */
+export function itemQuery(db: DbExecutor, visibility: Visibility) {
+  const id = sql`${traitRecords.id}`;
   return db
-    .select({ ...itemColumns, review: reviewStatusSql(traitRecords.id).as('review') })
+    .select({
+      ...itemColumns,
+      review: reviewStatusSql(visibility, id).as('review'),
+      validationCount: sql<number>`(select count(distinct vc.actor_id) from ${recordAnnotations} vc
+        where vc.record_id = ${id} and vc.kind = 'confirm')::int`.as('validation_count'),
+      contestCount: contestCountSql(id).as('contest_count'),
+      contested: sql<boolean>`${recordContestedSql(visibility, id)}`.as('contested'),
+    })
     .from(traitRecords)
     .innerJoin(species, eq(species.id, traitRecords.speciesId))
     .innerJoin(traits, eq(traits.id, traitRecords.traitId))
@@ -297,7 +318,7 @@ export async function listRecords(
     throw new Error('listRecords: speciesId+traitId or referenceId is required');
   }
   if (input.cursor) conditions.push(lt(traitRecords.id, decodeCursor(input.cursor)));
-  const rows = await itemQuery(db)
+  const rows = await itemQuery(db, visibility)
     .where(and(...conditions))
     .orderBy(desc(traitRecords.id))
     .limit(input.limit + 1);
@@ -316,7 +337,7 @@ export async function getRecord(
   visibility: Visibility,
   id: string,
 ): Promise<RecordDetail | null> {
-  const [row] = await itemQuery(db)
+  const [row] = await itemQuery(db, visibility)
     .where(
       and(
         eq(traitRecords.id, id),

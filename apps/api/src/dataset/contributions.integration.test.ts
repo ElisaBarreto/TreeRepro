@@ -2,6 +2,7 @@ import type { ContributionAnnotation, ContributionRecord } from '@treerepro/cont
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
+  createContest,
   createRecord,
   createReference,
   createSpecies,
@@ -103,7 +104,7 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       level: { id: level(trait.levels, 'alpha'), key: 'alpha' },
       numericValue: null,
       harmonisation: 'harmonised',
-      review: 'unreviewed',
+      review: 'unvalidated',
       primaryReference: {
         id: reference.id,
         citationKey: reference.citationKey,
@@ -117,6 +118,9 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       createdBy: { id: a.id, name: 'Test User' },
       intent: null,
       respondsTo: null,
+      validationCount: 0,
+      contestCount: 0,
+      contested: false,
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
       references: [expect.objectContaining({ id: reference.id })],
@@ -196,7 +200,15 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       origin: 'manual',
       createdBy: a.id,
     });
-    await createAnnotation(t.db, { recordId: elsewhere.id, actorId: b.id, kind: 'dispute' });
+    // RFC-63 R6: contested comes from a contest naming the level, never from
+    // a `dispute` annotation (which every rule ignores).
+    await createAnnotation(t.db, { recordId: here.id, actorId: b.id, kind: 'dispute' });
+    await createContest(t.db, {
+      speciesId: otherSpecies.id,
+      traitId: trait.id,
+      createdBy: b.id,
+      levelIds: [level(trait.levels, 'alpha')],
+    });
 
     const byTrait = await listRecordsOf(t.db, UNRESTRICTED, a.id, { traitId: otherTrait.id });
     expect(byTrait.data.map((r) => r.id)).toEqual([otherTraitRecord.id]);
@@ -204,11 +216,11 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       speciesId: otherSpecies.id,
     });
     expect(bySpecies.data.map((r) => r.id)).toEqual([elsewhere.id]);
-    const disputed = await listRecordsOf(t.db, UNRESTRICTED, a.id, { review: 'disputed' });
-    expect(disputed.data.map((r) => r.id)).toEqual([elsewhere.id]);
-    expect(disputed.data[0]?.review).toBe('disputed');
-    const unreviewed = await listRecordsOf(t.db, UNRESTRICTED, a.id, { review: 'unreviewed' });
-    expect(unreviewed.data.map((r) => r.id).sort()).toEqual([here.id, otherTraitRecord.id].sort());
+    const contested = await listRecordsOf(t.db, UNRESTRICTED, a.id, { review: 'contested' });
+    expect(contested.data.map((r) => r.id)).toEqual([elsewhere.id]);
+    expect(contested.data[0]?.review).toBe('contested');
+    const unvalidated = await listRecordsOf(t.db, UNRESTRICTED, a.id, { review: 'unvalidated' });
+    expect(unvalidated.data.map((r) => r.id).sort()).toEqual([here.id, otherTraitRecord.id].sort());
   });
 
   it('filters by intent, where none means a record that answers nothing', async () => {
@@ -608,7 +620,12 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
       intent: 'complement',
       respondsToRecordId: plain.id,
     });
-    await createAnnotation(t.db, { recordId: disputed.id, actorId: c.id, kind: 'dispute' });
+    await createContest(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      createdBy: c.id,
+      levelIds: [level(trait.levels, 'beta')],
+    });
     const onPlain = await createAnnotation(t.db, {
       recordId: plain.id,
       actorId: a.id,
@@ -640,11 +657,11 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
         ).data,
       ).map((r) => r.id);
 
-    // The viewer's own stance never decides: the record C disputed is disputed,
-    // although A's own annotation on it is neutral.
-    expect(await ids({ review: 'disputed' })).toEqual([onDisputed.id]);
-    expect(await ids({ review: 'confirmed' })).toEqual([onComplement.id, onContest.id, onPlain.id]);
-    expect(await ids({ review: 'withdrawn' })).toEqual([]);
+    // The record's state decides, not the viewer's own annotation: the
+    // record on the level C contests is contested although A's is neutral.
+    expect(await ids({ review: 'contested' })).toEqual([onDisputed.id]);
+    expect(await ids({ review: 'validated' })).toEqual([onComplement.id, onContest.id, onPlain.id]);
+    expect(await ids({ review: 'unvalidated' })).toEqual([]);
     expect(await ids({ intent: 'contest' })).toEqual([onContest.id]);
     expect(await ids({ intent: 'complement' })).toEqual([onComplement.id]);
     expect(await ids({ intent: 'none' })).toEqual([onDisputed.id, onPlain.id]);

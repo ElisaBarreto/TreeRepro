@@ -136,7 +136,7 @@ describe('RFC-71 R1, R2, R4 the contributions page', () => {
       .map((th) => th.textContent);
     expect(headers).toContain('Status');
     const [, answered, contesting] = within(table).getAllByRole('row') as HTMLElement[];
-    expect(within(answered as HTMLElement).getByText('disputed')).toBeInTheDocument();
+    expect(within(answered as HTMLElement).getByText('Contested')).toBeInTheDocument();
     expect(within(answered as HTMLElement).queryByText('contest')).not.toBeInTheDocument();
     expect(within(contesting as HTMLElement).getByText('contest')).toBeInTheDocument();
     expect(within(table).queryByText('accepted')).not.toBeInTheDocument();
@@ -202,11 +202,11 @@ describe('RFC-71 R1 the filters are URL params', () => {
   it('writes a chosen filter into the URL and sends it to the API', async () => {
     const { router } = renderAt('/app/contributions');
     await screen.findByRole('table');
-    await userEvent.selectOptions(await screen.findByLabelText('Review'), 'disputed');
-    await waitFor(() => expect(router.state.location.search).toEqual({ review: 'disputed' }));
+    await userEvent.selectOptions(await screen.findByLabelText('Review'), 'contested');
+    await waitFor(() => expect(router.state.location.search).toEqual({ review: 'contested' }));
     await waitFor(() =>
       expect(contributions.fetchMyContributions).toHaveBeenLastCalledWith(
-        expect.objectContaining({ kind: 'records', review: 'disputed' }),
+        expect.objectContaining({ kind: 'records', review: 'contested' }),
       ),
     );
   });
@@ -214,7 +214,7 @@ describe('RFC-71 R1 the filters are URL params', () => {
   it('seeds the controls and the request from a URL that already carries them', async () => {
     const traitId = DICTIONARY[1]?.traits[0]?.id as string;
     renderAt(
-      `/app/contributions?kind=records&traitId=${traitId}&speciesId=${SPECIES.id}&review=confirmed&intent=contest&from=2026-09-01&to=2026-09-30`,
+      `/app/contributions?kind=records&traitId=${traitId}&speciesId=${SPECIES.id}&review=validated&intent=contest&from=2026-09-01&to=2026-09-30`,
     );
     await screen.findByRole('table');
     expect(contributions.fetchMyContributions).toHaveBeenCalledWith(
@@ -222,25 +222,25 @@ describe('RFC-71 R1 the filters are URL params', () => {
         kind: 'records',
         traitId,
         speciesId: SPECIES.id,
-        review: 'confirmed',
+        review: 'validated',
         intent: 'contest',
         from: '2026-09-01',
         to: '2026-09-30',
       }),
     );
     await waitFor(() => expect(screen.getByLabelText('Trait')).toHaveValue(traitId));
-    expect(screen.getByLabelText('Review')).toHaveValue('confirmed');
+    expect(screen.getByLabelText('Review')).toHaveValue('validated');
     expect(screen.getByLabelText('Intent')).toHaveValue('contest');
     expect(screen.getByLabelText('Record added from')).toHaveValue('2026-09-01');
     expect(screen.getByLabelText('Record added to')).toHaveValue('2026-09-30');
   });
 
   it('keeps the filters when the tab changes', async () => {
-    const { router } = renderAt('/app/contributions?review=disputed');
+    const { router } = renderAt('/app/contributions?review=contested');
     await screen.findByRole('table');
     await userEvent.click(screen.getByRole('link', { name: 'Annotations' }));
     await waitFor(() =>
-      expect(router.state.location.search).toEqual({ kind: 'annotations', review: 'disputed' }),
+      expect(router.state.location.search).toEqual({ kind: 'annotations', review: 'contested' }),
     );
   });
 

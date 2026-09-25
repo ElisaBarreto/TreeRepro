@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { species } from '../db/schema/taxa.ts';
+import { levelContestedSql, recordContestedSql } from './contests.ts';
 import { validatedPairsSql } from './coverage.ts';
 import { dictionaryCategories } from './dictionary.ts';
 import { recordVisible } from './records.ts';
@@ -24,6 +25,7 @@ interface TraitAggregate {
   numeric_mean: number | null;
   numeric_max: number | null;
   numeric_count: number;
+  contested: boolean;
 }
 
 interface LevelAggregate {
@@ -31,11 +33,14 @@ interface LevelAggregate {
   level_id: string;
   level_key: string;
   count: number;
+  validation_count: number;
+  contested: boolean;
 }
 
 /**
  * One call for the species page: per category and trait, counts on both axes,
- * level distribution or numeric spread, and whether any record is validated.
+ * level distribution (each level with its validators and contested flag) or
+ * numeric spread, and whether any record is validated or contested.
  * `null` when the species itself is invisible to `visibility`.
  * The numeric spread follows spec R-5: the smallest and largest of single,
  * min, max and mean, and the mean of each record's single value or, without
@@ -69,7 +74,8 @@ export async function speciesTraitSummary(
         min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as numeric_min,
         max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as numeric_max,
         avg(coalesce(r.numeric_value, r.mean_value))::float8 as numeric_mean,
-        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value) is not null)::int as numeric_count
+        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value) is not null)::int as numeric_count,
+        bool_or(${recordContestedSql(visibility, sql`r.id`)}) as contested
       from trait_records r
       join traits t on t.id = r.trait_id
       join trait_categories c on c.key = t.category_key
@@ -81,7 +87,13 @@ export async function speciesTraitSummary(
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
     db.execute(sql`
-      select r.trait_id, l.id as level_id, l.key as level_key, count(*)::int as count
+      select r.trait_id, l.id as level_id, l.key as level_key, count(*)::int as count,
+        (select count(distinct va.actor_id) from record_annotations va
+          join trait_records vr on vr.id = va.record_id
+          where va.kind = 'confirm' and vr.species_id = ${speciesId} and vr.trait_id = r.trait_id
+            and vr.level_id = l.id
+            and ${recordVisible(visibility, sql`vr.id`, sql`vr.harmonisation`)})::int as validation_count,
+        ${levelContestedSql(visibility, sql`${speciesId}::uuid`, sql`r.trait_id`, sql`l.id`)} as contested
       from trait_records r
       join trait_levels l on l.id = r.level_id
       join traits t on t.id = r.trait_id
@@ -102,7 +114,13 @@ export async function speciesTraitSummary(
   for (const l of levels) {
     levelsByTrait.set(l.trait_id, [
       ...(levelsByTrait.get(l.trait_id) ?? []),
-      { levelId: l.level_id, key: l.level_key, count: l.count },
+      {
+        levelId: l.level_id,
+        key: l.level_key,
+        count: l.count,
+        validationCount: l.validation_count,
+        contested: l.contested,
+      },
     ]);
   }
   const validatedTraits = new Set(validated.map((v) => v.trait_id));
@@ -136,6 +154,7 @@ export async function speciesTraitSummary(
             }
           : null,
       validated: validatedTraits.has(trait.id),
+      contested: row?.contested ?? false,
     };
   };
 

@@ -107,12 +107,31 @@ export const SEXUAL_SYSTEM_SUMMARY: TraitSummary = {
   recordCount: 8,
   harmonisationCounts: { ...NO_PENDING, harmonised: 6, unknownLevel: 1, multiValue: 1 },
   levels: [
-    { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20', key: 'dioecious', count: 4 },
-    { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious', count: 1 },
-    { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22', key: 'hermaphrodite', count: 1 },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20',
+      key: 'dioecious',
+      count: 4,
+      validationCount: 0,
+      contested: false,
+    },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21',
+      key: 'monoecious',
+      count: 1,
+      validationCount: 0,
+      contested: false,
+    },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22',
+      key: 'hermaphrodite',
+      count: 1,
+      validationCount: 0,
+      contested: false,
+    },
   ],
   numeric: null,
   validated: true,
+  contested: false,
 };
 
 /** Quantitative summary, every record harmonised. @rfc RFC-63 R10 */
@@ -123,6 +142,7 @@ export const SEED_MASS_SUMMARY: TraitSummary = {
   levels: null,
   numeric: { min: 0.5, max: 3, mean: 1.25, count: 3 },
   validated: false,
+  contested: false,
 };
 
 /** Categorical summary with a single level and nothing pending. @rfc RFC-63 R10 */
@@ -130,9 +150,18 @@ export const POLLINATION_MODE_SUMMARY: TraitSummary = {
   trait: POLLINATION_MODE,
   recordCount: 1,
   harmonisationCounts: { ...NO_PENDING, harmonised: 1 },
-  levels: [{ levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d23', key: 'insects', count: 1 }],
+  levels: [
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d23',
+      key: 'insects',
+      count: 1,
+      validationCount: 0,
+      contested: false,
+    },
+  ],
   numeric: null,
   validated: false,
+  contested: false,
 };
 
 /** Two categories in dictionary order. @rfc RFC-63 R10 */
@@ -186,7 +215,7 @@ export const GRACE_PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   shortCitation: null,
 };
 
-/** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
+/** An imported, harmonised and validated categorical record. @rfc RFC-63 R8 */
 export const RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d50',
   recordCode: 'EB_1',
@@ -198,7 +227,7 @@ export const RECORD: RecordItem = {
   numericValue: null,
   quantitative: null,
   harmonisation: 'harmonised',
-  review: 'confirmed',
+  review: 'validated',
   primaryReference: PRIMARY_REFERENCE,
   secondaryReference: SECONDARY_REFERENCE,
   references: [PRIMARY_REFERENCE, SECONDARY_REFERENCE],
@@ -207,9 +236,12 @@ export const RECORD: RecordItem = {
   createdBy: null,
   intent: null,
   respondsTo: null,
+  validationCount: 1,
+  contestCount: 0,
+  contested: false,
 };
 
-/** A manual quantitative record still pending harmonisation and disputed. @rfc RFC-63 R8 */
+/** A manual quantitative record still pending harmonisation and contested. @rfc RFC-63 R8 */
 export const PENDING_RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d51',
   recordCode: 'TR_1',
@@ -221,7 +253,7 @@ export const PENDING_RECORD: RecordItem = {
   numericValue: null,
   quantitative: null,
   harmonisation: 'not_numeric',
-  review: 'disputed',
+  review: 'contested',
   primaryReference: PRIMARY_REFERENCE,
   secondaryReference: null,
   references: [PRIMARY_REFERENCE],
@@ -230,6 +262,9 @@ export const PENDING_RECORD: RecordItem = {
   createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e', name: 'Ada' },
   intent: null,
   respondsTo: null,
+  validationCount: 0,
+  contestCount: 1,
+  contested: true,
 };
 
 /** The detail of RECORD: raw columns from the import, no curation yet. @rfc RFC-63 R8 */
@@ -291,7 +326,7 @@ export const CONTEST_RECORD_DETAIL: RecordDetail = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d52',
   valueText: 'monoecious',
   level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious' },
-  review: 'unreviewed',
+  review: 'unvalidated',
   origin: 'manual',
   primaryReference: GRACE_PERSONAL_OBSERVATION_REFERENCE,
   secondaryReference: null,
@@ -751,6 +786,7 @@ export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
   levels: [],
   numeric: null,
   validated: false,
+  contested: false,
 };
 
 /** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
@@ -761,6 +797,7 @@ export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
   levels: null,
   numeric: null,
   validated: false,
+  contested: false,
 };
 
 /**
@@ -834,7 +871,7 @@ export const CONTESTING_CONTRIBUTION: ContributionRecord = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d54',
   trait: SEXUAL_SYSTEM,
   valueText: 'monoecious',
-  review: 'unreviewed',
+  review: 'unvalidated',
   intent: 'contest',
   respondsTo: { id: RECORD.id },
   createdAt: '2026-09-07T08:00:00.000Z',

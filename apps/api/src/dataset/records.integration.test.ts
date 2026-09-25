@@ -70,7 +70,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       level: { id: blue.id, key: 'blue' },
       numericValue: null,
       harmonisation: 'harmonised',
-      review: 'unreviewed',
+      review: 'unvalidated',
       primaryReference: {
         id: ref.id,
         citationKey: ref.citationKey,
@@ -84,6 +84,9 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       createdBy: null,
       intent: null,
       respondsTo: null,
+      validationCount: 0,
+      contestCount: 0,
+      contested: false,
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
       references: [
@@ -136,23 +139,21 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     const bob = (await createUser(t.db, { name: 'Bob' })).user;
     const status = async () => (await getRecord(t.db, UNRESTRICTED, rec.id))?.review;
 
-    expect(await status()).toBe('unreviewed');
+    expect(await status()).toBe('unvalidated');
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'confirm' });
-    expect(await status()).toBe('confirmed');
+    expect(await status()).toBe('validated');
+    // RFC-63 R6, R7: `dispute` and `neutral` rows are ignored, and a
+    // validation is never undone.
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: bob.id, kind: 'dispute', note: 'Source says purple' });
-    expect(await status()).toBe('disputed');
-    await t.db
-      .insert(recordAnnotations)
-      .values({ recordId: rec.id, actorId: bob.id, kind: 'neutral' });
-    expect(await status()).toBe('confirmed'); // Bob's latest stance is neutral; Ada still confirms
+    expect(await status()).toBe('validated');
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'neutral' });
-    expect(await status()).toBe('unreviewed');
+    expect(await status()).toBe('validated');
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'withdraw', note: 'Entered by mistake' });
@@ -176,14 +177,15 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     const { user } = await createUser(t.db);
     await t.db
       .insert(recordAnnotations)
-      .values({ recordId: rec.id, actorId: user.id, kind: 'withdraw', note: 'Entered by mistake' });
+      .values({ recordId: rec.id, actorId: user.id, kind: 'confirm' });
     // A bare `traitRecords.id` here (no join) is the case a caller selecting
-    // from trait_records alone hits; the helper must qualify it itself.
+    // from trait_records alone hits; the helper must qualify it itself, or
+    // it would compare the annotation's own id and answer `unvalidated`.
     const [row] = await t.db
-      .select({ review: reviewStatusSql(traitRecords.id).as('review') })
+      .select({ review: reviewStatusSql(UNRESTRICTED, traitRecords.id).as('review') })
       .from(traitRecords)
       .where(eq(traitRecords.id, rec.id));
-    expect(row?.review).toBe('withdrawn');
+    expect(row?.review).toBe('validated');
   });
 
   it('R8 detail carries raw fields, batch and annotations, no accepted history; manual records carry their author', async () => {

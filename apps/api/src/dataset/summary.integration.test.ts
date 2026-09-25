@@ -96,11 +96,12 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
         empty: 0,
       },
       levels: [
-        { levelId: blue.id, key: 'blue', count: 2 },
-        { levelId: red.id, key: 'red', count: 1 },
+        { levelId: blue.id, key: 'blue', count: 2, validationCount: 1, contested: false },
+        { levelId: red.id, key: 'red', count: 1, validationCount: 0, contested: false },
       ],
       numeric: null,
       validated: true,
+      contested: false,
     });
     const petalSummary = summary?.[0]?.traits.find((tr) => tr.trait.key === 'petal_length');
     expect(petalSummary).toMatchObject({
@@ -239,6 +240,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       levels: [],
       numeric: null,
       validated: false,
+      contested: false,
     });
     const petal = await traitByKey(t.db, 'petal_length');
     expect(unrestrictedTraits.find((x) => x.trait.id === petal.id)?.levels).toBeNull();

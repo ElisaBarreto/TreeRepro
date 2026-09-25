@@ -10,6 +10,12 @@ import type {
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../../src/db/client.ts';
+import {
+  contestEvents,
+  contestLevels,
+  contestRecords,
+  contests,
+} from '../../src/db/schema/contests.ts';
 import { recordAnnotations } from '../../src/db/schema/curation.ts';
 import { traitCategories, traitLevels, traits } from '../../src/db/schema/dictionary.ts';
 import { importBatches } from '../../src/db/schema/imports.ts';
@@ -327,6 +333,46 @@ export async function createAnnotation(
     .returning({ id: recordAnnotations.id });
   if (!row) throw new Error('createAnnotation: no row');
   return row;
+}
+
+/**
+ * One contest row with its contested levels and the records it created
+ * (RFC-63 R14), for tests that run before the create path writes contests.
+ */
+export async function createContest(
+  db: DbExecutor,
+  input: {
+    speciesId: string;
+    traitId: string;
+    createdBy: string;
+    levelIds?: string[];
+    recordIds?: string[];
+  },
+): Promise<{ id: string }> {
+  const [row] = await db
+    .insert(contests)
+    .values({ speciesId: input.speciesId, traitId: input.traitId, createdBy: input.createdBy })
+    .returning({ id: contests.id });
+  if (!row) throw new Error('createContest: no row');
+  if (input.levelIds?.length) {
+    await db
+      .insert(contestLevels)
+      .values(input.levelIds.map((levelId) => ({ contestId: row.id, levelId })));
+  }
+  if (input.recordIds?.length) {
+    await db
+      .insert(contestRecords)
+      .values(input.recordIds.map((recordId) => ({ contestId: row.id, recordId })));
+  }
+  return row;
+}
+
+/** A `resolve` (Keep both) or `withdraw` event on a contest (RFC-63 R14, RFC-65 R16). */
+export async function createContestEvent(
+  db: DbExecutor,
+  input: { contestId: string; actorId: string; kind: 'resolve' | 'withdraw' },
+): Promise<void> {
+  await db.insert(contestEvents).values(input);
 }
 
 /**

@@ -22,7 +22,7 @@ import { species } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
 import { requireTrait, type TraitBrief } from './dictionary.ts';
 import { isHarmonisableNumber } from './import.ts';
-import { getRecord, recordVisible, reviewStatusSql } from './records.ts';
+import { getRecord, liveSql, recordVisible } from './records.ts';
 
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
@@ -213,7 +213,7 @@ export async function createRecords(
         traitId: traitRecords.traitId,
         levelId: traitRecords.levelId,
         numericValue: traitRecords.numericValue,
-        review: reviewStatusSql(traitRecords.id).as('review'),
+        live: sql<boolean>`${liveSql(traitRecords.id)}`.as('live'),
       })
       .from(traitRecords)
       .innerJoin(species, eq(species.id, traitRecords.speciesId))
@@ -233,7 +233,7 @@ export async function createRecords(
         'A response must share the species and trait of the record it responds to',
       );
     }
-    if (target.review === 'withdrawn') {
+    if (!target.live) {
       throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
     }
     if (input.intent === 'contest') {
@@ -427,12 +427,12 @@ export async function annotateRecord(
       const [base] = await tx
         .select({
           id: traitRecords.id,
-          review: reviewStatusSql(traitRecords.id).as('review'),
+          live: sql<boolean>`${liveSql(traitRecords.id)}`.as('live'),
         })
         .from(traitRecords)
         .where(eq(traitRecords.id, rec.respondsToRecordId))
         .limit(1);
-      if (base && base.review !== 'withdrawn') {
+      if (base?.live) {
         const [latestStance] = await tx
           .select({ kind: recordAnnotations.kind })
           .from(recordAnnotations)
@@ -456,7 +456,7 @@ export async function annotateRecord(
               eq(traitRecords.intent, 'contest'),
               eq(traitRecords.createdBy, input.actorId),
               sql`${traitRecords.id} <> ${rec.id}`,
-              sql`${reviewStatusSql(traitRecords.id)} <> 'withdrawn'`,
+              liveSql(traitRecords.id),
             ),
           )
           .limit(1);

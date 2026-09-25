@@ -331,7 +331,9 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
 
     // Check base record annotations & review status
     const updatedBase = await getRecord(t.db, UNRESTRICTED, base.id);
-    expect(updatedBase?.review).toBe('disputed');
+    // RFC-63 R6, R14: contested comes from contest storage alone, which this
+    // create path does not write yet (plan 13g Task 6); the dispute is ignored.
+    expect(updatedBase?.review).toBe('unvalidated');
     const disputeAnn = updatedBase?.annotations.find((a) => a.kind === 'dispute');
     expect(disputeAnn).toBeDefined();
     expect(disputeAnn?.generated).toBe(true);
@@ -556,7 +558,6 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     // The second contest is still live, so the dispute must stand.
     const afterFirst = await getRecord(t.db, UNRESTRICTED, base.id);
     expect(afterFirst?.annotations.some((a) => a.kind === 'neutral')).toBe(false);
-    expect(afterFirst?.review).toBe('disputed');
 
     await annotateRecord(t.db, UNRESTRICTED, {
       recordId: second.id,
@@ -570,6 +571,5 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     expect(afterSecond?.annotations.find((a) => a.kind === 'neutral')?.note).toBe(
       `Contest withdrawn (record ${second.id})`,
     );
-    expect(afterSecond?.review).not.toBe('disputed');
   });
 });

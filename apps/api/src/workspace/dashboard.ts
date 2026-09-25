@@ -245,11 +245,12 @@ async function awaitingValidation(
  */
 async function hydrateAwaiting(
   db: DbExecutor,
+  visibility: Visibility,
   cached: AwaitingIds | null,
 ): Promise<Dashboard['contributor']['awaitingValidation']> {
   if (cached === null) return null;
   if (cached.recordIds.length === 0) return { count: cached.count, records: [] };
-  const items = await itemQuery(db).where(inArray(traitRecords.id, cached.recordIds));
+  const items = await itemQuery(db, visibility).where(inArray(traitRecords.id, cached.recordIds));
   const itemById = new Map(items.map((i) => [i.record.id, toItem(i)]));
   return {
     count: cached.count,
@@ -408,7 +409,7 @@ export async function getDashboard(
       contributorSection(ctx, visibility, viewer, plotIds),
     ).then(async (entry) => ({
       ...entry.value,
-      awaitingValidation: await hydrateAwaiting(ctx.db, entry.value.awaitingValidation),
+      awaitingValidation: await hydrateAwaiting(ctx.db, visibility, entry.value.awaitingValidation),
     })),
     curationSection(ctx, visibility, viewer),
   ]);

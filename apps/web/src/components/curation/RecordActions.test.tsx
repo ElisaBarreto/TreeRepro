@@ -46,7 +46,7 @@ const MINE: RecordDetail = {
   level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11', key: 'hermaphrodite' },
   numericValue: null,
   valueText: 'hermaphrodite',
-  review: 'unreviewed',
+  review: 'unvalidated',
   annotations: [],
   createdBy: { id: USER.id, name: USER.name },
 };
@@ -159,14 +159,6 @@ describe('RFC-70 R4 RecordActions by permission', () => {
     ).toBeInTheDocument();
   });
 
-  it('has no action at all on a withdrawn record', () => {
-    renderWithProviders(<RecordActions record={{ ...MINE, review: 'withdrawn' }} />, {
-      me: perms('records.annotate', 'records.create'),
-    });
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.getByText('This record is withdrawn.')).toBeInTheDocument();
-  });
-
   it('spec R-1 offers no Set as accepted and no accepted badge, even with every permission', () => {
     renderWithProviders(<RecordActions record={CURATED_RECORD_DETAIL} />, { me: ADMIN_ME });
     expect(screen.getByRole('button', { name: VALIDATE })).toBeInTheDocument();
@@ -177,7 +169,7 @@ describe('RFC-70 R4 RecordActions by permission', () => {
 
 describe('RFC-70 R4 RecordActions validate', () => {
   it('confirms the record as it stands, with no reference', async () => {
-    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'confirmed' });
+    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'validated' });
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
     await userEvent.click(screen.getByRole('button', { name: VALIDATE }));
     await waitFor(() =>
@@ -195,7 +187,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
       reference: null,
       preview: { title: 'Seed size', authors: null, year: 2023, journal: null },
     });
-    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'confirmed' });
+    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'validated' });
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
     await userEvent.click(screen.getByText('Add a supporting DOI (optional)'));
     await userEvent.type(screen.getByRole('textbox', { name: 'DOI' }), DOI);
@@ -271,7 +263,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
       reference: null,
       preview: { title: 'Seed size', authors: null, year: 2023, journal: null },
     });
-    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'confirmed' });
+    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'validated' });
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
     await userEvent.click(screen.getByText('Add a supporting DOI (optional)'));
     const field = screen.getByRole('textbox', { name: 'DOI' });
@@ -483,7 +475,7 @@ describe('RFC-70 R1 RecordActions add a different record', () => {
 
 describe('RFC-65 R3-R6 RecordActions reviewer and author actions', () => {
   it('steps back with one click; disputing needs a note', async () => {
-    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'disputed' });
+    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'contested' });
     renderWithProviders(<RecordActions record={THEIRS} />, { me: REVIEWER });
     await userEvent.click(screen.getByRole('button', { name: 'Neutral' }));
     await waitFor(() =>
@@ -538,7 +530,7 @@ describe('RFC-65 R3-R6 RecordActions reviewer and author actions', () => {
   });
 
   it('never offers Withdraw on an import record', () => {
-    renderWithProviders(<RecordActions record={{ ...RECORD_DETAIL, review: 'unreviewed' }} />, {
+    renderWithProviders(<RecordActions record={{ ...RECORD_DETAIL, review: 'unvalidated' }} />, {
       me: perms('records.annotate', 'records.withdraw'),
     });
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();

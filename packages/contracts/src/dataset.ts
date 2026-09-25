@@ -85,8 +85,13 @@ export type ImportBatchKind = (typeof IMPORT_BATCH_KINDS)[number];
 export const SPECIES_STATUSES = ['active', 'inactive', 'all'] as const;
 export type SpeciesStatus = (typeof SPECIES_STATUSES)[number];
 
-/** @rfc RFC-63 R6 */
-export const REVIEW_STATUSES = ['unreviewed', 'confirmed', 'disputed', 'withdrawn'] as const;
+/**
+ * Review state, derived per viewer: contested (the record or its level is
+ * contested, RFC-63 R14) > validated (a `confirm`) > unvalidated. A withdrawn
+ * record has none: it is invisible.
+ * @rfc RFC-63 R6
+ */
+export const REVIEW_STATUSES = ['contested', 'validated', 'unvalidated'] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
 /** Path parameter of every dataset detail route. @rfc RFC-60 R7 */
@@ -414,7 +419,12 @@ export const quantitativeValueSchema = z
     message: 'sd must not be negative',
   });
 
-/** @rfc RFC-63 R8 */
+/**
+ * `validationCount` counts distinct `confirm` actors, `contestCount` distinct
+ * authors of the contests not withdrawn that name the record's level or
+ * respond to it; `contested` follows RFC-63 R14 for the viewer.
+ * @rfc RFC-63 R8
+ */
 export const recordSchema = z.strictObject({
   id: z.uuid(),
   recordCode: z.string(),
@@ -435,6 +445,9 @@ export const recordSchema = z.strictObject({
   createdBy: userRefSchema.nullable(),
   intent: z.enum(RECORD_INTENTS).nullable(),
   respondsTo: z.strictObject({ id: z.uuid() }).nullable(),
+  validationCount: z.number().int().nonnegative(),
+  contestCount: z.number().int().nonnegative(),
+  contested: z.boolean(),
 });
 
 /** @rfc RFC-63 R8 */
@@ -503,7 +516,14 @@ export const traitSummarySchema = z.strictObject({
   harmonisationCounts: harmonisationCountsSchema,
   levels: z
     .array(
-      z.strictObject({ levelId: z.uuid(), key: z.string(), count: z.number().int().nonnegative() }),
+      z.strictObject({
+        levelId: z.uuid(),
+        key: z.string(),
+        count: z.number().int().nonnegative(),
+        /** Distinct actors who validated at least one visible record of the level. */
+        validationCount: z.number().int().nonnegative(),
+        contested: z.boolean(),
+      }),
     )
     .nullable(),
   numeric: z
@@ -516,6 +536,8 @@ export const traitSummarySchema = z.strictObject({
     .nullable(),
   /** At least one of the species' records on the trait is validated (spec R-1). */
   validated: z.boolean(),
+  /** A level or record of the trait is contested (RFC-63 R14). */
+  contested: z.boolean(),
 });
 
 /** @rfc RFC-70 R7 */

@@ -142,7 +142,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       level: { id: trait.levels[0]?.id, key: 'red' },
       numericValue: null,
       harmonisation: 'harmonised',
-      review: 'unreviewed',
+      review: 'unvalidated',
       origin: 'manual',
       createdBy: { id: user.id, name: 'Test User' },
       primaryReference: { id: ref.id },
@@ -566,7 +566,7 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
     const original = await call(t.app, 'GET', `/api/records/${f.reds1.id}`, { cookie: f.cookie });
     const detail = (await original.json()).data;
     expect(detail.supersededBy).toHaveLength(1);
-    expect(detail.review).toBe('unreviewed');
+    expect(detail.review).toBe('unvalidated');
     const mapped = await call(t.app, 'GET', `/api/records/${detail.supersededBy[0].id}`, {
       cookie: f.cookie,
     });
@@ -780,7 +780,6 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
     });
     const item = (await first.json()).data.find((r: { id: string }) => r.id === newer.id);
     expect(item).toMatchObject({
-      review: 'disputed',
       latestDispute: { actor: { id: b.user.id, name: 'Test User' }, note: 'Newer claim wrong' },
     });
     // the disputer steps back: gone
@@ -895,15 +894,16 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     const { rec } = await manualRecord(a.user.id);
     const confirmed = await annotate(a.cookie, rec.id, { kind: 'confirm' });
     expect(confirmed.status).toBe(201);
-    expect((await confirmed.json()).data).toMatchObject({ id: rec.id, review: 'confirmed' });
+    expect((await confirmed.json()).data).toMatchObject({ id: rec.id, review: 'validated' });
     const disputed = await annotate(b.cookie, rec.id, {
       kind: 'dispute',
       note: 'Figure 3 says otherwise',
     });
-    expect((await disputed.json()).data).toMatchObject({ review: 'disputed' });
+    // RFC-63 R6: a `dispute` or `neutral` row changes no review state.
+    expect((await disputed.json()).data).toMatchObject({ review: 'validated' });
     const stepped = await annotate(b.cookie, rec.id, { kind: 'neutral' });
     const steppedBody = await stepped.json();
-    expect(steppedBody.data).toMatchObject({ review: 'confirmed' });
+    expect(steppedBody.data).toMatchObject({ review: 'validated' });
     const body = steppedBody.data;
     expect(body.annotations.map((x: { kind: string }) => x.kind)).toEqual([
       'neutral',
