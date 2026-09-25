@@ -7,7 +7,9 @@
 set -eu
 
 dir=/var/lib/cloudflare-ips
-iface=${CF_IFACE:-eth0}
+# The public interface: the one holding the default route, unless CF_IFACE is set.
+iface=${CF_IFACE:-$(ip -o route show default | awk '{print $5; exit}')}
+[ -n "$iface" ] || { echo "cloudflare-origin-firewall: no default-route interface" >&2; exit 1; }
 mkdir -p "$dir"
 
 for v in 4 6; do
@@ -21,20 +23,27 @@ for v in 4 6; do
   [ -s "$dir/v$v" ] || { echo "cloudflare-origin-firewall: no v$v list" >&2; exit 1; }
 done
 
+# The new list is built in a side chain and swapped in, so the ports are never
+# left unfiltered and a failure midway keeps the rules already in force.
 apply() {
-  ipt=$1 list=$2
-  "$ipt" -N CLOUDFLARE-ONLY 2>/dev/null || "$ipt" -F CLOUDFLARE-ONLY
+  ipt=$1 list=$2 next=CLOUDFLARE-NEXT
+  "$ipt" -F "$next" 2>/dev/null && "$ipt" -X "$next"
+  "$ipt" -N "$next"
   # The lists have no trailing newline; `|| [ -n "$net" ]` keeps the last range.
   while read -r net || [ -n "$net" ]; do
-    "$ipt" -A CLOUDFLARE-ONLY -s "$net" -j RETURN
+    "$ipt" -A "$next" -s "$net" -j RETURN
   done < "$list"
-  "$ipt" -A CLOUDFLARE-ONLY -j DROP
+  "$ipt" -A "$next" -j DROP
   "$ipt" -N DOCKER-USER 2>/dev/null || true
+  match="-i $iface -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j"
   for chain in DOCKER-USER INPUT; do
-    rule="-i $iface -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j CLOUDFLARE-ONLY"
     # shellcheck disable=SC2086
-    "$ipt" -C "$chain" $rule 2>/dev/null || "$ipt" -I "$chain" 1 $rule
+    "$ipt" -I "$chain" 1 $match "$next"
+    # shellcheck disable=SC2086
+    while "$ipt" -D "$chain" $match CLOUDFLARE-ONLY 2>/dev/null; do :; done
   done
+  "$ipt" -F CLOUDFLARE-ONLY 2>/dev/null && "$ipt" -X CLOUDFLARE-ONLY
+  "$ipt" -E "$next" CLOUDFLARE-ONLY
 }
 
 apply iptables "$dir/v4"
