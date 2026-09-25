@@ -8,7 +8,8 @@ export default defineConfig({
   // resulting cookie (tests/global-setup.ts); adminContext() reuses it.
   globalSetup: './tests/global-setup.ts',
   fullyParallel: false,
-  workers: 1,
+  // Files run in parallel, the tests inside a file in order (#165).
+  workers: 3,
   // A retry would replay "accept invitation" against a consumed token on the
   // same database; the flow is one-shot per stack.
   retries: 0,
@@ -21,5 +22,20 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    // critical-flow resets the admin's password (revoking every admin session)
+    // and turns on its TOTP, so it runs alone before everything else, which
+    // then reuses the ADMIN_STATE it saves again (#165).
+    {
+      name: 'critical-flow',
+      testMatch: /critical-flow\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium',
+      testIgnore: /critical-flow\.spec\.ts/,
+      dependencies: ['critical-flow'],
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
 });
