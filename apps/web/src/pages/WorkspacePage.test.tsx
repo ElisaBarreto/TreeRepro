@@ -92,28 +92,19 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(screen.queryByRole('heading', { name: 'Your scope' })).not.toBeInTheDocument();
   });
 
-  it('quick actions link to their exact URLs', async () => {
+  it('quick actions browse the species, the traits and the references', async () => {
     renderAt('/app/');
     const quickActions = await screen.findByRole('navigation', { name: 'Quick actions' });
-    const validate = hrefUrl(
-      within(quickActions).getByRole('link', { name: 'Validate records' }).getAttribute('href'),
-    );
-    expect(validate.pathname).toBe('/app/species');
-    expect(validate.searchParams.get('scope')).toBe('plots');
-    expect(validate.searchParams.get('sort')).toBe('completeness');
-
-    const enterData = hrefUrl(
-      within(quickActions).getByRole('link', { name: 'Enter new data' }).getAttribute('href'),
-    );
-    expect(enterData.searchParams.get('traitData')).toBe('missing');
-    expect(enterData.searchParams.get('scope')).toBe('plots');
-
-    // "Browse species" also appears on the scope card (its own way into the
-    // species list), so this one is found within Quick actions specifically.
-    expect(within(quickActions).getByRole('link', { name: 'Browse species' })).toHaveAttribute(
-      'href',
-      '/app/species',
-    );
+    // "Browse species" also appears on the scope card, so each link is found
+    // within Quick actions specifically.
+    for (const [name, href] of [
+      ['Browse species', '/app/species'],
+      ['Browse traits', '/app/traits'],
+      ['Browse references', '/app/references'],
+    ] as const) {
+      expect(within(quickActions).getByRole('link', { name })).toHaveAttribute('href', href);
+    }
+    expect(within(quickActions).getAllByRole('link')).toHaveLength(3);
   });
 
   it('lists records awaiting validation with the count in the heading, and opens the drawer from a row', async () => {

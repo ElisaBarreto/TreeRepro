@@ -60,7 +60,7 @@ export function WorkspacePage() {
         <div className="flex flex-col gap-6">
           <IntroCard dataset={data.dataset} />
           {data.scope ? <ScopeCard scope={data.scope} /> : null}
-          <QuickActions hasPlots={hasPlots} />
+          <QuickActions />
           <GettingStartedCard summary={data.contributor.summary} />
 
           {data.contributor.awaitingValidation ? (
