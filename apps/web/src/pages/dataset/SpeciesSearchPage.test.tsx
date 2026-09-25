@@ -104,6 +104,8 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
       familyId: undefined,
       genusId: undefined,
       unresolved: false,
+      contested: false,
+      unknownLevels: false,
       cursor: undefined,
       limit: 50,
     });
@@ -178,6 +180,8 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
 
   it('a new filter starts over at page 1, and the page size is applied from page 1', async () => {
     dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA], 'c1'));
+    // The unresolved toggle used below is reviewer-only (RFC-60 R6).
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.review'] });
     await openPage();
     await screen.findByRole('link', { name: 'Adenanthera pavonina' });
     await userEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -209,6 +213,8 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
 
   it('searches by family and by unresolved taxa without a term', async () => {
     dataset.searchSpecies.mockResolvedValue(page([ADANSONIA]));
+    // The unresolved toggle used below is reviewer-only (RFC-60 R6).
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.review'] });
     await openPage();
     await userEvent.selectOptions(
       screen.getByLabelText('Family'),
@@ -322,6 +328,8 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
 
   it('RFC-60 R6 reads ?unresolved=true into the toggle and sends it on the first search', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
+    // The unresolved toggle is reviewer-only (RFC-60 R6).
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.review'] });
     renderAt('/app/species?unresolved=true');
     expect(await screen.findByRole('checkbox', { name: /unresolved/i })).toBeChecked();
     await waitFor(() =>

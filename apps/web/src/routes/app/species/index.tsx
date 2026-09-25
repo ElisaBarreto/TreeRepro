@@ -21,7 +21,8 @@ import {
  * the page reads is therefore exactly this shape, so a malformed id, a value
  * outside its enum or a key nobody knows never reaches a control or the API.
  * `?unresolved=true` opens the search with the unresolved-taxa toggle on
- * (RFC-65); `scope` and `plotId` per RFC-33 R6, RFC-67 R8.
+ * (RFC-65); `contested` and `unknownLevels` (RFC-60 R6, spec R-15); `scope`
+ * and `plotId` per RFC-33 R6, RFC-67 R8.
  */
 function validateSearch(search: Record<string, unknown>): SpeciesSearch {
   return {
@@ -29,6 +30,9 @@ function validateSearch(search: Record<string, unknown>): SpeciesSearch {
     familyId: uuidParam(search.familyId),
     genusId: uuidParam(search.genusId),
     unresolved: search.unresolved === true || search.unresolved === 'true' ? true : undefined,
+    contested: search.contested === true || search.contested === 'true' ? true : undefined,
+    unknownLevels:
+      search.unknownLevels === true || search.unknownLevels === 'true' ? true : undefined,
     status: enumParam(search.status, SPECIES_STATUSES),
     scope: enumParam(search.scope, SPECIES_SCOPES),
     plotId: uuidParam(search.plotId),

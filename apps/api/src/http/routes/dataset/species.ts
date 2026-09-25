@@ -44,6 +44,8 @@ export function speciesRoutes(ctx: AuthContext) {
           familyId: q.familyId,
           genusId: q.genusId,
           unresolved: q.unresolved === 'true',
+          contested: q.contested === 'true',
+          unknownLevels: q.unknownLevels === 'true',
           status: q.status,
           scope: q.scope,
           plotId: q.plotId,

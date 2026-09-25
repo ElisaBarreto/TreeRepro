@@ -27,8 +27,9 @@ import {
   pageOf,
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
+import { recordContestedSql } from './contests.ts';
 import { requireTrait } from './dictionary.ts';
-import { liveSql } from './records.ts';
+import { liveSql, recordVisible } from './records.ts';
 
 /**
  * Escapes `%`, `_` and `\` so a search term matches literally. `'exact'`
@@ -182,6 +183,8 @@ export interface SpeciesListFilters {
   familyId?: string;
   genusId?: string;
   unresolved?: boolean;
+  contested?: boolean;
+  unknownLevels?: boolean;
   status?: SpeciesStatus;
   scope?: SpeciesScope;
   plotId?: string;
@@ -213,9 +216,14 @@ export interface SpeciesListFilters {
  * fresh, under every other condition here (visibility, plot scope, status,
  * the taxonomy filters, the trait filters) but never `q` or the cursor
  * itself, which is what the tier is decided over and paged within.
+ * `contested` (RFC-60 R6) keeps species with a contested species × trait
+ * (RFC-63 R14), open to every viewer. `unknownLevels` keeps species with a
+ * visible record whose `harmonisation` is `unknown_level`; like `unresolved`,
+ * it applies only for a `records.review` holder and is ignored otherwise.
  * @rfc RFC-60 R3, R4, R6
  * @rfc RFC-33 R2, R3, R6
  * @rfc RFC-62 R8
+ * @rfc RFC-63 R14
  * @rfc RFC-69 R4
  */
 export async function speciesListConditions(
@@ -273,9 +281,29 @@ export async function speciesListConditions(
   if (status === 'inactive') conditions.push(eq(species.active, false));
   if (filters.familyId) conditions.push(eq(genera.familyId, filters.familyId));
   if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
-  if (filters.unresolved) {
+  if (filters.unresolved && visibility.review) {
     conditions.push(
       sql`(${species.nameSource} <> 'wcvp' or ${species.genusId} is null or ${genera.familyId} is null)`,
+    );
+  }
+
+  // RFC-60 R6, RFC-63 R14: contested is open to every viewer; unknown levels,
+  // like `unresolved` above, is reviewer-only and ignored otherwise.
+  if (filters.contested) {
+    conditions.push(
+      sql`exists (select 1 from ${traitRecords} ctr join ${traits} ctt on ctt.id = ctr.trait_id
+        where ctr.species_id = ${species.id}
+          and ${traitVisible(visibility, sql`ctt.active`)}
+          and ${recordVisible(visibility, sql`ctr.id`, sql`ctr.harmonisation`)}
+          and ${recordContestedSql(visibility, sql`ctr.id`)})`,
+    );
+  }
+  if (filters.unknownLevels && visibility.review) {
+    conditions.push(
+      sql`exists (select 1 from ${traitRecords} utr join ${traits} utt on utt.id = utr.trait_id
+        where utr.species_id = ${species.id} and utr.harmonisation = 'unknown_level'
+          and ${traitVisible(visibility, sql`utt.active`)}
+          and ${recordVisible(visibility, sql`utr.id`, sql`utr.harmonisation`)})`,
     );
   }
 

@@ -40,6 +40,8 @@ export interface SpeciesSearch {
   familyId?: string;
   genusId?: string;
   unresolved?: boolean;
+  contested?: boolean;
+  unknownLevels?: boolean;
   status?: SpeciesStatus;
   scope?: 'plots' | 'all';
   plotId?: string;
@@ -55,6 +57,8 @@ function toValue(search: SpeciesSearch): SpeciesSearchValue {
     familyId: search.familyId,
     genusId: search.genusId,
     unresolved: search.unresolved === true,
+    contested: search.contested === true,
+    unknownLevels: search.unknownLevels === true,
     status: search.status,
     scope: search.scope,
     plotId: search.plotId,
@@ -74,6 +78,8 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
     familyId: value.familyId,
     genusId: value.genusId,
     unresolved: value.unresolved ? true : undefined,
+    contested: value.contested ? true : undefined,
+    unknownLevels: value.unknownLevels ? true : undefined,
     status: value.status,
     scope: value.scope,
     plotId: value.plotId,
@@ -97,6 +103,8 @@ function searchKey(value: SpeciesSearchValue): string {
     value.familyId ?? null,
     value.genusId ?? null,
     value.unresolved,
+    value.contested,
+    value.unknownLevels,
     value.status ?? null,
     value.scope ?? null,
     value.plotId ?? null,
@@ -175,6 +183,8 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     familyId: form.familyId,
     genusId: form.genusId,
     unresolved: form.unresolved,
+    contested: form.contested,
+    unknownLevels: form.unknownLevels,
     status: form.status,
     scope: form.scope,
     plotId: form.plotId,

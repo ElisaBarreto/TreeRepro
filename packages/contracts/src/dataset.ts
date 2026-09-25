@@ -122,6 +122,8 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   familyId: z.uuid().optional(),
   genusId: z.uuid().optional(),
   unresolved: z.enum(['true', 'false']).optional(),
+  contested: z.enum(['true', 'false']).optional(),
+  unknownLevels: z.enum(['true', 'false']).optional(),
   status: z.enum(SPECIES_STATUSES).optional(),
   scope: z.enum(SPECIES_SCOPES).optional(),
   plotId: z.uuid().optional(),
