@@ -141,3 +141,32 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 - **Reimport.** When the new source file with `ID` arrives, the imported records are replaced through the replacing import of RFC-64 R12. The runbook in 13f stops unless manual records, annotations and `record_references` are all zero, and takes a `pg_dump` first. `accepted_values` is dropped without keeping its rows (the owner confirmed it holds no real data).
 - **ZIP.** The API has no ZIP library, and `records.csv` can reach about 2 GB. 13i adds one small streaming ZIP dependency with ZIP64 support (candidate: `yazl`), pinned exact.
 - **Cut:** undoing a validation, reverting a resolution, migrating old `dispute`/`neutral` rows, and ISSN. Add when asked.
+
+## 6. Shared interfaces (fixed names — every plan uses these exactly)
+
+Plans run in parallel; these names are the contract between them. A plan that needs to deviate amends this section first.
+
+| Owner | Name | Shape |
+|---|---|---|
+| 13f | `trait_records.record_code` | `text not null unique`; manual default `'TR_' \|\| nextval('record_code_tr_seq')` |
+| 13f | `trait_records.min_value`, `max_value`, `mean_value`, `sd_value` | `numeric`, nullable; `numeric_value` stays and means *single* |
+| 13f | `trait_records.n` | `integer`, nullable, `>= 1` |
+| 13f | `record_references` | `(record_id uuid → trait_records, reference_id uuid → bibliographic_references)`, PK on both |
+| 13f | contracts `quantitativeValueSchema` | `{ single?, min?, max?, mean?, sd?, n? }` (numbers; `n` int ≥ 1); at least one of single/min/max/mean; `min ≤ max`; `sd ≥ 0` |
+| 13f | manual record value (contracts) | `{ levelIds: uuid[] (1–20) } \| { quantitative: QuantitativeValue }` — 13f replaces `{ numeric }` with `{ quantitative }`; 13g replaces `{ levelId }` with `{ levelIds }` |
+| 13f | trait summary `numeric` | `{ min, max, mean, count } \| null` (replaces `{ min, median, max, count }`) |
+| 13f | record item | gains `recordCode`, `quantitative: QuantitativeValue \| null`, `references: ReferenceSummary[]` (primary first, then `record_references`) |
+| 13d | `bibliographic_references.isbn` | `text` unique, 13 digits; `kind` gains `'book'` |
+| 13d | source input (contracts) | `{ personalObservation: true } \| Array<{ id } \| { doi } \| { isbn, citation }>` (1–10) |
+| 13d | `isValidIsbn(input): string \| null` | in `packages/contracts` — returns normalised ISBN-13 or null |
+| 13e | trait summary / trait page / coverage | `accepted*` fields removed; `validated` / `validatedCount` / `percentValidated` added; coverage `/top?mode=missing\|least_validated` |
+| 13e, 13i | export | 13e: `GET /api/export/records.csv` (interim, all visible non-withdrawn records); 13i replaces it with `GET /api/export/dataset.zip` |
+| 13g | annotations | `POST /api/records/:id/annotations` body `{ kind: 'confirm', referenceSource? } \| { kind: 'withdraw' } \| { kind: 'resolve' }` (no `note`; `neutral`/`dispute` → 400) |
+| 13g | level actions | `POST /api/species/:id/traits/:traitId/levels/:levelId/validate` body `{ referenceSource? }`; `POST …/levels/:levelId/withdraw` (`records.review`) |
+| 13g | create response | `{ created: RecordItem[], validated: [{ recordId, recordCode }], duplicates: [{ recordId, recordCode }] }` |
+| 13g | record item counts | `validationCount`, `contestCount` (distinct users), `contested: boolean` |
+| 13g | trait summary levels | `[{ levelId, key, count, validationCount, contested }]` (all levels, no cap); trait gains `contested: boolean` |
+| 13g | species list filters | `contested=true` (all), `unknownLevels=true` and `unresolved=true` (`records.review`) |
+| 13g | permission | `records.withdraw_imported` (admin only) |
+| 13g | records list sort | `GET /api/records?…&sort=value\|references\|origin\|added&order=asc\|desc` (default `added desc`) |
+| 13b | dashboard contract | `dataset.primaryReferenceCount`, `dataset.secondaryReferenceCount`; `contributor.topTraitsWithData: [{ trait, category, speciesCount }]` replaces `topMissingTraits` |
