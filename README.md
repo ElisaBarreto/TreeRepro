@@ -30,6 +30,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `pnpm rfc:check` — verify every export links to an existing RFC rule.
 - `pnpm build` — build contracts, api, web.
 - `docker compose up` — full dev stack. First time: `cp .env.example .env && ./scripts/gen-secrets.sh`.
+- `scripts/deploy.sh <sha>` — production deploy on the server (run by the CI `Deploy` job after every push to `main`; setup in `docs/gotchas/infra.md`).
 - `pnpm --filter @treerepro/api db:generate` — generate a migration from the Drizzle schema.
 - `pnpm seed:admin --email <email> --name <name>` — invite the first user and assign the `admin` role (prints the invitation link; needs the dev stack or a reachable Postgres/Redis/SMTP). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:admin --email … --name …`. In production: `docker compose exec api node dist/cli/seed-admin.js --email … --name …`.
 - `pnpm --filter @treerepro/api seed:traits` — load the trait dictionary (`apps/api/seed/trait-dictionary.csv`); idempotent, but a level renamed through the API reappears under its old key on the next run unless the CSV is updated too (see `docs/gotchas/dataset.md`). The file may carry an optional seventh column `active` (`true`/`false`, default `true`) so a trait can be loaded already deactivated (RFC-62 R2). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:traits`. In production: `docker compose exec api node dist/cli/seed-traits.js`.
