@@ -73,7 +73,7 @@ try {
     `Batch ${batch.id} completed in ${seconds}s`,
     `Rows: ${batch.rowsTotal} total, ${batch.rowsInserted} inserted, ${batch.rowsDuplicate} duplicate, ${batch.rowsRejected} rejected, ${batch.rowsPending} pending harmonisation`,
     // R14: rows whose ID is already stored, skipped without a record or a reject.
-    `Rows skipped, already imported: ${batch.rowsAlreadyImported}`,
+    `Rows already imported: ${batch.rowsAlreadyImported}`,
     `Harmonisation: ${Object.entries(report.harmonisation)
       .map(([k, v]) => `${k} ${v}`)
       .join(', ')}`,

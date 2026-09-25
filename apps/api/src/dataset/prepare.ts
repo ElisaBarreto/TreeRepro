@@ -266,7 +266,8 @@ export function preparePlots(
  * The PIs' plots, for the `user_plots` import (RFC-68 R11): one row per
  * `WorkEmail` and plot code, `PlotCode` split on `|` as in `preparePlots`, so
  * a pair never names a plot that plots.import.csv leaves out. The e-mail is
- * only trimmed here; the importer matches it through the blind index.
+ * only trimmed and internal-whitespace-collapsed here (`norm`); the importer
+ * matches it through the blind index.
  * @rfc RFC-68 R14
  */
 export function prepareUserPlots(piRows: Record<string, string>[]): Prepared {

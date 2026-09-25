@@ -68,7 +68,7 @@
    docker compose run --rm --no-deps --entrypoint /usr/local/bin/backup.sh backup
    ```
    It prints `backup written: /backups/treerepro-<stamp>.sql.age`. Restoring it is "Restoring a backup" in `docs/gotchas/infra.md`.
-2. **Stop the API**, then deploy and migrate (a running `api` would keep writing through the old trigger functions — see "Stop `api` before applying migration 0022" in `docs/gotchas/postgres.md`; the record-schema migration (0035 at the time of writing; check `apps/api/drizzle/`) rewrites all ~9.3M `trait_records` rows under an `ACCESS EXCLUSIVE` lock, then builds a unique index on `record_code` and validates four `CHECK` constraints — this takes minutes on the full dataset and the API stays down for all of it: let it finish):
+2. **Stop the API**, then deploy and migrate (a running `api` would keep writing through the old trigger functions — see "Stop `api` before applying migration 0022" in `docs/gotchas/postgres.md`; the record-schema migration (0035 at the time of writing; check `apps/api/drizzle/`) rewrites all ~9.3M `trait_records` rows under an `ACCESS EXCLUSIVE` lock, then builds a unique index on `record_code` and validates four `CHECK` constraints — this takes minutes on the full dataset and the API stays down for all of it: let it finish). The rewrite needs free disk of roughly the size of `trait_records` plus its indexes; check first with `select pg_size_pretty(pg_total_relation_size('trait_records'))`:
    ```sh
    docker compose stop api
    git pull && docker compose build
@@ -92,7 +92,7 @@
      -v /srv/imports:/imports:ro \
      api node dist/cli/import-records.js --file /imports/sample_data.csv --replace --run-by <owner e-mail>
    ```
-   The report must read `Mode: replace` and `completed`. Its `already imported: <n>` line (RFC-64 R14) must read `already imported: 0` on this total replace — `--replace` empties `trait_records` itself, inside this same transaction (`resetDataset`, `apps/api/src/dataset/reset.ts`, called from `importRecords` before the file is staged), not in step 2; anything else means that wipe did not run (check the report's `Mode:` line really reads `replace`, not `append`). `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
+   The report must read `Mode: replace` and `completed`. Its `Rows already imported: <n>` line (RFC-64 R14) must read `Rows already imported: 0` on this total replace — `--replace` empties `trait_records` itself, inside this same transaction (`resetDataset`, `apps/api/src/dataset/reset.ts`, called from `importRecords` before the file is staged), not in step 2; anything else means that wipe did not run (check the report's `Mode:` line really reads `replace`, not `append`). `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
 5. **Check the triggers are back on** (`O` = enabled):
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
