@@ -55,3 +55,70 @@
 **Cause:** GDPR applies strictly to user data. The `user_plots` import file contains raw emails (PII).
 **Fix:** `user_plots` stages the file untouched and hashes the distinct e-mails in Node inside the transaction (`update … from (values …)`); never write a temporary copy of a file with PII.
 
+## Replacing the imported data with the ID-carrying file (spec 2026-09-25 §5)
+
+**Symptom:** After the record-schema migration (0035 at the time of writing; check `apps/api/drizzle/`) every existing record has a `record_code` of `EB_LEGACY_<n>`, and the owner has the new source file, `sample_data.csv`, whose header is quoted, starts with an unnamed column (`""`, R's row numbers) and ends in `"ID"`.
+
+**Cause:** The `ID` column did not exist when the data was loaded; the migration only makes `record_code NOT NULL` possible. The owner decided to replace everything earlier imports loaded with the new file (RFC-64 R12). `--replace` is refused in production twice — by `isReplaceAllowed` and by the missing migrator secret in the `api` container — and this procedure is the one sanctioned exception (RFC-64 R12). It is safe only while nothing but imported data would be lost, so it stops unless manual records, annotations and `record_references` are all zero.
+
+**Fix:** Run on the production host, from the checkout, with the new file at `/srv/imports/sample_data.csv` (its header is quoted; the first line ends `"harmonised_value","ID"`, after the unnamed `""` first column of R row numbers, which the importer reads and ignores) and the supplementary files beside it.
+
+1. **Back up** (a `pg_dump` by the read-only `treerepro_backup` role, `age`-encrypted into the `backups` volume):
+   ```sh
+   docker compose run --rm --no-deps --entrypoint /usr/local/bin/backup.sh backup
+   ```
+   It prints `backup written: /backups/treerepro-<stamp>.sql.age`. Restoring it is "Restoring a backup" in `docs/gotchas/infra.md`.
+2. **Stop the API**, then deploy and migrate (a running `api` would keep writing through the old trigger functions — see "Stop `api` before applying migration 0022" in `docs/gotchas/postgres.md`; the record-schema migration rewrites `trait_records` and takes minutes on the full dataset: let it finish):
+   ```sh
+   docker compose stop api
+   git pull && docker compose build
+   docker compose run --rm migrate
+   ```
+3. **Stop unless nothing but imported data exists:**
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -v ON_ERROR_STOP=1 -At -F ' ' -c \
+     "select (select count(*) from trait_records where origin = 'manual'), (select count(*) from record_annotations), (select count(*) from record_references)"
+   ```
+   The answer must be `0 0 0`. Anything else: **do not continue** — bring the API back (`docker compose up -d api`) and take the numbers to the owner. Note, for step 6, what the replace will also empty:
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
+     "select (select count(*) from plots), (select count(*) from plot_species), (select count(*) from user_plots), (select count(*) from species_names where name_type <> 'gbif'), (select count(*) from species where not active)"
+   ```
+4. **Replace.** A one-off container of the `api` image, with the migrator secret mounted and `NODE_ENV` overridden for this run only (the CLI then connects as `treerepro_migrator`, which may disable the RFC-63 R4 append-only triggers inside the import's own transaction and restores them there):
+   ```sh
+   docker compose run --rm --no-deps \
+     -e NODE_ENV=development \
+     -v "$PWD/infra/secrets/db_migrator_password:/run/secrets/db_migrator_password:ro" \
+     -v /srv/imports:/imports:ro \
+     api node dist/cli/import-records.js --file /imports/sample_data.csv --replace --run-by <owner e-mail>
+   ```
+   The report must read `Mode: replace` and `completed`. Its `already imported: <n>` line (RFC-64 R14) must read `already imported: 0` on this total replace — the table was just emptied in step 2, so no `ID` can already be a stored `record_code`; anything else means step 2 did not really empty `trait_records` first. `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
+5. **Check the triggers are back on** (`O` = enabled):
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
+     "select tgname, tgenabled from pg_trigger where tgname in ('trait_records_append_only', 'trait_records_no_truncate', 'record_annotations_append_only', 'record_annotations_no_truncate') order by 1"
+   ```
+6. **Reload what the replace emptied** (README commands, same files as the first load, in this order). Plots, plot species, user plots, synonyms and references are generated from the owner's raw exports (`PIs_per_plot_filtered.csv`, `Species_per_plot_filtered.csv`, `refs_with_citations_filtered.csv`, …) the same way as any other load, through `prepare:imports` (README):
+   ```sh
+   pnpm --filter @treerepro/api prepare:imports --source <dir> --out <dir>
+   ```
+   which writes the `import:*` files, including the `user_email,plot_id` user-plots file — check `apps/api/src/cli/prepare-imports.ts` for the current output names before copying anything into `/srv/imports` (at the time of writing: `plots.import.csv`, `plot-species.import.csv`, `user-plots.import.csv`, `synonyms.import.csv`, `references.import.csv`). `species-status.csv` is not produced by `prepare:imports`; the owner maintains it directly. Copy all six files into `/srv/imports` next to `sample_data.csv`, then:
+   ```sh
+   docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-species-status.js --file /imports/species-status.csv
+   docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-plots.js --file /imports/plots.import.csv
+   docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-plot-species.js --file /imports/plot-species.import.csv
+   docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-user-plots.js --file /imports/user-plots.import.csv
+   docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-synonyms.js --file /imports/synonyms.import.csv
+   docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-references.js --file /imports/references.import.csv
+   ```
+   Re-run the second query of step 3 and compare. Taxonomy proposals (`species_proposals`) are rebuilt by their own job.
+7. **Verify:**
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
+     "select (select count(*) from import_batches where kind = 'records'), (select count(*) from trait_records), (select count(*) from trait_records where record_code like 'EB_LEGACY_%'), (select count(*) from trait_records where record_code !~ '^EB_[0-9]+([a-z]+)?\$'), (select coalesce(sum(primary_count), 0) from bibliographic_references) = (select count(*) from trait_records where primary_reference_id is not null)"
+   ```
+   Expected: `1 <N> 0 0 t`, where `<N>` equals `inserted` in step 4's `Rows:` line.
+8. **Start the API:** `docker compose up -d api`, then `docker compose ps` shows it healthy.
+
+After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`: once any `TR_` record exists (a manual record created after this reimport), the total `--replace` is refused (RFC-64 R12).
+
