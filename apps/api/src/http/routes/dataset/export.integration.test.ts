@@ -89,7 +89,7 @@ describe('RFC-66 R8 GET /api/export/records.csv', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
     // `Response.text()` strips a leading BOM; read the raw bytes (RFC-66 R4).
     const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
-    expect(text.startsWith('﻿')).toBe(true);
+    expect(text.startsWith('\uFEFF')).toBe(true);
     const lines = text.slice(1).split('\r\n');
     expect(lines[0]).toBe(
       'family,genus,species,name_source,category,trait,value,unit,level,numeric_value,raw_value,primary_reference,secondary_reference,origin,intent,created_at,record_id',
@@ -210,6 +210,44 @@ describe('RFC-66 R8 GET /api/export/records.csv', () => {
 
     const c = await recordIds((await loginAs(t, contributor)).cookie);
     expect(all.filter((id) => c.includes(id))).toEqual([f.visible.id]);
+  });
+
+  it('RFC-33 R2 a dataset.export holder without records.review does not get a pending record row; one with records.review does', async () => {
+    const reviewerRole = await createRole(t.db, {
+      permissions: ['dataset.export', 'records.review'],
+    });
+    const exporterRole = await createRole(t.db, { permissions: ['dataset.export'] });
+    const { user: reviewer } = await createUser(t.db, { roles: [reviewerRole.id] });
+    const { user: exporter } = await createUser(t.db, { roles: [exporterRole.id] });
+    const sp = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const ref = await createReference(t.db);
+    const pending = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'not a number',
+      harmonisation: 'not_numeric',
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: reviewer.id,
+    });
+
+    const recordIds = async (cookie: string) => {
+      const res = await call(t.app, 'GET', '/api/export/records.csv', { cookie });
+      expect(res.status).toBe(200);
+      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
+      return text
+        .slice(1)
+        .split('\r\n')
+        .slice(1, -1)
+        .map((line) => parseLine(line)[16]);
+    };
+
+    const withoutReview = await recordIds((await loginAs(t, exporter)).cookie);
+    expect(withoutReview).not.toContain(pending.id);
+
+    const withReview = await recordIds((await loginAs(t, reviewer)).cookie);
+    expect(withReview).toContain(pending.id);
   });
 
   it('R7 an unauthenticated request keeps the JSON error envelope', async () => {

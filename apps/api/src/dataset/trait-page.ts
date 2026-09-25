@@ -239,8 +239,10 @@ async function enrich(
     where v.trait_id = ${traitId}::uuid and v.species_id = any(${sql.param(ids)}::uuid[])
   `) as unknown as Promise<{ species_id: string }[]>;
 
+  let validatedRowsResult: { species_id: string }[];
+
   if (valueType === 'quantitative') {
-    const [rows, validatedResult] = await Promise.all([
+    const [rows, result] = await Promise.all([
       db.execute(sql`
         select r.species_id, count(*)::int as record_count,
           min(r.numeric_value)::float8 as numeric_min,
@@ -251,6 +253,7 @@ async function enrich(
       `) as unknown as Promise<SpeciesNumericRow[]>,
       validatedRows,
     ]);
+    validatedRowsResult = result;
     for (const r of rows) {
       recordCount.set(r.species_id, r.record_count);
       summary.set(
@@ -260,35 +263,35 @@ async function enrich(
           : { numeric: { min: r.numeric_min, max: r.numeric_max } },
       );
     }
-    const validated = new Map(validatedResult.map((r) => [r.species_id, true]));
-    return { recordCount, summary, validated };
+  } else {
+    const [rows, result] = await Promise.all([
+      db.execute(sql`
+        select r.species_id, l.key as level_key, count(*)::int as count
+        from trait_records r
+        left join trait_levels l
+          on l.id = r.level_id and ${levelVisible(visibility, sql`l.active`)}
+        where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
+        group by r.species_id, l.key
+        order by count desc, l.key
+      `) as unknown as Promise<SpeciesLevelRow[]>,
+      validatedRows,
+    ]);
+    validatedRowsResult = result;
+    const levels = new Map<string, { key: string; count: number }[]>();
+    for (const r of rows) {
+      // Every record counts, harmonised or not; only the ones that landed on
+      // a visible level can be summarised (RFC-63 R5).
+      recordCount.set(r.species_id, (recordCount.get(r.species_id) ?? 0) + r.count);
+      if (r.level_key === null) continue;
+      levels.set(r.species_id, [
+        ...(levels.get(r.species_id) ?? []),
+        { key: r.level_key, count: r.count },
+      ]);
+    }
+    for (const [speciesId, entries] of levels) summary.set(speciesId, { levels: entries });
   }
 
-  const [rows, validatedResult] = await Promise.all([
-    db.execute(sql`
-      select r.species_id, l.key as level_key, count(*)::int as count
-      from trait_records r
-      left join trait_levels l
-        on l.id = r.level_id and ${levelVisible(visibility, sql`l.active`)}
-      where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
-      group by r.species_id, l.key
-      order by count desc, l.key
-    `) as unknown as Promise<SpeciesLevelRow[]>,
-    validatedRows,
-  ]);
-  const levels = new Map<string, { key: string; count: number }[]>();
-  for (const r of rows) {
-    // Every record counts, harmonised or not; only the ones that landed on a
-    // visible level can be summarised (RFC-63 R5).
-    recordCount.set(r.species_id, (recordCount.get(r.species_id) ?? 0) + r.count);
-    if (r.level_key === null) continue;
-    levels.set(r.species_id, [
-      ...(levels.get(r.species_id) ?? []),
-      { key: r.level_key, count: r.count },
-    ]);
-  }
-  for (const [speciesId, entries] of levels) summary.set(speciesId, { levels: entries });
-  const validated = new Map(validatedResult.map((r) => [r.species_id, true]));
+  const validated = new Map(validatedRowsResult.map((r) => [r.species_id, true]));
   return { recordCount, summary, validated };
 }
 

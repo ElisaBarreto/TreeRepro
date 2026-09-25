@@ -87,16 +87,21 @@ const dialect = new PgDialect();
  * `ReadableStream` batch by batch, so the file is never held in memory; the
  * BOM lets spreadsheet software read UTF-8. `batch` is injectable so tests can
  * force several small batches instead of one that swallows every row.
+ * `includePending` mirrors RFC-33 R2's record clause: a record whose
+ * `harmonisation` is not `harmonised` is visible only to a viewer holding
+ * `records.review`, so the caller resolves that permission and passes it
+ * here rather than this function reading permissions itself.
  * @rfc RFC-66 R4, R5, R8
  * @rfc RFC-33 R2, R3
  */
 export function recordsCsv(
   db: Db,
   visibility: Visibility,
-  options: { batch?: number } = {},
+  options: { batch?: number; includePending?: boolean } = {},
 ): ReadableStream<Uint8Array> {
   const client = db.$client;
   const encoder = new TextEncoder();
+  const includePending = options.includePending ?? false;
   const query = dialect.sqlToQuery(sql`
     select f.name as family, g.name as genus, s.canonical_name as species, s.name_source,
       c.key as category, t.key as trait, r.value_text as value, t.unit, l.key as level,
@@ -116,6 +121,7 @@ export function recordsCsv(
     where not exists (select 1 from record_annotations w
                       where w.record_id = r.id and w.kind = 'withdraw')
       and (r.level_id is null or l.id is not null)
+      and (r.harmonisation = 'harmonised' or ${includePending ? sql`true` : sql`false`})
       and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       and ${traitVisible(visibility, sql`t.active`)}
     order by f.name nulls last, g.name nulls last, s.canonical_name, t.key, r.id`);
@@ -158,7 +164,7 @@ export function recordsCsv(
     ]);
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(encoder.encode(`﻿${csvRow(EXPORT_COLUMNS)}`));
+      controller.enqueue(encoder.encode(`\uFEFF${csvRow(EXPORT_COLUMNS)}`));
     },
     async pull(controller) {
       inflight = batches.next();

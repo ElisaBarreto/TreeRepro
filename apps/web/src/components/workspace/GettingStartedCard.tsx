@@ -47,8 +47,8 @@ const STEPS: readonly {
   },
 ];
 
-// RFC-71 R4's seven counts, read off the object rather than named one by
-// one: an eighth count added to the contract later is then covered without
+// RFC-71 R4's six counts, read off the object rather than named one by
+// one: a seventh count added to the contract later is then covered without
 // anyone remembering this function, and so is a field that is not a number
 // at all — both make this false, which hides the card, the safe direction
 // for something only ever meant for a viewer with nothing to their name.

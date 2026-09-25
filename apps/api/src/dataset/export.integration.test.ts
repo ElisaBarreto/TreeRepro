@@ -21,6 +21,45 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
+describe('RFC-33 R2 recordsCsv pending record visibility', () => {
+  let handle: ReturnType<typeof createDb> | undefined;
+
+  afterAll(async () => {
+    await handle?.close();
+  });
+
+  /** Reads every `record_id` a stream yields, in order. */
+  async function recordIds(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+    const text = await new Response(stream).text();
+    const lines = text.split('\r\n');
+    return lines.slice(1, -1).map((line) => line.split(',').at(-1) ?? '');
+  }
+
+  it('omits a non-harmonised record when includePending is false, includes it when true', async () => {
+    handle = createDb(inject('databaseUrl'));
+    const { db } = handle;
+    const trait = await createTrait(db, { valueType: 'quantitative', unit: 'mm' });
+    const ref = await createReference(db);
+    const { user } = await createUser(db);
+    const sp = await createSpecies(db);
+    const pending = await createRecord(db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'not a number',
+      harmonisation: 'not_numeric',
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const withoutPending = await recordIds(recordsCsv(db, UNRESTRICTED));
+    expect(withoutPending).not.toContain(pending.id);
+
+    const withPending = await recordIds(recordsCsv(db, UNRESTRICTED, { includePending: true }));
+    expect(withPending).toContain(pending.id);
+  });
+});
+
 describe('RFC-66 R5 recordsCsv connection safety', () => {
   let handle: ReturnType<typeof createDb> | undefined;
 
