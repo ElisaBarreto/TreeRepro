@@ -1,28 +1,28 @@
-primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Flower colour,flower_color,flower_color,Blue,categorical,blue
-Fix_2020_A,TRYX,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Plant height max,plant_height,plant_form,12.5,quantitative_or_text,12.5
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Pollinators,pollinator_group,pollination,Bees,categorical,bees
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Growth form,growth_form,plant_form,shrub/tree,categorical,shrub;tree
-Fix_2021_B,Fix_2021_B,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Maturation,maturation_age,reproduction,Within 1 year,quantitative_or_text,Within 1 year
-Fix_2021_B,Fix_2021_B,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Seed mass,seed_mass,seed,,quantitative_or_text,
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Flower colour,flower_color,flower_color,Blue,categorical,blue
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,BLUE,categorical,blue
-Fix_2021_B,Fix_2021_B,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,Purple,categorical,purple
-Fix_2022_C,Fix_2022_C,,,,Fixturia gbifonly,2002,Fixturia gbif-only,,Flower colour,flower_color,flower_color,red,categorical,red
-Fix_2022_C,Fix_2022_C,,,,,,Fixturia originalis,,Flower colour,flower_color,flower_color,red,categorical,red
-Fix_2022_C,Fix_2022_C,,,,,,,,Flower colour,flower_color,flower_color,red,categorical,red
-Fix_2022_C,Fix_2022_C,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Weird trait,not_a_trait,unknown,x,categorical,x
-,,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,white,categorical,white
-Fix_2020_A,Fix_2020_A,Fixturia rubra,Fixturia,Fixturaceae,Fixturia rubra,1003,,,Flower colour,flower_color,flower_color,Red,categorical,red
-Fix_2020_A,Fix_2020_A,Fixturia rubra,Fixturia,Fixturaceae,Fixturia rubrum,1004,,,Petal length,petal_length,flower,3.2,quantitative_or_text,3.2
-Fix_2020_A,Fix_2020_A,Fixturia rubra,Fixturia,Fixturaceae,Fixturia synonyma,1005,,,Petal length,petal_length,flower,3.4,quantitative_or_text,3.4
-Fix_2023_D,Fix_2023_D,"  Fixturia   spacey ",Fixturia,Fixturaceae,,,,,Petal width,petal_width,flower,1,quantitative_or_text,1
-Fix_2023_D,Fix_2023_D,Orphania sola,,,Orphania sola,3001,,,Flower colour,flower_color,flower_color,pink,categorical,pink
-Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,"1,5",quantitative_or_text,"1,5"
-"Kühn, I., W. Durka, and S. Klotz. 2004. BiolFlor. Diversity and Distribution 10 363-365.",TRYX,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Seed mass,seed_mass,seed,0.5,quantitative_or_text,0.5
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,"Blue ",categorical," blue "
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,Dark Blue,categorical,DARK_BLUE
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Plant height,plant_height,plant_form,1e2,quantitative_or_text,1e2
-Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Plant height,plant_height,plant_form,-.5,quantitative_or_text,-.5
-Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,1e200000,quantitative_or_text,1e200000
-Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,1e400,quantitative_or_text,1e400
+"","primary_reference","secondary_reference","wcvp_species","wcvp_genus","wcvp_family","gbif_species","gbif_usage_key","original_species_name","secondary_source_species_name","original_trait_name","final_standard_trait","broad_category","original_value_clean","trait_value_type","harmonised_value","ID"
+"1",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Flower colour,flower_color,flower_color,Blue,categorical,blue,"EB_1"
+"2",Fix_2020_A,TRYX,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Plant height max,plant_height,plant_form,12.5,quantitative_or_text,12.5,"EB_2"
+"3",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Pollinators,pollinator_group,pollination,Bees,categorical,bees,"EB_3"
+"4",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Growth form,growth_form,plant_form,shrub/tree,categorical,shrub;tree,"EB_4"
+"5",Fix_2021_B,Fix_2021_B,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Maturation,maturation_age,reproduction,Within 1 year,quantitative_or_text,Within 1 year,"EB_5"
+"6",Fix_2021_B,Fix_2021_B,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Seed mass,seed_mass,seed,,quantitative_or_text,,"EB_6"
+"7",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,Fixturia alba,Fixturia alba,Flower colour,flower_color,flower_color,Blue,categorical,blue,"EB_7"
+"8",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,BLUE,categorical,blue,"EB_8"
+"9",Fix_2021_B,Fix_2021_B,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,Purple,categorical,purple,"EB_9"
+"10",Fix_2022_C,Fix_2022_C,,,,Fixturia gbifonly,2002,Fixturia gbif-only,,Flower colour,flower_color,flower_color,red,categorical,red,"EB_10"
+"11",Fix_2022_C,Fix_2022_C,,,,,,Fixturia originalis,,Flower colour,flower_color,flower_color,red,categorical,red,"EB_11"
+"12",Fix_2022_C,Fix_2022_C,,,,,,,,Flower colour,flower_color,flower_color,red,categorical,red,"EB_12"
+"13",Fix_2022_C,Fix_2022_C,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Weird trait,not_a_trait,unknown,x,categorical,x,"EB_13"
+"14",,,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,white,categorical,white,"EB_14"
+"15",Fix_2020_A,Fix_2020_A,Fixturia rubra,Fixturia,Fixturaceae,Fixturia rubra,1003,,,Flower colour,flower_color,flower_color,Red,categorical,red,"EB_15"
+"16",Fix_2020_A,Fix_2020_A,Fixturia rubra,Fixturia,Fixturaceae,Fixturia rubrum,1004,,,Petal length,petal_length,flower,3.2,quantitative_or_text,3.2,"EB_16"
+"17",Fix_2020_A,Fix_2020_A,Fixturia rubra,Fixturia,Fixturaceae,Fixturia synonyma,1005,,,Petal length,petal_length,flower,3.4,quantitative_or_text,3.4,"EB_17"
+"18",Fix_2023_D,Fix_2023_D,"  Fixturia   spacey ",Fixturia,Fixturaceae,,,,,Petal width,petal_width,flower,1,quantitative_or_text,1,"EB_18"
+"19",Fix_2023_D,Fix_2023_D,Orphania sola,,,Orphania sola,3001,,,Flower colour,flower_color,flower_color,pink,categorical,pink,"EB_19"
+"20",Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,"1,5",quantitative_or_text,"1,5","EB_20"
+"21","Kühn, I., W. Durka, and S. Klotz. 2004. BiolFlor. Diversity and Distribution 10 363-365.",TRYX,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Seed mass,seed_mass,seed,0.5,quantitative_or_text,0.5,"EB_21"
+"22",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,"Blue ",categorical," blue ","EB_22"
+"23",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Flower colour,flower_color,flower_color,Dark Blue,categorical,DARK_BLUE,"EB_23"
+"24",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Plant height,plant_height,plant_form,1e2,quantitative_or_text,1e2,"EB_24"
+"25",Fix_2020_A,Fix_2020_A,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Plant height,plant_height,plant_form,-.5,quantitative_or_text,-.5,"EB_25"
+"26",Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,1e200000,quantitative_or_text,1e200000,"EB_26"
+"27",Fix_2023_D,Fix_2023_D,Fixturia alba,Fixturia,Fixturaceae,Fixturia alba,1001,,,Petal length,petal_length,flower,1e400,quantitative_or_text,1e400,"EB_27"

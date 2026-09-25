@@ -3,12 +3,13 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { createDb, type Db } from '../db/client.ts';
 import { runMigrations } from '../db/migrator.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches, importRejects } from '../db/schema/imports.ts';
-import { traitRecords } from '../db/schema/records.ts';
+import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
 import { IMPORT_COLUMNS, importRecords } from './import.ts';
@@ -75,6 +76,16 @@ describe('RFC-64 R12 importRecords --replace', () => {
     expect(before.records).toBeGreaterThan(0);
     expect(before.species).toBeGreaterThan(0);
     expect(before.refs).toBeGreaterThan(0);
+    // spec R-4: a record_references row is part of what the replace clears
+    // (and TRUNCATE refuses to leave it behind a truncated trait_records).
+    const [someRecord] = await t.db.select({ id: traitRecords.id }).from(traitRecords).limit(1);
+    const [someRef] = await t.db
+      .select({ id: bibliographicReferences.id })
+      .from(bibliographicReferences)
+      .where(sql`${bibliographicReferences.citationKey} = 'TRYX'`);
+    await t.db
+      .insert(recordReferences)
+      .values({ recordId: someRecord?.id as string, referenceId: someRef?.id as string });
 
     // Same file: without --replace this is refused by R3, which --replace waives.
     const second = await importRecords(t.db, { filePath: FIXTURE, replace: true });
@@ -95,6 +106,7 @@ describe('RFC-64 R12 importRecords --replace', () => {
     expect(after.names).toBe(before.names);
     expect(after.refs).toBe(before.refs);
     expect(after.rejects).toBe(before.rejects);
+    expect(await t.db.select().from(recordReferences)).toEqual([]);
 
     // Every record belongs to the new batch.
     const foreign = (await t.db.select().from(traitRecords)).filter(
@@ -118,17 +130,19 @@ describe('RFC-64 R12 importRecords --replace', () => {
     const file = join(dir, 'overflow.csv');
     const hugeRef = randomBytes(3000).toString('hex');
     const row = IMPORT_COLUMNS.map((c) =>
-      c === 'primary_reference'
-        ? hugeRef
-        : c === 'wcvp_species'
-          ? 'Fixturia alba'
-          : c === 'final_standard_trait'
-            ? 'flower_color'
-            : c === 'trait_value_type'
-              ? 'categorical'
-              : c === 'harmonised_value'
-                ? 'blue'
-                : '',
+      c === 'ID'
+        ? 'EB_1'
+        : c === 'primary_reference'
+          ? hugeRef
+          : c === 'wcvp_species'
+            ? 'Fixturia alba'
+            : c === 'final_standard_trait'
+              ? 'flower_color'
+              : c === 'trait_value_type'
+                ? 'categorical'
+                : c === 'harmonised_value'
+                  ? 'blue'
+                  : '',
     ).join(',');
     await writeFile(file, `${IMPORT_COLUMNS.join(',')}\n${row}\n`, 'utf8');
 

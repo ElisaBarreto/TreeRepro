@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  headerMatches,
   IMPORT_COLUMNS,
   ImportRefusedError,
   isHarmonisableNumber,
   NUMBER_PATTERN,
   parseCsvLine,
+  toImportBatch,
   validateHeader,
 } from './import.ts';
 
@@ -35,6 +37,23 @@ describe('RFC-64 R2 header validation', () => {
       expect((err as ImportRefusedError).reason).toBe('header_mismatch');
     }
   });
+
+  it('spec R-2 the header is the unnamed row-number column, the 15 known columns, then ID', () => {
+    expect(IMPORT_COLUMNS).toHaveLength(17);
+    expect(IMPORT_COLUMNS[0]).toBe('');
+    expect(IMPORT_COLUMNS[1]).toBe('primary_reference');
+    expect(IMPORT_COLUMNS[15]).toBe('harmonised_value');
+    expect(IMPORT_COLUMNS[16]).toBe('ID');
+  });
+
+  it("accepts the owner's quoted header and refuses one without ID or without the unnamed column", () => {
+    const quoted = IMPORT_COLUMNS.map((c) => `"${c}"`).join(',');
+    expect(() => validateHeader(quoted)).not.toThrow();
+    expect(headerMatches(quoted)).toBe(true);
+    expect(headerMatches(IMPORT_COLUMNS.slice(0, 16).join(','))).toBe(false);
+    expect(headerMatches(IMPORT_COLUMNS.slice(1).join(','))).toBe(false);
+    expect(() => validateHeader(IMPORT_COLUMNS.slice(1).join(','))).toThrow(ImportRefusedError);
+  });
 });
 
 describe('RFC-64 R6 number rule', () => {
@@ -62,5 +81,33 @@ describe('RFC-64 R6 number rule', () => {
       expect(isHarmonisableNumber(ok), ok).toBe(true);
     for (const bad of ['1e308', '1e400', '1e999', '-1e308', '1'.repeat(65), '1e200000', 'Aug'])
       expect(isHarmonisableNumber(bad), bad).toBe(false);
+  });
+});
+
+describe('RFC-64 R11, R14 batch item', () => {
+  it('carries rowsAlreadyImported', () => {
+    const item = toImportBatch(
+      {
+        id: '0190c3a0-0000-7000-8000-000000000001',
+        fileName: 'f.csv',
+        fileSha256: 'a'.repeat(64),
+        kind: 'records',
+        runBy: null,
+        startedAt: new Date('2026-09-25T10:00:00Z'),
+        finishedAt: null,
+        status: 'completed',
+        mode: 'append',
+        error: null,
+        rowsTotal: 5,
+        rowsInserted: 1,
+        rowsDuplicate: 0,
+        rowsRejected: 1,
+        rowsPending: 0,
+        rowsAlreadyImported: 3,
+        unknownLevels: [],
+      },
+      null,
+    );
+    expect(item.rowsAlreadyImported).toBe(3);
   });
 });

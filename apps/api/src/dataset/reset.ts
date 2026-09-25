@@ -5,7 +5,8 @@ import type { Sql, TransactionSql } from 'postgres';
  * foreign-key closure: `reference_traits` and `species_proposals` are here not
  * because an import writes them but because they reference tables that are
  * being emptied, and PostgreSQL refuses a partial `TRUNCATE` across a foreign
- * key. `import_batches` is absent on purpose: the running batch's row is
+ * key; `record_references` goes with `trait_records`, which it references.
+ * `import_batches` is absent on purpose: the running batch's row is
  * created before the transaction so that RFC-64 R9 can mark it `failed`, and
  * truncating the table would delete it. Earlier batches go by DELETE instead.
  * Left alone: `users`, `roles`, `permissions`, the trait dictionary
@@ -16,6 +17,7 @@ export const RESET_TABLES = [
   'record_annotations',
   'reference_traits',
   'species_proposals',
+  'record_references',
   'trait_records',
   'species_trait_coverage',
   'import_rejects',

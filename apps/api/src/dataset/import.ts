@@ -29,8 +29,14 @@ import {
 } from '../http/cursor.ts';
 import { isReplaceAllowed, resetDataset } from './reset.ts';
 
-/** The 15 columns of the compiled dataset, in file order. @rfc RFC-64 R2 */
+/**
+ * The header of the compiled dataset, in file order: an unnamed first column
+ * (R's row number, read and ignored, never kept in `raw_row`), the 15 known
+ * columns, and `ID`, the record code (spec R-2).
+ * @rfc RFC-64 R2
+ */
 export const IMPORT_COLUMNS = [
+  '',
   'primary_reference',
   'secondary_reference',
   'wcvp_species',
@@ -46,6 +52,7 @@ export const IMPORT_COLUMNS = [
   'original_value_clean',
   'trait_value_type',
   'harmonised_value',
+  'ID',
 ] as const;
 
 /** A number as the importer accepts it: at most three exponent digits (RFC-64 R6); the SQL below uses the same expression. @rfc RFC-64 R6 */
@@ -133,15 +140,26 @@ export function parseCsvLine(line: string): string[] {
   return fields;
 }
 
+/** The first line parsed as a CSV record, BOM and CR dropped, each name trimmed. */
+function headerColumns(line: string): string[] {
+  return parseCsvLine(line.replace(/^\uFEFF/, '').replace(/\r$/, '')).map((c) => c.trim());
+}
+
+/** Whether a first line, parsed as a CSV record, is exactly {@link IMPORT_COLUMNS}. @rfc RFC-64 R2 */
+export function headerMatches(line: string): boolean {
+  const columns = headerColumns(line);
+  return (
+    columns.length === IMPORT_COLUMNS.length && columns.every((c, i) => c === IMPORT_COLUMNS[i])
+  );
+}
+
 /** @rfc RFC-64 R2 */
 export function validateHeader(line: string): void {
-  const columns = parseCsvLine(line.replace(/^\uFEFF/, '').replace(/\r$/, '')).map((c) => c.trim());
-  const same =
-    columns.length === IMPORT_COLUMNS.length && columns.every((c, i) => c === IMPORT_COLUMNS[i]);
-  if (!same) {
+  if (!headerMatches(line)) {
+    const show = (columns: readonly string[]) => columns.map((c) => `"${c}"`).join(',');
     throw new ImportRefusedError(
       'header_mismatch',
-      `Unexpected header. Expected: ${IMPORT_COLUMNS.join(',')}. Got: ${columns.join(',')}`,
+      `Unexpected header. Expected: ${show(IMPORT_COLUMNS)}. Got: ${show(headerColumns(line))}`,
     );
   }
 }
@@ -197,6 +215,7 @@ export function toImportBatch(row: ImportBatchRow, runBy: UserRef | null): Impor
     rowsDuplicate: row.rowsDuplicate,
     rowsRejected: row.rowsRejected,
     rowsPending: row.rowsPending,
+    rowsAlreadyImported: row.rowsAlreadyImported,
     unknownLevels: row.unknownLevels,
     error: row.error,
   };
@@ -347,6 +366,7 @@ const IMPORT_LOCK_KEY = 4664;
  * @rfc RFC-64 R2-R9
  * @rfc RFC-64 R12
  * @rfc RFC-64 R13
+ * @rfc RFC-64 R14
  */
 export async function importRecords(db: Db, input: ImportInput): Promise<ImportBatch> {
   const [dictionary] = await db.select({ n: count() }).from(traits);
@@ -420,19 +440,21 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
       await tx`
         create temporary table import_staging (
           row_no bigserial primary key,
+          row_label text,
           primary_reference text, secondary_reference text,
           wcvp_species text, wcvp_genus text, wcvp_family text,
           gbif_species text, gbif_usage_key text,
           original_species_name text, secondary_source_species_name text,
           original_trait_name text, final_standard_trait text, broad_category text,
-          original_value_clean text, trait_value_type text, harmonised_value text
+          original_value_clean text, trait_value_type text, harmonised_value text,
+          source_id text
         ) on commit drop`;
       const writable = await tx`
         copy import_staging (
-          primary_reference, secondary_reference, wcvp_species, wcvp_genus, wcvp_family,
+          row_label, primary_reference, secondary_reference, wcvp_species, wcvp_genus, wcvp_family,
           gbif_species, gbif_usage_key, original_species_name, secondary_source_species_name,
           original_trait_name, final_standard_trait, broad_category, original_value_clean,
-          trait_value_type, harmonised_value
+          trait_value_type, harmonised_value, source_id
         ) from stdin with (format csv, header true, encoding 'UTF8')`.writable();
       await pipelineWithIdleGuard(
         createReadStream(input.filePath),
@@ -446,12 +468,15 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
       // R5 normalised lookup columns (COPY turns unquoted empty fields into NULL; nullif covers '')
       await tx`
         alter table import_staging
+          add column record_code text, add column id_problem text,
+          add column already_imported boolean not null default false,
           add column species_name text, add column name_source text,
           add column genus_name text, add column family_name text, add column gbif_name text,
           add column trait_key text, add column primary_key text, add column secondary_key text,
           add column value text`;
       await tx`
         update import_staging set
+          record_code = nullif(trim(source_id), ''),
           species_name = coalesce(
             nullif(trim(regexp_replace(wcvp_species, '\\s+', ' ', 'g')), ''),
             nullif(trim(regexp_replace(gbif_species, '\\s+', ' ', 'g')), ''),
@@ -470,6 +495,29 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           primary_key = nullif(trim(primary_reference), ''),
           secondary_key = nullif(trim(secondary_reference), ''),
           value = regexp_replace(trim(coalesce(harmonised_value, '')), '\\s+', ' ', 'g')`;
+      // R7 (spec R-2): an ID that is missing or malformed, or already given by
+      // an earlier row of the file. The reason ranks after the older ones (the
+      // reject insert below).
+      await tx`
+        update import_staging set id_problem = 'invalid_record_id'
+        where record_code is null or record_code !~ '^EB_[0-9]+$'`;
+      await tx`
+        update import_staging s set id_problem = 'duplicate_record_id'
+        from (select record_code, min(row_no) as first_row from import_staging
+              where id_problem is null group by record_code having count(*) > 1) d
+        where s.record_code = d.record_code and s.row_no > d.first_row`;
+      // R14: an ID that passed those checks and is already stored — bare, or as
+      // the base of a split row's codes, whose first part is always `<ID>a`
+      // (RFC-63 R12) — is skipped before every other reason: no record, no
+      // reject, only a count.
+      await tx`
+        update import_staging s set already_imported = true
+        where s.id_problem is null and exists (
+          select 1 from trait_records r where r.record_code in (s.record_code, s.record_code || 'a'))`;
+      const [{ alreadyImported }] = (await tx`
+        select count(*)::int as "alreadyImported" from import_staging where already_imported`) as [
+        { alreadyImported: number },
+      ];
       await tx`create index on import_staging (species_name)`;
       await tx`create index on import_staging (trait_key)`;
       // autovacuum ignores temp tables, so the planner never sees updated
@@ -517,8 +565,10 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         select ${batch.id}, s.row_no,
           case when s.species_name is null then 'no_species_name'
                when t.id is null then 'unknown_trait'
-               else 'no_reference' end,
+               when s.primary_key is null and s.secondary_key is null then 'no_reference'
+               else s.id_problem end,
           jsonb_build_object(
+            'ID', coalesce(s.source_id, ''),
             'primary_reference', coalesce(s.primary_reference, ''),
             'secondary_reference', coalesce(s.secondary_reference, ''),
             'wcvp_species', coalesce(s.wcvp_species, ''),
@@ -535,8 +585,10 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             'trait_value_type', coalesce(s.trait_value_type, ''),
             'harmonised_value', coalesce(s.harmonised_value, ''))
         from import_staging s left join traits t on t.key = s.trait_key
-        where s.species_name is null or t.id is null
-           or (s.primary_key is null and s.secondary_key is null)`;
+        where not s.already_imported
+          and (s.species_name is null or t.id is null
+               or (s.primary_key is null and s.secondary_key is null)
+               or s.id_problem is not null)`;
 
       // R6, R8 records
       const inserted = await tx`
@@ -545,11 +597,15 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           -- into one row per part here, before the level match below, so each part is
           -- harmonised on its own. Parts are trimmed and empty ones dropped; a value
           -- whose parts are all empty falls back to a single '' (an empty record).
-          -- Quantitative values are never split.
-          select s.row_no, s.species_name, s.primary_key, s.secondary_key,
+          -- Quantitative values are never split. Each part's record_code is <ID>
+          -- plus the letter of its position (EB_1a, EB_1b, …, record_code_suffix of
+          -- migration 0035) when the row splits, <ID> otherwise (RFC-63 R12,
+          -- RFC-64 R6).
+          select s.row_no, s.record_code, s.species_name, s.primary_key, s.secondary_key,
             s.original_value_clean, s.original_trait_name, s.original_species_name,
             s.secondary_source_species_name, s.broad_category,
-            t.id as trait_id, t.value_type, pv.value_text
+            t.id as trait_id, t.value_type, pv.value_text,
+            cardinality(split.vals) as part_count, pv.part_no
           from import_staging s
           join traits t on t.key = s.trait_key
           cross join lateral (
@@ -566,11 +622,15 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
               else array[s.value]
             end as vals
           ) split
-          cross join lateral unnest(split.vals) as pv(value_text)
-          where s.primary_key is not null or s.secondary_key is not null
+          cross join lateral unnest(split.vals) with ordinality as pv(value_text, part_no)
+          where s.id_problem is null and not s.already_imported
+            and (s.primary_key is not null or s.secondary_key is not null)
         ),
         resolved as (
-          select p.row_no, sp.id as species_id, p.trait_id, p.value_type, p.value_text,
+          select p.row_no,
+            case when p.part_count > 1 then p.record_code || record_code_suffix(p.part_no)
+                 else p.record_code end as record_code,
+            sp.id as species_id, p.trait_id, p.value_type, p.value_text,
             nullif(trim(p.original_value_clean), '') as raw_value,
             nullif(trim(p.original_trait_name), '') as original_trait_name,
             nullif(trim(p.original_species_name), '') as original_species_name,
@@ -590,7 +650,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         insert into trait_records (
           species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
           raw_value, original_trait_name, original_species_name, secondary_source_species_name, raw_category,
-          primary_reference_id, secondary_reference_id, origin, import_batch_id, import_row_no)
+          primary_reference_id, secondary_reference_id, origin, import_batch_id, import_row_no,
+          record_code)
         select species_id, trait_id, level_id, numeric_value, value_text,
           case when value_text = '' then 'empty'
                when value_type = 'categorical' and level_id is not null then 'harmonised'
@@ -598,13 +659,15 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
                when numeric_value is not null then 'harmonised'
                else 'not_numeric' end,
           raw_value, original_trait_name, original_species_name, secondary_source_species_name, raw_category,
-          primary_reference_id, secondary_reference_id, 'import', ${batch.id}, row_no
+          primary_reference_id, secondary_reference_id, 'import', ${batch.id}, row_no,
+          record_code
         from resolved
         order by row_no
         on conflict on constraint trait_records_claim_key do nothing`;
 
       // R8: `inserted` counts records, which R6 may multiply. A duplicate is a
-      // staged row that produced no record at all, so count distinct staged rows.
+      // staged row that produced no record at all and was neither rejected nor
+      // skipped as already imported (R14), so count distinct staged rows.
       const [{ insertedRows }] = (await tx`
         select count(distinct import_row_no)::int as "insertedRows" from trait_records
         where import_batch_id = ${batch.id}`) as [{ insertedRows: number }];
@@ -630,8 +693,9 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             finished_at = clock_timestamp(),
             rows_total = ${total},
             rows_inserted = ${inserted.count},
-            rows_duplicate = ${total - rejected.count - insertedRows},
+            rows_duplicate = ${total - rejected.count - alreadyImported - insertedRows},
             rows_rejected = ${rejected.count},
+            rows_already_imported = ${alreadyImported},
             rows_pending = ${pending},
             unknown_levels = ${JSON.stringify(
               unknownLevels.map((u) => ({ trait: u.trait, value: u.value, count: u.count })),
