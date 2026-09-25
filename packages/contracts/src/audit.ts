@@ -48,6 +48,9 @@ export const AUDIT_ACTIONS = [
   'proposals.created',
   'proposals.decided',
   'roles.delegation_refused',
+  'help.created',
+  'help.updated',
+  'help.deleted',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

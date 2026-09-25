@@ -78,6 +78,10 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `PROPOSAL_NOT_FOUND` | 404 | Proposal id does not exist (RFC-75 R3). |
 | `PROPOSAL_DECIDED` | 409 | The proposal already has a decision (RFC-75 R4). |
 | `TAXONOMY_LOOKUP_FAILED` | 502 | The taxonomy lookup could not be reached (RFC-81 R4). |
+| `HELP_TOPIC_NOT_FOUND` | 404 | Help topic id or slug does not exist (RFC-73 R6). |
+| `HELP_SECTION_NOT_FOUND` | 404 | Help section id does not exist (RFC-73 R6). |
+| `HELP_SLUG_TAKEN` | 409 | Another help topic has the slug generated from this title (RFC-73 R6). |
+| `HELP_ANCHOR_TAKEN` | 409 | The topic already has a section with the anchor generated from this title (RFC-73 R6). |
 
 ## Open questions
 
@@ -101,3 +105,4 @@ None.
 - 2026-09-25 — RECORD_IS_ACCEPTED and RECORD_NOT_HARMONISED retired with the accepted value (spec R-1, plan 13e).
 - 2026-09-25 — REFERENCE_ISBN_TAKEN, named by RFC-61 R6 as amended for book references (spec R-16, plan 13d).
 - 2026-09-25 — RECORD_DUPLICATE, RECORD_WITHDRAWN and RECORD_NOT_WITHDRAWABLE retired: a claim-key collision is reported in `duplicates` (RFC-70 R3), a withdrawn record answers 404 `RECORD_NOT_FOUND` (RFC-65 R3), and the withdrawal permission split answers 403 `PERMISSION_DENIED` (RFC-65 R4) (plan 13g).
+- 2026-09-26 — HELP_TOPIC_NOT_FOUND, HELP_SECTION_NOT_FOUND, HELP_SLUG_TAKEN, HELP_ANCHOR_TAKEN (RFC-73 R6, issue #172).

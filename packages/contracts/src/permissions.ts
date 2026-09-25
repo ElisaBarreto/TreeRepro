@@ -33,6 +33,7 @@ export const PERMISSIONS = {
   'contributions.read': "View any user's contributions",
   'coverage.read': 'View coverage metrics',
   'health.read': 'View platform health',
+  'help.edit': 'Create, edit and delete help pages',
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
