@@ -38,6 +38,23 @@ export function percentHalfUp(part: number, whole: number): number {
   return Math.floor((part * 200 + whole) / (whole * 2));
 }
 
+/**
+ * The species × trait pairs that hold a validated record: one carrying a
+ * `confirm` annotation and no `withdraw` (spec R-1). It starts from
+ * `record_annotations`, which is human-scale, and never scans
+ * `trait_records`; callers join or filter the pairs by their own selection.
+ * @rfc RFC-69 R5
+ * @rfc RFC-63 R11
+ */
+export function validatedPairsSql(): SQL {
+  return sql`select distinct r.species_id, r.trait_id
+    from record_annotations a
+    join trait_records r on r.id = a.record_id
+    where a.kind = 'confirm'
+      and not exists (select 1 from record_annotations w
+                      where w.record_id = r.id and w.kind = 'withdraw')`;
+}
+
 interface TotalsRow {
   species_count: number;
   trait_count: number;

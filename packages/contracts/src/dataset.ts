@@ -468,9 +468,8 @@ export const traitSummarySchema = z.strictObject({
       count: z.number().int().nonnegative(),
     })
     .nullable(),
-  accepted: z
-    .strictObject({ recordId: z.uuid(), valueText: z.string(), decidedAt: z.iso.datetime() })
-    .nullable(),
+  /** At least one of the species' records on the trait is validated (spec R-1). */
+  validated: z.boolean(),
 });
 
 /** @rfc RFC-70 R7 */

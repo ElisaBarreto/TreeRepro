@@ -156,19 +156,6 @@ describe('RFC-63 R8 RecordTable', () => {
     expect(headers.slice(0, 2)).toEqual(['Trait', 'Value']);
     expect(screen.queryByRole('link', { name: 'Adenanthera pavonina' })).not.toBeInTheDocument();
   });
-
-  it('marks the accepted record row', async () => {
-    renderInRouter(
-      <RecordTable
-        records={[RECORD, PENDING_RECORD]}
-        onSelect={() => undefined}
-        acceptedRecordId={RECORD.id}
-      />,
-    );
-    const rows = (await screen.findAllByRole('row')).slice(1);
-    expect(within(rows[0] as HTMLElement).getByText('accepted')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).queryByText('accepted')).not.toBeInTheDocument();
-  });
 });
 
 describe('RFC-71 R2 RecordTable extra column', () => {

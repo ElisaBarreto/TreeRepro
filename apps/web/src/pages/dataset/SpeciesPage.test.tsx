@@ -387,22 +387,12 @@ describe('RFC-74 R5 ?record= opens the drawer on mount', () => {
   });
 });
 
-describe('RFC-65 R6 SpeciesPage trait panel follows the live summary', () => {
-  // The summary as the page first loads it, with RECORD as the accepted
-  // value, and the same summary once the accepted value is cleared.
-  const withAccepted: SpeciesTraits = [
-    {
-      category: { key: 'sexual_system', label: 'Sexual system' },
-      traits: [
-        {
-          ...SEXUAL_SYSTEM_SUMMARY,
-          accepted: { recordId: RECORD.id, valueText: 'dioecious', decidedAt: RECORD.createdAt },
-        },
-      ],
-    },
+describe('RFC-63 R10 SpeciesPage trait panel follows the live summary', () => {
+  const summary: SpeciesTraits = [
+    { category: { key: 'sexual_system', label: 'Sexual system' }, traits: [SEXUAL_SYSTEM_SUMMARY] },
   ];
   it('closes the panel when its trait leaves the summary', async () => {
-    dataset.fetchSpeciesTraits.mockResolvedValueOnce(withAccepted).mockResolvedValue([]);
+    dataset.fetchSpeciesTraits.mockResolvedValueOnce(summary).mockResolvedValue([]);
     const { queryClient } = await openPage();
     await openTraitPanel();
     await act(() =>

@@ -3,7 +3,7 @@ import type { RecordItem, ReferenceRef } from '@treerepro/contracts';
 import type { ReactNode } from 'react';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
 import { referenceLabel } from '../../lib/references.ts';
-import { Badge, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 import { ReviewBadge } from './ReviewBadge.tsx';
 
@@ -49,13 +49,11 @@ function ArticleCell({ reference }: { reference: ReferenceRef | null }) {
  * the row, so every record is reachable by keyboard. Outside a species page
  * (`showSpecies`) a first column names each row's species and links to it;
  * outside a trait panel (`showTrait`) a column names the trait, so a row
- * reads on its own. `acceptedRecordId` marks the species × trait's current
- * accepted value with a badge next to it (RFC-65 R6).
+ * reads on its own.
  * `extra` appends one trailing column of the caller's own: the Status
  * column of the contributions page, where every row carries its own
- * standing rather than the one accepted id a species page has.
+ * standing.
  * @rfc RFC-63 R8
- * @rfc RFC-65 R6
  * @rfc RFC-71 R2
  */
 export function RecordTable<T extends RecordItem>({
@@ -63,14 +61,12 @@ export function RecordTable<T extends RecordItem>({
   onSelect,
   showSpecies = false,
   showTrait = false,
-  acceptedRecordId,
   extra,
 }: {
   records: T[];
   onSelect: (record: T) => void;
   showSpecies?: boolean;
   showTrait?: boolean;
-  acceptedRecordId?: string;
   extra?: { header: string; cell: (record: T) => ReactNode };
 }) {
   return (
@@ -115,7 +111,6 @@ export function RecordTable<T extends RecordItem>({
                   >
                     {value}
                   </button>
-                  {record.id === acceptedRecordId ? <Badge tone="green">accepted</Badge> : null}
                 </span>
               </Td>
               <ArticleCell reference={record.primaryReference} />

@@ -78,7 +78,7 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
     expect(body.data[0].traits[0]).toMatchObject({
       trait: { key: 'flower_color' },
       recordCount: 1,
-      accepted: null,
+      validated: false,
     });
     const noSpecies = await call(
       t.app,

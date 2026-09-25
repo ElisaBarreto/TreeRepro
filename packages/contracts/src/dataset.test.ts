@@ -127,7 +127,7 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
             },
             levels: [{ levelId: uuid, key: 'blue', count: 2 }],
             numeric: null,
-            accepted: null,
+            validated: false,
           },
           {
             trait: { id: uuid, key: 'petal_length', valueType: 'quantitative', unit: 'mm' },
@@ -141,7 +141,7 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
             },
             levels: null,
             numeric: { min: 1.5, median: 2, max: 2.5, count: 2 },
-            accepted: { recordId: uuid, valueText: '2', decidedAt: '2026-09-13T00:00:00.000Z' },
+            validated: true,
           },
         ],
       },

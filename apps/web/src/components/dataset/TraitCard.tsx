@@ -39,8 +39,8 @@ function pendingCount(summary: TraitSummary): number {
  * siblings, never nested inside the main button, so a click on either never
  * also opens the panel. Shows the summary the API computed (RFC-63 R10): the
  * top levels as bars scaled against the most frequent one, or
- * min · median · max for a measurement, how many records still wait for
- * harmonisation, and the accepted value. Only spans inside the main button,
+ * min · median · max for a measurement, and how many records still wait for
+ * harmonisation. Only spans inside the main button,
  * so its content stays phrasing content.
  * @rfc RFC-13 R11
  * @rfc RFC-63 R10
@@ -57,7 +57,7 @@ export function TraitCard({
   onOpen: () => void;
   onAdd?: () => void;
 }) {
-  const { trait, recordCount, levels, numeric, accepted } = summary;
+  const { trait, recordCount, levels, numeric } = summary;
   const pending = pendingCount(summary);
   const bars = levels?.slice(0, MAX_BARS) ?? [];
   const maxCount = Math.max(0, ...bars.map((level) => level.count));
@@ -108,13 +108,6 @@ export function TraitCard({
             <span className="text-body tabular-nums text-canopy-900">
               {`${formatNumber(numeric.min)} · ${formatNumber(numeric.median)} · ${formatNumber(numeric.max)}${trait.unit ? ` ${trait.unit}` : ''}`}
             </span>
-          </span>
-        ) : null}
-
-        {accepted ? (
-          <span className="text-body text-canopy-800">
-            <span className="text-mist-500">accepted: </span>
-            {accepted.valueText}
           </span>
         ) : null}
       </button>

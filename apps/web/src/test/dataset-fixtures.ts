@@ -112,11 +112,7 @@ export const SEXUAL_SYSTEM_SUMMARY: TraitSummary = {
     { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22', key: 'hermaphrodite', count: 1 },
   ],
   numeric: null,
-  accepted: {
-    recordId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d30',
-    valueText: 'dioecious',
-    decidedAt: '2026-09-10T09:00:00.000Z',
-  },
+  validated: true,
 };
 
 /** Quantitative summary, every record harmonised. @rfc RFC-63 R10 */
@@ -126,7 +122,7 @@ export const SEED_MASS_SUMMARY: TraitSummary = {
   harmonisationCounts: { ...NO_PENDING, harmonised: 3 },
   levels: null,
   numeric: { min: 0.5, median: 1.25, max: 3, count: 3 },
-  accepted: null,
+  validated: false,
 };
 
 /** Categorical summary with a single level and nothing pending. @rfc RFC-63 R10 */
@@ -136,7 +132,7 @@ export const POLLINATION_MODE_SUMMARY: TraitSummary = {
   harmonisationCounts: { ...NO_PENDING, harmonised: 1 },
   levels: [{ levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d23', key: 'insects', count: 1 }],
   numeric: null,
-  accepted: null,
+  validated: false,
 };
 
 /** Two categories in dictionary order. @rfc RFC-63 R10 */
@@ -749,7 +745,7 @@ export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
   harmonisationCounts: NO_PENDING,
   levels: [],
   numeric: null,
-  accepted: null,
+  validated: false,
 };
 
 /** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
@@ -759,7 +755,7 @@ export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
   harmonisationCounts: NO_PENDING,
   levels: null,
   numeric: null,
-  accepted: null,
+  validated: false,
 };
 
 /**
