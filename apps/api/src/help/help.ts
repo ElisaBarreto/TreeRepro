@@ -31,7 +31,9 @@ export function helpSlug(title: string): string {
 
 /**
  * The HTML a section may store: formatting, links, images and tables; no
- * script, style, frame, event handler or `javascript:` URL (RFC-73 R8).
+ * script, style, frame, event handler, `id` (the section's own `h2` carries
+ * its anchor) or `javascript:` URL (RFC-73 R8). Production's CSP
+ * (`img-src 'self' data:`) renders same-origin images only.
  * @rfc RFC-73 R8
  */
 export function sanitizeHelpHtml(html: string): string {
@@ -40,7 +42,6 @@ export function sanitizeHelpHtml(html: string): string {
     allowedAttributes: {
       a: ['href', 'title', 'target', 'rel'],
       img: ['src', 'alt', 'title', 'width', 'height'],
-      '*': ['id'],
     },
     allowedSchemes: ['http', 'https', 'mailto'],
   });
@@ -110,16 +111,19 @@ async function move(
   scope: ReturnType<typeof eq> | undefined,
   id: string,
   position: number,
-): Promise<void> {
+): Promise<boolean> {
   const rows = await tx
     .select({ id: table.id })
     .from(table)
     .where(scope)
     .orderBy(asc(table.position), asc(table.createdAt));
-  const ids = rows.map((r) => r.id).filter((x) => x !== id);
+  const before = rows.map((r) => r.id);
+  const ids = before.filter((x) => x !== id);
   ids.splice(Math.min(position, ids.length), 0, id);
+  if (ids.indexOf(id) === before.indexOf(id)) return false;
   for (const [i, rowId] of ids.entries())
     await tx.update(table).set({ position: i }).where(eq(table.id, rowId));
+  return true;
 }
 
 /** @rfc RFC-73 R6 */
@@ -174,10 +178,11 @@ export async function updateHelpTopic(
       set.summary = input.summary;
       fields.push('summary');
     }
-    if (input.position !== undefined) {
-      await move(tx, helpTopics, undefined, row.id, input.position);
+    if (
+      input.position !== undefined &&
+      (await move(tx, helpTopics, undefined, row.id, input.position))
+    )
       fields.push('position');
-    }
     if (fields.length > 0) {
       await tx
         .update(helpTopics)
@@ -253,10 +258,11 @@ export async function updateHelpSection(
         fields.push('bodyHtml');
       }
     }
-    if (input.position !== undefined) {
-      await move(tx, helpSections, eq(helpSections.topicId, row.topicId), row.id, input.position);
+    if (
+      input.position !== undefined &&
+      (await move(tx, helpSections, eq(helpSections.topicId, row.topicId), row.id, input.position))
+    )
       fields.push('position');
-    }
     if (fields.length > 0) {
       await tx
         .update(helpSections)

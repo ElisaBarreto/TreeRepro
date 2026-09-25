@@ -94,6 +94,7 @@ function TopicView({ topic, canEdit }: { topic: HelpTopic; canEdit: boolean }) {
           ) : undefined
         }
       />
+      {move.error ? <Alert tone="error">{pageErrorMessage(move.error)}</Alert> : null}
       <Prose>
         {topic.sections.map((section, index) =>
           editing === section.id ? (
@@ -107,7 +108,10 @@ function TopicView({ topic, canEdit }: { topic: HelpTopic; canEdit: boolean }) {
             <section key={section.id}>
               {section.title ? <h2 id={section.anchor ?? undefined}>{section.title}</h2> : null}
               {canEdit ? (
-                <div className="mb-2 flex flex-wrap gap-1.5">
+                <fieldset
+                  aria-label={`Section: ${section.title || 'untitled'}`}
+                  className="m-0 mb-2 flex flex-wrap gap-1.5 border-0 p-0"
+                >
                   <Button size="sm" variant="secondary" onClick={() => setEditing(section.id)}>
                     Edit
                   </Button>
@@ -134,7 +138,7 @@ function TopicView({ topic, canEdit }: { topic: HelpTopic; canEdit: boolean }) {
                   >
                     Delete
                   </Button>
-                </div>
+                </fieldset>
               ) : null}
               <HtmlBody html={section.bodyHtml} />
             </section>

@@ -12,7 +12,7 @@ test.describe('RFC-73 R1, R2 help topic anchors (plan 12a)', () => {
       // By id, not by the visible "Contest" text: the scroll mechanism
       // (`@tanstack/router-core`'s `setupScrollRestoration`) resolves the
       // hash with `document.getElementById(hash)`, and the id is the seeded
-      // section's anchor (migration `help_content`, RFC-73 R2) that every
+      // section's anchor (migration `help_seed`, RFC-73 R2) that every
       // `helpHref('workflow', 'contest')` call site keys on. The heading's
       // text can be edited on the site; the anchor never changes (RFC-73 R6).
       const heading = page.locator('#contest');
