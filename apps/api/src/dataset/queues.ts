@@ -197,8 +197,8 @@ export async function mapPending(
       if (resolved.levelId !== null) levels.push({ id: resolved.levelId, key: resolved.levelKey });
     }
   } else {
-    const resolved = await resolveValue(db, visibility, trait, { numeric: input.value.numeric });
-    numeric = String(resolved.numericValue);
+    await resolveValue(db, visibility, trait, { quantitative: { single: input.value.numeric } });
+    numeric = String(input.value.numeric);
   }
   const chosenCount = levels.length === 0 ? 1 : levels.length;
   const chosen =
