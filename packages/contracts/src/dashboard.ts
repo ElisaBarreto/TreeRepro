@@ -8,6 +8,8 @@ export const dashboardSchema = z.strictObject({
   dataset: z.strictObject({
     speciesCount: z.number().int().nonnegative(),
     referenceCount: z.number().int().nonnegative(),
+    primaryReferenceCount: z.number().int().nonnegative(),
+    secondaryReferenceCount: z.number().int().nonnegative(),
     recordCount: z.number().int().nonnegative(),
     computedAt: z.iso.datetime(),
   }),
@@ -26,11 +28,11 @@ export const dashboardSchema = z.strictObject({
         records: z.array(recordSchema),
       })
       .nullable(),
-    topMissingTraits: z.array(
+    topTraitsWithData: z.array(
       z.strictObject({
         trait: traitRefSchema,
         category: z.strictObject({ key: z.string(), label: z.string() }),
-        missingSpeciesCount: z.number().int().nonnegative(),
+        speciesCount: z.number().int().nonnegative(),
       }),
     ),
     summary: contributionSummarySchema,

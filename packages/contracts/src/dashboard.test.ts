@@ -36,16 +36,18 @@ const summary = {
 // cases can reference them directly: noUncheckedIndexedAccess makes
 // `array[0]` possibly undefined even when the array literal is right there.
 const scopePlot = { id: uuid, code: 'P1', name: 'Plot One', speciesCount: 12 };
-const topMissingTrait = {
+const topTraitWithData = {
   trait: { id: uuid, key: 'flower_color', valueType: 'categorical', unit: null },
   category: { key: 'flower', label: 'Flower' },
-  missingSpeciesCount: 3,
+  speciesCount: 7,
 };
 
 const dashboard = {
   dataset: {
     speciesCount: 120,
     referenceCount: 40,
+    primaryReferenceCount: 35,
+    secondaryReferenceCount: 9,
     recordCount: 900,
     computedAt: '2026-09-18T00:00:00.000Z',
   },
@@ -57,7 +59,7 @@ const dashboard = {
   contributor: {
     missingCells: 5,
     awaitingValidation: { count: 1, records: [record] },
-    topMissingTraits: [topMissingTrait],
+    topTraitsWithData: [topTraitWithData],
     summary,
   },
   curation: {
@@ -106,6 +108,26 @@ describe('RFC-72 R1 dashboardSchema', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('requires the primary and the secondary reference counts', () => {
+    for (const field of ['primaryReferenceCount', 'secondaryReferenceCount']) {
+      expect(
+        dashboardSchema.safeParse({
+          ...dashboard,
+          dataset: { ...dashboard.dataset, [field]: undefined },
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('rejects the retired topMissingTraits key', () => {
+    expect(
+      dashboardSchema.safeParse({
+        ...dashboard,
+        contributor: { ...dashboard.contributor, topMissingTraits: [] },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 // [path, mutate]: each `mutate` returns `dashboard` with an unrecognised
@@ -133,23 +155,23 @@ const NESTED_STRICT_OBJECT_CASES: [path: string, mutate: () => unknown][] = [
     }),
   ],
   [
-    'contributor.topMissingTraits.0',
+    'contributor.topTraitsWithData.0',
     () => ({
       ...dashboard,
       contributor: {
         ...dashboard.contributor,
-        topMissingTraits: [{ ...topMissingTrait, extra: 1 }],
+        topTraitsWithData: [{ ...topTraitWithData, extra: 1 }],
       },
     }),
   ],
   [
-    'contributor.topMissingTraits.0.category',
+    'contributor.topTraitsWithData.0.category',
     () => ({
       ...dashboard,
       contributor: {
         ...dashboard.contributor,
-        topMissingTraits: [
-          { ...topMissingTrait, category: { ...topMissingTrait.category, extra: 1 } },
+        topTraitsWithData: [
+          { ...topTraitWithData, category: { ...topTraitWithData.category, extra: 1 } },
         ],
       },
     }),
