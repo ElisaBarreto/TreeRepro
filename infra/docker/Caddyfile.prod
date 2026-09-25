@@ -13,7 +13,8 @@
 	encode zstd gzip
 
 	# Access log for incident investigation (RFC-02 R7): JSON with the resolved
-	# client IP, rolled daily and kept 30 days on the caddy-logs volume. Caddy already redacts
+	# client IP, rolled daily; rolled files over 30 days old go at the next roll
+	# (Caddy prunes only when it writes). On the caddy-logs volume. Caddy already redacts
 	# Cookie, Set-Cookie and Authorization; the tokens in the SPA's invitation
 	# and password-reset URLs (and Referers) are masked here.
 	log {
