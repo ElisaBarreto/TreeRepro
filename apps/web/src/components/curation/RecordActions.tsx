@@ -95,9 +95,15 @@ export function RecordActions({
     speciesId: record.speciesId,
     onWritten: (detail, queryClient) => {
       // `null` means the annotation withdrew the record (RFC-33 R2): there is
-      // no detail to seed the cache with; `onInvalidated` below closes the
-      // drawer instead.
-      if (detail) queryClient.setQueryData(datasetKeys.record(record.id), detail);
+      // no detail to seed the cache with. Dropped from the cache here, before
+      // the invalidation below can refetch it into a 404 the drawer would
+      // flash as an error Alert for the instant before `onInvalidated`
+      // closes it: removed, the query reads as still loading instead.
+      if (detail) {
+        queryClient.setQueryData(datasetKeys.record(record.id), detail);
+      } else {
+        queryClient.removeQueries({ queryKey: datasetKeys.record(record.id) });
+      }
     },
     onInvalidated: (detail) => {
       if (detail === null) {

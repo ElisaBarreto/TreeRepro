@@ -386,17 +386,21 @@ export async function lockSpeciesTrait(
 }
 
 /**
- * One annotation. `confirm` is a validation, refused on the actor's own
- * record (R-6); a confirm the actor already gave with the same reference, or
- * a reference-less confirm when they already confirmed the record, inserts
- * nothing and answers the same detail as the first — a confirm with a new
- * reference is inserted (RFC-65 R3). `withdraw` takes the species × trait
- * lock (E3) before the write, so it serialises against every other write
- * that decides on contested state for the same pair, and answers `null`: a
- * withdrawn record is visible to no viewer (RFC-33 R2), so there is no
- * detail left to answer with. `neutral`, `dispute` and `resolve` never reach
- * here — the route refuses them before this is called (RFC-65 R3; Keep both
- * moves to the contest routes, Task 7).
+ * One annotation. The species × trait lock (E3) is taken first, from a bare
+ * by-id lookup, before the visibility/liveness read that decides 404 and
+ * before either kind's check-then-insert — so two concurrent calls on the
+ * same record serialise rather than race: the second sees the first's write
+ * (a `withdraw` makes the record invisible, `recordVisible`) instead of both
+ * reading a live record and one of them hitting
+ * `record_annotations_withdraw_idx` as a raw unique-violation. `confirm` is a
+ * validation, refused on the actor's own record (R-6); a confirm the actor
+ * already gave with the same reference, or a reference-less confirm when
+ * they already confirmed the record, inserts nothing and answers the same
+ * detail as the first — a confirm with a new reference is inserted (RFC-65
+ * R3). `withdraw` answers `null`: a withdrawn record is visible to no viewer
+ * (RFC-33 R2), so there is no detail left to answer with. `neutral`,
+ * `dispute` and `resolve` never reach here — the route refuses them before
+ * this is called (RFC-65 R3; Keep both moves to the contest routes, Task 7).
  * @rfc RFC-70 R3, R4
  * @rfc RFC-65 R3, R4
  * @rfc RFC-33 R2, R5
@@ -407,6 +411,23 @@ export async function annotateRecord(
   input: AnnotateRecordInput,
 ): Promise<RecordDetail | null> {
   return db.transaction(async (tx) => {
+    // The species × trait pair is looked up by id alone, before any
+    // visibility or liveness check, purely to take the lock (E3) — an
+    // unknown id still answers 404 here, the same code and message the
+    // visibility-checked read below would give it. Locking first and only
+    // then reading visibility/liveness means two concurrent annotations of
+    // the same record serialise: the second sees the first's write (a
+    // `withdraw` makes the record invisible, `recordVisible`) instead of
+    // racing it to an insert and hitting `record_annotations_withdraw_idx`
+    // as a raw 23505.
+    const [ids] = await tx
+      .select({ speciesId: traitRecords.speciesId, traitId: traitRecords.traitId })
+      .from(traitRecords)
+      .where(eq(traitRecords.id, input.recordId))
+      .limit(1);
+    if (!ids) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
+    await lockSpeciesTrait(tx, ids.speciesId, ids.traitId);
+
     const [rec] = await tx
       .select({
         id: traitRecords.id,
@@ -431,7 +452,10 @@ export async function annotateRecord(
     // a non-harmonised one for a non-reviewer, and one on an inactive level
     // for a viewer without `dataset.read_inactive` (RFC-33 R2) — so an
     // invisible or withdrawn record answers 404 here, never a stale
-    // `RECORD_WITHDRAWN` (RFC-65 R3, RFC-33 R5, ruling E6, E12).
+    // `RECORD_WITHDRAWN` (RFC-65 R3, RFC-33 R5, ruling E6, E12). Taken under
+    // the lock, this is also the check a concurrent withdrawal cannot slip
+    // past: it either committed before this select (record now invisible,
+    // 404) or blocks on the lock until this transaction ends.
     if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
 
     if (input.kind === 'confirm') {
@@ -463,9 +487,9 @@ export async function annotateRecord(
       return getRecord(tx, visibility, rec.id);
     }
 
-    // `withdraw`: the species × trait lock (E3) is taken before the write,
-    // ahead of the level and contest actions that will share it (Task 7).
-    await lockSpeciesTrait(tx, rec.speciesId, rec.traitId);
+    // `withdraw`: already serialised by the species × trait lock taken
+    // above, ahead of the level and contest actions that will share it
+    // (Task 7).
     if (!mayWithdraw(rec, input)) {
       throw new AppError('PERMISSION_DENIED', 'You may not withdraw this record');
     }

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { Annotation, RecordDetail } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
+import { datasetKeys } from '../../api/dataset.ts';
 import {
   CURATED_RECORD_DETAIL,
   DICTIONARY,
@@ -476,18 +477,25 @@ describe('RFC-70 R4, RFC-65 R4 RecordActions after spec R-11 and R-12', () => {
     expect(screen.queryByRole('button', { name: 'Dispute' })).not.toBeInTheDocument();
   });
 
-  it('Withdraw asks for confirmation only, sends no note, and closes the drawer', async () => {
+  it('Withdraw asks for confirmation only, sends no note, drops the cached record, and closes the drawer', async () => {
     curation.annotateRecord.mockResolvedValue(null);
     const onGone = vi.fn();
-    renderWithProviders(<RecordActions record={MINE} onGone={onGone} />, {
+    const { queryClient } = renderWithProviders(<RecordActions record={MINE} onGone={onGone} />, {
       me: perms('records.annotate'),
     });
+    // Seeded as the drawer's own record query would have it: a withdraw must
+    // drop this, not leave it to be refetched into a 404 the drawer would
+    // flash as an error Alert before onGone closes it.
+    queryClient.setQueryData(datasetKeys.record(MINE.id), MINE);
     await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
     const dialog = await screen.findByRole('dialog', { name: 'Withdraw this record?' });
     expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Withdraw' }));
     await waitFor(() =>
       expect(curation.annotateRecord).toHaveBeenCalledWith(MINE.id, { kind: 'withdraw' }),
+    );
+    await waitFor(() =>
+      expect(queryClient.getQueryData(datasetKeys.record(MINE.id))).toBeUndefined(),
     );
     await waitFor(() => expect(onGone).toHaveBeenCalled());
   });

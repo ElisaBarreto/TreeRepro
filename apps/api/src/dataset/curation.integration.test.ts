@@ -561,4 +561,51 @@ describe('RFC-70 R4, RFC-65 R3 annotateRecord (spec R-6, R-10, R-12)', () => {
       }),
     ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
   });
+
+  it('two concurrent withdraws of the same record: one succeeds with null, the other answers 404, never a raw 500', async () => {
+    const f = await setup();
+    const results = await Promise.allSettled([
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.author.id,
+        kind: 'withdraw',
+      }),
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.author.id,
+        kind: 'withdraw',
+      }),
+    ]);
+    const statuses = results.map((r) => r.status);
+    // The species × trait lock (E3) serialises the two transactions: the
+    // second sees the first's withdrawal (the record is now invisible) and
+    // answers 404, never a raw `record_annotations_withdraw_idx` violation.
+    expect(statuses.sort()).toEqual(['fulfilled', 'rejected']);
+    for (const r of results) {
+      if (r.status === 'fulfilled') expect(r.value).toBeNull();
+      else expect(r.reason).toMatchObject({ code: 'RECORD_NOT_FOUND' });
+    }
+  });
+
+  it('a second, sequential withdraw of the same record answers 404, not a duplicate-key error', async () => {
+    const f = await setup();
+    expect(
+      await annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.author.id,
+        kind: 'withdraw',
+      }),
+    ).toBeNull();
+    await expect(
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.author.id,
+        kind: 'withdraw',
+      }),
+    ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
+  });
 });
