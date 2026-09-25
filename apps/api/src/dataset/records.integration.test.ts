@@ -87,7 +87,13 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
       references: [
-        { id: ref.id, citationKey: ref.citationKey, kind: 'publication', observer: null, shortCitation: null },
+        {
+          id: ref.id,
+          citationKey: ref.citationKey,
+          kind: 'publication',
+          observer: null,
+          shortCitation: null,
+        },
       ],
     });
     expect(byTrait.data[0]?.secondaryReference).toEqual({
@@ -312,8 +318,20 @@ describe('RFC-63 R8, R9 record code, quantitative value and references (spec R-2
     expect(detail?.recordCode).toMatch(/^TR_\d+$/);
     expect(detail?.quantitative).toEqual({ min: 2, max: 8 });
     expect(detail?.references).toEqual([
-      { id: primary.id, citationKey: primary.citationKey, kind: 'publication', observer: null, shortCitation: null },
-      { id: extra.id, citationKey: extra.citationKey, kind: 'publication', observer: null, shortCitation: null },
+      {
+        id: primary.id,
+        citationKey: primary.citationKey,
+        kind: 'publication',
+        observer: null,
+        shortCitation: null,
+      },
+      {
+        id: extra.id,
+        citationKey: extra.citationKey,
+        kind: 'publication',
+        observer: null,
+        shortCitation: null,
+      },
     ]);
 
     const byExtra = await listRecords(t.db, UNRESTRICTED, { referenceId: extra.id, limit: 10 });
@@ -349,9 +367,27 @@ describe('RFC-63 R8, R9 record code, quantitative value and references (spec R-2
 
     const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
     expect(detail?.references).toEqual([
-      { id: primary.id, citationKey: primary.citationKey, kind: 'publication', observer: null, shortCitation: null },
-      { id: secondary.id, citationKey: secondary.citationKey, kind: 'publication', observer: null, shortCitation: null },
-      { id: extra.id, citationKey: extra.citationKey, kind: 'publication', observer: null, shortCitation: null },
+      {
+        id: primary.id,
+        citationKey: primary.citationKey,
+        kind: 'publication',
+        observer: null,
+        shortCitation: null,
+      },
+      {
+        id: secondary.id,
+        citationKey: secondary.citationKey,
+        kind: 'publication',
+        observer: null,
+        shortCitation: null,
+      },
+      {
+        id: extra.id,
+        citationKey: extra.citationKey,
+        kind: 'publication',
+        observer: null,
+        shortCitation: null,
+      },
     ]);
   });
 });

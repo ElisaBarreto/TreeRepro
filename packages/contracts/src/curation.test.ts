@@ -50,20 +50,26 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
       value: { levelId: uuid },
       rawValue: 'Aug',
     });
-    expect(createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 12.5 } } }).success).toBe(
-      true,
-    );
-    expect(createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 1e308 } } }).success).toBe(
-      false,
-    );
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: Number.NaN } } }).success,
+      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 12.5 } } })
+        .success,
+    ).toBe(true);
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 1e308 } } })
+        .success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: Number.NaN } } })
+        .success,
     ).toBe(false);
     expect(createRecordBodySchema.safeParse({ ...base, value: { text: 'red' } }).success).toBe(
       false,
     );
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { levelId: uuid, quantitative: { single: 1 } } }).success,
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { levelId: uuid, quantitative: { single: 1 } },
+      }).success,
     ).toBe(false);
     expect(
       createRecordBodySchema.safeParse({
@@ -79,12 +85,18 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
 
   it('refuses intent without respondsToRecordId', () => {
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 1 } }, intent: 'contest' })
-        .success,
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { quantitative: { single: 1 } },
+        intent: 'contest',
+      }).success,
     ).toBe(false);
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 1 } }, respondsToRecordId: uuid })
-        .success,
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { quantitative: { single: 1 } },
+        respondsToRecordId: uuid,
+      }).success,
     ).toBe(false);
     expect(
       createRecordBodySchema.safeParse({

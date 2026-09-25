@@ -11,8 +11,8 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
-import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { recordReferences } from '../db/schema/records.ts';
+import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { AppError } from '../http/errors.ts';
 import {

@@ -643,9 +643,13 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
 describe('RFC-65 R1 quantitativeValueSchema (spec R-5)', () => {
   it('takes any of the six fields with at least one of single, min, max, mean', () => {
     expect(quantitativeValueSchema.parse({ single: 3 })).toEqual({ single: 3 });
-    expect(
-      quantitativeValueSchema.parse({ min: 1, max: 4, mean: 2.5, sd: 0.4, n: 12 }),
-    ).toEqual({ min: 1, max: 4, mean: 2.5, sd: 0.4, n: 12 });
+    expect(quantitativeValueSchema.parse({ min: 1, max: 4, mean: 2.5, sd: 0.4, n: 12 })).toEqual({
+      min: 1,
+      max: 4,
+      mean: 2.5,
+      sd: 0.4,
+      n: 12,
+    });
     expect(quantitativeValueSchema.safeParse({}).success).toBe(false);
     expect(quantitativeValueSchema.safeParse({ sd: 1, n: 3 }).success).toBe(false);
   });
