@@ -9,6 +9,8 @@ import {
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
   resolveDoiResultSchema,
+  sourceRefSchema,
+  sourcesSchema,
   speciesNameBodySchema,
   updateGenusBodySchema,
   updateReferenceBodySchema,
@@ -381,5 +383,40 @@ describe('RFC-60 R4, R9 speciesNameBodySchema', () => {
     if (!strayKey.success) {
       expect(strayKey.error.issues[0]?.path).toEqual(['gbifUsageKey']);
     }
+  });
+});
+
+describe('RFC-61 R10, RFC-80 R5 a book among the sources', () => {
+  const citation = 'Doe, J. (2001). Seeds of the tropics.';
+
+  it('takes an ISBN-10 or ISBN-13 with its citation, beside a DOI', () => {
+    expect(
+      sourcesSchema.safeParse({
+        references: [{ doi: '10.1111/geb.13000' }, { isbn: '0-306-40615-2', citation }],
+      }).success,
+    ).toBe(true);
+    expect(sourceRefSchema.safeParse({ isbn: '978 0 306 40615 7', citation }).success).toBe(true);
+  });
+
+  it('refuses a bad check digit, a missing, blank or over-long citation, and a citation alone', () => {
+    for (const source of [
+      { isbn: '0-306-40615-3', citation },
+      { isbn: '9780306406157' },
+      { isbn: '9780306406157', citation: '   ' },
+      { isbn: '9780306406157', citation: 'x'.repeat(2001) },
+      { citation },
+      { isbn: '9780306406157', citation, doi: '10.1111/geb.13000' },
+    ]) {
+      expect(sourceRefSchema.safeParse(source).success).toBe(false);
+    }
+  });
+
+  it('a confirmation may name a book as its supporting reference', () => {
+    expect(
+      annotateRecordBodySchema.safeParse({
+        kind: 'confirm',
+        reference: { isbn: '9780306406157', citation },
+      }).success,
+    ).toBe(true);
   });
 });

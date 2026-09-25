@@ -15,6 +15,7 @@ import {
   userRefSchema,
 } from './dataset.ts';
 import { cursorQuerySchema } from './pagination.ts';
+import { isValidIsbn } from './isbn.ts';
 
 /** Free text attached to a write: 1–2,000 characters, trimmed. @rfc RFC-65 R1 */
 export const curationNoteSchema = z.string().trim().min(1).max(2000);
@@ -30,10 +31,25 @@ export const recordValueSchema = z.union([
 
 /** @rfc RFC-80 R1 */
 export const doiSchema = z.string().trim().min(7).max(300);
-/** One source of a claim: a local reference or a DOI to resolve. @rfc RFC-80 R5 */
+/** An ISBN-10 or ISBN-13 as typed, hyphens and spaces allowed, with a valid check digit. @rfc RFC-61 R10 */
+export const isbnSchema = z
+  .string()
+  .trim()
+  .min(10)
+  .max(20)
+  .refine((isbn) => isValidIsbn(isbn) !== null, { message: 'Invalid ISBN' });
+/** The citation a book is recorded under: authors, year, title. @rfc RFC-61 R10 */
+export const bookCitationSchema = z.string().trim().min(1).max(2000);
+/**
+ * One source of a claim: a local reference, a DOI to resolve, or a book by
+ * ISBN with its citation (never looked up).
+ * @rfc RFC-80 R5
+ * @rfc RFC-61 R10
+ */
 export const sourceRefSchema = z.union([
   z.strictObject({ id: z.uuid() }),
   z.strictObject({ doi: doiSchema }),
+  z.strictObject({ isbn: isbnSchema, citation: bookCitationSchema }),
 ]);
 /** @rfc RFC-70 R1 */
 export const sourcesSchema = z.union([

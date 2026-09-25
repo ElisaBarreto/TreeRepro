@@ -328,6 +328,63 @@ export function fullCitationFrom(metadata: DoiMetadata, doi: string): string {
 }
 
 /**
+ * The `book` reference of a normalised ISBN-13, created on first use with
+ * `citation` as its full citation and, cut to 200 characters, as its short
+ * one; the citation key is `isbn:<isbn>`. A later use of the same ISBN
+ * returns the existing reference and leaves its citation as it was. `ON
+ * CONFLICT DO NOTHING` rather than a caught 23505, for the reason
+ * {@link createReferenceFromDoi} gives.
+ * @rfc RFC-61 R10
+ * @rfc RFC-80 R5
+ */
+export async function ensureBookReference(
+  db: DbExecutor,
+  input: { isbn: string; citation: string; actorId: string },
+): Promise<{ id: string }> {
+  const readByIsbn = async (executor: DbExecutor) => {
+    const [row] = await executor
+      .select({ id: bibliographicReferences.id })
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.isbn, input.isbn))
+      .limit(1);
+    return row;
+  };
+
+  const existing = await readByIsbn(db);
+  if (existing) return existing;
+
+  const shortCitation =
+    input.citation.length <= 200 ? input.citation : `${input.citation.slice(0, 199)}…`;
+  return db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(bibliographicReferences)
+      .values({
+        citationKey: `isbn:${input.isbn}`,
+        kind: 'book',
+        isbn: input.isbn,
+        fullCitation: input.citation,
+        shortCitation,
+        createdBy: input.actorId,
+      })
+      .onConflictDoNothing()
+      .returning({ id: bibliographicReferences.id });
+    if (inserted) {
+      await recordAudit(tx, {
+        actorUserId: input.actorId,
+        action: 'references.created',
+        targetType: 'bibliographic_references',
+        targetId: inserted.id,
+        metadata: { source: 'isbn' },
+      });
+      return inserted;
+    }
+    const raced = await readByIsbn(tx);
+    if (!raced) throw new Error('ensureBookReference: reference not found after insert');
+    return raced;
+  });
+}
+
+/**
  * The local reference for a DOI, created from the Crossref metadata on first
  * use. `ON CONFLICT DO NOTHING` rather than a caught 23505: a raised unique
  * violation aborts the surrounding transaction, so the re-read below would

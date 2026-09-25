@@ -1,10 +1,11 @@
-import type { ResolveDoiResult } from '@treerepro/contracts';
+import { isValidIsbn, type ResolveDoiResult } from '@treerepro/contracts';
 import type { DbExecutor } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import type { DoiClient } from '../integrations/doi.ts';
 import { normaliseDoi } from '../integrations/doi.ts';
 import {
   createReferenceFromDoi,
+  ensureBookReference,
   ensurePersonalObservation,
   findReferenceByDoi,
   findReferenceKind,
@@ -13,15 +14,17 @@ import {
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
 
-export type SourceRefInput = { id: string } | { doi: string };
+export type SourceRefInput = { id: string } | { doi: string } | { isbn: string; citation: string };
 
 export type SourceInput = { personalObservation: true } | { references: SourceRefInput[] };
 
 /**
  * One source to a reference id. `path` names the field in the request, so the
  * detail paths a client gets back are the ones it sent (`reference.doi` on an
- * annotation, `sources.references.2.doi` on a record).
+ * annotation, `sources.references.2.doi` on a record). A book resolves
+ * locally, never looked up (RFC-61 R10).
  * @rfc RFC-80 R5
+ * @rfc RFC-61 R10
  */
 export async function resolveSourceRef(
   ctx: { db: DbExecutor; doi: DoiClient },
@@ -49,6 +52,17 @@ export async function resolveSourceRef(
     return source.id;
   }
 
+  if ('isbn' in source) {
+    const isbn = isValidIsbn(source.isbn);
+    if (!isbn) throw validation(`${path}.isbn`, 'Invalid ISBN');
+    const book = await ensureBookReference(ctx.db, {
+      isbn,
+      citation: source.citation.trim(),
+      actorId,
+    });
+    return book.id;
+  }
+
   const doi = normaliseDoi(source.doi);
   if (!doi) throw validation(`${path}.doi`, 'Malformed DOI');
   const known = await findReferenceByDoi(ctx.db, doi);
@@ -67,8 +81,8 @@ export async function resolveSourceRef(
 
 /**
  * The sources of a claim to reference ids, in input order. Distinct after
- * resolution: an id and the DOI of that same reference are one source, and
- * the second occurrence is a validation error naming it.
+ * resolution: an id and the DOI or ISBN of that same reference are one
+ * source, and the second occurrence is a validation error naming it.
  * @rfc RFC-80 R5
  */
 export async function resolveSources(
@@ -86,7 +100,8 @@ export async function resolveSources(
     const p = `${path}.references.${i}`;
     const id = await resolveSourceRef(ctx, actorId, source, p);
     if (seen.has(id)) {
-      throw validation('id' in source ? `${p}.id` : `${p}.doi`, 'Duplicate reference');
+      const field = 'id' in source ? 'id' : 'isbn' in source ? 'isbn' : 'doi';
+      throw validation(`${p}.${field}`, 'Duplicate reference');
     }
     seen.add(id);
     ids.push(id);
