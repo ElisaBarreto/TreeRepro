@@ -46,7 +46,6 @@ describe('RFC-30 R1, R2 groupPermissions', () => {
       'dataset',
       'imports',
       'records',
-      'accepted',
       'taxa',
       'references',
       'traits',
@@ -55,8 +54,16 @@ describe('RFC-30 R1, R2 groupPermissions', () => {
       'coverage',
       'health',
     ]);
-    expect(groups.flatMap((g) => g.entries.map((e) => e.key))).not.toContain('users.delete');
-    const distinctPrefixes = new Set(PERMISSION_ENTRIES.map((e) => e.key.split('.')[0]));
+    const visibleKeys = groups.flatMap((g) => g.entries.map((e) => e.key));
+    expect(visibleKeys).not.toContain('users.delete');
+    expect(visibleKeys).not.toContain('accepted.manage');
+    // `accepted` never becomes a group of its own: accepted.manage is its
+    // only member and it is retired.
+    const distinctPrefixes = new Set(
+      PERMISSION_ENTRIES.filter((e) => !/\(retired\)$/.test(e.description)).map(
+        (e) => e.key.split('.')[0],
+      ),
+    );
     expect(groups).toHaveLength(distinctPrefixes.size);
   });
 });

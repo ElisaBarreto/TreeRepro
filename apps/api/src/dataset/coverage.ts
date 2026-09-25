@@ -16,13 +16,13 @@ import { AppError } from '../http/errors.ts';
 import { cachedJson } from '../redis/cache.ts';
 import type { Redis } from '../redis/client.ts';
 
-/** How full the dataset is: the visible grid, the cells that hold data and the decided ones. */
+/** How full the dataset is: the visible grid, the cells that hold data and the validated ones. */
 export interface CoverageTotals {
   cells: number;
   withData: number;
-  accepted: number;
+  validated: number;
   percentWithData: number;
-  percentAccepted: number;
+  percentValidated: number;
 }
 
 /**
@@ -38,17 +38,34 @@ export function percentHalfUp(part: number, whole: number): number {
   return Math.floor((part * 200 + whole) / (whole * 2));
 }
 
+/**
+ * The species × trait pairs that hold a validated record: one carrying a
+ * `confirm` annotation and no `withdraw` (spec R-1). It starts from
+ * `record_annotations`, which is human-scale, and never scans
+ * `trait_records`; callers join or filter the pairs by their own selection.
+ * @rfc RFC-69 R5
+ * @rfc RFC-63 R11
+ */
+export function validatedPairsSql(): SQL {
+  return sql`select distinct r.species_id, r.trait_id
+    from record_annotations a
+    join trait_records r on r.id = a.record_id
+    where a.kind = 'confirm'
+      and not exists (select 1 from record_annotations w
+                      where w.record_id = r.id and w.kind = 'withdraw')`;
+}
+
 interface TotalsRow {
   species_count: number;
   trait_count: number;
   with_data: number;
-  accepted: number;
+  validated: number;
 }
 
 /**
  * The totals themselves, uncached: one statement over the visible grid, the
- * coverage table (RFC-69 R1) and the newest decision of each species × trait
- * pair. Visibility is the active flags of `species` and `traits` (RFC-69 R4);
+ * coverage table (RFC-69 R1) and the validated pairs ({@link validatedPairsSql}).
+ * Visibility is the active flags of `species` and `traits` (RFC-69 R4);
  * the plot dimension is dropped as it is for every other cached global
  * summary (`globalSpeciesVisible`), because the cache key of `coverageTotals`
  * holds only the viewer class and a plot-scoped number under it would be read
@@ -80,23 +97,21 @@ export async function computeCoverageTotals(
         join species s on s.id = c.species_id
         join traits t on t.id = c.trait_id
         where ${speciesSeen} and ${traitSeen}) as with_data,
-      (select count(*)::int from (
-        select distinct on (v.species_id, v.trait_id) v.decision
-        from accepted_values v
+      (select count(*)::int from (${validatedPairsSql()}) v
         join species s on s.id = v.species_id
         join traits t on t.id = v.trait_id
-        where ${speciesSeen} and ${traitSeen}
-        order by v.species_id, v.trait_id, v.id desc) newest
-      where newest.decision = 'accepted') as accepted`)) as unknown as [TotalsRow | undefined];
+        where ${speciesSeen} and ${traitSeen}) as validated`)) as unknown as [
+    TotalsRow | undefined,
+  ];
   const cells = (row?.species_count ?? 0) * (row?.trait_count ?? 0);
   const withData = row?.with_data ?? 0;
-  const accepted = row?.accepted ?? 0;
+  const validated = row?.validated ?? 0;
   return {
     cells,
     withData,
-    accepted,
+    validated,
     percentWithData: percentHalfUp(withData, cells),
-    percentAccepted: percentHalfUp(accepted, cells),
+    percentValidated: percentHalfUp(validated, cells),
   };
 }
 
@@ -206,13 +221,13 @@ async function coverageSelection(
 }
 
 /** A grid and how much of it is filled, with RFC-69 R5's one percentage definition. */
-function coverageRow(cells: number, withData: number, accepted: number): CoverageRow {
+function coverageRow(cells: number, withData: number, validated: number): CoverageRow {
   return {
     cells,
     withData,
-    accepted,
+    validated,
     percentWithData: percentHalfUp(withData, cells),
-    percentAccepted: percentHalfUp(accepted, cells),
+    percentValidated: percentHalfUp(validated, cells),
   };
 }
 
@@ -225,12 +240,12 @@ interface TraitMetricRow {
   category_label: string;
   category_sort: number;
   with_data: number;
-  accepted: number;
+  validated: number;
 }
 
 /**
  * The answer itself, from the selection: the selected species counted once,
- * and every selected trait with the coverage rows (RFC-69 R1) and the accepted
+ * and every selected trait with the coverage rows (RFC-69 R1) and the validated
  * pairs it holds over those species. The totals and the `byCategory` rows are
  * sums of those per-trait counts rather than counts of their own — the same
  * joins aggregated at a coarser grain, which is what RFC-69 R5 asks for and
@@ -255,7 +270,7 @@ async function coverageGrid(
       select t.id as trait_id, t.key as trait_key, t.value_type as value_type, t.unit as unit,
              tc.key as category_key, tc.label as category_label, tc.sort_order as category_sort,
              coalesce(d.n, 0)::int as with_data,
-             coalesce(a.n, 0)::int as accepted
+             coalesce(a.n, 0)::int as validated
       from sel_traits t
       join trait_categories tc on tc.key = t.category_key
       left join (select c.trait_id as trait_id, count(*)::int as n
@@ -263,14 +278,11 @@ async function coverageGrid(
                  where c.species_id in (select id from sel_species)
                    and c.trait_id in (select id from sel_traits)
                  group by c.trait_id) d on d.trait_id = t.id
-      left join (select newest.trait_id as trait_id, count(*)::int as n
-                 from (select distinct on (v.species_id, v.trait_id) v.trait_id, v.decision
-                       from accepted_values v
-                       where v.species_id in (select id from sel_species)
-                         and v.trait_id in (select id from sel_traits)
-                       order by v.species_id, v.trait_id, v.id desc) newest
-                 where newest.decision = 'accepted'
-                 group by newest.trait_id) a on a.trait_id = t.id
+      left join (select v.trait_id as trait_id, count(*)::int as n
+                 from (${validatedPairsSql()}) v
+                 where v.species_id in (select id from sel_species)
+                   and v.trait_id in (select id from sel_traits)
+                 group by v.trait_id) a on a.trait_id = t.id
       order by t.key asc`) as unknown as Promise<TraitMetricRow[]>,
   ]);
 
@@ -282,7 +294,7 @@ async function coverageGrid(
     // its `cells` is the species count and its `species` is its own
     // `withData` — not a tally of its own (RFC-69 R5).
     species: r.with_data,
-    ...coverageRow(species, r.with_data, r.accepted),
+    ...coverageRow(species, r.with_data, r.validated),
   }));
 
   const categories = new Map<string, { sort: number; label: string; rows: TraitMetricRow[] }>();
@@ -303,7 +315,7 @@ async function coverageGrid(
       ...coverageRow(
         species * entry.rows.length,
         entry.rows.reduce((n, r) => n + r.with_data, 0),
-        entry.rows.reduce((n, r) => n + r.accepted, 0),
+        entry.rows.reduce((n, r) => n + r.validated, 0),
       ),
     }));
 
@@ -313,7 +325,7 @@ async function coverageGrid(
     ...coverageRow(
       species * byTrait.length,
       traitRows.reduce((n, r) => n + r.with_data, 0),
-      traitRows.reduce((n, r) => n + r.accepted, 0),
+      traitRows.reduce((n, r) => n + r.validated, 0),
     ),
     byCategory,
     byTrait,
@@ -398,7 +410,7 @@ export async function coverageMetrics(
 /**
  * RFC-69 R7's ranking of `byTrait` rows: ascending `withData` for `missing`
  * (the trait the most selected species lack comes first) and ascending
- * `percentAccepted` for `least_accepted`. The sort is stable and the rows
+ * `percentValidated` for `least_validated`. The sort is stable and the rows
  * arrive in trait-key order, so equals keep that order and the answer is the
  * same on every call; the input is left alone.
  * @rfc RFC-69 R7
@@ -408,13 +420,13 @@ export function rankCoverageTraits(
   mode: CoverageTopMode,
 ): CoverageTraitRow[] {
   const rank = (r: CoverageTraitRow) =>
-    mode === 'least_accepted' ? r.percentAccepted : r.withData;
+    mode === 'least_validated' ? r.percentValidated : r.withData;
   return [...rows].sort((a, b) => rank(a) - rank(b));
 }
 
 /**
  * `GET /api/coverage/top`: the traits with the most visible species lacking
- * data, or with the lowest accepted share, as `byTrait` items. It is the full
+ * data, or with the lowest validated share, as `byTrait` items. It is the full
  * unfiltered visible grid — the same base selection as {@link coverageTotals},
  * never {@link coverageMetrics}'s filters — ranked and cut.
  *
@@ -422,7 +434,7 @@ export function rankCoverageTraits(
  * no-filter entry (`coverage:<u|r>:-:-:-`) rather than computing a grid of its
  * own: the scope of this answer *is* the no-filter scope, and the coverage
  * page asks for both within one load. A ranking computed beside a sibling
- * request that is a cache hit would put a `distinct on` over `accepted_values`
+ * request that is a cache hit would put a scan of the validated pairs
  * and a group-by over `species_trait_coverage` on every page load and every
  * mode toggle, which is the scan per page load RFC-69 exists to remove.
  * @rfc RFC-69 R6, R7

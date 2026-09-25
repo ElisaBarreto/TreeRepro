@@ -17,16 +17,16 @@ export interface RecordWriteOptions<TVariables, TResult> {
 }
 
 /**
- * The one mutation shape of the record writes (create, annotate, accept or
- * clear, map): the write, then the invalidation every record write owes
+ * The one mutation shape of the record writes (create, annotate, map): the
+ * write, then the invalidation every record write owes
  * (`invalidateAfterRecordWrite` — every `['records', …]` and the species'
- * `['species', id, …]`, which already cover the pending queues and the
- * accepted-value query), with a hook before it for what the caller seeds
- * from the answer and one after it for what happens once the screen is
- * consistent again. `isPending` stays true through both, so a dialog keeps
- * its Cancel disabled until it unmounts.
+ * `['species', id, …]`, which already cover the pending queues), with a
+ * hook before it for what the caller seeds from the answer and one after it
+ * for what happens once the screen is consistent again. `isPending` stays
+ * true through both, so a dialog keeps its Cancel disabled until it
+ * unmounts.
  * @rfc RFC-13 R6
- * @rfc RFC-65 R1, R3, R6, R9
+ * @rfc RFC-65 R1, R3, R9
  */
 export function useRecordWrite<TVariables = void, TResult = unknown>({
   write,

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   addPlotSpecies,
-  createAcceptedValue,
   createAnnotation,
   createPlot,
   createRecord,
@@ -276,97 +275,5 @@ describe('RFC-72 R1 queue counts', () => {
     const contests = await listDisputed(t.db, visibility, { limit: 50, intent: 'contest' });
     expect(contests.data).toHaveLength(2);
     expect(await countContested(t.db, visibility)).toBe(contests.data.length);
-  });
-});
-
-describe('spec §4 R1 countContested reads only accepted decisions', () => {
-  const t = useTestDb();
-
-  /**
-   * The two rules word their exclusion differently and both readings are
-   * right where they are used. RFC-65 R10 excludes a disputed record once a
-   * curator has decided at all — a `cleared` decision is a decision, and the
-   * queue row goes. Spec §4 R1 and RFC-72 R1 word the contested *count* as
-   * "no **accepted** decision newer than the contest", so a `cleared` row
-   * must not suppress a contest that is still live.
-   */
-  it('a cleared decision drops the listDisputed row but leaves the contest counted', async () => {
-    const { user } = await createUser(t.db);
-    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
-    const contested = await createSpecies(t.db);
-    const visibility = await ownPlot(t.db, [contested.id]);
-    const ref = await createReference(t.db);
-    const base = await createRecord(t.db, {
-      speciesId: contested.id,
-      traitId: trait.id,
-      valueText: 'a',
-      levelId: trait.levels[0]?.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: user.id,
-    });
-    await createRecords(t.db, UNRESTRICTED, {
-      actorId: user.id,
-      speciesId: contested.id,
-      traitId: trait.id,
-      value: { levelId: trait.levels[1]?.id as string },
-      referenceIds: [ref.id],
-      intent: 'contest',
-      respondsToRecordId: base.id,
-    });
-
-    expect(await countContested(t.db, visibility)).toBe(1);
-    expect((await listDisputed(t.db, visibility, { limit: 50 })).data).toHaveLength(1);
-
-    await createAcceptedValue(t.db, {
-      speciesId: contested.id,
-      traitId: trait.id,
-      actorId: user.id,
-      decision: 'cleared',
-    });
-
-    // RFC-65 R10's reading, untouched: a decision of any kind closes the row.
-    expect((await listDisputed(t.db, visibility, { limit: 50 })).data).toHaveLength(0);
-    // Spec §4 R1's reading: clearing the accepted value decided nothing about
-    // the contest, which is still open and still counted.
-    expect(await countContested(t.db, visibility)).toBe(1);
-  });
-
-  /** The control: an `accepted` decision newer than the contest does close it. */
-  it('an accepted decision newer than the contest stops it being counted', async () => {
-    const { user } = await createUser(t.db);
-    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
-    const contested = await createSpecies(t.db);
-    const visibility = await ownPlot(t.db, [contested.id]);
-    const ref = await createReference(t.db);
-    const base = await createRecord(t.db, {
-      speciesId: contested.id,
-      traitId: trait.id,
-      valueText: 'a',
-      levelId: trait.levels[0]?.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: user.id,
-    });
-    await createRecords(t.db, UNRESTRICTED, {
-      actorId: user.id,
-      speciesId: contested.id,
-      traitId: trait.id,
-      value: { levelId: trait.levels[1]?.id as string },
-      referenceIds: [ref.id],
-      intent: 'contest',
-      respondsToRecordId: base.id,
-    });
-    expect(await countContested(t.db, visibility)).toBe(1);
-
-    await createAcceptedValue(t.db, {
-      speciesId: contested.id,
-      traitId: trait.id,
-      actorId: user.id,
-      recordId: base.id,
-      decision: 'accepted',
-    });
-
-    expect(await countContested(t.db, visibility)).toBe(0);
   });
 });

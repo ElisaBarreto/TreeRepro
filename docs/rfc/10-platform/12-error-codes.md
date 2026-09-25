@@ -56,8 +56,8 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `RECORD_DUPLICATE` | 409 | The claim already exists; `details[0].message` is the existing record id (RFC-65 R2). |
 | `RECORD_WITHDRAWN` | 409 | The record is withdrawn: no annotation, no acceptance (RFC-65 R3, R6). |
 | `RECORD_NOT_WITHDRAWABLE` | 409 | Only manual records can be withdrawn (RFC-65 R4). |
-| `RECORD_IS_ACCEPTED` | 409 | The record is the current accepted value; change it first (RFC-65 R4). |
-| `RECORD_NOT_HARMONISED` | 409 | Only a harmonised record can be the accepted value (RFC-65 R6). |
+| `RECORD_IS_ACCEPTED` | 409 | The record is the current accepted value; change it first (RFC-65 R4) (retired). |
+| `RECORD_NOT_HARMONISED` | 409 | Only a harmonised record can be the accepted value (RFC-65 R6) (retired). |
 | `FAMILY_NOT_FOUND` | 404 | Family id does not exist (RFC-60 R9). |
 | `GENUS_NOT_FOUND` | 404 | Genus id does not exist (RFC-60 R9). |
 | `LEVEL_NOT_FOUND` | 404 | Level id does not exist for this trait (RFC-62 R6). |
@@ -97,3 +97,4 @@ None.
 - 2026-09-19 — PROPOSAL_EXISTS, PROPOSAL_NOT_FOUND, PROPOSAL_DECIDED, TAXONOMY_LOOKUP_FAILED (RFC-75, RFC-81, plan 12c).
 - 2026-09-19 — R1's prefix list amended to admit `PROPOSAL_` and `TAXONOMY_`, added with the codes above but left off the list (code review).
 - 2026-09-20 — PERMISSION_DENIED also answers the RFC-31 R12–R14 delegation refusals (issue #118).
+- 2026-09-25 — RECORD_IS_ACCEPTED and RECORD_NOT_HARMONISED retired with the accepted value (spec R-1, plan 13e).

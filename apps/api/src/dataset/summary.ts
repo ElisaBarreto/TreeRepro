@@ -3,6 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { species } from '../db/schema/taxa.ts';
+import { validatedPairsSql } from './coverage.ts';
 import { dictionaryCategories } from './dictionary.ts';
 
 interface TraitAggregate {
@@ -31,17 +32,9 @@ interface LevelAggregate {
   count: number;
 }
 
-interface AcceptedCurrent {
-  trait_id: string;
-  decision: 'accepted' | 'cleared';
-  record_id: string | null;
-  value_text: string | null;
-  created_at: Date;
-}
-
 /**
  * One call for the species page: per category and trait, counts on both axes,
- * level distribution or numeric spread, and the current accepted value.
+ * level distribution or numeric spread, and whether any record is validated.
  * `null` when the species itself is invisible to `visibility`.
  * @rfc RFC-63 R10
  * @rfc RFC-70 R7
@@ -59,7 +52,7 @@ export async function speciesTraitSummary(
     .where(and(eq(species.id, speciesId), speciesVisible(visibility)))
     .limit(1);
   if (!exists) return null;
-  const [aggregates, levels, accepted] = await Promise.all([
+  const [aggregates, levels, validated] = await Promise.all([
     db.execute(sql`
       select t.id as trait_id, t.key as trait_key, t.value_type, t.unit,
         c.key as category_key, c.label as category_label,
@@ -93,16 +86,11 @@ export async function speciesTraitSummary(
         and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       group by r.trait_id, l.id, l.key
       order by count desc, l.key`) as unknown as Promise<LevelAggregate[]>,
+    // Visibility needs no predicate here: only visible traits reach
+    // `summaryOf`, and the species was checked above.
     db.execute(sql`
-      select distinct on (a.trait_id) a.trait_id, a.decision, a.record_id, r.value_text, a.created_at
-      from accepted_values a
-      join traits t on t.id = a.trait_id
-      join species s on s.id = a.species_id
-      left join trait_records r on r.id = a.record_id
-      where a.species_id = ${speciesId}
-        and ${traitVisible(visibility, sql`t.active`)}
-        and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
-      order by a.trait_id, a.id desc`) as unknown as Promise<AcceptedCurrent[]>,
+      select v.trait_id from (${validatedPairsSql()}) v
+      where v.species_id = ${speciesId}`) as unknown as Promise<{ trait_id: string }[]>,
   ]);
   const levelsByTrait = new Map<string, NonNullable<TraitSummary['levels']>>();
   for (const l of levels) {
@@ -111,19 +99,7 @@ export async function speciesTraitSummary(
       { levelId: l.level_id, key: l.level_key, count: l.count },
     ]);
   }
-  const acceptedByTrait = new Map<string, TraitSummary['accepted']>();
-  for (const a of accepted) {
-    acceptedByTrait.set(
-      a.trait_id,
-      a.decision === 'accepted' && a.record_id && a.value_text !== null
-        ? {
-            recordId: a.record_id,
-            valueText: a.value_text,
-            decidedAt: new Date(a.created_at).toISOString(),
-          }
-        : null,
-    );
-  }
+  const validatedTraits = new Set(validated.map((v) => v.trait_id));
   const summaryOf = (
     trait: TraitSummary['trait'],
     row: TraitAggregate | undefined,
@@ -154,7 +130,7 @@ export async function speciesTraitSummary(
               count: row.numeric_count,
             }
           : null,
-      accepted: acceptedByTrait.get(trait.id) ?? null,
+      validated: validatedTraits.has(trait.id),
     };
   };
 

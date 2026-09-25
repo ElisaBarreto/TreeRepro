@@ -3,7 +3,7 @@ import { and, desc, eq, lt, or, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
+import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches } from '../db/schema/imports.ts';
 import { traitRecords } from '../db/schema/records.ts';
@@ -187,8 +187,8 @@ export async function listRecords(
 }
 
 /**
- * The record detail: raw fields, its import batch (when imported), its
- * annotations and the accepted-value history of its species and trait.
+ * The record detail: raw fields, its import batch (when imported), and its
+ * annotations.
  * @rfc RFC-63 R8
  * @rfc RFC-33 R2, R4
  */
@@ -202,7 +202,7 @@ export async function getRecord(
     .limit(1);
   if (!row) return null;
   const rec = row.record;
-  const [batch, annotations, history, supersededBy, responses] = await Promise.all([
+  const [batch, annotations, supersededBy, responses] = await Promise.all([
     rec.importBatchId
       ? db
           .select({
@@ -242,22 +242,6 @@ export async function getRecord(
       )
       .where(eq(recordAnnotations.recordId, id))
       .orderBy(desc(recordAnnotations.id)),
-    db
-      .select({
-        id: acceptedValues.id,
-        decision: acceptedValues.decision,
-        recordId: acceptedValues.recordId,
-        note: acceptedValues.note,
-        actorId: users.id,
-        actorName: users.name,
-        createdAt: acceptedValues.createdAt,
-      })
-      .from(acceptedValues)
-      .innerJoin(users, eq(users.id, acceptedValues.actorId))
-      .where(
-        and(eq(acceptedValues.speciesId, rec.speciesId), eq(acceptedValues.traitId, rec.traitId)),
-      )
-      .orderBy(desc(acceptedValues.id)),
     db
       .select({ id: traitRecords.id })
       .from(traitRecords)
@@ -309,14 +293,6 @@ export async function getRecord(
           : null,
       generated: a.generated,
       createdAt: a.createdAt.toISOString(),
-    })),
-    acceptedHistory: history.map((h) => ({
-      id: h.id,
-      decision: h.decision,
-      recordId: h.recordId,
-      actor: { id: h.actorId, name: h.actorName },
-      note: h.note,
-      createdAt: h.createdAt.toISOString(),
     })),
     supersedes: rec.supersedesRecordId ? { id: rec.supersedesRecordId } : null,
     supersededBy: supersededBy.map((r) => ({ id: r.id })),

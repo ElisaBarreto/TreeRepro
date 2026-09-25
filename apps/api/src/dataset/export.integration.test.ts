@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 import {
-  createAcceptedValue,
   createRecord,
   createReference,
   createSpecies,
@@ -10,7 +9,7 @@ import {
 import { createUser } from '../../test/helpers/users.ts';
 import { UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { createDb } from '../db/client.ts';
-import { acceptedCsv } from './export.ts';
+import { recordsCsv } from './export.ts';
 
 /** Rejects after `ms` if `promise` has not settled by then. */
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -22,7 +21,46 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-describe('RFC-66 acceptedCsv connection safety', () => {
+describe('RFC-33 R2 recordsCsv pending record visibility', () => {
+  let handle: ReturnType<typeof createDb> | undefined;
+
+  afterAll(async () => {
+    await handle?.close();
+  });
+
+  /** Reads every `record_id` a stream yields, in order. */
+  async function recordIds(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+    const text = await new Response(stream).text();
+    const lines = text.split('\r\n');
+    return lines.slice(1, -1).map((line) => line.split(',').at(-1) ?? '');
+  }
+
+  it('omits a non-harmonised record when includePending is false, includes it when true', async () => {
+    handle = createDb(inject('databaseUrl'));
+    const { db } = handle;
+    const trait = await createTrait(db, { valueType: 'quantitative', unit: 'mm' });
+    const ref = await createReference(db);
+    const { user } = await createUser(db);
+    const sp = await createSpecies(db);
+    const pending = await createRecord(db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'not a number',
+      harmonisation: 'not_numeric',
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const withoutPending = await recordIds(recordsCsv(db, UNRESTRICTED));
+    expect(withoutPending).not.toContain(pending.id);
+
+    const withPending = await recordIds(recordsCsv(db, UNRESTRICTED, { includePending: true }));
+    expect(withPending).toContain(pending.id);
+  });
+});
+
+describe('RFC-66 R5 recordsCsv connection safety', () => {
   let handle: ReturnType<typeof createDb> | undefined;
 
   afterAll(async () => {
@@ -37,7 +75,7 @@ describe('RFC-66 acceptedCsv connection safety', () => {
     const { user } = await createUser(db);
     for (let i = 0; i < 5; i++) {
       const sp = await createSpecies(db);
-      const rec = await createRecord(db, {
+      await createRecord(db, {
         speciesId: sp.id,
         traitId: trait.id,
         valueText: 'red',
@@ -46,15 +84,9 @@ describe('RFC-66 acceptedCsv connection safety', () => {
         origin: 'manual',
         createdBy: user.id,
       });
-      await createAcceptedValue(db, {
-        speciesId: sp.id,
-        traitId: trait.id,
-        recordId: rec.id,
-        actorId: user.id,
-      });
     }
 
-    const reader = acceptedCsv(db, UNRESTRICTED, { batch: 2 }).getReader();
+    const reader = recordsCsv(db, UNRESTRICTED, { batch: 2 }).getReader();
     await reader.read();
     // Do not await this read before cancelling: it races the in-flight batch
     // fetch that `reader.cancel()` must wait for (RFC-66; the CRITICAL finding).

@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import type { TestApp } from '../../../../test/helpers/app.ts';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import {
-  createAcceptedValue,
   createAnnotation,
   createImportBatch,
   createRecord,
@@ -58,12 +57,13 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
       expect((await res.json()).error.details[0].path).toBe('speciesId');
     }
     const detail = await call(t.app, 'GET', `/api/records/${rec.id}`, { cookie });
-    expect((await detail.json()).data).toMatchObject({
+    const detailBody = (await detail.json()).data;
+    expect(detailBody).toMatchObject({
       id: rec.id,
       annotations: [],
-      acceptedHistory: [],
       importBatch: { id: batch.id },
     });
+    expect(detailBody).not.toHaveProperty('acceptedHistory');
     const missing = await call(t.app, 'GET', '/api/records/00000000-0000-7000-8000-000000000000', {
       cookie,
     });
@@ -77,7 +77,7 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
     expect(body.data[0].traits[0]).toMatchObject({
       trait: { key: 'flower_color' },
       recordCount: 1,
-      accepted: null,
+      validated: false,
     });
     const noSpecies = await call(
       t.app,
@@ -711,7 +711,7 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
   const idsOf = async (cookie: string, query = '') =>
     (await itemsOf(cookie, query)).map((r) => r.id);
 
-  it('lists standing disputes newest first, drops them after a later accepted decision for the species and trait or a changed stance, never withdrawn records', async () => {
+  it('lists standing disputes newest first, drops them after a changed stance, never withdrawn records', async () => {
     const author = await manager(t);
     const b = await scientist(t, ['records.annotate']);
     const sp1 = await createSpecies(t.db);
@@ -741,7 +741,7 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
       kind: 'dispute',
       note: 'Newer claim wrong',
     });
-    let ids = await idsOf(author.cookie);
+    const ids = await idsOf(author.cookie);
     expect(ids).toContain(newer.id);
     expect(ids).toContain(older.id);
     expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
@@ -753,32 +753,6 @@ describe('RFC-65 R10 GET /api/records/disputed', () => {
       review: 'disputed',
       latestDispute: { actor: { id: b.user.id, name: 'Test User' }, note: 'Newer claim wrong' },
     });
-    // a curator decides after both standing disputes: the decision retires them both
-    // (RFC-65 R10 is scoped to the species x trait, not to the decided record)
-    await createAcceptedValue(t.db, {
-      speciesId: sp1.id,
-      traitId: trait.id,
-      recordId: newer.id,
-      actorId: author.user.id,
-    });
-    ids = await idsOf(author.cookie);
-    expect(ids).not.toContain(newer.id);
-    expect(ids).not.toContain(older.id);
-    // a new dispute after the decision brings its record back
-    await createAnnotation(t.db, {
-      recordId: newer.id,
-      actorId: b.user.id,
-      kind: 'dispute',
-      note: 'Still wrong',
-    });
-    expect(await idsOf(author.cookie)).toContain(newer.id);
-    await createAnnotation(t.db, {
-      recordId: older.id,
-      actorId: b.user.id,
-      kind: 'dispute',
-      note: 'Older still wrong',
-    });
-    expect(await idsOf(author.cookie)).toContain(older.id);
     // the disputer steps back: gone
     await createAnnotation(t.db, { recordId: newer.id, actorId: b.user.id, kind: 'neutral' });
     expect(await idsOf(author.cookie)).not.toContain(newer.id);
@@ -951,7 +925,7 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     expect(allowed.status).toBe(201);
   });
 
-  it('R4 import records are never withdrawn; the accepted record is not withdrawn', async () => {
+  it('R4 import records are never withdrawn', async () => {
     const a = await scientist(t, ['records.annotate']);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a'] });
@@ -968,16 +942,6 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     const res = await annotate(a.cookie, imported.id, { kind: 'withdraw', note: 'x' });
     expect(res.status).toBe(409);
     expect((await res.json()).error.code).toBe('RECORD_NOT_WITHDRAWABLE');
-    const { rec, sp1: sp2, trait: trait2 } = await manualRecord(a.user.id);
-    await createAcceptedValue(t.db, {
-      speciesId: sp2.id,
-      traitId: trait2.id,
-      recordId: rec.id,
-      actorId: a.user.id,
-    });
-    const accepted = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'x' });
-    expect(accepted.status).toBe(409);
-    expect((await accepted.json()).error.code).toBe('RECORD_IS_ACCEPTED');
   });
 });
 

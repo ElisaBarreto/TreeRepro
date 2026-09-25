@@ -6,7 +6,7 @@ import {
   type TraitDataMode,
 } from '@treerepro/contracts';
 import { useEffect, useState } from 'react';
-import { EXPORT_ACCEPTED_URL } from '../../api/curation.ts';
+import { EXPORT_RECORDS_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
 import { ProposeSpeciesDialog } from '../../components/catalog/ProposeSpeciesDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
@@ -132,7 +132,7 @@ function searchKey(value: SpeciesSearchValue): string {
  * Scope and plotId filter per RFC-33 R6 and RFC-67 R8.
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-60 R6, R9
- * @rfc RFC-66 R1
+ * @rfc RFC-66 R8
  * @rfc RFC-33 R6, R7, R8
  */
 export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
@@ -210,12 +210,12 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
               ) : null}
               {hasPermission(me, 'dataset.export') ? (
                 <a
-                  href={EXPORT_ACCEPTED_URL}
+                  href={EXPORT_RECORDS_URL}
                   download
                   // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
                   className={buttonClassName({ variant: 'secondary' })}
                 >
-                  Export accepted values (CSV)
+                  Export records (CSV)
                 </a>
               ) : null}
             </>

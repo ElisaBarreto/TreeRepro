@@ -29,7 +29,6 @@ export const listContributionsQuerySchema = cursorQuerySchema.extend({
 
 /** A viewer's own manual record, plus its standing. @rfc RFC-71 R2 */
 export const contributionRecordSchema = recordSchema.extend({
-  isAccepted: z.boolean(),
   responseCount: z.number().int().nonnegative(),
 });
 
@@ -56,7 +55,6 @@ export const contributionSummarySchema = z.strictObject({
   validations: z.number().int().nonnegative(),
   disputes: z.number().int().nonnegative(),
   withdrawn: z.number().int().nonnegative(),
-  accepted: z.number().int().nonnegative(),
 });
 
 export type ListContributionsQuery = z.infer<typeof listContributionsQuerySchema>;

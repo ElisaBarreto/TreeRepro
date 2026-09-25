@@ -130,7 +130,7 @@ describe('RFC-52 HealthPage', () => {
 
   it('renders the two meters against their own denominators (RFC-52 ruling R-G)', async () => {
     await openPage();
-    // acceptedCells / coverageCells
+    // validatedCells / coverageCells
     expect(screen.getByText('900 / 1,200')).toBeInTheDocument();
     // coverageCells / (activeSpecies × activeTraits) = 1200 / (90 × 18)
     expect(screen.getByText('1,200 / 1,620')).toBeInTheDocument();

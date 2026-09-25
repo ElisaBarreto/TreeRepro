@@ -3,7 +3,6 @@ import { platformHealthSchema } from '@treerepro/contracts';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
-  createAcceptedValue,
   createAnnotation,
   createImportBatch,
   createRecord,
@@ -132,7 +131,7 @@ describe('RFC-52 R1 computePlatformHealth', () => {
       const speciesOff = await createSpecies(tx);
       await tx.update(species).set({ active: false }).where(eq(species.id, speciesOff.id));
 
-      // Four records on four distinct cells, two of them accepted. The fourth
+      // Four records on four distinct cells, two of them validated. The fourth
       // is an IMPORTED record, which pins the reading of `activity.records7d`
       // and of `byDay.records`: every record of the window, whatever its
       // origin, not the digest's manual-only count (RFC-74 R3). `dataset.records`
@@ -166,16 +165,6 @@ describe('RFC-52 R1 computePlatformHealth', () => {
         origin: 'import',
         importBatchId: batch.id,
       });
-      for (const [index, cell] of cells.slice(0, 2).entries()) {
-        await createAcceptedValue(tx, {
-          speciesId: cell.speciesId,
-          traitId: cell.trait.id,
-          actorId: author.id,
-          decision: 'accepted',
-          recordId: records[index],
-        });
-      }
-
       // Two annotations, both today.
       for (const recordId of records.slice(0, 2)) {
         await createAnnotation(tx, { recordId, actorId: author.id, kind: 'confirm' });
@@ -216,18 +205,18 @@ describe('RFC-52 R1 computePlatformHealth', () => {
       expect(after.dataset.references - before.dataset.references).toBe(1);
       expect(after.dataset.records - before.dataset.records).toBe(4);
       // RFC-52 R1: `coverageCells` is coverage's `withData` (cells holding at
-      // least one record), `acceptedCells` its `accepted` — not the grid size,
+      // least one record), `validatedCells` its `validated` — not the grid size,
       // which would make the web meter a constant one.
       //
       // Both are measured over the ACTIVE catalog, which is what the four
       // cells of the fixture are for: only (speciesOn, traitOn) is active on
       // both axes, so of the four cells that gained a record exactly one is
-      // counted, and of the two that gained an accepted value exactly one.
+      // counted, and of the two that gained a validated record exactly one.
       // Under the full grid these would be 4 and 2 — the numbers this file
       // asserted while health asked for `UNRESTRICTED`.
       expect(after.dataset.coverageCells - before.dataset.coverageCells).toBe(1);
-      expect(after.dataset.acceptedCells - before.dataset.acceptedCells).toBe(1);
-      expect(after.dataset.acceptedCells).toBeLessThanOrEqual(after.dataset.coverageCells);
+      expect(after.dataset.validatedCells - before.dataset.validatedCells).toBe(1);
+      expect(after.dataset.validatedCells).toBeLessThanOrEqual(after.dataset.coverageCells);
       // The invariant RFC-52 R1 states, and the denominator the health page's
       // completeness meter divides by: a coverage scope wider than the active
       // catalog breaks it, so this is the assertion that stops that regression

@@ -36,7 +36,7 @@ describe('RFC-72 R3 CurationCards', () => {
     expect(meters).toHaveLength(2);
     expect(meters[0]).toHaveAttribute('value', String(DASHBOARD_CURATION.coverage.withData));
     expect(meters[0]).toHaveAttribute('max', String(DASHBOARD_CURATION.coverage.cells));
-    expect(meters[1]).toHaveAttribute('value', String(DASHBOARD_CURATION.coverage.accepted));
+    expect(meters[1]).toHaveAttribute('value', String(DASHBOARD_CURATION.coverage.validated));
     expect(meters[1]).toHaveAttribute('max', String(DASHBOARD_CURATION.coverage.cells));
   });
 
@@ -44,7 +44,9 @@ describe('RFC-72 R3 CurationCards', () => {
     renderInRouter(<CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />);
     await screen.findAllByRole('meter');
     expect(screen.getByText(`${DASHBOARD_CURATION.coverage.percentWithData}%`)).toBeInTheDocument();
-    expect(screen.getByText(`${DASHBOARD_CURATION.coverage.percentAccepted}%`)).toBeInTheDocument();
+    expect(
+      screen.getByText(`${DASHBOARD_CURATION.coverage.percentValidated}%`),
+    ).toBeInTheDocument();
     // What the browser would have computed from the same two counts.
     expect(screen.queryByText('57%')).not.toBeInTheDocument();
     expect(screen.queryByText('28%')).not.toBeInTheDocument();

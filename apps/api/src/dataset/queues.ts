@@ -254,28 +254,9 @@ function notWithdrawn(recordId: SQL): SQL {
 }
 
 /**
- * No accepted-value decision for the species and trait is newer than `at`.
- *
- * Two callers read "decision" differently and both are right where they sit.
- * The default is RFC-65 R10 verbatim — the disputed queue drops a record once
- * a curator has decided anything about the cell, and clearing the accepted
- * value is deciding. `only: 'accepted'` is the narrower reading that spec §4
- * R1 and RFC-72 R1 both spell out for the contested *count*, "no **accepted**
- * decision newer than the contest": a `cleared` row settles nothing about a
- * contest, and must not hide a live one from the tile.
- */
-function noDecisionAfter(speciesId: SQL, traitId: SQL, at: SQL, only?: 'accepted'): SQL {
-  const decision = only === undefined ? sql`true` : sql`v.decision = 'accepted'`;
-  return sql`not exists (select 1 from accepted_values v
-    where v.species_id = ${speciesId} and v.trait_id = ${traitId} and v.created_at > ${at}
-      and ${decision})`;
-}
-
-/**
  * The standing disputes as a query: per record, the newest annotation among
- * the actors whose latest stance is `dispute`; excluded once withdrawn or once
- * an accepted decision for the species and trait is newer than the dispute,
- * and, with `intent = 'contest'`, kept only when a contest generated that
+ * the actors whose latest stance is `dispute`; excluded once withdrawn, and,
+ * with `intent = 'contest'`, kept only when a contest generated that
  * standing annotation (RFC-70 R3). Starts from `record_annotations`
  * (human-scale), never scans `trait_records`. `listDisputed` appends its
  * keyset and order to it and `countDisputed` counts it, so the dashboard's
@@ -299,7 +280,6 @@ function disputedQuery(visibility: Visibility, intent?: 'contest'): SQL {
     join species sp on sp.id = r.species_id
     join traits tr on tr.id = r.trait_id
     where ${notWithdrawn(sql`d.record_id`)}
-      and ${noDecisionAfter(sql`r.species_id`, sql`r.trait_id`, sql`d.created_at`)}
       and ${intent === 'contest' ? sql`d.generated` : sql`true`}
       and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
       and ${traitVisible(visibility, sql`tr.active`)}`;
@@ -322,8 +302,7 @@ export async function countDisputed(db: DbExecutor, visibility: Visibility): Pro
 /**
  * How many contests are open, for the dashboard's `queues.contested`
  * (RFC-72 R1, `docs/specs/2026-09-17-workspace-design.md` §4 R1): records with
- * `intent = 'contest'` whose responded record is not withdrawn and whose
- * species and trait carry no accepted decision newer than the contest.
+ * `intent = 'contest'` whose responded record is not withdrawn.
  *
  * **This number and the `?intent=contest` queue it links to may legitimately
  * differ, and neither is wrong.** This counts contest *records*; that queue
@@ -335,9 +314,7 @@ export async function countDisputed(db: DbExecutor, visibility: Visibility): Pro
  * Do not "reconcile" the two by narrowing this predicate: the rule is the
  * specification, and the tile would then report something it does not name.
  * The two predicates shared with `disputedQuery` keep them in step on
- * everything the rule does hold in common — bar the decision, which both
- * rules word as an **accepted** one here and `disputedQuery` words as any
- * decision (see `noDecisionAfter`).
+ * everything the rule does hold in common.
  *
  * The leading `responds_to_record_id is not null` is redundant against the
  * check constraint `trait_records_intent_check` and deliberate, exactly as
@@ -359,7 +336,6 @@ export async function countContested(db: DbExecutor, visibility: Visibility): Pr
     where c.responds_to_record_id is not null
       and c.intent = 'contest'
       and ${notWithdrawn(sql`b.id`)}
-      and ${noDecisionAfter(sql`c.species_id`, sql`c.trait_id`, sql`c.created_at`, 'accepted')}
       and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
       and ${traitVisible(visibility, sql`tr.active`)}`)) as unknown as [
     { count: number } | undefined,

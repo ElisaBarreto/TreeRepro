@@ -6,13 +6,15 @@ import { csvRow } from './export.ts';
 // RFC 4180 reader for any field value, and the formula guard must fire for
 // every dangerous prefix while leaving plain numbers alone.
 
-const FORMULA_START = /^[=+\-@\t\r]/;
+const FORMULA_START = /^[=+\-@\t\r\n]/;
 
 /** One field the way the export builds them: text, number, or a missing value. */
 const fieldArb = fc.oneof(
   fc.string({ unit: 'grapheme' }),
   fc.string(),
-  fc.tuple(fc.constantFrom('=', '+', '-', '@', '\t', '\r'), fc.string()).map(([p, s]) => p + s),
+  fc
+    .tuple(fc.constantFrom('=', '+', '-', '@', '\t', '\r', '\n'), fc.string())
+    .map(([p, s]) => p + s),
   fc.double({ noNaN: true, noDefaultInfinity: true }),
   fc.integer(),
   fc.constant(null),
@@ -111,7 +113,7 @@ describe('RFC-66 R4 csvRow properties', () => {
   it('guards every field that starts with a formula character and is not a number', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('=', '+', '-', '@', '\t', '\r'),
+        fc.constantFrom('=', '+', '-', '@', '\t', '\r', '\n'),
         fc.stringMatching(/^[A-Za-z(][A-Za-z0-9()]*$/),
         (prefix, rest) => {
           expect(parseCsvLine(csvRow([`${prefix}${rest}`]))).toEqual([`'${prefix}${rest}`]);

@@ -59,7 +59,7 @@ describe('RFC-71 R1, R2 fetchMyContributions', () => {
 });
 
 describe('RFC-71 R4 fetchMySummary', () => {
-  it('unwraps the seven counts', async () => {
+  it('unwraps the six counts', async () => {
     mockJson(200, { data: CONTRIBUTION_SUMMARY });
     expect(await fetchMySummary()).toEqual(CONTRIBUTION_SUMMARY);
     expect(lastRequest().url).toBe('/api/me/contributions/summary');

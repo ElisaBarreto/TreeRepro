@@ -42,8 +42,8 @@ export type HealthImport = z.infer<typeof healthImportSchema>;
  * `dataset.records` is `sum(species_trait_coverage.record_count)`;
  * `dataset.references` is a flat count. `dataset.coverageCells` is the
  * number of species × trait cells with at least one record and
- * `dataset.acceptedCells` the number with an accepted value, so
- * `acceptedCells <= coverageCells <= activeSpecies * activeTraits`.
+ * `dataset.validatedCells` the number with a validated record, so
+ * `validatedCells <= coverageCells <= activeSpecies * activeTraits`.
  * `activity.proposals7d` counts proposals created in the window;
  * `queues.proposals` counts open ones — two different numbers.
  * @rfc RFC-52 R1, R2
@@ -64,7 +64,7 @@ export const platformHealthSchema = z.strictObject({
     references: n,
     records: n,
     coverageCells: n,
-    acceptedCells: n,
+    validatedCells: n,
   }),
   activity: z.strictObject({
     records7d: n,

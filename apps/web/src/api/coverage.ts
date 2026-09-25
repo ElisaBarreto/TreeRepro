@@ -35,7 +35,7 @@ export async function fetchCoverage(params: {
 
 /**
  * `GET /api/coverage/top?mode=&limit=`: the traits with the most visible
- * species lacking a record, or the lowest accepted share, over the full
+ * species lacking a record, or the lowest validated share, over the full
  * unfiltered visible grid.
  * @rfc RFC-69 R7
  */

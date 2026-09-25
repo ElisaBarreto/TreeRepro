@@ -298,10 +298,10 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
       activeTraits: dataset?.active_traits ?? 0,
       references: dataset?.references ?? 0,
       records: dataset?.records ?? 0,
-      // RFC-52 R1: the cells that hold data and the cells with an accepted
-      // value — not `cells`, which is the grid size by definition.
+      // RFC-52 R1: the cells that hold data and the cells with a validated
+      // record — not `cells`, which is the grid size by definition.
       coverageCells: coverage.withData,
-      acceptedCells: coverage.accepted,
+      validatedCells: coverage.validated,
     },
     activity: {
       records7d: activity?.records_7d ?? 0,

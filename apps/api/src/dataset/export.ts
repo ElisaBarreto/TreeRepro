@@ -1,9 +1,14 @@
 import { sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
+import {
+  levelVisible,
+  speciesVisible,
+  traitVisible,
+  type Visibility,
+} from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
 
-/** @rfc RFC-66 R2 */
+/** @rfc RFC-66 R8 */
 export const EXPORT_COLUMNS = [
   'family',
   'genus',
@@ -15,17 +20,20 @@ export const EXPORT_COLUMNS = [
   'unit',
   'level',
   'numeric_value',
+  'raw_value',
   'primary_reference',
   'secondary_reference',
-  'decided_at',
+  'origin',
+  'intent',
+  'created_at',
   'record_id',
 ] as const;
 
-const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+const FORMULA_PREFIX = /^[=+\-@\t\r\n]/;
 const PLAIN_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /**
- * A field starting with `=`, `+`, `-`, `@`, tab or CR is interpreted as a
+ * A field starting with `=`, `+`, `-`, `@`, tab, CR or LF is interpreted as a
  * formula by spreadsheet software; prefixing it with `'` keeps it inert
  * without changing the value a plain CSV reader sees. Never applied to a
  * plain number, which spreadsheet software never treats as a formula.
@@ -54,9 +62,12 @@ interface ExportRow {
   unit: string | null;
   level: string | null;
   numeric_value: string | null;
+  raw_value: string | null;
   primary_reference: string | null;
   secondary_reference: string | null;
-  decided_at: Date;
+  origin: string;
+  intent: string | null;
+  created_at: Date;
   record_id: string;
 }
 
@@ -64,53 +75,56 @@ const BATCH = 500;
 
 // Renders the drizzle `sql` template below to text plus positional parameters.
 // The dataset reads share one home for the visibility predicates
-// (`speciesVisible`, `traitVisible`: RFC-33 R2), and those are drizzle
-// fragments; the streaming cursor, on the other hand, is postgres.js's. So the
-// query is written with drizzle and handed to postgres.js already rendered.
+// (`speciesVisible`, `traitVisible`, `levelVisible`: RFC-33 R2), and those are
+// drizzle fragments; the streaming cursor, on the other hand, is postgres.js's.
+// So the query is written with drizzle and handed to postgres.js already
+// rendered.
 const dialect = new PgDialect();
 
 /**
- * The current accepted value per species and trait as a CSV stream: a
- * postgres.js cursor feeds a `ReadableStream` batch by batch, so the file is
- * never held in memory. The BOM lets spreadsheet software read UTF-8.
- * `batch` is injectable so tests can force several small batches instead of
- * one that swallows every row.
- * @rfc RFC-66 R2, R3, R4, R5
+ * Every visible, non-withdrawn record as a CSV stream — the interim export of
+ * spec R-1, until plan 13i's `dataset.zip`. A postgres.js cursor feeds a
+ * `ReadableStream` batch by batch, so the file is never held in memory; the
+ * BOM lets spreadsheet software read UTF-8. `batch` is injectable so tests can
+ * force several small batches instead of one that swallows every row.
+ * `includePending` mirrors RFC-33 R2's record clause: a record whose
+ * `harmonisation` is not `harmonised` is visible only to a viewer holding
+ * `records.review`, so the caller resolves that permission and passes it
+ * here rather than this function reading permissions itself.
+ * @rfc RFC-66 R4, R5, R8
  * @rfc RFC-33 R2, R3
  */
-export function acceptedCsv(
+export function recordsCsv(
   db: Db,
   visibility: Visibility,
-  options: { batch?: number } = {},
+  options: { batch?: number; includePending?: boolean } = {},
 ): ReadableStream<Uint8Array> {
   const client = db.$client;
   const encoder = new TextEncoder();
+  const includePending = options.includePending ?? false;
   const query = dialect.sqlToQuery(sql`
-    with current as (
-      select distinct on (a.species_id, a.trait_id)
-        a.species_id, a.trait_id, a.record_id, a.decision, a.created_at
-      from accepted_values a
-      order by a.species_id, a.trait_id, a.id desc)
     select f.name as family, g.name as genus, s.canonical_name as species, s.name_source,
       c.key as category, t.key as trait, r.value_text as value, t.unit, l.key as level,
-      r.numeric_value::text as numeric_value,
+      r.numeric_value::text as numeric_value, r.raw_value as raw_value,
       case when pr.kind = 'personal_observation' then 'Personal observation' else pr.citation_key end as primary_reference,
       case when sr.kind = 'personal_observation' then 'Personal observation' else sr.citation_key end as secondary_reference,
-      cur.created_at as decided_at, r.id as record_id
-    from current cur
-    join trait_records r on r.id = cur.record_id
-    join species s on s.id = cur.species_id
+      r.origin as origin, r.intent as intent, r.created_at as created_at, r.id as record_id
+    from trait_records r
+    join species s on s.id = r.species_id
     left join genera g on g.id = s.genus_id
     left join families f on f.id = g.family_id
-    join traits t on t.id = cur.trait_id
+    join traits t on t.id = r.trait_id
     join trait_categories c on c.key = t.category_key
-    left join trait_levels l on l.id = r.level_id
+    left join trait_levels l on l.id = r.level_id and ${levelVisible(visibility, sql`l.active`)}
     left join bibliographic_references pr on pr.id = r.primary_reference_id
     left join bibliographic_references sr on sr.id = r.secondary_reference_id
-    where cur.decision = 'accepted'
+    where not exists (select 1 from record_annotations w
+                      where w.record_id = r.id and w.kind = 'withdraw')
+      and (r.level_id is null or l.id is not null)
+      and (r.harmonisation = 'harmonised' or ${includePending ? sql`true` : sql`false`})
       and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       and ${traitVisible(visibility, sql`t.active`)}
-    order by f.name nulls last, g.name nulls last, s.canonical_name, t.key`);
+    order by f.name nulls last, g.name nulls last, s.canonical_name, t.key, r.id`);
   // `unsafe` only in postgres.js's sense of "text I did not template": the
   // text is the constant above with `$n` placeholders, and every value —
   // the viewer's plot ids — travels as a bound parameter.
@@ -140,9 +154,12 @@ export function acceptedCsv(
       r.unit,
       r.level,
       r.numeric_value,
+      r.raw_value,
       r.primary_reference,
       r.secondary_reference,
-      new Date(r.decided_at).toISOString(),
+      r.origin,
+      r.intent,
+      new Date(r.created_at).toISOString(),
       r.record_id,
     ]);
   return new ReadableStream<Uint8Array>({

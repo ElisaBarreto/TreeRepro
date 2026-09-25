@@ -1,5 +1,4 @@
 import type {
-  AcceptedState,
   ContributionAnnotation,
   ContributionRecord,
   ContributionSummary,
@@ -113,11 +112,7 @@ export const SEXUAL_SYSTEM_SUMMARY: TraitSummary = {
     { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22', key: 'hermaphrodite', count: 1 },
   ],
   numeric: null,
-  accepted: {
-    recordId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d30',
-    valueText: 'dioecious',
-    decidedAt: '2026-09-10T09:00:00.000Z',
-  },
+  validated: true,
 };
 
 /** Quantitative summary, every record harmonised. @rfc RFC-63 R10 */
@@ -127,7 +122,7 @@ export const SEED_MASS_SUMMARY: TraitSummary = {
   harmonisationCounts: { ...NO_PENDING, harmonised: 3 },
   levels: null,
   numeric: { min: 0.5, median: 1.25, max: 3, count: 3 },
-  accepted: null,
+  validated: false,
 };
 
 /** Categorical summary with a single level and nothing pending. @rfc RFC-63 R10 */
@@ -137,7 +132,7 @@ export const POLLINATION_MODE_SUMMARY: TraitSummary = {
   harmonisationCounts: { ...NO_PENDING, harmonised: 1 },
   levels: [{ levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d23', key: 'insects', count: 1 }],
   numeric: null,
-  accepted: null,
+  validated: false,
 };
 
 /** Two categories in dictionary order. @rfc RFC-63 R10 */
@@ -247,13 +242,12 @@ export const RECORD_DETAIL: RecordDetail = {
   },
   importRowNo: 4821,
   annotations: [],
-  acceptedHistory: [],
   supersedes: null,
   supersededBy: [],
   responses: [],
 };
 
-/** The detail of PENDING_RECORD: manual, annotated and accepted once. @rfc RFC-63 R8 */
+/** The detail of PENDING_RECORD: manual and annotated. @rfc RFC-63 R8 */
 export const CURATED_RECORD_DETAIL: RecordDetail = {
   ...PENDING_RECORD,
   rawValue: null,
@@ -273,16 +267,6 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
       createdAt: '2026-09-03T12:00:00.000Z',
       reference: null,
       generated: false,
-    },
-  ],
-  acceptedHistory: [
-    {
-      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d80',
-      decision: 'accepted',
-      recordId: PENDING_RECORD.id,
-      actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e', name: 'Ada' },
-      note: null,
-      createdAt: '2026-09-04T12:00:00.000Z',
     },
   ],
   supersedes: null,
@@ -501,7 +485,7 @@ export const SEXUAL_SYSTEM_DETAIL: TraitDetail = {
   category: { key: 'reproductive_system', label: 'Reproductive system' },
   speciesWithData: 12,
   speciesMissing: 4,
-  acceptedCount: 7,
+  validatedCount: 7,
   distribution: {
     levels: [
       {
@@ -526,7 +510,7 @@ export const SEED_MASS_DETAIL: TraitDetail = {
   category: { key: 'seed', label: 'Seed' },
   speciesWithData: 3,
   speciesMissing: 9,
-  acceptedCount: 1,
+  validatedCount: 1,
   distribution: { numeric: { min: 0.5, median: 1.25, max: 3, speciesCount: 3 } },
   computedAt: '2026-09-18T08:00:00.000Z',
 };
@@ -542,12 +526,12 @@ export const SEED_LENGTH_DETAIL: TraitDetail = {
   category: { key: 'seed', label: 'Seed' },
   speciesWithData: 0,
   speciesMissing: 12,
-  acceptedCount: 0,
+  validatedCount: 0,
   distribution: { numeric: null },
   computedAt: '2026-09-18T08:00:00.000Z',
 };
 
-/** A species row of `mode=with`: records, an accepted value and its summary. @rfc RFC-62 R8 */
+/** A species row of `mode=with`: records and their summary. @rfc RFC-62 R8 */
 export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   id: SPECIES.id,
   canonicalName: SPECIES.canonicalName,
@@ -561,11 +545,7 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   traitCount: 3,
   traitRecordCount: 4,
   recordCount: 4,
-  accepted: {
-    recordId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d30',
-    valueText: 'dioecious',
-    reference: PRIMARY_REFERENCE,
-  },
+  validated: true,
   summary: {
     levels: [
       { key: 'dioecious', count: 3 },
@@ -574,7 +554,7 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   },
 };
 
-/** A `mode=with` row whose records no curator has accepted a value from. @rfc RFC-62 R8 */
+/** A quantitative `mode=with` row. @rfc RFC-62 R8 */
 export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
   ...TRAIT_SPECIES_WITH_DATA,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d07',
@@ -582,12 +562,12 @@ export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
   genus: { id: ADANSONIA_GENUS.id, name: ADANSONIA_GENUS.name },
   family: MALVACEAE,
   recordCount: 1,
-  accepted: null,
+  validated: false,
   summary: { numeric: { min: 0.5, max: 3 } },
 };
 
 /**
- * A `mode=missing` row: no records, so no count, value or summary.
+ * A `mode=missing` row: no records, so no count or summary.
  * `traitRecordCount` stays 0 — `searchSpecies` always supplies `traitId` here,
  * so its coverage counter is never null, and the coverage row itself does not
  * exist in missing mode by construction (RFC-60 R6, RFC-62 R8).
@@ -602,7 +582,7 @@ export const TRAIT_SPECIES_MISSING: TraitSpeciesItem = {
   traitCount: 0,
   traitRecordCount: 0,
   recordCount: null,
-  accepted: null,
+  validated: null,
   summary: null,
 };
 
@@ -761,7 +741,7 @@ export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
   harmonisationCounts: NO_PENDING,
   levels: [],
   numeric: null,
-  accepted: null,
+  validated: false,
 };
 
 /** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
@@ -771,7 +751,7 @@ export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
   harmonisationCounts: NO_PENDING,
   levels: null,
   numeric: null,
-  accepted: null,
+  validated: false,
 };
 
 /**
@@ -791,41 +771,6 @@ export const SPECIES_TRAITS_WITH_MISSING: SpeciesTraits = [
     traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_LENGTH_MISSING_SUMMARY],
   },
 ];
-
-/** RECORD is the accepted value; one earlier decision was cleared. @rfc RFC-65 R11 */
-export const ACCEPTED_STATE: AcceptedState = {
-  current: {
-    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d90',
-    recordId: RECORD.id,
-    valueText: 'dioecious',
-    actor: { id: USER.id, name: USER.name },
-    note: 'Best sampled population.',
-    decidedAt: '2026-09-05T12:00:00.000Z',
-  },
-  history: [
-    {
-      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d90',
-      decision: 'accepted',
-      recordId: RECORD.id,
-      valueText: 'dioecious',
-      actor: { id: USER.id, name: USER.name },
-      note: 'Best sampled population.',
-      createdAt: '2026-09-05T12:00:00.000Z',
-    },
-    {
-      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d91',
-      decision: 'cleared',
-      recordId: null,
-      valueText: null,
-      actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
-      note: 'Sources disagree.',
-      createdAt: '2026-09-04T12:00:00.000Z',
-    },
-  ],
-};
-
-/** @rfc RFC-65 R11 */
-export const EMPTY_ACCEPTED: AcceptedState = { current: null, history: [] };
 
 /** @rfc RFC-65 R8 */
 export const PENDING_TRAITS: PendingTrait[] = [
@@ -866,17 +811,15 @@ export const DISPUTED_RECORD: DisputedRecord = {
 
 /**
  * The viewer's own manual record, as `/api/me/contributions?kind=records`
- * answers it: the current accepted value of its species and trait, with one
- * record answering it.
+ * answers it, with one record answering it.
  * @rfc RFC-71 R2
  */
 export const CONTRIBUTION_RECORD: ContributionRecord = {
   ...PENDING_RECORD,
-  isAccepted: true,
   responseCount: 1,
 };
 
-/** The viewer's own record contesting {@link RECORD}; nobody has accepted it. @rfc RFC-71 R2 */
+/** The viewer's own record contesting {@link RECORD}. @rfc RFC-71 R2 */
 export const CONTESTING_CONTRIBUTION: ContributionRecord = {
   ...PENDING_RECORD,
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d54',
@@ -886,7 +829,6 @@ export const CONTESTING_CONTRIBUTION: ContributionRecord = {
   intent: 'contest',
   respondsTo: { id: RECORD.id },
   createdAt: '2026-09-07T08:00:00.000Z',
-  isAccepted: false,
   responseCount: 0,
 };
 
@@ -929,7 +871,6 @@ export const CONTRIBUTION_SUMMARY: ContributionSummary = {
   validations: 7,
   disputes: 1,
   withdrawn: 1,
-  accepted: 4,
 };
 
 // ---------------------------------------------------------------------------
@@ -996,7 +937,7 @@ export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
   // API's half-up integer arithmetic (RFC-69 R5) answers 58 and 29, while a
   // float quotient rounded in the browser answers 57 and 28. The fixture is
   // chosen so an assertion can tell the two apart.
-  coverage: { cells: 200, withData: 115, accepted: 57, percentWithData: 58, percentAccepted: 29 },
+  coverage: { cells: 200, withData: 115, validated: 57, percentWithData: 58, percentValidated: 29 },
   queues: { pendingGroups: 3, disputed: 2, contested: 1, proposals: 0 },
 };
 
@@ -1026,7 +967,7 @@ export const NO_PLOTS_DASHBOARD: Dashboard = {
   curation: null,
 };
 
-/** RFC-71 R4's seven counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
+/** RFC-71 R4's six counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
 export const ZERO_CONTRIBUTION_SUMMARY: ContributionSummary = {
   records: 0,
   contests: 0,
@@ -1034,7 +975,6 @@ export const ZERO_CONTRIBUTION_SUMMARY: ContributionSummary = {
   validations: 0,
   disputes: 0,
   withdrawn: 0,
-  accepted: 0,
 };
 
 /** The dashboard answer for a brand-new contributor: the Getting started card's trigger case. @rfc RFC-73 R3 */

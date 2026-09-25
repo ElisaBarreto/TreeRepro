@@ -12,7 +12,7 @@ import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAppQueryClient } from '../../lib/session.ts';
 import {
-  COVERAGE_TOP_LEAST_ACCEPTED,
+  COVERAGE_TOP_LEAST_VALIDATED,
   COVERAGE_TOP_MISSING,
   COVERAGE_TRAIT_SEED_MASS,
 } from '../../test/coverage-fixtures.ts';
@@ -48,7 +48,7 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(({ mode } = {}) =>
       Promise.resolve(
-        mode === 'least_accepted' ? COVERAGE_TOP_LEAST_ACCEPTED : COVERAGE_TOP_MISSING,
+        mode === 'least_validated' ? COVERAGE_TOP_LEAST_VALIDATED : COVERAGE_TOP_MISSING,
       ),
     );
 });
@@ -66,17 +66,17 @@ describe('RFC-69 R7 TopGaps', () => {
     ).toBeInTheDocument();
   });
 
-  it('switching to "least accepted" refetches with that mode and shows accepted percentages', async () => {
+  it('switching to "least validated" refetches with that mode and shows validated percentages', async () => {
     renderInRouter(<TopGaps />);
     await screen.findByRole('link', { name: 'seed mass' });
-    await userEvent.click(screen.getByRole('button', { name: /lowest accepted share/i }));
+    await userEvent.click(screen.getByRole('button', { name: /lowest validated share/i }));
     expect(
-      await screen.findByText(`${COVERAGE_TRAIT_SEED_MASS.percentAccepted}% accepted`),
+      await screen.findByText(`${COVERAGE_TRAIT_SEED_MASS.percentValidated}% validated`),
     ).toBeInTheDocument();
     expect(coverage.fetchCoverageTop).toHaveBeenLastCalledWith(
-      expect.objectContaining({ mode: 'least_accepted' }),
+      expect.objectContaining({ mode: 'least_validated' }),
     );
-    expect(screen.getByRole('button', { name: /lowest accepted share/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /lowest validated share/i })).toHaveAttribute(
       'aria-pressed',
       'true',
     );

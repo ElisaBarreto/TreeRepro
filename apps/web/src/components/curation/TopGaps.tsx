@@ -9,7 +9,7 @@ import { Alert, EmptyState } from '../ui/index.ts';
 
 const MODES = [
   { value: 'missing', label: 'Most missing' },
-  { value: 'least_accepted', label: 'Lowest accepted share' },
+  { value: 'least_validated', label: 'Lowest validated share' },
 ] as const;
 
 const TOGGLE_BUTTON =
@@ -40,7 +40,7 @@ function GapRow({
       <span className="text-meta tabular-nums text-mist-500">
         {mode === 'missing'
           ? `${formatNumber(missing)} species with no record yet`
-          : `${row.percentAccepted}% accepted`}
+          : `${row.percentValidated}% validated`}
       </span>
     </li>
   );
@@ -48,7 +48,7 @@ function GapRow({
 
 /**
  * The manager's top gaps (RFC-69 R7): the traits with the most visible
- * species lacking a record, or with the lowest accepted share, over the
+ * species lacking a record, or with the lowest validated share, over the
  * full unfiltered visible grid — unlike {@link CoverageTable} above, this
  * list ignores the page's family/category/plot filters, because that is
  * how the API itself computes it (R7's "full unfiltered visible grid").

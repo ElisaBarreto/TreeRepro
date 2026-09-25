@@ -59,7 +59,7 @@ describe('RFC-69 R5, R6 GET /api/coverage', () => {
       expect(parsed.success).toBe(true);
       expect(body.data.species).toBe(1);
       expect(body.data.withData).toBe(1);
-      expect(body.data.accepted).toBe(0);
+      expect(body.data.validated).toBe(0);
       const row = body.data.byTrait.find(
         (r: { trait: { id: string } }) => r.trait.id === f.trait.id,
       );
@@ -147,7 +147,7 @@ describe('RFC-69 R7 GET /api/coverage/top', () => {
       expect(withData).toEqual([...withData].sort((a: number, b: number) => a - b));
       expect(await t.redis.get(key)).not.toBeNull();
 
-      const least = await call(t.app, 'GET', '/api/coverage/top?mode=least_accepted&limit=2', {
+      const least = await call(t.app, 'GET', '/api/coverage/top?mode=least_validated&limit=2', {
         cookie,
       });
       expect(least.status).toBe(200);

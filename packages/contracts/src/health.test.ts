@@ -84,7 +84,7 @@ const health = {
     references: 40,
     records: 900,
     coverageCells: 500,
-    acceptedCells: 300,
+    validatedCells: 300,
   },
   activity: {
     records7d: 30,

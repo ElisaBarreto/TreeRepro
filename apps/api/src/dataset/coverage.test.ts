@@ -45,7 +45,7 @@ describe('RFC-69 R5 percentHalfUp', () => {
 });
 
 /** A `byTrait` row over a four-species grid, with RFC-69 R5's percentages. */
-const traitRow = (key: string, withData: number, accepted: number): CoverageTraitRow => ({
+const traitRow = (key: string, withData: number, validated: number): CoverageTraitRow => ({
   trait: {
     id: `00000000-0000-0000-0000-0000000000${key}`,
     key,
@@ -56,9 +56,9 @@ const traitRow = (key: string, withData: number, accepted: number): CoverageTrai
   species: withData,
   cells: 4,
   withData,
-  accepted,
+  validated,
   percentWithData: percentHalfUp(withData, 4),
-  percentAccepted: percentHalfUp(accepted, 4),
+  percentValidated: percentHalfUp(validated, 4),
 });
 
 describe('RFC-69 R7 rankCoverageTraits', () => {
@@ -74,14 +74,14 @@ describe('RFC-69 R7 rankCoverageTraits', () => {
     ]);
   });
 
-  it('puts the lowest accepted share first in least_accepted mode, not the emptiest', () => {
+  it('puts the lowest validated share first in least_validated mode, not the emptiest', () => {
     // `empty` and `half` both rank above `full` here, but the two modes
     // disagree on their order: `half` has data for two species of four and one
-    // accepted pair, so it is less complete than `full` and more accepted than
+    // validated pair, so it is less complete than `full` and more validated than
     // `empty`.
     const some = traitRow('04', 4, 2);
     expect(
-      rankCoverageTraits([full, some, half, empty], 'least_accepted').map((r) => r.trait.key),
+      rankCoverageTraits([full, some, half, empty], 'least_validated').map((r) => r.trait.key),
     ).toEqual(['03', '02', '04', '01']);
     expect(
       rankCoverageTraits([full, some, half, empty], 'missing').map((r) => r.trait.key),
@@ -96,7 +96,7 @@ describe('RFC-69 R7 rankCoverageTraits', () => {
       '06',
       '07',
     ]);
-    expect(rankCoverageTraits(input, 'least_accepted').map((r) => r.trait.key)).toEqual([
+    expect(rankCoverageTraits(input, 'least_validated').map((r) => r.trait.key)).toEqual([
       '05',
       '06',
       '07',

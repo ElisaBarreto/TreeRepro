@@ -11,6 +11,7 @@ import {
   listTraitsQuerySchema,
   NAME_TYPES,
   REVIEW_STATUSES,
+  recordDetailSchema,
   recordSchema,
   referenceDetailSchema,
   referenceRefSchema,
@@ -126,7 +127,7 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
             },
             levels: [{ levelId: uuid, key: 'blue', count: 2 }],
             numeric: null,
-            accepted: null,
+            validated: false,
           },
           {
             trait: { id: uuid, key: 'petal_length', valueType: 'quantitative', unit: 'mm' },
@@ -140,7 +141,7 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
             },
             levels: null,
             numeric: { min: 1.5, median: 2, max: 2.5, count: 2 },
-            accepted: { recordId: uuid, valueText: '2', decidedAt: '2026-09-13T00:00:00.000Z' },
+            validated: true,
           },
         ],
       },
@@ -434,7 +435,7 @@ describe('RFC-62 R7 traitDetailSchema distribution union', () => {
     category: { key: 'reproductive_system', label: 'Reproductive system' },
     speciesWithData: 10,
     speciesMissing: 2,
-    acceptedCount: 8,
+    validatedCount: 8,
     computedAt: '2026-09-18T00:00:00.000Z',
   };
 
@@ -516,6 +517,12 @@ describe('RFC-62 R8 listTraitSpeciesQuerySchema', () => {
   });
 });
 
+describe('RFC-63 R8 recordDetailSchema (spec R-1)', () => {
+  it('carries no accepted history', () => {
+    expect(Object.keys(recordDetailSchema.shape)).not.toContain('acceptedHistory');
+  });
+});
+
 describe('RFC-62 R8 traitSpeciesItemSchema', () => {
   const ITEM_BASE = {
     id: uuid,
@@ -531,21 +538,11 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     traitRecordCount: null,
   };
 
-  it('accepted carries a reference with shortCitation; everything is nullable for missing mode', () => {
+  it('everything is nullable for missing mode', () => {
     const item = {
       ...ITEM_BASE,
       recordCount: 2,
-      accepted: {
-        recordId: uuid,
-        valueText: 'dioecious',
-        reference: {
-          id: uuid,
-          citationKey: 'Smith2001',
-          kind: 'publication',
-          observer: null,
-          shortCitation: null,
-        },
-      },
+      validated: true,
       summary: { levels: [{ key: 'dioecious', count: 2 }] },
     };
     expect(traitSpeciesItemSchema.parse(item)).toEqual(item);
@@ -553,7 +550,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
       traitSpeciesItemSchema.safeParse({
         ...item,
         recordCount: null,
-        accepted: null,
+        validated: null,
         summary: null,
       }).success,
     ).toBe(true);
@@ -563,7 +560,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     const numericItem = {
       ...ITEM_BASE,
       recordCount: 1,
-      accepted: null,
+      validated: false,
       summary: { numeric: { min: 1, max: 3 } },
     };
     expect(traitSpeciesItemSchema.parse(numericItem)).toEqual(numericItem);
@@ -582,7 +579,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     const item = {
       ...ITEM_BASE,
       recordCount: 2,
-      accepted: null,
+      validated: true,
       summary: { levels: [{ key: 'dioecious', count: -1 }] },
     };
     expect(traitSpeciesItemSchema.safeParse(item).success).toBe(false);
@@ -593,10 +590,14 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
       traitSpeciesItemSchema.safeParse({
         ...ITEM_BASE,
         recordCount: null,
-        accepted: null,
+        validated: null,
         summary: null,
         extra: 1,
       }).success,
     ).toBe(false);
+  });
+
+  it('spec R-1 has no accepted value', () => {
+    expect(Object.keys(traitSpeciesItemSchema.shape)).not.toContain('accepted');
   });
 });

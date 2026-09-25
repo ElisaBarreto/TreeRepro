@@ -14,12 +14,11 @@ import { withRouter } from '../../test/router.tsx';
 import { TraitCard } from './TraitCard.tsx';
 
 describe('RFC-63 R10 TraitCard', () => {
-  it('is a button named after the trait, with the record count, level bars, pending and accepted lines', () => {
+  it('is a button named after the trait, with the record count, level bars and the pending line', () => {
     render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: /sexual system/ });
     expect(card).toHaveTextContent('8 records');
-    // Each bar's label sits next to its count; the accepted line repeats
-    // "dioecious" lower down, hence the selector.
+    // Each bar's label sits next to its count.
     const rows = within(card)
       .getAllByText(/^(dioecious|monoecious|hermaphrodite)$/, { selector: '.truncate' })
       .map((label) => label.parentElement?.textContent);
@@ -31,7 +30,7 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(fills[1]?.className).toContain('w-3/10');
     expect(fills[2]?.className).toContain('w-3/10');
     expect(card).toHaveTextContent('2 pending');
-    expect(card).toHaveTextContent('accepted: dioecious');
+    expect(card).not.toHaveTextContent('accepted');
     expect(card).not.toHaveAttribute('style');
     expect(card.querySelector('[style]')).toBeNull();
   });
@@ -50,7 +49,7 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(screen.queryByText('level_5')).not.toBeInTheDocument();
   });
 
-  it('shows min · median · max with the unit for a quantitative trait, without pending or accepted lines', () => {
+  it('shows min · median · max with the unit for a quantitative trait, without a pending line', () => {
     render(<TraitCard summary={SEED_MASS_SUMMARY} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: /seed mass/ });
     expect(card).toHaveTextContent('mg');

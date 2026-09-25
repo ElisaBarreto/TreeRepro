@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createAnnotation,
   createImportBatch,
   createRecord,
   createReference,
@@ -11,13 +12,12 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
-import { acceptedValues } from '../db/schema/curation.ts';
 import { speciesTraitSummary } from './summary.ts';
 
 describe('RFC-63 R10 speciesTraitSummary', () => {
   const t = useTestDb();
 
-  it('aggregates per category and trait: counts, levels, numeric stats, accepted value', async () => {
+  it('aggregates per category and trait: counts, levels, numeric stats, validated', async () => {
     const sp1 = await createSpecies(t.db);
     const color = await traitByKey(t.db, 'flower_color');
     const blue = await levelByKey(t.db, color.id, 'blue');
@@ -77,13 +77,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       primaryReferenceId: ref.id,
       importBatchId: batch.id,
     });
-    await t.db.insert(acceptedValues).values({
-      speciesId: sp1.id,
-      traitId: color.id,
-      recordId: b1.id,
-      decision: 'accepted',
-      actorId: user.id,
-    });
+    await createAnnotation(t.db, { recordId: b1.id, actorId: user.id, kind: 'confirm' });
 
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     expect(summary?.map((c) => c.category.key)).toEqual(['flower', 'flower_color']);
@@ -103,7 +97,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
         { levelId: red.id, key: 'red', count: 1 },
       ],
       numeric: null,
-      accepted: { recordId: b1.id, valueText: 'blue', decidedAt: expect.any(String) },
+      validated: true,
     });
     const petalSummary = summary?.[0]?.traits.find((tr) => tr.trait.key === 'petal_length');
     expect(petalSummary).toMatchObject({
@@ -111,14 +105,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       harmonisationCounts: { harmonised: 3, notNumeric: 1 },
       levels: null,
       numeric: { min: 1, median: 2, max: 4, count: 3 },
-      accepted: null,
+      validated: false,
     });
-    await t.db
-      .insert(acceptedValues)
-      .values({ speciesId: sp1.id, traitId: color.id, decision: 'cleared', actorId: user.id });
-    expect(
-      (await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id))?.[1]?.traits[0]?.accepted,
-    ).toBeNull();
+    // A withdrawn record is no longer a validated one (spec R-1).
+    await createAnnotation(t.db, { recordId: b1.id, actorId: user.id, kind: 'withdraw' });
+    expect((await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id))?.[1]?.traits[0]?.validated).toBe(
+      false,
+    );
     expect(await speciesTraitSummary(t.db, UNRESTRICTED, (await createSpecies(t.db)).id)).toEqual(
       [],
     );
@@ -179,8 +172,8 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     expect(unrestrictedTraits.map((x) => x.trait.id)).toContain(f.inactiveTrait.id);
     expect(unrestrictedTraits.find((x) => x.trait.id === f.activeTrait.id)?.recordCount).toBe(1);
 
-    // A trait the species has no record for: zeroed counts, no accepted
-    // value, and — being categorical — an empty level distribution rather
+    // A trait the species has no record for: zeroed counts, not
+    // validated, and — being categorical — an empty level distribution rather
     // than `null`, which stays the marker of a quantitative trait (RFC-63 R10).
     const colour = await traitByKey(t.db, 'flower_color');
     expect(unrestrictedTraits.find((x) => x.trait.id === colour.id)).toEqual({
@@ -195,7 +188,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       },
       levels: [],
       numeric: null,
-      accepted: null,
+      validated: false,
     });
     const petal = await traitByKey(t.db, 'petal_length');
     expect(unrestrictedTraits.find((x) => x.trait.id === petal.id)?.levels).toBeNull();

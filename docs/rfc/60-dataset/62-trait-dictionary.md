@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -41,3 +41,4 @@ None.
 - 2026-09-18 — R7: `speciesMissing` is over visible species, not visible *active* species — the same population as `speciesWithData`, so the header's two counts add up instead of losing the inactive species that have no record; `speciesWithData` named as R5's `speciesCount` (plan 10c).
 - 2026-09-18 — R5: `q` is for API consumers and deep links; the Traits page filters its loaded dictionary client-side (plan 10c).
 - 2026-09-25 — R7 `validatedCount` replaces `acceptedCount`, and counts are no longer monotonic (withdrawal); R8 `validated` replaces `accepted` (record model revision R-1, R-13; plan 13a). `draft` until plan 13e.
+- 2026-09-25 — accepted (plan 13e).

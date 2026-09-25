@@ -1,10 +1,8 @@
-import { ACCEPTED_DECISIONS, ANNOTATION_KINDS } from '@treerepro/contracts';
+import { ANNOTATION_KINDS } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import { boolean, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { traits } from './dictionary.ts';
 import { traitRecords } from './records.ts';
 import { bibliographicReferences } from './references.ts';
-import { species } from './taxa.ts';
 import { users } from './users.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -45,37 +43,4 @@ export const recordAnnotations = pgTable(
   ],
 );
 
-/** Append-only (RFC-63 R4). Written by plan 07 (RFC-65). @rfc RFC-63 R6, R7 */
-export const acceptedValues = pgTable(
-  'accepted_values',
-  {
-    id: uuid('id').primaryKey().default(sql`uuidv7()`),
-    speciesId: uuid('species_id')
-      .notNull()
-      .references(() => species.id, { onDelete: 'restrict' }),
-    traitId: uuid('trait_id')
-      .notNull()
-      .references(() => traits.id, { onDelete: 'restrict' }),
-    recordId: uuid('record_id').references(() => traitRecords.id, { onDelete: 'restrict' }),
-    decision: text('decision', { enum: ACCEPTED_DECISIONS }).notNull(),
-    actorId: uuid('actor_id')
-      .notNull()
-      .references(() => users.id),
-    note: text('note'),
-    createdAt: ts('created_at').notNull().defaultNow(),
-  },
-  (t) => [
-    index('accepted_values_species_trait_idx').on(t.speciesId, t.traitId, t.id.desc()),
-    // The trait detail's acceptedCount (RFC-62 R7) filters by trait alone and
-    // takes the newest row per species; trait_id leads so the predicate can
-    // use it, and the tail matches its `order by species_id, id desc` (#97).
-    index('accepted_values_trait_idx').on(t.traitId, t.speciesId, t.id.desc()),
-    check(
-      'accepted_values_record_check',
-      sql`(${t.decision} = 'accepted' and ${t.recordId} is not null) or (${t.decision} = 'cleared' and ${t.recordId} is null)`,
-    ),
-  ],
-);
-
 export type RecordAnnotationRow = typeof recordAnnotations.$inferSelect;
-export type AcceptedValueRow = typeof acceptedValues.$inferSelect;

@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import type {
-  AcceptedDecision,
   AnnotationKind,
   HarmonisationStatus,
   ImportBatchKind,
@@ -11,7 +10,7 @@ import type {
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../../src/db/client.ts';
-import { acceptedValues, recordAnnotations } from '../../src/db/schema/curation.ts';
+import { recordAnnotations } from '../../src/db/schema/curation.ts';
 import { traitCategories, traitLevels, traits } from '../../src/db/schema/dictionary.ts';
 import { importBatches } from '../../src/db/schema/imports.ts';
 import { plotSpecies, plots, userPlots } from '../../src/db/schema/plots.ts';
@@ -316,33 +315,6 @@ export async function createAnnotation(
     })
     .returning({ id: recordAnnotations.id });
   if (!row) throw new Error('createAnnotation: no row');
-  return row;
-}
-
-export async function createAcceptedValue(
-  db: DbExecutor,
-  input: {
-    speciesId: string;
-    traitId: string;
-    actorId: string;
-    recordId?: string | null;
-    decision?: AcceptedDecision;
-    note?: string;
-  },
-): Promise<{ id: string }> {
-  const decision = input.decision ?? (input.recordId ? 'accepted' : 'cleared');
-  const [row] = await db
-    .insert(acceptedValues)
-    .values({
-      speciesId: input.speciesId,
-      traitId: input.traitId,
-      actorId: input.actorId,
-      recordId: decision === 'accepted' ? (input.recordId ?? null) : null,
-      decision,
-      note: input.note ?? null,
-    })
-    .returning({ id: acceptedValues.id });
-  if (!row) throw new Error('createAcceptedValue: no row');
   return row;
 }
 

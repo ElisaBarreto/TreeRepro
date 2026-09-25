@@ -10,7 +10,7 @@ describe('RFC-66 R4 csvRow', () => {
     expect(csvRow([''])).toBe('\r\n');
   });
 
-  it('R2 the header names the fourteen columns in order', () => {
+  it('R8 the header names the seventeen columns in order', () => {
     expect([...EXPORT_COLUMNS]).toEqual([
       'family',
       'genus',
@@ -22,9 +22,12 @@ describe('RFC-66 R4 csvRow', () => {
       'unit',
       'level',
       'numeric_value',
+      'raw_value',
       'primary_reference',
       'secondary_reference',
-      'decided_at',
+      'origin',
+      'intent',
+      'created_at',
       'record_id',
     ]);
   });
@@ -43,6 +46,10 @@ describe('RFC-66 R4 csvField CSV formula injection guard', () => {
 
   it('quotes the prefixed field too when RFC 4180 also requires it', () => {
     expect(csvRow(['\rx'])).toBe(`"'\rx"\r\n`);
+  });
+
+  it('prefixes a field starting with a line feed too', () => {
+    expect(csvRow(['\nx'])).toBe(`"'\nx"\r\n`);
   });
 
   it('leaves a plain number unprefixed', () => {

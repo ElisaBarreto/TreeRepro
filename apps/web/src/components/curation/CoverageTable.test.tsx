@@ -58,7 +58,7 @@ describe('RFC-69 R5 CoverageTable', () => {
     expect(meters[0]).toHaveAttribute('value', String(COVERAGE.byCategory[0]?.withData));
     expect(meters[0]).toHaveAttribute('max', String(COVERAGE.byCategory[0]?.cells));
     expect(screen.getByText(`${COVERAGE.byCategory[0]?.percentWithData}%`)).toBeInTheDocument();
-    expect(screen.getByText(`${COVERAGE.byCategory[0]?.percentAccepted}%`)).toBeInTheDocument();
+    expect(screen.getByText(`${COVERAGE.byCategory[0]?.percentValidated}%`)).toBeInTheDocument();
   });
 
   it('the chevron expands a category to its trait rows, each with two meters and both links', async () => {

@@ -148,9 +148,9 @@ export function HealthPage() {
                 <StatTile label="Species (active)" value={health.data.dataset.activeSpecies} />
                 <StatTile label="Traits (active)" value={health.data.dataset.activeTraits} />
                 <MeterTile
-                  label="Accepted of populated cells (active)"
-                  meterLabel="Species × trait cells with an accepted value, of the cells with any record"
-                  value={health.data.dataset.acceptedCells}
+                  label="Validated of populated cells (active)"
+                  meterLabel="Species × trait cells with a validated record, of the cells with any record"
+                  value={health.data.dataset.validatedCells}
                   max={health.data.dataset.coverageCells}
                 />
                 <MeterTile

@@ -11,7 +11,7 @@ import {
 } from '../../../test/helpers/dataset.ts';
 import { unwrapDbError, useTestDb, withRollback } from '../../../test/helpers/db.ts';
 import { createUser } from '../../../test/helpers/users.ts';
-import { acceptedValues, recordAnnotations } from './curation.ts';
+import { recordAnnotations } from './curation.ts';
 import { traitCategories, traitLevels, traits } from './dictionary.ts';
 import { importBatches } from './imports.ts';
 import { plotSpecies, plots, userPlots } from './plots.ts';
@@ -494,7 +494,7 @@ describe('RFC-63 R4 append-only records and curation tables', () => {
   const su = useTestDb({ role: 'superuser' });
 
   it('treerepro_app holds SELECT and INSERT but neither UPDATE, DELETE nor TRUNCATE', async () => {
-    for (const table of ['trait_records', 'record_annotations', 'accepted_values']) {
+    for (const table of ['trait_records', 'record_annotations']) {
       const rows = await t.db.execute(sql`
         select privilege_type, has_table_privilege('treerepro_app', ${table}, privilege_type) as granted
         from unnest(array['SELECT', 'INSERT', 'DELETE', 'UPDATE', 'TRUNCATE']) as privilege_type
@@ -538,10 +538,9 @@ describe('RFC-63 R4 append-only records and curation tables', () => {
     });
   });
 
-  it('R7 an accepted value must point at a record of the same species and trait', async () => {
+  it('RFC-63 R4 record_annotations checks: a dispute needs a note', async () => {
     await withRollback(t.db, async (tx) => {
       const sp1 = await createSpecies(tx);
-      const sp2 = await createSpecies(tx);
       const trait = await traitByKey(tx, 'flower_color');
       const ref = await createReference(tx);
       const batch = await createImportBatch(tx);
@@ -554,42 +553,6 @@ describe('RFC-63 R4 append-only records and curation tables', () => {
         primaryReferenceId: ref.id,
         importBatchId: batch.id,
       });
-      await expect(
-        unwrapDbError(
-          tx.transaction((sp) =>
-            sp.insert(acceptedValues).values({
-              speciesId: sp2.id,
-              traitId: trait.id,
-              recordId: record.id,
-              decision: 'accepted',
-              actorId: user.id,
-            }),
-          ),
-        ),
-      ).rejects.toMatchObject({ code: '23514' });
-      await expect(
-        unwrapDbError(
-          tx.transaction((sp) =>
-            sp.insert(acceptedValues).values({
-              speciesId: sp1.id,
-              traitId: trait.id,
-              decision: 'accepted',
-              actorId: user.id,
-            }),
-          ),
-        ),
-      ).rejects.toMatchObject({ code: '23514' }); // accepted without a record
-      const [ok] = await tx
-        .insert(acceptedValues)
-        .values({
-          speciesId: sp1.id,
-          traitId: trait.id,
-          recordId: record.id,
-          decision: 'accepted',
-          actorId: user.id,
-        })
-        .returning();
-      expect(ok?.id).toBeDefined();
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
@@ -812,19 +775,31 @@ describe('RFC-71 R4 per-user contribution indexes', () => {
   });
 });
 
-describe('RFC-62 R7 trait detail index on accepted_values', () => {
+describe('spec R-1 the accepted value is gone from the database', () => {
   const t = useTestDb();
 
-  it('accepted_values carries a trait-leading index in the order the acceptedCount query reads it', async () => {
-    // The trait detail's acceptedCount filters accepted_values by trait_id
-    // alone and takes the newest row per species (`distinct on (species_id)
-    // … order by species_id, id desc`). The species-leading index cannot serve
-    // that predicate; this one serves both the filter and the ordering (#97).
-    const rows = await t.db.execute(sql`
-      select indexdef from pg_indexes where indexname = 'accepted_values_trait_idx'
-    `);
-    expect(rows.map((r) => r.indexdef)).toEqual([
-      'CREATE INDEX accepted_values_trait_idx ON public.accepted_values USING btree (trait_id, species_id, id DESC NULLS LAST)',
-    ]);
+  it('has no accepted_values table, no trigger function for it, and accepted.manage retired (RFC-30 R1: row kept)', async () => {
+    const [row] = (await t.db.execute(sql`
+      select to_regclass('public.accepted_values')::text as tbl,
+        (select count(*)::int from pg_proc where proname = 'accepted_values_match_record') as fn,
+        (select description from permissions where key = 'accepted.manage') as perm_description,
+        (select count(*)::int from role_permissions where permission_key = 'accepted.manage') as grants,
+        (select description from permissions where key = 'dataset.export') as export_description
+    `)) as unknown as [
+      {
+        tbl: string | null;
+        fn: number;
+        perm_description: string | null;
+        grants: number;
+        export_description: string;
+      },
+    ];
+    expect(row).toEqual({
+      tbl: null,
+      fn: 0,
+      perm_description: 'Set and clear the accepted value per species and trait (retired)',
+      grants: 0,
+      export_description: 'Download the dataset',
+    });
   });
 });

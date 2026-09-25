@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   addPlotSpecies,
-  createAcceptedValue,
+  createAnnotation,
   createFamily,
   createGenus,
   createPlot,
@@ -43,7 +43,7 @@ async function entryOf(redis: Redis, key: string): Promise<CachedEntry | null> {
 describe('RFC-69 R5 coverageTotals over the visible grid', () => {
   const t = useTestDb();
 
-  it('counts visible cells, coverage rows and accepted pairs, and excludes what is inactive', async () => {
+  it('counts visible cells, coverage rows and validated pairs, and excludes what is inactive', async () => {
     await withRollback(t.db, async (tx) => {
       // The totals are dataset-wide, so they can only be asserted as deltas
       // around this test's own fixture. REPEATABLE READ freezes the snapshot at
@@ -83,12 +83,12 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
       const speciesOff = await createSpecies(tx);
       await tx.update(species).set({ active: false }).where(eq(species.id, speciesOff.id));
 
-      // The newest decision decides, in both directions: accepted then cleared
-      // does not count, cleared then accepted does (RFC-65 R11).
+      // A confirmed record validates its cell; one withdrawn afterwards
+      // does not, and a dispute before the confirmation changes nothing.
       const cell = async (
         speciesId: string,
         trait: { id: string; levels: { id: string; key: string }[] },
-        decisions: ('accepted' | 'cleared')[],
+        kinds: ('confirm' | 'dispute' | 'withdraw')[],
       ) => {
         const record = await createRecord(tx, {
           speciesId,
@@ -99,21 +99,15 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
           origin: 'manual',
           createdBy: user.id,
         });
-        for (const decision of decisions) {
-          await createAcceptedValue(tx, {
-            speciesId,
-            traitId: trait.id,
-            actorId: user.id,
-            decision,
-            recordId: decision === 'accepted' ? record.id : null,
-          });
+        for (const kind of kinds) {
+          await createAnnotation(tx, { recordId: record.id, actorId: user.id, kind });
         }
       };
-      await cell(speciesOne.id, traitOne, ['accepted']);
-      await cell(speciesTwo.id, traitOne, ['accepted', 'cleared']);
-      await cell(speciesOne.id, traitTwo, ['cleared', 'accepted']);
-      await cell(speciesOff.id, traitOne, ['accepted']);
-      await cell(speciesOne.id, traitOff, ['accepted']);
+      await cell(speciesOne.id, traitOne, ['confirm']);
+      await cell(speciesTwo.id, traitOne, ['confirm', 'withdraw']);
+      await cell(speciesOne.id, traitTwo, ['dispute', 'confirm']);
+      await cell(speciesOff.id, traitOne, ['confirm']);
+      await cell(speciesOne.id, traitOff, ['confirm']);
 
       const after = await computeCoverageTotals(tx, RESTRICTED);
       const afterInactive = await computeCoverageTotals(tx, UNRESTRICTED);
@@ -124,17 +118,17 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
       expect(afterInactive.cells).toBe((grid.all_species + 3) * (grid.all_traits + 3));
       expect(after.withData - before.withData).toBe(3);
       expect(afterInactive.withData - beforeInactive.withData).toBe(5);
-      expect(after.accepted - before.accepted).toBe(2);
-      expect(afterInactive.accepted - beforeInactive.accepted).toBe(4);
+      expect(after.validated - before.validated).toBe(2);
+      expect(afterInactive.validated - beforeInactive.validated).toBe(4);
       // Both percentages are readings of the whole grid, never of `withData`
       // (`docs/specs/2026-09-17-workspace-design.md` §4 R1): the denominator
       // here is the cell count this test derived from the oracle, and the
       // arithmetic is written out rather than borrowed from the implementation
       // (the half-up rule itself is pinned in coverage.test.ts).
       const cells = (grid.active_species + 2) * (grid.active_traits + 2);
-      expect([after.percentWithData, after.percentAccepted]).toEqual([
+      expect([after.percentWithData, after.percentValidated]).toEqual([
         Math.floor((after.withData * 200 + cells) / (cells * 2)),
-        Math.floor((after.accepted * 200 + cells) / (cells * 2)),
+        Math.floor((after.validated * 200 + cells) / (cells * 2)),
       ]);
     });
   });
@@ -191,7 +185,7 @@ describe('RFC-69 R5 coverageTotals is cached for ten minutes', () => {
     // key: a concurrent `cachedJson` on it writes the same shape with the same
     // ttl, and no caller anywhere deletes it. The key is never deleted here
     // either, so no window is opened for anyone else.
-    const fields = ['accepted', 'cells', 'percentAccepted', 'percentWithData', 'withData'];
+    const fields = ['cells', 'percentValidated', 'percentWithData', 'validated', 'withData'];
     for (const [visibility, key] of [
       [RESTRICTED, 'coverage:totals:r'],
       [UNRESTRICTED, 'coverage:totals:u'],
@@ -212,7 +206,7 @@ describe('RFC-69 R5 coverageTotals is cached for ten minutes', () => {
 /**
  * The fixture of plan 11c's task 2, verbatim: family F with species S1 and an
  * inactive S2, family G with S3; category C with trait T1 and an inactive T2,
- * category D with T3; coverage rows S1xT1, S1xT3, S3xT1 and one accepted pair,
+ * category D with T3; coverage rows S1xT1, S1xT3, S3xT1 and one validated pair,
  * S1xT1. The families, the categories, the traits and the plots are this
  * file's own (random names), so every number asserted over a filter that names
  * one of them is exact however many rows sibling test files commit.
@@ -251,16 +245,10 @@ async function coverageFixture(tx: DbExecutor) {
       origin: 'manual',
       createdBy: user.id,
     });
-  const acceptedRecord = await cell(speciesOne.id, traitOne);
+  const validatedRecord = await cell(speciesOne.id, traitOne);
   await cell(speciesOne.id, traitThree);
   await cell(speciesThree.id, traitOne);
-  await createAcceptedValue(tx, {
-    speciesId: speciesOne.id,
-    traitId: traitOne.id,
-    actorId: user.id,
-    recordId: acceptedRecord.id,
-    decision: 'accepted',
-  });
+  await createAnnotation(tx, { recordId: validatedRecord.id, actorId: user.id, kind: 'confirm' });
 
   // Two plots: one holding the whole fixture, so a `plotId` filter selects
   // exactly S1, S2 and S3, and one holding S3 alone.
@@ -298,7 +286,7 @@ async function freezeSnapshot(tx: DbExecutor): Promise<void> {
 describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
   const t = useTestDb();
 
-  it('adds the fixture cells, coverage rows and accepted pairs to the unfiltered grid', async () => {
+  it('adds the fixture cells, coverage rows and validated pairs to the unfiltered grid', async () => {
     await withRollback(t.db, async (tx) => {
       // Unfiltered, the answer is dataset-wide and can only be asserted as a
       // delta around this file's own fixture; the frozen snapshot makes the
@@ -312,12 +300,12 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       const activeAfter = await computeCoverageMetrics(tx, RESTRICTED, {});
 
       // Unrestricted: three species, three traits, nine new cells, the three
-      // coverage rows and the one accepted pair.
+      // coverage rows and the one validated pair.
       expect(wideAfter.species - wideBefore.species).toBe(3);
       expect(wideAfter.traits - wideBefore.traits).toBe(3);
       expect(wideAfter.cells).toBe((wideBefore.species + 3) * (wideBefore.traits + 3));
       expect(wideAfter.withData - wideBefore.withData).toBe(3);
-      expect(wideAfter.accepted - wideBefore.accepted).toBe(1);
+      expect(wideAfter.validated - wideBefore.validated).toBe(1);
 
       // Restricted: the inactive species and the inactive trait leave the
       // grid, so two species and two traits are added — four cells — while all
@@ -327,7 +315,7 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       expect(activeAfter.traits - activeBefore.traits).toBe(2);
       expect(activeAfter.cells).toBe((activeBefore.species + 2) * (activeBefore.traits + 2));
       expect(activeAfter.withData - activeBefore.withData).toBe(3);
-      expect(activeAfter.accepted - activeBefore.accepted).toBe(1);
+      expect(activeAfter.validated - activeBefore.validated).toBe(1);
 
       // Unfiltered, `coverageMetrics` and plan 11b's `coverageTotals` are the
       // same five numbers over the same grid, reached by different SQL: this
@@ -341,9 +329,9 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
         expect(totals).toEqual({
           cells: metrics.cells,
           withData: metrics.withData,
-          accepted: metrics.accepted,
+          validated: metrics.validated,
           percentWithData: metrics.percentWithData,
-          percentAccepted: metrics.percentAccepted,
+          percentValidated: metrics.percentValidated,
         });
       }
     });
@@ -363,9 +351,9 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
         traits: 2,
         cells: 6,
         withData: 2,
-        accepted: 1,
+        validated: 1,
         percentWithData: 33,
-        percentAccepted: 17,
+        percentValidated: 17,
       });
 
       // One category in the selection, with the same numbers as the totals.
@@ -375,15 +363,15 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
           traits: 2,
           cells: 6,
           withData: 2,
-          accepted: 1,
+          validated: 1,
           percentWithData: 33,
-          percentAccepted: 17,
+          percentValidated: 17,
         },
       ]);
 
       // A byTrait row is one trait over the selected species, so its `cells`
       // is the species count (3) and its `species` is its own `withData`
-      // (RFC-69 R5): T1 has data for S1 and S3 and one accepted pair, T2 for
+      // (RFC-69 R5): T1 has data for S1 and S3 and one validated pair, T2 for
       // none.
       const rowOf = (id: string) => m.byTrait.find((r) => r.trait.id === id);
       expect(m.byTrait).toHaveLength(2);
@@ -398,17 +386,17 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
         species: 2,
         cells: 3,
         withData: 2,
-        accepted: 1,
+        validated: 1,
         percentWithData: 67,
-        percentAccepted: 33,
+        percentValidated: 33,
       });
       expect(rowOf(f.traitTwo.id)).toMatchObject({
         species: 0,
         cells: 3,
         withData: 0,
-        accepted: 0,
+        validated: 0,
         percentWithData: 0,
-        percentAccepted: 0,
+        percentValidated: 0,
       });
     });
   });
@@ -418,11 +406,11 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       const f = await coverageFixture(tx);
 
       // Family F holds S1 and the inactive S2; the two coverage rows and the
-      // accepted pair of S1 are all inside it.
+      // validated pair of S1 are all inside it.
       const family = await computeCoverageMetrics(tx, UNRESTRICTED, { familyId: f.familyF.id });
       expect(family.species).toBe(2);
       expect(family.withData).toBe(2);
-      expect(family.accepted).toBe(1);
+      expect(family.validated).toBe(1);
       expect(family.cells).toBe(2 * family.traits);
 
       // The family filter and the active flag are conjuncts, not alternatives.
@@ -443,7 +431,7 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       const plot = await computeCoverageMetrics(tx, UNRESTRICTED, { plotId: f.plotThree.id });
       expect(plot.species).toBe(1);
       expect(plot.withData).toBe(1);
-      expect(plot.accepted).toBe(0);
+      expect(plot.validated).toBe(0);
     });
   });
 
@@ -474,9 +462,9 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
         traits: 0,
         cells: 0,
         withData: 0,
-        accepted: 0,
+        validated: 0,
         percentWithData: 0,
-        percentAccepted: 0,
+        percentValidated: 0,
         byCategory: [],
         byTrait: [],
       });
@@ -558,7 +546,7 @@ describe('RFC-69 R7 coverageTop ranks the traits of the unfiltered grid', () => 
     await redis.quit();
   });
 
-  it('ranks by ascending withData for missing and by ascending percentAccepted for least_accepted', async () => {
+  it('ranks by ascending withData for missing and by ascending percentValidated for least_validated', async () => {
     await withRollback(t.db, async (tx) => {
       await freezeSnapshot(tx);
       const f = await coverageFixture(tx);
@@ -586,11 +574,11 @@ describe('RFC-69 R7 coverageTop ranks the traits of the unfiltered grid', () => 
         );
 
         const least = await coverageTop({ db: tx, redis }, UNRESTRICTED, {
-          mode: 'least_accepted',
+          mode: 'least_validated',
           limit: all.traits,
         });
-        expect(least.map((r) => r.percentAccepted)).toEqual(
-          [...least.map((r) => r.percentAccepted)].sort((a, b) => a - b),
+        expect(least.map((r) => r.percentValidated)).toEqual(
+          [...least.map((r) => r.percentValidated)].sort((a, b) => a - b),
         );
         expect(new Set(least.map((r) => r.trait.id))).toEqual(
           new Set(missing.map((r) => r.trait.id)),

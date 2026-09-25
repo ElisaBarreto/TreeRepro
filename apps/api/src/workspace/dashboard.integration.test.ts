@@ -341,14 +341,14 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       expect(reviewed.scope).not.toBeNull();
       expect(reviewed.contributor.awaitingValidation).not.toBeNull();
       expect(Object.keys(reviewed.curation?.coverage ?? {}).sort()).toEqual([
-        'accepted',
         'cells',
-        'percentAccepted',
+        'percentValidated',
         'percentWithData',
+        'validated',
         'withData',
       ]);
       expect(reviewed.curation?.coverage.percentWithData).toBeLessThanOrEqual(100);
-      expect(reviewed.curation?.coverage.percentAccepted).toBeLessThanOrEqual(100);
+      expect(reviewed.curation?.coverage.percentValidated).toBeLessThanOrEqual(100);
 
       // RFC-75 R7: the proposals queue is `taxa.manage` work — that is what
       // `GET /api/species/proposals` requires (RFC-75 R3). A reviewer who

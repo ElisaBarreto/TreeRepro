@@ -1,11 +1,4 @@
-import type {
-  AcceptedDecision,
-  AcceptedState,
-  AnnotationKind,
-  RecordDetail,
-  RecordIntent,
-  RecordValue,
-} from '@treerepro/contracts';
+import type { AnnotationKind, RecordDetail, RecordIntent, RecordValue } from '@treerepro/contracts';
 import { and, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import {
   levelVisible,
@@ -15,12 +8,11 @@ import {
   type Visibility,
 } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
+import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
-import { users } from '../db/schema/users.ts';
 import { AppError } from '../http/errors.ts';
 import { requireTrait, type TraitBrief } from './dictionary.ts';
 import { isHarmonisableNumber } from './import.ts';
@@ -298,21 +290,6 @@ export async function createRecords(
   });
 }
 
-/** The newest accepted-value decision of a species and trait, or null. @rfc RFC-65 R4, R6 */
-export async function currentAccepted(
-  db: DbExecutor,
-  speciesId: string,
-  traitId: string,
-): Promise<{ decision: AcceptedDecision; recordId: string | null } | null> {
-  const [row] = await db
-    .select({ decision: acceptedValues.decision, recordId: acceptedValues.recordId })
-    .from(acceptedValues)
-    .where(and(eq(acceptedValues.speciesId, speciesId), eq(acceptedValues.traitId, traitId)))
-    .orderBy(desc(acceptedValues.id))
-    .limit(1);
-  return row ?? null;
-}
-
 export interface AnnotateRecordInput {
   recordId: string;
   actorId: string;
@@ -327,13 +304,9 @@ export interface AnnotateRecordInput {
 
 /**
  * `treerepro_app` has no `UPDATE` on `trait_records`, so `SELECT … FOR
- * UPDATE` cannot serialise this read-then-insert against a concurrent
- * `setAccepted` deciding the same record; interleaved, a withdrawal and an
- * acceptance could otherwise both succeed, leaving an accepted value pointing
- * at a withdrawn record. `pg_advisory_xact_lock`, held for the whole
- * transaction and keyed on the record id, plays that role instead: the two
- * functions lock the same key, so whichever gets there first finishes (and
- * releases the lock) before the other re-reads the now-current state.
+ * UPDATE` cannot serialise two annotations of the same record — two
+ * withdrawals racing past the `withdrawn` check, say. `pg_advisory_xact_lock`,
+ * keyed on the record id and held for the whole transaction, does instead.
  * @rfc RFC-65 R3, R4
  * @rfc RFC-70 R4, R5
  * @rfc RFC-33 R2, R5
@@ -380,12 +353,6 @@ export async function annotateRecord(
         throw new AppError('RECORD_NOT_WITHDRAWABLE', 'Only manual records can be withdrawn');
       if (rec.createdBy !== input.actorId && !input.canWithdrawAny)
         throw new AppError('PERMISSION_DENIED', 'Only the author may withdraw this record');
-      const current = await currentAccepted(tx, rec.speciesId, rec.traitId);
-      if (current?.decision === 'accepted' && current.recordId === rec.id)
-        throw new AppError(
-          'RECORD_IS_ACCEPTED',
-          'This record is the accepted value; change the accepted value first',
-        );
     }
     await tx.insert(recordAnnotations).values({
       recordId: rec.id,
@@ -447,133 +414,5 @@ export async function annotateRecord(
     const detail = await getRecord(tx, visibility, rec.id);
     if (!detail) throw new Error('annotateRecord: record vanished');
     return detail;
-  });
-}
-
-/** @rfc RFC-65 R6, R11 */
-export async function getAccepted(
-  db: DbExecutor,
-  speciesId: string,
-  traitId: string,
-): Promise<AcceptedState> {
-  const rows = await db
-    .select({
-      id: acceptedValues.id,
-      decision: acceptedValues.decision,
-      recordId: acceptedValues.recordId,
-      note: acceptedValues.note,
-      createdAt: acceptedValues.createdAt,
-      actorId: users.id,
-      actorName: users.name,
-      valueText: traitRecords.valueText,
-    })
-    .from(acceptedValues)
-    .innerJoin(users, eq(users.id, acceptedValues.actorId))
-    .leftJoin(traitRecords, eq(traitRecords.id, acceptedValues.recordId))
-    .where(and(eq(acceptedValues.speciesId, speciesId), eq(acceptedValues.traitId, traitId)))
-    .orderBy(desc(acceptedValues.id));
-  const history = rows.map((r) => ({
-    id: r.id,
-    decision: r.decision,
-    recordId: r.recordId,
-    valueText: r.valueText ?? null,
-    actor: { id: r.actorId, name: r.actorName },
-    note: r.note,
-    createdAt: r.createdAt.toISOString(),
-  }));
-  const newest = rows[0];
-  const current =
-    newest && newest.decision === 'accepted' && newest.recordId && newest.valueText !== null
-      ? {
-          id: newest.id,
-          recordId: newest.recordId,
-          valueText: newest.valueText,
-          actor: { id: newest.actorId, name: newest.actorName },
-          note: newest.note,
-          decidedAt: newest.createdAt.toISOString(),
-        }
-      : null;
-  return { current, history };
-}
-
-export interface SetAcceptedInput {
-  speciesId: string;
-  traitId: string;
-  actorId: string;
-  decision: AcceptedDecision;
-  recordId?: string;
-  note?: string;
-}
-
-/**
- * Idempotent: a request equal to the current state inserts nothing.
- *
- * `treerepro_app` has no `UPDATE` on `trait_records`, so `SELECT … FOR
- * UPDATE` cannot serialise this read-then-insert against a concurrent
- * `annotateRecord` withdrawal of the same record, or against another
- * identical `setAccepted` call (both would otherwise insert). Accepting locks
- * the target record before reading state, so the losing side of a race
- * re-reads the now-current state and answers `RECORD_WITHDRAWN` or skips its
- * own now-redundant insert; clearing locks the record currently accepted, if
- * any, the same way `annotateRecord` would.
- * @rfc RFC-65 R6
- */
-export async function setAccepted(db: DbExecutor, input: SetAcceptedInput): Promise<AcceptedState> {
-  return db.transaction(async (tx) => {
-    await requireSpecies(tx, UNRESTRICTED, input.speciesId);
-    await requireTrait(tx, UNRESTRICTED, input.traitId);
-    if (input.decision === 'accepted') {
-      const recordId = input.recordId;
-      if (!recordId) throw validation('recordId', 'Required');
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${recordId}, 0))`);
-      const current = await currentAccepted(tx, input.speciesId, input.traitId);
-      const [rec] = await tx
-        .select({
-          id: traitRecords.id,
-          speciesId: traitRecords.speciesId,
-          traitId: traitRecords.traitId,
-          harmonisation: traitRecords.harmonisation,
-          review: reviewStatusSql(traitRecords.id).as('review'),
-        })
-        .from(traitRecords)
-        .where(eq(traitRecords.id, recordId))
-        .limit(1);
-      if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
-      if (rec.speciesId !== input.speciesId || rec.traitId !== input.traitId)
-        throw validation('recordId', 'Record belongs to another species or trait');
-      if (rec.harmonisation !== 'harmonised')
-        throw new AppError('RECORD_NOT_HARMONISED', 'Only a harmonised record can be accepted');
-      if (rec.review === 'withdrawn')
-        throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
-      if (!(current?.decision === 'accepted' && current.recordId === recordId)) {
-        await tx.insert(acceptedValues).values({
-          speciesId: input.speciesId,
-          traitId: input.traitId,
-          recordId,
-          decision: 'accepted',
-          actorId: input.actorId,
-          note: input.note ?? null,
-        });
-      }
-    } else {
-      const before = await currentAccepted(tx, input.speciesId, input.traitId);
-      if (before?.decision === 'accepted' && before.recordId) {
-        await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${before.recordId}, 0))`,
-        );
-        const current = await currentAccepted(tx, input.speciesId, input.traitId);
-        if (current?.decision === 'accepted') {
-          await tx.insert(acceptedValues).values({
-            speciesId: input.speciesId,
-            traitId: input.traitId,
-            recordId: null,
-            decision: 'cleared',
-            actorId: input.actorId,
-            note: input.note ?? null,
-          });
-        }
-      }
-    }
-    return getAccepted(tx, input.speciesId, input.traitId);
   });
 }

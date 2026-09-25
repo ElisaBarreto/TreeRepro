@@ -359,12 +359,12 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     );
   });
 
-  it('RFC-66 R1 shows the export link only with dataset.export', async () => {
+  it('RFC-66 R8 shows the export link only with dataset.export', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'dataset.export'] });
     renderAt('/app/species');
-    const link = await screen.findByRole('link', { name: /export accepted values/i });
-    expect(link).toHaveAttribute('href', '/api/export/accepted.csv');
+    const link = await screen.findByRole('link', { name: /export records/i });
+    expect(link).toHaveAttribute('href', '/api/export/records.csv');
     expect(link).toHaveAttribute('download');
   });
 
@@ -372,7 +372,7 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     await openPage();
     await screen.findByRole('heading', { level: 1, name: 'Species' });
-    expect(screen.queryByRole('link', { name: /export accepted values/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /export records/i })).not.toBeInTheDocument();
   });
 
   it('RFC-60 R9 offers "New species" to taxa.manage and navigates to the created species', async () => {

@@ -223,8 +223,8 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
         throw new Error(`the trait came back with levels ${trait.levels.map((l) => l.key)}`);
       }
       // `POST /api/records` writes `harmonisation: 'harmonised'` (RFC-63),
-      // which is what R7's distribution counts; nothing accepts the record,
-      // so `acceptedCount` stays 0 and the Accepted value column is a dash.
+      // which is what R7's distribution counts; nobody validates the record,
+      // so `validatedCount` stays 0.
       await create<CreatedRecords>(admin, '/api/records', {
         speciesId: coveredSpecies.id,
         traitId: trait.id,
@@ -256,7 +256,7 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
       // coverage row — one, the species seeded with a record above. The
       // missing count is the rest of the dataset, so only its label is fixed.
       await expect(page.locator('dt:text-is("Species with data") + dd')).toHaveText('1');
-      await expect(page.locator('dt:text-is("Accepted values") + dd')).toHaveText('0');
+      await expect(page.locator('dt:text-is("Species validated") + dd')).toHaveText('0');
 
       // RFC-62 R7's distribution: one harmonised record on one level, and the
       // trait is new, so its cache entry is filled by this very request.
@@ -287,13 +287,13 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
       await expect.poll(() => param(page, 'q')).toBe(prefix);
       await expect(page.getByRole('link', { name: coveredName, exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: missingName, exact: true })).toHaveCount(0);
-      // Columns in with mode: Species, Family, Records, Accepted value, Source.
+      // Columns in with mode: Species, Family, Records.
       await expect(page.getByRole('columnheader', { name: 'Records', exact: true })).toBeVisible();
       await expect(
         page.getByRole('columnheader', { name: 'Accepted value', exact: true }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       const coveredRow = page.getByRole('row').filter({ hasText: coveredName });
-      // The three cells are addressed by position: Playwright has no
+      // The cells are addressed by position: Playwright has no
       // header-relative cell locator, and deriving the index from the
       // columnheaders at runtime reads worse than the comment above naming
       // the order.
@@ -308,9 +308,6 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
       // counts: the level key humanised (`e2e_present`) and its record count.
       // RFC-62 R8's per-species summary is exercised nowhere else here.
       await expect(recordsCell).toContainText('e2e present 1');
-      // Nothing was accepted, so the value and its source are both dashes.
-      await expect(coveredRow.getByRole('cell').nth(3)).toHaveText('—');
-      await expect(coveredRow.getByRole('cell').nth(4)).toHaveText('—');
 
       // ── The other tab: the species with nothing on this trait yet ────────
       await missingTab.click();

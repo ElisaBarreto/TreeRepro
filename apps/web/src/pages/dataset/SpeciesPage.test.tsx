@@ -6,10 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys } from '../../api/dataset.ts';
 import {
-  ACCEPTED_STATE,
   CURATED_RECORD_DETAIL,
   DICTIONARY,
-  EMPTY_ACCEPTED,
   FAMILIES,
   GENERA,
   PENDING_RECORD,
@@ -51,8 +49,6 @@ const dataset = vi.hoisted(() => ({
   fetchGenera: vi.fn(),
 }));
 const catalog = vi.hoisted(() => ({ updateSpecies: vi.fn(), addSpeciesName: vi.fn() }));
-// TraitPanel renders AcceptedSection, which calls fetchAccepted; mocked so
-// the panel tests below do not hit the real apiFetch.
 // `invalidateAfterRecordWrite` keeps the real signature so one test can
 // swap the real implementation in.
 const curation = vi.hoisted(() => ({
@@ -60,8 +56,6 @@ const curation = vi.hoisted(() => ({
   invalidateAfterRecordWrite: vi.fn(
     async (_queryClient: QueryClient, _speciesId?: string): Promise<void> => undefined,
   ),
-  fetchAccepted: vi.fn(),
-  setAccepted: vi.fn(),
 }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
@@ -90,13 +84,11 @@ beforeEach(() => {
   dataset.fetchSpeciesTraits.mockReset();
   dataset.fetchRecords.mockReset();
   dataset.fetchRecord.mockReset();
-  curation.fetchAccepted.mockReset().mockResolvedValue(EMPTY_ACCEPTED);
   dataset.fetchDictionary.mockReset();
   dataset.searchReferences.mockReset();
   dataset.fetchFamilies.mockReset().mockResolvedValue(FAMILIES);
   dataset.fetchGenera.mockReset().mockResolvedValue({ data: GENERA, meta: { nextCursor: null } });
   curation.createRecords.mockReset();
-  curation.setAccepted.mockReset();
   curation.invalidateAfterRecordWrite.mockReset().mockResolvedValue(undefined);
   catalog.updateSpecies.mockReset();
   catalog.addSpeciesName.mockReset();
@@ -300,7 +292,6 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(within(drawer).getByText('harmonised')).toBeInTheDocument();
     expect(within(drawer).getByText('confirmed')).toBeInTheDocument();
     expect(within(drawer).getByText('No annotations yet')).toBeInTheDocument();
-    expect(within(drawer).getByText('No accepted value decisions yet')).toBeInTheDocument();
 
     // Escape closes only the drawer on top; the panel stays.
     await userEvent.keyboard('{Escape}');
@@ -308,7 +299,7 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(screen.getByRole('dialog', { name: 'sexual system' })).toBeInTheDocument();
   });
 
-  it('shows a manual record with its author, note, annotations and accepted history', async () => {
+  it('shows a manual record with its author, note and annotations', async () => {
     dataset.fetchRecord.mockResolvedValue(CURATED_RECORD_DETAIL);
     await openPage();
     const panel = await openTraitPanel();
@@ -321,8 +312,7 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(within(drawer).getByText('dispute')).toBeInTheDocument();
     expect(within(drawer).getByText('Grace')).toBeInTheDocument();
     expect(within(drawer).getByText('Value is not a number.')).toBeInTheDocument();
-    expect(within(drawer).getByText('accepted')).toBeInTheDocument();
-    expect(within(drawer).getByText('2026-09-04')).toBeInTheDocument();
+    expect(within(drawer).queryByText('Accepted history')).not.toBeInTheDocument();
     expect(within(drawer).queryByText('No annotations yet')).not.toBeInTheDocument();
   });
 
@@ -397,59 +387,12 @@ describe('RFC-74 R5 ?record= opens the drawer on mount', () => {
   });
 });
 
-describe('RFC-65 R6 SpeciesPage trait panel follows the live summary', () => {
-  // The summary as the page first loads it, with RECORD as the accepted
-  // value, and the same summary once the accepted value is cleared.
-  const withAccepted: SpeciesTraits = [
-    {
-      category: { key: 'sexual_system', label: 'Sexual system' },
-      traits: [
-        {
-          ...SEXUAL_SYSTEM_SUMMARY,
-          accepted: { recordId: RECORD.id, valueText: 'dioecious', decidedAt: RECORD.createdAt },
-        },
-      ],
-    },
+describe('RFC-63 R10 SpeciesPage trait panel follows the live summary', () => {
+  const summary: SpeciesTraits = [
+    { category: { key: 'sexual_system', label: 'Sexual system' }, traits: [SEXUAL_SYSTEM_SUMMARY] },
   ];
-  const cleared: SpeciesTraits = [
-    {
-      category: { key: 'sexual_system', label: 'Sexual system' },
-      traits: [{ ...SEXUAL_SYSTEM_SUMMARY, accepted: null }],
-    },
-  ];
-
-  it('drops the accepted badge from the row once Clear refetches the summary', async () => {
-    // The real invalidation, so the write reaches the species' summary query
-    // the way it does in production.
-    const actual =
-      await vi.importActual<typeof import('../../api/curation.ts')>('../../api/curation.ts');
-    curation.invalidateAfterRecordWrite.mockImplementation(actual.invalidateAfterRecordWrite);
-    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'accepted.manage'] });
-    dataset.fetchSpeciesTraits.mockResolvedValueOnce(withAccepted).mockResolvedValue(cleared);
-    dataset.fetchRecords.mockResolvedValue(page([RECORD]));
-    curation.fetchAccepted.mockResolvedValue(ACCEPTED_STATE);
-    curation.setAccepted.mockResolvedValue(EMPTY_ACCEPTED);
-    await openPage();
-    const panel = await openTraitPanel();
-    const table = await within(panel).findByRole('table');
-    expect(within(table).getByText('accepted')).toBeInTheDocument();
-
-    await userEvent.click(await within(panel).findByRole('button', { name: 'Clear' }));
-    await userEvent.type(
-      within(panel).getByRole('textbox', { name: /why is the accepted value cleared/i }),
-      'Sources disagree',
-    );
-    await userEvent.click(within(panel).getByRole('button', { name: 'Confirm clear' }));
-    await waitFor(() => expect(curation.setAccepted).toHaveBeenCalled());
-    await waitFor(() => expect(dataset.fetchSpeciesTraits).toHaveBeenCalledTimes(2));
-    await waitFor(() =>
-      expect(within(panel).queryByText('accepted', { selector: 'span' })).not.toBeInTheDocument(),
-    );
-    expect(screen.getByRole('dialog', { name: 'sexual system' })).toBeInTheDocument();
-  });
-
   it('closes the panel when its trait leaves the summary', async () => {
-    dataset.fetchSpeciesTraits.mockResolvedValueOnce(withAccepted).mockResolvedValue([]);
+    dataset.fetchSpeciesTraits.mockResolvedValueOnce(summary).mockResolvedValue([]);
     const { queryClient } = await openPage();
     await openTraitPanel();
     await act(() =>

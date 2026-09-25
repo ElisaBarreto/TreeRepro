@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type {
-  AcceptedDecision,
   AnnotationKind,
   RecordDetail,
   RecordIntent,
@@ -26,10 +25,6 @@ const ANNOTATION_TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
   dispute: 'red',
   neutral: 'neutral',
   withdraw: 'neutral',
-};
-const DECISION_TONES: Record<AcceptedDecision, 'neutral' | 'green'> = {
-  accepted: 'green',
-  cleared: 'neutral',
 };
 // A contest says the value is wrong, a complement that both hold (RFC-70 R1);
 // the verb reads the same on the record that answers and on the answers listed.
@@ -275,27 +270,6 @@ function RecordBody({
           </ul>
         )}
       </DrawerSection>
-
-      <DrawerSection title="Accepted history">
-        {record.acceptedHistory.length === 0 ? (
-          <p className="text-body text-mist-500">No accepted value decisions yet</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {record.acceptedHistory.map((entry) => (
-              <li key={entry.id} className="flex flex-col gap-1 text-cell">
-                <span className="flex flex-wrap items-center gap-2">
-                  <Badge tone={DECISION_TONES[entry.decision]}>{entry.decision}</Badge>
-                  <span className="text-canopy-900">{entry.actor.name}</span>
-                  <time dateTime={entry.createdAt} className="text-mist-500">
-                    {isoDate(entry.createdAt)}
-                  </time>
-                </span>
-                {entry.note ? <span className="text-canopy-950">{entry.note}</span> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </DrawerSection>
     </div>
   );
 }
@@ -314,10 +288,9 @@ function RecordLoader({ id, onOpenRecord }: { id: string; onOpenRecord?: (id: st
  * entered it), the harmonisation link to the pending record it resolves or
  * the records that resolve it (buttons when `onOpenRecord` is given, plain
  * text otherwise), the source columns as imported, and the curation trail —
- * annotations and accepted-value decisions. Fetches only while a record is
- * selected.
+ * its annotations. Fetches only while a record is selected.
  * @rfc RFC-63 R8
- * @rfc RFC-65 R3, R4, R6, R7
+ * @rfc RFC-65 R3, R4, R7
  */
 export function RecordDrawer({
   recordId,

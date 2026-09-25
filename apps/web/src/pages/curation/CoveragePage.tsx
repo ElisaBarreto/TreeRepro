@@ -95,13 +95,13 @@ export function CoveragePage({
                 </div>
               </li>
               <li className={TILE_CLASS}>
-                <p className={TILE_LABEL}>Accepted</p>
+                <p className={TILE_LABEL}>Validated</p>
                 <div className="mt-1.5">
                   <Meter
-                    value={coverage.data.accepted}
+                    value={coverage.data.validated}
                     max={coverage.data.cells}
-                    percent={coverage.data.percentAccepted}
-                    label="Species × trait cells with an accepted value"
+                    percent={coverage.data.percentValidated}
+                    label="Species × trait cells with a validated record"
                   />
                 </div>
               </li>

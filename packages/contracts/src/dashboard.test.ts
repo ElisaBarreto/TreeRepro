@@ -29,7 +29,6 @@ const summary = {
   validations: 2,
   disputes: 0,
   withdrawn: 1,
-  accepted: 2,
 };
 
 // Named separately (not indexed out of the array below) so the strictness
@@ -63,7 +62,13 @@ const dashboard = {
     summary,
   },
   curation: {
-    coverage: { cells: 100, withData: 60, accepted: 40, percentWithData: 60, percentAccepted: 40 },
+    coverage: {
+      cells: 100,
+      withData: 60,
+      validated: 40,
+      percentWithData: 60,
+      percentValidated: 40,
+    },
     queues: { pendingGroups: 2, disputed: 1, contested: 0, proposals: 0 },
   },
 };

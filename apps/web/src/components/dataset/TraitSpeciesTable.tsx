@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import type { TraitSpeciesItem, TraitSpeciesMode } from '@treerepro/contracts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
-import { referenceLabel } from '../../lib/references.ts';
 import { Badge, ButtonLink, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
@@ -23,12 +22,10 @@ function summaryText(item: TraitSpeciesItem, unit: string | null): string | null
 
 /**
  * The species of one trait, one page at a time (RFC-62 R8). In `with` mode a
- * row carries how many records the species has on the trait, a one-line
- * summary of them, the value a curator accepted and the article it came from
- * — each of the last two a dash while nothing has been accepted. In
- * `missing` mode there is nothing to count, so the row offers the way to
- * change that instead: the species page opened on the traits it has no
- * record for (RFC-70 R7).
+ * row carries how many records the species has on the trait and a one-line
+ * summary of them. In `missing` mode there is nothing to count, so the row
+ * offers the way to change that instead: the species page opened on the
+ * traits it has no record for (RFC-70 R7).
  * @rfc RFC-13 R2
  * @rfc RFC-62 R8
  */
@@ -50,11 +47,7 @@ export function TraitSpeciesTable({
           <Th>Species</Th>
           <Th>Family</Th>
           {withData ? (
-            <>
-              <Th>Records</Th>
-              <Th>Accepted value</Th>
-              <Th>Source</Th>
-            </>
+            <Th>Records</Th>
           ) : (
             <Th>
               <span className="sr-only">Actions</span>
@@ -77,35 +70,17 @@ export function TraitSpeciesTable({
               </Td>
               <Td>{item.family?.name ?? DASH}</Td>
               {withData ? (
-                <>
+                <Td>
                   {/* The count and the summary are nullable on their own
                       (RFC-62 R8), so neither hides the other: a row can
                       summarise records it has no count for. */}
-                  <Td>
-                    <span className="flex flex-col gap-0.5">
-                      <span>
-                        {item.recordCount === null ? DASH : formatNumber(item.recordCount)}
-                      </span>
-                      {summary === null ? null : (
-                        <span className="text-meta text-mist-500">{summary}</span>
-                      )}
-                    </span>
-                  </Td>
-                  <Td className="text-canopy-800">{item.accepted?.valueText ?? DASH}</Td>
-                  <Td>
-                    {item.accepted ? (
-                      <Link
-                        to="/app/references/$id"
-                        params={{ id: item.accepted.reference.id }}
-                        className="font-medium text-canopy-900 underline-offset-2 hover:underline"
-                      >
-                        {referenceLabel(item.accepted.reference)}
-                      </Link>
-                    ) : (
-                      DASH
+                  <span className="flex flex-col gap-0.5">
+                    <span>{item.recordCount === null ? DASH : formatNumber(item.recordCount)}</span>
+                    {summary === null ? null : (
+                      <span className="text-meta text-mist-500">{summary}</span>
                     )}
-                  </Td>
-                </>
+                  </span>
+                </Td>
               ) : (
                 <Td className="whitespace-nowrap">
                   <ButtonLink

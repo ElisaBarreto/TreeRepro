@@ -125,9 +125,9 @@ function SpeciesHeader({
  * the API created opens in the drawer (RFC-70 R3). Both fetches fail
  * together for an unknown id, so one alert covers the page. The open panel
  * is remembered by trait id and its summary read from the traits query on
- * every render, so the accepted badge follows a Clear or a Set-as-accepted
- * (which invalidate the summary) instead of freezing at the click; a trait
- * that leaves the summary closes its panel. With `taxa.manage`, "Edit
+ * every render, so it follows every write that invalidates the summary
+ * instead of freezing at the click; a trait that leaves the summary closes
+ * its panel. With `taxa.manage`, "Edit
  * species" and "Add name" in the header open the species editor and the
  * alternative-name dialog (RFC-60 R9); their write invalidates the species
  * detail, so the header re-renders from the refetch. An inactive species is
@@ -149,7 +149,7 @@ function SpeciesHeader({
  * @rfc RFC-60 R4, R7, R9
  * @rfc RFC-33 R7
  * @rfc RFC-63 R10
- * @rfc RFC-65 R1, R6
+ * @rfc RFC-65 R1
  * @rfc RFC-70 R1, R3, R7
  * @rfc RFC-13 R11
  * @rfc RFC-74 R5
