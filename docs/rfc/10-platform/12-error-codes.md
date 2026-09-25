@@ -68,6 +68,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `LEVEL_KEY_TAKEN` | 409 | The trait already has this level, case-insensitively (RFC-62 R6). |
 | `REFERENCE_KEY_TAKEN` | 409 | Another reference has this citation key (RFC-61 R6). |
 | `REFERENCE_DOI_TAKEN` | 409 | Another reference has this DOI (RFC-61 R6). |
+| `REFERENCE_ISBN_TAKEN` | 409 | Another reference has this ISBN (RFC-61 R6, R10). |
 | `PLOT_NOT_FOUND` | 404 | Plot id does not exist (RFC-67 R3). |
 | `PLOT_CODE_TAKEN` | 409 | Another plot has this code, case-insensitively (RFC-67 R5). |
 | `PLOT_SPECIES_EXISTS` | 409 | The species is already in the plot (RFC-67 R5). |
@@ -98,3 +99,4 @@ None.
 - 2026-09-19 — R1's prefix list amended to admit `PROPOSAL_` and `TAXONOMY_`, added with the codes above but left off the list (code review).
 - 2026-09-20 — PERMISSION_DENIED also answers the RFC-31 R12–R14 delegation refusals (issue #118).
 - 2026-09-25 — RECORD_IS_ACCEPTED and RECORD_NOT_HARMONISED retired with the accepted value (spec R-1, plan 13e).
+- 2026-09-25 — REFERENCE_ISBN_TAKEN, named by RFC-61 R6 as amended for book references (spec R-16, plan 13d).

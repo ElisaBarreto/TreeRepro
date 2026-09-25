@@ -1,12 +1,13 @@
-import type {
-  Genus,
-  NameSource,
-  NameType,
-  ReferenceDetail,
-  Species,
-  TaxonRef,
-  Trait,
-  TraitValueType,
+import {
+  type Genus,
+  isValidIsbn,
+  type NameSource,
+  type NameType,
+  type ReferenceDetail,
+  type Species,
+  type TaxonRef,
+  type Trait,
+  type TraitValueType,
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import { UNRESTRICTED } from '../access/visibility.ts';
@@ -331,11 +332,27 @@ export async function addSpeciesName(
 
 function referenceTaken(err: unknown): never {
   if (isUniqueViolation(err)) {
-    throw violatedConstraint(err) === 'bibliographic_references_doi_idx'
-      ? new AppError('REFERENCE_DOI_TAKEN', 'Another reference has this DOI')
-      : new AppError('REFERENCE_KEY_TAKEN', 'Another reference has this citation key');
+    const constraint = violatedConstraint(err);
+    if (constraint === 'bibliographic_references_doi_idx') {
+      throw new AppError('REFERENCE_DOI_TAKEN', 'Another reference has this DOI');
+    }
+    if (constraint === 'bibliographic_references_isbn_idx') {
+      throw new AppError('REFERENCE_ISBN_TAKEN', 'Another reference has this ISBN');
+    }
+    throw new AppError('REFERENCE_KEY_TAKEN', 'Another reference has this citation key');
   }
   throw err;
+}
+
+const referenceInvalid = (path: string, message: string) =>
+  new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
+
+// The ISBN as stored: the normalised ISBN-13 (RFC-61 R10).
+function normalisedIsbn(isbn: string | undefined): string | undefined {
+  if (isbn === undefined) return undefined;
+  const normalised = isValidIsbn(isbn);
+  if (normalised === null) throw referenceInvalid('isbn', 'Invalid ISBN');
+  return normalised;
 }
 
 export interface ReferenceFields {
@@ -346,6 +363,7 @@ export interface ReferenceFields {
   journal?: string | null;
   doi?: string | null;
   url?: string | null;
+  isbn?: string;
   shortCitation?: string | null;
   fullCitation?: string | null;
 }
@@ -358,15 +376,20 @@ const REFERENCE_FIELDS = [
   'journal',
   'doi',
   'url',
+  'isbn',
   'shortCitation',
   'fullCitation',
 ] as const;
 
-/** @rfc RFC-61 R6 */
+/** An ISBN makes the reference a `book`, which needs its full citation. @rfc RFC-61 R6, R10 */
 export async function createReference(
   db: DbExecutor,
   input: ReferenceFields & { citationKey: string; actorId: string },
 ): Promise<ReferenceDetail> {
+  const isbn = normalisedIsbn(input.isbn);
+  if (isbn !== undefined && input.fullCitation == null) {
+    throw referenceInvalid('fullCitation', 'A book needs its citation');
+  }
   return db.transaction(async (tx) => {
     let row: { id: string } | undefined;
     try {
@@ -380,6 +403,8 @@ export async function createReference(
           journal: input.journal ?? null,
           doi: input.doi ?? null,
           url: input.url ?? null,
+          isbn: isbn ?? null,
+          kind: isbn === undefined ? 'publication' : 'book',
           shortCitation: input.shortCitation ?? null,
           fullCitation: input.fullCitation ?? null,
           createdBy: input.actorId,
@@ -402,11 +427,16 @@ export async function createReference(
   });
 }
 
-/** `null` clears a metadata field; `citationKey` is never null. @rfc RFC-61 R6, R10 */
+/**
+ * `null` clears a metadata field; `citationKey` is never null. Only a book
+ * takes an ISBN.
+ * @rfc RFC-61 R6, R10
+ */
 export async function updateReference(
   db: DbExecutor,
-  input: ReferenceFields & { id: string; actorId: string },
+  raw: ReferenceFields & { id: string; actorId: string },
 ): Promise<ReferenceDetail> {
+  const input = { ...raw, isbn: normalisedIsbn(raw.isbn) };
   return db.transaction(async (tx) => {
     const [current] = await tx
       .select()
@@ -423,9 +453,10 @@ export async function updateReference(
     // A book is recorded under its citation (RFC-61 R10); the check
     // `bibliographic_references_book_check` would refuse the update anyway.
     if (current.kind === 'book' && input.fullCitation === null) {
-      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
-        { path: 'fullCitation', message: 'A book needs its citation' },
-      ]);
+      throw referenceInvalid('fullCitation', 'A book needs its citation');
+    }
+    if (current.kind !== 'book' && input.isbn !== undefined) {
+      throw referenceInvalid('isbn', 'Only a book has an ISBN');
     }
     const fields: string[] = [];
     const set: Partial<Pick<ReferenceRow, (typeof REFERENCE_FIELDS)[number]>> = {};

@@ -256,7 +256,7 @@ export const speciesNameBodySchema = z
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
-/** @rfc RFC-61 R6 */
+/** @rfc RFC-61 R6, R10 */
 export const createReferenceBodySchema = z.strictObject({
   citationKey: text(2000),
   title: text(1000).optional(),
@@ -265,10 +265,11 @@ export const createReferenceBodySchema = z.strictObject({
   journal: text(1000).optional(),
   doi: text(500).optional(),
   url: text(500).optional(),
+  isbn: isbnSchema.optional(),
   shortCitation: text(200).optional(),
   fullCitation: text(2000).optional(),
 });
-/** @rfc RFC-61 R6 */
+/** @rfc RFC-61 R6, R10 */
 export const updateReferenceBodySchema = nonEmpty(
   {
     citationKey: text(2000).optional(),
@@ -278,6 +279,8 @@ export const updateReferenceBodySchema = nonEmpty(
     journal: text(1000).nullable().optional(),
     doi: text(500).nullable().optional(),
     url: text(500).nullable().optional(),
+    // Never null: a book keeps its ISBN (RFC-61 R10).
+    isbn: isbnSchema.optional(),
     shortCitation: text(200).nullable().optional(),
     fullCitation: text(2000).nullable().optional(),
   },

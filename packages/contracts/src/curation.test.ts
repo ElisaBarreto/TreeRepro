@@ -339,6 +339,16 @@ describe('RFC-60 R9, RFC-61 R6, RFC-62 R6 catalog bodies', () => {
     expect(updateReferenceBodySchema.safeParse({ shortCitation: null }).success).toBe(true);
     expect(updateReferenceBodySchema.safeParse({ fullCitation: null }).success).toBe(true);
   });
+
+  it('RFC-61 R6, R10 takes an ISBN on create and update, never null, always well-formed', () => {
+    const book = { citationKey: 'K', isbn: '0-306-40615-2', fullCitation: 'Doe (2001).' };
+    expect(createReferenceBodySchema.safeParse(book).success).toBe(true);
+    expect(createReferenceBodySchema.safeParse({ ...book, isbn: '0-306-40615-3' }).success).toBe(
+      false,
+    );
+    expect(updateReferenceBodySchema.safeParse({ isbn: '9780306406157' }).success).toBe(true);
+    expect(updateReferenceBodySchema.safeParse({ isbn: null }).success).toBe(false);
+  });
 });
 
 describe('RFC-60 R4, R9 speciesNameBodySchema', () => {
