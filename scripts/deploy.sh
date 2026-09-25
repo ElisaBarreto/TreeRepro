@@ -21,6 +21,12 @@ main() {
   git fetch --quiet origin main
   # A leaked deploy key can only redeploy what is already on main.
   git merge-base --is-ancestor "$sha" origin/main || { echo "$sha is not on main" >&2; exit 3; }
+  # CI runs on main are not cancelled, so an older run can finish last: never roll back.
+  head="$(git rev-parse HEAD)"
+  if [ "$sha" != "$head" ] && git merge-base --is-ancestor "$sha" "$head"; then
+    echo "skip: $sha is older than the deployed $head"
+    exit 0
+  fi
   git checkout --quiet --detach "$sha"
 
   docker compose build --pull
