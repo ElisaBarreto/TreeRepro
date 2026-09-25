@@ -71,9 +71,9 @@ export function HelpTip({ label, children, learnMore }: HelpTipProps) {
         aria-controls={open ? tooltipId : undefined}
         aria-describedby={open ? tooltipId : undefined}
         onClick={() => setOpen(true)}
-        className="inline-flex size-5 items-center justify-center rounded-full text-mist-400 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+        className="inline-flex size-7 items-center justify-center rounded-full text-mist-400 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
       >
-        <Icon name="help" size={16} />
+        <Icon name="help" size={20} />
       </button>
       {open ? (
         <div
