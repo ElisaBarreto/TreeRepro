@@ -19,7 +19,7 @@ test.describe('RFC-52 platform health (plan 12d)', () => {
       // with <h2 id="health-jobs-heading">Jobs</h2> (HealthPage.tsx:165-168),
       // which gives it an accessible name of "Jobs" and, per ARIA, the
       // implicit role "region" — the same pattern `dashboard.spec.ts` uses
-      // for "Top traits missing data in your plots".
+      // for "Top traits with data".
       const jobsSection = page.getByRole('region', { name: 'Jobs' });
       await expect(jobsSection).toBeVisible();
 

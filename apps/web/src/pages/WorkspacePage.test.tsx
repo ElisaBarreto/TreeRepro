@@ -11,6 +11,7 @@ import {
   NEW_CONTRIBUTOR_DASHBOARD,
   NO_PLOTS_DASHBOARD,
   REVIEWER_DASHBOARD,
+  TOP_TRAITS_WITH_DATA,
 } from '../test/dataset-fixtures.ts';
 import { ME } from '../test/fixtures.ts';
 import { renderAt } from '../test/router.tsx';
@@ -37,10 +38,6 @@ vi.mock('../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/dataset.ts')>()),
   ...dataset,
 }));
-
-function hrefUrl(href: string | null) {
-  return new URL(href ?? '', 'https://example.org');
-}
 
 beforeEach(() => {
   for (const mock of [
@@ -71,7 +68,7 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(
       await screen.findByText(/TreeRepro is a collective data assembly of reproductive trait data/),
     ).toHaveTextContent(
-      `spanning ${DASHBOARD.dataset.referenceCount} references and ${DASHBOARD.dataset.recordCount} records over ${DASHBOARD.dataset.speciesCount} species`,
+      `spanning ${DASHBOARD.dataset.primaryReferenceCount} primary references, ${DASHBOARD.dataset.secondaryReferenceCount} secondary references and ${DASHBOARD.dataset.recordCount} records over ${DASHBOARD.dataset.speciesCount} species`,
     );
     expect(screen.getByRole('link', { name: 'elisabpereira@gmail.com' })).toHaveAttribute(
       'href',
@@ -92,28 +89,19 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(screen.queryByRole('heading', { name: 'Your scope' })).not.toBeInTheDocument();
   });
 
-  it('quick actions link to their exact URLs', async () => {
+  it('quick actions browse the species, the traits and the references', async () => {
     renderAt('/app/');
     const quickActions = await screen.findByRole('navigation', { name: 'Quick actions' });
-    const validate = hrefUrl(
-      within(quickActions).getByRole('link', { name: 'Validate records' }).getAttribute('href'),
-    );
-    expect(validate.pathname).toBe('/app/species');
-    expect(validate.searchParams.get('scope')).toBe('plots');
-    expect(validate.searchParams.get('sort')).toBe('completeness');
-
-    const enterData = hrefUrl(
-      within(quickActions).getByRole('link', { name: 'Enter new data' }).getAttribute('href'),
-    );
-    expect(enterData.searchParams.get('traitData')).toBe('missing');
-    expect(enterData.searchParams.get('scope')).toBe('plots');
-
-    // "Browse species" also appears on the scope card (its own way into the
-    // species list), so this one is found within Quick actions specifically.
-    expect(within(quickActions).getByRole('link', { name: 'Browse species' })).toHaveAttribute(
-      'href',
-      '/app/species',
-    );
+    // "Browse species" also appears on the scope card, so each link is found
+    // within Quick actions specifically.
+    for (const [name, href] of [
+      ['Browse species', '/app/species'],
+      ['Browse traits', '/app/traits'],
+      ['Browse references', '/app/references'],
+    ] as const) {
+      expect(within(quickActions).getByRole('link', { name })).toHaveAttribute('href', href);
+    }
+    expect(within(quickActions).getAllByRole('link')).toHaveLength(3);
   });
 
   it('lists records awaiting validation with the count in the heading, and opens the drawer from a row', async () => {
@@ -141,59 +129,69 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links the top missing traits with scope=plots when the viewer has plots, and without it when they do not', async () => {
-    const first = renderAt('/app/');
+  it('lists the top traits with data, each linking to its trait page, with or without plots', async () => {
+    const [first] = TOP_TRAITS_WITH_DATA;
+    if (!first) throw new Error('fixture has no traits');
+    const withPlots = renderAt('/app/');
     expect(
-      await screen.findByRole('heading', { name: 'Top traits missing data in your plots' }),
+      await screen.findByRole('heading', { name: 'Top traits with data' }),
     ).toBeInTheDocument();
-    const withPlots = hrefUrl(screen.getByRole('link', { name: 'seed mass' }).getAttribute('href'));
-    expect(withPlots.searchParams.get('scope')).toBe('plots');
-    first.unmount();
+    expect(screen.getByRole('link', { name: 'seed mass' })).toHaveAttribute(
+      'href',
+      `/app/traits/${first.trait.id}`,
+    );
+    withPlots.unmount();
 
     dashboard.fetchDashboard.mockResolvedValue(NO_PLOTS_DASHBOARD);
     renderAt('/app/');
     expect(
-      await screen.findByRole('heading', { name: 'Top traits missing data in the dataset' }),
+      await screen.findByRole('heading', { name: 'Top traits with data' }),
     ).toBeInTheDocument();
-    const withoutPlots = hrefUrl(
-      screen.getByRole('link', { name: 'seed mass' }).getAttribute('href'),
+    expect(screen.getByRole('link', { name: 'seed mass' })).toHaveAttribute(
+      'href',
+      `/app/traits/${first.trait.id}`,
     );
-    expect(withoutPlots.searchParams.has('scope')).toBe(false);
   });
 
-  it('shows the empty state when no trait is missing data', async () => {
+  it('shows the empty state when no trait has data', async () => {
     dashboard.fetchDashboard.mockResolvedValue({
       ...DASHBOARD,
-      contributor: {
-        ...DASHBOARD.contributor,
-        topMissingTraits: [],
-      },
+      contributor: { ...DASHBOARD.contributor, topTraitsWithData: [] },
     });
     renderAt('/app/');
-    expect(await screen.findByText('Every trait in your plots has data.')).toBeInTheDocument();
+    expect(await screen.findByText('No trait has data yet.')).toBeInTheDocument();
   });
 
-  it('shows the empty state without plots when no trait is missing data', async () => {
-    dashboard.fetchDashboard.mockResolvedValue({
-      ...NO_PLOTS_DASHBOARD,
-      contributor: {
-        ...NO_PLOTS_DASHBOARD.contributor,
-        topMissingTraits: [],
-      },
-    });
+  it('shows the contribution summary as a label/value list linking to /app/contributions', async () => {
     renderAt('/app/');
-    expect(await screen.findByText('Every trait in the dataset has data.')).toBeInTheDocument();
-  });
-
-  it('shows the contribution summary as tiles linking to /app/contributions', async () => {
-    renderAt('/app/');
-    const tiles = await screen.findByRole('list', { name: 'Your contributions' });
-    expect(tiles).toHaveTextContent('Records');
-    expect(tiles).toHaveTextContent(String(DASHBOARD.contributor.summary.records));
+    const list = await screen.findByRole('list', { name: 'Your contributions' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(7);
+    expect(list).toHaveTextContent('Records');
+    expect(list).toHaveTextContent(String(DASHBOARD.contributor.summary.records));
     expect(screen.getByRole('link', { name: 'View your contributions' })).toHaveAttribute(
       'href',
       '/app/contributions',
     );
+    expect(screen.queryByText(/^Nothing yet\./)).not.toBeInTheDocument();
+  });
+
+  it('notes "Nothing yet" above the counts when every contribution count is zero', async () => {
+    dashboard.fetchDashboard.mockResolvedValue(NEW_CONTRIBUTOR_DASHBOARD);
+    renderAt('/app/');
+    const note = await screen.findByText(
+      'Nothing yet. Validate a record or add a missing value and it counts here.',
+    );
+    const list = screen.getByRole('list', { name: 'Your contributions' });
+    expect(note.compareDocumentPosition(list)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('opens on the hero: the greeting and the headline as the only h1, with no "Workspace" page header', async () => {
+    renderAt('/app/');
+    expect(await screen.findByText(`Welcome back, ${ME.user.name}`)).toBeInTheDocument();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Help complete what we know about how trees reproduce.');
+    expect(screen.queryByRole('heading', { name: 'Workspace' })).not.toBeInTheDocument();
   });
 
   it('renders the curation section only when curation is present', async () => {

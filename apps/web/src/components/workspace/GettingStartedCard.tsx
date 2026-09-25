@@ -1,12 +1,51 @@
-import { Link } from '@tanstack/react-router';
+import { Link, type LinkProps } from '@tanstack/react-router';
 import type { ContributionSummary } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { helpHref } from '../../content/help/href.ts';
 import { readFlag, writeFlag } from '../../lib/storage.ts';
-import { Button } from '../ui/index.ts';
 
 const HIDDEN_STORAGE_KEY = 'treerepro.gettingStarted.hidden';
-const LINK_CLASS = 'font-medium text-canopy-900 underline-offset-2 hover:underline';
+const CARD_CLASS =
+  'flex h-full flex-col gap-3.5 rounded-2xl border border-canopy-700/15 bg-white p-5.5 text-canopy-950 transition-colors hover:border-canopy-700/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500';
+const BADGE_CLASS =
+  'flex size-9 items-center justify-center rounded-full bg-canopy-200 font-display text-meta font-bold text-canopy-800';
+const HIDE_CLASS =
+  'h-11 rounded-full px-3.5 font-display text-meta font-semibold text-canopy-700 transition-colors hover:text-canopy-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500';
+
+// The four doors, in the checklist's order: the title is the destination,
+// the call to action what the click does there.
+const STEPS: readonly {
+  title: string;
+  cta: string;
+  to: LinkProps['to'];
+  search?: LinkProps['search'];
+}[] = [
+  {
+    title: 'Learn how validating, contesting and complementing a record work',
+    cta: 'Read the guide',
+    // `helpHref` answers a plain string (it may carry a `#anchor`); the
+    // help topic route it names is `/app/help/$topic`.
+    to: helpHref('workflow') as LinkProps['to'],
+  },
+  {
+    title: 'Browse the species in your plots',
+    cta: 'Open your plots',
+    to: '/app/species',
+    search: { scope: 'plots' },
+  },
+  {
+    title: 'See which species have the least complete data',
+    cta: 'Show gaps',
+    to: '/app/species',
+    search: { sort: 'completeness' },
+  },
+  {
+    title: 'Find traits missing data you could enter',
+    cta: 'Find traits',
+    to: '/app/species',
+    search: { traitData: 'missing' },
+  },
+];
 
 // RFC-71 R4's seven counts, read off the object rather than named one by
 // one: an eighth count added to the contract later is then covered without
@@ -42,44 +81,33 @@ export function GettingStartedCard({ summary }: { summary: ContributionSummary }
   }
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-col gap-4 rounded-xl border border-canopy-700/15 bg-white p-6"
-    >
-      <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
-        Getting started
-      </h2>
-      <p className="text-body text-mist-500">
-        A few places to start now that you have access. Each one opens straight into what it
-        describes.
-      </p>
-      <ul aria-label="Getting started checklist" className="flex flex-col gap-2 text-body">
-        <li>
-          <Link to={helpHref('workflow')} className={LINK_CLASS}>
-            Learn how validating, contesting and complementing a record work
-          </Link>
-        </li>
-        <li>
-          <Link to="/app/species" search={{ scope: 'plots' }} className={LINK_CLASS}>
-            Browse the species in your plots
-          </Link>
-        </li>
-        <li>
-          <Link to="/app/species" search={{ sort: 'completeness' }} className={LINK_CLASS}>
-            See which species have the least complete data
-          </Link>
-        </li>
-        <li>
-          <Link to="/app/species" search={{ traitData: 'missing' }} className={LINK_CLASS}>
-            Find traits missing data you could enter
-          </Link>
-        </li>
-      </ul>
-      <div>
-        <Button variant="secondary" onClick={onHide}>
+    <section aria-labelledby={headingId} className="flex flex-col gap-4">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
+          Getting started
+        </h2>
+        <button type="button" onClick={onHide} className={HIDE_CLASS}>
           Hide this card
-        </Button>
+        </button>
       </div>
+      <ol
+        aria-label="Getting started checklist"
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+      >
+        {STEPS.map((step, index) => (
+          <li key={step.title}>
+            <Link to={step.to} search={step.search} className={CARD_CLASS}>
+              <span aria-hidden="true" className={BADGE_CLASS}>
+                {index + 1}
+              </span>
+              <span className="grow text-body font-semibold">{step.title}</span>
+              <span className="text-meta font-bold text-canopy-700">
+                {step.cta} <span aria-hidden="true">→</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

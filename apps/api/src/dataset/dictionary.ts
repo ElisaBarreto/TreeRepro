@@ -130,10 +130,10 @@ export async function dictionaryCategories(
  * viewer class under `dictionary:species-counts:<u|r>` (RFC-62 R5) — the
  * table is millions of rows, so this is not recomputed per request.
  *
- * Exported for the workspace dashboard (RFC-72 R1), whose `topMissingTraits`
- * subtracts these same counts from the visible species count: one producer
- * writes this key, because two that diverge on the visibility predicate or the
- * stored shape would corrupt the dictionary page with nothing to point at.
+ * Exported for the workspace dashboard (RFC-72 R1), whose `topTraitsWithData`
+ * ranks the traits by these same counts: one producer writes this key,
+ * because two that diverge on the visibility predicate or the stored shape
+ * would corrupt the dictionary page with nothing to point at.
  * @rfc RFC-62 R5
  * @rfc RFC-72 R1
  */

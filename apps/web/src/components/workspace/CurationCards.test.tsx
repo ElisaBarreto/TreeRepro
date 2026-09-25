@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { DASHBOARD_CURATION } from '../../test/dataset-fixtures.ts';
@@ -116,5 +116,48 @@ describe('RFC-72 R3 CurationCards', () => {
       'href',
       '/app/curation/coverage',
     );
+  });
+
+  it('makes every queue tile a block-level link', async () => {
+    renderInRouter(
+      <CurationCards
+        curation={{ ...DASHBOARD_CURATION, queues: { ...DASHBOARD_CURATION.queues, proposals: 1 } }}
+        canReadCoverage={false}
+      />,
+    );
+    const queues = await screen.findByRole('list', { name: 'Curation queues' });
+    const links = within(queues).getAllByRole('link');
+    expect(links).toHaveLength(4);
+    for (const link of links) expect(link).toHaveClass('flex');
+  });
+
+  it('invites to start reviewing the pending groups', async () => {
+    renderInRouter(<CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />);
+    const pending = await screen.findByRole('link', { name: /^Pending/ });
+    expect(pending).toHaveTextContent('groups to harmonise');
+    expect(pending).toHaveTextContent('Start reviewing');
+  });
+
+  it('reads "All clear" on a disputed or contested queue at zero, and not above it', async () => {
+    const first = renderInRouter(
+      <CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />,
+    );
+    expect(await screen.findByRole('link', { name: /^Disputed/ })).not.toHaveTextContent(
+      'All clear',
+    );
+    expect(screen.getByRole('link', { name: /^Contested/ })).not.toHaveTextContent('All clear');
+    first.unmount();
+
+    renderInRouter(
+      <CurationCards
+        curation={{
+          ...DASHBOARD_CURATION,
+          queues: { ...DASHBOARD_CURATION.queues, disputed: 0, contested: 0 },
+        }}
+        canReadCoverage={false}
+      />,
+    );
+    expect(await screen.findByRole('link', { name: /^Disputed/ })).toHaveTextContent('All clear');
+    expect(screen.getByRole('link', { name: /^Contested/ })).toHaveTextContent('All clear');
   });
 });

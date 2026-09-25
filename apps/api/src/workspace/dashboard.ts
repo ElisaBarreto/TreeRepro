@@ -1,11 +1,6 @@
 import type { Dashboard, PermissionKey, PlotRef } from '@treerepro/contracts';
 import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import {
-  globalSpeciesVisible,
-  speciesVisible,
-  traitVisible,
-  type Visibility,
-} from '../access/visibility.ts';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import { contributionSummary } from '../dataset/contributions.ts';
 import { coverageTotals } from '../dataset/coverage.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
@@ -34,25 +29,32 @@ export interface DashboardViewer {
   scope: { plots: PlotRef[]; restricted: boolean };
 }
 
-/** One entry of the missing-trait ranking. @rfc RFC-72 R1 */
-export type MissingTrait = Dashboard['contributor']['topMissingTraits'][number];
+/** One entry of the traits-with-data ranking. @rfc RFC-72 R1 */
+export type TraitWithData = Dashboard['contributor']['topTraitsWithData'][number];
 
 /** The global counts of RFC-72 R1, without the `computedAt` of their entry. */
 export interface DatasetStats {
   speciesCount: number;
   referenceCount: number;
+  primaryReferenceCount: number;
+  secondaryReferenceCount: number;
   recordCount: number;
 }
 
 interface StatsRow {
   species_count: number;
   reference_count: number;
+  primary_reference_count: number;
+  secondary_reference_count: number;
   record_count: number;
 }
 
 /**
- * The three global counts, uncached: active species (RFC-72 R1 counts only
- * those), every bibliographic reference and every record.
+ * The global counts, uncached: active species (RFC-72 R1 counts only
+ * those), every bibliographic reference, the references cited at least once
+ * as a primary and as a secondary reference (`primary_count > 0`,
+ * `secondary_count > 0`, the stored counters of RFC-61 — spec R-18), and
+ * every record.
  *
  * The record count is `sum(record_count)` over `species_trait_coverage`
  * (RFC-69 R1), the source `docs/specs/2026-09-17-workspace-design.md` §4
@@ -76,11 +78,20 @@ export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats>
     select
       (select count(*)::int from species s where s.active) as species_count,
       (select count(*)::int from bibliographic_references) as reference_count,
+      roles.primary_reference_count,
+      roles.secondary_reference_count,
       (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
-        as record_count`)) as unknown as [StatsRow | undefined];
+        as record_count
+    from (
+      select (count(*) filter (where r.primary_count > 0))::int as primary_reference_count,
+             (count(*) filter (where r.secondary_count > 0))::int as secondary_reference_count
+      from bibliographic_references r
+    ) roles`)) as unknown as [StatsRow | undefined];
   return {
     speciesCount: row?.species_count ?? 0,
     referenceCount: row?.reference_count ?? 0,
+    primaryReferenceCount: row?.primary_reference_count ?? 0,
+    secondaryReferenceCount: row?.secondary_reference_count ?? 0,
     recordCount: row?.record_count ?? 0,
   };
 }
@@ -88,8 +99,8 @@ export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats>
 /**
  * `computeDatasetStats` behind the one-hour entry RFC-72 R1 names,
  * `stats:dataset`. The key carries no viewer class: these are the counts of
- * the dataset as a whole, the same three numbers the project description
- * quotes to every viewer (RFC-72 R3), and `computedAt` is the entry's own.
+ * the dataset as a whole, the numbers the project description quotes to
+ * every viewer (RFC-72 R3), and `computedAt` is the entry's own.
  * @rfc RFC-72 R1
  */
 export async function datasetStats(ctx: DashboardContext): Promise<Dashboard['dataset']> {
@@ -248,111 +259,62 @@ async function hydrateAwaiting(
   };
 }
 
-interface RankRow {
+interface TraitRow {
   trait_id: string;
   trait_key: string;
-  value_type: MissingTrait['trait']['valueType'];
+  value_type: TraitWithData['trait']['valueType'];
   unit: string | null;
   category_key: string;
   category_label: string;
-  missing?: number;
 }
 
-const toMissingTrait = (r: RankRow, missing: number): MissingTrait => ({
-  trait: { id: r.trait_id, key: r.trait_key, valueType: r.value_type, unit: r.unit },
-  category: { key: r.category_key, label: r.category_label },
-  missingSpeciesCount: missing,
-});
-
 /**
- * The visible traits ranked by how many species still miss them, most missing
- * first and ties broken by trait key so the ranking is stable between calls.
- * Traits nothing misses are left out: this answers "where is data missing",
- * and a trait every species already holds is not an answer to it.
+ * The visible traits ranked by how many species hold data for them, most
+ * first and ties broken by trait key so the ranking is stable between calls
+ * (spec R-18). A trait no species holds is left out: this answers "where is
+ * the data", and a trait without any is not an answer to it.
  *
- * With plots, the count is over the viewer's plot species alone. Without, it
- * is over every visible species and the per-trait species counts come from
- * `speciesCountsByTrait` — the entry the dictionary page already computes and
- * caches (RFC-62 R5), read rather than recomputed, because two producers
- * writing one Redis key corrupt it the moment they diverge. That entry is
- * plot-blind, which is exactly what a viewer with no plots asks for; a viewer
- * restricted to no plots at all sees nothing, and is answered nothing.
+ * The per-trait counts are `speciesCountsByTrait` — the entry the dictionary
+ * page already computes and caches (RFC-62 R5), read rather than recomputed,
+ * because two producers writing one Redis key corrupt it the moment they
+ * diverge. That entry is plot-blind: a dataset-wide statistic is open to a
+ * plot-bound viewer, whose own slice is the trait lists, not this ranking.
  *
- * The two halves of that subtraction are of different ages: `visible` is
- * counted live, `counts` comes from an entry up to ten minutes old. So a
- * species committed inside that window is in the denominator but not yet in
- * the per-trait count, and `missingSpeciesCount` overstates by at most the
- * species added in ten minutes; a species deactivated in the same window
- * understates it, which is why the subtraction is clamped at zero. The error
- * is bounded and heals itself when the entry expires, and a ranking is the
- * one consumer that can carry it: it orders traits, and a handful of species
- * shared by every trait alike barely moves the order.
- *
- * It is exported for the reason `computeCoverageTotals` is: `getDashboard`
- * cuts the ranking to ten, and which traits make that cut depends on every
- * species and trait in the database, so only the full ranking can be asserted
- * against a test's own fixture.
+ * It is exported so a test can assert the full ranking: `getDashboard` cuts
+ * it to ten, and which traits make that cut depends on every species and
+ * trait in the database.
  * @rfc RFC-72 R1, R2
- * @rfc RFC-33 R2, R3
+ * @rfc RFC-62 R5
  */
-export async function missingTraitCounts(
+export async function traitsWithData(
   ctx: DashboardContext,
   visibility: Visibility,
-  plotIds: string[],
-): Promise<MissingTrait[]> {
-  const traitSeen = traitVisible(visibility, sql`t.active`);
-  if (plotIds.length > 0) {
-    // The plot species are counted per trait in a subquery of their own, and
-    // the ranking left-joins the result. Written the obvious way — the
-    // membership test in the `ON` clause of a left join over
-    // `species_trait_coverage` — the planner is free to compile it to a hashed
-    // SubPlan instead of a semi-join, and the inner side then walks
-    // `species_trait_coverage_trait_idx` across every species holding each
-    // trait: an index-only pass over the whole coverage table per cache miss,
-    // which is the scan RFC-72's context and spec §1 forbid. Pre-aggregating
-    // removes the choice — the coverage rows are only ever reached from
-    // `plot_sp`, by the coverage primary key. The arithmetic is unchanged:
-    // coverage is one row per species × trait, so `count(*)` per trait equals
-    // the `count(c.species_id)` this replaces.
-    const rows = (await ctx.db.execute(sql`
-      with ${plotSpeciesCte(visibility, plotIds)}
-      select t.id as trait_id, t.key as trait_key, t.value_type as value_type, t.unit as unit,
-             tc.key as category_key, tc.label as category_label,
-             (select count(*)::int from plot_sp) - coalesce(h.n, 0) as missing
-      from traits t
-      join trait_categories tc on tc.key = t.category_key
-      left join (select c.trait_id as trait_id, count(*)::int as n
-                 from species_trait_coverage c
-                 where c.species_id in (select id from plot_sp)
-                 group by c.trait_id) h on h.trait_id = t.id
-      where ${traitSeen}
-      order by missing desc, t.key asc`)) as unknown as RankRow[];
-    return rows.filter((r) => (r.missing ?? 0) > 0).map((r) => toMissingTrait(r, r.missing ?? 0));
-  }
-  if (visibility.plotIds !== null && visibility.plotIds.length === 0) return [];
-  const [counts, rows, [total]] = await Promise.all([
+): Promise<TraitWithData[]> {
+  const [counts, rows] = await Promise.all([
     speciesCountsByTrait(ctx, visibility),
     ctx.db.execute(sql`
       select t.id as trait_id, t.key as trait_key, t.value_type as value_type, t.unit as unit,
              tc.key as category_key, tc.label as category_label
       from traits t
       join trait_categories tc on tc.key = t.category_key
-      where ${traitSeen}
-      order by t.key asc`) as unknown as Promise<RankRow[]>,
-    ctx.db.execute(sql`
-      select count(*)::int as n from species s
-      where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}`) as unknown as Promise<
-      [{ n: number } | undefined]
-    >,
+      where ${traitVisible(visibility, sql`t.active`)}`) as unknown as Promise<TraitRow[]>,
   ]);
-  const visible = total?.n ?? 0;
-  return rows
-    .map((r) => toMissingTrait(r, Math.max(0, visible - (counts.get(r.trait_id) ?? 0))))
-    .filter((r) => r.missingSpeciesCount > 0)
-    .sort(
-      (a, b) =>
-        b.missingSpeciesCount - a.missingSpeciesCount || a.trait.key.localeCompare(b.trait.key),
-    );
+  return (
+    rows
+      .map((r) => ({
+        trait: { id: r.trait_id, key: r.trait_key, valueType: r.value_type, unit: r.unit },
+        category: { key: r.category_key, label: r.category_label },
+        speciesCount: counts.get(r.trait_id) ?? 0,
+      }))
+      .filter((r) => r.speciesCount > 0)
+      // Code-unit order, not `localeCompare`: the tie-break must not move with
+      // the server's locale.
+      .sort(
+        (a, b) =>
+          b.speciesCount - a.speciesCount ||
+          (a.trait.key < b.trait.key ? -1 : a.trait.key > b.trait.key ? 1 : 0),
+      )
+  );
 }
 
 /**
@@ -374,16 +336,16 @@ async function contributorSection(
   viewer: DashboardViewer,
   plotIds: string[],
 ): Promise<CachedContributor> {
-  const [missingCells, awaiting, topMissingTraits, summary] = await Promise.all([
+  const [missingCells, awaiting, withData, summary] = await Promise.all([
     plotIds.length === 0 ? null : missingCellCount(ctx.db, visibility, plotIds),
     plotIds.length === 0 ? null : awaitingValidation(ctx.db, visibility, plotIds),
-    missingTraitCounts(ctx, visibility, plotIds),
+    traitsWithData(ctx, visibility),
     contributionSummary(ctx.db, viewer.id),
   ]);
   return {
     missingCells,
     awaitingValidation: awaiting,
-    topMissingTraits: topMissingTraits.slice(0, 10),
+    topTraitsWithData: withData.slice(0, 10),
     summary,
   };
 }

@@ -56,7 +56,12 @@ async function signIn(who: Page, email: string, pass: string, code?: string) {
     await who.getByRole('button', { name: 'Verify' }).click();
   }
   await expect(who).toHaveURL(/\/app$/);
-  await expect(who.getByRole('heading', { name: 'Workspace' })).toBeVisible();
+  await expect(
+    who.getByRole('heading', {
+      level: 1,
+      name: 'Help complete what we know about how trees reproduce.',
+    }),
+  ).toBeVisible();
 }
 
 async function signOut(who: Page) {
