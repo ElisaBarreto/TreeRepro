@@ -35,6 +35,11 @@
 **Cause:** RFC-24 R3 limits `login` to 5 attempts per 15 minutes; `critical-flow.spec.ts` already spends that budget on its own admin sign-in.
 **Fix:** Never add an admin sign-in to that file. Every other E2E spec authenticates as admin through `adminContext()` (saved storage state) and provisions other users with `inviteAndActivate()`.
 
+## E2E spec files run in parallel against one stack
+**Symptom:** An e2e spec passes alone (`pnpm test:e2e -- -g …`) but fails in the full run: a count is off by one, a list holds a row the spec did not create, or `ADMIN_STATE` suddenly answers 401.
+**Cause:** `playwright.config.ts` runs three workers: spec files in parallel, the tests inside one file in order (issue #165). Every file shares the same database, Redis and Mailpit. `critical-flow.spec.ts` resets the admin's password (revoking every admin session) and turns on its TOTP, so it is its own Playwright project that the `chromium` project depends on: it finishes, saves `ADMIN_STATE` again, and only then do the other files start.
+**Fix:** A spec creates its own users (`inviteAndActivate`, unique e-mail), traits, species and plots, and asserts only on those or on figures scoped to them; never on a global total another file can move. A spec that, like `critical-flow`, changes the admin's credentials or sessions goes into `critical-flow.spec.ts` or joins the first project (its `testMatch` and the `chromium` project's `testIgnore` in `playwright.config.ts`).
+
 ## `getByText` / `getByRole` name matching is substring by default in Playwright
 **Symptom:** Strict-mode violations ("resolved to 2 elements") for `getByText('suspended')` (a status badge reading "suspended" and a caption reading "Suspended 2026-…") or `getByRole('button', { name: 'Sign out' })` on the settings page ("Sign out everywhere", "Sign out <agent>").
 **Cause:** Playwright's string `name`/text locators match by substring by default; Testing Library's string `name` matcher is exact by default — the opposite convention — so instincts carried over from component tests pick the wrong default here.
