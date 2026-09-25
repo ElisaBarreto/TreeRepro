@@ -139,4 +139,16 @@ describe('RFC-13 R11 HelpTip', () => {
     fireEvent.click(screen.getByRole('button', { name: 'What does this mean?' }));
     expect(screen.queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
   });
+
+  it('shows a larger trigger — a 28px button around a 20px icon — keeping its focus ring', () => {
+    render(<HelpTip>Explains things.</HelpTip>);
+    const button = screen.getByRole('button', { name: 'What does this mean?' });
+    expect(button).toHaveClass(
+      'size-7',
+      'focus-visible:outline-2',
+      'focus-visible:outline-pollen-500',
+    );
+    expect(button).not.toHaveClass('size-5');
+    expect(button.querySelector('svg')).toHaveAttribute('width', '20');
+  });
 });
