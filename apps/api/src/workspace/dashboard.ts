@@ -78,12 +78,15 @@ export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats>
     select
       (select count(*)::int from species s where s.active) as species_count,
       (select count(*)::int from bibliographic_references) as reference_count,
-      (select (count(*) filter (where r.primary_count > 0))::int
-        from bibliographic_references r) as primary_reference_count,
-      (select (count(*) filter (where r.secondary_count > 0))::int
-        from bibliographic_references r) as secondary_reference_count,
+      roles.primary_reference_count,
+      roles.secondary_reference_count,
       (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
-        as record_count`)) as unknown as [StatsRow | undefined];
+        as record_count
+    from (
+      select (count(*) filter (where r.primary_count > 0))::int as primary_reference_count,
+             (count(*) filter (where r.secondary_count > 0))::int as secondary_reference_count
+      from bibliographic_references r
+    ) roles`)) as unknown as [StatsRow | undefined];
   return {
     speciesCount: row?.species_count ?? 0,
     referenceCount: row?.reference_count ?? 0,
@@ -296,14 +299,22 @@ export async function traitsWithData(
       join trait_categories tc on tc.key = t.category_key
       where ${traitVisible(visibility, sql`t.active`)}`) as unknown as Promise<TraitRow[]>,
   ]);
-  return rows
-    .map((r) => ({
-      trait: { id: r.trait_id, key: r.trait_key, valueType: r.value_type, unit: r.unit },
-      category: { key: r.category_key, label: r.category_label },
-      speciesCount: counts.get(r.trait_id) ?? 0,
-    }))
-    .filter((r) => r.speciesCount > 0)
-    .sort((a, b) => b.speciesCount - a.speciesCount || a.trait.key.localeCompare(b.trait.key));
+  return (
+    rows
+      .map((r) => ({
+        trait: { id: r.trait_id, key: r.trait_key, valueType: r.value_type, unit: r.unit },
+        category: { key: r.category_key, label: r.category_label },
+        speciesCount: counts.get(r.trait_id) ?? 0,
+      }))
+      .filter((r) => r.speciesCount > 0)
+      // Code-unit order, not `localeCompare`: the tie-break must not move with
+      // the server's locale.
+      .sort(
+        (a, b) =>
+          b.speciesCount - a.speciesCount ||
+          (a.trait.key < b.trait.key ? -1 : a.trait.key > b.trait.key ? 1 : 0),
+      )
+  );
 }
 
 /**

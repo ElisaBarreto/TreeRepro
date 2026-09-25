@@ -12,7 +12,7 @@ import { ScopeCard } from '../components/workspace/ScopeCard.tsx';
 import { TraitsWithDataList } from '../components/workspace/TraitsWithDataList.tsx';
 import { pageErrorMessage } from '../lib/errors.ts';
 import { formatNumber } from '../lib/format.ts';
-import { useMe } from '../lib/session.ts';
+import { hasPermission, useMe } from '../lib/session.ts';
 
 const CARD_CLASS =
   'flex flex-col gap-5 rounded-2xl border border-canopy-700/15 bg-white p-6 md:px-8 md:py-7';
@@ -147,12 +147,7 @@ export function WorkspacePage() {
           {data.curation ? (
             <CurationCards
               curation={data.curation}
-              // 'coverage.read' is plan 11c's permission key; it does not
-              // exist in the shared PermissionKey catalog yet (11c has not
-              // shipped, and this worktree owns apps/web only), so the raw
-              // string list is read directly rather than through
-              // `hasPermission`, which is typed to the current catalog.
-              canReadCoverage={me.permissions.includes('coverage.read')}
+              canReadCoverage={hasPermission(me, 'coverage.read')}
             />
           ) : null}
         </div>

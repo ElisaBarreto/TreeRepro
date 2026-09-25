@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router';
+import { Link, type LinkProps } from '@tanstack/react-router';
 import type { ContributionSummary } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { helpHref } from '../../content/help/href.ts';
@@ -17,15 +17,15 @@ const HIDE_CLASS =
 const STEPS: readonly {
   title: string;
   cta: string;
-  // `string`, not `LinkProps['to']`: `helpHref` answers a plain string,
-  // which `Link` accepts when it infers `to` itself.
-  to: string;
-  search?: Record<string, string>;
+  to: LinkProps['to'];
+  search?: LinkProps['search'];
 }[] = [
   {
     title: 'Learn how validating, contesting and complementing a record work',
     cta: 'Read the guide',
-    to: helpHref('workflow'),
+    // `helpHref` answers a plain string (it may carry a `#anchor`); the
+    // help topic route it names is `/app/help/$topic`.
+    to: helpHref('workflow') as LinkProps['to'],
   },
   {
     title: 'Browse the species in your plots',

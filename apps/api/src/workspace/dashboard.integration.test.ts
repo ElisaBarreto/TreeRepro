@@ -283,6 +283,22 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
     });
   });
 
+  it('ranks the same traits for a viewer restricted to no plots at all as for the rest of their visibility class', async () => {
+    await withRollback(t.db, async (tx) => {
+      await freezeSnapshot(tx);
+      const f = await plotFixture(tx);
+
+      // The ranking is plot-blind (Spec note 3): restricting a viewer to zero
+      // plots narrows nothing here, the same as `GET /api/traits`.
+      const unbound = await traitsWithData({ db: tx, redis }, RESTRICTED);
+      const noPlots = await traitsWithData({ db: tx, redis }, { inactive: false, plotIds: [] });
+      const bound = await traitsWithData({ db: tx, redis }, f.visibility);
+      expect(noPlots.some((r) => r.trait.id === f.traitA.id)).toBe(true);
+      expect(noPlots).toEqual(unbound);
+      expect(bound).toEqual(unbound);
+    });
+  });
+
   it('answers curation only to a viewer who reviews, with the queue counts of RFC-65', async () => {
     await withRollback(t.db, async (tx) => {
       await freezeSnapshot(tx);

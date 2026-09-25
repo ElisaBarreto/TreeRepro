@@ -62,18 +62,6 @@ function PendingTile({ value }: { value: number }) {
   );
 }
 
-// The proposals queue (RFC-75) has no route yet — plan 12c ships it — so
-// this stays a plain anchor rather than a typed router `Link`, same as the
-// coverage link below (plan 11c). Both read from the fixed href a future
-// plan's route file will answer to.
-function ProposalsTile({ value }: { value: number }) {
-  return (
-    <a href="/app/curation/proposals" className={LIGHT_TILE_CLASS}>
-      <TileBody label="Proposals" value={value} />
-    </a>
-  );
-}
-
 // A coverage share as the big percentage over a bare bar. The native
 // `<meter>` keeps the kit Meter's semantics (value against max, the specific
 // accessible name); the kit Meter itself writes its percentage beside the
@@ -115,8 +103,7 @@ function CoverageMeter({
  * for `records.review` viewers, RFC-72 R1) — that null check belongs to the
  * caller. Pending is the dark call to action; Disputed and Contested read
  * "All clear" at zero. The proposals tile only appears once there are open
- * proposals (plan 12c has not shipped, so today that is never); the coverage
- * link only for a viewer who holds `coverage.read` (plan 11c).
+ * proposals; the coverage link only for a viewer who holds `coverage.read`.
  * @rfc RFC-72 R3
  */
 export function CurationCards({
@@ -140,12 +127,12 @@ export function CurationCards({
           Curation
         </h2>
         {canReadCoverage ? (
-          <a
-            href="/app/curation/coverage"
+          <Link
+            to="/app/curation/coverage"
             className={`rounded-sm text-cell font-bold text-canopy-800 underline-offset-2 hover:underline ${FOCUS}`}
           >
             View coverage <span aria-hidden="true">→</span>
-          </a>
+          </Link>
         ) : null}
       </div>
       <div className="grid gap-6 lg:grid-cols-[5fr_7fr]">
@@ -208,7 +195,7 @@ export function CurationCards({
           </li>
           {queues.proposals > 0 ? (
             <li>
-              <ProposalsTile value={queues.proposals} />
+              <QueueTile label="Proposals" value={queues.proposals} to="/app/curation/proposals" />
             </li>
           ) : null}
         </ul>
