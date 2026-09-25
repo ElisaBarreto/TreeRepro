@@ -47,6 +47,11 @@
   - the record item's `recordCode`, `quantitative` and `references`.
 - **13d** does not block this plan: `sourceRefSchema` keeps its name there (13d plan §Architecture). Start from `origin/main` only once 13e and 13f are both on it.
 
+## Cross-review amendments (2026-09-25 — apply these; they override the code below)
+
+1. **A categorical match validates the whole level** (owner decision: level actions act on every record of the level; 13a RFC-65 R13). When a new categorical entry matches an existing level, write the validations on **every** visible record of that level that is not the actor's own and not already validated by them — exactly what `validateLevel` does; reuse it from the create path instead of picking the oldest match. It is a duplicate (no writes) only when every record of the level is the actor's own. `validated` in the create response lists every record validated. Spec note 4 below is superseded. Quantitative matches (six identical fields) still validate the single matching record.
+2. **Record withdraw** answers `200 { data: null }` — 13a's RFC-65 R3 text was amended to match this plan.
+
 ## Global Constraints
 
 - English everywhere: code, comments, docs, UI and commits.
@@ -3286,7 +3291,7 @@ Run CodeRabbit locally on the branch (`coderabbit:code-review`, one run). Then p
 1. **RFC tags.** 13a is written in parallel, so its rule numbers for R-3 and R-6 to R-15 are unknown here. This plan cites the existing rules 13a amends (table in Task 1). Task 1 Step 1 swaps them for 13a's numbers if 13a created new rules.
 2. **RFCs outside 13a's list.** RFC-33 (R-14), RFC-52 (health queues), RFC-60 (R-15) and RFC-74 (digest) are amended here in Task 1. RFC-30 (the permission) is amended in Task 2, because RFC-30 R3 makes it one change set with `PERMISSIONS` and the migration. The descriptions of `records.annotate` and `records.review` also change, because they named dispute and neutralise.
 3. **A contest is never deduplicated.** R-7 would otherwise turn "contest blue with red" into a validation of an existing red record, leaving no contest (R-8: "a contest without one does not exist"). R-7 applies to complements and plain entries.
-4. **Which record a match validates.** If one of the matching live records is the actor's own, the entry is a duplicate (R-7's "own" case). Otherwise the oldest match (lowest id) gets the validations.
+4. **Which record a match validates.** If one of the matching live records is the actor's own, the entry is a duplicate (R-7's "own" case). Otherwise the oldest match (lowest id) gets the validations. **Superseded — see Cross-review amendment 1.**
 5. **Personal observation.** A matched entry sourced as a personal observation writes one `confirm` with no reference (R-7's "single confirm without a reference"). Supporting references are the entry's references minus the personal-observation one.
 6. **Claim-key conflict.** An insert that hits `trait_records_claim_key` answers 409 `RECORD_DUPLICATE` at `value.levelIds.<i>`, and the whole request rolls back. After dedupe, this can only happen against a withdrawn or invisible record, or a contest repeating an existing claim.
 7. **Old `dispute`/`neutral` rows** stay in `ANNOTATION_KINDS` so the record detail still parses its history. They are ignored by `reviewStatusSql`, so a record is `withdrawn`, `confirmed` or `unreviewed`. `REVIEW_STATUSES` keeps `disputed` (never produced now) to avoid web churn that plan 13h replaces anyway.
