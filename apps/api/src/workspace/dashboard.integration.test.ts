@@ -523,7 +523,7 @@ describe('RFC-72 R1 the dataset counts', () => {
     await redis.quit();
   });
 
-  it('counts active species only, and every reference and record, as a delta of its own rows', async () => {
+  it('counts active species only, every reference, the references cited as primary and as secondary, and every record, as a delta of its own rows', async () => {
     await withRollback(t.db, async (tx) => {
       await freezeSnapshot(tx);
       // The counts are dataset-wide: only the delta around this fixture can be
@@ -531,6 +531,9 @@ describe('RFC-72 R1 the dataset counts', () => {
       const before = await computeDatasetStats(tx);
       const { user } = await createUser(tx);
       const reference = await createReference(tx);
+      const secondary = await createReference(tx);
+      // Cited by nothing: a reference, but neither a primary nor a secondary one.
+      await createReference(tx);
       const trait = await createTrait(tx, { levels: ['alpha'] });
       const active = await createSpecies(tx);
       const inactive = await createSpecies(tx);
@@ -542,6 +545,7 @@ describe('RFC-72 R1 the dataset counts', () => {
           valueText: 'alpha',
           levelId: trait.levels[0]?.id,
           primaryReferenceId: reference.id,
+          secondaryReferenceId: secondary.id,
           origin: 'manual',
           createdBy: user.id,
         });
@@ -549,7 +553,11 @@ describe('RFC-72 R1 the dataset counts', () => {
 
       const after = await computeDatasetStats(tx);
       expect(after.speciesCount - before.speciesCount).toBe(1);
-      expect(after.referenceCount - before.referenceCount).toBe(1);
+      expect(after.referenceCount - before.referenceCount).toBe(3);
+      // Spec R-18: a reference counts once per role it holds, however many
+      // records cite it in that role.
+      expect(after.primaryReferenceCount - before.primaryReferenceCount).toBe(1);
+      expect(after.secondaryReferenceCount - before.secondaryReferenceCount).toBe(1);
       expect(after.recordCount - before.recordCount).toBe(2);
     });
   });

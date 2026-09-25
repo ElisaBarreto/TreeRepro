@@ -41,18 +41,25 @@ export type MissingTrait = Dashboard['contributor']['topMissingTraits'][number];
 export interface DatasetStats {
   speciesCount: number;
   referenceCount: number;
+  primaryReferenceCount: number;
+  secondaryReferenceCount: number;
   recordCount: number;
 }
 
 interface StatsRow {
   species_count: number;
   reference_count: number;
+  primary_reference_count: number;
+  secondary_reference_count: number;
   record_count: number;
 }
 
 /**
- * The three global counts, uncached: active species (RFC-72 R1 counts only
- * those), every bibliographic reference and every record.
+ * The global counts, uncached: active species (RFC-72 R1 counts only
+ * those), every bibliographic reference, the references cited at least once
+ * as a primary and as a secondary reference (`primary_count > 0`,
+ * `secondary_count > 0`, the stored counters of RFC-61 — spec R-18), and
+ * every record.
  *
  * The record count is `sum(record_count)` over `species_trait_coverage`
  * (RFC-69 R1), the source `docs/specs/2026-09-17-workspace-design.md` §4
@@ -76,11 +83,17 @@ export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats>
     select
       (select count(*)::int from species s where s.active) as species_count,
       (select count(*)::int from bibliographic_references) as reference_count,
+      (select (count(*) filter (where r.primary_count > 0))::int
+        from bibliographic_references r) as primary_reference_count,
+      (select (count(*) filter (where r.secondary_count > 0))::int
+        from bibliographic_references r) as secondary_reference_count,
       (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
         as record_count`)) as unknown as [StatsRow | undefined];
   return {
     speciesCount: row?.species_count ?? 0,
     referenceCount: row?.reference_count ?? 0,
+    primaryReferenceCount: row?.primary_reference_count ?? 0,
+    secondaryReferenceCount: row?.secondary_reference_count ?? 0,
     recordCount: row?.record_count ?? 0,
   };
 }
@@ -88,8 +101,8 @@ export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats>
 /**
  * `computeDatasetStats` behind the one-hour entry RFC-72 R1 names,
  * `stats:dataset`. The key carries no viewer class: these are the counts of
- * the dataset as a whole, the same three numbers the project description
- * quotes to every viewer (RFC-72 R3), and `computedAt` is the entry's own.
+ * the dataset as a whole, the numbers the project description quotes to
+ * every viewer (RFC-72 R3), and `computedAt` is the entry's own.
  * @rfc RFC-72 R1
  */
 export async function datasetStats(ctx: DashboardContext): Promise<Dashboard['dataset']> {
