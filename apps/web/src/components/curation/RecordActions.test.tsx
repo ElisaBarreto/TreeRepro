@@ -4,20 +4,18 @@ import type { Annotation, RecordDetail } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
-  ACCEPTED_STATE,
   CURATED_RECORD_DETAIL,
   DICTIONARY,
   DICTIONARY_SEXUAL_SYSTEM,
   RECORD_DETAIL,
 } from '../../test/dataset-fixtures.ts';
-import { ME, USER } from '../../test/fixtures.ts';
+import { ADMIN_ME, ME, USER } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { withRouter } from '../../test/router.tsx';
 import { RecordActions } from './RecordActions.tsx';
 
 const curation = vi.hoisted(() => ({
   annotateRecord: vi.fn(),
-  setAccepted: vi.fn(),
   createRecords: vi.fn(),
   resolveDoi: vi.fn(),
   invalidateAfterRecordWrite: vi.fn(async () => undefined),
@@ -50,7 +48,6 @@ const MINE: RecordDetail = {
   valueText: 'hermaphrodite',
   review: 'unreviewed',
   annotations: [],
-  acceptedHistory: [],
   createdBy: { id: USER.id, name: USER.name },
 };
 // The same record entered by someone else, so Withdraw stays out of the way.
@@ -74,7 +71,6 @@ function annotation(over: Partial<Annotation>): Annotation {
 beforeEach(() => {
   annotationSeq = 0;
   curation.annotateRecord.mockReset();
-  curation.setAccepted.mockReset();
   curation.createRecords.mockReset();
   // Leaving the DOI field always asks the registry; a test that does not care
   // what came back still needs an answer to come back.
@@ -139,13 +135,6 @@ describe('RFC-70 R4 RecordActions by permission', () => {
     expect(screen.getByRole('button', { name: VALIDATE }).className).toContain('bg-pollen-500');
   });
 
-  it('still offers Set as accepted to an accepted.manage holder', () => {
-    renderWithProviders(<RecordActions record={THEIRS} />, {
-      me: perms('dataset.read', 'records.annotate', 'accepted.manage'),
-    });
-    expect(screen.getByRole('button', { name: 'Set as accepted' })).toBeInTheDocument();
-  });
-
   // Mounted through a router: each tip carries a "Learn more" link into the
   // help topic (RFC-73 R4), and a router `Link` needs one.
   it('explains each decision in its own words, and links on to the help topic', async () => {
@@ -172,10 +161,17 @@ describe('RFC-70 R4 RecordActions by permission', () => {
 
   it('has no action at all on a withdrawn record', () => {
     renderWithProviders(<RecordActions record={{ ...MINE, review: 'withdrawn' }} />, {
-      me: perms('records.annotate', 'accepted.manage', 'records.create'),
+      me: perms('records.annotate', 'records.create'),
     });
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByText('This record is withdrawn.')).toBeInTheDocument();
+  });
+
+  it('spec R-1 offers no Set as accepted and no accepted badge, even with every permission', () => {
+    renderWithProviders(<RecordActions record={CURATED_RECORD_DETAIL} />, { me: ADMIN_ME });
+    expect(screen.getByRole('button', { name: VALIDATE })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
+    expect(screen.queryByText('accepted value')).not.toBeInTheDocument();
   });
 });
 
@@ -538,18 +534,11 @@ describe('RFC-65 R3-R6 RecordActions reviewer and author actions', () => {
     expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
   });
 
-  it('never offers Withdraw on an import record; an accepted record shows the badge instead of Set as accepted', () => {
-    const { unmount } = renderWithProviders(
-      <RecordActions record={{ ...RECORD_DETAIL, review: 'unreviewed' }} />,
-      { me: perms('records.annotate', 'records.withdraw') },
-    );
-    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
-    unmount();
-    renderWithProviders(<RecordActions record={CURATED_RECORD_DETAIL} />, {
-      me: perms('accepted.manage'),
+  it('never offers Withdraw on an import record', () => {
+    renderWithProviders(<RecordActions record={{ ...RECORD_DETAIL, review: 'unreviewed' }} />, {
+      me: perms('records.annotate', 'records.withdraw'),
     });
-    expect(screen.getByText('accepted value')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
   });
 
   it('resets the note and its error on Cancel or when switching between Dispute and Withdraw', async () => {
@@ -591,30 +580,5 @@ describe('RFC-65 R3-R6 RecordActions reviewer and author actions', () => {
     expect(await screen.findByText('Note must be at most 2000 characters.')).toBeInTheDocument();
     expect(note).toHaveAccessibleDescription('Note must be at most 2000 characters.');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('hides Set as accepted on a record that is not harmonised, even with accepted.manage', () => {
-    renderWithProviders(<RecordActions record={{ ...MINE, harmonisation: 'not_numeric' }} />, {
-      me: perms('accepted.manage'),
-    });
-    expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Actions' })).not.toBeInTheDocument();
-  });
-
-  it('sets the record as the accepted value with accepted.manage; maps API refusals to sentences', async () => {
-    curation.setAccepted.mockResolvedValue(ACCEPTED_STATE);
-    renderWithProviders(<RecordActions record={MINE} />, { me: perms('accepted.manage') });
-    await userEvent.click(screen.getByRole('button', { name: 'Set as accepted' }));
-    await waitFor(() =>
-      expect(curation.setAccepted).toHaveBeenCalledWith(MINE.speciesId, MINE.trait.id, {
-        decision: 'accepted',
-        recordId: MINE.id,
-      }),
-    );
-    curation.setAccepted.mockRejectedValueOnce(new ApiError(409, 'RECORD_NOT_HARMONISED', 'x'));
-    await userEvent.click(screen.getByRole('button', { name: 'Set as accepted' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Only a harmonised record can be the accepted value.',
-    );
   });
 });

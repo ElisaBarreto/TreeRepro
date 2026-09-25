@@ -13,7 +13,7 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
-import { acceptedValues, recordAnnotations } from '../db/schema/curation.ts';
+import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { getRecord, listRecords, reviewStatusSql } from './records.ts';
 import { ensurePersonalObservation } from './references.ts';
@@ -173,7 +173,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     expect(row?.review).toBe('withdrawn');
   });
 
-  it('R8 detail carries raw fields, batch, annotations and accepted history; manual records carry their author', async () => {
+  it('R8 detail carries raw fields, batch and annotations, no accepted history; manual records carry their author', async () => {
     const sp1 = await createSpecies(t.db);
     const trait = await traitByKey(t.db, 'flower_color');
     const ref = await createReference(t.db);
@@ -200,20 +200,6 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: imported.id, actorId: user.id, kind: 'confirm', note: 'Checked' });
-    await t.db.insert(acceptedValues).values({
-      speciesId: sp1.id,
-      traitId: trait.id,
-      recordId: imported.id,
-      decision: 'accepted',
-      actorId: user.id,
-    });
-    await t.db.insert(acceptedValues).values({
-      speciesId: sp1.id,
-      traitId: trait.id,
-      decision: 'cleared',
-      actorId: user.id,
-      note: 'Undecided',
-    });
 
     const detail = await getRecord(t.db, UNRESTRICTED, imported.id);
     expect(detail).toMatchObject({
@@ -233,11 +219,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
         },
       ],
     });
-    expect(detail?.acceptedHistory.map((a) => a.decision)).toEqual(['cleared', 'accepted']);
-    expect(detail?.acceptedHistory[1]).toMatchObject({
-      recordId: imported.id,
-      actor: { name: 'Grace' },
-    });
+    expect(detail).not.toHaveProperty('acceptedHistory');
     const manualDetail = await getRecord(t.db, UNRESTRICTED, manual.id);
     expect(manualDetail).toMatchObject({
       origin: 'manual',

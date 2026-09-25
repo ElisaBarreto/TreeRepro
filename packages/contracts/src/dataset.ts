@@ -403,16 +403,6 @@ export const annotationSchema = z.strictObject({
 });
 
 /** @rfc RFC-63 R8 */
-export const acceptedDecisionSchema = z.strictObject({
-  id: z.uuid(),
-  decision: z.enum(ACCEPTED_DECISIONS),
-  recordId: z.uuid().nullable(),
-  actor: userRefSchema,
-  note: z.string().nullable(),
-  createdAt: z.iso.datetime(),
-});
-
-/** @rfc RFC-63 R8 */
 export const recordDetailSchema = recordSchema.extend({
   rawValue: z.string().nullable(),
   originalTraitName: z.string().nullable(),
@@ -425,7 +415,6 @@ export const recordDetailSchema = recordSchema.extend({
     .nullable(),
   importRowNo: z.number().int().nullable(),
   annotations: z.array(annotationSchema),
-  acceptedHistory: z.array(acceptedDecisionSchema),
   supersedes: z.strictObject({ id: z.uuid() }).nullable(),
   supersededBy: z.array(z.strictObject({ id: z.uuid() })),
   responses: z.array(
@@ -561,7 +550,6 @@ export type TraitSpeciesItem = z.infer<typeof traitSpeciesItemSchema>;
 export type UserRef = z.infer<typeof userRefSchema>;
 export type RecordItem = z.infer<typeof recordSchema>;
 export type Annotation = z.infer<typeof annotationSchema>;
-export type AcceptedDecisionEntry = z.infer<typeof acceptedDecisionSchema>;
 export type RecordDetail = z.infer<typeof recordDetailSchema>;
 export type ListRecordsQuery = z.infer<typeof listRecordsQuerySchema>;
 export type HarmonisationCounts = z.infer<typeof harmonisationCountsSchema>;

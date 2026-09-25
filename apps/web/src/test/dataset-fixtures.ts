@@ -1,5 +1,4 @@
 import type {
-  AcceptedState,
   ContributionAnnotation,
   ContributionRecord,
   ContributionSummary,
@@ -247,13 +246,12 @@ export const RECORD_DETAIL: RecordDetail = {
   },
   importRowNo: 4821,
   annotations: [],
-  acceptedHistory: [],
   supersedes: null,
   supersededBy: [],
   responses: [],
 };
 
-/** The detail of PENDING_RECORD: manual, annotated and accepted once. @rfc RFC-63 R8 */
+/** The detail of PENDING_RECORD: manual and annotated. @rfc RFC-63 R8 */
 export const CURATED_RECORD_DETAIL: RecordDetail = {
   ...PENDING_RECORD,
   rawValue: null,
@@ -273,16 +271,6 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
       createdAt: '2026-09-03T12:00:00.000Z',
       reference: null,
       generated: false,
-    },
-  ],
-  acceptedHistory: [
-    {
-      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d80',
-      decision: 'accepted',
-      recordId: PENDING_RECORD.id,
-      actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e', name: 'Ada' },
-      note: null,
-      createdAt: '2026-09-04T12:00:00.000Z',
     },
   ],
   supersedes: null,
@@ -791,41 +779,6 @@ export const SPECIES_TRAITS_WITH_MISSING: SpeciesTraits = [
     traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_LENGTH_MISSING_SUMMARY],
   },
 ];
-
-/** RECORD is the accepted value; one earlier decision was cleared. @rfc RFC-65 R11 */
-export const ACCEPTED_STATE: AcceptedState = {
-  current: {
-    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d90',
-    recordId: RECORD.id,
-    valueText: 'dioecious',
-    actor: { id: USER.id, name: USER.name },
-    note: 'Best sampled population.',
-    decidedAt: '2026-09-05T12:00:00.000Z',
-  },
-  history: [
-    {
-      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d90',
-      decision: 'accepted',
-      recordId: RECORD.id,
-      valueText: 'dioecious',
-      actor: { id: USER.id, name: USER.name },
-      note: 'Best sampled population.',
-      createdAt: '2026-09-05T12:00:00.000Z',
-    },
-    {
-      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d91',
-      decision: 'cleared',
-      recordId: null,
-      valueText: null,
-      actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
-      note: 'Sources disagree.',
-      createdAt: '2026-09-04T12:00:00.000Z',
-    },
-  ],
-};
-
-/** @rfc RFC-65 R11 */
-export const EMPTY_ACCEPTED: AcceptedState = { current: null, history: [] };
 
 /** @rfc RFC-65 R8 */
 export const PENDING_TRAITS: PendingTrait[] = [

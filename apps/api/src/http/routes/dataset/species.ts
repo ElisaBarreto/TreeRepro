@@ -2,9 +2,7 @@ import {
   createSpeciesBodySchema,
   idParamSchema,
   listSpeciesQuerySchema,
-  setAcceptedBodySchema,
   speciesNameBodySchema,
-  speciesTraitParamSchema,
   speciesTraitsQuerySchema,
   updateSpeciesBodySchema,
 } from '@treerepro/contracts';
@@ -12,12 +10,6 @@ import { Hono } from 'hono';
 import { userScopeOf, visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
-import {
-  getAccepted,
-  requireSpecies,
-  requireTrait,
-  setAccepted,
-} from '../../../dataset/curation.ts';
 import { speciesTraitSummary } from '../../../dataset/summary.ts';
 import { getSpecies, searchSpecies } from '../../../dataset/taxa.ts';
 import type { AppEnv } from '../../env.ts';
@@ -33,7 +25,6 @@ import { proposalRoutes } from './proposals.ts';
  * Hono can never read "proposals" as a species id.
  * @rfc RFC-60 R6, R7, R9, R10
  * @rfc RFC-63 R10
- * @rfc RFC-65 R6
  * @rfc RFC-75 R2, R3
  */
 export function speciesRoutes(ctx: AuthContext) {
@@ -147,36 +138,5 @@ export function speciesRoutes(ctx: AuthContext) {
           },
           201,
         ),
-    )
-    .get(
-      '/:id/traits/:traitId/accepted',
-      requirePermission(ctx, 'dataset.read'),
-      validate('param', speciesTraitParamSchema),
-      async (c) => {
-        const { id, traitId } = c.req.valid('param');
-        const visibility = await visibilityOf(ctx, c);
-        await requireSpecies(ctx.db, visibility, id);
-        await requireTrait(ctx.db, visibility, traitId);
-        return c.json({ data: await getAccepted(ctx.db, id, traitId) });
-      },
-    )
-    .put(
-      '/:id/traits/:traitId/accepted',
-      requirePermission(ctx, 'accepted.manage'),
-      validate('param', speciesTraitParamSchema),
-      validate('json', setAcceptedBodySchema),
-      async (c) => {
-        const { id, traitId } = c.req.valid('param');
-        const body = c.req.valid('json');
-        const state = await setAccepted(ctx.db, {
-          speciesId: id,
-          traitId,
-          actorId: currentUser(c).id,
-          decision: body.decision,
-          recordId: body.decision === 'accepted' ? body.recordId : undefined,
-          note: body.note,
-        });
-        return c.json({ data: state });
-      },
     );
 }

@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
   ANNOTATION_KINDS,
-  acceptedDecisionSchema,
   HARMONISATION_STATUSES,
   NAME_SOURCES,
   NAME_TYPES,
@@ -110,42 +109,8 @@ export const resolveDoiResultSchema = z.discriminatedUnion('status', [
   z.strictObject({ status: z.literal('not_found'), reference: z.null() }),
 ]);
 
-/** @rfc RFC-65 R6 */
-export const setAcceptedBodySchema = z.discriminatedUnion('decision', [
-  z.strictObject({
-    decision: z.literal('accepted'),
-    recordId: z.uuid(),
-    note: curationNoteSchema.optional(),
-  }),
-  z.strictObject({ decision: z.literal('cleared'), note: curationNoteSchema }),
-]);
-
-/** @rfc RFC-65 R6 */
-export const speciesTraitParamSchema = z.strictObject({ id: z.uuid(), traitId: z.uuid() });
-
 /** @rfc RFC-62 R6 */
 export const traitLevelParamSchema = z.strictObject({ id: z.uuid(), levelId: z.uuid() });
-
-/** @rfc RFC-65 R11 */
-export const acceptedCurrentSchema = z.strictObject({
-  id: z.uuid(),
-  recordId: z.uuid(),
-  valueText: z.string(),
-  actor: userRefSchema,
-  note: z.string().nullable(),
-  decidedAt: z.iso.datetime(),
-});
-
-/** @rfc RFC-65 R11 */
-export const acceptedHistoryEntrySchema = acceptedDecisionSchema.extend({
-  valueText: z.string().nullable(),
-});
-
-/** @rfc RFC-65 R11 */
-export const acceptedStateSchema = z.strictObject({
-  current: acceptedCurrentSchema.nullable(),
-  history: z.array(acceptedHistoryEntrySchema),
-});
 
 /** @rfc RFC-65 R8 */
 export const pendingTraitSchema = z.strictObject({
@@ -351,10 +316,6 @@ export type CreateRecordsResult = z.infer<typeof createRecordsResultSchema>;
 export type AnnotateRecordBody = z.infer<typeof annotateRecordBodySchema>;
 export type ResolveDoiQuery = z.infer<typeof resolveDoiQuerySchema>;
 export type ResolveDoiResult = z.infer<typeof resolveDoiResultSchema>;
-export type SetAcceptedBody = z.infer<typeof setAcceptedBodySchema>;
-export type AcceptedCurrent = z.infer<typeof acceptedCurrentSchema>;
-export type AcceptedHistoryEntry = z.infer<typeof acceptedHistoryEntrySchema>;
-export type AcceptedState = z.infer<typeof acceptedStateSchema>;
 export type PendingTrait = z.infer<typeof pendingTraitSchema>;
 export type PendingGroupsQuery = z.infer<typeof pendingGroupsQuerySchema>;
 export type PendingGroup = z.infer<typeof pendingGroupSchema>;

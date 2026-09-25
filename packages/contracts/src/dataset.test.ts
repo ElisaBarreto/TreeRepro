@@ -11,6 +11,7 @@ import {
   listTraitsQuerySchema,
   NAME_TYPES,
   REVIEW_STATUSES,
+  recordDetailSchema,
   recordSchema,
   referenceDetailSchema,
   referenceRefSchema,
@@ -513,6 +514,12 @@ describe('RFC-62 R8 listTraitSpeciesQuerySchema', () => {
     ).toBe(true);
     expect(listTraitSpeciesQuerySchema.safeParse({ scope: 'nope' }).success).toBe(false);
     expect(listTraitSpeciesQuerySchema.safeParse({ extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('RFC-63 R8 recordDetailSchema (spec R-1)', () => {
+  it('carries no accepted history', () => {
+    expect(Object.keys(recordDetailSchema.shape)).not.toContain('acceptedHistory');
   });
 });
 

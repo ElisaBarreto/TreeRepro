@@ -3,7 +3,6 @@ import { datasetKeys, fetchRecords } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
-import { AcceptedSection } from '../curation/AcceptedSection.tsx';
 import { Alert, Drawer, EmptyState } from '../ui/index.ts';
 import { Pagination } from './Pagination.tsx';
 import { RecordTable } from './RecordTable.tsx';
@@ -41,7 +40,6 @@ export function TraitPanel({
           {summary.trait.unit ? `${summary.trait.unit} · ` : ''}
           {summary.recordCount} {summary.recordCount === 1 ? 'record' : 'records'}
         </p>
-        <AcceptedSection speciesId={speciesId} traitId={traitId} />
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading && !list.error ? (
           <p className="text-body text-mist-500">Loading records…</p>

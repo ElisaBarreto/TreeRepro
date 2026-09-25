@@ -58,12 +58,13 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
       expect((await res.json()).error.details[0].path).toBe('speciesId');
     }
     const detail = await call(t.app, 'GET', `/api/records/${rec.id}`, { cookie });
-    expect((await detail.json()).data).toMatchObject({
+    const detailBody = (await detail.json()).data;
+    expect(detailBody).toMatchObject({
       id: rec.id,
       annotations: [],
-      acceptedHistory: [],
       importBatch: { id: batch.id },
     });
+    expect(detailBody).not.toHaveProperty('acceptedHistory');
     const missing = await call(t.app, 'GET', '/api/records/00000000-0000-7000-8000-000000000000', {
       cookie,
     });
@@ -951,7 +952,7 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     expect(allowed.status).toBe(201);
   });
 
-  it('R4 import records are never withdrawn; the accepted record is not withdrawn', async () => {
+  it('R4 import records are never withdrawn', async () => {
     const a = await scientist(t, ['records.annotate']);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a'] });
@@ -968,16 +969,6 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     const res = await annotate(a.cookie, imported.id, { kind: 'withdraw', note: 'x' });
     expect(res.status).toBe(409);
     expect((await res.json()).error.code).toBe('RECORD_NOT_WITHDRAWABLE');
-    const { rec, sp1: sp2, trait: trait2 } = await manualRecord(a.user.id);
-    await createAcceptedValue(t.db, {
-      speciesId: sp2.id,
-      traitId: trait2.id,
-      recordId: rec.id,
-      actorId: a.user.id,
-    });
-    const accepted = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'x' });
-    expect(accepted.status).toBe(409);
-    expect((await accepted.json()).error.code).toBe('RECORD_IS_ACCEPTED');
   });
 });
 

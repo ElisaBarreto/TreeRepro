@@ -9,7 +9,6 @@ import {
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
   resolveDoiResultSchema,
-  setAcceptedBodySchema,
   speciesNameBodySchema,
   updateGenusBodySchema,
   updateReferenceBodySchema,
@@ -178,20 +177,6 @@ describe('RFC-80 resolveDoiResultSchema', () => {
         },
       }).success,
     ).toBe(true);
-  });
-});
-
-describe('RFC-65 R6 setAcceptedBodySchema', () => {
-  it('accepts a record or a cleared decision with a note', () => {
-    expect(setAcceptedBodySchema.safeParse({ decision: 'accepted', recordId: uuid }).success).toBe(
-      true,
-    );
-    expect(
-      setAcceptedBodySchema.safeParse({ decision: 'cleared', note: 'Sources disagree' }).success,
-    ).toBe(true);
-    expect(setAcceptedBodySchema.safeParse({ decision: 'cleared' }).success).toBe(false);
-    expect(setAcceptedBodySchema.safeParse({ decision: 'accepted' }).success).toBe(false);
-    expect(setAcceptedBodySchema.safeParse({ recordId: uuid }).success).toBe(false);
   });
 });
 

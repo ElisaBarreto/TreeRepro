@@ -1,19 +1,14 @@
-import type {
-  AcceptedState,
-  AnnotateRecordBody,
-  RecordDetail,
-  ResolveDoiResult,
-} from '@treerepro/contracts';
+import type { AnnotateRecordBody, RecordDetail, ResolveDoiResult } from '@treerepro/contracts';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
-import { annotateRecord, resolveDoi, setAccepted } from '../../api/curation.ts';
+import { annotateRecord, resolveDoi } from '../../api/curation.ts';
 import { datasetKeys } from '../../api/dataset.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { fieldErrors } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useRecordWrite } from '../../lib/use-record-write.ts';
 import { DrawerSection } from '../dataset/DrawerSection.tsx';
-import { Alert, Badge, Button, Field, HelpTip, Textarea } from '../ui/index.ts';
+import { Alert, Button, Field, HelpTip, Textarea } from '../ui/index.ts';
 import { ContestDialog } from './ContestDialog.tsx';
 import { type DoiCheck, DoiField, doiBlocks, resolvedCheck } from './DoiField.tsx';
 import { contributionErrorMessage } from './errors.ts';
@@ -33,10 +28,6 @@ export function actionErrorMessage(error: unknown): string {
         return 'This record is withdrawn.';
       case 'RECORD_NOT_WITHDRAWABLE':
         return 'Only manual records can be withdrawn.';
-      case 'RECORD_IS_ACCEPTED':
-        return 'This record is the accepted value; change the accepted value first.';
-      case 'RECORD_NOT_HARMONISED':
-        return 'Only a harmonised record can be the accepted value.';
       case 'RECORD_NOT_FOUND':
         return 'This record no longer exists.';
     }
@@ -71,14 +62,13 @@ const DOI_SUMMARY = 'Add a supporting DOI (optional)';
  *
  * The reviewer actions Neutral and Dispute (with the note the API requires)
  * need `records.review` on top of `records.annotate` (RFC-70 R4); Withdraw
- * stays with the author and the `records.withdraw` holder (RFC-65 R4) and
- * Set as accepted with `accepted.manage` (RFC-65 R6). A withdrawn record has
- * no actions, and a viewer with nothing to do sees no section at all, so the
- * drawer never carries an empty heading. After a write the drawer's record
- * query is replaced with the answer and the lists and summaries are
- * invalidated (`useRecordWrite`).
+ * stays with the author and the `records.withdraw` holder (RFC-65 R4). A
+ * withdrawn record has no actions, and a viewer with nothing to do sees no
+ * section at all, so the drawer never carries an empty heading. After a
+ * write the drawer's record query is replaced with the answer and the lists
+ * and summaries are invalidated (`useRecordWrite`).
  * @rfc RFC-13 R3, R6, R11
- * @rfc RFC-65 R3, R4, R6
+ * @rfc RFC-65 R3, R4
  * @rfc RFC-70 R1, R4
  * @rfc RFC-80 R4
  */
@@ -114,18 +104,12 @@ export function RecordActions({
       queryClient.setQueryData(datasetKeys.record(record.id), detail);
       // Only the form state here — not `openMode(null)`: resetting a mutation
       // from inside its own onSuccess flips isPending before the invalidation
-      // settles, and would detach an in-flight accept.
+      // settles, and would detach the in-flight invalidation.
       setMode(null);
       setNote('');
       setNoteError(null);
     },
   });
-  const accept = useRecordWrite<void, AcceptedState>({
-    write: () =>
-      setAccepted(record.speciesId, record.trait.id, { decision: 'accepted', recordId: record.id }),
-    speciesId: record.speciesId,
-  });
-
   // Switching between Dispute and Withdraw, or cancelling either, must not
   // leave the other's typed note, validation error or failed write behind.
   function openMode(next: NoteMode | null) {
@@ -133,7 +117,6 @@ export function RecordActions({
     setNote('');
     setNoteError(null);
     annotate.reset();
-    accept.reset();
   }
 
   // One request per value: an answer is kept, but a failed check is no
@@ -166,13 +149,6 @@ export function RecordActions({
     canAnnotate &&
     record.origin === 'manual' &&
     (isAuthor || hasPermission(me, 'records.withdraw'));
-  const newest = record.acceptedHistory[0];
-  const isAccepted = newest?.decision === 'accepted' && newest.recordId === record.id;
-  const canAccept =
-    hasPermission(me, 'accepted.manage') &&
-    !withdrawn &&
-    record.harmonisation === 'harmonised' &&
-    !isAccepted;
   // A withdraw is not a stance: it says the record is gone, not what the
   // viewer thinks of its value. The API orders annotations newest first.
   const stance = record.annotations.find(
@@ -186,7 +162,7 @@ export function RecordActions({
   const noteDetail = details.note;
   const doiDetail = details['reference.doi'] ?? details['reference.id'] ?? details.reference;
   const bound = noteDetail !== undefined || doiDetail !== undefined;
-  const error = bound ? accept.error : (annotate.error ?? accept.error);
+  const error = bound ? null : annotate.error;
   const supporting = doi.trim();
   const doiCheck: DoiCheck =
     checked && checked.doi === supporting ? checked.check : { status: 'idle' };
@@ -226,7 +202,7 @@ export function RecordActions({
       </DrawerSection>
     );
   }
-  if (!canAnnotate && !canAccept && !isAccepted) return null;
+  if (!canAnnotate) return null;
 
   function submitNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -345,12 +321,6 @@ export function RecordActions({
             aria-pressed={mode === 'withdraw'}
           >
             Withdraw
-          </Button>
-        ) : null}
-        {isAccepted ? <Badge tone="green">accepted value</Badge> : null}
-        {canAccept ? (
-          <Button size="sm" pending={accept.isPending} onClick={() => accept.mutate()}>
-            Set as accepted
           </Button>
         ) : null}
       </div>

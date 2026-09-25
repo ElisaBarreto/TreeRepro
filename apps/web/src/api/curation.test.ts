@@ -1,7 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
-  ACCEPTED_STATE,
   DISPUTED_RECORD,
   MAP_RESULT,
   PENDING_GROUPS,
@@ -17,14 +16,12 @@ import {
   createRecords,
   curationKeys,
   EXPORT_ACCEPTED_URL,
-  fetchAccepted,
   fetchDisputed,
   fetchPendingGroups,
   fetchPendingTraits,
   invalidateAfterRecordWrite,
   mapPending,
   resolveDoi,
-  setAccepted,
 } from './curation.ts';
 
 installFetchMock();
@@ -70,24 +67,6 @@ describe('RFC-65 R3 annotateRecord', () => {
   });
 });
 
-describe('RFC-65 R6 accepted value', () => {
-  it('fetchAccepted and setAccepted use the species×trait path', async () => {
-    mockJson(200, { data: ACCEPTED_STATE });
-    const state = await fetchAccepted(SPECIES.id, SEXUAL_SYSTEM.id);
-    expect(lastRequest().url).toBe(
-      `/api/species/${SPECIES.id}/traits/${SEXUAL_SYSTEM.id}/accepted`,
-    );
-    expect(state.current?.recordId).toBe(ACCEPTED_STATE.current?.recordId);
-    mockJson(200, { data: ACCEPTED_STATE });
-    await setAccepted(SPECIES.id, SEXUAL_SYSTEM.id, {
-      decision: 'cleared',
-      note: 'Sources disagree',
-    });
-    expect(lastRequest().init?.method).toBe('PUT');
-    expect(body()).toEqual({ decision: 'cleared', note: 'Sources disagree' });
-  });
-});
-
 describe('RFC-65 R8–R10 queues', () => {
   it('pending traits, pending groups with cursor, mapping and the disputed list', async () => {
     mockJson(200, { data: PENDING_TRAITS });
@@ -118,7 +97,6 @@ describe('RFC-65 R8–R10 queues', () => {
 
 describe('query keys and invalidation', () => {
   it('curationKeys nest under the dataset prefixes; invalidateAfterRecordWrite marks records and the species stale', async () => {
-    expect(curationKeys.accepted('s', 't')).toEqual(['species', 's', 'traits', 't', 'accepted']);
     expect(curationKeys.pendingGroups('t')).toEqual(['records', 'pending', 'groups', 't']);
     expect(EXPORT_ACCEPTED_URL).toBe('/api/export/accepted.csv');
     const client = new QueryClient();
