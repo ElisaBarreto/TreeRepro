@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
-import { Fragment, type ReactNode, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useState } from 'react';
 import { logout } from '../../api/auth.ts';
 import { forgetSession, hasPermission, useMe } from '../../lib/session.ts';
 import { Alert, Button, Drawer, Emblem, Icon } from '../ui/index.ts';
@@ -169,6 +169,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { pathname, search } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Tailwind's `lg` (64rem): once the sidebar shows, the menu drawer closes.
+  // jsdom has no matchMedia, hence the guard.
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const lg = window.matchMedia('(min-width: 64rem)');
+    const onChange = (event: { matches: boolean }) => {
+      if (event.matches) setMenuOpen(false);
+    };
+    lg.addEventListener('change', onChange);
+    return () => lg.removeEventListener('change', onChange);
+  }, []);
   const signOut = useMutation({
     mutationFn: logout,
     // A failed logout (5xx/429) leaves the session in place — no navigation,

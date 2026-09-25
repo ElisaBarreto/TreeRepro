@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { forwardRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -457,6 +457,29 @@ describe('RFC-13 R12 AppShell nav drawer below lg', () => {
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     expect(menu).toHaveFocus();
     expect(menu.closest('[inert]')).toBeNull();
+  });
+
+  it('closes the drawer once the viewport reaches lg (64rem)', async () => {
+    let onChange: ((event: { matches: boolean }) => void) | undefined;
+    const matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: (_: string, listener: typeof onChange) => {
+        onChange = listener;
+      },
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal('matchMedia', matchMedia);
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+      expect(matchMedia).toHaveBeenCalledWith('(min-width: 64rem)');
+      await user.click(screen.getByRole('button', { name: 'Open menu' }));
+      expect(screen.getByRole('dialog', { name: 'Menu' })).toBeInTheDocument();
+      act(() => onChange?.({ matches: true }));
+      expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('names the icon-only Sign out button', () => {

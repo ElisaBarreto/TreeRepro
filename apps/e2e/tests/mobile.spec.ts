@@ -2,7 +2,9 @@ import { expect, test } from '@playwright/test';
 import { ADMIN_STATE } from './env.ts';
 
 test.describe('RFC-13 R12 phone-width workspace (issue #160)', () => {
-  test('/app fits 390px and the menu drawer reaches Species', async ({ browser }) => {
+  test('no route scrolls sideways at 390px and the menu drawer reaches Species', async ({
+    browser,
+  }) => {
     // The seeded administrator's saved session, at a phone viewport: the
     // other specs run at the desktop size of the project's device.
     const context = await browser.newContext({
@@ -11,10 +13,14 @@ test.describe('RFC-13 R12 phone-width workspace (issue #160)', () => {
     });
     try {
       const page = await context.newPage();
-      await page.goto('/app');
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-      expect(scrollWidth).toBeLessThanOrEqual(390);
+      // The routes whose layout overflowed before R12: the shell, a
+      // side-column grid (taxa, pending) and a wide filter row (audit).
+      for (const path of ['/app/taxa', '/app/curation/pending', '/app/admin/audit', '/app']) {
+        await page.goto(path);
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+        expect(scrollWidth, path).toBeLessThanOrEqual(390);
+      }
 
       await page.getByRole('button', { name: 'Open menu' }).click();
       const menu = page.getByRole('dialog', { name: 'Menu' });
