@@ -199,7 +199,9 @@ function ReferenceTable({ items }: { items: Reference[] }) {
           // never looks like a DOI or an index to `articleKind`.
           const label = referenceLabel(reference);
           const shown = truncate(label, KEY_MAX);
-          const kind = articleKind(label);
+          // A book's label is its citation by design (RFC-61 R10), not a key
+          // pasted as one, so it is never flagged.
+          const kind = reference.kind === 'book' ? null : articleKind(label);
           return (
             <Tr key={reference.id}>
               <Td>

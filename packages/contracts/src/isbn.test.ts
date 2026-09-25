@@ -6,6 +6,9 @@ describe('RFC-61 R1, R10 isValidIsbn', () => {
     expect(isValidIsbn('9780306406157')).toBe('9780306406157');
     expect(isValidIsbn('978-0-306-40615-7')).toBe('9780306406157');
     expect(isValidIsbn(' 978 0 306 40615 7 ')).toBe('9780306406157');
+    // Hyphens as pasted from a PDF or a publisher's page: U+2010, U+2013.
+    expect(isValidIsbn('978\u20100\u2010306\u201040615\u20107')).toBe('9780306406157');
+    expect(isValidIsbn('0\u2013306\u201340615\u20132')).toBe('9780306406157');
   });
 
   it('turns an ISBN-10 into the ISBN-13 of the same book, a final X included', () => {

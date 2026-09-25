@@ -285,6 +285,29 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(row[4]).toHaveTextContent(/^ISBN 9780306406157$/);
     expect(within(row[4] as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
   });
+
+  it('RFC-61 R10 never flags a book, however long its citation, as a pasted full citation', async () => {
+    const citation = `Doe, J., Roe, R. and Poe, P. (2001). Seeds of the tropics: a field guide. Tropical Press.`;
+    const book: Reference = {
+      ...REFERENCE,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f06',
+      citationKey: 'isbn:9780306406157',
+      kind: 'book',
+      isbn: '9780306406157',
+      doi: null,
+      shortCitation: citation,
+      fullCitation: citation,
+    };
+    dataset.searchReferences.mockResolvedValue(page([book]));
+    await openPage();
+    // The label is cut to fit; the whole citation is the link's title.
+    const link = await screen.findByTitle(citation);
+    expect(
+      within(cells(link.closest('tr') as HTMLElement)[0] as HTMLElement).queryByText(
+        'full citation',
+      ),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('RFC-61 R4 ReferencesPage category and trait filters', () => {

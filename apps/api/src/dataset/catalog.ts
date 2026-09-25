@@ -429,7 +429,7 @@ export async function createReference(
 
 /**
  * `null` clears a metadata field; `citationKey` is never null. Only a book
- * takes an ISBN.
+ * takes an ISBN, and a key `isbn:<isbn>` follows its ISBN.
  * @rfc RFC-61 R6, R10
  */
 export async function updateReference(
@@ -457,6 +457,16 @@ export async function updateReference(
     }
     if (current.kind !== 'book' && input.isbn !== undefined) {
       throw referenceInvalid('isbn', 'Only a book has an ISBN');
+    }
+    // A book a source created is keyed `isbn:<isbn>` (RFC-61 R10); a new ISBN
+    // takes the key along, or the old ISBN, cited again, would find its key
+    // held by this book and could never be recorded.
+    if (
+      input.isbn !== undefined &&
+      input.citationKey === undefined &&
+      current.citationKey === `isbn:${current.isbn}`
+    ) {
+      input.citationKey = `isbn:${input.isbn}`;
     }
     const fields: string[] = [];
     const set: Partial<Pick<ReferenceRow, (typeof REFERENCE_FIELDS)[number]>> = {};

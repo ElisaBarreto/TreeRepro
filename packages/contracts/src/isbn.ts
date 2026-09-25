@@ -7,7 +7,7 @@ function isbn13CheckDigit(first12: string): string {
 }
 
 /**
- * An ISBN as typed — ISBN-10 or ISBN-13, hyphens and spaces allowed, a final
+ * An ISBN as typed — ISBN-10 or ISBN-13, hyphens, dashes and spaces allowed, a final
  * `X` (either case) standing for 10 in an ISBN-10 — normalised to its 13
  * digits, or `null` when it is not one: another length or character, a check
  * digit that does not match, or thirteen digits outside the 978/979 book
@@ -17,7 +17,9 @@ function isbn13CheckDigit(first12: string): string {
  * @rfc RFC-61 R1, R10
  */
 export function isValidIsbn(input: string): string | null {
-  const s = input.replace(/[\s-]/g, '').toUpperCase();
+  // Any space, and any hyphen or dash: U+2010–U+2015 and the minus sign come
+  // in with an ISBN pasted from a PDF or a publisher's page.
+  const s = input.replace(/[\s\u2010-\u2015\u2212-]/g, '').toUpperCase();
   if (/^\d{9}[\dX]$/.test(s)) {
     let sum = 0;
     for (let i = 0; i < 10; i += 1) sum += (10 - i) * (s[i] === 'X' ? 10 : Number(s[i]));

@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, ilike, ne, or, type SQL, sql } from 'drizzle
 import { traitVisible, UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { isUniqueViolation } from '../db/errors.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
 import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
@@ -369,8 +370,16 @@ export async function ensureBookReference(
         shortCitation,
         createdBy: input.actorId,
       })
-      .onConflictDoNothing()
-      .returning({ id: bibliographicReferences.id });
+      // Only a race on the ISBN is expected; a curator's reference already
+      // keyed `isbn:<isbn>` is a conflict to report, not to swallow.
+      .onConflictDoNothing({ target: bibliographicReferences.isbn })
+      .returning({ id: bibliographicReferences.id })
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) {
+          throw new AppError('REFERENCE_KEY_TAKEN', 'Another reference has this citation key');
+        }
+        throw err;
+      });
     if (inserted) {
       await recordAudit(tx, {
         actorUserId: input.actorId,
