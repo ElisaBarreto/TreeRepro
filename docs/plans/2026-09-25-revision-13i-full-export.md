@@ -10,7 +10,7 @@
 
 **Spec:** `docs/specs/2026-09-25-record-model-revision-design.md` — R-13, R-14, R-17, §5 "ZIP", §6 (`record_code`, the quantitative columns, `record_references`, export row 13e/13i).
 
-**Depends on:** 13a (RFC-66 amended for R-17), 13e (the interim `records.csv` route this plan replaces), 13f (`record_code`, `min_value`…`n`, `record_references`), 13g (the `resolve` annotation kind, contest records carrying a value, the withdrawal rules). Start only after 13g is merged to `main`.
+**Depends on:** 13a (RFC-66 amended for R-17), 13e (the interim `records.csv` route this plan replaces), 13f (`record_code`, `min_value`…`n`, `record_references`), 13g (contests and Keep both, contest records carrying a value, the withdrawal rules). Start only after 13g is merged to `main`.
 
 ## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
 
@@ -20,6 +20,7 @@
  The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
 4. **CSV formula guard** also prefixes values that start with LF (and CR), since imported `raw_value` may start with a line break.
 5. **Owner ruling 2026-09-25 — contests state the correct levels** (spec R-8 as amended; RFC-63 R14, RFC-70 R2, R3, R9, R10): `annotations.csv` gives, for every contest that is not withdrawn (resolved ones included), one `contest` row per visible record it contests — every visible record of each level a categorical contest names, or a quantitative contest's responded record — with `contest_record_code` the codes of the records the contest created, joined by `; ` and empty when it created none (RFC-66 R2 as amended); `contested` and `n_contests` read 13g's contests by level instead of joining `responds_to_record_id`, and a categorical contest record's `responds_to` column is empty. Where task bodies assume a contest responds to one record's level, the amended rules win.
+6. **RFC-31 R15:** only the admin role holds `dataset.export`.
 
 ## Global Constraints
 
