@@ -370,9 +370,23 @@ export async function createContest(
 /** A `resolve` (Keep both) or `withdraw` event on a contest (RFC-63 R14, RFC-65 R16). */
 export async function createContestEvent(
   db: DbExecutor,
-  input: { contestId: string; actorId: string; kind: 'resolve' | 'withdraw' },
+  input: {
+    contestId: string;
+    actorId: string;
+    kind: 'resolve' | 'withdraw';
+    /** Overrides the default `now()`; contributions bound a resolution by this date. */
+    createdAt?: Date;
+  },
 ): Promise<{ id: string }> {
-  const [row] = await db.insert(contestEvents).values(input).returning({ id: contestEvents.id });
+  const [row] = await db
+    .insert(contestEvents)
+    .values({
+      contestId: input.contestId,
+      actorId: input.actorId,
+      kind: input.kind,
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+    })
+    .returning({ id: contestEvents.id });
   if (!row) throw new Error('createContestEvent: no row');
   return row;
 }

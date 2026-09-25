@@ -1,4 +1,5 @@
 import type { ContributionAnnotation, ContributionRecord } from '@treerepro/contracts';
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -15,6 +16,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
+import { species } from '../db/schema/taxa.ts';
 import { contributionSummary, listContributions } from './contributions.ts';
 import { ensurePersonalObservation } from './references.ts';
 
@@ -944,6 +946,71 @@ describe('RFC-71 R2, R3, R4 contributions after spec R-11 and R-13', () => {
       limit: 50,
     });
     expect(asAnnotations(byIntent.data)).toEqual([]);
+  });
+
+  it('controller ruling: a resolution bounds by its own event date, not by any record — a record-less one is still listable by date', async () => {
+    const { user: a } = await createUser(t.db);
+    const { species: sp, trait } = await scene(t.db);
+    const contest = await createContest(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      createdBy: a.id,
+    });
+    const inWindow = await createContestEvent(t.db, {
+      contestId: contest.id,
+      actorId: a.id,
+      kind: 'resolve',
+      createdAt: new Date('2024-05-10T12:00:00.000Z'),
+    });
+    const otherContest = await createContest(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      createdBy: a.id,
+    });
+    const outOfWindow = await createContestEvent(t.db, {
+      contestId: otherContest.id,
+      actorId: a.id,
+      kind: 'resolve',
+      createdAt: new Date('2024-06-01T00:00:00.000Z'),
+    });
+
+    const onDay = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      from: '2024-05-10',
+      to: '2024-05-10',
+      limit: 50,
+    });
+    expect(asAnnotations(onDay.data).map((r) => r.id)).toEqual([inWindow.id]);
+    expect(asAnnotations(onDay.data).map((r) => r.id)).not.toContain(outOfWindow.id);
+  });
+
+  it('controller ruling: a resolution on a contest the viewer cannot see is omitted (inactive species); an unrestricted viewer still sees it', async () => {
+    const { user: a } = await createUser(t.db);
+    const { trait } = await scene(t.db);
+    const hiddenSpecies = await createSpecies(t.db);
+    await t.db.update(species).set({ active: false }).where(eq(species.id, hiddenSpecies.id));
+    const contest = await createContest(t.db, {
+      speciesId: hiddenSpecies.id,
+      traitId: trait.id,
+      createdBy: a.id,
+    });
+    const resolve = await createContestEvent(t.db, {
+      contestId: contest.id,
+      actorId: a.id,
+      kind: 'resolve',
+    });
+
+    const restricted = await listContributions(t.db, RESTRICTED, a.id, {
+      kind: 'annotations',
+      limit: 50,
+    });
+    expect(asAnnotations(restricted.data)).toEqual([]);
+
+    const unrestricted = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      limit: 50,
+    });
+    expect(asAnnotations(unrestricted.data).map((r) => r.id)).toEqual([resolve.id]);
   });
 
   it('contests counts a record-less contest and stops counting it once it is withdrawn', async () => {

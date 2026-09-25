@@ -7,11 +7,16 @@ import type {
 } from '@treerepro/contracts';
 import { and, count, desc, eq, gte, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
+import {
+  levelVisible,
+  speciesVisible,
+  traitVisible,
+  type Visibility,
+} from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { contestEvents, contestRecords, contests } from '../db/schema/contests.ts';
+import { contestEvents, contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
-import { traits } from '../db/schema/dictionary.ts';
+import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
@@ -129,6 +134,25 @@ function firstVisibleContestRecordIdSql(
       and ${liveSql(sql`fcv_r.id`)})`;
 }
 
+/**
+ * The contest `contestIdCol` is visible to the viewer: its species and trait
+ * are visible, and every level it names (RFC-63 R14's `contest_levels`) is
+ * visible too — none for a quantitative contest, which is then vacuously
+ * true. Mirrors the check the contested queue will apply to a contest row
+ * (RFC-33 R2, R3; RFC-65 R16).
+ */
+function contestVisibleSql(v: Visibility, contestIdCol: SQL | typeof contests.id): SQL {
+  return sql`(exists (select 1 from ${contests} cv_k
+      join ${species} cv_s on cv_s.id = cv_k.species_id
+      join ${traits} cv_t on cv_t.id = cv_k.trait_id
+      where cv_k.id = ${contestIdCol}
+        and ${speciesVisible(v, sql`cv_s.active`, sql`cv_s.id`)}
+        and ${traitVisible(v, sql`cv_t.active`)})
+    and not exists (select 1 from ${contestLevels} cv_l
+      join ${traitLevels} cv_lvl on cv_lvl.id = cv_l.level_id
+      where cv_l.contest_id = ${contestIdCol} and not ${levelVisible(v, sql`cv_lvl.active`)}))`;
+}
+
 /** One page of the viewer's Keep-both resolutions (RFC-71 R3, RFC-65 R16). */
 async function listResolutions(
   db: DbExecutor,
@@ -138,11 +162,20 @@ async function listResolutions(
   cursorId: string | undefined,
 ): Promise<{ id: string; createdAt: Date; recordId: string | null }[]> {
   const recordIdSql = firstVisibleContestRecordIdSql(visibility, contests.id);
-  const conditions: SQL[] = [eq(contestEvents.actorId, userId), eq(contestEvents.kind, 'resolve')];
+  const conditions: SQL[] = [
+    eq(contestEvents.actorId, userId),
+    eq(contestEvents.kind, 'resolve'),
+    // A resolution on a contest the viewer cannot see (its species, trait,
+    // or a level it names) is omitted outright (RFC-33 R2, R3; RFC-65 R16),
+    // regardless of whether the contest created a visible record.
+    contestVisibleSql(visibility, contests.id),
+  ];
   // RFC-71 R3: speciesId/traitId name the contest's own species and trait;
   // review and intent read the resolution's record and exclude it when that
-  // record is null (no record, or one the viewer cannot see); from/to follow
-  // the same rule, since there is then no annotated record to bound by.
+  // record is null (no record, or one the viewer cannot see). from/to bound
+  // the resolution event's own date (controller ruling): a record-less
+  // resolution is still listable by date, unlike review/intent which have
+  // nothing to read without a record.
   if (input.traitId) conditions.push(eq(contests.traitId, input.traitId));
   if (input.speciesId) conditions.push(eq(contests.speciesId, input.speciesId));
   if (input.review) {
@@ -157,16 +190,8 @@ async function listResolutions(
         : sql`${recordIdSql} is not null and exists (select 1 from ${traitRecords} lr_i where lr_i.id = ${recordIdSql} and lr_i.intent = ${input.intent})`,
     );
   }
-  if (input.from) {
-    conditions.push(
-      sql`${recordIdSql} is not null and exists (select 1 from ${traitRecords} lr_f where lr_f.id = ${recordIdSql} and lr_f.created_at >= ${dayStart(input.from).toISOString()}::timestamptz)`,
-    );
-  }
-  if (input.to) {
-    conditions.push(
-      sql`${recordIdSql} is not null and exists (select 1 from ${traitRecords} lr_t where lr_t.id = ${recordIdSql} and lr_t.created_at < ${dayAfter(input.to).toISOString()}::timestamptz)`,
-    );
-  }
+  if (input.from) conditions.push(gte(contestEvents.createdAt, dayStart(input.from)));
+  if (input.to) conditions.push(lt(contestEvents.createdAt, dayAfter(input.to)));
   if (cursorId) conditions.push(lt(contestEvents.id, cursorId));
   return db
     .select({
