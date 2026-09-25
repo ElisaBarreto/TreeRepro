@@ -44,7 +44,20 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
     expect(mail.html).toContain('Welcome to TreeRepro, Ada');
     expect(mail.html.match(/href="http:\/\/localhost\/invite\/abc"/g)).toHaveLength(2);
     expect(mail.html).toContain('2026-09-15 10:00 UTC');
-    expect(mail.html).toContain('>Join &rarr;<');
+    expect(mail.html).toContain('>Join&nbsp;&nbsp;<img');
+    // Every design element the canvas shows reaches the markup (issue #173).
+    for (const file of [
+      'hero-bg.jpg',
+      'rings.png',
+      'mail.png',
+      'clock.png',
+      'arrow.png',
+      'search.png',
+      'leaf.png',
+      'shield.png',
+      'emblem.png',
+    ])
+      expect(mail.html).toContain(`${ORIGIN}/email/${file}`);
     expect(mail.html).toContain(
       'Collaborate with us in assembling the largest repository of tree reproductive traits',
     );
@@ -214,8 +227,8 @@ describe('RFC-74 R5 digestEmail', () => {
     );
     expect(mail.html).toContain(`href="${APP_ORIGIN}/app/curation/pending"`);
     expect(mail.html).toContain('2026-09-16 06:00 UTC');
-    // RFC-74 R5: no address; the layout's one `@` is its `@media` rule.
-    expect(mail.html.replace('@media', '')).not.toContain('@');
+    // RFC-74 R5: no address; the layout's own `@` are its CSS at-rules.
+    expect(mail.html.replace(/@(media|font-face)/g, '')).not.toContain('@');
     expect(mail.html).not.toContain('Resent');
   });
 

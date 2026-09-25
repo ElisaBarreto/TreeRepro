@@ -1,12 +1,14 @@
-import type { Digest, DigestItem } from '../jobs/digest.ts';
+import { DIGEST_LIST_LIMIT, type Digest, type DigestItem } from '../jobs/digest.ts';
 import {
   BODY_FONT,
   MAIL_COLORS as C,
   DISPLAY_FONT,
   emailLayout,
   escapeHtml,
+  mailAsset,
   mailButton,
   mailFallbackLink,
+  mailIcon,
   mailNote,
   mailParagraph,
 } from './layout.ts';
@@ -21,11 +23,11 @@ export interface MailContent {
 const h1 = (text: string, color: string = C.canopy900, size = 28) =>
   `<h1 style="margin:0 0 20px;font-family:${DISPLAY_FONT};font-size:${size}px;line-height:1.25;font-weight:600;color:${color};">${escapeHtml(text)}</h1>`;
 
-const eyebrow = (text: string, color: string) =>
-  `<p style="margin:0 0 12px;font-family:${BODY_FONT};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${color};">${escapeHtml(text)}</p>`;
+const eyebrow = (text: string, color: string, icon = '') =>
+  `<p style="margin:0 0 12px;font-family:${BODY_FONT};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${color};">${icon === '' ? '' : `${icon}&nbsp;&nbsp;`}${escapeHtml(text)}</p>`;
 
-const heading = (text: string) =>
-  `<p style="margin:0 0 12px;font-family:${DISPLAY_FONT};font-size:16px;font-weight:600;color:${C.canopy900};">${escapeHtml(text)}</p>`;
+const heading = (text: string, color: string = C.canopy900) =>
+  `<p style="margin:0 0 12px;font-family:${DISPLAY_FONT};font-size:16px;font-weight:600;color:${color};">${escapeHtml(text)}</p>`;
 
 const spacer = (px: number) =>
   `<div style="height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</div>`;
@@ -41,18 +43,18 @@ const INVITE_STEPS: readonly (readonly [string, string])[] = [
   ['Sign in', 'Use this email and your new password.'],
 ];
 
-/** What the workspace offers, as `[title, detail, dot colour]`. */
+/** What the workspace offers, as `[title, detail, icon tile]`. */
 const INVITE_FEATURES: readonly (readonly [string, string, string])[] = [
-  ['Explore species', 'Search by family, genus and trait.', C.pollen500],
+  ['Explore species', 'Search by family, genus and trait.', 'search.png'],
   [
     'Add what you know',
     'Record trait values, backed by a reference or by your own observation.',
-    C.canopy600,
+    'leaf.png',
   ],
   [
     'Validate together',
     'Confirm the records of others, or offer a different value when the evidence says so.',
-    C.canopy800,
+    'shield.png',
   ],
 ];
 
@@ -63,28 +65,31 @@ function inviteHtml(input: {
   appOrigin: string;
   expiredLine: string;
 }): string {
-  const emblem = escapeHtml(`${input.appOrigin}/email-emblem.png`);
-  const hero = `<tr><td class="tr-hero-pad" align="center" style="padding:48px 40px 44px;background-color:${C.canopy900};background-image:radial-gradient(120% 90% at 50% 0%,${C.canopy700} 0%,${C.canopy800} 35%,${C.canopy900} 100%);">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:10px;border:2px solid ${C.pollen500};border-radius:50%;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:12px;border:1px dashed ${C.canopy600};border-radius:50%;"><img src="${emblem}" width="108" height="108" alt="TreeRepro" style="display:block;border:0;width:108px;height:108px;"></td></tr></table></td></tr></table>
-${spacer(24)}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:7px 14px;border:1px solid ${C.pollen400};border-radius:999px;font-family:${BODY_FONT};font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.pollen300};">You are invited</td></tr></table>
-${spacer(20)}
-${h1(`Welcome to TreeRepro, ${input.name}`, C.mist50, 32)}
+  const bg = escapeHtml(mailAsset(input.appOrigin, 'hero-bg.jpg'));
+  // The pollen and the glow are baked into two images: mail clients drop
+  // positioned elements, SVG and most shadows, but show a background image
+  // (Outlook for Windows keeps the solid colour underneath).
+  const hero = `<tr><td class="tr-hero-pad" align="center" background="${bg}" bgcolor="${C.canopy900}" style="padding:40px 40px 44px;background-color:${C.canopy900};background-image:url('${bg}');background-size:cover;background-position:center top;">
+<img src="${escapeHtml(mailAsset(input.appOrigin, 'rings.png'))}" width="300" height="190" alt="TreeRepro" style="display:block;border:0;width:300px;height:190px;margin:-24px auto -20px;">
+${spacer(12)}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:4px 14px;border:1px solid ${C.pollen600};border-radius:999px;background-color:#1f3a26;font-family:${BODY_FONT};font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.pollen300};">${mailIcon(input.appOrigin, 'mail.png', 14)}&nbsp;&nbsp;You are invited</td></tr></table>
+${spacer(22)}
+<h1 style="margin:0 0 16px;font-family:${DISPLAY_FONT};font-size:34px;line-height:1.18;font-weight:700;letter-spacing:-0.02em;color:${C.mist50};">${escapeHtml(`Welcome to TreeRepro, ${input.name}`)}</h1>
 <p style="margin:0 0 28px;font-family:${BODY_FONT};font-size:17px;line-height:26px;color:${C.mist100};">Collaborate with us in assembling the largest repository of tree reproductive traits across all stages — flowers, fruits and seeds.</p>
-${mailButton(input.link, 'Join')}
-${spacer(16)}
-<p style="margin:0;font-family:${BODY_FONT};font-size:13px;color:${C.mist300};">Valid until <strong style="color:${C.mist50};">${escapeHtml(input.expires)}</strong></p>
+${mailButton(input.appOrigin, input.link, 'Join')}
+${spacer(20)}
+<p style="margin:0;font-family:${BODY_FONT};font-size:14px;color:${C.mist300};">${mailIcon(input.appOrigin, 'clock.png', 16)}&nbsp;&nbsp;Valid until <strong style="color:${C.mist50};">${escapeHtml(input.expires)}</strong></p>
 </td></tr>`;
   const steps = INVITE_STEPS.map(
     ([title, detail], i) =>
-      `<td class="tr-stack" valign="top" width="33%" style="padding:6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="tr-step" valign="top" height="128" style="height:128px;padding:16px;border-radius:14px;background-color:${C.mist50};"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" valign="middle" width="28" height="28" style="width:28px;height:28px;border-radius:50%;background-color:${C.canopy800};font-family:${DISPLAY_FONT};font-size:13px;font-weight:700;color:${C.pollen300};">${i + 1}</td></tr></table><p style="margin:10px 0 4px;font-family:${BODY_FONT};font-size:14px;font-weight:700;color:${C.canopy900};">${escapeHtml(title)}</p><p style="margin:0;font-family:${BODY_FONT};font-size:13px;line-height:19px;color:${C.text};">${escapeHtml(detail)}</p></td></tr></table></td>`,
+      `<td class="tr-stack" valign="top" width="33%" style="padding:6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="tr-step" valign="top" height="112" style="height:112px;padding:16px;border-radius:14px;background-color:${C.mist50};"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" valign="middle" width="28" height="28" style="width:28px;height:28px;border-radius:50%;background-color:${C.canopy800};font-family:${DISPLAY_FONT};font-size:13px;font-weight:700;color:${C.pollen300};">${i + 1}</td></tr></table><p style="margin:10px 0 4px;font-family:${BODY_FONT};font-size:14px;font-weight:700;color:${C.canopy900};">${escapeHtml(title)}</p><p style="margin:0;font-family:${BODY_FONT};font-size:13px;line-height:19px;color:${C.text};">${escapeHtml(detail)}</p></td></tr></table></td>`,
   ).join('');
   const features = INVITE_FEATURES.map(
-    ([title, detail, dot]) =>
-      `<tr><td valign="top" width="24" style="padding:5px 12px 14px 0;"><div style="width:12px;height:12px;border-radius:50%;background-color:${dot};font-size:0;line-height:0;">&nbsp;</div></td><td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 2px;font-family:${BODY_FONT};font-size:15px;font-weight:700;color:${C.canopy900};">${escapeHtml(title)}</p><p style="margin:0;font-family:${BODY_FONT};font-size:14px;line-height:21px;color:${C.text};">${escapeHtml(detail)}</p></td></tr>`,
+    ([title, detail, tile]) =>
+      `<tr><td valign="top" width="54" style="padding:0 14px 16px 0;">${mailIcon(input.appOrigin, tile, 40)}</td><td valign="top" style="padding:0 0 14px;"><p style="margin:0 0 2px;font-family:${BODY_FONT};font-size:15px;font-weight:700;color:${C.canopy900};">${escapeHtml(title)}</p><p style="margin:0;font-family:${BODY_FONT};font-size:14px;line-height:21px;color:${C.text};">${escapeHtml(detail)}</p></td></tr>`,
   ).join('');
   const body = `${heading('Three steps and you are in')}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 -6px 22px;"><tr>${steps}</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="tr-grid" style="margin:0 -6px 22px;"><tr>${steps}</tr></table>
 ${heading('What waits for you inside')}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${features}</table>
 ${spacer(10)}
@@ -160,12 +165,12 @@ export function passwordResetEmail(input: {
       title: 'Reset your TreeRepro password',
       preheader: 'Choose a new password for your TreeRepro account.',
       accent: C.canopy600,
-      body: `${eyebrow('Account security', C.canopy700)}${h1('Reset your TreeRepro password')}
+      body: `${eyebrow('Account security', C.canopy700, mailIcon(input.appOrigin, 'lock.png', 16))}${h1('Reset your TreeRepro password')}
 ${mailParagraph(`Hello ${input.name},`)}
 ${mailParagraph('Someone asked to reset the password of your TreeRepro account. Choose a new one with the button below.')}
-${spacer(8)}${mailButton(input.link, 'Choose a new password')}${spacer(24)}
-${mailNote(`The link expires on <strong>${escapeHtml(expires)}</strong>.`)}
-${mailNote('Did not ask for this? Ignore this email. Your password stays unchanged.', 'amber')}
+${spacer(8)}${mailButton(input.appOrigin, input.link, 'Choose a new password')}${spacer(24)}
+${mailNote(`The link expires on <strong>${escapeHtml(expires)}</strong>.`, 'mist', mailIcon(input.appOrigin, 'clock-dark.png', 18))}
+${mailNote('Did not ask for this? Ignore this email. Your password stays unchanged.', 'amber', mailIcon(input.appOrigin, 'alert.png', 18))}
 ${mailFallbackLink(input.link)}`,
       footer:
         'You receive this email because a password reset was requested for this address on TreeRepro.',
@@ -199,8 +204,9 @@ export const DIGEST_RESENT_LINE =
 
 /** One list of the digest in HTML: a heading and a row per item, or an empty-state line. */
 function digestSectionHtml(title: string, items: readonly DigestItem[], appOrigin: string): string {
-  const head = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-bottom:8px;border-bottom:1px solid ${C.rule};font-family:${DISPLAY_FONT};font-size:15px;font-weight:600;color:${C.canopy800};">${escapeHtml(title)}</td></tr></table>`;
-  if (items.length === 0) return `${head}${spacer(8)}${mailNote('None in this window.')}`;
+  const head = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-bottom:8px;border-bottom:1px solid ${C.rule};font-family:${DISPLAY_FONT};font-size:15px;font-weight:600;color:${C.canopy800};">${escapeHtml(title)}</td><td align="right" style="padding-bottom:8px;border-bottom:1px solid ${C.rule};font-family:${BODY_FONT};font-size:13px;color:${C.muted};">Up to ${DIGEST_LIST_LIMIT} listed</td></tr></table>`;
+  if (items.length === 0)
+    return `${head}${spacer(8)}${mailNote('None in this window.', 'grey', mailIcon(appOrigin, 'check.png', 18))}`;
   const rows = items
     .map((item, i) => {
       const href = `${appOrigin}/app/species/${item.speciesId}?record=${item.recordId}`;
@@ -228,12 +234,12 @@ function tiles(
       `<tr>${row
         .map(
           ([label, value]) =>
-            `<td valign="top" width="${Math.floor(100 / columns)}%" style="padding:5px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${dark ? '18px 20px' : '14px'};border-radius:12px;background-color:${dark ? C.canopy900 : C.mist50};"><p style="margin:0;font-family:${DISPLAY_FONT};font-size:${dark ? 32 : 24}px;font-weight:600;line-height:1.2;color:${dark ? C.pollen400 : C.canopy900};">${value}</p><p style="margin:2px 0 0;font-family:${BODY_FONT};font-size:13px;line-height:18px;color:${dark ? C.mist100 : C.text};">${escapeHtml(label)}</p></td></tr></table></td>`,
+            `<td class="tr-tile" valign="top" width="${Math.floor(100 / columns)}%" style="padding:5px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:${dark ? '18px 20px' : '14px'};border-radius:12px;background-color:${dark ? C.canopy900 : C.mist50};"><p style="margin:0;font-family:${DISPLAY_FONT};font-size:${dark ? 32 : 24}px;font-weight:600;line-height:1.2;color:${dark ? C.pollen400 : C.canopy900};">${value}</p><p style="margin:2px 0 0;font-family:${BODY_FONT};font-size:13px;line-height:18px;color:${dark ? C.mist100 : C.text};">${escapeHtml(label)}</p></td></tr></table></td>`,
         )
         .join('')}${pad.join('')}</tr>`,
     );
   }
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 -5px;">${rows.join('')}</table>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="tr-grid" style="margin:0 -5px;">${rows.join('')}</table>`;
 }
 
 function digestHtml(input: {
@@ -244,11 +250,15 @@ function digestHtml(input: {
 }): string {
   const { counts, window, contests, disputes } = input.digest;
   const beforeCard = input.resent
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;"><tr><td style="padding:14px 18px;border-radius:12px;background-color:${C.amberTint};font-family:${BODY_FONT};font-size:14px;line-height:21px;color:${C.amberText};"><strong>Resent:</strong> ${escapeHtml(DIGEST_RESENT_LINE.replace(/^Resent: /, ''))}</td></tr></table>`
+    ? mailNote(
+        `<strong>Resent:</strong> ${escapeHtml(DIGEST_RESENT_LINE.replace(/^Resent: /, ''))}`,
+        'amber',
+        mailIcon(input.appOrigin, 'refresh.png', 18),
+      )
     : '';
   const body = `${eyebrow('Daily digest', C.bark700)}${h1('Activity on TreeRepro', C.canopy900, 26)}
 <p style="margin:-10px 0 28px;font-family:${BODY_FONT};font-size:15px;color:${C.muted};">From ${escapeHtml(formatUtc(window.start))} to ${escapeHtml(formatUtc(window.end))}</p>
-${heading('Waiting for review right now')}
+${heading('Waiting for review right now', C.canopy800)}
 ${tiles(
   [
     ['Pending groups', counts.pendingGroups],
@@ -257,8 +267,8 @@ ${tiles(
   2,
   true,
 )}
-${spacer(14)}${mailButton(`${input.appOrigin}/app/curation/pending`, 'Open the review queue')}${spacer(30)}
-${heading('In this window')}
+${spacer(14)}${mailButton(input.appOrigin, `${input.appOrigin}/app/curation/pending`, 'Open the review queue')}${spacer(30)}
+${heading('In this window', C.canopy800)}
 ${tiles(
   [
     ['Records added', counts.records],

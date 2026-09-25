@@ -19,14 +19,14 @@ describe('RFC-10 R16 e-mail layout', () => {
       footer: 'Why you got this',
     });
     expect(html.startsWith('<!doctype html>')).toBe(true);
-    expect(html).toContain(`src="${APP_ORIGIN}/email-emblem.png"`);
+    expect(html).toContain(`src="${APP_ORIGIN}/email/emblem.png"`);
     expect(html).toContain('alt="TreeRepro"');
     expect(html).toContain('<p>Body</p>');
     expect(html).toContain('Why you got this');
     expect(html).toContain('Pre');
   });
 
-  it('loads nothing remote but the emblem', () => {
+  it('loads nothing remote but its own images and fonts from the app origin', () => {
     const html = emailLayout({
       appOrigin: APP_ORIGIN,
       title: 'Hi',
@@ -34,9 +34,14 @@ describe('RFC-10 R16 e-mail layout', () => {
       body: '',
       footer: '',
     });
-    expect(html).not.toMatch(/<script|<link|@import|url\(/i);
-    const sources = [...html.matchAll(/src="([^"]+)"/g)].map((m) => m[1]);
-    expect(sources).toEqual([`${APP_ORIGIN}/email-emblem.png`]);
+    expect(html).not.toMatch(/<script|<link|@import/i);
+    const remote = [
+      ...[...html.matchAll(/(?:src|background)="([^"]+)"/g)].map((m) => m[1]),
+      ...[...html.matchAll(/url\('([^']+)'\)/g)].map((m) => m[1]),
+    ];
+    expect(remote.length).toBeGreaterThan(0);
+    for (const url of remote)
+      expect(url).toMatch(new RegExp(`^${APP_ORIGIN}/email/[a-z-]+\\.(png|jpg|woff2)$`));
   });
 
   it('escapes the frame text it is given', () => {
