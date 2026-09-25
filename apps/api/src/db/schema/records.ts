@@ -5,8 +5,11 @@ import {
   bigint,
   check,
   index,
+  integer,
   numeric,
+  pgSequence,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -20,15 +23,23 @@ import { users } from './users.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
+/** Numbers the platform's record codes: `TR_<n>`, gaps accepted (spec R-2). @rfc RFC-63 R12 */
+export const recordCodeTrSeq = pgSequence('record_code_tr_seq');
+
 /**
  * One claim: a reference reports that a species has a trait with a value.
  * Insert-only (RFC-63 R4; migration 0012 adds the trigger and the revokes).
- * @rfc RFC-63 R1-R3, R5
+ * @rfc RFC-63 R1-R3, R5, R12, R15
  */
 export const traitRecords = pgTable(
   'trait_records',
   {
     id: uuid('id').primaryKey().default(sql`uuidv7()`),
+    /** `EB_<n>` from the import file, `TR_<n>` for anything created on the platform (RFC-63 R12). */
+    recordCode: text('record_code')
+      .notNull()
+      .unique('trait_records_record_code_key')
+      .default(sql`('TR_' || nextval('record_code_tr_seq'))`),
     speciesId: uuid('species_id')
       .notNull()
       .references(() => species.id, { onDelete: 'restrict' }),
@@ -37,6 +48,11 @@ export const traitRecords = pgTable(
       .references(() => traits.id, { onDelete: 'restrict' }),
     levelId: uuid('level_id').references(() => traitLevels.id, { onDelete: 'restrict' }),
     numericValue: numeric('numeric_value', { mode: 'number' }),
+    minValue: numeric('min_value', { mode: 'number' }),
+    maxValue: numeric('max_value', { mode: 'number' }),
+    meanValue: numeric('mean_value', { mode: 'number' }),
+    sdValue: numeric('sd_value', { mode: 'number' }),
+    n: integer('n'),
     valueText: text('value_text').notNull(),
     harmonisation: text('harmonisation', { enum: HARMONISATION_STATUSES }).notNull(),
     rawValue: text('raw_value'),
@@ -119,15 +135,50 @@ export const traitRecords = pgTable(
     ),
     check(
       'trait_records_harmonised_check',
-      sql`${t.harmonisation} <> 'harmonised' or ${t.levelId} is not null or ${t.numericValue} is not null`,
+      sql`${t.harmonisation} <> 'harmonised' or ${t.levelId} is not null
+        or coalesce(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}) is not null`,
     ),
-    check('trait_records_one_value_check', sql`${t.levelId} is null or ${t.numericValue} is null`),
+    check(
+      'trait_records_one_value_check',
+      sql`${t.levelId} is null or num_nonnulls(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}, ${t.sdValue}, ${t.n}) = 0`,
+    ),
     check(
       'trait_records_value_requires_harmonised_check',
-      sql`(${t.levelId} is null and ${t.numericValue} is null) or ${t.harmonisation} = 'harmonised'`,
+      sql`(${t.levelId} is null and num_nonnulls(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}, ${t.sdValue}, ${t.n}) = 0)
+        or ${t.harmonisation} = 'harmonised'`,
+    ),
+    check(
+      'trait_records_quantitative_check',
+      sql`(${t.minValue} is null or ${t.maxValue} is null or ${t.minValue} <= ${t.maxValue})
+        and (${t.sdValue} is null or ${t.sdValue} >= 0) and (${t.n} is null or ${t.n} >= 1)`,
     ),
   ],
 );
 
 export type TraitRecordRow = typeof traitRecords.$inferSelect;
 export type NewTraitRecordRow = typeof traitRecords.$inferInsert;
+
+/**
+ * The references of a record beyond its primary one (spec R-4): the first
+ * source of a form is `primary_reference_id`, the rest land here. Imported
+ * records never use it. Insert-only for the app role (migration 0035).
+ * @rfc RFC-63 R16
+ * @rfc RFC-61 R4, R9
+ */
+export const recordReferences = pgTable(
+  'record_references',
+  {
+    recordId: uuid('record_id')
+      .notNull()
+      .references(() => traitRecords.id, { onDelete: 'restrict' }),
+    referenceId: uuid('reference_id')
+      .notNull()
+      .references(() => bibliographicReferences.id, { onDelete: 'restrict' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.recordId, t.referenceId] }),
+    index('record_references_reference_idx').on(t.referenceId),
+  ],
+);
+
+export type RecordReferenceRow = typeof recordReferences.$inferSelect;

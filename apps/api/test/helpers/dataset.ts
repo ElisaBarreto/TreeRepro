@@ -154,6 +154,11 @@ type RecordBase = {
   valueText: string;
   levelId?: string;
   numericValue?: number;
+  minValue?: number;
+  maxValue?: number;
+  meanValue?: number;
+  sdValue?: number;
+  n?: number;
   harmonisation?: HarmonisationStatus;
   rawValue?: string;
   primaryReferenceId?: string | null;
@@ -175,11 +180,12 @@ type RecordOrigin =
 
 let rowCounter = 0;
 
-/** Inserts one record; `harmonisation` defaults to `harmonised` when a level or number is given, else `unknown_level`. */
+/** Inserts one record; `harmonisation` defaults to `harmonised` when a level or one of single/min/max/mean is given, else `unknown_level`. */
 export async function createRecord(db: DbExecutor, input: RecordBase & RecordOrigin) {
+  const quantitative = [input.numericValue, input.minValue, input.maxValue, input.meanValue];
   const harmonisation =
     input.harmonisation ??
-    (input.levelId !== undefined || input.numericValue !== undefined
+    (input.levelId !== undefined || quantitative.some((v) => v !== undefined)
       ? 'harmonised'
       : 'unknown_level');
   const [row] = await db
@@ -190,6 +196,11 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
       valueText: input.valueText,
       levelId: input.levelId ?? null,
       numericValue: input.numericValue ?? null,
+      minValue: input.minValue ?? null,
+      maxValue: input.maxValue ?? null,
+      meanValue: input.meanValue ?? null,
+      sdValue: input.sdValue ?? null,
+      n: input.n ?? null,
       harmonisation,
       rawValue: input.rawValue ?? null,
       primaryReferenceId: input.primaryReferenceId ?? null,

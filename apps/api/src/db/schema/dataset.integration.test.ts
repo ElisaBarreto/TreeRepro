@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createImportBatch,
@@ -15,7 +15,8 @@ import { recordAnnotations } from './curation.ts';
 import { traitCategories, traitLevels, traits } from './dictionary.ts';
 import { importBatches } from './imports.ts';
 import { plotSpecies, plots, userPlots } from './plots.ts';
-import { traitRecords } from './records.ts';
+import { type NewTraitRecordRow, recordReferences, traitRecords } from './records.ts';
+import { referenceTraits } from './reference-traits.ts';
 import { bibliographicReferences } from './references.ts';
 import { families, genera, species, speciesNames } from './taxa.ts';
 
@@ -140,6 +141,7 @@ describe('RFC-68 R1 import batch kind', () => {
         .values({ fileName: 'x.csv', fileSha256: 'a'.repeat(64) })
         .returning();
       expect(b?.kind).toBe('records');
+      expect(b?.rowsAlreadyImported).toBe(0);
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
@@ -150,6 +152,13 @@ describe('RFC-68 R1 import batch kind', () => {
         ),
       ).rejects.toMatchObject({ code: '23514' });
     });
+  });
+
+  it('RFC-64 R3, R14 rows_already_imported is a bigint not null defaulting to 0', async () => {
+    const [col] = await t.db.execute(sql`
+      select data_type, is_nullable, column_default from information_schema.columns
+      where table_name = 'import_batches' and column_name = 'rows_already_imported'`);
+    expect(col).toEqual({ data_type: 'bigint', is_nullable: 'NO', column_default: '0' });
   });
 });
 
@@ -800,6 +809,168 @@ describe('spec R-1 the accepted value is gone from the database', () => {
       perm_description: 'Set and clear the accepted value per species and trait (retired)',
       grants: 0,
       export_description: 'Download the dataset',
+    });
+  });
+});
+
+describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', () => {
+  const t = useTestDb();
+
+  it('record_code defaults to TR_<n>, distinct per row, and is unique', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'petal_length');
+      const ref = await createReference(tx);
+      const { user } = await createUser(tx);
+      const base = {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        harmonisation: 'harmonised' as const,
+        origin: 'manual' as const,
+        createdBy: user.id,
+        primaryReferenceId: ref.id,
+      };
+      const [a] = await tx
+        .insert(traitRecords)
+        .values({ ...base, valueText: '1', numericValue: 1 })
+        .returning();
+      const [b] = await tx
+        .insert(traitRecords)
+        .values({ ...base, valueText: '2', numericValue: 2 })
+        .returning();
+      expect(a?.recordCode).toMatch(/^TR_\d+$/);
+      expect(b?.recordCode).toMatch(/^TR_\d+$/);
+      expect(a?.recordCode).not.toBe(b?.recordCode);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({
+              ...base,
+              valueText: '3',
+              numericValue: 3,
+              recordCode: a?.recordCode as string,
+            }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_record_code_key' });
+    });
+  });
+
+  it('record_code_suffix letters the parts of a split entry: a…z, aa, ab…', async () => {
+    const [row] = await t.db.execute(sql`
+      select record_code_suffix(1) as a, record_code_suffix(26) as z, record_code_suffix(27) as aa,
+        record_code_suffix(28) as ab, record_code_suffix(702) as zz, record_code_suffix(703) as aaa`);
+    expect(row).toEqual({ a: 'a', z: 'z', aa: 'aa', ab: 'ab', zz: 'zz', aaa: 'aaa' });
+  });
+
+  it('harmonised needs one of single/min/max/mean; min ≤ max; sd ≥ 0; n ≥ 1; never with a level; implies harmonised', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const petal = await traitByKey(tx, 'petal_length');
+      const colour = await traitByKey(tx, 'flower_color');
+      const blue = await levelByKey(tx, colour.id, 'blue');
+      const ref = await createReference(tx);
+      const { user } = await createUser(tx);
+      const base = {
+        speciesId: sp1.id,
+        traitId: petal.id,
+        origin: 'manual' as const,
+        createdBy: user.id,
+        primaryReferenceId: ref.id,
+      };
+      const refused: Partial<NewTraitRecordRow>[] = [
+        { valueText: 'sd=1', harmonisation: 'harmonised', sdValue: 1 },
+        { valueText: 'min=5;max=2', harmonisation: 'harmonised', minValue: 5, maxValue: 2 },
+        { valueText: 'mean=3;sd=-1', harmonisation: 'harmonised', meanValue: 3, sdValue: -1 },
+        { valueText: 'mean=3;n=0', harmonisation: 'harmonised', meanValue: 3, n: 0 },
+        { valueText: 'min=1', harmonisation: 'not_numeric', minValue: 1 },
+        {
+          valueText: 'blue',
+          harmonisation: 'harmonised',
+          traitId: colour.id,
+          levelId: blue.id,
+          minValue: 1,
+        },
+      ];
+      for (const row of refused) {
+        await expect(
+          unwrapDbError(
+            tx.transaction((sp) =>
+              sp.insert(traitRecords).values({ ...base, ...row } as NewTraitRecordRow),
+            ),
+          ),
+          String(row.valueText),
+        ).rejects.toMatchObject({ code: '23514' });
+      }
+      const [ok] = await tx
+        .insert(traitRecords)
+        .values({
+          ...base,
+          valueText: 'min=2;max=8;n=3',
+          harmonisation: 'harmonised',
+          minValue: 2,
+          maxValue: 8,
+          n: 3,
+        })
+        .returning();
+      expect(ok).toMatchObject({ minValue: 2, maxValue: 8, n: 3, numericValue: null });
+    });
+  });
+});
+
+describe('RFC-63 R16, RFC-61 R4, R9 record_references (spec R-4)', () => {
+  const t = useTestDb();
+
+  it('is keyed on both columns and counts as a primary usage and in reference_traits', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'petal_length');
+      const primary = await createReference(tx);
+      const extra = await createReference(tx);
+      const { user } = await createUser(tx);
+      const rec = await createRecord(tx, {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: '1',
+        numericValue: 1,
+        primaryReferenceId: primary.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+      await tx.insert(recordReferences).values({ recordId: rec.id, referenceId: extra.id });
+      const [counted] = await tx
+        .select({ primaryCount: bibliographicReferences.primaryCount })
+        .from(bibliographicReferences)
+        .where(eq(bibliographicReferences.id, extra.id));
+      expect(counted?.primaryCount).toBe(1);
+      const [usage] = await tx
+        .select({ recordCount: referenceTraits.recordCount })
+        .from(referenceTraits)
+        .where(
+          and(eq(referenceTraits.referenceId, extra.id), eq(referenceTraits.traitId, trait.id)),
+        );
+      expect(usage?.recordCount).toBe(1);
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(recordReferences).values({ recordId: rec.id, referenceId: extra.id }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23505' });
+    });
+  });
+
+  it('treerepro_app may read and insert record_references but neither update, delete nor truncate', async () => {
+    const rows = await t.db.execute(sql`
+      select privilege_type, has_table_privilege('treerepro_app', 'record_references', privilege_type) as granted
+      from unnest(array['SELECT', 'INSERT', 'DELETE', 'UPDATE', 'TRUNCATE']) as privilege_type
+    `);
+    expect(Object.fromEntries(rows.map((r) => [r.privilege_type, r.granted]))).toEqual({
+      SELECT: true,
+      INSERT: true,
+      DELETE: false,
+      UPDATE: false,
+      TRUNCATE: false,
     });
   });
 });
