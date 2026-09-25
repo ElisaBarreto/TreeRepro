@@ -33,6 +33,8 @@ apply() {
   while read -r net || [ -n "$net" ]; do
     "$ipt" -A "$next" -s "$net" -j RETURN
   done < "$list"
+  # Logged to /var/log/ufw.log by ufw's rsyslog rule (it matches "[UFW "), rate-limited.
+  "$ipt" -A "$next" -m limit --limit 10/min --limit-burst 20 -j LOG --log-prefix "[UFW CF-BLOCK] "
   "$ipt" -A "$next" -j DROP
   "$ipt" -N DOCKER-USER 2>/dev/null || true
   match="-i $iface -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j"
