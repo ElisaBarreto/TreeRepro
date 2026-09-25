@@ -22,7 +22,7 @@ import { species } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
 import { requireTrait, type TraitBrief } from './dictionary.ts';
 import { isHarmonisableNumber } from './import.ts';
-import { getRecord, reviewStatusSql } from './records.ts';
+import { getRecord, recordVisible, reviewStatusSql } from './records.ts';
 
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
@@ -385,7 +385,6 @@ export async function annotateRecord(
         traitId: traitRecords.traitId,
         intent: traitRecords.intent,
         respondsToRecordId: traitRecords.respondsToRecordId,
-        review: reviewStatusSql(traitRecords.id).as('review'),
       })
       .from(traitRecords)
       .innerJoin(species, eq(species.id, traitRecords.speciesId))
@@ -395,12 +394,16 @@ export async function annotateRecord(
           eq(traitRecords.id, input.recordId),
           speciesVisible(visibility),
           traitVisible(visibility),
+          recordVisible(visibility),
         ),
       )
       .limit(1);
+    // `recordVisible` already excludes a withdrawn record (it is live-only),
+    // a non-harmonised one for a non-reviewer, and one on an inactive level
+    // for a viewer without `dataset.read_inactive` (RFC-33 R2) — so an
+    // invisible or withdrawn record answers 404 here, never a stale
+    // `RECORD_WITHDRAWN` (RFC-65 R3, ruling E6).
     if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
-    if (rec.review === 'withdrawn')
-      throw new AppError('RECORD_WITHDRAWN', 'This record is withdrawn');
 
     if ((input.kind === 'dispute' || input.kind === 'neutral') && !input.canReview) {
       throw new AppError('PERMISSION_DENIED', 'You do not have permission to review records');

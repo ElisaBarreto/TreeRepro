@@ -15,6 +15,7 @@ import { families } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
 import { cachedJson } from '../redis/cache.ts';
 import type { Redis } from '../redis/client.ts';
+import { liveSql } from './records.ts';
 
 /** How full the dataset is: the visible grid, the cells that hold data and the validated ones. */
 export interface CoverageTotals {
@@ -40,19 +41,25 @@ export function percentHalfUp(part: number, whole: number): number {
 
 /**
  * The species × trait pairs that hold a validated record: one carrying a
- * `confirm` annotation and no `withdraw` (spec R-1). It starts from
+ * `confirm` annotation, live (no `withdraw`), harmonised, and on a level that
+ * is null or active (spec R-1; RFC-33 R2's record clause, applied here
+ * viewer-blind — every viewer's coverage numbers must agree on what counts as
+ * validated, so this takes no `Visibility` argument at all). It starts from
  * `record_annotations`, which is human-scale, and never scans
  * `trait_records`; callers join or filter the pairs by their own selection.
  * @rfc RFC-69 R5
  * @rfc RFC-63 R11
+ * @rfc RFC-33 R2
  */
 export function validatedPairsSql(): SQL {
   return sql`select distinct r.species_id, r.trait_id
     from record_annotations a
     join trait_records r on r.id = a.record_id
     where a.kind = 'confirm'
-      and not exists (select 1 from record_annotations w
-                      where w.record_id = r.id and w.kind = 'withdraw')`;
+      and ${liveSql(sql`r.id`)}
+      and r.harmonisation = 'harmonised'
+      and (r.level_id is null
+        or exists (select 1 from trait_levels lvl where lvl.id = r.level_id and lvl.active))`;
 }
 
 interface TotalsRow {

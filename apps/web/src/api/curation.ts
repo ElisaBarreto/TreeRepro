@@ -57,13 +57,26 @@ export async function resolveDoi(doi: string): Promise<ResolveDoiResult> {
     )
   ).data;
 }
-/** @rfc RFC-65 R3 */
-export async function annotateRecord(id: string, body: AnnotateRecordBody): Promise<RecordDetail> {
+/**
+ * `null` when the annotation withdrew the record: a withdrawn record is
+ * visible to no viewer (RFC-33 R2), so the API answers `200 { data: null }`
+ * rather than a detail (plan 13g amendment 2).
+ * @rfc RFC-65 R3, R4
+ * @rfc RFC-33 R2
+ */
+export async function annotateRecord(
+  id: string,
+  body: AnnotateRecordBody,
+): Promise<RecordDetail | null> {
   return (
-    await apiFetch(`/records/${id}/annotations`, dataEnvelopeSchema(recordDetailSchema), {
-      method: 'POST',
-      json: body,
-    })
+    await apiFetch(
+      `/records/${id}/annotations`,
+      dataEnvelopeSchema(recordDetailSchema.nullable()),
+      {
+        method: 'POST',
+        json: body,
+      },
+    )
   ).data;
 }
 /** @rfc RFC-65 R8 */

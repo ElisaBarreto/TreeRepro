@@ -97,11 +97,15 @@ export function RecordActions({
   // Counts the validations sent; see `doiComplaint` below.
   const [attempts, setAttempts] = useState(0);
 
-  const annotate = useRecordWrite<AnnotateRecordBody, RecordDetail>({
+  const annotate = useRecordWrite<AnnotateRecordBody, RecordDetail | null>({
     write: (body) => annotateRecord(record.id, body),
     speciesId: record.speciesId,
     onWritten: (detail, queryClient) => {
-      queryClient.setQueryData(datasetKeys.record(record.id), detail);
+      // `null` means the annotation withdrew the record (RFC-33 R2): there is
+      // no detail to seed the cache with, and the invalidation below leaves
+      // the drawer's record query to 404 — acceptable until Task 5 gives the
+      // drawer an onGone to close itself with.
+      if (detail) queryClient.setQueryData(datasetKeys.record(record.id), detail);
       // Only the form state here — not `openMode(null)`: resetting a mutation
       // from inside its own onSuccess flips isPending before the invalidation
       // settles, and would detach the in-flight invalidation.

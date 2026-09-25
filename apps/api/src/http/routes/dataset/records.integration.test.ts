@@ -929,6 +929,28 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     expect((await missing.json()).error.code).toBe('RECORD_NOT_FOUND');
   });
 
+  it('RFC-33 R2 a pending record is invisible to a non-reviewer, who gets 404 RECORD_NOT_FOUND annotating it', async () => {
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const pending = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'not a number',
+      harmonisation: 'not_numeric',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    const contributor = await scientist(t, ['records.annotate']);
+    const res = await annotate(contributor.cookie, pending.id, { kind: 'confirm' });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe('RECORD_NOT_FOUND');
+    const reviewer = await scientist(t, ['records.annotate', 'records.review']);
+    const ok = await annotate(reviewer.cookie, pending.id, { kind: 'confirm' });
+    expect(ok.status).toBe(201);
+  });
+
   it('R4 the author withdraws a manual record; nothing more can be annotated afterwards', async () => {
     const a = await scientist(t, ['records.annotate']);
     const { rec } = await manualRecord(a.user.id);
@@ -937,9 +959,11 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     // detail left to answer with (plan 13g amendment 2).
     expect(withdrawn.status).toBe(200);
     expect((await withdrawn.json()).data).toBeNull();
+    // RFC-65 R3: a withdrawn record is invisible, so a further annotation
+    // answers 404 RECORD_NOT_FOUND, not a stale RECORD_WITHDRAWN.
     const after = await annotate(a.cookie, rec.id, { kind: 'confirm' });
-    expect(after.status).toBe(409);
-    expect((await after.json()).error.code).toBe('RECORD_WITHDRAWN');
+    expect(after.status).toBe(404);
+    expect((await after.json()).error.code).toBe('RECORD_NOT_FOUND');
   });
 
   it('R4 a third party needs records.withdraw', async () => {

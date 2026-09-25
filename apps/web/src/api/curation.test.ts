@@ -65,6 +65,16 @@ describe('RFC-65 R3 annotateRecord', () => {
     expect(lastRequest().url).toBe(`/api/records/${RECORD_DETAIL.id}/annotations`);
     expect(body()).toEqual({ kind: 'dispute', note: 'No.' });
   });
+
+  it('RFC-33 R2 a withdraw answers 200 { data: null }, which unwraps to null', async () => {
+    mockJson(200, { data: null });
+    const result = await annotateRecord(RECORD_DETAIL.id, {
+      kind: 'withdraw',
+      note: 'Wrong species',
+    });
+    expect(lastRequest().url).toBe(`/api/records/${RECORD_DETAIL.id}/annotations`);
+    expect(result).toBeNull();
+  });
 });
 
 describe('RFC-65 R8–R10 queues', () => {

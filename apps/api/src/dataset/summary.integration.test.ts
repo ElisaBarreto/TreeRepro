@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -5,6 +6,7 @@ import {
   createRecord,
   createReference,
   createSpecies,
+  createTrait,
   createVisibilityFixture,
   levelByKey,
   traitByKey,
@@ -12,6 +14,7 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import { traitLevels } from '../db/schema/dictionary.ts';
 import { speciesTraitSummary } from './summary.ts';
 
 describe('RFC-63 R10 speciesTraitSummary', () => {
@@ -239,5 +242,77 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
     const petal = await traitByKey(t.db, 'petal_length');
     expect(unrestrictedTraits.find((x) => x.trait.id === petal.id)?.levels).toBeNull();
+  });
+
+  it('RFC-33 R2, 13e ruling: a confirmed record that is pending or on an inactive level does not validate its species × trait', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+
+    // A confirmed but still-pending (not harmonised) record: not validated.
+    const spPending = await createSpecies(t.db);
+    const traitPending = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const pending = await createRecord(t.db, {
+      speciesId: spPending.id,
+      traitId: traitPending.id,
+      valueText: 'not a number',
+      harmonisation: 'not_numeric',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    await createAnnotation(t.db, { recordId: pending.id, actorId: user.id, kind: 'confirm' });
+    const pendingSummary = await speciesTraitSummary(t.db, UNRESTRICTED, spPending.id);
+    expect(
+      pendingSummary?.flatMap((c) => c.traits).find((x) => x.trait.id === traitPending.id)
+        ?.validated,
+    ).toBe(false);
+
+    // A confirmed, harmonised record whose level is later deactivated: not
+    // validated for any viewer, even one who can still see the record
+    // (RFC-33 R2's level clause, viewer-blind here — 13e ruling on
+    // `validatedPairsSql`).
+    const spInactiveLevel = await createSpecies(t.db);
+    const traitWithLevel = await createTrait(t.db, { levels: ['on'] });
+    const onLevelId = traitWithLevel.levels[0]?.id as string;
+    const onInactiveLevel = await createRecord(t.db, {
+      speciesId: spInactiveLevel.id,
+      traitId: traitWithLevel.id,
+      valueText: 'on',
+      levelId: onLevelId,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await createAnnotation(t.db, {
+      recordId: onInactiveLevel.id,
+      actorId: user.id,
+      kind: 'confirm',
+    });
+    await t.db.update(traitLevels).set({ active: false }).where(eq(traitLevels.id, onLevelId));
+    const inactiveLevelSummary = await speciesTraitSummary(t.db, UNRESTRICTED, spInactiveLevel.id);
+    expect(
+      inactiveLevelSummary?.flatMap((c) => c.traits).find((x) => x.trait.id === traitWithLevel.id)
+        ?.validated,
+    ).toBe(false);
+
+    // Control: a confirmed, harmonised record on an active level does
+    // validate — the two cases above are not "always false".
+    const spControl = await createSpecies(t.db);
+    const traitControl = await createTrait(t.db, { levels: ['on'] });
+    const control = await createRecord(t.db, {
+      speciesId: spControl.id,
+      traitId: traitControl.id,
+      valueText: 'on',
+      levelId: traitControl.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await createAnnotation(t.db, { recordId: control.id, actorId: user.id, kind: 'confirm' });
+    const controlSummary = await speciesTraitSummary(t.db, UNRESTRICTED, spControl.id);
+    expect(
+      controlSummary?.flatMap((c) => c.traits).find((x) => x.trait.id === traitControl.id)
+        ?.validated,
+    ).toBe(true);
   });
 });

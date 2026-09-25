@@ -506,7 +506,10 @@ describe('RFC-65 R3-R6 RecordActions reviewer and author actions', () => {
   });
 
   it('offers Withdraw to the author or a records.withdraw holder, on manual records only', async () => {
-    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'withdrawn' });
+    // The API answers `200 { data: null }` for a withdraw (RFC-33 R2): the
+    // record is now visible to no viewer, so there is no detail to seed the
+    // cache with.
+    curation.annotateRecord.mockResolvedValue(null);
     const { unmount } = renderWithProviders(<RecordActions record={MINE} />, {
       me: perms('records.annotate'),
     });
