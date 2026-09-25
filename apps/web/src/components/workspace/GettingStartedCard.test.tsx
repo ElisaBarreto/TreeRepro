@@ -46,6 +46,12 @@ describe('RFC-73 R3 GettingStartedCard', () => {
     expect(missing.searchParams.get('traitData')).toBe('missing');
   });
 
+  it('RFC-72 R3 opens straight on the checklist, with no introductory sentence', async () => {
+    render(withRouter(<GettingStartedCard summary={ZERO_CONTRIBUTION_SUMMARY} />));
+    await screen.findByRole('heading', { name: 'Getting started' });
+    expect(screen.queryByText(/A few places to start/)).not.toBeInTheDocument();
+  });
+
   it('writes the hidden flag and unmounts the card in the same interaction when "Hide this card" is clicked', async () => {
     const user = userEvent.setup();
     render(withRouter(<GettingStartedCard summary={ZERO_CONTRIBUTION_SUMMARY} />));

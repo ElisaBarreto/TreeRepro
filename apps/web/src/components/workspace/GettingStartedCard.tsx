@@ -49,10 +49,6 @@ export function GettingStartedCard({ summary }: { summary: ContributionSummary }
       <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
         Getting started
       </h2>
-      <p className="text-body text-mist-500">
-        A few places to start now that you have access. Each one opens straight into what it
-        describes.
-      </p>
       <ul aria-label="Getting started checklist" className="flex flex-col gap-2 text-body">
         <li>
           <Link to={helpHref('workflow')} className={LINK_CLASS}>

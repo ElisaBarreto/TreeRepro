@@ -104,16 +104,18 @@ test.describe('RFC-72 workspace dashboard (plan 11b)', () => {
       await expect(page.getByRole('heading', { name: 'Your scope' })).toBeVisible();
       await expect(page.getByText(`${plotName} · 1 species`)).toBeVisible();
 
-      // ── Top traits missing data in your plots: the lone species in the
-      // plot has no record for any trait but the one just seeded, so every
-      // ranked entry reads "1 species" — asserted without naming which
-      // trait wins the tie, since that is dataset-wide and not this test's
-      // to pin down. ──────────────────────────────────────────────────────
-      const missingSection = page.getByRole('region', {
-        name: 'Top traits missing data in your plots',
-      });
-      await expect(missingSection).toBeVisible();
-      await expect(missingSection.getByText('1 species').first()).toBeVisible();
+      // ── Top traits with data: dataset-wide, read from a ten-minute cache
+      // (RFC-62 R5) that other specs may have warmed before any record
+      // existed, so either a ranked trait linking to its page or the empty
+      // state is accepted — which one is not this test's to pin down. ─────
+      const withDataSection = page.getByRole('region', { name: 'Top traits with data' });
+      await expect(withDataSection).toBeVisible();
+      await expect(
+        withDataSection
+          .getByRole('link')
+          .first()
+          .or(withDataSection.getByText('No trait has data yet.')),
+      ).toBeVisible();
 
       // ── Records awaiting your validation: the one record just seeded. ──
       await expect(
