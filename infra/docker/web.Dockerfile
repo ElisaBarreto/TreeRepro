@@ -28,13 +28,14 @@ RUN apk upgrade --no-cache
 # Run Caddy as a dedicated user (RFC-02 R10). The upstream image already ships
 # /usr/bin/caddy with the cap_net_bind_service file capability, so the process
 # binds 80/443 without root as long as compose keeps NET_BIND_SERVICE in the
-# bounding set. /data and /config are pre-owned so a fresh named volume inherits
+# bounding set. /data, /config and /var/log/caddy (access log) are pre-owned so a fresh named volume inherits
 # the ownership (docs/gotchas/docker.md); an existing root-owned volume needs
 # the one-off chown documented there.
 RUN addgroup -S -g 1000 caddy \
     && adduser -S -u 1000 -G caddy -H -h /nonexistent -s /sbin/nologin caddy \
-    && chown -R caddy:caddy /data /config
+    && mkdir -p /var/log/caddy \
+    && chown -R caddy:caddy /data /config /var/log/caddy
 COPY infra/docker/Caddyfile.prod /etc/caddy/Caddyfile
 COPY --from=build /workspace/apps/web/dist /srv/web
-VOLUME ["/data", "/config"]
+VOLUME ["/data", "/config", "/var/log/caddy"]
 USER caddy

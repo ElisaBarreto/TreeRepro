@@ -12,6 +12,26 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# Access log for incident investigation (RFC-02 R7): JSON with the resolved
+	# client IP, kept 30 days on the caddy-logs volume. Caddy already redacts
+	# Cookie, Set-Cookie and Authorization; the tokens in the SPA's invitation
+	# and password-reset URLs (and Referers) are masked here.
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 50MiB
+			roll_keep 1000
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp ^/(invite|reset-password)/[^/?#]+ /${1}/REDACTED
+				# Same-origin requests from those pages carry the full URL as Referer.
+				request>headers>Referer regexp /(invite|reset-password)/[^/?#]+ /${1}/REDACTED
+			}
+		}
+	}
+
 	# Site level so `/api/*` responses carry them too (RFC-02 R5). The block is
 	# deferred (it contains a deletion), so these values replace the API's own
 	# overlapping headers (1-year HSTS wins over Hono's default).
