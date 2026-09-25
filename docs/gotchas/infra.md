@@ -9,7 +9,7 @@
 **Symptom:** The database must be rebuilt from a dump, or the backups must be proven restorable (the drill).
 **Cause:** Dumps are `age`-encrypted plain SQL taken by the read-only `treerepro_backup` role with `--no-owner --no-privileges`, so they carry no `ALTER OWNER`/`GRANT` statements and restore as whichever role runs `psql`. The roles themselves are not in the dump; `infra/postgres/init/01-roles.sh` recreates them on an empty data volume from the current secret files.
 **Fix:** Verified sequence (Postgres 18.6, `psql --single-transaction`):
-1. Copy the newest dump out of the volume: `docker compose cp backup:/backups/treerepro-<stamp>.sql.age .` (works while the container sleeps between runs).
+1. Copy the newest dump out of the volume: `docker compose cp backup:/backups/treerepro-<stamp>.sql.age .` (works while the container sleeps between runs). With the server gone, take it from R2 instead (next section).
 2. Decrypt on the machine that holds the `age` identity: `age -d -i key.txt treerepro-<stamp>.sql.age > dump.sql`.
 3. Start from an empty cluster: `docker compose down`, `docker volume rm treerepro_postgres-data`, `docker compose up -d postgres` (the init script creates `treerepro_migrator`, `treerepro_app`, `treerepro_backup`).
 4. Restore as the migrator so it owns every table and the app role's default privileges apply: `docker compose exec -T -e PGPASSWORD="$(cat infra/secrets/db_migrator_password)" postgres psql -U treerepro_migrator -d treerepro -v ON_ERROR_STOP=1 --single-transaction -q < dump.sql`.
@@ -17,6 +17,11 @@
 6. Check: `docker compose ps` shows every service healthy, `docker compose exec postgres psql -U postgres -d treerepro -c 'select count(*) from users'` matches the expectation, a sign-in works (Redis is not backed up — sessions and rate-limit counters start empty, every user signs in again).
 
 Drill: run steps 2–6 on a laptop against the dev stack (the same compose files, a throwaway `docker compose down -v` afterwards) after the first production deployment and whenever `backup.sh`, the Postgres image or the roles change. A drill that was never run is not a backup.
+
+## The off-site copy in Cloudflare R2
+**Symptom:** The server, its disk or the Hostinger account is lost, and with it the `backups` volume; or someone with root on the server tries to delete the backups too.
+**Cause:** The dumps in the volume sit on the machine they protect (Hostinger keeps no backup of this VPS).
+**Fix:** `backup.sh` uploads every dump to the R2 bucket `treereprobackups` (EU jurisdiction, endpoint `https://<account-id>.eu.r2.cloudflarestorage.com`; a bucket in the EU jurisdiction is not found through the endpoint without `.eu`) with `curl --aws-sigv4`: `daily/<file>` every day, the same file also under `weekly/` on Sundays and `monthly/` on the 1st (RFC-10 R9). Bucket settings, made in the Cloudflare dashboard: lifecycle rules delete `daily/` after 35 days, `weekly/` after 60, `monthly/` after 365, and abort incomplete multipart uploads after 1 day; a bucket lock rule with no prefix retains every object 30 days (a `DELETE` answers 409). The API token is *Object Read & Write* on that bucket only. On the server: `R2_ENDPOINT`, `R2_BUCKET` and `R2_ACCESS_KEY_ID` in `.env`, the secret access key in `infra/secrets/r2_secret_access_key` (mode 0444, like the other secrets). Keep a copy of the token and of the `age` identity off the server, or the R2 copies are unreachable or unreadable. Restore from R2 on any machine with the credentials: `curl -fsS -o dump.sql.age --aws-sigv4 aws:amz:auto:s3 --user "$R2_ACCESS_KEY_ID:$R2_SECRET_ACCESS_KEY" -H 'x-amz-content-sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' "$R2_ENDPOINT/treereprobackups/daily/treerepro-<stamp>.sql.age"` (list the keys with `"$R2_ENDPOINT/treereprobackups?list-type=2&prefix=daily/"`), then continue at step 2 above.
 
 ## Knowing that a backup failed
 **Symptom:** The newest file in the `backups` volume is days old and nobody noticed.

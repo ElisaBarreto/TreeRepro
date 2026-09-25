@@ -42,7 +42,12 @@ services:
       # Optional dead man's switch: fetched after every successful backup
       # (docs/gotchas/infra.md). Empty = no ping.
       BACKUP_PING_URL: ${BACKUP_PING_URL:-}
-    secrets: [db_backup_password]
+      # Off-site copy to Cloudflare R2 (docs/gotchas/infra.md); the secret key
+      # is infra/secrets/r2_secret_access_key.
+      R2_ENDPOINT: ${R2_ENDPOINT:?set R2_ENDPOINT in .env}
+      R2_BUCKET: ${R2_BUCKET:?set R2_BUCKET in .env}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?set R2_ACCESS_KEY_ID in .env}
+    secrets: [db_backup_password, r2_secret_access_key]
     volumes:
       - backups:/backups
     read_only: true
@@ -53,6 +58,10 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal]
+
+secrets:
+  r2_secret_access_key:
+    file: ./infra/secrets/r2_secret_access_key
 
 volumes:
   backups:
