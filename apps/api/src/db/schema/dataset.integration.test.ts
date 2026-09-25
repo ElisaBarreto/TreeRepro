@@ -778,20 +778,26 @@ describe('RFC-71 R4 per-user contribution indexes', () => {
 describe('spec R-1 the accepted value is gone from the database', () => {
   const t = useTestDb();
 
-  it('has no accepted_values table, no trigger function for it and no accepted.manage rows', async () => {
+  it('has no accepted_values table, no trigger function for it, and accepted.manage retired (RFC-30 R1: row kept)', async () => {
     const [row] = (await t.db.execute(sql`
       select to_regclass('public.accepted_values')::text as tbl,
         (select count(*)::int from pg_proc where proname = 'accepted_values_match_record') as fn,
-        (select count(*)::int from permissions where key = 'accepted.manage') as perm,
+        (select description from permissions where key = 'accepted.manage') as perm_description,
         (select count(*)::int from role_permissions where permission_key = 'accepted.manage') as grants,
         (select description from permissions where key = 'dataset.export') as export_description
     `)) as unknown as [
-      { tbl: string | null; fn: number; perm: number; grants: number; export_description: string },
+      {
+        tbl: string | null;
+        fn: number;
+        perm_description: string | null;
+        grants: number;
+        export_description: string;
+      },
     ];
     expect(row).toEqual({
       tbl: null,
       fn: 0,
-      perm: 0,
+      perm_description: 'Set and clear the accepted value per species and trait (retired)',
       grants: 0,
       export_description: 'Download the dataset',
     });

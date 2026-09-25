@@ -19,6 +19,7 @@ export const PERMISSIONS = {
   'records.create': 'Add trait records and map pending values',
   'records.annotate': 'Confirm, dispute and comment on records',
   'records.withdraw': 'Withdraw any manual record',
+  'accepted.manage': 'Set and clear the accepted value per species and trait (retired)',
   'taxa.manage': 'Create and edit families, genera, species and names',
   'taxa.propose': 'Propose a species for the catalog',
   'references.manage': 'Create and edit bibliographic references',
