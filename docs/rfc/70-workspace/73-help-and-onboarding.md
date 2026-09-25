@@ -26,4 +26,4 @@ None.
 
 - 2026-09-19 — created.
 - 2026-09-19 — accepted.
-- 2026-09-25 — R1 topics cover contested levels and books; R3 Getting started loses its opening sentence (record model revision R-16, R-18; plan 13a). `draft` until plan 13j (13b does R3).
+- 2026-09-25 — R1 topics cover contested levels and books; R3 Getting started loses its opening sentence (record model revision R-9, R-16, R-18; plan 13a). `draft` until plan 13j (13b does R3).
