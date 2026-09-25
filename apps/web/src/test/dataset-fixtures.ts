@@ -1005,6 +1005,8 @@ export const DASHBOARD: Dashboard = {
   dataset: {
     speciesCount: 120,
     referenceCount: 45,
+    primaryReferenceCount: 38,
+    secondaryReferenceCount: 12,
     recordCount: 980,
     computedAt: '2026-09-18T08:00:00.000Z',
   },

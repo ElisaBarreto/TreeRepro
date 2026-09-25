@@ -9,10 +9,17 @@ describe('RFC-72 R3 IntroCard', () => {
     expect(
       screen.getByText(/TreeRepro is a collective data assembly of reproductive trait data/),
     ).toHaveTextContent(
-      `spanning ${DASHBOARD.dataset.referenceCount} references and ${DASHBOARD.dataset.recordCount} records over ${DASHBOARD.dataset.speciesCount} species`,
+      `spanning ${DASHBOARD.dataset.primaryReferenceCount} primary references, ${DASHBOARD.dataset.secondaryReferenceCount} secondary references and ${DASHBOARD.dataset.recordCount} records over ${DASHBOARD.dataset.speciesCount} species`,
     );
     const link = screen.getByRole('link', { name: 'elisabpereira@gmail.com' });
     expect(link).toHaveAttribute('href', 'mailto:elisabpereira@gmail.com');
+  });
+
+  it('lets the description take the full width of its card', () => {
+    render(<IntroCard dataset={DASHBOARD.dataset} />);
+    expect(screen.getByText(/TreeRepro is a collective data assembly/)).not.toHaveClass(
+      'max-w-3xl',
+    );
   });
 
   it('shows the three dataset counts as tiles', () => {

@@ -71,7 +71,7 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(
       await screen.findByText(/TreeRepro is a collective data assembly of reproductive trait data/),
     ).toHaveTextContent(
-      `spanning ${DASHBOARD.dataset.referenceCount} references and ${DASHBOARD.dataset.recordCount} records over ${DASHBOARD.dataset.speciesCount} species`,
+      `spanning ${DASHBOARD.dataset.primaryReferenceCount} primary references, ${DASHBOARD.dataset.secondaryReferenceCount} secondary references and ${DASHBOARD.dataset.recordCount} records over ${DASHBOARD.dataset.speciesCount} species`,
     );
     expect(screen.getByRole('link', { name: 'elisabpereira@gmail.com' })).toHaveAttribute(
       'href',

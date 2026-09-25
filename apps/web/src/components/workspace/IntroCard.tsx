@@ -10,7 +10,7 @@ const LINK_CLASS = 'font-medium text-canopy-900 underline-offset-2 hover:underli
 function Description({ text }: { text: string }) {
   const [before, after] = text.split(CONTACT_EMAIL);
   return (
-    <p className="max-w-3xl text-body text-mist-500">
+    <p className="text-body text-mist-500">
       {before}
       <a href={`mailto:${CONTACT_EMAIL}`} className={LINK_CLASS}>
         {CONTACT_EMAIL}
