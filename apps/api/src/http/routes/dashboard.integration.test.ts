@@ -103,8 +103,8 @@ describe('RFC-72 R1, R2 GET /api/me/dashboard', () => {
    * RFC-72 R1 names "creating a record" as an invalidator, and mapping a
    * pending group creates records: the INSERT … SELECT writes `trait_records`
    * with `created_by = <actor>` and `origin = 'manual'`, which lands in the
-   * actor's own `awaitingValidation` and moves `missingCells`,
-   * `topMissingTraits` and the contribution summary.
+   * actor's own `awaitingValidation` and moves `missingCells` and the
+   * contribution summary.
    */
   it('forgets the viewer entry when they map a pending group', async () => {
     const { user, cookie } = await reader(['dataset.read', 'records.review']);

@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { dashboardSchema, type PermissionKey } from '@treerepro/contracts';
 import { eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 import {
   addPlotSpecies,
   createAnnotation,
@@ -26,17 +26,8 @@ import {
   computeDatasetStats,
   type DashboardViewer,
   getDashboard,
-  missingTraitCounts,
+  traitsWithData,
 } from './dashboard.ts';
-
-/**
- * What the plot fixture below leaves missing on its two half-covered traits.
- * The no-plots case asserts the dataset-wide number for its own trait is at
- * least this: the plot number is a fact about three species, the dataset-wide
- * one is a fact about every visible species and moves as sibling suites
- * commit, so only the inequality can be asserted (RFC-72 R1).
- */
-const PLOT_CASE_MISSING = 2;
 
 /**
  * READ THIS BEFORE ASSERTING A DATASET COUNT FROM ANY SUITE.
@@ -180,8 +171,19 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
-    redis = createRedis(inject('redisUrl'));
+    // A Redis logical database of this suite's own. Every test below calls
+    // `getDashboard` inside a frozen, rolled-back transaction, and
+    // `getDashboard` fills fixed keys every suite shares —
+    // `dictionary:species-counts:r` (read by `traitsWithData` for every
+    // viewer), `stats:dataset`. On database 0 those fills would publish rows
+    // that are never committed to every other suite for up to an hour. On
+    // database 1, flushed before each test, they reach no one, and each test
+    // reads counts of its own snapshot.
+    redis = createRedis(`${inject('redisUrl')}/1`);
     await redis.connect();
+  });
+  beforeEach(async () => {
+    await redis.flushdb();
   });
   afterAll(async () => {
     await redis.quit();
@@ -237,7 +239,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
     });
   });
 
-  it('ranks the traits by the plot species that still miss them, and skips inactive traits', async () => {
+  it('ranks the traits by the species holding data, dataset-wide, and skips inactive traits', async () => {
     await withRollback(t.db, async (tx) => {
       await freezeSnapshot(tx);
       const f = await plotFixture(tx);
@@ -245,29 +247,39 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       // The ranking without the ten-entry cut: the dashboard's own top ten is
       // filled by whatever the run's other suites have committed, so the
       // fixture's own traits are asserted on the full list (RFC-72 R1).
-      const ranking = await missingTraitCounts({ db: tx, redis }, f.visibility, [f.plot.id]);
+      const ranking = await traitsWithData({ db: tx, redis }, f.visibility);
       const at = (traitId: string) => ranking.findIndex((r) => r.trait.id === traitId);
       const countOf = (traitId: string) =>
-        ranking.find((r) => r.trait.id === traitId)?.missingSpeciesCount;
+        ranking.find((r) => r.trait.id === traitId)?.speciesCount;
 
-      expect(countOf(f.traitA.id)).toBe(PLOT_CASE_MISSING);
-      expect(countOf(f.traitB.id)).toBe(PLOT_CASE_MISSING);
-      // No plot species holds a record on C: it misses all three and outranks
-      // the two traits one species already covers.
-      expect(countOf(f.traitC.id)).toBe(3);
-      expect(at(f.traitC.id)).toBeLessThan(at(f.traitA.id));
-      expect(at(f.traitC.id)).toBeLessThan(at(f.traitB.id));
+      // A is held by `one` and by `outside`, a species in none of the
+      // viewer's plots: the ranking is a dataset-wide statistic, open to a
+      // plot-bound viewer (spec R-18 names `speciesCountsByTrait`).
+      expect(countOf(f.traitA.id)).toBe(2);
+      // B's second record is withdrawn but shares `awaiting`'s cell.
+      expect(countOf(f.traitB.id)).toBe(1);
+      expect(at(f.traitA.id)).toBeLessThan(at(f.traitB.id));
+      // C has no data and the inactive trait is invisible: neither is ranked.
+      expect(at(f.traitC.id)).toBe(-1);
       expect(at(f.traitOff.id)).toBe(-1);
-      expect(ranking.map((r) => r.missingSpeciesCount)).toEqual(
-        [...ranking.map((r) => r.missingSpeciesCount)].sort((a, b) => b - a),
+      expect(ranking.every((r) => r.speciesCount > 0)).toBe(true);
+      expect(ranking.map((r) => r.speciesCount)).toEqual(
+        [...ranking.map((r) => r.speciesCount)].sort((a, b) => b - a),
       );
-      expect(ranking.find((r) => r.trait.id === f.traitA.id)?.category).toEqual(
-        expect.objectContaining({ key: expect.any(String), label: expect.any(String) }),
-      );
+      expect(ranking.find((r) => r.trait.id === f.traitA.id)).toEqual({
+        trait: {
+          id: f.traitA.id,
+          key: f.traitA.key,
+          valueType: f.traitA.valueType,
+          unit: f.traitA.unit,
+        },
+        category: expect.objectContaining({ key: expect.any(String), label: expect.any(String) }),
+        speciesCount: 2,
+      });
 
       const dashboard = await getDashboard({ db: tx, redis }, f.visibility, f.viewerScope);
-      expect(dashboard.contributor.topMissingTraits.length).toBeLessThanOrEqual(10);
-      expect(dashboard.contributor.topMissingTraits).toEqual(ranking.slice(0, 10));
+      expect(dashboard.contributor.topTraitsWithData.length).toBeLessThanOrEqual(10);
+      expect(dashboard.contributor.topTraitsWithData).toEqual(ranking.slice(0, 10));
     });
   });
 
@@ -465,7 +477,7 @@ describe('RFC-72 R1 getDashboard without plots', () => {
    * minutes and hand a sibling suite counts it cannot see. On the pool, every
    * row the map counts is committed and the entry stays true.
    */
-  it('has no scope, no missing cells and no validation queue, and ranks over the dataset', async () => {
+  it('has no scope, no missing cells and no validation queue, and ranks the traits with data', async () => {
     const { user } = await createUser(t.db);
     const reference = await createReference(t.db);
     const trait = await createTrait(t.db, { levels: ['alpha'] });
@@ -493,22 +505,15 @@ describe('RFC-72 R1 getDashboard without plots', () => {
     expect(dashboard.scope).toBeNull();
     expect(dashboard.contributor.missingCells).toBeNull();
     expect(dashboard.contributor.awaitingValidation).toBeNull();
-    expect(dashboard.contributor.topMissingTraits.length).toBeLessThanOrEqual(10);
-
-    const ranking = await missingTraitCounts({ db: t.db, redis }, RESTRICTED, []);
-    const entry = ranking.find((r) => r.trait.id === trait.id);
-    // Four active species were just created and only one of them holds a
-    // record on this trait, so the dataset-wide number is at least three —
-    // never below the plot case, whichever way the shared species-count entry
-    // happened to be warmed.
-    expect(entry).toBeDefined();
-    expect(entry?.missingSpeciesCount).toBeGreaterThanOrEqual(PLOT_CASE_MISSING);
-    expect(entry?.trait).toEqual({
-      id: trait.id,
-      key: trait.key,
-      valueType: trait.valueType,
-      unit: trait.unit,
-    });
+    // The ranking reads the shared `dictionary:species-counts:r` entry
+    // (committed rows only, see above), so only its shape is this test's to
+    // assert: at most ten, every entry holding data, most data first.
+    const top = dashboard.contributor.topTraitsWithData;
+    expect(top.length).toBeLessThanOrEqual(10);
+    expect(top.every((r) => r.speciesCount > 0)).toBe(true);
+    expect(top.map((r) => r.speciesCount)).toEqual(
+      [...top.map((r) => r.speciesCount)].sort((a, b) => b - a),
+    );
   });
 });
 
