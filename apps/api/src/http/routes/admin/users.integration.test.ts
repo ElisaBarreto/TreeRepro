@@ -11,7 +11,11 @@ import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
 import {
   createAnnotation,
+  createContest,
+  createContestEvent,
   createPlot,
+  createSpecies,
+  createTrait,
   createVisibilityFixture,
 } from '../../../../test/helpers/dataset.ts';
 import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
@@ -546,6 +550,30 @@ describe('RFC-71 R5 GET /api/admin/users/:id/contributions', () => {
     expect(contributionSummarySchema.safeParse(counts.data).success).toBe(true);
     expect(counts.data.records).toBe(3);
     expect(counts.data.validations).toBe(1);
+  });
+
+  it('RFC-71 R4 counts a record-less contest for the target user and stops once it is withdrawn, same as the numbers the module gives directly', async () => {
+    const { cookie } = await viewer(['contributions.read']);
+    const { user: target } = await createUser(t.db);
+    const species = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['alpha'] });
+    const contest = await createContest(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      createdBy: target.id,
+    });
+
+    const before = await call(t.app, 'GET', `/api/admin/users/${target.id}/contributions/summary`, {
+      cookie,
+    });
+    expect((await before.json()).data.contests).toBe(1);
+
+    await createContestEvent(t.db, { contestId: contest.id, actorId: target.id, kind: 'withdraw' });
+
+    const after = await call(t.app, 'GET', `/api/admin/users/${target.id}/contributions/summary`, {
+      cookie,
+    });
+    expect((await after.json()).data.contests).toBe(0);
   });
 
   it('is 404 for an unknown user and 403 without contributions.read', async () => {

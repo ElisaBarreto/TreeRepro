@@ -33,8 +33,6 @@ const summary = {
   contests: 1,
   complements: 0,
   validations: 2,
-  disputes: 0,
-  withdrawn: 1,
 };
 
 // Named separately (not indexed out of the array below) so the strictness

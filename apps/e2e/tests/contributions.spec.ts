@@ -116,12 +116,10 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       // RFC-70 R4: the confirmation is attached to the record.
       await expect(drawer.getByText('You validated this record')).toBeVisible();
 
-      // ── …then contests it with a value of their own. RFC-70 R3 inserts a
-      // `dispute` annotation on the seeded record, generated in the
-      // contributor's own name, so the contributor ends this step with one
-      // manual record (the contest), one `confirm` annotation (the
-      // validation) and one `dispute` annotation (generated) — all three of
-      // RFC-71 R4's non-zero counts below. ──────────────────────────────────
+      // ── …then contests it with a value of their own. Since spec R-11 a
+      // contest writes nothing on the record it contests, so the contributor
+      // ends this step with one manual record (the contest) and one
+      // `confirm` annotation (the validation). ─────────────────────────────
       await drawer.getByRole('button', { name: '+ Add different record', exact: true }).click();
       const contest = page.getByRole('dialog', {
         name: `Add a different record for ${traitName} of ${speciesName}`,
@@ -156,8 +154,6 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await tileShows('Contests', '1');
       await tileShows('Complements', '0');
       await tileShows('Validations', '1');
-      await tileShows('Disputes', '1');
-      await tileShows('Withdrawn', '0');
 
       // R2: the Records tab (open by default) lists the contest as the
       // contributor's own manual record, badged with its intent; it is not
@@ -167,34 +163,26 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await expect(recordRow).toContainText(traitName);
       await expect(recordRow.getByText('contest', { exact: true })).toBeVisible();
 
-      // R3: the Annotations tab lists both annotations the contributor wrote
-      // on the seeded record — the validation and the dispute the contest
-      // generated in their name — each naming the species and the trait.
+      // R3: the Annotations tab lists the one annotation the contributor
+      // wrote on the seeded record — the validation — naming the species and
+      // the trait.
       await page.getByRole('link', { name: 'Annotations' }).click();
       const annotationRows = page
         .getByRole('table')
         .getByRole('row')
         .filter({ hasText: `${speciesName} › ${traitName}` });
-      await expect(annotationRows).toHaveCount(2);
+      await expect(annotationRows).toHaveCount(1);
 
       const validation = annotationRows.filter({ hasText: 'confirm' });
-      const generatedDispute = annotationRows.filter({ hasText: 'dispute' });
       await expect(validation).toHaveCount(1);
-      await expect(generatedDispute).toHaveCount(1);
       await expect(validation.getByText('automatic')).toHaveCount(0);
-      await expect(generatedDispute.getByText('automatic')).toBeVisible();
-      await expect(generatedDispute).toContainText('Contested by record');
 
       // An annotation row's button reopens the record it names — the seeded
-      // record here, still. That is not "You validated this record" any
-      // more: RecordActions keys `validated` off the contributor's *newest*
-      // non-withdraw stance, and the contest's generated dispute (RFC-70 R3)
-      // has since overtaken the earlier confirm, so Validate is enabled
-      // again and the span is gone. The review badge is computed the same
-      // way, from every annotation on the record, so it now reads disputed.
+      // record here, still. A validation cannot be undone (spec R-6), so the
+      // drawer still says the contributor validated it.
       await validation.getByRole('button', { name: `${speciesName} › ${traitName}` }).click();
       const reopened = page.getByRole('dialog', { name: 'Record', exact: true });
-      await expect(reopened.getByText('disputed', { exact: true })).toBeVisible();
+      await expect(reopened.getByText('You validated this record')).toBeVisible();
     } finally {
       await contributor.context.close();
       await admin.close();

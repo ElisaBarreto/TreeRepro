@@ -14,6 +14,7 @@ import {
   GENERATED_CONTRIBUTION_ANNOTATION,
   PROPOSAL,
   REJECTED_PROPOSAL,
+  RESOLUTION_WITHOUT_RECORD,
   SPECIES,
 } from '../../test/dataset-fixtures.ts';
 import { ME, USER } from '../../test/fixtures.ts';
@@ -104,14 +105,7 @@ describe('RFC-71 R1, R2, R4 the contributions page', () => {
     const labels = within(tiles)
       .getAllByRole('listitem')
       .map((item) => item.textContent);
-    expect(labels).toEqual([
-      'Records12',
-      'Contests2',
-      'Complements3',
-      'Validations7',
-      'Disputes1',
-      'Withdrawn1',
-    ]);
+    expect(labels).toEqual(['Records12', 'Contests2', 'Complements3', 'Validations7']);
     expect(router.state.location.search).toEqual({});
   });
 
@@ -195,6 +189,15 @@ describe('RFC-71 R3 the annotations tab', () => {
     contributions.fetchMyContributions.mockResolvedValue(page([]));
     renderAt('/app/contributions?kind=annotations');
     expect(await screen.findByText('No annotation of yours matches.')).toBeInTheDocument();
+  });
+
+  it('RFC-71 R3 renders a Keep-both resolution with no record gracefully, with nothing to open', async () => {
+    contributions.fetchMyContributions.mockResolvedValue(page([RESOLUTION_WITHOUT_RECORD]));
+    renderAt('/app/contributions?kind=annotations');
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('resolve')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Adenanthera pavonina/ })).not.toBeInTheDocument();
+    expect(dataset.fetchRecord).not.toHaveBeenCalled();
   });
 });
 

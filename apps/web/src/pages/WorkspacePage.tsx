@@ -18,7 +18,7 @@ const CARD_CLASS =
   'flex flex-col gap-5 rounded-2xl border border-canopy-700/15 bg-white p-6 md:px-8 md:py-7';
 const HEADING_CLASS = 'font-display text-section font-semibold text-canopy-950';
 
-// RFC-71 R4's six counts, in the order the rule lists them — the same
+// RFC-71 R4's four counts, in the order the rule lists them — the same
 // order ContributionsPage's own tiles use, so the two screens agree.
 function contributionCounts(summary: ContributionSummary): { label: string; value: number }[] {
   return [
@@ -26,8 +26,6 @@ function contributionCounts(summary: ContributionSummary): { label: string; valu
     { label: 'Contests', value: summary.contests },
     { label: 'Complements', value: summary.complements },
     { label: 'Validations', value: summary.validations },
-    { label: 'Disputes', value: summary.disputes },
-    { label: 'Withdrawn', value: summary.withdrawn },
   ];
 }
 

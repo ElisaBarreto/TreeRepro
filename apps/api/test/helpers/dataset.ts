@@ -371,8 +371,10 @@ export async function createContest(
 export async function createContestEvent(
   db: DbExecutor,
   input: { contestId: string; actorId: string; kind: 'resolve' | 'withdraw' },
-): Promise<void> {
-  await db.insert(contestEvents).values(input);
+): Promise<{ id: string }> {
+  const [row] = await db.insert(contestEvents).values(input).returning({ id: contestEvents.id });
+  if (!row) throw new Error('createContestEvent: no row');
+  return row;
 }
 
 /**

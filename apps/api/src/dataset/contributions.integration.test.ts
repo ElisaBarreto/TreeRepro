@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
   createContest,
+  createContestEvent,
   createRecord,
   createReference,
   createSpecies,
@@ -382,7 +383,7 @@ describe('RFC-71 R2 listContributions kind=records', () => {
 describe('RFC-71 R3 listContributions kind=annotations', () => {
   const t = useTestDb();
 
-  it('answers the viewer own annotations newest first, each with its record and reference', async () => {
+  it('answers the viewer own confirm annotations and Keep-both resolutions newest first, with a keyset cursor across both, and never dispute, neutral or withdraw', async () => {
     const { user: a } = await createUser(t.db);
     const { user: b } = await createUser(t.db);
     const { species, trait, reference } = await scene(t.db);
@@ -412,7 +413,9 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
       note: 'seen in the field',
       referenceId: cited.id,
     });
-    const dispute = await createAnnotation(t.db, {
+    // Never listed (RFC-63 R7, R11): a's own dispute, and b's neutral on a
+    // record a confirmed.
+    await createAnnotation(t.db, {
       recordId: second.id,
       actorId: a.id,
       kind: 'dispute',
@@ -420,22 +423,47 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
       generated: true,
     });
     await createAnnotation(t.db, { recordId: record.id, actorId: b.id, kind: 'neutral' });
+    await createAnnotation(t.db, { recordId: second.id, actorId: a.id, kind: 'withdraw' });
+
+    // A's Keep-both on a categorical contest that created one record: the
+    // resolution's `record` is that record (RFC-71 R3).
+    const contested = await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'gamma',
+      levelId: level(trait.levels, 'gamma'),
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: a.id,
+      intent: 'contest',
+    });
+    const contest = await createContest(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      createdBy: a.id,
+      recordIds: [contested.id],
+    });
+    const resolve = await createContestEvent(t.db, {
+      contestId: contest.id,
+      actorId: a.id,
+      kind: 'resolve',
+    });
 
     const page = await listContributions(t.db, UNRESTRICTED, a.id, {
       kind: 'annotations',
       limit: 1,
     });
     const rows = asAnnotations(page.data);
-    expect(rows.map((r) => r.id)).toEqual([dispute.id]);
+    expect(rows.map((r) => r.id)).toEqual([resolve.id]);
     expect(page.nextCursor).not.toBeNull();
     expect(rows[0]).toEqual({
-      id: dispute.id,
-      kind: 'dispute',
-      note: 'wrong level',
+      id: resolve.id,
+      kind: 'resolve',
+      note: null,
       reference: null,
-      generated: true,
+      generated: false,
       createdAt: expect.any(String),
-      record: expect.objectContaining({ id: second.id, species: expect.any(Object) }),
+      record: expect.objectContaining({ id: contested.id, species: expect.any(Object) }),
     });
 
     const rest = asAnnotations(
@@ -456,7 +484,7 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
       shortCitation: null,
     });
     expect(rest[0]?.generated).toBe(false);
-    expect(rest[0]?.record.id).toBe(record.id);
+    expect(rest[0]?.record?.id).toBe(record.id);
   });
 
   it('RFC-61 R4, R7 an annotation citing a personal observation carries its observer', async () => {
@@ -634,7 +662,7 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
     const onDisputed = await createAnnotation(t.db, {
       recordId: disputed.id,
       actorId: a.id,
-      kind: 'neutral',
+      kind: 'confirm',
     });
     const onContest = await createAnnotation(t.db, {
       recordId: contest.id,
@@ -671,7 +699,7 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
 describe('RFC-71 R4 contributionSummary', () => {
   const t = useTestDb();
 
-  it('counts records, intents, stances and withdrawals', async () => {
+  it('counts records, complements, contests and validations — contests per contest, not per record', async () => {
     const { user: a } = await createUser(t.db);
     const { user: b } = await createUser(t.db);
     const { species, trait, reference } = await scene(t.db);
@@ -684,18 +712,6 @@ describe('RFC-71 R4 contributionSummary', () => {
       origin: 'manual',
       createdBy: b.id,
     });
-    // A's two manual records are both responses: one contest, one complement.
-    const contest = await createRecord(t.db, {
-      speciesId: species.id,
-      traitId: trait.id,
-      valueText: 'beta',
-      levelId: level(trait.levels, 'beta'),
-      primaryReferenceId: reference.id,
-      origin: 'manual',
-      createdBy: a.id,
-      intent: 'contest',
-      respondsToRecordId: target.id,
-    });
     await createRecord(t.db, {
       speciesId: species.id,
       traitId: trait.id,
@@ -706,6 +722,24 @@ describe('RFC-71 R4 contributionSummary', () => {
       createdBy: a.id,
       intent: 'complement',
       respondsToRecordId: target.id,
+    });
+    // A's contest creates one record: `contests` counts the contest itself
+    // (RFC-63 R14), not this record's `intent = 'contest'`.
+    const contestedRecord = await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'beta',
+      levelId: level(trait.levels, 'beta'),
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: a.id,
+      intent: 'contest',
+    });
+    await createContest(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      createdBy: a.id,
+      recordIds: [contestedRecord.id],
     });
     for (let i = 0; i < 3; i++) {
       const confirmed = await createRecord(t.db, {
@@ -718,24 +752,32 @@ describe('RFC-71 R4 contributionSummary', () => {
       });
       await createAnnotation(t.db, { recordId: confirmed.id, actorId: a.id, kind: 'confirm' });
     }
+    // A leftover `dispute` row (RFC-63 R7) counts for nothing.
     await createAnnotation(t.db, { recordId: target.id, actorId: a.id, kind: 'dispute' });
-    await createAnnotation(t.db, { recordId: contest.id, actorId: b.id, kind: 'withdraw' });
 
     expect(await contributionSummary(t.db, a.id)).toEqual({
       records: 2,
       contests: 1,
       complements: 1,
       validations: 3,
-      disputes: 1,
-      withdrawn: 1,
     });
+
+    // Withdrawing the contest's only record withdraws the contest too
+    // (RFC-63 R14: every record it created is withdrawn): both `records`
+    // and `contests` step back.
+    await createAnnotation(t.db, { recordId: contestedRecord.id, actorId: b.id, kind: 'withdraw' });
+    expect(await contributionSummary(t.db, a.id)).toEqual({
+      records: 1,
+      contests: 0,
+      complements: 1,
+      validations: 3,
+    });
+
     expect(await contributionSummary(t.db, (await createUser(t.db)).user.id)).toEqual({
       records: 0,
       contests: 0,
       complements: 0,
       validations: 0,
-      disputes: 0,
-      withdrawn: 0,
     });
   });
 });
@@ -771,8 +813,151 @@ describe('RFC-71 R2-R4 visibility', () => {
       contests: 0,
       complements: 0,
       validations: 1,
-      disputes: 0,
-      withdrawn: 0,
     });
+  });
+});
+
+describe('RFC-71 R2, R3, R4 contributions after spec R-11 and R-13', () => {
+  const t = useTestDb();
+
+  it('a withdrawn record and its annotations leave the lists and the counts; old disputes are not listed', async () => {
+    const { user: me } = await createUser(t.db);
+    const { user: other } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
+    const sp = await createSpecies(t.db);
+    const kept = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: me.id,
+    });
+    const gone = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'b',
+      levelId: trait.levels[1]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: me.id,
+    });
+    const theirs = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'b',
+      levelId: trait.levels[1]?.id,
+      primaryReferenceId: ref.id,
+      rawValue: 'x',
+      origin: 'manual',
+      createdBy: other.id,
+    });
+    await createAnnotation(t.db, { recordId: theirs.id, actorId: me.id, kind: 'confirm' });
+    await createAnnotation(t.db, {
+      recordId: theirs.id,
+      actorId: me.id,
+      kind: 'dispute',
+      note: 'old',
+    });
+    await createAnnotation(t.db, { recordId: gone.id, actorId: me.id, kind: 'withdraw' });
+
+    const records = await listContributions(t.db, UNRESTRICTED, me.id, {
+      kind: 'records',
+      limit: 50,
+    });
+    expect(records.data.map((r) => r.id)).toEqual([kept.id]);
+    const annotations = await listContributions(t.db, UNRESTRICTED, me.id, {
+      kind: 'annotations',
+      limit: 50,
+    });
+    expect(asAnnotations(annotations.data).map((a) => a.kind)).toEqual(['confirm']);
+    const summary = await contributionSummary(t.db, me.id);
+    expect(summary).toMatchObject({ records: 1, validations: 1 });
+    expect(summary).not.toHaveProperty('disputes');
+    expect(summary).not.toHaveProperty('withdrawn');
+  });
+
+  it('a Keep-both resolution on a record-less contest lists with record: null; filters that read the record exclude it, species/trait filters read the contest', async () => {
+    const { user: a } = await createUser(t.db);
+    const { species, trait } = await scene(t.db);
+    const otherSpecies = await createSpecies(t.db);
+
+    const contest = await createContest(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      createdBy: a.id,
+    });
+    const resolve = await createContestEvent(t.db, {
+      contestId: contest.id,
+      actorId: a.id,
+      kind: 'resolve',
+    });
+
+    const all = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      limit: 50,
+    });
+    const rows = asAnnotations(all.data);
+    expect(rows.map((r) => r.id)).toEqual([resolve.id]);
+    expect(rows[0]).toEqual({
+      id: resolve.id,
+      kind: 'resolve',
+      note: null,
+      reference: null,
+      generated: false,
+      createdAt: expect.any(String),
+      record: null,
+    });
+
+    const bySpecies = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      speciesId: species.id,
+      limit: 50,
+    });
+    expect(asAnnotations(bySpecies.data).map((r) => r.id)).toEqual([resolve.id]);
+    const byTrait = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      traitId: trait.id,
+      limit: 50,
+    });
+    expect(asAnnotations(byTrait.data).map((r) => r.id)).toEqual([resolve.id]);
+    const byOtherSpecies = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      speciesId: otherSpecies.id,
+      limit: 50,
+    });
+    expect(asAnnotations(byOtherSpecies.data)).toEqual([]);
+
+    // review/intent read the resolution's record; a record-less resolution
+    // has none, so both exclude it (RFC-71 R3).
+    const byReview = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      review: 'unvalidated',
+      limit: 50,
+    });
+    expect(asAnnotations(byReview.data)).toEqual([]);
+    const byIntent = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      intent: 'contest',
+      limit: 50,
+    });
+    expect(asAnnotations(byIntent.data)).toEqual([]);
+  });
+
+  it('contests counts a record-less contest and stops counting it once it is withdrawn', async () => {
+    const { user: a } = await createUser(t.db);
+    const { species, trait } = await scene(t.db);
+    const contest = await createContest(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      createdBy: a.id,
+    });
+
+    expect(await contributionSummary(t.db, a.id)).toMatchObject({ contests: 1 });
+
+    await createContestEvent(t.db, { contestId: contest.id, actorId: a.id, kind: 'withdraw' });
+    expect(await contributionSummary(t.db, a.id)).toMatchObject({ contests: 0 });
   });
 });

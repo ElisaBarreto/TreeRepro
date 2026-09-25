@@ -906,6 +906,22 @@ export const GENERATED_CONTRIBUTION_ANNOTATION: ContributionAnnotation = {
 };
 
 /**
+ * A Keep-both resolution whose contest created no record, or created one the
+ * viewer cannot see: `record` is null, and the page renders the row with
+ * nothing to open (RFC-71 R3, RFC-65 R16).
+ * @rfc RFC-71 R3
+ */
+export const RESOLUTION_WITHOUT_RECORD: ContributionAnnotation = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d77',
+  kind: 'resolve',
+  note: null,
+  reference: null,
+  generated: false,
+  createdAt: '2026-09-10T11:00:00.000Z',
+  record: null,
+};
+
+/**
  * A standing with more records than any page lists: the summary counts every
  * row, the lists omit what the viewer may no longer see (RFC-71 R4).
  * @rfc RFC-71 R4
@@ -915,8 +931,6 @@ export const CONTRIBUTION_SUMMARY: ContributionSummary = {
   contests: 2,
   complements: 3,
   validations: 7,
-  disputes: 1,
-  withdrawn: 1,
 };
 
 // ---------------------------------------------------------------------------
@@ -1013,14 +1027,12 @@ export const NO_PLOTS_DASHBOARD: Dashboard = {
   curation: null,
 };
 
-/** RFC-71 R4's six counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
+/** RFC-71 R4's four counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
 export const ZERO_CONTRIBUTION_SUMMARY: ContributionSummary = {
   records: 0,
   contests: 0,
   complements: 0,
   validations: 0,
-  disputes: 0,
-  withdrawn: 0,
 };
 
 /** The dashboard answer for a brand-new contributor: the Getting started card's trigger case. @rfc RFC-73 R3 */
