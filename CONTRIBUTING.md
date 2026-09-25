@@ -16,7 +16,7 @@ Item 3 is what lets the project change its licence later (for example to an open
 
 - **Validate.** Read `docs/rfc/` (the business rules) and check the code against them. Every exported symbol carries an `@rfc RFC-NN Rx` tag pointing at the rule it implements. Open an issue when a rule, a test or an implementation looks wrong.
 - **Discuss first.** For anything beyond a small fix, open an issue before writing code.
-- **Follow the process.** `README.md` lists the non-negotiable rules: RFC first, TDD, no trust in the frontend, security from day one, English everywhere, exact pinned versions.
+- **Follow the process.** `CLAUDE.md` lists the non-negotiable rules: RFC first, TDD, no trust in the frontend, security from day one, English everywhere, exact pinned versions.
 - **Open a pull request.** Every PR must pass the required checks (lint, typecheck, RFC links, tests, image build and scans, CodeQL, dependency review, secret and workflow scans). CodeRabbit reviews every PR; a maintainer merges.
 
 ## Reporting security problems

@@ -20,4 +20,4 @@ Every pull request runs CodeQL, Trivy (images and IaC), Gitleaks, zizmor,
 `pnpm audit` and GitHub's dependency review; all but dependency review also
 run weekly against `main`.
 Dependabot proposes updates weekly with a 7-day release cooldown. Details in
-`README.md` ("Security automation") and `docs/gotchas/github-security.md`.
+`CLAUDE.md` ("Security automation") and `docs/gotchas/github-security.md`.
