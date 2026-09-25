@@ -4,7 +4,9 @@ import {
   DISPUTED_RECORD,
   MAP_RESULT,
   PENDING_GROUPS,
+  PENDING_RECORD,
   PENDING_TRAITS,
+  RECORD,
   RECORD_DETAIL,
   REFERENCE,
   SEXUAL_SYSTEM,
@@ -30,20 +32,22 @@ const body = () => JSON.parse(String(lastRequest().init?.body));
 
 describe('RFC-70 R1, R3 createRecords', () => {
   it('posts the body and unwraps the created records', async () => {
-    mockJson(201, { data: { created: [RECORD_DETAIL], duplicates: [] } });
+    const validated = [{ recordId: PENDING_RECORD.id, recordCode: PENDING_RECORD.recordCode }];
+    mockJson(201, { data: { created: [RECORD], validated, duplicates: [] } });
     const result = await createRecords({
       speciesId: SPECIES.id,
       traitId: SEXUAL_SYSTEM.id,
-      value: { levelId: RECORD_DETAIL.level?.id ?? '' },
+      value: { levelIds: [RECORD_DETAIL.level?.id ?? ''] },
       sources: { references: [{ id: RECORD_DETAIL.primaryReference?.id ?? '' }] },
     });
     expect(lastRequest().url).toBe('/api/records');
     expect(lastRequest().init?.method).toBe('POST');
-    expect(body().value).toEqual({ levelId: RECORD_DETAIL.level?.id });
+    expect(body().value).toEqual({ levelIds: [RECORD_DETAIL.level?.id] });
     expect(body().sources).toEqual({
       references: [{ id: RECORD_DETAIL.primaryReference?.id }],
     });
-    expect(result.created[0]?.id).toBe(RECORD_DETAIL.id);
+    expect(result.created[0]?.id).toBe(RECORD.id);
+    expect(result.validated).toEqual(validated);
     expect(result.duplicates).toEqual([]);
   });
 });

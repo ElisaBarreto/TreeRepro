@@ -414,9 +414,9 @@ describe('RFC-70 R4 RecordActions validate', () => {
 });
 
 describe('RFC-70 R1 RecordActions add a different record', () => {
-  it('opens the contest dialog and hands the record it created to the drawer', async () => {
+  it('opens the entry dialog and hands the record it created to the drawer', async () => {
     const created = { ...RECORD_DETAIL, id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8dff' };
-    curation.createRecords.mockResolvedValue({ created: [created], duplicates: [] });
+    curation.createRecords.mockResolvedValue({ created: [created], validated: [], duplicates: [] });
     const onOpenRecord = vi.fn();
     renderWithProviders(<RecordActions record={THEIRS} onOpenRecord={onOpenRecord} />, {
       me: CONTRIBUTOR,
@@ -428,9 +428,11 @@ describe('RFC-70 R1 RecordActions add a different record', () => {
       }),
     ).toBeInTheDocument();
 
+    // A complement: a categorical contest also reads the species' trait
+    // summary for the levels it contests, which ContestDialog's own tests cover.
     await userEvent.click(
       screen.getByRole('radio', {
-        name: 'Contest — The existing value is wrong; mine should replace it.',
+        name: 'Complement — The existing value is also correct; I am adding another observation.',
       }),
     );
     await userEvent.selectOptions(
@@ -441,7 +443,7 @@ describe('RFC-70 R1 RecordActions add a different record', () => {
 
     await waitFor(() =>
       expect(curation.createRecords).toHaveBeenCalledWith(
-        expect.objectContaining({ intent: 'contest', respondsToRecordId: THEIRS.id }),
+        expect.objectContaining({ intent: 'complement', respondsToRecordId: THEIRS.id }),
       ),
     );
     await waitFor(() => expect(onOpenRecord).toHaveBeenCalledWith(created.id));

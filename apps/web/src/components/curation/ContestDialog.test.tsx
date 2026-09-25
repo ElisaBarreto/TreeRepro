@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { RecordDetail } from '@treerepro/contracts';
+import type { RecordDetail, SpeciesTraits } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
@@ -8,7 +8,6 @@ import {
   DICTIONARY_SEED_MASS,
   DICTIONARY_SEXUAL_SYSTEM,
   PENDING_RECORD,
-  PRIMARY_REFERENCE,
   RECORD_DETAIL,
 } from '../../test/dataset-fixtures.ts';
 import { ME, USER } from '../../test/fixtures.ts';
@@ -20,7 +19,7 @@ const curation = vi.hoisted(() => ({
   resolveDoi: vi.fn(),
   invalidateAfterRecordWrite: vi.fn(async () => undefined),
 }));
-const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn() }));
+const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn(), fetchSpeciesTraits: vi.fn() }));
 vi.mock('../../api/curation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/curation.ts')>()),
   ...curation,
@@ -52,6 +51,41 @@ const QUANTITATIVE_TARGET: RecordDetail = {
   valueText: '1.25',
 };
 
+// The species' summary: only the target's level has visible records, so E =
+// { hermaphrodite } (RFC-63 R14).
+const SUMMARY: SpeciesTraits = [
+  {
+    category: { key: 'sexual_system', label: 'Sexual system' },
+    traits: [
+      {
+        trait: DICTIONARY_SEXUAL_SYSTEM,
+        recordCount: 1,
+        harmonisationCounts: {
+          harmonised: 1,
+          unknownLevel: 0,
+          multiValue: 0,
+          notNumeric: 0,
+          empty: 0,
+        },
+        levels: [
+          {
+            levelId: HERMAPHRODITE,
+            key: 'hermaphrodite',
+            count: 1,
+            validationCount: 0,
+            contested: false,
+          },
+        ],
+        numeric: null,
+        validated: false,
+        contested: false,
+      },
+    ],
+  },
+];
+
+const CREATED = { created: [RECORD_DETAIL], validated: [], duplicates: [] };
+
 const CONTEST_LABEL = 'Contest — The existing value is wrong; mine should replace it.';
 const COMPLEMENT_LABEL =
   'Complement — The existing value is also correct; I am adding another observation.';
@@ -61,6 +95,7 @@ beforeEach(() => {
   curation.resolveDoi.mockReset();
   curation.invalidateAfterRecordWrite.mockClear();
   dataset.fetchDictionary.mockReset().mockResolvedValue(DICTIONARY);
+  dataset.fetchSpeciesTraits.mockReset().mockResolvedValue(SUMMARY);
 });
 
 function mount(record: RecordDetail = TARGET) {
@@ -107,7 +142,7 @@ describe('RFC-70 R1 ContestDialog step one', () => {
     await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
     expect(levelSelect()).toBeEnabled();
     expect(screen.getByRole('textbox', { name: 'DOI' })).toBeEnabled();
-    expect(submit()).toBeEnabled();
+    await waitFor(() => expect(submit()).toBeEnabled());
   });
 
   it('keeps what was already filled when the intent is changed', async () => {
@@ -122,7 +157,7 @@ describe('RFC-70 R1 ContestDialog step one', () => {
 
 describe('RFC-70 R1 ContestDialog submission', () => {
   it('sends the value, the sources, the intent and the record it responds to', async () => {
-    curation.createRecords.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
+    curation.createRecords.mockResolvedValue(CREATED);
     const { onCreated } = mount();
     await screen.findByRole('combobox', { name: 'Level' });
     await userEvent.click(screen.getByRole('radio', { name: COMPLEMENT_LABEL }));
@@ -134,15 +169,46 @@ describe('RFC-70 R1 ContestDialog submission', () => {
       expect(curation.createRecords).toHaveBeenCalledWith({
         speciesId: TARGET.speciesId,
         traitId: DICTIONARY_SEXUAL_SYSTEM.id,
-        value: { levelId: DIOECIOUS },
+        value: { levelIds: [DIOECIOUS] },
         sources: { personalObservation: true },
         intent: 'complement',
         respondsToRecordId: TARGET.id,
       }),
     );
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(CREATED));
+  });
+
+  it('RFC-70 R1 a categorical contest names the levels it contests, E \\ S, and no responded record', async () => {
+    curation.createRecords.mockResolvedValue(CREATED);
+    mount();
+    await screen.findByRole('combobox', { name: 'Level' });
+    await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
+    await userEvent.selectOptions(levelSelect(), DIOECIOUS);
+    await waitFor(() => expect(submit()).toBeEnabled());
+    await userEvent.click(submit());
     await waitFor(() =>
-      expect(onCreated).toHaveBeenCalledWith({ created: [RECORD_DETAIL], duplicates: [] }),
+      expect(curation.createRecords).toHaveBeenCalledWith({
+        speciesId: TARGET.speciesId,
+        traitId: DICTIONARY_SEXUAL_SYSTEM.id,
+        value: { levelIds: [DIOECIOUS] },
+        sources: { personalObservation: true },
+        intent: 'contest',
+        contestedLevelIds: [HERMAPHRODITE],
+      }),
     );
+  });
+
+  it('RFC-70 R10 a categorical contest that contests no level cannot be sent', async () => {
+    mount();
+    await screen.findByRole('combobox', { name: 'Level' });
+    await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
+    await userEvent.selectOptions(levelSelect(), HERMAPHRODITE);
+    expect(
+      await screen.findByText('A contest must contest at least one level; this is a complement'),
+    ).toBeInTheDocument();
+    expect(submit()).toBeDisabled();
+    await userEvent.click(screen.getByRole('radio', { name: COMPLEMENT_LABEL }));
+    expect(submit()).toBeEnabled();
   });
 
   it('sends the DOI it resolved as the source of a contest', async () => {
@@ -151,7 +217,7 @@ describe('RFC-70 R1 ContestDialog submission', () => {
       reference: null,
       preview: { title: 'Seed size', authors: null, year: 2023, journal: null },
     });
-    curation.createRecords.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
+    curation.createRecords.mockResolvedValue(CREATED);
     mount();
     await screen.findByRole('combobox', { name: 'Level' });
     await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
@@ -205,15 +271,18 @@ describe('RFC-70 R2 ContestDialog refusals', () => {
         { path: 'value', message: 'A contest carries a different value' },
       ]),
     );
-    mount();
-    await screen.findByRole('combobox', { name: 'Level' });
+    mount(QUANTITATIVE_TARGET);
+    const number = await screen.findByRole('spinbutton', { name: /number/i });
     await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
-    await userEvent.selectOptions(levelSelect(), HERMAPHRODITE);
+    await userEvent.type(number, '1.25');
     await userEvent.click(submit());
 
     expect(await screen.findByText('A contest carries a different value')).toBeInTheDocument();
-    expect(levelSelect()).toHaveAccessibleDescription('A contest carries a different value');
+    expect(number).toHaveAccessibleDescription('A contest carries a different value');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(curation.createRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ intent: 'contest', respondsToRecordId: QUANTITATIVE_TARGET.id }),
+    );
   });
 
   it('lands the API message of a DOI row under that row', async () => {
@@ -287,41 +356,14 @@ describe('RFC-70 R2 ContestDialog refusals', () => {
     );
     expect(curation.createRecords).not.toHaveBeenCalled();
   });
-
-  it('says a withdrawn record cannot be contested', async () => {
-    curation.createRecords.mockRejectedValue(new ApiError(409, 'RECORD_WITHDRAWN', 'withdrawn'));
-    mount();
-    await screen.findByRole('combobox', { name: 'Level' });
-    await userEvent.click(screen.getByRole('radio', { name: CONTEST_LABEL }));
-    await userEvent.selectOptions(levelSelect(), DIOECIOUS);
-    await userEvent.click(submit());
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'This record is withdrawn; it cannot be contested.',
-    );
-  });
-
-  it('says every reference already supports the claim when nothing was created', async () => {
-    curation.createRecords.mockRejectedValue(
-      new ApiError(409, 'RECORD_DUPLICATE', 'duplicate', [
-        { path: 'sources.references.0', message: PENDING_RECORD.id },
-      ]),
-    );
-    mount();
-    await screen.findByRole('combobox', { name: 'Level' });
-    await userEvent.click(screen.getByRole('radio', { name: COMPLEMENT_LABEL }));
-    await userEvent.selectOptions(levelSelect(), DIOECIOUS);
-    await userEvent.click(submit());
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Every reference already supports this exact claim. Validate the existing record instead.',
-    );
-  });
 });
 
 describe('RFC-70 R3 ContestDialog duplicates', () => {
   it('names the claims that already existed before handing the new record up', async () => {
     curation.createRecords.mockResolvedValue({
       created: [RECORD_DETAIL],
-      duplicates: [{ recordId: PENDING_RECORD.id, referenceId: PRIMARY_REFERENCE.id }],
+      validated: [],
+      duplicates: [{ recordId: PENDING_RECORD.id, recordCode: 'TR_9' }],
     });
     const { onCreated, onOpenRecord } = mount();
     await screen.findByRole('combobox', { name: 'Level' });
@@ -340,7 +382,32 @@ describe('RFC-70 R3 ContestDialog duplicates', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open the record you added' }));
     expect(onCreated).toHaveBeenCalledWith({
       created: [RECORD_DETAIL],
-      duplicates: [{ recordId: PENDING_RECORD.id, referenceId: PRIMARY_REFERENCE.id }],
+      validated: [],
+      duplicates: [{ recordId: PENDING_RECORD.id, recordCode: 'TR_9' }],
     });
+  });
+});
+
+describe('RFC-70 R3 ContestDialog validations', () => {
+  it('says a matched level counted as a validation, with a link to the record', async () => {
+    curation.createRecords.mockResolvedValue({
+      created: [],
+      validated: [{ recordId: PENDING_RECORD.id, recordCode: 'TR_9' }],
+      duplicates: [],
+    });
+    const { onCreated, onOpenRecord } = mount();
+    await screen.findByRole('combobox', { name: 'Level' });
+    await userEvent.click(screen.getByRole('radio', { name: COMPLEMENT_LABEL }));
+    await userEvent.selectOptions(levelSelect(), DIOECIOUS);
+    await userEvent.click(submit());
+
+    expect(
+      await screen.findByText('Matches an existing record — counted as your validation.'),
+    ).toBeInTheDocument();
+    expect(onCreated).not.toHaveBeenCalled();
+    await userEvent.click(
+      screen.getByRole('button', { name: `Open record …${PENDING_RECORD.id.slice(-6)}` }),
+    );
+    expect(onOpenRecord).toHaveBeenCalledWith(PENDING_RECORD.id);
   });
 });

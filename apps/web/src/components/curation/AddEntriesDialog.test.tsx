@@ -6,7 +6,6 @@ import {
   CURATED_RECORD_DETAIL,
   DICTIONARY,
   DICTIONARY_SEXUAL_SYSTEM,
-  PRIMARY_REFERENCE,
   RECORD_DETAIL,
   SPECIES,
 } from '../../test/dataset-fixtures.ts';
@@ -39,7 +38,7 @@ const RESOLVED = {
   reference: null,
   preview: { title: 'Seed size', authors: 'Moles, A.', year: 2023, journal: 'GEB' },
 };
-const CREATED = { created: [RECORD_DETAIL], duplicates: [] };
+const CREATED = { created: [RECORD_DETAIL], validated: [], duplicates: [] };
 
 beforeEach(() => {
   curation.createRecords.mockReset();
@@ -154,7 +153,7 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(curation.createRecords.mock.calls[0]?.[0]).toEqual({
       speciesId: SPECIES.id,
       traitId: DICTIONARY_SEXUAL_SYSTEM.id,
-      value: { levelId: DIOECIOUS },
+      value: { levelIds: [DIOECIOUS] },
       sources: { references: [{ doi: DOI }] },
     });
     expect(curation.invalidateAfterRecordWrite).toHaveBeenCalled();
@@ -324,35 +323,11 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(await within(dialog).findByText('Could not load the dictionary.')).toBeInTheDocument();
   });
 
-  it('RFC-70 R3 links to every existing record when the claim was a duplicate of all of them', async () => {
-    curation.createRecords.mockRejectedValue(
-      new ApiError(409, 'RECORD_DUPLICATE', 'Every claim already exists', [
-        { path: 'sources.references.0', message: RECORD_DETAIL.id },
-        { path: 'sources.references.1', message: CURATED_RECORD_DETAIL.id },
-      ]),
-    );
-    const { onOpenRecord, onCreated } = mount();
-    const dialog = await openWith('seed', SEED_MASS);
-    await userEvent.type(
-      await within(dialog).findByRole('spinbutton', { name: /number/i }),
-      '12.5',
-    );
-    await userEvent.click(submit(dialog));
-    const alert = await within(dialog).findByRole('alert');
-    expect(alert).toHaveTextContent(
-      'Every reference already supports this exact claim. Validate the existing record instead.',
-    );
-    const links = within(alert).getAllByRole('button', { name: 'Open existing record' });
-    expect(links).toHaveLength(2);
-    await userEvent.click(links[1] as HTMLElement);
-    expect(onOpenRecord).toHaveBeenCalledWith(CURATED_RECORD_DETAIL.id);
-    expect(onCreated).not.toHaveBeenCalled();
-  });
-
   it('RFC-70 R3 stays open and names the claim that already existed when only some records were created', async () => {
     curation.createRecords.mockResolvedValue({
       created: [RECORD_DETAIL],
-      duplicates: [{ recordId: CURATED_RECORD_DETAIL.id, referenceId: PRIMARY_REFERENCE.id }],
+      validated: [],
+      duplicates: [{ recordId: CURATED_RECORD_DETAIL.id, recordCode: 'TR_9' }],
     });
     const { onCreated, onOpenRecord } = mount();
     const dialog = await openWith('seed', SEED_MASS);
@@ -364,6 +339,27 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     const note = await within(dialog).findByText(/One of these claims already existed/);
     expect(note).toHaveTextContent('Added 1 record. One of these claims already existed.');
     // The answer is not a plain success: the dialog does not close on its own.
+    expect(onCreated).not.toHaveBeenCalled();
+    await userEvent.click(within(note).getByRole('button', { name: 'Open existing record' }));
+    expect(onOpenRecord).toHaveBeenCalledWith(CURATED_RECORD_DETAIL.id);
+  });
+
+  it('RFC-70 R3 a matched level says it counted as a validation', async () => {
+    curation.createRecords.mockResolvedValue({
+      created: [],
+      validated: [{ recordId: CURATED_RECORD_DETAIL.id, recordCode: 'TR_9' }],
+      duplicates: [],
+    });
+    const { onCreated, onOpenRecord } = mount();
+    const dialog = await openWith('reproductive_system', DICTIONARY_SEXUAL_SYSTEM.id);
+    await userEvent.selectOptions(
+      await within(dialog).findByRole('combobox', { name: 'Level' }),
+      DIOECIOUS,
+    );
+    await userEvent.click(submit(dialog));
+    const note = await within(dialog).findByText(
+      /Matches an existing record — counted as your validation\./,
+    );
     expect(onCreated).not.toHaveBeenCalled();
     await userEvent.click(within(note).getByRole('button', { name: 'Open existing record' }));
     expect(onOpenRecord).toHaveBeenCalledWith(CURATED_RECORD_DETAIL.id);

@@ -6,7 +6,6 @@ import {
   numericValueSchema,
   quantitativeValueSchema,
   RECORD_INTENTS,
-  recordDetailSchema,
   recordSchema,
   referenceSchema,
   TRAIT_VALUE_TYPES,
@@ -22,9 +21,21 @@ export const curationNoteSchema = z.string().trim().min(1).max(2000);
 /** A catalog name or key: 1–200 characters, trimmed. @rfc RFC-60 R9 */
 export const catalogNameSchema = z.string().trim().min(1).max(200);
 
-/** A level for a categorical trait, or a quantitative value for a quantitative one. @rfc RFC-65 R1 */
+/** 1–N distinct ids. */
+const distinctIds = (max: number) =>
+  z
+    .array(z.uuid())
+    .max(max)
+    .refine((ids) => new Set(ids).size === ids.length, { message: 'Ids must be distinct' });
+
+/**
+ * One to twenty levels for a categorical trait — one record each — or a
+ * quantitative value for a quantitative one.
+ * @rfc RFC-65 R1
+ * @rfc RFC-70 R3
+ */
 export const recordValueSchema = z.union([
-  z.strictObject({ levelId: z.uuid() }),
+  z.strictObject({ levelIds: distinctIds(20).min(1) }),
   z.strictObject({ quantitative: quantitativeValueSchema }),
 ]);
 
@@ -56,28 +67,38 @@ export const sourcesSchema = z.union([
   z.strictObject({ references: z.array(sourceRefSchema).min(1).max(10) }),
 ]);
 
-/** @rfc RFC-65 R1 */
-export const createRecordBodySchema = z
-  .strictObject({
-    speciesId: z.uuid(),
-    traitId: z.uuid(),
-    value: recordValueSchema,
-    sources: sourcesSchema,
-    intent: z.enum(RECORD_INTENTS).optional(),
-    respondsToRecordId: z.uuid().optional(),
-    rawValue: curationNoteSchema.optional(),
-    note: curationNoteSchema.optional(),
-    secondaryReferenceId: z.uuid().optional(),
-  })
-  .refine((b) => (b.intent === undefined) === (b.respondsToRecordId === undefined), {
-    path: ['intent'],
-    message: 'intent and respondsToRecordId come together',
-  });
+/**
+ * The intent combination of RFC-70 R1 depends on the trait's value type, so
+ * the service checks it once the trait is known.
+ * @rfc RFC-65 R1
+ * @rfc RFC-70 R1
+ */
+export const createRecordBodySchema = z.strictObject({
+  speciesId: z.uuid(),
+  traitId: z.uuid(),
+  value: recordValueSchema,
+  sources: sourcesSchema,
+  intent: z.enum(RECORD_INTENTS).optional(),
+  respondsToRecordId: z.uuid().optional(),
+  contestedLevelIds: distinctIds(100).optional(),
+  rawValue: curationNoteSchema.optional(),
+  note: curationNoteSchema.optional(),
+  secondaryReferenceId: z.uuid().optional(),
+});
 
-/** @rfc RFC-70 R3 */
+/** A record named by id and code. @rfc RFC-70 R3 */
+export const recordCodeRefSchema = z.strictObject({ recordId: z.uuid(), recordCode: z.string() });
+
+/**
+ * `created`: the new records. `validated`: existing records the entry
+ * matched, now carrying the actor's validation. `duplicates`: matches that
+ * are the actor's own records, or a claim-key collision with a visible record.
+ * @rfc RFC-70 R3
+ */
 export const createRecordsResultSchema = z.strictObject({
-  created: z.array(recordDetailSchema),
-  duplicates: z.array(z.strictObject({ recordId: z.uuid(), referenceId: z.uuid() })),
+  created: z.array(recordSchema),
+  validated: z.array(recordCodeRefSchema),
+  duplicates: z.array(recordCodeRefSchema),
 });
 
 /**
@@ -321,6 +342,7 @@ export type Sources = z.infer<typeof sourcesSchema>;
 export type RecordValue = z.infer<typeof recordValueSchema>;
 export type CreateRecordBody = z.infer<typeof createRecordBodySchema>;
 export type CreateRecordsResult = z.infer<typeof createRecordsResultSchema>;
+export type RecordCodeRef = z.infer<typeof recordCodeRefSchema>;
 export type AnnotateRecordBody = z.infer<typeof annotateRecordBodySchema>;
 export type ResolveDoiQuery = z.infer<typeof resolveDoiQuerySchema>;
 export type ResolveDoiResult = z.infer<typeof resolveDoiResultSchema>;

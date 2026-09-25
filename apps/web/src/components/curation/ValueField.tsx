@@ -8,7 +8,7 @@ export interface ValueFieldProps {
   numeric: string;
   onLevel(id: string): void;
   onNumeric(text: string): void;
-  /** Field errors keyed by the API's paths (`value`, `value.levelId`, `value.numeric`). */
+  /** Field errors keyed by the API's paths (`value`, `value.levelIds.0`, `value.levelId`, `value.numeric`). */
   errors: Record<string, string>;
   ids: { level: string; numeric: string };
 }
@@ -32,7 +32,7 @@ export function ValueField({
   ids,
 }: ValueFieldProps) {
   if (trait.valueType === 'categorical') {
-    const error = errors['value.levelId'] ?? errors.value;
+    const error = errors['value.levelIds.0'] ?? errors['value.levelId'] ?? errors.value;
     return (
       <Field id={ids.level} label="Level" error={error}>
         <Select

@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   addPlotSpecies,
@@ -13,7 +14,8 @@ import { createUser } from '../../test/helpers/users.ts';
 import { UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
-import { annotateRecord, createRecords } from './curation.ts';
+import { traitLevels } from '../db/schema/dictionary.ts';
+import { annotateRecord } from './curation.ts';
 import {
   countContested,
   countDisputed,
@@ -33,6 +35,47 @@ async function ownPlot(db: Db, speciesIds: string[]): Promise<Visibility> {
   const plot = await createPlot(db);
   await addPlotSpecies(db, plot.id, speciesIds);
   return { inactive: false, plotIds: [plot.id] };
+}
+
+/**
+ * The legacy contest shape the disputed queue still reads until plan 13g Task
+ * 8 moves it to contest storage: a contest record responding to its target,
+ * plus the `dispute` annotation the create path used to generate on the
+ * target. The create path no longer writes either (RFC-70 R3, R5 retired).
+ */
+async function seedLegacyContest(
+  db: Db,
+  input: {
+    actorId: string;
+    speciesId: string;
+    traitId: string;
+    value: { levelIds: string[] };
+    referenceIds: string[];
+    intent: 'contest';
+    respondsToRecordId: string;
+  },
+): Promise<{ created: { id: string }[] }> {
+  const levelId = input.value.levelIds[0] as string;
+  const [level] = await db.select().from(traitLevels).where(eq(traitLevels.id, levelId));
+  const rec = await createRecord(db, {
+    speciesId: input.speciesId,
+    traitId: input.traitId,
+    valueText: level?.key as string,
+    levelId,
+    primaryReferenceId: input.referenceIds[0],
+    origin: 'manual',
+    createdBy: input.actorId,
+    intent: 'contest',
+    respondsToRecordId: input.respondsToRecordId,
+  });
+  await createAnnotation(db, {
+    recordId: input.respondsToRecordId,
+    actorId: input.actorId,
+    kind: 'dispute',
+    note: `Contested by record ${rec.id}`,
+    generated: true,
+  });
+  return { created: [rec] };
 }
 
 describe('RFC-65 R10 listDisputed contestedBy', () => {
@@ -59,20 +102,20 @@ describe('RFC-65 R10 listDisputed contestedBy', () => {
       origin: 'manual',
       createdBy: user.id,
     });
-    const first = await createRecords(t.db, UNRESTRICTED, {
+    const first = await seedLegacyContest(t.db, {
       actorId: user.id,
       speciesId: contested.id,
       traitId: trait.id,
-      value: { levelId: trait.levels[1]?.id as string },
+      value: { levelIds: [trait.levels[1]?.id as string] },
       referenceIds: [firstRef.id],
       intent: 'contest',
       respondsToRecordId: base.id,
     });
-    const second = await createRecords(t.db, UNRESTRICTED, {
+    const second = await seedLegacyContest(t.db, {
       actorId: user.id,
       speciesId: contested.id,
       traitId: trait.id,
-      value: { levelId: trait.levels[2]?.id as string },
+      value: { levelIds: [trait.levels[2]?.id as string] },
       referenceIds: [secondRef.id],
       intent: 'contest',
       respondsToRecordId: base.id,
@@ -80,11 +123,11 @@ describe('RFC-65 R10 listDisputed contestedBy', () => {
 
     // A third contest, withdrawn: it is the newest of the three, so it would
     // head the list if the withdrawal were not filtered out.
-    const withdrawn = await createRecords(t.db, UNRESTRICTED, {
+    const withdrawn = await seedLegacyContest(t.db, {
       actorId: user.id,
       speciesId: contested.id,
       traitId: trait.id,
-      value: { levelId: trait.levels[1]?.id as string },
+      value: { levelIds: [trait.levels[1]?.id as string] },
       referenceIds: [withdrawnRef.id],
       intent: 'contest',
       respondsToRecordId: base.id,
@@ -141,11 +184,11 @@ describe('RFC-65 R10 listDisputed contestedBy', () => {
       origin: 'manual',
       createdBy: user.id,
     });
-    await createRecords(t.db, UNRESTRICTED, {
+    await seedLegacyContest(t.db, {
       actorId: user.id,
       speciesId: contested.id,
       traitId: trait.id,
-      value: { levelId: trait.levels[1]?.id as string },
+      value: { levelIds: [trait.levels[1]?.id as string] },
       referenceIds: [contestRef.id],
       intent: 'contest',
       respondsToRecordId: base.id,
@@ -244,11 +287,11 @@ describe('RFC-72 R1 queue counts', () => {
         origin: 'manual',
         createdBy: user.id,
       });
-      await createRecords(t.db, UNRESTRICTED, {
+      await seedLegacyContest(t.db, {
         actorId: user.id,
         speciesId: species.id,
         traitId: trait.id,
-        value: { levelId: trait.levels[1]?.id as string },
+        value: { levelIds: [trait.levels[1]?.id as string] },
         referenceIds: [ref.id],
         intent: 'contest',
         respondsToRecordId: base.id,

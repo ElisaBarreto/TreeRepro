@@ -520,7 +520,11 @@ describe('RFC-70 R1 Add entries from the species page', () => {
 
   it('RFC-70 R3 opens the first created record in the drawer', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
-    curation.createRecords.mockResolvedValue({ created: [RECORD_DETAIL], duplicates: [] });
+    curation.createRecords.mockResolvedValue({
+      created: [RECORD_DETAIL],
+      validated: [],
+      duplicates: [],
+    });
     dataset.fetchRecord.mockResolvedValue(RECORD_DETAIL);
     await openPage();
     await userEvent.click(screen.getByRole('button', { name: ADD_ENTRIES }));

@@ -102,7 +102,7 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
     await create<CreatedRecords>(admin, '/api/records', {
       speciesId: species.id,
       traitId: recorded.id,
-      value: { levelId: seededLevel.id },
+      value: { levelIds: [seededLevel.id] },
       sources: { references: [{ id: reference.id }] },
     });
 

@@ -23,7 +23,7 @@ import { validate } from '../../validate.ts';
 
 /**
  * @rfc RFC-63 R8, R9
- * @rfc RFC-65 R1, R2, R3, R4
+ * @rfc RFC-65 R1, R3, R4
  * @rfc RFC-65 R7-R9
  * @rfc RFC-70 R1-R6
  * @rfc RFC-33 R2-R5
@@ -50,6 +50,7 @@ export function recordRoutes(ctx: AuthContext) {
           referenceIds,
           intent: body.intent,
           respondsToRecordId: body.respondsToRecordId,
+          contestedLevelIds: body.contestedLevelIds,
           rawValue: body.rawValue,
           note: body.note,
           secondaryReferenceId: body.secondaryReferenceId,

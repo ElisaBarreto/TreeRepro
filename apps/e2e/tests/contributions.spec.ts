@@ -92,7 +92,7 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
     await create<CreatedRecords>(admin, '/api/records', {
       speciesId: species.id,
       traitId: trait.id,
-      value: { levelId: seededLevel.id },
+      value: { levelIds: [seededLevel.id] },
       sources: { references: [{ id: reference.id }] },
     });
 

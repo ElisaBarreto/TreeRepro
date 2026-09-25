@@ -94,7 +94,7 @@ test.describe('RFC-60 R6 / RFC-69 species trait filters and breadcrumb (plan 10a
       await create<CreatedRecords>(admin, '/api/records', {
         speciesId: coveredSpecies.id,
         traitId: trait.id,
-        value: { levelId: level.id },
+        value: { levelIds: [level.id] },
         sources: { references: [{ id: reference.id }] },
       });
 
@@ -229,7 +229,7 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
       await create<CreatedRecords>(admin, '/api/records', {
         speciesId: coveredSpecies.id,
         traitId: trait.id,
-        value: { levelId: level.id },
+        value: { levelIds: [level.id] },
         sources: { references: [{ id: reference.id }] },
       });
 

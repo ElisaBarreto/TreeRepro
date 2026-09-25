@@ -6,7 +6,6 @@ import {
   type TraitRef,
 } from '@treerepro/contracts';
 import { type FormEvent, Fragment, type ReactNode, useId, useState } from 'react';
-import { ApiError } from '../../api/client.ts';
 import { createRecords } from '../../api/curation.ts';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
 import { helpHref } from '../../content/help/href.ts';
@@ -35,9 +34,8 @@ function traitLabel(trait: Pick<TraitRef, 'key' | 'unit'>): string {
 }
 
 /**
- * The link the contributor follows to the record that already carries the
- * claim, one per record the API named — in the 409 alert and in the note a
- * partly duplicate answer leaves alike.
+ * The link the contributor follows to a record the API named: one that
+ * already carried the claim, or one the entry validated.
  */
 function existingRecordLinks(ids: string[], onOpen: (id: string) => void): ReactNode {
   return ids.map((id) => (
@@ -50,10 +48,20 @@ function existingRecordLinks(ids: string[], onOpen: (id: string) => void): React
   ));
 }
 
-/** What a 201 that already found some of the claims tells the contributor. */
-function partialSentence(created: number): string {
-  const records = created === 1 ? 'record' : 'records';
-  return `Added ${created} ${records}. One of these claims already existed.`;
+/**
+ * What a 201 that matched existing records tells the contributor (RFC-70 R3):
+ * what it added, which claims already existed, which it counted as a
+ * validation.
+ */
+function partialSentence(result: CreateRecordsResult): string {
+  const created = result.created.length;
+  return [
+    created > 0 ? `Added ${created} ${created === 1 ? 'record' : 'records'}.` : null,
+    result.duplicates.length > 0 ? 'One of these claims already existed.' : null,
+    result.validated.length > 0 ? 'Matches an existing record — counted as your validation.' : null,
+  ]
+    .filter((sentence) => sentence !== null)
+    .join(' ');
 }
 
 export interface AddEntriesDialogProps {
@@ -63,8 +71,9 @@ export interface AddEntriesDialogProps {
   onClose(): void;
   /**
    * The API's answer, once every stale query is invalidated — only when
-   * `duplicates` is empty; a partly or entirely duplicate answer keeps the
-   * dialog open instead (`partial` below) and never calls this.
+   * `duplicates` and `validated` are empty; an answer that matched existing
+   * records keeps the dialog open instead (`partial` below) and never calls
+   * this.
    */
   onCreated(result: CreateRecordsResult): void;
   onOpenRecord(id: string): void;
@@ -81,12 +90,11 @@ export interface AddEntriesDialogProps {
  * constant title asks the contributor to choose one, which a fixed trait
  * would turn into a contradiction.
  *
- * The API creates one record per source (RFC-70 R3), so an answer is not
- * always plainly a success: `duplicates` names the claims that already
- * existed, and the dialog then stays open to say so with a link to each
- * instead of closing as if everything had been created. Only when nothing at
- * all was created does the API answer 409, whose details name the existing
- * record per source — the same links, in the error alert.
+ * The API matches the entry against the visible records (RFC-70 R3), so an
+ * answer is not always plainly a creation: `duplicates` names the claims
+ * that already existed and `validated` the records the entry counted as the
+ * contributor's validation, and the dialog then stays open to say so with a
+ * link to each instead of closing as if everything had been created.
  * @rfc RFC-13 R6
  * @rfc RFC-65 R1
  * @rfc RFC-70 R1, R3
@@ -136,7 +144,7 @@ export function AddEntriesDialog({
     write: createRecords,
     speciesId,
     onInvalidated: (result) => {
-      if (result.duplicates.length > 0) setPartial(result);
+      if (result.duplicates.length > 0 || result.validated.length > 0) setPartial(result);
       else onCreated(result);
     },
   });
@@ -151,19 +159,6 @@ export function AddEntriesDialog({
     if (path === 'value' || path.startsWith('value.')) valueErrors[path] = message;
     if (path === 'sources' || path.startsWith('sources.')) sourceErrors[path] = message;
   }
-  // 409 `RECORD_DUPLICATE`: one detail per source, each naming the record that
-  // already carries the claim. Two sources cannot name the same record (one
-  // record per reference), but a repeated id would only repeat the link.
-  const duplicateIds =
-    save.error instanceof ApiError && save.error.code === 'RECORD_DUPLICATE'
-      ? [
-          ...new Set(
-            (save.error.details ?? [])
-              .filter((d) => d.path.startsWith('sources.references.') && d.message !== '')
-              .map((d) => d.message),
-          ),
-        ]
-      : [];
   const alertMessage =
     local.form ?? (save.isError ? contributionErrorMessage(save.error) : undefined);
 
@@ -225,7 +220,9 @@ export function AddEntriesDialog({
       speciesId,
       traitId,
       value:
-        valueType === 'quantitative' ? { quantitative: { single: Number(numeric) } } : { levelId },
+        valueType === 'quantitative'
+          ? { quantitative: { single: Number(numeric) } }
+          : { levelIds: [levelId] },
       sources: sourcesToBody(sources),
     };
     const parsed = createRecordBodySchema.safeParse(candidate);
@@ -347,17 +344,12 @@ export function AddEntriesDialog({
           onValidity={setSourcesReady}
         />
         <p className="text-meta text-mist-500">Recorded as {me.user.name}</p>
-        {alertMessage ? (
-          <Alert tone="error">
-            {alertMessage}
-            {existingRecordLinks(duplicateIds, onOpenRecord)}
-          </Alert>
-        ) : null}
+        {alertMessage ? <Alert tone="error">{alertMessage}</Alert> : null}
         {partial ? (
           <Alert tone="info">
-            {partialSentence(partial.created.length)}
+            {partialSentence(partial)}
             {existingRecordLinks(
-              partial.duplicates.map((duplicate) => duplicate.recordId),
+              [...partial.duplicates, ...partial.validated].map((ref) => ref.recordId),
               onOpenRecord,
             )}
           </Alert>

@@ -3,6 +3,7 @@ import {
   annotateRecordBodySchema,
   createLevelBodySchema,
   createRecordBodySchema,
+  createRecordsResultSchema,
   createReferenceBodySchema,
   disputedRecordSchema,
   listDisputedQuerySchema,
@@ -50,9 +51,9 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
   const base = { speciesId: uuid, traitId: uuid, sources: { references: [{ id: uuid }] } };
   it('accepts a level or a finite number below 1e308; trims rawValue and note', () => {
     expect(
-      createRecordBodySchema.parse({ ...base, value: { levelId: uuid }, rawValue: ' Aug ' }),
+      createRecordBodySchema.parse({ ...base, value: { levelIds: [uuid] }, rawValue: ' Aug ' }),
     ).toMatchObject({
-      value: { levelId: uuid },
+      value: { levelIds: [uuid] },
       rawValue: 'Aug',
     });
     expect(
@@ -73,44 +74,81 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { levelId: uuid, quantitative: { single: 1 } },
+        value: { levelIds: [uuid], quantitative: { single: 1 } },
       }).success,
     ).toBe(false);
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { levelId: uuid },
+        value: { levelIds: [uuid] },
         note: 'x'.repeat(2001),
       }).success,
     ).toBe(false);
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { levelId: uuid }, extra: 1 }).success,
+      createRecordBodySchema.safeParse({ ...base, value: { levelIds: [uuid] }, extra: 1 }).success,
     ).toBe(false);
   });
 
-  it('refuses intent without respondsToRecordId', () => {
+  it("RFC-70 R1 takes contestedLevelIds (at most 100, distinct); the intent combination is the server's, once the trait is known", () => {
+    const q = { quantitative: { single: 1 } };
+    // A categorical contest names no responded record.
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { quantitative: { single: 1 } },
+        value: { levelIds: [uuid] },
         intent: 'contest',
-      }).success,
-    ).toBe(false);
-    expect(
-      createRecordBodySchema.safeParse({
-        ...base,
-        value: { quantitative: { single: 1 } },
-        respondsToRecordId: uuid,
-      }).success,
-    ).toBe(false);
-    expect(
-      createRecordBodySchema.safeParse({
-        ...base,
-        value: { quantitative: { single: 1 } },
-        intent: 'contest',
-        respondsToRecordId: uuid,
+        contestedLevelIds: [other],
       }).success,
     ).toBe(true);
+    expect(createRecordBodySchema.safeParse({ ...base, value: q, intent: 'contest' }).success).toBe(
+      true,
+    );
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: q, contestedLevelIds: [uuid, uuid] })
+        .success,
+    ).toBe(false);
+    const many = Array.from(
+      { length: 101 },
+      (_, i) => `018f6a5e-7c3d-7a2b-9c1e-${String(i).padStart(12, '0')}`,
+    );
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: q, contestedLevelIds: many }).success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: q,
+        contestedLevelIds: many.slice(0, 100),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('RFC-65 R1 value.levelIds takes one to twenty distinct levels; a single levelId is gone', () => {
+    const v = (value: unknown) => createRecordBodySchema.safeParse({ ...base, value }).success;
+    expect(v({ levelIds: [uuid, other] })).toBe(true);
+    expect(v({ levelIds: [] })).toBe(false);
+    expect(v({ levelIds: [uuid, uuid] })).toBe(false);
+    expect(v({ levelId: uuid })).toBe(false);
+    const ids = Array.from(
+      { length: 21 },
+      (_, i) => `018f6a5e-7c3d-7a2b-9c1e-${String(i).padStart(12, '0')}`,
+    );
+    expect(v({ levelIds: ids })).toBe(false);
+    expect(v({ levelIds: ids.slice(0, 20) })).toBe(true);
+  });
+
+  it('RFC-70 R3 createRecordsResultSchema is { created, validated, duplicates }', () => {
+    const ref = { recordId: uuid, recordCode: 'TR_1' };
+    expect(
+      createRecordsResultSchema.safeParse({
+        created: [record],
+        validated: [ref],
+        duplicates: [ref],
+      }).success,
+    ).toBe(true);
+    expect(createRecordsResultSchema.safeParse({ created: [], duplicates: [] }).success).toBe(
+      false,
+    );
   });
 
   it('refuses 11 references; accepts { personalObservation: true }', () => {
