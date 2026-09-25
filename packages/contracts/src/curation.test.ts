@@ -147,42 +147,34 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
   });
 });
 
-describe('RFC-65 R3 annotateRecordBodySchema', () => {
-  it('requires a note for dispute and withdraw only', () => {
+describe('RFC-65 R3, RFC-70 R4 annotateRecordBodySchema (spec R-6, R-11, R-12)', () => {
+  it('takes confirm (with an optional source) and withdraw only; no note; neutral, dispute and resolve are gone', () => {
     expect(annotateRecordBodySchema.safeParse({ kind: 'confirm' }).success).toBe(true);
-    expect(annotateRecordBodySchema.safeParse({ kind: 'neutral' }).success).toBe(true);
-    expect(annotateRecordBodySchema.safeParse({ kind: 'dispute' }).success).toBe(false);
-    expect(annotateRecordBodySchema.safeParse({ kind: 'withdraw', note: '  ' }).success).toBe(
-      false,
-    );
-    expect(
-      annotateRecordBodySchema.safeParse({ kind: 'dispute', note: 'Table 2 says otherwise' })
-        .success,
-    ).toBe(true);
-    const missing = annotateRecordBodySchema.safeParse({ kind: 'dispute' });
-    expect(missing.success ? [] : missing.error.issues.map((i) => i.path.join('.'))).toContain(
-      'note',
-    );
-  });
-
-  it('RFC-63 R7 refuses resolve: Keep both is never a record annotation', () => {
-    const parsed = annotateRecordBodySchema.safeParse({ kind: 'resolve' });
-    expect(parsed.success ? [] : parsed.error.issues.map((i) => i.path.join('.'))).toEqual([
-      'kind',
-    ]);
-  });
-
-  it('refuses reference with kind: dispute', () => {
     expect(
       annotateRecordBodySchema.safeParse({
-        kind: 'dispute',
-        note: 'Wrong',
-        reference: { id: uuid },
+        kind: 'confirm',
+        referenceSource: { doi: '10.1111/geb.13000' },
       }).success,
-    ).toBe(false);
-    expect(
-      annotateRecordBodySchema.safeParse({ kind: 'confirm', reference: { id: uuid } }).success,
     ).toBe(true);
+    expect(annotateRecordBodySchema.safeParse({ kind: 'withdraw' }).success).toBe(true);
+    for (const bad of [
+      { kind: 'neutral' },
+      { kind: 'dispute', note: 'x' },
+      { kind: 'withdraw', note: 'x' },
+      { kind: 'resolve' },
+      { kind: 'confirm', reference: { doi: '10.1111/geb.13000' } },
+    ]) {
+      expect(annotateRecordBodySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('answers path kind for resolve, neutral and dispute (Keep both moves to the contest routes)', () => {
+    for (const kind of ['resolve', 'neutral', 'dispute']) {
+      const parsed = annotateRecordBodySchema.safeParse({ kind });
+      expect(parsed.success ? [] : parsed.error.issues.map((i) => i.path.join('.'))).toEqual([
+        'kind',
+      ]);
+    }
   });
 });
 

@@ -1,11 +1,11 @@
 import type {
-  AnnotationKind,
   QuantitativeValue,
   RecordDetail,
   RecordIntent,
+  RecordOrigin,
   RecordValue,
 } from '@treerepro/contracts';
-import { and, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
+import { and, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import {
   levelVisible,
   speciesVisible,
@@ -160,11 +160,10 @@ export async function nextRecordCodes(db: DbExecutor, count: number): Promise<st
   return rows.map((r) => r.code);
 }
 
+// `createRecords`'s own use of a generated dispute annotation (RFC-70 R3, R5)
+// is Task 6's copy to update (plan 13g E2, E7): left as is here.
 /** The note of the dispute a contest generates on the record it answers. @rfc RFC-70 R3 */
 export const CONTEST_NOTE = (ids: string[]) => `Contested by record ${ids.join(', ')}`;
-
-/** The note of the neutral that a withdrawn contest leaves behind. @rfc RFC-70 R5 */
-export const CONTEST_WITHDRAWN_NOTE = (id: string) => `Contest withdrawn (record ${id})`;
 
 export interface CreateRecordsInput {
   actorId: string;
@@ -347,27 +346,60 @@ export async function createRecords(
 export interface AnnotateRecordInput {
   recordId: string;
   actorId: string;
-  kind: AnnotationKind;
-  note?: string;
+  kind: 'confirm' | 'withdraw';
   referenceId?: string;
-  /** The actor holds `records.withdraw` (RFC-65 R4). */
+  /** `records.withdraw`: any manual record (spec R-12). */
   canWithdrawAny: boolean;
-  /** The actor holds `records.review` (RFC-70 R4). */
-  canReview: boolean;
+  /** `records.withdraw_imported`: any imported record (spec R-12). */
+  canWithdrawImported: boolean;
 }
 
 /**
- * `treerepro_app` has no `UPDATE` on `trait_records`, so `SELECT … FOR
- * UPDATE` cannot serialise two annotations of the same record — two
- * withdrawals racing past the `withdrawn` check, say. `pg_advisory_xact_lock`,
- * keyed on the record id and held for the whole transaction, does instead.
- * `null` when the annotation just withdrawn the record: a withdrawn record is
- * visible to no viewer (RFC-33 R2), so there is no detail left to answer with
- * — the route's `withdraw` amendment (plan 13g) answers `200 { data: null }`.
+ * Who may withdraw a record (spec R-12): its author, else `records.withdraw`
+ * for a manual record and `records.withdraw_imported` for an imported one.
+ * @rfc RFC-65 R4
+ */
+export function mayWithdraw(
+  rec: { origin: RecordOrigin; createdBy: string | null },
+  who: { actorId: string; canWithdrawAny: boolean; canWithdrawImported: boolean },
+): boolean {
+  if (rec.createdBy === who.actorId) return true;
+  return rec.origin === 'manual' ? who.canWithdrawAny : who.canWithdrawImported;
+}
+
+/**
+ * The one lock every write that reads or changes contested state takes,
+ * before any read it decides on: the create path, record withdraw, the
+ * level actions and the two contest actions all key on the species × trait
+ * pair, so they serialise against each other rather than against unrelated
+ * records of the same species or trait.
+ * @rfc RFC-70 R3
+ */
+export async function lockSpeciesTrait(
+  tx: DbExecutor,
+  speciesId: string,
+  traitId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`${speciesId}:${traitId}`}, 0))`,
+  );
+}
+
+/**
+ * One annotation. `confirm` is a validation, refused on the actor's own
+ * record (R-6); a confirm the actor already gave with the same reference, or
+ * a reference-less confirm when they already confirmed the record, inserts
+ * nothing and answers the same detail as the first — a confirm with a new
+ * reference is inserted (RFC-65 R3). `withdraw` takes the species × trait
+ * lock (E3) before the write, so it serialises against every other write
+ * that decides on contested state for the same pair, and answers `null`: a
+ * withdrawn record is visible to no viewer (RFC-33 R2), so there is no
+ * detail left to answer with. `neutral`, `dispute` and `resolve` never reach
+ * here — the route refuses them before this is called (RFC-65 R3; Keep both
+ * moves to the contest routes, Task 7).
+ * @rfc RFC-70 R3, R4
  * @rfc RFC-65 R3, R4
- * @rfc RFC-70 R4, R5
  * @rfc RFC-33 R2, R5
- * @rfc RFC-63 R6
  */
 export async function annotateRecord(
   db: DbExecutor,
@@ -375,7 +407,6 @@ export async function annotateRecord(
   input: AnnotateRecordInput,
 ): Promise<RecordDetail | null> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.recordId}, 0))`);
     const [rec] = await tx
       .select({
         id: traitRecords.id,
@@ -383,8 +414,6 @@ export async function annotateRecord(
         createdBy: traitRecords.createdBy,
         speciesId: traitRecords.speciesId,
         traitId: traitRecords.traitId,
-        intent: traitRecords.intent,
-        respondsToRecordId: traitRecords.respondsToRecordId,
       })
       .from(traitRecords)
       .innerJoin(species, eq(species.id, traitRecords.speciesId))
@@ -402,80 +431,51 @@ export async function annotateRecord(
     // a non-harmonised one for a non-reviewer, and one on an inactive level
     // for a viewer without `dataset.read_inactive` (RFC-33 R2) — so an
     // invisible or withdrawn record answers 404 here, never a stale
-    // `RECORD_WITHDRAWN` (RFC-65 R3, ruling E6).
+    // `RECORD_WITHDRAWN` (RFC-65 R3, RFC-33 R5, ruling E6, E12).
     if (!rec) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
 
-    if ((input.kind === 'dispute' || input.kind === 'neutral') && !input.canReview) {
-      throw new AppError('PERMISSION_DENIED', 'You do not have permission to review records');
+    if (input.kind === 'confirm') {
+      if (rec.createdBy === input.actorId) {
+        throw new AppError('PERMISSION_DENIED', 'You cannot validate your own record');
+      }
+      const existing = await tx
+        .select({ referenceId: recordAnnotations.referenceId })
+        .from(recordAnnotations)
+        .where(
+          and(
+            eq(recordAnnotations.recordId, rec.id),
+            eq(recordAnnotations.actorId, input.actorId),
+            eq(recordAnnotations.kind, 'confirm'),
+          ),
+        );
+      const duplicate =
+        input.referenceId === undefined
+          ? existing.length > 0
+          : existing.some((row) => row.referenceId === input.referenceId);
+      if (!duplicate) {
+        await tx.insert(recordAnnotations).values({
+          recordId: rec.id,
+          actorId: input.actorId,
+          kind: 'confirm',
+          referenceId: input.referenceId ?? null,
+        });
+      }
+      return getRecord(tx, visibility, rec.id);
     }
 
-    if (input.kind === 'withdraw') {
-      if (rec.origin !== 'manual')
-        throw new AppError('RECORD_NOT_WITHDRAWABLE', 'Only manual records can be withdrawn');
-      if (rec.createdBy !== input.actorId && !input.canWithdrawAny)
-        throw new AppError('PERMISSION_DENIED', 'Only the author may withdraw this record');
+    // `withdraw`: the species × trait lock (E3) is taken before the write,
+    // ahead of the level and contest actions that will share it (Task 7).
+    await lockSpeciesTrait(tx, rec.speciesId, rec.traitId);
+    if (!mayWithdraw(rec, input)) {
+      throw new AppError('PERMISSION_DENIED', 'You may not withdraw this record');
     }
     await tx.insert(recordAnnotations).values({
       recordId: rec.id,
       actorId: input.actorId,
-      kind: input.kind,
-      note: input.note ?? null,
-      referenceId: input.referenceId ?? null,
+      kind: 'withdraw',
     });
-
-    if (input.kind === 'withdraw' && rec.intent === 'contest' && rec.respondsToRecordId) {
-      const [base] = await tx
-        .select({
-          id: traitRecords.id,
-          live: sql<boolean>`${liveSql(traitRecords.id)}`.as('live'),
-        })
-        .from(traitRecords)
-        .where(eq(traitRecords.id, rec.respondsToRecordId))
-        .limit(1);
-      if (base?.live) {
-        const [latestStance] = await tx
-          .select({ kind: recordAnnotations.kind })
-          .from(recordAnnotations)
-          .where(
-            and(
-              eq(recordAnnotations.recordId, rec.respondsToRecordId),
-              eq(recordAnnotations.actorId, input.actorId),
-              sql`${recordAnnotations.kind} <> 'withdraw'`,
-            ),
-          )
-          .orderBy(desc(recordAnnotations.id))
-          .limit(1);
-        // Only when this was the actor's last live contest: another contest
-        // of theirs on the same record still carries the dispute (RFC-70 R5).
-        const [otherContest] = await tx
-          .select({ id: traitRecords.id })
-          .from(traitRecords)
-          .where(
-            and(
-              eq(traitRecords.respondsToRecordId, rec.respondsToRecordId),
-              eq(traitRecords.intent, 'contest'),
-              eq(traitRecords.createdBy, input.actorId),
-              sql`${traitRecords.id} <> ${rec.id}`,
-              liveSql(traitRecords.id),
-            ),
-          )
-          .limit(1);
-        if (latestStance?.kind === 'dispute' && !otherContest) {
-          await tx.insert(recordAnnotations).values({
-            recordId: rec.respondsToRecordId,
-            actorId: input.actorId,
-            kind: 'neutral',
-            note: CONTEST_WITHDRAWN_NOTE(rec.id),
-            generated: true,
-          });
-        }
-      }
-    }
-
-    // A `withdraw` just made the record invisible to every viewer (RFC-33
-    // R2), `visibility` included, so `getRecord` here returns null exactly
-    // then — expected, not the "vanished" error `createRecords` guards
-    // against for a record it just inserted.
-    return getRecord(tx, visibility, rec.id);
+    // The record is now invisible to every viewer (RFC-33 R2): there is no
+    // detail left to answer with.
+    return null;
   });
 }

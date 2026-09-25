@@ -97,17 +97,6 @@ describe('RFC-70 R4 RecordActions by permission', () => {
     expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
   });
 
-  it('adds Neutral and Dispute for a reviewer, after the two decisions', () => {
-    renderWithProviders(<RecordActions record={THEIRS} />, { me: REVIEWER });
-    const row = screen.getByRole('button', { name: VALIDATE }).parentElement as HTMLElement;
-    const names = within(row)
-      .getAllByRole('button')
-      .map((button) => button.textContent)
-      // The `?` help triggers of the two decisions carry an icon, not text.
-      .filter((text) => text !== '');
-    expect(names).toEqual([VALIDATE, ADD, 'Neutral', 'Dispute']);
-  });
-
   it('withholds Add different record from a viewer the API would refuse', () => {
     // The button's only action is `POST /api/records`, which needs
     // `records.create`; validating only needs `records.annotate`.
@@ -197,7 +186,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
     await waitFor(() =>
       expect(curation.annotateRecord).toHaveBeenCalledWith(THEIRS.id, {
         kind: 'confirm',
-        reference: { doi: DOI },
+        referenceSource: { doi: DOI },
       }),
     );
   });
@@ -205,7 +194,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
   it('lands the API refusal of the supporting reference under the DOI field', async () => {
     curation.annotateRecord.mockRejectedValue(
       new ApiError(400, 'VALIDATION_FAILED', 'Invalid input', [
-        { path: 'reference.doi', message: 'DOI does not resolve' },
+        { path: 'referenceSource.doi', message: 'DOI does not resolve' },
       ]),
     );
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
@@ -281,7 +270,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
     await waitFor(() =>
       expect(curation.annotateRecord).toHaveBeenCalledWith(THEIRS.id, {
         kind: 'confirm',
-        reference: { doi: `${DOI}9` },
+        referenceSource: { doi: `${DOI}9` },
       }),
     );
   });
@@ -289,7 +278,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
   it('opens the disclosure the contributor had tidied away, to show a refusal', async () => {
     curation.annotateRecord.mockRejectedValue(
       new ApiError(400, 'VALIDATION_FAILED', 'Invalid input', [
-        { path: 'reference.doi', message: 'DOI does not resolve' },
+        { path: 'referenceSource.doi', message: 'DOI does not resolve' },
       ]),
     );
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
@@ -313,7 +302,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
   it('opens the disclosure again when the same submission is refused again', async () => {
     curation.annotateRecord.mockRejectedValue(
       new ApiError(400, 'VALIDATION_FAILED', 'Invalid input', [
-        { path: 'reference.doi', message: 'DOI does not resolve' },
+        { path: 'referenceSource.doi', message: 'DOI does not resolve' },
       ]),
     );
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
@@ -337,7 +326,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
   it('drops the refusal of a DOI as soon as that DOI is edited', async () => {
     curation.annotateRecord.mockRejectedValue(
       new ApiError(400, 'VALIDATION_FAILED', 'Invalid input', [
-        { path: 'reference.doi', message: 'DOI does not resolve' },
+        { path: 'referenceSource.doi', message: 'DOI does not resolve' },
       ]),
     );
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
@@ -380,7 +369,7 @@ describe('RFC-70 R4 RecordActions validate', () => {
   it('keeps the refused DOI and its message out from behind the disclosure', async () => {
     curation.annotateRecord.mockRejectedValue(
       new ApiError(400, 'VALIDATION_FAILED', 'Invalid input', [
-        { path: 'reference.doi', message: 'DOI does not resolve' },
+        { path: 'referenceSource.doi', message: 'DOI does not resolve' },
       ]),
     );
     renderWithProviders(<RecordActions record={THEIRS} />, { me: CONTRIBUTOR });
@@ -395,22 +384,19 @@ describe('RFC-70 R4 RecordActions validate', () => {
     expect(screen.getByRole('textbox', { name: 'DOI' })).toHaveValue(DOI);
   });
 
-  it('reads only the viewer’s own latest stance, ignoring a withdraw and other people', () => {
+  it('reads only the viewer’s own confirm, ignoring other kinds and other people', () => {
     const { unmount } = renderWithProviders(
       <RecordActions
         record={{
           ...THEIRS,
-          annotations: [
-            annotation({ kind: 'withdraw', note: 'x' }),
-            annotation({ kind: 'neutral' }),
-            annotation({ kind: 'confirm' }),
-          ],
+          annotations: [annotation({ kind: 'withdraw' }), annotation({ kind: 'confirm' })],
         }}
       />,
       { me: CONTRIBUTOR },
     );
-    // The newest non-withdraw stance of this viewer is `neutral`.
-    expect(screen.getByRole('button', { name: VALIDATE })).toBeEnabled();
+    // A validation is never undone (R-6): the viewer's own confirm disables
+    // Validate for good, whatever else the record carries.
+    expect(screen.getByRole('button', { name: VALIDATE })).toBeDisabled();
     unmount();
 
     renderWithProviders(
@@ -474,106 +460,55 @@ describe('RFC-70 R1 RecordActions add a different record', () => {
 });
 
 describe('RFC-65 R3-R6 RecordActions reviewer and author actions', () => {
-  it('steps back with one click; disputing needs a note', async () => {
-    curation.annotateRecord.mockResolvedValue({ ...MINE, review: 'contested' });
-    renderWithProviders(<RecordActions record={THEIRS} />, { me: REVIEWER });
-    await userEvent.click(screen.getByRole('button', { name: 'Neutral' }));
-    await waitFor(() =>
-      expect(curation.annotateRecord).toHaveBeenLastCalledWith(THEIRS.id, { kind: 'neutral' }),
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
-    const note = screen.getByRole('textbox', { name: /why do you dispute/i });
-    await userEvent.click(screen.getByRole('button', { name: 'Send dispute' }));
-    expect(screen.getByText('A note is required.')).toBeInTheDocument();
-    expect(curation.annotateRecord).toHaveBeenCalledTimes(1);
-    await userEvent.type(note, 'Table 2 says otherwise');
-    await userEvent.click(screen.getByRole('button', { name: 'Send dispute' }));
-    await waitFor(() =>
-      expect(curation.annotateRecord).toHaveBeenLastCalledWith(THEIRS.id, {
-        kind: 'dispute',
-        note: 'Table 2 says otherwise',
-      }),
-    );
-    await waitFor(() => expect(note).not.toBeInTheDocument());
-  });
-
-  it('offers Withdraw to the author or a records.withdraw holder, on manual records only', async () => {
-    // The API answers `200 { data: null }` for a withdraw (RFC-33 R2): the
-    // record is now visible to no viewer, so there is no detail to seed the
-    // cache with.
-    curation.annotateRecord.mockResolvedValue(null);
-    const { unmount } = renderWithProviders(<RecordActions record={MINE} />, {
-      me: perms('records.annotate'),
-    });
-    await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
-    await userEvent.type(
-      screen.getByRole('textbox', { name: /why is this record withdrawn/i }),
-      'Wrong species',
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Confirm withdrawal' }));
-    await waitFor(() =>
-      expect(curation.annotateRecord).toHaveBeenCalledWith(MINE.id, {
-        kind: 'withdraw',
-        note: 'Wrong species',
-      }),
-    );
-    unmount();
-    const second = renderWithProviders(<RecordActions record={THEIRS} />, {
-      me: perms('records.annotate'),
-    });
-    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
-    second.unmount();
-    renderWithProviders(<RecordActions record={THEIRS} />, {
-      me: perms('records.annotate', 'records.withdraw'),
-    });
-    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
-  });
-
   it('never offers Withdraw on an import record', () => {
     renderWithProviders(<RecordActions record={{ ...RECORD_DETAIL, review: 'unvalidated' }} />, {
       me: perms('records.annotate', 'records.withdraw'),
     });
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
   });
+});
 
-  it('resets the note and its error on Cancel or when switching between Dispute and Withdraw', async () => {
-    renderWithProviders(<RecordActions record={MINE} />, {
-      me: perms('records.annotate', 'records.review'),
-    });
-    await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
-    await userEvent.type(screen.getByRole('textbox', { name: /why do you dispute/i }), 'abc');
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
-    expect(screen.getByRole('textbox', { name: /why is this record withdrawn/i })).toHaveValue('');
-    expect(screen.queryByText('A note is required.')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Confirm withdrawal' }));
-    expect(screen.getByText('A note is required.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
-    expect(screen.getByRole('textbox', { name: /why do you dispute/i })).toHaveValue('');
-    expect(screen.queryByText('A note is required.')).not.toBeInTheDocument();
+describe('RFC-70 R4, RFC-65 R4 RecordActions after spec R-11 and R-12', () => {
+  it('a reviewer gets the two decisions and no Neutral or Dispute', () => {
+    renderWithProviders(<RecordActions record={THEIRS} />, { me: REVIEWER });
+    expect(screen.getByRole('button', { name: VALIDATE })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Neutral' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Dispute' })).not.toBeInTheDocument();
   });
 
-  it('clears a previous failure when a note form opens, and lands a note validation detail under the field', async () => {
-    curation.annotateRecord.mockRejectedValueOnce(new ApiError(409, 'RECORD_WITHDRAWN', 'x'));
-    renderWithProviders(<RecordActions record={MINE} />, {
-      me: perms('records.annotate', 'records.review'),
+  it('Withdraw asks for confirmation only, sends no note, and closes the drawer', async () => {
+    curation.annotateRecord.mockResolvedValue(null);
+    const onGone = vi.fn();
+    renderWithProviders(<RecordActions record={MINE} onGone={onGone} />, {
+      me: perms('records.annotate'),
     });
-    await userEvent.click(screen.getByRole('button', { name: VALIDATE }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('This record is withdrawn.');
-    await userEvent.click(screen.getByRole('button', { name: 'Dispute' }));
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-
-    curation.annotateRecord.mockRejectedValueOnce(
-      new ApiError(400, 'VALIDATION_FAILED', 'x', [
-        { path: 'note', message: 'Note must be at most 2000 characters.' },
-      ]),
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Withdraw this record?' });
+    expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Withdraw' }));
+    await waitFor(() =>
+      expect(curation.annotateRecord).toHaveBeenCalledWith(MINE.id, { kind: 'withdraw' }),
     );
-    const note = screen.getByRole('textbox', { name: /why do you dispute/i });
-    await userEvent.type(note, 'far too long');
-    await userEvent.click(screen.getByRole('button', { name: 'Send dispute' }));
-    expect(await screen.findByText('Note must be at most 2000 characters.')).toBeInTheDocument();
-    expect(note).toHaveAccessibleDescription('Note must be at most 2000 characters.');
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await waitFor(() => expect(onGone).toHaveBeenCalled());
+  });
+
+  it('an imported record offers Withdraw only with records.withdraw_imported', () => {
+    const imported: RecordDetail = { ...THEIRS, origin: 'import', createdBy: null };
+    const first = renderWithProviders(<RecordActions record={imported} />, {
+      me: perms('records.annotate', 'records.withdraw'),
+    });
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
+    first.unmount();
+    renderWithProviders(<RecordActions record={imported} />, {
+      me: perms('records.annotate', 'records.withdraw_imported'),
+    });
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+  });
+
+  it('a manual record by someone else offers Withdraw with records.withdraw', () => {
+    renderWithProviders(<RecordActions record={THEIRS} />, {
+      me: perms('records.annotate', 'records.withdraw'),
+    });
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
   });
 });

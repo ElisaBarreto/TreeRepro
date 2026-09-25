@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import {
-  ANNOTATION_KINDS,
   HARMONISATION_STATUSES,
   NAME_SOURCES,
   NAME_TYPES,
@@ -81,22 +80,18 @@ export const createRecordsResultSchema = z.strictObject({
   duplicates: z.array(z.strictObject({ recordId: z.uuid(), referenceId: z.uuid() })),
 });
 
-/** @rfc RFC-65 R3 */
-export const annotateRecordBodySchema = z
-  .strictObject({
-    // RFC-63 R7: Keep both is a contest event, never a record annotation.
-    kind: z.enum(ANNOTATION_KINDS).exclude(['resolve']),
-    note: curationNoteSchema.optional(),
-    reference: sourceRefSchema.optional(),
-  })
-  .refine((b) => b.note !== undefined || (b.kind !== 'dispute' && b.kind !== 'withdraw'), {
-    message: 'A note is required to dispute or withdraw',
-    path: ['note'],
-  })
-  .refine((b) => b.reference === undefined || b.kind === 'confirm', {
-    path: ['reference'],
-    message: 'Only a confirmation carries a reference',
-  });
+/**
+ * A validation (with an optional supporting source) or a withdrawal. No note
+ * on either; `neutral`, `dispute` and `resolve` are refused (400 path
+ * `kind`) — Keep both moves to the contest routes (spec R-6, R-10, R-11,
+ * R-12).
+ * @rfc RFC-70 R4
+ * @rfc RFC-65 R3, R4, R10
+ */
+export const annotateRecordBodySchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('confirm'), referenceSource: sourceRefSchema.optional() }),
+  z.strictObject({ kind: z.literal('withdraw') }),
+]);
 
 /** @rfc RFC-80 R4 */
 export const resolveDoiQuerySchema = z.strictObject({ doi: doiSchema });

@@ -120,9 +120,11 @@ function RecordLink({
 function RecordBody({
   record,
   onOpenRecord,
+  onClose,
 }: {
   record: RecordDetail;
   onOpenRecord?: (id: string) => void;
+  onClose?: () => void;
 }) {
   const unit = record.trait.unit;
   return (
@@ -162,7 +164,7 @@ function RecordBody({
         </div>
       </DrawerSection>
 
-      <RecordActions record={record} onOpenRecord={onOpenRecord} />
+      <RecordActions record={record} onOpenRecord={onOpenRecord} onGone={onClose} />
 
       <DrawerSection title="Source">
         <Definitions
@@ -275,11 +277,19 @@ function RecordBody({
   );
 }
 
-function RecordLoader({ id, onOpenRecord }: { id: string; onOpenRecord?: (id: string) => void }) {
+function RecordLoader({
+  id,
+  onOpenRecord,
+  onClose,
+}: {
+  id: string;
+  onOpenRecord?: (id: string) => void;
+  onClose?: () => void;
+}) {
   const query = useQuery({ queryKey: datasetKeys.record(id), queryFn: () => fetchRecord(id) });
   if (query.error && !query.data) return <Alert tone="error">{errorMessage(query.error)}</Alert>;
   if (!query.data) return <p className="text-body text-mist-500">Loading record…</p>;
-  return <RecordBody record={query.data} onOpenRecord={onOpenRecord} />;
+  return <RecordBody record={query.data} onOpenRecord={onOpenRecord} onClose={onClose} />;
 }
 
 /**
@@ -304,7 +314,9 @@ export function RecordDrawer({
 }) {
   return (
     <Drawer open={recordId !== null} title="Record" onClose={onClose}>
-      {recordId !== null ? <RecordLoader id={recordId} onOpenRecord={onOpenRecord} /> : null}
+      {recordId !== null ? (
+        <RecordLoader id={recordId} onOpenRecord={onOpenRecord} onClose={onClose} />
+      ) : null}
     </Drawer>
   );
 }

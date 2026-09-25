@@ -58,20 +58,20 @@ describe('RFC-80 R4 resolveDoi', () => {
   });
 });
 
-describe('RFC-65 R3 annotateRecord', () => {
+describe('RFC-65 R3, RFC-70 R4 annotateRecord', () => {
   it('posts to the record and unwraps the detail', async () => {
     mockJson(201, { data: RECORD_DETAIL });
-    await annotateRecord(RECORD_DETAIL.id, { kind: 'dispute', note: 'No.' });
+    await annotateRecord(RECORD_DETAIL.id, {
+      kind: 'confirm',
+      referenceSource: { id: REFERENCE.id },
+    });
     expect(lastRequest().url).toBe(`/api/records/${RECORD_DETAIL.id}/annotations`);
-    expect(body()).toEqual({ kind: 'dispute', note: 'No.' });
+    expect(body()).toEqual({ kind: 'confirm', referenceSource: { id: REFERENCE.id } });
   });
 
   it('RFC-33 R2 a withdraw answers 200 { data: null }, which unwraps to null', async () => {
     mockJson(200, { data: null });
-    const result = await annotateRecord(RECORD_DETAIL.id, {
-      kind: 'withdraw',
-      note: 'Wrong species',
-    });
+    const result = await annotateRecord(RECORD_DETAIL.id, { kind: 'withdraw' });
     expect(lastRequest().url).toBe(`/api/records/${RECORD_DETAIL.id}/annotations`);
     expect(result).toBeNull();
   });

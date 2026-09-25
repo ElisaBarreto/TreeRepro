@@ -73,23 +73,24 @@ export function recordRoutes(ctx: AuthContext) {
       async (c) => {
         const body = c.req.valid('json');
         const actor = currentUser(c);
+        const permissions = currentPermissions(c);
         const visibility = await visibilityOf(ctx, c);
-        const referenceId = body.reference
-          ? await resolveSourceRef(
-              { db: ctx.db, doi: ctx.doi },
-              actor.id,
-              body.reference,
-              'reference',
-            )
-          : undefined;
+        const referenceId =
+          body.kind === 'confirm' && body.referenceSource
+            ? await resolveSourceRef(
+                { db: ctx.db, doi: ctx.doi },
+                actor.id,
+                body.referenceSource,
+                'referenceSource',
+              )
+            : undefined;
         const record = await annotateRecord(ctx.db, visibility, {
           recordId: c.req.valid('param').id,
           kind: body.kind,
-          note: body.note,
           referenceId,
           actorId: actor.id,
-          canWithdrawAny: currentPermissions(c).has('records.withdraw'),
-          canReview: currentPermissions(c).has('records.review'),
+          canWithdrawAny: permissions.has('records.withdraw'),
+          canWithdrawImported: permissions.has('records.withdraw_imported'),
         });
         await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
           actorId: actor.id,

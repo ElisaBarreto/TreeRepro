@@ -940,42 +940,28 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
   const annotate = (cookie: string, id: string, body: Record<string, unknown>) =>
     call(t.app, 'POST', `/api/records/${id}/annotations`, { cookie, body });
 
-  it('R3 stances drive the review axis of RFC-63 R6 and answer the detail', async () => {
+  it('R3 a confirm drives the review axis of RFC-63 R6 and answers the detail', async () => {
     const a = await scientist(t, ['records.annotate', 'dataset.read']);
-    // `b` also reviews: a dispute and a neutral need `records.review`
-    // (RFC-70 R4), a confirmation does not.
-    const b = await scientist(t, ['records.annotate', 'records.review', 'dataset.read']);
+    const b = await scientist(t, ['records.annotate', 'dataset.read']);
     const { rec } = await manualRecord(a.user.id);
-    const confirmed = await annotate(a.cookie, rec.id, { kind: 'confirm' });
+    const confirmed = await annotate(b.cookie, rec.id, { kind: 'confirm' });
     expect(confirmed.status).toBe(201);
-    expect((await confirmed.json()).data).toMatchObject({ id: rec.id, review: 'validated' });
-    const disputed = await annotate(b.cookie, rec.id, {
-      kind: 'dispute',
-      note: 'Figure 3 says otherwise',
-    });
-    // RFC-63 R6: a `dispute` or `neutral` row changes no review state.
-    expect((await disputed.json()).data).toMatchObject({ review: 'validated' });
-    const stepped = await annotate(b.cookie, rec.id, { kind: 'neutral' });
-    const steppedBody = await stepped.json();
-    expect(steppedBody.data).toMatchObject({ review: 'validated' });
-    const body = steppedBody.data;
-    expect(body.annotations.map((x: { kind: string }) => x.kind)).toEqual([
-      'neutral',
-      'dispute',
-      'confirm',
-    ]);
-    expect(body.annotations[1]).toMatchObject({
-      actor: { id: b.user.id, name: 'Test User' },
-      note: 'Figure 3 says otherwise',
-    });
+    const body = (await confirmed.json()).data;
+    expect(body).toMatchObject({ id: rec.id, review: 'validated' });
+    expect(body.annotations.map((x: { kind: string }) => x.kind)).toEqual(['confirm']);
+    expect(body.annotations[0]).toMatchObject({ actor: { id: b.user.id, name: 'Test User' } });
   });
 
-  it('R3 a dispute needs a note; an unknown record answers 404', async () => {
+  it('RFC-70 R4, RFC-65 R3 neutral, dispute and resolve answer 400 VALIDATION_FAILED path kind; an unknown record answers 404', async () => {
     const a = await scientist(t, ['records.annotate']);
     const { rec } = await manualRecord(a.user.id);
-    const noNote = await annotate(a.cookie, rec.id, { kind: 'dispute' });
-    expect(noNote.status).toBe(400);
-    expect((await noNote.json()).error.details[0].path).toBe('note');
+    for (const kind of ['neutral', 'dispute', 'resolve']) {
+      const res = await annotate(a.cookie, rec.id, { kind });
+      expect(res.status, kind).toBe(400);
+      const problem = await res.json();
+      expect(problem.error.code).toBe('VALIDATION_FAILED');
+      expect(problem.error.details[0].path).toBe('kind');
+    }
     const missing = await annotate(a.cookie, '00000000-0000-7000-8000-000000000000', {
       kind: 'confirm',
     });
@@ -1008,7 +994,7 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
   it('R4 the author withdraws a manual record; nothing more can be annotated afterwards', async () => {
     const a = await scientist(t, ['records.annotate']);
     const { rec } = await manualRecord(a.user.id);
-    const withdrawn = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'Wrong species' });
+    const withdrawn = await annotate(a.cookie, rec.id, { kind: 'withdraw' });
     // RFC-33 R2: a withdrawn record is visible to no viewer, so there is no
     // detail left to answer with (plan 13g amendment 2).
     expect(withdrawn.status).toBe(200);
@@ -1020,39 +1006,64 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     expect((await after.json()).error.code).toBe('RECORD_NOT_FOUND');
   });
 
-  it('R4 a third party needs records.withdraw', async () => {
+  it('R4 a third party needs records.withdraw for a manual record', async () => {
     const author = await scientist(t, ['records.annotate']);
     const other = await scientist(t, ['records.annotate']);
     const curator = await scientist(t, ['records.annotate', 'records.withdraw']);
     const { rec } = await manualRecord(author.user.id);
-    const denied = await annotate(other.cookie, rec.id, { kind: 'withdraw', note: 'Not mine' });
+    const denied = await annotate(other.cookie, rec.id, { kind: 'withdraw' });
     expect(denied.status).toBe(403);
     expect((await denied.json()).error.code).toBe('PERMISSION_DENIED');
-    const allowed = await annotate(curator.cookie, rec.id, {
-      kind: 'withdraw',
-      note: 'Retracted by the author by email',
-    });
+    const allowed = await annotate(curator.cookie, rec.id, { kind: 'withdraw' });
     expect(allowed.status).toBe(200);
     expect((await allowed.json()).data).toBeNull();
   });
+});
 
-  it('R4 import records are never withdrawn', async () => {
-    const a = await scientist(t, ['records.annotate']);
-    const sp1 = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { levels: ['a'] });
+describe('RFC-70 R4, RFC-65 R4 POST /api/records/:id/annotations', () => {
+  const t = useTestApp();
+
+  it('neutral and dispute answer 400; the manager withdraws manual but not imported; admin withdraws imported', async () => {
+    const { user: manager } = await createUser(t.db, {
+      roles: [await systemRoleId(t.db, 'manager')],
+    });
+    const { user: admin } = await createUser(t.db, { roles: [await systemRoleId(t.db, 'admin')] });
+    const m = await loginAs(t, manager);
+    const a = await loginAs(t, admin);
     const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
     const batch = await createImportBatch(t.db);
     const imported = await createRecord(t.db, {
-      speciesId: sp1.id,
+      speciesId: sp.id,
       traitId: trait.id,
       valueText: 'a',
       levelId: trait.levels[0]?.id,
       primaryReferenceId: ref.id,
       importBatchId: batch.id,
     });
-    const res = await annotate(a.cookie, imported.id, { kind: 'withdraw', note: 'x' });
-    expect(res.status).toBe(409);
-    expect((await res.json()).error.code).toBe('RECORD_NOT_WITHDRAWABLE');
+    for (const body of [{ kind: 'neutral' }, { kind: 'dispute', note: 'x' }]) {
+      const res = await call(t.app, 'POST', `/api/records/${imported.id}/annotations`, {
+        body,
+        cookie: m.cookie,
+      });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+    const refused = await call(t.app, 'POST', `/api/records/${imported.id}/annotations`, {
+      body: { kind: 'withdraw' },
+      cookie: m.cookie,
+    });
+    expect(refused.status).toBe(403);
+    const ok = await call(t.app, 'POST', `/api/records/${imported.id}/annotations`, {
+      body: { kind: 'withdraw' },
+      cookie: a.cookie,
+    });
+    // RFC-65 R3, R4: withdraw answers 200 { data: null } (E6 and the RFCs win
+    // over the brief's 201 here).
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).data).toBeNull();
+    const gone = await call(t.app, 'GET', `/api/records/${imported.id}`, { cookie: a.cookie });
+    expect(gone.status).toBe(404);
   });
 });
 
@@ -1111,13 +1122,12 @@ describe('RFC-70 contribution route tests', () => {
     expect(data.created[0].primaryReference.kind).toBe('personal_observation');
   });
 
-  it('POST /:id/annotations gates neutral by records.review and supports confirm with DOI reference', async () => {
+  it('POST /:id/annotations supports confirm with a DOI reference; a bad reference is reported under referenceSource', async () => {
     const { cookie: contributorCookie } = await scientist(t, [
       'records.create',
       'records.annotate',
       'dataset.read',
     ]);
-    const { cookie: managerCookie } = await manager(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['red'] });
     const ref = await createReference(t.db);
@@ -1129,20 +1139,6 @@ describe('RFC-70 contribution route tests', () => {
       primaryReferenceId: ref.id,
       importBatchId: (await createImportBatch(t.db)).id,
     });
-
-    // neutral by contributor without records.review -> 403
-    const forbidden = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
-      cookie: contributorCookie,
-      body: { kind: 'neutral', note: 'just neutral' },
-    });
-    expect(forbidden.status).toBe(403);
-
-    // neutral by manager with records.review -> 201
-    const allowed = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
-      cookie: managerCookie,
-      body: { kind: 'neutral', note: 'just neutral' },
-    });
-    expect(allowed.status).toBe(201);
 
     // confirm with DOI reference
     const doi = '10.1111/confirm.doi';
@@ -1156,7 +1152,7 @@ describe('RFC-70 contribution route tests', () => {
       cookie: contributorCookie,
       body: {
         kind: 'confirm',
-        reference: { doi },
+        referenceSource: { doi },
       },
     });
     expect(confirmed.status).toBe(201);
@@ -1170,16 +1166,16 @@ describe('RFC-70 contribution route tests', () => {
     // the shape the resolver happens to use internally.
     const malformed = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
       cookie: contributorCookie,
-      body: { kind: 'confirm', reference: { doi: 'not-a-doi' } },
+      body: { kind: 'confirm', referenceSource: { doi: 'not-a-doi' } },
     });
     expect(malformed.status).toBe(400);
-    expect((await malformed.json()).error.details[0].path).toBe('reference.doi');
+    expect((await malformed.json()).error.details[0].path).toBe('referenceSource.doi');
 
     const unknown = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
       cookie: contributorCookie,
-      body: { kind: 'confirm', reference: { id: '00000000-0000-7000-8000-000000000000' } },
+      body: { kind: 'confirm', referenceSource: { id: '00000000-0000-7000-8000-000000000000' } },
     });
     expect(unknown.status).toBe(404);
-    expect((await unknown.json()).error.details[0].path).toBe('reference.id');
+    expect((await unknown.json()).error.details[0].path).toBe('referenceSource.id');
   });
 });

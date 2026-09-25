@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
+  createImportBatch,
   createRecord,
   createReference,
   createSpecies,
@@ -48,7 +49,7 @@ describe('RFC-33 R5 createRecord and annotateRecord by viewer', () => {
         actorId: user.id,
         kind: 'confirm',
         canWithdrawAny: false,
-        canReview: false,
+        canWithdrawImported: false,
       }),
     ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
   });
@@ -294,7 +295,7 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     });
   });
 
-  it('contest generates a dispute annotation on the base record; complement does not', async () => {
+  it('a contest still creates its record and responds to the base; the dispute annotation it used to leave is Task 6’s to remove', async () => {
     const { user } = await createUser(t.db);
     const trait = await createTrait(t.db, { levels: ['a', 'b'] });
     const sp = await createSpecies(t.db);
@@ -312,7 +313,6 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       createdBy: user.id,
     });
 
-    // Contest with two references
     const contestRes = await createRecords(t.db, UNRESTRICTED, {
       actorId: user.id,
       speciesId: sp.id,
@@ -329,32 +329,11 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     expect(contestRes.created[0]?.intent).toBe('contest');
     expect(contestRes.created[0]?.respondsTo?.id).toBe(base.id);
 
-    // Check base record annotations & review status
-    const updatedBase = await getRecord(t.db, UNRESTRICTED, base.id);
     // RFC-63 R6, R14: contested comes from contest storage alone, which this
-    // create path does not write yet (plan 13g Task 6); the dispute is ignored.
+    // create path does not write yet (plan 13g Task 6).
+    const updatedBase = await getRecord(t.db, UNRESTRICTED, base.id);
     expect(updatedBase?.review).toBe('unvalidated');
-    const disputeAnn = updatedBase?.annotations.find((a) => a.kind === 'dispute');
-    expect(disputeAnn).toBeDefined();
-    expect(disputeAnn?.generated).toBe(true);
-    expect(disputeAnn?.note).toBe(`Contested by record ${contestRes.created[0]?.id}`);
-
-    // Check responses on base record
     expect(updatedBase?.responses).toHaveLength(1);
-
-    // Complement inserts no annotation on base
-    const ref4 = await createReference(t.db);
-    await createRecords(t.db, UNRESTRICTED, {
-      actorId: user.id,
-      speciesId: sp.id,
-      traitId: trait.id,
-      value: { levelId: trait.levels[1]?.id as string },
-      referenceIds: [ref4.id],
-      intent: 'complement',
-      respondsToRecordId: base.id,
-    });
-    const baseAfterComplement = await getRecord(t.db, UNRESTRICTED, base.id);
-    expect(baseAfterComplement?.annotations.filter((a) => a.kind === 'dispute')).toHaveLength(1);
   });
 
   it('enforces respondsTo validation: wrong trait, withdrawn base, invisible base', async () => {
@@ -411,9 +390,8 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       recordId: base.id,
       actorId: user.id,
       kind: 'withdraw',
-      note: 'Withdrawn by the author',
       canWithdrawAny: true,
-      canReview: true,
+      canWithdrawImported: true,
     });
 
     // Withdrawn base
@@ -429,147 +407,158 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       }),
     ).rejects.toMatchObject({ code: 'RECORD_WITHDRAWN' });
   });
+});
 
-  it('annotateRecord gates dispute/neutral by canReview, supports confirm reference, and side effects on withdraw', async () => {
-    const { user } = await createUser(t.db);
+describe('RFC-70 R4, RFC-65 R3 annotateRecord (spec R-6, R-10, R-12)', () => {
+  const t = useTestDb();
+  const base = { canWithdrawAny: false, canWithdrawImported: false };
+
+  async function setup() {
+    const { user: author } = await createUser(t.db);
+    const { user: other } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const ref2 = await createReference(t.db);
     const trait = await createTrait(t.db, { levels: ['a', 'b'] });
     const sp = await createSpecies(t.db);
-    const ref = await createReference(t.db);
-
-    const base = await createRecord(t.db, {
-      speciesId: sp.id,
-      traitId: trait.id,
-      valueText: 'a',
-      levelId: trait.levels[0]?.id as string,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: user.id,
-    });
-
-    // canReview: false denies dispute and neutral
-    await expect(
-      annotateRecord(t.db, UNRESTRICTED, {
-        recordId: base.id,
-        actorId: user.id,
-        kind: 'dispute',
-        note: 'note',
-        canWithdrawAny: false,
-        canReview: false,
-      }),
-    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-
-    await expect(
-      annotateRecord(t.db, UNRESTRICTED, {
-        recordId: base.id,
-        actorId: user.id,
-        kind: 'neutral',
-        canWithdrawAny: false,
-        canReview: false,
-      }),
-    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-
-    // confirm with referenceId
-    const confirmed = await annotateRecord(t.db, UNRESTRICTED, {
-      recordId: base.id,
-      actorId: user.id,
-      kind: 'confirm',
-      referenceId: ref.id,
-      canWithdrawAny: false,
-      canReview: false,
-    });
-    expect(confirmed?.annotations[0]?.reference?.id).toBe(ref.id);
-    expect(confirmed?.annotations[0]?.reference?.kind).toBe('publication');
-
-    // Contest record creation and withdrawal side effect
-    const contestRes = await createRecords(t.db, UNRESTRICTED, {
-      actorId: user.id,
-      speciesId: sp.id,
-      traitId: trait.id,
-      value: { levelId: trait.levels[1]?.id as string },
-      referenceIds: [ref.id],
-      intent: 'contest',
-      respondsToRecordId: base.id,
-    });
-    const contestRec = contestRes.created[0];
-    if (!contestRec) throw new Error('contest record was not created');
-
-    // Now withdraw the contest record: should insert neutral on base because actor's latest stance on base is dispute
-    await annotateRecord(t.db, UNRESTRICTED, {
-      recordId: contestRec.id,
-      actorId: user.id,
-      kind: 'withdraw',
-      note: 'Withdrawn by the author',
-      canWithdrawAny: false,
-      canReview: false,
-    });
-
-    const baseAfterContestWithdraw = await getRecord(t.db, UNRESTRICTED, base.id);
-    const neutralAnn = baseAfterContestWithdraw?.annotations.find((a) => a.kind === 'neutral');
-    expect(neutralAnn).toBeDefined();
-    expect(neutralAnn?.generated).toBe(true);
-    expect(neutralAnn?.note).toBe(`Contest withdrawn (record ${contestRec.id})`);
-  });
-
-  it('RFC-70 R5 withdrawing one contest leaves the dispute of another live contest standing', async () => {
-    const { user } = await createUser(t.db);
-    const sp = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { levels: ['a', 'b', 'c'] });
-    const refOne = await createReference(t.db);
-    const refTwo = await createReference(t.db);
-    const base = await createRecord(t.db, {
+    const manual = await createRecord(t.db, {
       speciesId: sp.id,
       traitId: trait.id,
       valueText: 'a',
       levelId: trait.levels[0]?.id,
-      primaryReferenceId: refOne.id,
+      primaryReferenceId: ref.id,
       origin: 'manual',
-      createdBy: user.id,
+      createdBy: author.id,
     });
+    const batch = await createImportBatch(t.db);
+    const imported = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'b',
+      levelId: trait.levels[1]?.id,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    return { author, other, ref, ref2, trait, sp, manual, imported };
+  }
 
-    const contests = [];
-    for (const [level, ref] of [
-      [trait.levels[1]?.id, refOne.id],
-      [trait.levels[2]?.id, refTwo.id],
-    ] as const) {
-      const res = await createRecords(t.db, UNRESTRICTED, {
-        actorId: user.id,
-        speciesId: sp.id,
-        traitId: trait.id,
-        value: { levelId: level as string },
-        referenceIds: [ref],
-        intent: 'contest',
-        respondsToRecordId: base.id,
-      });
-      const created = res.created[0];
-      if (!created) throw new Error('contest record was not created');
-      contests.push(created);
-    }
-    const [first, second] = contests;
-    if (!first || !second) throw new Error('both contests are needed');
-
+  it('a confirm on your own record is refused; on another, it counts once per user', async () => {
+    const f = await setup();
+    await expect(
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.author.id,
+        kind: 'confirm',
+      }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
     await annotateRecord(t.db, UNRESTRICTED, {
-      recordId: first.id,
-      actorId: user.id,
-      kind: 'withdraw',
-      note: 'Withdrawn by the author',
-      canWithdrawAny: false,
-      canReview: false,
+      ...base,
+      recordId: f.manual.id,
+      actorId: f.other.id,
+      kind: 'confirm',
     });
-    // The second contest is still live, so the dispute must stand.
-    const afterFirst = await getRecord(t.db, UNRESTRICTED, base.id);
-    expect(afterFirst?.annotations.some((a) => a.kind === 'neutral')).toBe(false);
+    const after = await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.manual.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+      referenceId: f.ref.id,
+    });
+    expect(after).toMatchObject({ validationCount: 1, review: 'validated' });
+  });
 
-    await annotateRecord(t.db, UNRESTRICTED, {
-      recordId: second.id,
-      actorId: user.id,
-      kind: 'withdraw',
-      note: 'Withdrawn by the author',
-      canWithdrawAny: false,
-      canReview: false,
+  it('RFC-65 R3 a repeated confirm — same reference, or reference-less twice — inserts nothing; a new reference is inserted', async () => {
+    const f = await setup();
+    const first = await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.manual.id,
+      actorId: f.other.id,
+      kind: 'confirm',
     });
-    const afterSecond = await getRecord(t.db, UNRESTRICTED, base.id);
-    expect(afterSecond?.annotations.find((a) => a.kind === 'neutral')?.note).toBe(
-      `Contest withdrawn (record ${second.id})`,
-    );
+    expect(first?.annotations).toHaveLength(1);
+    // Reference-less again: the actor already confirmed the record.
+    const repeatBare = await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.manual.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+    });
+    expect(repeatBare?.annotations).toHaveLength(1);
+    // A confirm with a reference: a new claim, inserted.
+    const withRef = await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.manual.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+      referenceId: f.ref.id,
+    });
+    expect(withRef?.annotations).toHaveLength(2);
+    // The very same reference again: no insert.
+    const repeatSameRef = await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.manual.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+      referenceId: f.ref.id,
+    });
+    expect(repeatSameRef?.annotations).toHaveLength(2);
+    // A different reference again: another new claim.
+    const secondRef = await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.manual.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+      referenceId: f.ref2.id,
+    });
+    expect(secondRef?.annotations).toHaveLength(3);
+    // One actor, however many confirms: counted once (RFC-63 R8).
+    expect(secondRef?.validationCount).toBe(1);
+  });
+
+  it('withdraw: the author, records.withdraw for manual, records.withdraw_imported for imported; answers null', async () => {
+    const f = await setup();
+    await expect(
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        canWithdrawAny: true,
+        recordId: f.imported.id,
+        actorId: f.other.id,
+        kind: 'withdraw',
+      }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        canWithdrawImported: true,
+        recordId: f.manual.id,
+        actorId: f.other.id,
+        kind: 'withdraw',
+      }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    expect(
+      await annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        canWithdrawImported: true,
+        recordId: f.imported.id,
+        actorId: f.other.id,
+        kind: 'withdraw',
+      }),
+    ).toBeNull();
+    expect(
+      await annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.author.id,
+        kind: 'withdraw',
+      }),
+    ).toBeNull();
+    await expect(
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.other.id,
+        kind: 'confirm',
+      }),
+    ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
   });
 });

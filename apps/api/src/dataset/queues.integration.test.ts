@@ -93,9 +93,8 @@ describe('RFC-65 R10 listDisputed contestedBy', () => {
       recordId: withdrawn.created[0]?.id as string,
       actorId: user.id,
       kind: 'withdraw',
-      note: 'Withdrawn by its author',
       canWithdrawAny: false,
-      canReview: false,
+      canWithdrawImported: false,
     });
 
     const handBase = await createRecord(t.db, {

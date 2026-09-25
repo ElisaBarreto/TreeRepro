@@ -1,5 +1,5 @@
 import type { AnnotateRecordBody, RecordDetail, ResolveDoiResult } from '@treerepro/contracts';
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { annotateRecord, resolveDoi } from '../../api/curation.ts';
 import { datasetKeys } from '../../api/dataset.ts';
@@ -8,7 +8,7 @@ import { fieldErrors } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useRecordWrite } from '../../lib/use-record-write.ts';
 import { DrawerSection } from '../dataset/DrawerSection.tsx';
-import { Alert, Button, Field, HelpTip, Textarea } from '../ui/index.ts';
+import { Alert, Button, ConfirmDialog, HelpTip } from '../ui/index.ts';
 import { ContestDialog } from './ContestDialog.tsx';
 import { type DoiCheck, DoiField, doiBlocks, resolvedCheck } from './DoiField.tsx';
 import { contributionErrorMessage } from './errors.ts';
@@ -18,7 +18,7 @@ import { contributionErrorMessage } from './errors.ts';
  * curation actions can hit, falling back to the contribution map of RFC-70
  * and RFC-80 (a validation with a supporting DOI reaches the same registry
  * the contest form does). A `VALIDATION_FAILED` has no sentence of its own
- * here: its detail lands under the note or the DOI it is about.
+ * here: its detail lands under the DOI it is about.
  * @rfc RFC-13 R6
  */
 export function actionErrorMessage(error: unknown): string {
@@ -35,12 +35,6 @@ export function actionErrorMessage(error: unknown): string {
   return contributionErrorMessage(error);
 }
 
-type NoteMode = 'dispute' | 'withdraw';
-const NOTE_LABELS: Record<NoteMode, { title: string; submit: string }> = {
-  dispute: { title: 'Why do you dispute this record?', submit: 'Send dispute' },
-  withdraw: { title: 'Why is this record withdrawn?', submit: 'Confirm withdrawal' },
-};
-
 const VALIDATE_HELP =
   'Records that you agree with this value as it stands. Nothing is changed; your confirmation is attached to the record.';
 const CONTEST_HELP =
@@ -54,19 +48,18 @@ const DOI_SUMMARY = 'Add a supporting DOI (optional)';
  * that may carry a supporting DOI, on `records.annotate` — and **+ Add
  * different record**, which opens {@link ContestDialog} rather than writing
  * anything here, because a different value is a record of its own, never a
- * bare dispute, and so needs the `records.create` that creating one takes.
- * Validate is
- * out of reach once the viewer's own latest stance on the record is already
- * `confirm`; a withdraw of theirs is not a stance, and neither is anyone
- * else's.
+ * bare validation, and so needs the `records.create` that creating one
+ * takes. Validate is out of reach once the viewer has already validated the
+ * record — a validation is never undone (spec R-6).
  *
- * The reviewer actions Neutral and Dispute (with the note the API requires)
- * need `records.review` on top of `records.annotate` (RFC-70 R4); Withdraw
- * stays with the author and the `records.withdraw` holder (RFC-65 R4). A
- * withdrawn record never reaches the drawer (RFC-63 R13); a viewer with nothing to do sees no
- * section at all, so the drawer never carries an empty heading. After a
- * write the drawer's record query is replaced with the answer and the lists
- * and summaries are invalidated (`useRecordWrite`).
+ * Withdraw (spec R-12: author, `records.withdraw` for manual,
+ * `records.withdraw_imported` for imported records) asks for confirmation
+ * only. A withdrawn record never reaches the drawer (RFC-63 R13); a viewer
+ * with nothing to do sees no section at all, so the drawer never carries an
+ * empty heading. After a write the drawer's record query is replaced with
+ * the answer and the lists and summaries are invalidated (`useRecordWrite`);
+ * a withdrawal instead calls `onGone`, which closes the drawer, since there
+ * is no record left to show.
  * @rfc RFC-13 R3, R6, R11
  * @rfc RFC-65 R3, R4
  * @rfc RFC-70 R1, R4
@@ -75,18 +68,18 @@ const DOI_SUMMARY = 'Add a supporting DOI (optional)';
 export function RecordActions({
   record,
   onOpenRecord,
+  onGone,
 }: {
   record: RecordDetail;
   /** Opens another record in the drawer this section sits in; the new record after a contest. */
   onOpenRecord?: (id: string) => void;
+  /** Called once a withdrawal has taken the record out of the dataset: the drawer closes. */
+  onGone?: () => void;
 }) {
   const me = useMe();
-  const noteId = useId();
   const doiId = useId();
   const validatedId = useId();
-  const [mode, setMode] = useState<NoteMode | null>(null);
-  const [note, setNote] = useState('');
-  const [noteError, setNoteError] = useState<string | null>(null);
+  const [confirmingWithdraw, setConfirmingWithdraw] = useState(false);
   const [contesting, setContesting] = useState(false);
   const [doi, setDoi] = useState('');
   // The answer is held with the DOI it is about, never on its own: editing
@@ -102,26 +95,17 @@ export function RecordActions({
     speciesId: record.speciesId,
     onWritten: (detail, queryClient) => {
       // `null` means the annotation withdrew the record (RFC-33 R2): there is
-      // no detail to seed the cache with, and the invalidation below leaves
-      // the drawer's record query to 404 — acceptable until Task 5 gives the
-      // drawer an onGone to close itself with.
+      // no detail to seed the cache with; `onInvalidated` below closes the
+      // drawer instead.
       if (detail) queryClient.setQueryData(datasetKeys.record(record.id), detail);
-      // Only the form state here — not `openMode(null)`: resetting a mutation
-      // from inside its own onSuccess flips isPending before the invalidation
-      // settles, and would detach the in-flight invalidation.
-      setMode(null);
-      setNote('');
-      setNoteError(null);
+    },
+    onInvalidated: (detail) => {
+      if (detail === null) {
+        setConfirmingWithdraw(false);
+        onGone?.();
+      }
     },
   });
-  // Switching between Dispute and Withdraw, or cancelling either, must not
-  // leave the other's typed note, validation error or failed write behind.
-  function openMode(next: NoteMode | null) {
-    setMode(next);
-    setNote('');
-    setNoteError(null);
-    annotate.reset();
-  }
 
   // One request per value: an answer is kept, but a failed check is no
   // answer and leaving the field again asks the registry once more.
@@ -141,7 +125,6 @@ export function RecordActions({
   }
 
   const canAnnotate = hasPermission(me, 'records.annotate');
-  const canReview = canAnnotate && hasPermission(me, 'records.review');
   // A different value is a record of its own, so the button that opens the
   // form needs what `POST /api/records` needs (RFC-70 R1); validating only
   // annotates. Offering it to a viewer the API would answer 403 is a button
@@ -150,21 +133,21 @@ export function RecordActions({
   const isAuthor = record.createdBy?.id === me.user.id;
   const canWithdraw =
     canAnnotate &&
-    record.origin === 'manual' &&
-    (isAuthor || hasPermission(me, 'records.withdraw'));
-  // A withdraw is not a stance: it says the record is gone, not what the
-  // viewer thinks of its value. The API orders annotations newest first.
-  const stance = record.annotations.find(
-    (a) => a.actor.id === me.user.id && a.kind !== 'withdraw',
-  )?.kind;
-  const validated = stance === 'confirm';
+    (isAuthor ||
+      (record.origin === 'manual'
+        ? hasPermission(me, 'records.withdraw')
+        : hasPermission(me, 'records.withdraw_imported')));
+  // A validation is never undone (spec R-6).
+  const validated = record.annotations.some(
+    (a) => a.actor.id === me.user.id && a.kind === 'confirm',
+  );
 
-  // A validation detail on the note or on the supporting reference lands
-  // under its field; anything else is the alert below the buttons.
+  // A validation detail on the supporting reference lands under its field;
+  // anything else is the alert below the buttons.
   const details = fieldErrors(annotate.error);
-  const noteDetail = details.note;
-  const doiDetail = details['reference.doi'] ?? details['reference.id'] ?? details.reference;
-  const bound = noteDetail !== undefined || doiDetail !== undefined;
+  const doiDetail =
+    details['referenceSource.doi'] ?? details['referenceSource.id'] ?? details.referenceSource;
+  const bound = doiDetail !== undefined;
   const error = bound ? null : annotate.error;
   const supporting = doi.trim();
   const doiCheck: DoiCheck =
@@ -200,29 +183,18 @@ export function RecordActions({
 
   if (!canAnnotate) return null;
 
-  function submitNote(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!mode) return;
-    const text = note.trim();
-    if (!text) {
-      setNoteError('A note is required.');
-      return;
-    }
-    setNoteError(null);
-    annotate.mutate({ kind: mode, note: text });
-  }
-
   function validate() {
     setAttempts((n) => n + 1);
-    annotate.mutate({ kind: 'confirm', ...(supporting ? { reference: { doi: supporting } } : {}) });
+    annotate.mutate({
+      kind: 'confirm',
+      ...(supporting ? { referenceSource: { doi: supporting } } : {}),
+    });
   }
 
   // The API's refusal was about the DOI that was sent; the moment the field
   // holds something else it describes nothing, so it goes. Guarded on the
-  // refusal being about the DOI at all: a note's validation detail lives in
-  // the same mutation, and typing a DOI must not wipe it from the form beside
-  // it. While a validation is in flight there is no error to clear, so this
-  // can never detach one.
+  // refusal being about the DOI at all: while a validation is in flight
+  // there is no error to clear, so this can never detach one.
   function changeDoi(next: string) {
     setDoi(next);
     if (doiDetail !== undefined) annotate.reset();
@@ -289,33 +261,8 @@ export function RecordActions({
             </HelpTip>
           </>
         ) : null}
-        {canReview ? (
-          <>
-            <Button
-              variant="secondary"
-              size="sm"
-              pending={annotate.isPending}
-              onClick={() => annotate.mutate({ kind: 'neutral' })}
-            >
-              Neutral
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => openMode(mode === 'dispute' ? null : 'dispute')}
-              aria-pressed={mode === 'dispute'}
-            >
-              Dispute
-            </Button>
-          </>
-        ) : null}
         {canWithdraw ? (
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => openMode(mode === 'withdraw' ? null : 'withdraw')}
-            aria-pressed={mode === 'withdraw'}
-          >
+          <Button variant="danger" size="sm" onClick={() => setConfirmingWithdraw(true)}>
             Withdraw
           </Button>
         ) : null}
@@ -330,40 +277,6 @@ export function RecordActions({
           <div className="pt-3">{doiField}</div>
         </details>
       ) : null}
-      {mode ? (
-        <form
-          onSubmit={submitNote}
-          className="flex flex-col gap-3 rounded-[10px] border border-canopy-700/15 p-4"
-          noValidate
-        >
-          <Field
-            id={noteId}
-            label={NOTE_LABELS[mode].title}
-            error={noteError ?? noteDetail ?? undefined}
-          >
-            <Textarea
-              id={noteId}
-              value={note}
-              maxLength={2000}
-              onChange={(e) => setNote(e.target.value)}
-              invalid={Boolean(noteError ?? noteDetail)}
-            />
-          </Field>
-          <div className="flex gap-2">
-            <Button
-              type="submit"
-              size="sm"
-              variant={mode === 'withdraw' ? 'danger' : 'primary'}
-              pending={annotate.isPending}
-            >
-              {NOTE_LABELS[mode].submit}
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => openMode(null)}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : null}
       {error ? <Alert tone="error">{actionErrorMessage(error)}</Alert> : null}
       {contesting ? (
         <ContestDialog
@@ -377,6 +290,21 @@ export function RecordActions({
           onOpenRecord={(id) => {
             setContesting(false);
             onOpenRecord?.(id);
+          }}
+        />
+      ) : null}
+      {confirmingWithdraw ? (
+        <ConfirmDialog
+          title="Withdraw this record?"
+          message="The record leaves the dataset for everyone. This cannot be undone."
+          confirmLabel="Withdraw"
+          danger
+          pending={annotate.isPending}
+          error={annotate.error ? actionErrorMessage(annotate.error) : null}
+          onConfirm={() => annotate.mutate({ kind: 'withdraw' })}
+          onClose={() => {
+            annotate.reset();
+            setConfirmingWithdraw(false);
           }}
         />
       ) : null}
