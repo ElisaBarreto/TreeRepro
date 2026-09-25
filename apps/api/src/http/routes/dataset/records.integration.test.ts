@@ -22,7 +22,12 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
   const t = useTestApp();
 
   it('lists by species+trait or by reference, rejects other combinations, answers detail and summary', async () => {
-    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    // The one record this test creates is a pending import (no level, no
+    // quantitative field): visible only to a `records.review` holder
+    // (RFC-33 R2). The role carries it because this test is about the shape
+    // of the record and summary routes, not about pending-record visibility
+    // — that is `live-records.integration.test.ts`'s job.
+    const role = await createRole(t.db, { permissions: ['dataset.read', 'records.review'] });
     const { user } = await createUser(t.db, { roles: [role.id] });
     const { cookie } = await loginAs(t, user);
     const sp1 = await createSpecies(t.db);
@@ -283,7 +288,13 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
   });
 
   it('RFC-63 R8 the detail shows supersedes and supersededBy', async () => {
-    const { user, cookie } = await scientist(t);
+    // The original is a pending import: visible only to a `records.review`
+    // holder (RFC-33 R2), which this test is not otherwise about.
+    const { user, cookie } = await scientist(t, [
+      'records.create',
+      'dataset.read',
+      'records.review',
+    ]);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a'] });
     const ref = await createReference(t.db);
@@ -922,8 +933,10 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     const a = await scientist(t, ['records.annotate']);
     const { rec } = await manualRecord(a.user.id);
     const withdrawn = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'Wrong species' });
-    expect(withdrawn.status).toBe(201);
-    expect((await withdrawn.json()).data.review).toBe('withdrawn');
+    // RFC-33 R2: a withdrawn record is visible to no viewer, so there is no
+    // detail left to answer with (plan 13g amendment 2).
+    expect(withdrawn.status).toBe(200);
+    expect((await withdrawn.json()).data).toBeNull();
     const after = await annotate(a.cookie, rec.id, { kind: 'confirm' });
     expect(after.status).toBe(409);
     expect((await after.json()).error.code).toBe('RECORD_WITHDRAWN');
@@ -941,7 +954,8 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
       kind: 'withdraw',
       note: 'Retracted by the author by email',
     });
-    expect(allowed.status).toBe(201);
+    expect(allowed.status).toBe(200);
+    expect((await allowed.json()).data).toBeNull();
   });
 
   it('R4 import records are never withdrawn', async () => {

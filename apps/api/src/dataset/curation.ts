@@ -361,15 +361,19 @@ export interface AnnotateRecordInput {
  * UPDATE` cannot serialise two annotations of the same record — two
  * withdrawals racing past the `withdrawn` check, say. `pg_advisory_xact_lock`,
  * keyed on the record id and held for the whole transaction, does instead.
+ * `null` when the annotation just withdrawn the record: a withdrawn record is
+ * visible to no viewer (RFC-33 R2), so there is no detail left to answer with
+ * — the route's `withdraw` amendment (plan 13g) answers `200 { data: null }`.
  * @rfc RFC-65 R3, R4
  * @rfc RFC-70 R4, R5
  * @rfc RFC-33 R2, R5
+ * @rfc RFC-63 R6
  */
 export async function annotateRecord(
   db: DbExecutor,
   visibility: Visibility,
   input: AnnotateRecordInput,
-): Promise<RecordDetail> {
+): Promise<RecordDetail | null> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${input.recordId}, 0))`);
     const [rec] = await tx
@@ -465,8 +469,10 @@ export async function annotateRecord(
       }
     }
 
-    const detail = await getRecord(tx, visibility, rec.id);
-    if (!detail) throw new Error('annotateRecord: record vanished');
-    return detail;
+    // A `withdraw` just made the record invisible to every viewer (RFC-33
+    // R2), `visibility` included, so `getRecord` here returns null exactly
+    // then — expected, not the "vanished" error `createRecords` guards
+    // against for a record it just inserted.
+    return getRecord(tx, visibility, rec.id);
   });
 }

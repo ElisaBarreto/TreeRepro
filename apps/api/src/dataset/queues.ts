@@ -21,7 +21,7 @@ import {
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { requireTrait, resolveValue } from './curation.ts';
-import { itemQuery, toItem } from './records.ts';
+import { itemQuery, liveSql, toItem } from './records.ts';
 
 /**
  * The RFC-65 R7 pending predicate over a `trait_records` alias `r`: an
@@ -31,7 +31,8 @@ import { itemQuery, toItem } from './records.ts';
  */
 const PENDING = sql`r.harmonisation <> 'harmonised'
   and r.harmonisation in ('unknown_level', 'multi_value', 'not_numeric')
-  and not exists (select 1 from trait_records c where c.supersedes_record_id = r.id)`;
+  and not exists (select 1 from trait_records c where c.supersedes_record_id = r.id)
+  and not exists (select 1 from record_annotations pw where pw.record_id = r.id and pw.kind = 'withdraw')`;
 
 /**
  * The rows behind every pending queue: `PENDING` over a `trait_records r`
@@ -264,12 +265,6 @@ interface DisputeRow {
   created_at: Date | string;
 }
 
-/** No actor has withdrawn the record (RFC-63 R6). The id is wrapped as `reviewStatusSql` wraps it. */
-function notWithdrawn(recordId: SQL): SQL {
-  return sql`not exists (select 1 from record_annotations w
-    where w.record_id = ${recordId} and w.kind = 'withdraw')`;
-}
-
 /**
  * The standing disputes as a query: per record, the newest annotation among
  * the actors whose latest stance is `dispute`; excluded once withdrawn, and,
@@ -296,7 +291,7 @@ function disputedQuery(visibility: Visibility, intent?: 'contest'): SQL {
     join trait_records r on r.id = d.record_id
     join species sp on sp.id = r.species_id
     join traits tr on tr.id = r.trait_id
-    where ${notWithdrawn(sql`d.record_id`)}
+    where ${liveSql(sql`d.record_id`)}
       and ${intent === 'contest' ? sql`d.generated` : sql`true`}
       and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
       and ${traitVisible(visibility, sql`tr.active`)}`;
@@ -352,7 +347,7 @@ export async function countContested(db: DbExecutor, visibility: Visibility): Pr
     join traits tr on tr.id = c.trait_id
     where c.responds_to_record_id is not null
       and c.intent = 'contest'
-      and ${notWithdrawn(sql`b.id`)}
+      and ${liveSql(sql`b.id`)}
       and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
       and ${traitVisible(visibility, sql`tr.active`)}`)) as unknown as [
     { count: number } | undefined,
@@ -401,7 +396,7 @@ export async function listDisputed(
         and(
           inArray(traitRecords.respondsToRecordId, recordIds),
           eq(traitRecords.intent, 'contest'),
-          notWithdrawn(sql`${traitRecords.id}`),
+          liveSql(traitRecords.id),
         ),
       )
       .orderBy(desc(traitRecords.id)),

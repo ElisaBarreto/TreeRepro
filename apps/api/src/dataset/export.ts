@@ -1,12 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import {
-  levelVisible,
-  speciesVisible,
-  traitVisible,
-  type Visibility,
-} from '../access/visibility.ts';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
+import { recordVisible } from './records.ts';
 
 /** @rfc RFC-66 R8 */
 export const EXPORT_COLUMNS = [
@@ -87,21 +83,20 @@ const dialect = new PgDialect();
  * `ReadableStream` batch by batch, so the file is never held in memory; the
  * BOM lets spreadsheet software read UTF-8. `batch` is injectable so tests can
  * force several small batches instead of one that swallows every row.
- * `includePending` mirrors RFC-33 R2's record clause: a record whose
- * `harmonisation` is not `harmonised` is visible only to a viewer holding
- * `records.review`, so the caller resolves that permission and passes it
- * here rather than this function reading permissions itself.
+ * The record clause (`recordVisible`) is RFC-33 R2's: live, harmonised or
+ * `visibility.review`, and on a level that is null, active, or visible to a
+ * `dataset.read_inactive` holder — so the caller need only resolve the
+ * viewer's visibility, not a separate pending flag.
  * @rfc RFC-66 R4, R5, R8
  * @rfc RFC-33 R2, R3
  */
 export function recordsCsv(
   db: Db,
   visibility: Visibility,
-  options: { batch?: number; includePending?: boolean } = {},
+  options: { batch?: number } = {},
 ): ReadableStream<Uint8Array> {
   const client = db.$client;
   const encoder = new TextEncoder();
-  const includePending = options.includePending ?? false;
   const query = dialect.sqlToQuery(sql`
     select f.name as family, g.name as genus, s.canonical_name as species, s.name_source,
       c.key as category, t.key as trait, r.value_text as value, t.unit, l.key as level,
@@ -115,13 +110,10 @@ export function recordsCsv(
     left join families f on f.id = g.family_id
     join traits t on t.id = r.trait_id
     join trait_categories c on c.key = t.category_key
-    left join trait_levels l on l.id = r.level_id and ${levelVisible(visibility, sql`l.active`)}
+    left join trait_levels l on l.id = r.level_id
     left join bibliographic_references pr on pr.id = r.primary_reference_id
     left join bibliographic_references sr on sr.id = r.secondary_reference_id
-    where not exists (select 1 from record_annotations w
-                      where w.record_id = r.id and w.kind = 'withdraw')
-      and (r.level_id is null or l.id is not null)
-      and (r.harmonisation = 'harmonised' or ${includePending ? sql`true` : sql`false`})
+    where ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
       and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       and ${traitVisible(visibility, sql`t.active`)}
     order by f.name nulls last, g.name nulls last, s.canonical_name, t.key, r.id`);

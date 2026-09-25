@@ -28,6 +28,7 @@ import {
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { requireTrait } from './dictionary.ts';
+import { liveSql } from './records.ts';
 
 /**
  * Escapes `%`, `_` and `\` so a search term matches literally. `'exact'`
@@ -135,7 +136,11 @@ interface SpeciesJoinedRow {
   traitRecordCount?: number | null;
 }
 
-function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
+/**
+ * `review`: the viewer holds `records.review` — the unresolved-taxon flag is
+ * reviewer-only data (RFC-33 R2, RFC-60 R6); every other viewer gets `null`.
+ */
+function toListItem(r: SpeciesJoinedRow, review: boolean): SpeciesListItem {
   return {
     id: r.id,
     canonicalName: r.canonicalName,
@@ -145,7 +150,9 @@ function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
     family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
     matchedName: r.matchedName ?? null,
     matchedNameType: r.matchedNameType ?? null,
-    unresolvedTaxon: r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null,
+    unresolvedTaxon: review
+      ? r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null
+      : null,
     traitCount: r.traitCount,
     traitRecordCount: r.traitRecordCount ?? null,
   };
@@ -389,7 +396,7 @@ export async function searchSpecies(
       ? encodeCompositeCursor([String(tier), String(r.traitCount), r.canonicalName, r.id])
       : encodeCompositeCursor([String(tier), r.canonicalName, r.id]),
   );
-  return { data: page.map(toListItem), nextCursor };
+  return { data: page.map((r) => toListItem(r, visibility.review === true)), nextCursor };
 }
 
 /**
@@ -450,7 +457,9 @@ export async function getSpecies(
     db
       .select({ recordCount: count(), traitCount: countDistinct(traitRecords.traitId) })
       .from(traitRecords)
-      .where(eq(traitRecords.speciesId, id)),
+      // Viewer-blind (RFC-33 R3, RFC-60 R7): every non-withdrawn record
+      // counts, whatever its harmonisation or level visibility.
+      .where(and(eq(traitRecords.speciesId, id), liveSql(traitRecords.id))),
     speciesPlotsQuery,
   ]);
   // `traitRecordCount` answers "records for the one filtered trait" and the
@@ -462,12 +471,15 @@ export async function getSpecies(
   // counts the traits behind it itself. A test compares the live count with
   // the column on rows it has just created, which pins the trigger's
   // arithmetic; nothing detects drift on a row that was written earlier.
-  const { traitRecordCount: _listOnly, ...listItem } = toListItem({
-    ...row,
-    matchedName: null,
-    matchedNameType: null,
-    traitCount: counts?.traitCount ?? 0,
-  });
+  const { traitRecordCount: _listOnly, ...listItem } = toListItem(
+    {
+      ...row,
+      matchedName: null,
+      matchedNameType: null,
+      traitCount: counts?.traitCount ?? 0,
+    },
+    visibility.review === true,
+  );
   return {
     ...listItem,
     plots: speciesPlots,

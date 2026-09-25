@@ -19,6 +19,7 @@ import {
 import { AppError } from '../http/errors.ts';
 import { type DoiMetadata, shortCitationFrom } from '../integrations/doi.ts';
 import { requireTrait } from './dictionary.ts';
+import { liveSql } from './records.ts';
 import { likePattern } from './taxa.ts';
 
 /** @rfc RFC-61 R1, R4 */
@@ -193,12 +194,15 @@ export async function getReference(
       .select({ recordCount: count() })
       .from(traitRecords)
       .where(
-        or(eq(traitRecords.primaryReferenceId, id), eq(traitRecords.secondaryReferenceId, id)),
+        and(
+          or(eq(traitRecords.primaryReferenceId, id), eq(traitRecords.secondaryReferenceId, id)),
+          liveSql(traitRecords.id),
+        ),
       ),
     db
       .select({ recordCount: count() })
       .from(recordReferences)
-      .where(eq(recordReferences.referenceId, id)),
+      .where(and(eq(recordReferences.referenceId, id), liveSql(sql`${recordReferences.recordId}`))),
     db
       .select({
         id: traits.id,

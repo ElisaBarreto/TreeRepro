@@ -475,8 +475,8 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       canWithdrawAny: false,
       canReview: false,
     });
-    expect(confirmed.annotations[0]?.reference?.id).toBe(ref.id);
-    expect(confirmed.annotations[0]?.reference?.kind).toBe('publication');
+    expect(confirmed?.annotations[0]?.reference?.id).toBe(ref.id);
+    expect(confirmed?.annotations[0]?.reference?.kind).toBe('publication');
 
     // Contest record creation and withdrawal side effect
     const contestRes = await createRecords(t.db, UNRESTRICTED, {

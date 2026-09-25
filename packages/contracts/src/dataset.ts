@@ -130,9 +130,11 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
  * `traitRecordCount` is `null` when no `traitId` filter was given, `0` in
  * missing mode, and the coverage row's `record_count` otherwise.
  * `matchedNameType` is the type of the alternative name that matched
- * (`matchedName`), else `null`.
+ * (`matchedName`), else `null`. `unresolvedTaxon` is reviewer-only data
+ * (RFC-33 R2): the flag for a `records.review` holder, `null` for every
+ * other viewer.
  * @rfc RFC-60 R3, R6
- * @rfc RFC-33 R7
+ * @rfc RFC-33 R2, R7
  * @rfc RFC-69 R1
  */
 export const speciesListItemSchema = z.strictObject({
@@ -144,7 +146,7 @@ export const speciesListItemSchema = z.strictObject({
   family: taxonRefSchema.nullable(),
   matchedName: z.string().nullable(),
   matchedNameType: z.enum(NAME_TYPES).nullable(),
-  unresolvedTaxon: z.boolean(),
+  unresolvedTaxon: z.boolean().nullable(),
   traitCount: z.number().int().nonnegative(),
   traitRecordCount: z.number().int().nonnegative().nullable(),
 });

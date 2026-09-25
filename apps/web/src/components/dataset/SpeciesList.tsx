@@ -18,8 +18,10 @@ const MATCH_TYPE_LABELS: Record<NameType, string> = {
 
 /**
  * Rows of a species search. The canonical name opens the species page; a
- * name that is not WCVP's is flagged as unresolved (RFC-60 R3) and, when the
- * term matched an alternative name instead of the canonical one, that name
+ * species the API flags as `unresolvedTaxon` is marked unresolved (RFC-60 R6)
+ * — `null` for a viewer without `records.review`, so the API decides who sees
+ * it, not the name source here — and, when the term matched an alternative
+ * name instead of the canonical one, that name
  * is shown as "found as: *name*" with a small badge for its type (synonym /
  * common / GBIF) so the row explains why it is there. An inactive species
  * (only ever listed for a `dataset.read_inactive` holder) is flagged beside
@@ -64,7 +66,7 @@ export function SpeciesList({
                 >
                   {species.canonicalName}
                 </Link>
-                {species.nameSource !== 'wcvp' ? <Badge tone="amber">unresolved</Badge> : null}
+                {species.unresolvedTaxon === true ? <Badge tone="amber">unresolved</Badge> : null}
                 {species.active ? null : <Badge tone="neutral">inactive</Badge>}
               </span>
             </Td>

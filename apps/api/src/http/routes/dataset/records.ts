@@ -94,6 +94,9 @@ export function recordRoutes(ctx: AuthContext) {
         await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
           actorId: actor.id,
         });
+        // A withdraw leaves nothing visible to answer with (RFC-33 R2, plan
+        // 13g amendment 2): `200 { data: null }` rather than a detail.
+        if (record === null) return c.json({ data: null }, 200);
         return c.json({ data: record }, 201);
       },
     )

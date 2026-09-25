@@ -5,6 +5,7 @@ import type { DbExecutor } from '../db/client.ts';
 import { species } from '../db/schema/taxa.ts';
 import { validatedPairsSql } from './coverage.ts';
 import { dictionaryCategories } from './dictionary.ts';
+import { recordVisible } from './records.ts';
 
 interface TraitAggregate {
   trait_id: string;
@@ -76,6 +77,7 @@ export async function speciesTraitSummary(
       where r.species_id = ${speciesId}
         and ${traitVisible(visibility, sql`t.active`)}
         and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
+        and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
     db.execute(sql`
@@ -87,6 +89,7 @@ export async function speciesTraitSummary(
       where r.species_id = ${speciesId}
         and ${traitVisible(visibility, sql`t.active`)}
         and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
+        and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
       group by r.trait_id, l.id, l.key
       order by count desc, l.key`) as unknown as Promise<LevelAggregate[]>,
     // Visibility needs no predicate here: only visible traits reach

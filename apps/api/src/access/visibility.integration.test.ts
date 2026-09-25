@@ -18,10 +18,15 @@ import { speciesVisible, traitVisible, type Visibility, visibilityFor } from './
 
 describe('RFC-33 R1 visibilityFor', () => {
   it('reads dataset.read_inactive and plot settings', () => {
-    expect(visibilityFor(new Set(['dataset.read']))).toEqual({ inactive: false, plotIds: null });
+    expect(visibilityFor(new Set(['dataset.read']))).toEqual({
+      inactive: false,
+      plotIds: null,
+      review: false,
+    });
     expect(visibilityFor(new Set(['dataset.read', 'dataset.read_inactive']))).toEqual({
       inactive: true,
       plotIds: null,
+      review: false,
     });
     expect(
       visibilityFor(new Set(['dataset.read']), {
@@ -31,6 +36,12 @@ describe('RFC-33 R1 visibilityFor', () => {
     ).toEqual({
       inactive: false,
       plotIds: ['019a0000-0000-7000-8000-000000000001'],
+      review: false,
+    });
+    expect(visibilityFor(new Set(['dataset.read', 'records.review']))).toEqual({
+      inactive: false,
+      plotIds: null,
+      review: true,
     });
   });
 });

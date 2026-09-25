@@ -6,7 +6,7 @@ import { coverageTotals } from '../dataset/coverage.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
 import { countContested, countDisputed, countPendingGroups } from '../dataset/queues.ts';
-import { itemQuery, toItem } from '../dataset/records.ts';
+import { harmonisedFor, itemQuery, toItem } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
@@ -210,6 +210,7 @@ async function awaitingValidation(
         and ps.plot_id = any(${sql.param(plotIds)}::uuid[]))`,
     sql`not exists (select 1 from record_annotations a
       where a.record_id = trait_records.id and a.kind in ('confirm', 'withdraw'))`,
+    harmonisedFor(visibility, traitRecords.harmonisation),
   ) as SQL;
   const [rows, [total]] = await Promise.all([
     db

@@ -12,16 +12,19 @@ import { currentPermissions } from '../http/middleware/require-permission.ts';
 import type { AccessContext } from './context.ts';
 
 /**
- * What one viewer may see (RFC-33 R1).
+ * What one viewer may see (RFC-33 R1). `review`: the viewer holds
+ * `records.review`, so non-harmonised records and the unresolved-taxon flag
+ * are theirs to see (RFC-33 R2, RFC-60 R6); absent means false.
  * @rfc RFC-33 R1
  */
 export interface Visibility {
   inactive: boolean;
   plotIds: string[] | null;
+  review?: boolean;
 }
 
 /** A viewer who sees everything: CLI commands, migrations, admin-only services. @rfc RFC-33 R1 */
-export const UNRESTRICTED: Visibility = { inactive: true, plotIds: null };
+export const UNRESTRICTED: Visibility = { inactive: true, plotIds: null, review: true };
 
 /** @rfc RFC-33 R1 */
 export function visibilityFor(
@@ -31,6 +34,7 @@ export function visibilityFor(
   return {
     inactive: permissions.has('dataset.read_inactive'),
     plotIds: plotSettings?.restricted ? plotSettings.plotIds : null,
+    review: permissions.has('records.review'),
   };
 }
 

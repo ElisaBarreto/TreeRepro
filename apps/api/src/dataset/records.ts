@@ -83,6 +83,55 @@ export function reviewStatusSql(recordId: SQL | typeof traitRecords.id): SQL<Rev
     else 'unreviewed' end`;
 }
 
+/**
+ * No `withdraw` annotation exists for the record (spec R-13): the one
+ * definition of "still in the dataset". `recordId` is wrapped for the reason
+ * given on {@link reviewStatusSql}.
+ * @rfc RFC-63 R6
+ */
+export function liveSql(recordId: SQL | typeof traitRecords.id): SQL {
+  return sql`not exists (select 1 from ${recordAnnotations} lw
+    where lw.record_id = ${sql`${recordId}`} and lw.kind = 'withdraw')`;
+}
+
+/** Harmonised, unless the viewer reviews (spec R-14). @rfc RFC-33 R2 */
+export function harmonisedFor(
+  v: Visibility,
+  harmonisation: SQL | typeof traitRecords.harmonisation = traitRecords.harmonisation,
+): SQL {
+  return v.review ? sql`true` : sql`${harmonisation} = 'harmonised'`;
+}
+
+/**
+ * The level condition of RFC-33 R2: no level, an active level, or a viewer who
+ * holds `dataset.read_inactive`. Resolved through an `exists` on
+ * `trait_records`/`trait_levels` rather than a join, so a caller need only
+ * pass the record's id — the shape both a Drizzle query (`traitRecords.id`,
+ * no join needed) and a raw `sql` alias (`r.id`) already have on hand.
+ * @rfc RFC-33 R2
+ */
+function levelVisibleForRecord(v: Visibility, recordId: SQL | typeof traitRecords.id): SQL {
+  if (v.inactive) return sql`true`;
+  const id = sql`${recordId}`;
+  return sql`not exists (select 1 from ${traitRecords} lvr
+    join ${traitLevels} lvl on lvl.id = lvr.level_id
+    where lvr.id = ${id} and not lvl.active)`;
+}
+
+/**
+ * A record the viewer reads: live, harmonised or reviewed (RFC-33 R2), and on
+ * a level that is null, active, or visible to a `dataset.read_inactive`
+ * holder (RFC-33 R2).
+ * @rfc RFC-33 R2
+ */
+export function recordVisible(
+  v: Visibility,
+  recordId: SQL | typeof traitRecords.id = traitRecords.id,
+  harmonisation: SQL | typeof traitRecords.harmonisation = traitRecords.harmonisation,
+): SQL {
+  return sql`${liveSql(recordId)} and ${harmonisedFor(v, harmonisation)} and ${levelVisibleForRecord(v, recordId)}`;
+}
+
 const itemColumns = {
   record: traitRecords,
   speciesName: species.canonicalName,
@@ -226,7 +275,11 @@ export async function listRecords(
     limit: number;
   },
 ): Promise<{ data: RecordItem[]; nextCursor: string | null }> {
-  const conditions: SQL[] = [speciesVisible(visibility), traitVisible(visibility)];
+  const conditions: SQL[] = [
+    speciesVisible(visibility),
+    traitVisible(visibility),
+    recordVisible(visibility),
+  ];
   if (input.speciesId && input.traitId) {
     conditions.push(
       eq(traitRecords.speciesId, input.speciesId),
@@ -264,7 +317,14 @@ export async function getRecord(
   id: string,
 ): Promise<RecordDetail | null> {
   const [row] = await itemQuery(db)
-    .where(and(eq(traitRecords.id, id), speciesVisible(visibility), traitVisible(visibility)))
+    .where(
+      and(
+        eq(traitRecords.id, id),
+        speciesVisible(visibility),
+        traitVisible(visibility),
+        recordVisible(visibility),
+      ),
+    )
     .limit(1);
   if (!row) return null;
   const rec = row.record;

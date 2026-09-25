@@ -146,9 +146,11 @@ describe('RFC-60 R6-R8 species, families and genera routes', () => {
     const sp1 = await createSpecies(t.db, { nameSource: 'gbif' });
     const res = await call(t.app, 'GET', `/api/species/${sp1.id}`, { cookie });
     expect(res.status).toBe(200);
+    // RFC-33 R2, RFC-60 R6: the unresolved-taxon flag is reviewer-only data;
+    // `reader()` holds only `dataset.read`, so it reads `null`.
     expect((await res.json()).data).toMatchObject({
       id: sp1.id,
-      unresolvedTaxon: true,
+      unresolvedTaxon: null,
       recordCount: 0,
       names: [],
     });

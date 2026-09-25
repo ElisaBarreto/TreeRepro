@@ -156,7 +156,9 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'withdraw', note: 'Entered by mistake' });
-    expect(await status()).toBe('withdrawn');
+    // RFC-63 R6, RFC-33 R2: a withdrawn record has left the dataset — it is
+    // visible to no viewer, so it carries no review state for anyone.
+    expect(await getRecord(t.db, UNRESTRICTED, rec.id)).toBeNull();
   });
 
   it('reviewStatusSql keeps the record id qualified when called from a single-table select', async () => {
