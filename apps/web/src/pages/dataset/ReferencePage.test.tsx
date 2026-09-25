@@ -182,6 +182,36 @@ describe('RFC-61 R4 ReferencePage metadata', () => {
       screen.queryByText(/Journal of Tropical Ecology\. https:\/\/doi\.org/),
     ).not.toBeInTheDocument();
   });
+
+  it('RFC-61 R10 shows the ISBN of a book', async () => {
+    const book: ReferenceDetail = {
+      ...REFERENCE_DETAIL,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f05',
+      citationKey: 'isbn:9780306406157',
+      kind: 'book',
+      isbn: '9780306406157',
+      title: null,
+      authors: null,
+      year: null,
+      journal: null,
+      doi: null,
+      url: null,
+      shortCitation: 'Doe (2001)',
+      fullCitation: 'Doe, J. (2001). Seeds of the tropics.',
+    };
+    dataset.fetchReference.mockResolvedValue(book);
+    renderAt(`/app/references/${book.id}`);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Doe (2001)' }),
+    ).toBeInTheDocument();
+    expect(definition('ISBN')).toHaveTextContent(/^9780306406157$/);
+    expect(screen.getByText('Doe, J. (2001). Seeds of the tropics.')).toBeInTheDocument();
+  });
+
+  it('RFC-61 R10 a publication has no ISBN row', async () => {
+    await openPage();
+    expect(screen.queryByText('ISBN', { selector: 'dt' })).not.toBeInTheDocument();
+  });
 });
 
 describe('RFC-61 R4, R6, R8 ReferencePage full citation and short citation heading', () => {

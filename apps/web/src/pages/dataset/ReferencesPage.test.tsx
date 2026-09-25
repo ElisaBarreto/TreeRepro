@@ -122,7 +122,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
         .map((th) => th.textContent),
-    ).toEqual(['Article', 'As primary', 'As secondary', 'Year', 'DOI']);
+    ).toEqual(['Article', 'As primary', 'As secondary', 'Year', 'DOI / ISBN']);
     expect(
       rows
         .slice(1)
@@ -263,6 +263,27 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     // sidebar entry and the breadcrumb, so only the heading disambiguates.
     await openPage();
     expect(screen.queryByRole('button', { name: 'New reference' })).not.toBeInTheDocument();
+  });
+
+  it('RFC-61 R10 shows a book by its citation, with its ISBN in the DOI / ISBN column', async () => {
+    const book: Reference = {
+      ...REFERENCE,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f05',
+      citationKey: 'isbn:9780306406157',
+      kind: 'book',
+      isbn: '9780306406157',
+      title: null,
+      doi: null,
+      url: null,
+      shortCitation: 'Doe, J. (2001). Seeds of the tropics.',
+      fullCitation: 'Doe, J. (2001). Seeds of the tropics.',
+    };
+    dataset.searchReferences.mockResolvedValue(page([book]));
+    await openPage();
+    const link = await screen.findByRole('link', { name: 'Doe, J. (2001). Seeds of the tropics.' });
+    const row = cells(link.closest('tr') as HTMLElement);
+    expect(row[4]).toHaveTextContent(/^ISBN 9780306406157$/);
+    expect(within(row[4] as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
   });
 });
 

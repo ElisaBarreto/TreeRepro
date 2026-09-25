@@ -80,6 +80,8 @@ function metadataRows(
         DASH
       ),
     },
+    // A book only (RFC-61 R10): every other reference would read "—" here.
+    ...(reference.isbn ? [{ label: 'ISBN', value: reference.isbn }] : []),
     {
       label: 'URL',
       value: reference.url ? (
@@ -211,7 +213,7 @@ function ReferenceRecords({
  * registered as the shell's trailing crumb, so the breadcrumb reads
  * `Data › References › <label>` once the reference resolved (RFC-13 R3).
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-61 R4, R6, R7, R8, R9
+ * @rfc RFC-61 R4, R6, R7, R8, R9, R10
  */
 export function ReferencePage({ id }: { id: string }) {
   const me = useMe();

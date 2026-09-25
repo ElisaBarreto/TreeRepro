@@ -59,7 +59,7 @@ export interface ReferencesSearch {
  * `references.manage`, opens `ReferenceDialog` and navigates to the created
  * reference on success.
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-61 R4, R6
+ * @rfc RFC-61 R4, R6, R10
  */
 export function ReferencesPage({
   search,
@@ -189,7 +189,7 @@ function ReferenceTable({ items }: { items: Reference[] }) {
           <Th className="text-right">As primary</Th>
           <Th className="text-right">As secondary</Th>
           <Th>Year</Th>
-          <Th>DOI</Th>
+          <Th>DOI / ISBN</Th>
         </Tr>
       </Thead>
       <Tbody>
@@ -228,6 +228,8 @@ function ReferenceTable({ items }: { items: Reference[] }) {
                   >
                     {reference.doi}
                   </a>
+                ) : reference.isbn ? (
+                  `ISBN ${reference.isbn}`
                 ) : (
                   DASH
                 )}
