@@ -15,7 +15,7 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `packages/contracts` — Zod schemas and constants shared by API and web.
 - `packages/config` — shared tsconfig bases.
 - `tools/rfc-lint` — enforces `@rfc` linkage in code and cross-checks the SPA's permission gates against the API (RFC-32 R8).
-- `infra/` — Dockerfiles, Caddyfiles, Postgres init, secrets (gitignored).
+- `infra/` — Dockerfiles, Caddyfiles, Postgres init, host hardening (`infra/host/`, installed by hand, see `docs/gotchas/infra.md`), secrets (gitignored).
 - `docs/rfc/` — business rules, the source of truth.
 - `docs/gotchas/<area>.md` — concrete code/infra pitfalls.
 - `docs/specs`, `docs/plans` — design docs and implementation plans.

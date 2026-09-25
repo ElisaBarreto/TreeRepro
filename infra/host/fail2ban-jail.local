@@ -1,0 +1,3 @@
+[sshd]
+# Ubuntu 24.04 runs sshd as ssh.service; the stock filter matches sshd.service and never sees a failure.
+journalmatch = _SYSTEMD_UNIT=ssh.service + _COMM=sshd

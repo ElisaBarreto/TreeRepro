@@ -1,0 +1,41 @@
+#!/bin/sh
+# Lets only Cloudflare's edge open connections to the web ports (80, 443).
+# IPv4 reaches Caddy through Docker's DNAT (FORWARD, so DOCKER-USER); IPv6 has
+# no DNAT and reaches docker-proxy through INPUT. Both jump to one chain that
+# returns for Cloudflare ranges and drops the rest. The last good list is kept,
+# so a failed download never opens or empties the filter.
+set -eu
+
+dir=/var/lib/cloudflare-ips
+iface=${CF_IFACE:-eth0}
+mkdir -p "$dir"
+
+for v in 4 6; do
+  if curl -fsS --max-time 20 "https://www.cloudflare.com/ips-v$v" -o "$dir/v$v.new" \
+    && [ -s "$dir/v$v.new" ] && ! grep -Eqv '^[0-9a-f.:]+/[0-9]+$' "$dir/v$v.new"; then
+    mv "$dir/v$v.new" "$dir/v$v"
+  else
+    echo "cloudflare-origin-firewall: keeping the previous v$v list" >&2
+  fi
+  rm -f "$dir/v$v.new"
+  [ -s "$dir/v$v" ] || { echo "cloudflare-origin-firewall: no v$v list" >&2; exit 1; }
+done
+
+apply() {
+  ipt=$1 list=$2
+  "$ipt" -N CLOUDFLARE-ONLY 2>/dev/null || "$ipt" -F CLOUDFLARE-ONLY
+  # The lists have no trailing newline; `|| [ -n "$net" ]` keeps the last range.
+  while read -r net || [ -n "$net" ]; do
+    "$ipt" -A CLOUDFLARE-ONLY -s "$net" -j RETURN
+  done < "$list"
+  "$ipt" -A CLOUDFLARE-ONLY -j DROP
+  "$ipt" -N DOCKER-USER 2>/dev/null || true
+  for chain in DOCKER-USER INPUT; do
+    rule="-i $iface -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j CLOUDFLARE-ONLY"
+    # shellcheck disable=SC2086
+    "$ipt" -C "$chain" $rule 2>/dev/null || "$ipt" -I "$chain" 1 $rule
+  done
+}
+
+apply iptables "$dir/v4"
+apply ip6tables "$dir/v6"

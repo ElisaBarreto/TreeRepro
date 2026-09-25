@@ -1,0 +1,11 @@
+[Unit]
+Description=Restrict the web ports to Cloudflare's edge
+After=docker.service ufw.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cloudflare-origin-firewall
+
+[Install]
+WantedBy=multi-user.target docker.service
