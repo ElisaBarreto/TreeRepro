@@ -71,6 +71,28 @@
 }
 
 /*
+ * `.meter-bar`: a bare `<meter>` drawn as a rounded canopy bar (RFC-72 R3,
+ * the home's trait bars and coverage meters). A native element styled from
+ * the stylesheet, since the CSP forbids a `style` width (RFC-13 R5).
+ */
+@layer components {
+  .meter-bar {
+    @apply block h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-canopy-700/10;
+  }
+  .meter-bar::-webkit-meter-bar {
+    @apply h-full rounded-full border-0 bg-canopy-700/10;
+  }
+  .meter-bar::-webkit-meter-optimum-value,
+  .meter-bar::-webkit-meter-suboptimum-value,
+  .meter-bar::-webkit-meter-even-less-good-value {
+    @apply rounded-full bg-canopy-500;
+  }
+  .meter-bar::-moz-meter-bar {
+    @apply rounded-full bg-canopy-500;
+  }
+}
+
+/*
  * `Prose` (RFC-73 R2): long-form help text, styled by child selectors so an
  * author writes plain `<h2 id="contest">` and the id survives for a
  * `#anchor` link to land on. Rules in a stylesheet, never a `style`

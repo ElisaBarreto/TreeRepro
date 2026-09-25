@@ -13,7 +13,7 @@ export function ScopeCard({ scope }: { scope: NonNullable<Dashboard['scope']> })
   return (
     <section
       aria-labelledby="scope-heading"
-      className="flex flex-col gap-4 rounded-xl border border-canopy-700/15 bg-white p-6"
+      className="flex flex-col gap-4 rounded-2xl border border-canopy-700/15 bg-white p-6 md:px-8 md:py-7"
     >
       <h2 id="scope-heading" className="font-display text-section font-semibold text-canopy-950">
         Your scope

@@ -27,7 +27,12 @@ export async function signInAndSaveState(browser: Browser): Promise<void> {
   await page.getByLabel('Password', { exact: true }).fill(adminPassword());
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/app$/);
-  await expect(page.getByRole('heading', { name: 'Workspace' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: 'Help complete what we know about how trees reproduce.',
+    }),
+  ).toBeVisible();
   await context.storageState({ path: ADMIN_STATE });
   await context.close();
 }

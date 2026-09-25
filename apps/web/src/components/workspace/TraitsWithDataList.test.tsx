@@ -41,4 +41,17 @@ describe('RFC-72 R3 TraitsWithDataList', () => {
     expect(screen.getByText('40 species')).toBeInTheDocument();
     expect(screen.getByText('12 species')).toBeInTheDocument();
   });
+
+  it('draws a bar per trait against the largest count, hidden from assistive tech', async () => {
+    const { container } = renderInRouter(<TraitsWithDataList traits={TOP_TRAITS_WITH_DATA} />);
+    await screen.findByRole('link', { name: 'seed mass' });
+    const bars = [...container.querySelectorAll('meter')];
+    expect(bars).toHaveLength(2);
+    expect(bars[0]).toHaveAttribute('value', '40');
+    expect(bars[0]).toHaveAttribute('max', '40');
+    expect(bars[1]).toHaveAttribute('value', '12');
+    expect(bars[1]).toHaveAttribute('max', '40');
+    for (const bar of bars) expect(bar).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.queryAllByRole('meter')).toHaveLength(0);
+  });
 });

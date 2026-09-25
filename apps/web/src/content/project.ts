@@ -8,6 +8,13 @@
 export const CONTACT_EMAIL = 'elisabpereira@gmail.com';
 
 /**
+ * The headline of the workspace home's intro card, and the page's h1
+ * (RFC-72 R3). Beside the description so the owner edits both in one place.
+ * @rfc RFC-72 R3
+ */
+export const PROJECT_HEADLINE = 'Help complete what we know about how trees reproduce.';
+
+/**
  * The dataset counts {@link projectDescription} substitutes into the fixed
  * copy: the numbers `WorkspacePage` reads off `dashboard.dataset`
  * (RFC-72 R1).

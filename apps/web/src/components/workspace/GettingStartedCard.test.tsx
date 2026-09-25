@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONTRIBUTION_SUMMARY, ZERO_CONTRIBUTION_SUMMARY } from '../../test/dataset-fixtures.ts';
@@ -44,6 +44,20 @@ describe('RFC-73 R3 GettingStartedCard', () => {
     );
     expect(missing.pathname).toBe('/app/species');
     expect(missing.searchParams.get('traitData')).toBe('missing');
+  });
+
+  it('RFC-72 R3 renders each step as a whole-card block link with its call to action', async () => {
+    render(withRouter(<GettingStartedCard summary={ZERO_CONTRIBUTION_SUMMARY} />));
+    const list = await screen.findByRole('list', { name: 'Getting started checklist' });
+    const links = within(list).getAllByRole('link');
+    expect(links).toHaveLength(4);
+    for (const [link, cta] of links.map(
+      (link, index) =>
+        [link, ['Read the guide', 'Open your plots', 'Show gaps', 'Find traits'][index]] as const,
+    )) {
+      expect(link).toHaveClass('flex');
+      expect(link).toHaveTextContent(cta ?? '');
+    }
   });
 
   it('RFC-72 R3 opens straight on the checklist, with no introductory sentence', async () => {

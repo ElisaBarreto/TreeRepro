@@ -162,15 +162,36 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(await screen.findByText('No trait has data yet.')).toBeInTheDocument();
   });
 
-  it('shows the contribution summary as tiles linking to /app/contributions', async () => {
+  it('shows the contribution summary as a label/value list linking to /app/contributions', async () => {
     renderAt('/app/');
-    const tiles = await screen.findByRole('list', { name: 'Your contributions' });
-    expect(tiles).toHaveTextContent('Records');
-    expect(tiles).toHaveTextContent(String(DASHBOARD.contributor.summary.records));
+    const list = await screen.findByRole('list', { name: 'Your contributions' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(7);
+    expect(list).toHaveTextContent('Records');
+    expect(list).toHaveTextContent(String(DASHBOARD.contributor.summary.records));
     expect(screen.getByRole('link', { name: 'View your contributions' })).toHaveAttribute(
       'href',
       '/app/contributions',
     );
+    expect(screen.queryByText(/^Nothing yet\./)).not.toBeInTheDocument();
+  });
+
+  it('notes "Nothing yet" above the counts when every contribution count is zero', async () => {
+    dashboard.fetchDashboard.mockResolvedValue(NEW_CONTRIBUTOR_DASHBOARD);
+    renderAt('/app/');
+    const note = await screen.findByText(
+      'Nothing yet. Validate a record or add a missing value and it counts here.',
+    );
+    const list = screen.getByRole('list', { name: 'Your contributions' });
+    expect(note.compareDocumentPosition(list)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('opens on the hero: the greeting and the headline as the only h1, with no "Workspace" page header', async () => {
+    renderAt('/app/');
+    expect(await screen.findByText(`Welcome back, ${ME.user.name}`)).toBeInTheDocument();
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Help complete what we know about how trees reproduce.');
+    expect(screen.queryByRole('heading', { name: 'Workspace' })).not.toBeInTheDocument();
   });
 
   it('renders the curation section only when curation is present', async () => {
