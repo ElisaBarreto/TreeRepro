@@ -39,3 +39,8 @@
 **Symptom:** Strict-mode violations ("resolved to 2 elements") for `getByText('suspended')` (a status badge reading "suspended" and a caption reading "Suspended 2026-…") or `getByRole('button', { name: 'Sign out' })` on the settings page ("Sign out everywhere", "Sign out <agent>").
 **Cause:** Playwright's string `name`/text locators match by substring by default; Testing Library's string `name` matcher is exact by default — the opposite convention — so instincts carried over from component tests pick the wrong default here.
 **Fix:** Pass `{ exact: true }` wherever a longer sibling name exists (`critical-flow.spec.ts`).
+
+## jsdom 30.1.0 breaks `.rejects.toThrow` in the `web` project
+**Symptom:** After bumping `jsdom` to 30.1.0, `pnpm test` fails `apps/web/src/api/client.test.ts > rejects paths that do not start with /` with `expected [Function] to throw error matching /must start with \// but got ''`. Any `await expect(Promise.reject(new Error('x'))).rejects.toThrow(/x/)` in the `web` project fails the same way; the synchronous `toThrow` passes. It fails only when Vitest starts from the repository root (`pnpm test`, `pnpm exec vitest run --project web`); `vitest run` from `apps/web` passes.
+**Cause:** A jsdom 30.1.0 regression (the release shipped several: jsdom/jsdom#4342, #4344, #4347, #4361). The thrown value is a correct `Error` with the expected message, so the matcher, not the code, is what breaks. Not bisected further.
+**Fix:** `apps/web` stays on `jsdom` 30.0.1. Retry with the next jsdom release: bump, run `pnpm test` from the root, and drop this entry when it passes.
