@@ -99,7 +99,12 @@ function CoverageMeter({
           {percent}%
         </span>
       </div>
-      <meter value={value} max={max} aria-label={label} className="meter-bar h-2.5" />
+      <meter
+        value={value}
+        max={max}
+        aria-label={label}
+        className="meter-bar [--meter-height:0.625rem]"
+      />
     </div>
   );
 }

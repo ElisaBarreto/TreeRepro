@@ -44,4 +44,17 @@ describe('RFC-72 R3 projectDescription', () => {
       }),
     ).toContain(CONTACT_EMAIL);
   });
+
+  it('RFC-13 R9 writes the counts with thousands separators', () => {
+    expect(
+      projectDescription({
+        primaryReferenceCount: 1715,
+        secondaryReferenceCount: 125,
+        recordCount: 14534,
+        speciesCount: 10316,
+      }),
+    ).toContain(
+      'spanning 1,715 primary references, 125 secondary references and 14,534 records over 10,316 species.',
+    );
+  });
 });

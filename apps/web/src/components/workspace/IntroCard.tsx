@@ -41,9 +41,11 @@ function Rings() {
   );
 }
 
-// Divider per position: three stats wrap to two columns below `sm`, so the
-// third starts a row there (a top rule) and sits beside the second above it.
-const STAT_BORDERS = ['', 'border-l', 'border-t sm:border-t-0 sm:border-l'];
+// Divider per position: the band is two columns until the card itself is
+// 32rem wide (a container query, since the sidebar makes the viewport a poor
+// guide), so the third stat starts a row there (a top rule) and sits beside
+// the second above it. The first lines up with the card's text.
+const STAT_BORDERS = ['lg:pl-14', 'border-l', 'border-t @lg:border-t-0 @lg:border-l'];
 
 /**
  * The dashboard's opening card and the page's h1 (RFC-72 R3): the greeting
@@ -62,7 +64,7 @@ export function IntroCard({ dataset, name }: { dataset: Dashboard['dataset']; na
   return (
     <section
       aria-label="About TreeRepro"
-      className="relative flex flex-col gap-7 overflow-hidden rounded-3xl bg-canopy-950 px-6 pt-8 text-mist-50 md:px-14 md:pt-12"
+      className="@container relative flex flex-col gap-7 overflow-hidden rounded-3xl bg-canopy-950 px-6 pt-8 text-mist-50 lg:px-14 lg:pt-12"
     >
       <Rings />
       <div className="relative flex max-w-3xl flex-col gap-3.5">
@@ -79,12 +81,12 @@ export function IntroCard({ dataset, name }: { dataset: Dashboard['dataset']; na
       </div>
       <ul
         aria-label="Dataset"
-        className="relative -mx-6 mt-2 grid grid-cols-2 border-t border-mist-50/15 sm:grid-cols-3 md:-mx-14"
+        className="relative -mx-6 mt-2 grid grid-cols-2 border-t border-mist-50/15 @lg:grid-cols-3 lg:-mx-14"
       >
         {stats.map((stat, index) => (
           <li
             key={stat.label}
-            className={`flex flex-col gap-1 border-mist-50/15 px-6 pt-5 pb-6 md:px-14 ${STAT_BORDERS[index]}`}
+            className={`flex min-w-0 flex-col gap-1 border-mist-50/15 px-6 pt-5 pb-6 ${STAT_BORDERS[index]}`}
           >
             <span className="font-display text-title font-bold tabular-nums">
               {formatNumber(stat.value)}
