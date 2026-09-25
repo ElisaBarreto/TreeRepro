@@ -567,6 +567,52 @@ describe('RFC-64 importRecords', () => {
     expect(stored[0]?.value).toBe(1);
   });
 
+  it('R14 a split row stored only as a later part (its part a lost to an earlier claim) is already imported', async () => {
+    const n = randomInt(100_000_000, 999_999_000);
+    const name = `Fixturia partialis-${randomBytes(4).toString('hex')}`;
+    const categorical = (id: string, value: string) =>
+      idLine(name, id, value, {
+        final_standard_trait: 'growth_form',
+        trait_value_type: 'categorical',
+      });
+    // Row 2's part a (`shrub`) is row 1's claim, so only `EB_<n+1>b` is stored.
+    const lines = [categorical(`EB_${n}`, 'shrub'), categorical(`EB_${n + 1}`, 'shrub;tree')];
+    const first = await importRecords(t.db, {
+      filePath: await writeRecords('import-part1-', lines),
+    });
+    expect((await recordsAt(first.id, 2)).map((r) => r.recordCode)).toEqual([`EB_${n + 1}b`]);
+
+    // The same file again: both rows are already imported, none a duplicate.
+    const same = await importRecords(t.db, {
+      filePath: await writeRecords('import-part2-', lines),
+      force: true,
+    });
+    expect(same).toMatchObject({ rowsInserted: 0, rowsDuplicate: 0, rowsAlreadyImported: 2 });
+
+    // A changed value: part b would be a new claim reusing `EB_<n+1>b`; it is skipped instead.
+    const changed = await importRecords(t.db, {
+      filePath: await writeRecords('import-part3-', [categorical(`EB_${n + 1}`, 'shrub;liana-x')]),
+    });
+    expect(changed).toMatchObject({
+      status: 'completed',
+      rowsInserted: 0,
+      rowsRejected: 0,
+      rowsAlreadyImported: 1,
+    });
+  });
+
+  it('R14 a stored EB_<n>0 does not mark EB_<n> as imported', async () => {
+    const n = randomInt(10_000_000, 99_999_999);
+    const name = `Fixturia decima-${randomBytes(4).toString('hex')}`;
+    await importRecords(t.db, {
+      filePath: await writeRecords('import-dec1-', [idLine(name, `EB_${n}0`, '1')]),
+    });
+    const next = await importRecords(t.db, {
+      filePath: await writeRecords('import-dec2-', [idLine(name, `EB_${n}`, '2')]),
+    });
+    expect(next).toMatchObject({ rowsInserted: 1, rowsAlreadyImported: 0 });
+  });
+
   it('R7, R14 a stored ID repeated within the file is rejected on its repeat, not skipped', async () => {
     const n = randomInt(100_000_000, 999_999_000);
     const name = `Fixturia repetita-${randomBytes(4).toString('hex')}`;

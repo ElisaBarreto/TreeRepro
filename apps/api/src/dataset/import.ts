@@ -507,13 +507,17 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
               where id_problem is null group by record_code having count(*) > 1) d
         where s.record_code = d.record_code and s.row_no > d.first_row`;
       // R14: an ID that passed those checks and is already stored — bare, or as
-      // the base of a split row's codes, whose first part is always `<ID>a`
-      // (RFC-63 R12) — is skipped before every other reason: no record, no
-      // reject, only a count.
+      // the base of any split-row code `<ID>[a-z]+` (RFC-63 R12; part `a` may be
+      // missing when it lost to an earlier claim) — is skipped before every other
+      // reason: no record, no reject, only a count. The base is cut at the
+      // letters, so `EB_10` never marks `EB_1`.
+      // ponytail: one scan of every EB_ record_code per import (~9M rows today);
+      // fine for a batch job, index it by base if imports ever run often.
       await tx`
         update import_staging s set already_imported = true
-        where s.id_problem is null and exists (
-          select 1 from trait_records r where r.record_code in (s.record_code, s.record_code || 'a'))`;
+        from (select distinct substring(record_code from '^(EB_[0-9]+)[a-z]*$') as base
+              from trait_records where record_code ~ '^EB_[0-9]+[a-z]*$') stored
+        where s.id_problem is null and s.record_code = stored.base`;
       const [{ alreadyImported }] = (await tx`
         select count(*)::int as "alreadyImported" from import_staging where already_imported`) as [
         { alreadyImported: number },
