@@ -36,7 +36,11 @@ export const listUsersQuerySchema = cursorQuerySchema.extend({
 });
 
 /** @rfc RFC-50 R3 */
-export const createUserBodySchema = z.strictObject({ email: emailSchema, name: nameSchema });
+export const createUserBodySchema = z.strictObject({
+  email: emailSchema,
+  name: nameSchema,
+  roles: z.array(z.uuid()).min(1).max(100),
+});
 
 /** @rfc RFC-50 R5 */
 export const updateUserBodySchema = z

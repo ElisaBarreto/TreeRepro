@@ -163,7 +163,7 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     await signIn(page, ADMIN_EMAIL, currentPassword, codeFor(totpSecret, 1));
   });
 
-  test('RFC-31 R3, RFC-50 R3, R5 creates the Readers role, invites B and gives B the role', async () => {
+  test('RFC-31 R3, RFC-50 R3 creates the Readers role and invites B holding it', async () => {
     await page.getByRole('link', { name: 'Roles' }).click();
     await page.getByRole('button', { name: 'New role' }).click();
     const dialog = page.getByRole('dialog', { name: 'New role' });
@@ -191,15 +191,16 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     // exact: true for the same reason as the New role dialog above.
     await invite.getByLabel('Email', { exact: true }).fill(B_EMAIL);
     await invite.getByLabel('Name', { exact: true }).fill(B_NAME);
+    await invite.getByLabel('Role', { exact: true }).selectOption({ label: ROLE_NAME });
     await invite.getByRole('button', { name: 'Send invitation' }).click();
     await expect(page.getByRole('status')).toHaveText(`Invitation sent to ${B_EMAIL}.`);
+    // RFC-50 R3: the invited user is listed already holding the chosen role.
+    await expect(page.getByRole('row').filter({ hasText: B_EMAIL })).toContainText(ROLE_NAME);
 
     await page.getByRole('link', { name: B_NAME }).click();
     await expect(page.getByRole('heading', { name: B_NAME })).toBeVisible();
     const roles = page.getByRole('region', { name: 'Roles' });
-    await roles.getByRole('checkbox', { name: /^Readers\b/ }).check();
-    await roles.getByRole('button', { name: 'Save roles' }).click();
-    await expect(roles.getByRole('status')).toHaveText('Roles saved.');
+    await expect(roles.getByRole('checkbox', { name: /^Readers\b/ })).toBeChecked();
   });
 
   test('RFC-13 R3, RFC-32 R4 B accepts, sees no Admin entry, and the API refuses the roles list', async ({

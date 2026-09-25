@@ -3,7 +3,13 @@ import userEvent from '@testing-library/user-event';
 import type { MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { ADMIN_USER, INVITED_USER, page, SUSPENDED_USER } from '../../test/admin-fixtures.ts';
+import {
+  ADMIN_USER,
+  INVITED_USER,
+  page,
+  ROLE_READERS,
+  SUSPENDED_USER,
+} from '../../test/admin-fixtures.ts';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -46,6 +52,7 @@ vi.mock('../../api/admin.ts', async (importOriginal) => ({
 const READ_ONLY: MeResponse = { ...ME, permissions: ['admin.access', 'users.read'] };
 
 beforeEach(() => {
+  admin.listRoles.mockResolvedValue([ROLE_READERS]);
   auth.fetchMe.mockReset();
   admin.listUsers.mockReset();
   admin.inviteUser.mockReset();
@@ -125,6 +132,17 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
     expect(screen.queryByRole('button', { name: 'Invite user' })).not.toBeInTheDocument();
   });
 
+  it('RFC-50 R3 hides Invite user without roles.read, which the role picker needs', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...ADMIN_ME,
+      permissions: ADMIN_ME.permissions.filter((key) => key !== 'roles.read'),
+    });
+    admin.listUsers.mockResolvedValue(page([ADMIN_USER]));
+    await openPage();
+    await screen.findByRole('table');
+    expect(screen.queryByRole('button', { name: 'Invite user' })).not.toBeInTheDocument();
+  });
+
   it('RFC-50 R3 invites a user and refreshes the list', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     admin.listUsers
@@ -137,9 +155,15 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
     const dialog = screen.getByRole('dialog', { name: 'Invite user' });
     await userEvent.type(within(dialog).getByLabelText('Email'), 'bea@example.org');
     await userEvent.type(within(dialog).getByLabelText('Name'), 'Bea');
+    await within(dialog).findByRole('option', { name: 'Readers' });
+    await userEvent.selectOptions(within(dialog).getByLabelText('Role'), 'Readers');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Send invitation' }));
     await waitFor(() =>
-      expect(admin.inviteUser).toHaveBeenCalledWith({ email: 'bea@example.org', name: 'Bea' }),
+      expect(admin.inviteUser).toHaveBeenCalledWith({
+        email: 'bea@example.org',
+        name: 'Bea',
+        roles: [ROLE_READERS.id],
+      }),
     );
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Invitation sent to bea@example.org.',
@@ -161,6 +185,8 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
     const dialog = screen.getByRole('dialog', { name: 'Invite user' });
     await userEvent.type(within(dialog).getByLabelText('Email'), 'ada@example.org');
     await userEvent.type(within(dialog).getByLabelText('Name'), 'Ada');
+    await within(dialog).findByRole('option', { name: 'Readers' });
+    await userEvent.selectOptions(within(dialog).getByLabelText('Role'), 'Readers');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Send invitation' }));
     expect(
       await within(dialog).findByText('Another account already uses this email.'),
@@ -186,6 +212,7 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Send invitation' }));
     expect(await within(dialog).findByText('Enter a valid email address.')).toBeInTheDocument();
     expect(within(dialog).getByText('Enter a name (up to 120 characters).')).toBeInTheDocument();
+    expect(within(dialog).getByText('Choose a role.')).toBeInTheDocument();
     expect(admin.inviteUser).not.toHaveBeenCalled();
   });
 });

@@ -94,9 +94,9 @@ export function adminUserRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'users.invite'),
       validate('json', createUserBodySchema),
       async (c) => {
-        const body = c.req.valid('json');
+        const { email, name, roles } = c.req.valid('json');
         const { user } = await inviting(() =>
-          inviteUser(ctx, { ...body, actorUserId: currentUser(c).id }),
+          inviteUser(ctx, { email, name, roleIds: roles, actorUserId: currentUser(c).id }),
         );
         return c.json({ data: await getUser(ctx.db, user.id) }, 201);
       },

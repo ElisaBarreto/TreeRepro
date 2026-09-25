@@ -1,3 +1,4 @@
+import { recordingRefusal, setUserRoles } from '../../access/roles.ts';
 import { recordAudit } from '../../audit/audit.ts';
 import type { UserRow } from '../../db/schema/users.ts';
 import { AppError } from '../../http/errors.ts';
@@ -10,6 +11,8 @@ import { activateUser, createInvitedUser, findUserByEmail, UserEmailTakenError }
 export interface InviteInput {
   email: string;
   name: string;
+  /** Set as a new user's roles in the same transaction; a re-invite keeps the roles (RFC-50 R3). */
+  roleIds?: string[];
   /** Null for the seed command. */
   actorUserId: string | null;
 }
@@ -33,26 +36,41 @@ export class InvitationMailError extends Error {
   }
 }
 
-/** @rfc RFC-20 R4, R7 */
+/**
+ * @rfc RFC-20 R4, R7
+ * @rfc RFC-50 R3
+ * @rfc RFC-31 R14
+ */
 export async function inviteUser(
   ctx: AuthContext,
   input: InviteInput,
 ): Promise<{ user: UserRow; link: string; expiresAt: Date }> {
   const now = new Date(ctx.now());
-  const result = await ctx.db.transaction(async (tx) => {
-    const existing = await findUserByEmail(tx, input.email);
-    if (existing && existing.status !== 'invited') throw new UserEmailTakenError();
-    const user =
-      existing ?? (await createInvitedUser(tx, { email: input.email, name: input.name, now }));
-    const { raw, expiresAt } = await issueToken(tx, { userId: user.id, kind: 'invite', now });
-    await recordAudit(tx, {
-      actorUserId: input.actorUserId,
-      action: 'auth.invite.created',
-      targetType: 'user',
-      targetId: user.id,
-    });
-    return { user, raw, expiresAt };
-  });
+  // `recordingRefusal` on the root connection, as in `updateUser`: a refused
+  // role rolls the invitation back and its audit entry is written afterwards.
+  const result = await recordingRefusal(ctx.db, () =>
+    ctx.db.transaction(async (tx) => {
+      const existing = await findUserByEmail(tx, input.email);
+      if (existing && existing.status !== 'invited') throw new UserEmailTakenError();
+      const user =
+        existing ?? (await createInvitedUser(tx, { email: input.email, name: input.name, now }));
+      const { raw, expiresAt } = await issueToken(tx, { userId: user.id, kind: 'invite', now });
+      await recordAudit(tx, {
+        actorUserId: input.actorUserId,
+        action: 'auth.invite.created',
+        targetType: 'user',
+        targetId: user.id,
+      });
+      // A re-invite only re-issues the link; roles change through RFC-50 R5.
+      if (input.roleIds !== undefined && !existing) {
+        await setUserRoles(
+          { ...ctx, db: tx },
+          { userId: user.id, roleIds: input.roleIds, actorUserId: input.actorUserId },
+        );
+      }
+      return { user, raw, expiresAt };
+    }),
+  );
   const link = `${ctx.appOrigin}/invite/${result.raw}`;
   const mail = inviteEmail({
     name: result.user.name,

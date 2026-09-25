@@ -53,17 +53,20 @@ describe('RFC-50 R2–R5, R11 request schemas', () => {
     expect(userIdParamSchema.safeParse({ id: '0'.repeat(64) }).success).toBe(false);
   });
 
-  it('create needs email and name', () => {
-    expect(createUserBodySchema.safeParse({ email: 'ada@example.test', name: 'Ada' }).success).toBe(
-      true,
-    );
-    expect(createUserBodySchema.safeParse({ email: 'not-an-email', name: 'Ada' }).success).toBe(
-      false,
-    );
-    expect(createUserBodySchema.safeParse({ email: 'ada@example.test' }).success).toBe(false);
+  it('create takes email, name and a non-empty list of role ids', () => {
+    const role = '019a0000-0000-7000-8000-000000000002';
+    const ok = { email: 'ada@example.test', name: 'Ada', roles: [role] };
+    expect(createUserBodySchema.safeParse(ok).success).toBe(true);
+    expect(createUserBodySchema.safeParse({ ...ok, email: 'not-an-email' }).success).toBe(false);
     expect(
-      createUserBodySchema.safeParse({ email: 'ada@example.test', name: 'Ada', roles: [] }).success,
+      createUserBodySchema.safeParse({ email: 'ada@example.test', roles: [role] }).success,
     ).toBe(false);
+    for (const roles of [undefined, [], ['admin']]) {
+      const parsed = createUserBodySchema.safeParse({ ...ok, roles });
+      expect(parsed.success, String(roles)).toBe(false);
+      expect(parsed.error?.issues[0]?.path[0]).toBe('roles');
+    }
+    expect(createUserBodySchema.safeParse({ ...ok, extra: 1 }).success).toBe(false);
   });
 
   it('update needs at least one of name and roles; roles are uuids', () => {

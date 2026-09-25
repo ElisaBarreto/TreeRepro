@@ -5,6 +5,7 @@ import {
   type PermissionKey,
   userSchema,
 } from '@treerepro/contracts';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
@@ -17,6 +18,7 @@ import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser, randomEmail } from '../../../../test/helpers/users.ts';
 import { findUserByEmail } from '../../../auth/users.ts';
+import { auditLog } from '../../../db/schema/audit-log.ts';
 import { forgetCached } from '../../../redis/cache.ts';
 
 async function adminCookie(t: ReturnType<typeof useTestApp>) {
@@ -71,23 +73,33 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
 
   it('invites with 201, audits with the admin as actor, and refuses a taken email', async () => {
     const { admin, cookie } = await adminCookie(t);
+    const role = await createRole(t.db, { permissions: ['users.read'] });
     const email = randomEmail();
     const res = await call(t.app, 'POST', '/api/admin/users', {
       cookie,
-      body: { email, name: 'Grace' },
+      body: { email, name: 'Grace', roles: [role.id] },
     });
     expect(res.status).toBe(201);
     const { data } = await res.json();
-    expect(data).toMatchObject({ email, name: 'Grace', status: 'invited', roles: [] });
+    expect(data).toMatchObject({
+      email,
+      name: 'Grace',
+      status: 'invited',
+      roles: [{ id: role.id, name: role.name }],
+    });
     expect(t.mail.sent.at(-1)?.to).toBe(email);
     expect(await lastAudit(t.db, 'auth.invite.created', { targetId: data.id })).toMatchObject({
       actorUserId: admin.id,
       targetId: data.id,
     });
+    expect(await lastAudit(t.db, 'users.roles_changed', { targetId: data.id })).toMatchObject({
+      actorUserId: admin.id,
+      metadata: { added: [role.id], removed: [] },
+    });
     const taken = await createUser(t.db);
     const dup = await call(t.app, 'POST', '/api/admin/users', {
       cookie,
-      body: { email: taken.email, name: 'X' },
+      body: { email: taken.email, name: 'X', roles: [role.id] },
     });
     expect(dup.status).toBe(409);
     expect((await dup.json()).error.code).toBe('USER_EMAIL_TAKEN');
@@ -95,16 +107,19 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
 
   it('answers 502 MAIL_SEND_FAILED when the email fails, keeps the user, and can re-send', async () => {
     const { cookie } = await adminCookie(t);
+    const role = await createRole(t.db, { permissions: ['users.read'] });
     const email = randomEmail();
     t.mail.failNext(new Error('smtp down'));
     const res = await call(t.app, 'POST', '/api/admin/users', {
       cookie,
-      body: { email, name: 'Grace' },
+      body: { email, name: 'Grace', roles: [role.id] },
     });
     expect(res.status).toBe(502);
     expect((await res.json()).error.code).toBe('MAIL_SEND_FAILED');
     const user = await findUserByEmail(t.db, email);
     expect(user?.status).toBe('invited');
+    const kept = await call(t.app, 'GET', `/api/admin/users/${user?.id}`, { cookie });
+    expect((await kept.json()).data.roles).toEqual([{ id: role.id, name: role.name }]);
     const sent = t.mail.sent.length;
     const resend = await call(t.app, 'POST', `/api/admin/users/${user?.id}/resend-invite`, {
       cookie,
@@ -118,6 +133,123 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
     });
     expect(wrong.status).toBe(409);
     expect((await wrong.json()).error.code).toBe('USER_INVALID_STATUS');
+  });
+});
+
+describe('RFC-50 R3, RFC-31 R12, R14 roles of an invitation', () => {
+  const t = useTestApp();
+
+  async function auditCount(action: string, actorUserId: string) {
+    const rows = await t.db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, action), eq(auditLog.actorUserId, actorUserId)));
+    return rows.length;
+  }
+
+  async function inviter(permissions: PermissionKey[]) {
+    const role = await createRole(t.db, { permissions });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    return { actor: user, cookie: (await loginAs(t, user)).cookie };
+  }
+
+  it('refuses an invitation without a role: 400 at path roles, nothing created', async () => {
+    const { cookie } = await adminCookie(t);
+    for (const body of [
+      { email: randomEmail(), name: 'Grace' },
+      { email: randomEmail(), name: 'Grace', roles: [] },
+    ]) {
+      const res = await call(t.app, 'POST', '/api/admin/users', { cookie, body });
+      expect(res.status).toBe(400);
+      const { error } = await res.json();
+      expect(error.code).toBe('VALIDATION_FAILED');
+      expect(error.details).toContainEqual(expect.objectContaining({ path: 'roles' }));
+      expect(await findUserByEmail(t.db, body.email)).toBeNull();
+    }
+  });
+
+  it('answers 404 ROLE_NOT_FOUND for an unknown role and leaves no user nor email', async () => {
+    const { cookie } = await adminCookie(t);
+    const email = randomEmail();
+    const sent = t.mail.sent.length;
+    const res = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [UNKNOWN] },
+    });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe('ROLE_NOT_FOUND');
+    expect(await findUserByEmail(t.db, email)).toBeNull();
+    expect(t.mail.sent).toHaveLength(sent);
+  });
+
+  it('a non-admin cannot invite an admin: 403, one refusal entry, no user nor email', async () => {
+    const { actor, cookie } = await inviter(['users.invite']);
+    const admin = await adminRoleId(t.db);
+    const email = randomEmail();
+    const sent = t.mail.sent.length;
+    const res = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [admin] },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('PERMISSION_DENIED');
+    expect(await findUserByEmail(t.db, email)).toBeNull();
+    expect(t.mail.sent).toHaveLength(sent);
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
+    ).toMatchObject({ targetType: 'user', metadata: { reason: 'admin_role', added: [admin] } });
+    expect(await auditCount('roles.delegation_refused', actor.id)).toBe(1);
+    expect(await auditCount('auth.invite.created', actor.id)).toBe(0);
+    expect(await auditCount('users.roles_changed', actor.id)).toBe(0);
+  });
+
+  it('a non-admin invites within their ceiling and is refused above it', async () => {
+    const { actor, cookie } = await inviter(['users.invite', 'users.read']);
+    const within = await createRole(t.db, { permissions: ['users.read'] });
+    const above = await createRole(t.db, { permissions: ['users.update'] });
+    const ok = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email: randomEmail(), name: 'Grace', roles: [within.id] },
+    });
+    expect(ok.status).toBe(201);
+    expect((await ok.json()).data.roles).toEqual([{ id: within.id, name: within.name }]);
+    const email = randomEmail();
+    const refused = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [above.id] },
+    });
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).error.code).toBe('PERMISSION_DENIED');
+    expect(await findUserByEmail(t.db, email)).toBeNull();
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
+    ).toMatchObject({ metadata: { reason: 'ceiling', added: [above.id] } });
+    expect(await auditCount('roles.delegation_refused', actor.id)).toBe(1);
+  });
+
+  it('re-inviting an invited user re-issues the invitation and leaves their roles as they are', async () => {
+    const { cookie: adminCookieValue } = await adminCookie(t);
+    const kept = await createRole(t.db, { permissions: ['users.read'] });
+    const email = randomEmail();
+    const first = await call(t.app, 'POST', '/api/admin/users', {
+      cookie: adminCookieValue,
+      body: { email, name: 'Grace', roles: [kept.id] },
+    });
+    const { data } = await first.json();
+    const { actor, cookie } = await inviter(['users.invite', 'users.read']);
+    const other = await createRole(t.db, { permissions: ['users.read'] });
+    const sent = t.mail.sent.length;
+    const again = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [other.id] },
+    });
+    expect(again.status).toBe(201);
+    expect((await again.json()).data).toMatchObject({
+      id: data.id,
+      roles: [{ id: kept.id, name: kept.name }],
+    });
+    expect(t.mail.sent).toHaveLength(sent + 1);
+    expect(await auditCount('users.roles_changed', actor.id)).toBe(0);
   });
 });
 

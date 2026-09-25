@@ -31,7 +31,8 @@ type Notice = { tone: 'success' | 'error'; text: string } | null;
 
 /**
  * Everyone with an account, newest first (the API's order, RFC-50 R2),
- * filtered by status; "Invite user" with `users.invite`.
+ * filtered by status; "Invite user" with `users.invite` and `roles.read`
+ * (its role picker lists `GET /api/admin/roles`).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-50 R2, R3
  */
@@ -53,7 +54,7 @@ export function UsersPage() {
         title="Users"
         description="Everyone with an account, newest first."
         actions={
-          hasPermission(me, 'users.invite') ? (
+          hasPermission(me, 'users.invite') && hasPermission(me, 'roles.read') ? (
             <Button onClick={() => setInviting(true)}>Invite user</Button>
           ) : null
         }

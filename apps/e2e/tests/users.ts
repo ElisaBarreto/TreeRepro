@@ -18,10 +18,9 @@ export async function adminContext(browser: Browser): Promise<BrowserContext> {
 }
 
 /**
- * Invites a fresh user, accepts the invitation in a new context, grants
- * `role` (looked up by name through `GET /api/admin/roles`, since the roles
- * this invites into are created per plan rather than seeded) and signs in
- * again so the returned context reflects it. RFC-50 R3, R5.
+ * Invites a fresh user holding `role` (looked up by name through
+ * `GET /api/admin/roles`) and accepts the invitation in a new context.
+ * RFC-50 R3.
  */
 export async function inviteAndActivate(
   browser: Browser,
@@ -34,17 +33,27 @@ export async function inviteAndActivate(
   password: string;
   userId: string;
 }> {
+  const roles = await apiCall<{ data: Role[] }>(admin, 'GET', '/api/admin/roles');
+  if (roles.status !== 200 || !roles.json) {
+    throw new Error(`GET /api/admin/roles answered ${roles.status}`);
+  }
+  const role = roles.json.data.find((candidate) => candidate.name === input.role);
+  if (!role) throw new Error(`no role named ${input.role} (GET /api/admin/roles)`);
+
   const email = `e2e-${randomBytes(6).toString('hex')}@e2e.test`;
   const name = input.name ?? 'E2E User';
   const invited = await apiCall<{ data: CreatedUser }>(admin, 'POST', '/api/admin/users', {
     email,
     name,
+    roles: [role.id],
   });
   if (invited.status !== 201 || !invited.json) {
     throw new Error(`POST /api/admin/users answered ${invited.status} for ${email}`);
   }
   const userId = invited.json.data.id;
 
+  // The role is held from the invitation on, so the session the accept step
+  // opens already carries it.
   const context = await browser.newContext();
   const page = await context.newPage();
   const link = await waitForLink(page.request, email, 'invite');
@@ -53,29 +62,6 @@ export async function inviteAndActivate(
   await page.getByLabel('New password').fill(userPassword);
   await page.getByLabel('Confirm password').fill(userPassword);
   await page.getByRole('button', { name: 'Set password and sign in' }).click();
-  await page.waitForURL(/\/app$/);
-
-  const roles = await apiCall<{ data: Role[] }>(admin, 'GET', '/api/admin/roles');
-  if (roles.status !== 200 || !roles.json) {
-    throw new Error(`GET /api/admin/roles answered ${roles.status}`);
-  }
-  const role = roles.json.data.find((candidate) => candidate.name === input.role);
-  if (!role) throw new Error(`no role named ${input.role} (GET /api/admin/roles)`);
-  const patched = await apiCall(admin, 'PATCH', `/api/admin/users/${userId}`, {
-    roles: [role.id],
-  });
-  if (patched.status !== 200) {
-    throw new Error(`PATCH /api/admin/users/${userId} answered ${patched.status}`);
-  }
-
-  // A fresh sign-in (rather than trusting the session the accept step left
-  // behind) so the SPA refetches `/api/auth/me` and renders role-gated UI
-  // for the role just granted, not the one held when the page last loaded.
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await page.waitForURL(/\/$/);
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password', { exact: true }).fill(userPassword);
-  await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL(/\/app$/);
 
   return { context, page, email, password: userPassword, userId };
