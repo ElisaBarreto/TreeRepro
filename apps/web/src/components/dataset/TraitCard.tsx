@@ -39,9 +39,9 @@ function pendingCount(summary: TraitSummary): number {
  * siblings, never nested inside the main button, so a click on either never
  * also opens the panel. Shows the summary the API computed (RFC-63 R10): the
  * top levels as bars scaled against the most frequent one, or
- * min · median · max for a measurement, and how many records still wait for
- * harmonisation. Only spans inside the main button,
- * so its content stays phrasing content.
+ * min · mean · max for a measurement (the mean a dash when no record has
+ * one), and how many records still wait for harmonisation. Only spans inside
+ * the main button, so its content stays phrasing content.
  * @rfc RFC-13 R11
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1
@@ -103,10 +103,10 @@ export function TraitCard({
         {numeric ? (
           <span className="flex flex-col">
             <span className="text-label uppercase tracking-[0.06em] text-mist-500">
-              min · median · max
+              min · mean · max
             </span>
             <span className="text-body tabular-nums text-canopy-900">
-              {`${formatNumber(numeric.min)} · ${formatNumber(numeric.median)} · ${formatNumber(numeric.max)}${trait.unit ? ` ${trait.unit}` : ''}`}
+              {`${formatNumber(numeric.min)} · ${numeric.mean === null ? '—' : formatNumber(numeric.mean)} · ${formatNumber(numeric.max)}${trait.unit ? ` ${trait.unit}` : ''}`}
             </span>
           </span>
         ) : null}

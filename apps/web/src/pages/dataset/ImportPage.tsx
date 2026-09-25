@@ -22,6 +22,8 @@ const REASONS: Record<ImportRejectReason, string> = {
   unknown_reference: 'Unknown reference',
   doi_taken: 'DOI already taken',
   invalid_value: 'Invalid value',
+  invalid_record_id: 'Missing or malformed ID',
+  duplicate_record_id: 'ID already used',
 };
 
 // The columns of the import file in file order (RFC-64 R2). A raw row is a
@@ -43,6 +45,7 @@ const RAW_ROW_COLUMNS = [
   'original_value_clean',
   'trait_value_type',
   'harmonised_value',
+  'ID',
 ];
 
 function orderedColumns(rawRow: Record<string, string>): string[] {
@@ -120,6 +123,7 @@ function Counts({ batch }: { batch: ImportBatch }) {
     ['Total', batch.rowsTotal],
     ['Inserted', batch.rowsInserted],
     ['Duplicate', batch.rowsDuplicate],
+    ['Already imported', batch.rowsAlreadyImported],
     ['Rejected', batch.rowsRejected],
     ['Pending', batch.rowsPending],
   ];

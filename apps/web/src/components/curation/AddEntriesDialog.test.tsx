@@ -177,7 +177,7 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     expect(curation.createRecords.mock.calls[0]?.[0]).toEqual({
       speciesId: SPECIES.id,
       traitId: SEED_MASS,
-      value: { numeric: 12.5 },
+      value: { quantitative: { single: 12.5 } },
       sources: { personalObservation: true },
     });
     expect(curation.resolveDoi).not.toHaveBeenCalled();

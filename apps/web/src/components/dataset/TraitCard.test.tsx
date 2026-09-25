@@ -49,14 +49,26 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(screen.queryByText('level_5')).not.toBeInTheDocument();
   });
 
-  it('shows min · median · max with the unit for a quantitative trait, without a pending line', () => {
+  it('shows min · mean · max with the unit for a quantitative trait, without a pending line', () => {
     render(<TraitCard summary={SEED_MASS_SUMMARY} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: /seed mass/ });
     expect(card).toHaveTextContent('mg');
     expect(card).toHaveTextContent('3 records');
+    expect(within(card).getByText('min · mean · max')).toBeInTheDocument();
     expect(within(card).getByText('0.5 · 1.25 · 3 mg')).toBeInTheDocument();
     expect(card).not.toHaveTextContent('pending');
     expect(card).not.toHaveTextContent('accepted');
+  });
+
+  it('spec R-5 shows a dash for the mean when no record has a single value or a mean', () => {
+    render(
+      <TraitCard
+        summary={{ ...SEED_MASS_SUMMARY, numeric: { min: 2, max: 8, mean: null, count: 1 } }}
+        onOpen={() => {}}
+      />,
+    );
+    const card = screen.getByRole('button', { name: /seed mass/ });
+    expect(within(card).getByText('2 · — · 8 mg')).toBeInTheDocument();
   });
 
   it('says "1 record" for a single record and calls onOpen when clicked', async () => {

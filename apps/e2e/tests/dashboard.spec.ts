@@ -79,7 +79,7 @@ test.describe('RFC-72 workspace dashboard (plan 11b)', () => {
     const recordCreated = await apiCall(admin, 'POST', '/api/records', {
       speciesId: species.id,
       traitId: trait.id,
-      value: { numeric: 12.5 },
+      value: { quantitative: { single: 12.5 } },
       sources: { references: [{ id: reference.id }] },
     });
     expect(recordCreated.status).toBe(201);
