@@ -18,6 +18,7 @@
 2. **Runbook:** the one-off reimport of this test phase stays the total `--replace` (no user data yet). Add a closing line: after this phase, reimports use `--replace-imported` (plan 13k); the total `--replace` becomes refused once any `TR_` record exists (RFC-64 R12 as amended).
 3. **Withdraw response and `nextRecordCodes`** — unchanged from spec §6.
 4. **`references` includes the secondary reference.** A record item's `references` is primary, then the legacy `secondary_reference_id` when present, then the `record_references` rows — the same order 13i's export uses.
+5. **The new source file is `data/sample_data.csv`** (3.2 GB); `ID` is its **last** column (after `harmonised_value`), not the first — put `'ID'` last in the expected header and in the fixture. User-plot assignments for the runbook come from `data/PIs_per_plot_filtered.csv` through the existing `prepare:imports` (which writes the `user_email,plot_id` file), like plots, plot species and synonyms.
 
 ## Global Constraints
 

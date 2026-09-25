@@ -12,6 +12,10 @@
 
 **Depends on:** 13a merged (RFC-61 / RFC-80 amended for R-16). Runs in wave 1 beside 13b, 13c, 13e, 13f. 13h depends on this plan.
 
+## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
+
+1. **Book row error**: show the ISBN error when the row has any content (`bookFilled(value)`) and the ISBN is blank, not only when an ISBN was typed; an entirely blank optional row stays error-free.
+
 ## Global Constraints
 
 - Branch `feat/13d-book-references` from `origin/main` after 13a merged, in worktree `../Elisa-13d`. Do not edit files outside the File Structure below.

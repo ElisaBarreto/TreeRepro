@@ -31,7 +31,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
   - withdraw one side: the contest record, or the contested level through **Withdraw level**, which withdraws every record of that level the actor may withdraw;
   - or **Keep both**, which writes a `resolve` annotation on the contest record.
 
-  Either way the flag clears.
+  The flag clears once the level has no visible record left, or through Keep both. A manager's Withdraw level cannot remove imported records (R-12); when some remain, the page names them and offers Keep both or an admin's withdrawal.
 - **R-11 Neutral and Dispute are removed** from the API and the UI. The contested flag is derived from contest records, not from `dispute` annotations. Old `dispute` and `neutral` rows stay in the table and are ignored.
 
 ### 1.4 Withdrawal
