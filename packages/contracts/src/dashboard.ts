@@ -42,9 +42,9 @@ export const dashboardSchema = z.strictObject({
       coverage: z.strictObject({
         cells: z.number().int().nonnegative(),
         withData: z.number().int().nonnegative(),
-        accepted: z.number().int().nonnegative(),
+        validated: z.number().int().nonnegative(),
         percentWithData: z.number().int().nonnegative(),
-        percentAccepted: z.number().int().nonnegative(),
+        percentValidated: z.number().int().nonnegative(),
       }),
       queues: z.strictObject({
         pendingGroups: z.number().int().nonnegative(),

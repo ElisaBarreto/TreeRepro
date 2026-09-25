@@ -68,7 +68,7 @@ describe('RFC-69 R5-R7 CoveragePage', () => {
     expect(within(tiles).getByText(String(COVERAGE.traits))).toBeInTheDocument();
     expect(within(tiles).getByText(String(COVERAGE.cells))).toBeInTheDocument();
     expect(within(tiles).getByText(`${COVERAGE.percentWithData}%`)).toBeInTheDocument();
-    expect(within(tiles).getByText(`${COVERAGE.percentAccepted}%`)).toBeInTheDocument();
+    expect(within(tiles).getByText(`${COVERAGE.percentValidated}%`)).toBeInTheDocument();
   });
 
   it('renders the category table and the top gaps list', async () => {

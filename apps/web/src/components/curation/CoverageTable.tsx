@@ -55,7 +55,7 @@ export function CoverageTable({
           <Th>Category / trait</Th>
           <Th>Cells</Th>
           <Th>With data</Th>
-          <Th>Accepted</Th>
+          <Th>Validated</Th>
         </Tr>
       </Thead>
       <Tbody>
@@ -118,10 +118,10 @@ function CategoryRows({
         </Td>
         <Td className="min-w-[10rem]">
           <Meter
-            value={category.accepted}
+            value={category.validated}
             max={category.cells}
-            percent={category.percentAccepted}
-            label={`${category.category.label} species × trait cells with an accepted value`}
+            percent={category.percentValidated}
+            label={`${category.category.label} species × trait cells with a validated record`}
           />
         </Td>
       </Tr>
@@ -224,10 +224,10 @@ function TraitRow({
       </Td>
       <Td className="min-w-[10rem]">
         <Meter
-          value={trait.accepted}
+          value={trait.validated}
           max={trait.cells}
-          percent={trait.percentAccepted}
-          label={`${name} species with an accepted value`}
+          percent={trait.percentValidated}
+          label={`${name} species with a validated record`}
         />
       </Td>
     </Tr>

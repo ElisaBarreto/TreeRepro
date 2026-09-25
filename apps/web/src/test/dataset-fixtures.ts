@@ -941,7 +941,7 @@ export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
   // API's half-up integer arithmetic (RFC-69 R5) answers 58 and 29, while a
   // float quotient rounded in the browser answers 57 and 28. The fixture is
   // chosen so an assertion can tell the two apart.
-  coverage: { cells: 200, withData: 115, accepted: 57, percentWithData: 58, percentAccepted: 29 },
+  coverage: { cells: 200, withData: 115, validated: 57, percentWithData: 58, percentValidated: 29 },
   queues: { pendingGroups: 3, disputed: 2, contested: 1, proposals: 0 },
 };
 

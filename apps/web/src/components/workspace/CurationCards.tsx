@@ -168,11 +168,11 @@ export function CurationCards({
             percent={coverage.percentWithData}
           />
           <CoverageMeter
-            title="Cells with an accepted value"
-            label="Species × trait cells with an accepted value"
-            value={coverage.accepted}
+            title="Cells with a validated record"
+            label="Species × trait cells with a validated record"
+            value={coverage.validated}
             max={coverage.cells}
-            percent={coverage.percentAccepted}
+            percent={coverage.percentValidated}
           />
         </div>
         <ul

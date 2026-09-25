@@ -15,9 +15,9 @@ const category = { key: 'flower', label: 'Flower' };
 const traitRow = {
   cells: 12,
   withData: 9,
-  accepted: 6,
+  validated: 6,
   percentWithData: 75,
-  percentAccepted: 50,
+  percentValidated: 50,
   trait,
   category,
   species: 9,
@@ -26,9 +26,9 @@ const traitRow = {
 const categoryRow = {
   cells: 24,
   withData: 18,
-  accepted: 12,
+  validated: 12,
   percentWithData: 75,
-  percentAccepted: 50,
+  percentValidated: 50,
   category,
   traits: 2,
 };
@@ -38,9 +38,9 @@ const coverage = {
   traits: 2,
   cells: 24,
   withData: 18,
-  accepted: 12,
+  validated: 12,
   percentWithData: 75,
-  percentAccepted: 50,
+  percentValidated: 50,
   byCategory: [categoryRow],
   byTrait: [traitRow],
   computedAt: '2026-09-18T00:00:00.000Z',
@@ -64,16 +64,22 @@ describe('RFC-69 R5 coverageQuerySchema', () => {
 });
 
 describe('RFC-69 R5 coverageRowSchema — percentages share one definition', () => {
-  it('parses a row with percentWithData = withData/cells and percentAccepted = accepted/cells, both rounded', () => {
+  it('parses a row with percentWithData = withData/cells and percentValidated = validated/cells, both rounded', () => {
     expect(
       coverageRowSchema.parse({
         cells: 24,
         withData: 18,
-        accepted: 12,
+        validated: 12,
         percentWithData: 75,
-        percentAccepted: 50,
+        percentValidated: 50,
       }),
-    ).toEqual({ cells: 24, withData: 18, accepted: 12, percentWithData: 75, percentAccepted: 50 });
+    ).toEqual({
+      cells: 24,
+      withData: 18,
+      validated: 12,
+      percentWithData: 75,
+      percentValidated: 50,
+    });
   });
 
   it('rejects a percentage above 100', () => {
@@ -81,9 +87,9 @@ describe('RFC-69 R5 coverageRowSchema — percentages share one definition', () 
       coverageRowSchema.safeParse({
         cells: 1,
         withData: 1,
-        accepted: 1,
+        validated: 1,
         percentWithData: 101,
-        percentAccepted: 0,
+        percentValidated: 0,
       }).success,
     ).toBe(false);
   });
@@ -93,9 +99,9 @@ describe('RFC-69 R5 coverageRowSchema — percentages share one definition', () 
       coverageRowSchema.safeParse({
         cells: -1,
         withData: 0,
-        accepted: 0,
+        validated: 0,
         percentWithData: 0,
-        percentAccepted: 0,
+        percentValidated: 0,
       }).success,
     ).toBe(false);
   });
