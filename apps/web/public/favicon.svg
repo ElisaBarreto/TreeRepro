@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <title>TreeRepro</title>
   <!-- The Emblem (components/ui/Emblem.tsx) with its theme variables resolved
        to hex, since a favicon cannot read the page's CSS. -->
   <defs>
