@@ -24,6 +24,9 @@
 4. **RFC-61 R4 default** (from 13d): the reference list without a `kind` filter returns every kind except `personal_observation` (so books appear). Write this into RFC-61 R4.
 5. **Where the new rules go:** RFC-64 R14 and R15 are added in the task that edits RFC-64; RFC-66 R9 in the task that edits RFC-66; add all three to the new-rule table and to the final "every new rule number exists" check.
  The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
+6. **Source input keeps the `{ references }` wrapper** (spec §6 amended): `{ personalObservation: true } | { references: SourceRef[] }` — use it in the shared-interface mapping and in RFC-70 R1, never a bare array.
+7. **CSV formula guard**: the export rule that neutralises formula-leading cells (`=`, `+`, `-`, `@`, tab, CR) also covers a leading LF.
+8. **Withdraw level with records the actor cannot withdraw** (spec R-10 clarified): the action withdraws every record of the level the actor may withdraw; the contest clears only when the level is left with no visible record, or through Keep both. When imported records remain for a manager, the response lists them (`remaining: RecordCodeRef[]`) and the page says "<n> imported records remain — an admin can withdraw them, or use Keep both".
 
 ## Global Constraints
 

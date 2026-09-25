@@ -18,6 +18,7 @@
 2. **Share the annotations query.** Plan 13k writes the same annotation rows (plus `orphan`) to the replace sheet; export the builder used for `annotations.csv` (e.g. `annotationRowsQuery(db, { recordOrigin?: 'imported' | 'manual' })`) so 13k can reuse it. Name it in this plan's Interfaces.
 3. **Long downloads**: no new enforcement; add a line to the runbook/README export section documenting that the production Caddy `read`/`write` timeouts bound how long an export can hold its cursor, and state the current values.
  The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
+4. **CSV formula guard** also prefixes values that start with LF (and CR), since imported `raw_value` may start with a line break.
 
 ## Global Constraints
 

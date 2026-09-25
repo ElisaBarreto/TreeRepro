@@ -53,6 +53,7 @@
 2. **Record withdraw** answers `200 { data: null }` — 13a's RFC-65 R3 text was amended to match this plan.
 3. **Contest target liveness under the lock.** Check that the contested target is live (not withdrawn; for a categorical level, at least one live record remains) *inside* the create transaction, after taking the same lock the withdraw paths take (`pg_advisory_xact_lock` on species×trait, or `SELECT … FOR UPDATE` on the target rows — use whatever the withdraw path uses), so a concurrent withdrawal cannot leave a contest pointing at a withdrawn target. Add a test: target withdrawn → contest refused with 409 `RECORD_WITHDRAWN`-equivalent 404 (`RECORD_NOT_FOUND`, since withdrawn records are invisible).
  The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
+4. **Withdraw level with records the actor cannot withdraw** (spec R-10 clarified): the action withdraws every record of the level the actor may withdraw; the contest clears only when the level is left with no visible record, or through Keep both. When imported records remain for a manager, the response lists them (`remaining: RecordCodeRef[]`) and the page says "<n> imported records remain — an admin can withdraw them, or use Keep both". `withdrawLevelResultSchema` becomes `{ withdrawn: RecordCodeRef[], remaining: RecordCodeRef[] }`; the contested-queue page shows the message.
 
 ## Global Constraints
 
