@@ -20,6 +20,9 @@ const record = {
   createdBy: { id: uuid, name: 'Ada' },
   intent: null,
   respondsTo: null,
+  recordCode: 'EB_1',
+  quantitative: null,
+  references: [],
 };
 
 const summary = {

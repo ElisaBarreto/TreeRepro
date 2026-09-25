@@ -54,6 +54,8 @@ export const IMPORT_REJECT_REASONS = [
   'unknown_reference',
   'doi_taken',
   'invalid_value',
+  'invalid_record_id',
+  'duplicate_record_id',
 ] as const;
 export type ImportRejectReason = (typeof IMPORT_REJECT_REASONS)[number];
 
@@ -363,19 +365,61 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
     .nullable(),
 });
 
+/** Largest magnitude a manual number may have (RFC-64 R6). @rfc RFC-64 R6 */
+export const NUMERIC_VALUE_LIMIT = 1e308;
+
+/** @rfc RFC-65 R1 */
+export const numericValueSchema = z
+  .number()
+  .finite()
+  .refine((n) => Math.abs(n) < NUMERIC_VALUE_LIMIT, { message: 'Number is out of range' });
+
+/**
+ * A quantitative claim (spec R-5): `single` is the stored `numeric_value`;
+ * at least one of single, min, max and mean; `min ≤ max`; `sd ≥ 0`; `n` an
+ * integer ≥ 1. The manual input and the record item's `quantitative` share it.
+ * @rfc RFC-65 R1
+ * @rfc RFC-63 R15
+ */
+export const quantitativeValueSchema = z
+  .strictObject({
+    single: numericValueSchema.optional(),
+    min: numericValueSchema.optional(),
+    max: numericValueSchema.optional(),
+    mean: numericValueSchema.optional(),
+    sd: numericValueSchema.optional(),
+    n: z.number().int().min(1).max(2147483647).optional(),
+  })
+  .refine(
+    (q) =>
+      q.single !== undefined || q.min !== undefined || q.max !== undefined || q.mean !== undefined,
+    { path: ['single'], message: 'Give at least one of single, min, max or mean' },
+  )
+  .refine((q) => q.min === undefined || q.max === undefined || q.min <= q.max, {
+    path: ['min'],
+    message: 'min must not exceed max',
+  })
+  .refine((q) => q.sd === undefined || q.sd >= 0, {
+    path: ['sd'],
+    message: 'sd must not be negative',
+  });
+
 /** @rfc RFC-63 R8 */
 export const recordSchema = z.strictObject({
   id: z.uuid(),
+  recordCode: z.string(),
   speciesId: z.uuid(),
   species: z.strictObject({ id: z.uuid(), canonicalName: z.string() }),
   trait: traitRefSchema,
   valueText: z.string(),
   level: z.strictObject({ id: z.uuid(), key: z.string() }).nullable(),
   numericValue: z.number().nullable(),
+  quantitative: quantitativeValueSchema.nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
   review: z.enum(REVIEW_STATUSES),
   primaryReference: referenceRefSchema.nullable(),
   secondaryReference: referenceRefSchema.nullable(),
+  references: z.array(referenceRefSchema),
   origin: z.enum(RECORD_ORIGINS),
   createdAt: z.iso.datetime(),
   createdBy: userRefSchema.nullable(),
@@ -455,8 +499,8 @@ export const traitSummarySchema = z.strictObject({
   numeric: z
     .strictObject({
       min: z.number(),
-      median: z.number(),
       max: z.number(),
+      mean: z.number().nullable(),
       count: z.number().int().nonnegative(),
     })
     .nullable(),
@@ -502,6 +546,7 @@ export const importBatchSchema = z.strictObject({
   rowsDuplicate: z.number().int().nonnegative(),
   rowsRejected: z.number().int().nonnegative(),
   rowsPending: z.number().int().nonnegative(),
+  rowsAlreadyImported: z.number().int().nonnegative(),
   unknownLevels: z.array(unknownLevelSchema),
   error: z.string().nullable(),
 });
@@ -527,6 +572,7 @@ export type Species = z.infer<typeof speciesSchema>;
 export type ListGeneraQuery = z.infer<typeof listGeneraQuerySchema>;
 export type Genus = z.infer<typeof genusSchema>;
 export type ReferenceRef = z.infer<typeof referenceRefSchema>;
+export type ReferenceSummary = ReferenceRef;
 export type Reference = z.infer<typeof referenceSchema>;
 export type ReferenceDetail = z.infer<typeof referenceDetailSchema>;
 export type ListReferencesQuery = z.infer<typeof listReferencesQuerySchema>;
@@ -539,6 +585,7 @@ export type TraitDetail = z.infer<typeof traitDetailSchema>;
 export type ListTraitSpeciesQuery = z.infer<typeof listTraitSpeciesQuerySchema>;
 export type TraitSpeciesItem = z.infer<typeof traitSpeciesItemSchema>;
 export type UserRef = z.infer<typeof userRefSchema>;
+export type QuantitativeValue = z.infer<typeof quantitativeValueSchema>;
 export type RecordItem = z.infer<typeof recordSchema>;
 export type Annotation = z.infer<typeof annotationSchema>;
 export type RecordDetail = z.infer<typeof recordDetailSchema>;

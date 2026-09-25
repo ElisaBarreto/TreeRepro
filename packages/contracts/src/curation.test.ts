@@ -36,6 +36,9 @@ const record = {
   createdBy: { id: uuid, name: 'Ada' },
   intent: null,
   respondsTo: null,
+  recordCode: 'EB_1',
+  quantitative: null,
+  references: [],
 };
 
 describe('RFC-65 R1 createRecordBodySchema', () => {
@@ -47,20 +50,26 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
       value: { levelId: uuid },
       rawValue: 'Aug',
     });
-    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 12.5 } }).success).toBe(
-      true,
-    );
-    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1e308 } }).success).toBe(
-      false,
-    );
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { numeric: Number.NaN } }).success,
+      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 12.5 } } })
+        .success,
+    ).toBe(true);
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: 1e308 } } })
+        .success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { single: Number.NaN } } })
+        .success,
     ).toBe(false);
     expect(createRecordBodySchema.safeParse({ ...base, value: { text: 'red' } }).success).toBe(
       false,
     );
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { levelId: uuid, numeric: 1 } }).success,
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { levelId: uuid, quantitative: { single: 1 } },
+      }).success,
     ).toBe(false);
     expect(
       createRecordBodySchema.safeParse({
@@ -76,17 +85,23 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
 
   it('refuses intent without respondsToRecordId', () => {
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, intent: 'contest' })
-        .success,
-    ).toBe(false);
-    expect(
-      createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 }, respondsToRecordId: uuid })
-        .success,
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { quantitative: { single: 1 } },
+        intent: 'contest',
+      }).success,
     ).toBe(false);
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { numeric: 1 },
+        value: { quantitative: { single: 1 } },
+        respondsToRecordId: uuid,
+      }).success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { quantitative: { single: 1 } },
         intent: 'contest',
         respondsToRecordId: uuid,
       }).success,
@@ -97,17 +112,33 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { numeric: 1 },
+        value: { quantitative: { single: 1 } },
         sources: { references: Array(11).fill({ id: uuid }) },
       }).success,
     ).toBe(false);
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { numeric: 1 },
+        value: { quantitative: { single: 1 } },
         sources: { personalObservation: true },
       }).success,
     ).toBe(true);
+  });
+
+  it('spec R-5 takes the six quantitative fields and refuses min > max', () => {
+    expect(
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: { quantitative: { min: 2, max: 8, mean: 4.5, sd: 0.5, n: 12 } },
+      }).success,
+    ).toBe(true);
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: { quantitative: { min: 8, max: 2 } } })
+        .success,
+    ).toBe(false);
+    expect(createRecordBodySchema.safeParse({ ...base, value: { numeric: 1 } }).success).toBe(
+      false,
+    );
   });
 });
 

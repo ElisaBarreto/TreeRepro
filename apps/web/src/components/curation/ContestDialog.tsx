@@ -178,7 +178,8 @@ export function ContestDialog({
     const candidate = {
       speciesId: record.speciesId,
       traitId: record.trait.id,
-      value: valueType === 'quantitative' ? { numeric: Number(numeric) } : { levelId },
+      value:
+        valueType === 'quantitative' ? { quantitative: { single: Number(numeric) } } : { levelId },
       sources: sourcesToBody(sources),
       intent,
       respondsToRecordId: record.id,

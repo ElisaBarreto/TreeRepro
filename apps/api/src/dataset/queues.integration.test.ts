@@ -19,6 +19,7 @@ import {
   countDisputed,
   countPendingGroups,
   listDisputed,
+  mapPending,
   pendingGroups,
 } from './queues.ts';
 
@@ -275,5 +276,25 @@ describe('RFC-72 R1 queue counts', () => {
     const contests = await listDisputed(t.db, visibility, { limit: 50, intent: 'contest' });
     expect(contests.data).toHaveLength(2);
     expect(await countContested(t.db, visibility)).toBe(contests.data.length);
+  });
+});
+
+describe('RFC-65 R9 mapPending numeric validation', () => {
+  const t = useTestDb();
+
+  it('reports an out-of-range number at value.numeric, the path the web MapDialog reads', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    await expect(
+      mapPending(t.db, UNRESTRICTED, {
+        actorId: user.id,
+        traitId: trait.id,
+        valueText: 'huge',
+        value: { numeric: 1e308 },
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'value.numeric' }],
+    });
   });
 });

@@ -1,3 +1,4 @@
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -10,7 +11,10 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
-import { annotateRecord, createRecords } from './curation.ts';
+import { recordReferences } from '../db/schema/records.ts';
+import { referenceTraits } from '../db/schema/reference-traits.ts';
+import { bibliographicReferences } from '../db/schema/references.ts';
+import { annotateRecord, createRecords, nextRecordCodes } from './curation.ts';
 import { listDisputed, mapPending, pendingTraits } from './queues.ts';
 import { getRecord } from './records.ts';
 
@@ -134,39 +138,43 @@ describe('RFC-33 R5 mapPending by viewer', () => {
 describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
   const t = useTestDb();
 
-  it('creates multiple records across references in input order; detects duplicates', async () => {
+  it('RFC-63 R12 nextRecordCodes takes one sequence number: bare for one record, lettered for several', async () => {
+    const [one] = await nextRecordCodes(t.db, 1);
+    expect(one).toMatch(/^TR_\d+$/);
+    const three = await nextRecordCodes(t.db, 3);
+    const base = three[0]?.slice(0, -1);
+    expect(base).toMatch(/^TR_\d+$/);
+    expect(base).not.toBe(one);
+    expect(three).toEqual([`${base}a`, `${base}b`, `${base}c`]);
+    await expect(nextRecordCodes(t.db, 0)).rejects.toThrow();
+  });
+
+  it('spec R-4 creates one record per value: first reference primary, the rest in record_references', async () => {
     const { user } = await createUser(t.db);
     const trait = await createTrait(t.db, { levels: ['a', 'b'] });
     const sp = await createSpecies(t.db);
     const ref1 = await createReference(t.db);
     const ref2 = await createReference(t.db);
+    const ref3 = await createReference(t.db);
 
     const res = await createRecords(t.db, UNRESTRICTED, {
       actorId: user.id,
       speciesId: sp.id,
       traitId: trait.id,
       value: { levelId: trait.levels[0]?.id as string },
-      referenceIds: [ref1.id, ref2.id],
+      referenceIds: [ref1.id, ref2.id, ref3.id],
     });
-    expect(res.created).toHaveLength(2);
-    expect(res.created[0]?.primaryReference?.id).toBe(ref1.id);
-    expect(res.created[1]?.primaryReference?.id).toBe(ref2.id);
+    expect(res.created).toHaveLength(1);
     expect(res.duplicates).toEqual([]);
+    const record = res.created[0];
+    expect(record?.recordCode).toMatch(/^TR_\d+$/);
+    expect(record?.primaryReference?.id).toBe(ref1.id);
+    const extras = [ref2, ref3]
+      .sort((x, y) => x.citationKey.localeCompare(y.citationKey))
+      .map((r) => r.id);
+    expect(record?.references.map((r) => r.id)).toEqual([ref1.id, ...extras]);
 
-    // One duplicate, one new
-    const ref3 = await createReference(t.db);
-    const partial = await createRecords(t.db, UNRESTRICTED, {
-      actorId: user.id,
-      speciesId: sp.id,
-      traitId: trait.id,
-      value: { levelId: trait.levels[0]?.id as string },
-      referenceIds: [ref1.id, ref3.id],
-    });
-    expect(partial.created).toHaveLength(1);
-    expect(partial.created[0]?.primaryReference?.id).toBe(ref3.id);
-    expect(partial.duplicates).toEqual([{ recordId: res.created[0]?.id, referenceId: ref1.id }]);
-
-    // Both duplicates → 409 RECORD_DUPLICATE
+    // The same claim again (same primary reference) → 409 naming the record.
     await expect(
       createRecords(t.db, UNRESTRICTED, {
         actorId: user.id,
@@ -177,10 +185,112 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       }),
     ).rejects.toMatchObject({
       code: 'RECORD_DUPLICATE',
-      details: [
-        { path: 'sources.references.0', message: res.created[0]?.id },
-        { path: 'sources.references.1', message: res.created[1]?.id },
-      ],
+      details: [{ path: 'sources.references.0', message: record?.id }],
+    });
+  });
+
+  it('RFC-61 R4, R9 an extra reference equal to the secondary is not double-counted', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
+    const primary = await createReference(t.db);
+    const shared = await createReference(t.db);
+
+    const res = await createRecords(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { levelId: trait.levels[0]?.id as string },
+      referenceIds: [primary.id, shared.id],
+      secondaryReferenceId: shared.id,
+    });
+    // `shared` shows up as the secondary reference (owner amendment 4: primary,
+    // then the secondary, then record_references), not as an extra: it gets
+    // no record_references row of its own, so its usage is not double-counted.
+    expect(res.created[0]?.references.map((r) => r.id)).toEqual([primary.id, shared.id]);
+
+    const [row] = await t.db
+      .select({
+        primaryCount: bibliographicReferences.primaryCount,
+        secondaryCount: bibliographicReferences.secondaryCount,
+      })
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.id, shared.id));
+    expect(row).toMatchObject({ primaryCount: 0, secondaryCount: 1 });
+
+    const [usage] = await t.db
+      .select({ recordCount: referenceTraits.recordCount })
+      .from(referenceTraits)
+      .where(
+        and(eq(referenceTraits.referenceId, shared.id), eq(referenceTraits.traitId, trait.id)),
+      );
+    expect(usage?.recordCount).toBe(1);
+  });
+
+  it('spec R-4 a repeated extra reference writes one record_references row, not a 500', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
+    const primary = await createReference(t.db);
+    const extra = await createReference(t.db);
+
+    const res = await createRecords(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { levelId: trait.levels[0]?.id as string },
+      referenceIds: [primary.id, extra.id, extra.id],
+    });
+    expect(res.created[0]?.references.map((r) => r.id)).toEqual([primary.id, extra.id]);
+
+    const rows = await t.db
+      .select()
+      .from(recordReferences)
+      .where(eq(recordReferences.recordId, res.created[0]?.id as string));
+    expect(rows).toHaveLength(1);
+  });
+
+  it('spec R-5 stores the six quantitative fields and derives value_text from them', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    const res = await createRecords(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { quantitative: { min: 2, max: 8, mean: 4.5, sd: 0.5, n: 12 } },
+      referenceIds: [ref.id],
+    });
+    expect(res.created[0]).toMatchObject({
+      valueText: 'min=2;max=8;mean=4.5;sd=0.5;n=12',
+      numericValue: null,
+      quantitative: { min: 2, max: 8, mean: 4.5, sd: 0.5, n: 12 },
+      harmonisation: 'harmonised',
+    });
+    const single = await createRecords(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { quantitative: { single: 1e3 } },
+      referenceIds: [ref.id],
+    });
+    expect(single.created[0]).toMatchObject({
+      valueText: '1000',
+      numericValue: 1000,
+      quantitative: { single: 1000 },
+    });
+    await expect(
+      createRecords(t.db, UNRESTRICTED, {
+        actorId: user.id,
+        speciesId: sp.id,
+        traitId: trait.id,
+        value: { quantitative: { mean: 1e308 } },
+        referenceIds: [ref.id],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'value.quantitative.mean' }],
     });
   });
 
@@ -212,7 +322,10 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       intent: 'contest',
       respondsToRecordId: base.id,
     });
-    expect(contestRes.created).toHaveLength(2);
+    expect(contestRes.created).toHaveLength(1);
+    expect(contestRes.created[0]?.references.map((r) => r.id).sort()).toEqual(
+      [ref2.id, ref3.id].sort(),
+    );
     expect(contestRes.created[0]?.intent).toBe('contest');
     expect(contestRes.created[0]?.respondsTo?.id).toBe(base.id);
 
@@ -222,12 +335,10 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     const disputeAnn = updatedBase?.annotations.find((a) => a.kind === 'dispute');
     expect(disputeAnn).toBeDefined();
     expect(disputeAnn?.generated).toBe(true);
-    expect(disputeAnn?.note).toBe(
-      `Contested by record ${contestRes.created[0]?.id}, ${contestRes.created[1]?.id}`,
-    );
+    expect(disputeAnn?.note).toBe(`Contested by record ${contestRes.created[0]?.id}`);
 
     // Check responses on base record
-    expect(updatedBase?.responses).toHaveLength(2);
+    expect(updatedBase?.responses).toHaveLength(1);
 
     // Complement inserts no annotation on base
     const ref4 = await createReference(t.db);

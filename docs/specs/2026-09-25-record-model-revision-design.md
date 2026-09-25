@@ -170,7 +170,7 @@ Plans run in parallel; these names are the contract between them. A plan that ne
 | 13f | `record_references` | `(record_id uuid → trait_records, reference_id uuid → bibliographic_references)`, PK on both |
 | 13f | contracts `quantitativeValueSchema` | `{ single?, min?, max?, mean?, sd?, n? }` (numbers; `n` int ≥ 1); at least one of single/min/max/mean; `min ≤ max`; `sd ≥ 0` |
 | 13f | manual record value (contracts) | `{ levelIds: uuid[] (1–20) } \| { quantitative: QuantitativeValue }` — 13f replaces `{ numeric }` with `{ quantitative }`; 13g replaces `{ levelId }` with `{ levelIds }` |
-| 13f | trait summary `numeric` | `{ min, max, mean, count } \| null` (replaces `{ min, median, max, count }`) |
+| 13f | trait summary `numeric` | `{ min, max, mean: number \| null, count } \| null` (replaces `{ min, median, max, count }`; `mean` is null when no record has a single value or a mean) |
 | 13f | record item | gains `recordCode`, `quantitative: QuantitativeValue \| null`, `references: ReferenceSummary[]` (primary first, then `record_references`) |
 | 13d | `bibliographic_references.isbn` | `text` unique, 13 digits; `kind` gains `'book'` |
 | 13d | source input (contracts) | `{ personalObservation: true } \| { references: SourceRef[] }` (1–10), `SourceRef = { id } \| { doi } \| { isbn, citation }` — the existing wrapper is kept |

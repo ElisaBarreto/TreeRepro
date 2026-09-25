@@ -224,7 +224,8 @@ export function AddEntriesDialog({
     const candidate = {
       speciesId,
       traitId,
-      value: valueType === 'quantitative' ? { numeric: Number(numeric) } : { levelId },
+      value:
+        valueType === 'quantitative' ? { quantitative: { single: Number(numeric) } } : { levelId },
       sources: sourcesToBody(sources),
     };
     const parsed = createRecordBodySchema.safeParse(candidate);

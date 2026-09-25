@@ -59,9 +59,16 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     const terms = screen.getAllByRole('term').map((term) => term.textContent);
-    expect(terms.slice(0, 5)).toEqual(['Total', 'Inserted', 'Duplicate', 'Rejected', 'Pending']);
+    expect(terms.slice(0, 6)).toEqual([
+      'Total',
+      'Inserted',
+      'Duplicate',
+      'Already imported',
+      'Rejected',
+      'Pending',
+    ]);
     const definitions = screen.getAllByRole('definition').map((d) => d.textContent);
-    expect(definitions.slice(0, 5)).toEqual(['12,345', '12,000', '300', '45', '210']);
+    expect(definitions.slice(0, 6)).toEqual(['12,345', '12,000', '300', '15', '45', '210']);
 
     const unknown = screen.getByRole('heading', { name: 'Unknown levels' }).closest('section');
     const unknownRows = within(unknown as HTMLElement).getAllByRole('row');

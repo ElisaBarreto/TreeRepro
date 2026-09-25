@@ -80,6 +80,7 @@ export function ImportsPage() {
                 <Th className={NUMBER}>Total</Th>
                 <Th className={NUMBER}>Inserted</Th>
                 <Th className={NUMBER}>Duplicate</Th>
+                <Th className={NUMBER}>Already imported</Th>
                 <Th className={NUMBER}>Rejected</Th>
                 <Th className={NUMBER}>Pending</Th>
               </Tr>
@@ -107,6 +108,7 @@ export function ImportsPage() {
                   <Td className={NUMBER}>{formatNumber(batch.rowsTotal)}</Td>
                   <Td className={NUMBER}>{formatNumber(batch.rowsInserted)}</Td>
                   <Td className={NUMBER}>{formatNumber(batch.rowsDuplicate)}</Td>
+                  <Td className={NUMBER}>{formatNumber(batch.rowsAlreadyImported)}</Td>
                   <Td className={NUMBER}>{formatNumber(batch.rowsRejected)}</Td>
                   <Td className={NUMBER}>{formatNumber(batch.rowsPending)}</Td>
                 </Tr>

@@ -1,4 +1,10 @@
-import type { AnnotationKind, RecordDetail, RecordIntent, RecordValue } from '@treerepro/contracts';
+import type {
+  AnnotationKind,
+  QuantitativeValue,
+  RecordDetail,
+  RecordIntent,
+  RecordValue,
+} from '@treerepro/contracts';
 import { and, desc, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import {
   levelVisible,
@@ -10,7 +16,7 @@ import {
 import type { DbExecutor } from '../db/client.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
-import { traitRecords } from '../db/schema/records.ts';
+import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
@@ -57,8 +63,8 @@ async function requireReference(db: DbExecutor, id: string, path: string): Promi
 }
 
 export type ResolvedValue =
-  | { levelId: string; levelKey: string; numericValue: null }
-  | { levelId: null; levelKey: null; numericValue: number };
+  | { levelId: string; levelKey: string; quantitative: null }
+  | { levelId: null; levelKey: null; quantitative: QuantitativeValue };
 
 /**
  * A manual value against its trait: the level must belong to the trait,
@@ -91,18 +97,67 @@ export async function resolveValue(
       .limit(1);
     if (!level) throw validation(`${path}.levelId`, 'Level does not belong to this trait');
     if (!level.active) throw validation(`${path}.levelId`, 'Level is inactive');
-    return { levelId: level.id, levelKey: level.key, numericValue: null };
+    return { levelId: level.id, levelKey: level.key, quantitative: null };
   }
   if (trait.valueType !== 'quantitative')
     throw validation(path, 'A categorical trait takes a level');
-  if (!isHarmonisableNumber(String(value.numeric)))
-    throw validation(`${path}.numeric`, 'Number is out of range');
-  return { levelId: null, levelKey: null, numericValue: value.numeric };
+  const q = value.quantitative;
+  for (const key of ['single', 'min', 'max', 'mean', 'sd'] as const) {
+    const n = q[key];
+    if (n !== undefined && !isHarmonisableNumber(String(n)))
+      throw validation(`${path}.quantitative.${key}`, 'Number is out of range');
+  }
+  return { levelId: null, levelKey: null, quantitative: q };
 }
 
-/** The canonical text of a number, as PostgreSQL prints `numeric` (`1e3` → `1000`). @rfc RFC-65 R1 */
-export function numericText(n: number): SQL<string> {
-  return sql<string>`(${String(n)}::numeric)::text`;
+/**
+ * The `value_text` of a quantitative claim (RFC-63 R15): the single value as
+ * PostgreSQL prints `numeric` (`1e3` → `1000`) when it is the only field;
+ * otherwise every given field as `<name>=<value>`, `;`-joined in the order
+ * single, min, max, mean, sd, n — so claims differing in any of the six
+ * fields differ in the claim key (RFC-63 R3).
+ * @rfc RFC-63 R3, R15
+ * @rfc RFC-65 R1
+ */
+export function quantitativeText(q: QuantitativeValue): SQL<string> {
+  const num = (v: number) => sql<string>`(${String(v)}::numeric)::text`;
+  const fields = [
+    ['single', q.single],
+    ['min', q.min],
+    ['max', q.max],
+    ['mean', q.mean],
+    ['sd', q.sd],
+    ['n', q.n],
+  ] as const;
+  const given = fields.filter(([, v]) => v !== undefined) as [string, number][];
+  const [only] = given;
+  if (given.length === 1 && only?.[0] === 'single') return num(only[1]);
+  return sql<string>`concat_ws(';', ${sql.join(
+    given.map(([name, v]) => sql`${`${name}=`}::text || ${num(v)}`),
+    sql`, `,
+  )})`;
+}
+
+/**
+ * The record codes of one entry (RFC-63 R12): one `record_code_tr_seq`
+ * number, bare for a single record (`TR_5`) and lettered for several
+ * (`TR_7a`, `TR_7b`, …, `record_code_suffix` of migration 0035). A lone
+ * insert may rely on the column default instead; a form that creates several
+ * records (plan 13g) names the codes this returns.
+ * @rfc RFC-63 R12
+ */
+export async function nextRecordCodes(db: DbExecutor, count: number): Promise<string[]> {
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error('nextRecordCodes: count must be a positive integer');
+  }
+  // The FROM subquery holds a volatile call, so PostgreSQL evaluates it once:
+  // every code of the entry shares one number.
+  const rows = (await db.execute(sql`
+    select 'TR_' || s.v || case when ${count}::int = 1 then '' else record_code_suffix(g) end as code
+    from (select nextval('record_code_tr_seq') as v) s
+    cross join generate_series(1, ${count}::int) g
+    order by g`)) as unknown as { code: string }[];
+  return rows.map((r) => r.code);
 }
 
 /** The note of the dispute a contest generates on the record it answers. @rfc RFC-70 R3 */
@@ -130,8 +185,12 @@ export interface CreateRecordsResult {
 }
 
 /**
- * Creates records across multiple primary references with optional intent and response.
+ * One record per value (spec R-4): the first reference is the primary one,
+ * the others go to `record_references`. An identical claim (the RFC-63 R3 key,
+ * which names the primary reference only) creates nothing and answers 409.
+ * `duplicates` stays empty until plan 13g turns a match into a validation.
  * @rfc RFC-70 R2, R3
+ * @rfc RFC-63 R3, R16
  */
 export async function createRecords(
   db: DbExecutor,
@@ -180,9 +239,9 @@ export async function createRecords(
     if (input.intent === 'contest') {
       const sameValue =
         (value.levelId !== null && value.levelId === target.levelId) ||
-        (value.numericValue !== null &&
+        (value.quantitative?.single !== undefined &&
           target.numericValue !== null &&
-          Number(value.numericValue) === Number(target.numericValue));
+          Number(value.quantitative.single) === Number(target.numericValue));
       if (sameValue) {
         throw validation('value', 'A contest carries a different value');
       }
@@ -190,7 +249,21 @@ export async function createRecords(
   }
 
   const valueText: string | SQL<string> =
-    value.levelKey !== null ? value.levelKey : numericText(value.numericValue);
+    value.levelKey !== null ? value.levelKey : quantitativeText(value.quantitative);
+  const [primaryReferenceId, ...moreReferenceIds] = input.referenceIds;
+  if (primaryReferenceId === undefined) throw validation('sources', 'A reference is required');
+  // `record_references` counts a reference's usage once per record (RFC-61
+  // R4, R9): a reference already recorded as the primary or the secondary
+  // role, or repeated among the extras, would otherwise be double-counted —
+  // or, for a repeat, hit the table's primary key as a 500. Kept in first-
+  // occurrence order.
+  const seenReferenceIds = new Set<string>([primaryReferenceId]);
+  if (input.secondaryReferenceId !== undefined) seenReferenceIds.add(input.secondaryReferenceId);
+  const extraReferenceIds = moreReferenceIds.filter((referenceId) => {
+    if (seenReferenceIds.has(referenceId)) return false;
+    seenReferenceIds.add(referenceId);
+    return true;
+  });
 
   return db.transaction(async (tx) => {
     if (input.intent === 'contest' && input.respondsToRecordId) {
@@ -199,75 +272,60 @@ export async function createRecords(
       );
     }
 
-    const rowsToInsert = input.referenceIds.map((refId) => ({
-      speciesId: input.speciesId,
-      traitId: input.traitId,
-      valueText,
-      levelId: value.levelId,
-      numericValue: value.numericValue,
-      harmonisation: 'harmonised' as const,
-      rawValue: input.rawValue ?? null,
-      primaryReferenceId: refId,
-      secondaryReferenceId: input.secondaryReferenceId ?? null,
-      origin: 'manual' as const,
-      createdBy: input.actorId,
-      note: input.note ?? null,
-      intent: input.intent ?? null,
-      respondsToRecordId: input.respondsToRecordId ?? null,
-    }));
-
-    const inserted = await tx
+    const [inserted] = await tx
       .insert(traitRecords)
-      .values(rowsToInsert)
+      .values({
+        speciesId: input.speciesId,
+        traitId: input.traitId,
+        valueText,
+        levelId: value.levelId,
+        numericValue: value.quantitative?.single ?? null,
+        minValue: value.quantitative?.min ?? null,
+        maxValue: value.quantitative?.max ?? null,
+        meanValue: value.quantitative?.mean ?? null,
+        sdValue: value.quantitative?.sd ?? null,
+        n: value.quantitative?.n ?? null,
+        harmonisation: 'harmonised',
+        rawValue: input.rawValue ?? null,
+        primaryReferenceId,
+        secondaryReferenceId: input.secondaryReferenceId ?? null,
+        origin: 'manual',
+        createdBy: input.actorId,
+        note: input.note ?? null,
+        intent: input.intent ?? null,
+        respondsToRecordId: input.respondsToRecordId ?? null,
+      })
       .onConflictDoNothing()
-      .returning({ id: traitRecords.id, primaryReferenceId: traitRecords.primaryReferenceId });
+      .returning({ id: traitRecords.id });
 
-    // `INSERT … RETURNING` makes no promise about row order, so the response
-    // and the contest note are put back in the order the sources arrived in
-    // rather than in the order the rows came back (RFC-70 R3).
-    const insertedByRef = new Map(inserted.map((r) => [r.primaryReferenceId, r.id]));
-    const insertedIds = input.referenceIds
-      .map((refId) => insertedByRef.get(refId))
-      .filter((id) => id !== undefined);
-    const missingRefIds = input.referenceIds.filter((id) => !insertedByRef.has(id));
-    const duplicates: { recordId: string; referenceId: string }[] = [];
-
-    if (missingRefIds.length > 0) {
-      for (const refId of missingRefIds) {
-        const [existing] = await tx
-          .select({ id: traitRecords.id })
-          .from(traitRecords)
-          .where(
-            and(
-              eq(traitRecords.speciesId, input.speciesId),
-              eq(traitRecords.traitId, input.traitId),
-              eq(traitRecords.valueText, valueText),
-              input.rawValue == null
-                ? isNull(traitRecords.rawValue)
-                : eq(traitRecords.rawValue, input.rawValue),
-              eq(traitRecords.primaryReferenceId, refId),
-              input.secondaryReferenceId == null
-                ? isNull(traitRecords.secondaryReferenceId)
-                : eq(traitRecords.secondaryReferenceId, input.secondaryReferenceId),
-            ),
-          )
-          .limit(1);
-        if (existing) {
-          duplicates.push({ recordId: existing.id, referenceId: refId });
-        }
-      }
+    if (!inserted) {
+      const [existing] = await tx
+        .select({ id: traitRecords.id })
+        .from(traitRecords)
+        .where(
+          and(
+            eq(traitRecords.speciesId, input.speciesId),
+            eq(traitRecords.traitId, input.traitId),
+            eq(traitRecords.valueText, valueText),
+            input.rawValue == null
+              ? isNull(traitRecords.rawValue)
+              : eq(traitRecords.rawValue, input.rawValue),
+            eq(traitRecords.primaryReferenceId, primaryReferenceId),
+            input.secondaryReferenceId == null
+              ? isNull(traitRecords.secondaryReferenceId)
+              : eq(traitRecords.secondaryReferenceId, input.secondaryReferenceId),
+          ),
+        )
+        .limit(1);
+      throw new AppError('RECORD_DUPLICATE', 'This claim already exists; confirm it instead', [
+        { path: 'sources.references.0', message: existing?.id ?? '' },
+      ]);
     }
 
-    if (inserted.length === 0) {
-      const details = input.referenceIds.map((refId, i) => {
-        const dup = duplicates.find((d) => d.referenceId === refId);
-        return { path: `sources.references.${i}`, message: dup?.recordId ?? '' };
-      });
-      throw new AppError(
-        'RECORD_DUPLICATE',
-        'This claim already exists; confirm it instead',
-        details,
-      );
+    if (extraReferenceIds.length > 0) {
+      await tx
+        .insert(recordReferences)
+        .values(extraReferenceIds.map((referenceId) => ({ recordId: inserted.id, referenceId })));
     }
 
     if (input.intent === 'contest' && input.respondsToRecordId) {
@@ -275,18 +333,14 @@ export async function createRecords(
         recordId: input.respondsToRecordId,
         actorId: input.actorId,
         kind: 'dispute',
-        note: CONTEST_NOTE(insertedIds),
+        note: CONTEST_NOTE([inserted.id]),
         generated: true,
       });
     }
 
-    const created: RecordDetail[] = [];
-    for (const id of insertedIds) {
-      const detail = await getRecord(tx, UNRESTRICTED, id);
-      if (detail) created.push(detail);
-    }
-
-    return { created, duplicates };
+    const detail = await getRecord(tx, UNRESTRICTED, inserted.id);
+    if (!detail) throw new Error('createRecords: record vanished');
+    return { created: [detail], duplicates: [] };
   });
 }
 

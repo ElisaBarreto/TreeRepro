@@ -160,7 +160,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       body: {
         speciesId: sp1.id,
         traitId: trait.id,
-        value: { numeric: 1e3 },
+        value: { quantitative: { single: 1e3 } },
         sources: { references: [{ id: ref.id }] },
       },
     });
@@ -168,8 +168,27 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
     expect((await res.json()).data.created[0]).toMatchObject({
       valueText: '1000',
       numericValue: 1000,
+      quantitative: { single: 1000 },
       level: null,
     });
+  });
+
+  it('spec R-5 refuses min > max before touching the database', async () => {
+    const { cookie } = await scientist(t);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const ref = await createReference(t.db);
+    const res = await call(t.app, 'POST', '/api/records', {
+      cookie,
+      body: {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        value: { quantitative: { min: 8, max: 2 } },
+        sources: { references: [{ id: ref.id }] },
+      },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('VALIDATION_FAILED');
   });
 
   it('validates the value against the trait: shape, foreign level, inactive level, inactive trait', async () => {
@@ -196,7 +215,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
         body: { speciesId: sp1.id, sources: { references: [{ id: ref.id }] }, ...body },
       });
     const cases: [Record<string, unknown>, string][] = [
-      [{ traitId: cat.id, value: { numeric: 1 } }, 'value'],
+      [{ traitId: cat.id, value: { quantitative: { single: 1 } } }, 'value'],
       [{ traitId: quant.id, value: { levelId: cat.levels[0]?.id } }, 'value'],
       [{ traitId: cat.id, value: { levelId: other.levels[0]?.id } }, 'value.levelId'],
       [{ traitId: other.id, value: { levelId: other.levels[0]?.id } }, 'value.levelId'],

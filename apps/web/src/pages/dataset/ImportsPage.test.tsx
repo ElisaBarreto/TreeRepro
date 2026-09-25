@@ -37,6 +37,7 @@ const FAILED: ImportBatch = {
   rowsTotal: 0,
   rowsInserted: 0,
   rowsDuplicate: 0,
+  rowsAlreadyImported: 0,
   rowsRejected: 0,
   rowsPending: 0,
   unknownLevels: [],
@@ -77,7 +78,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportsPage', () => {
       .getAllByRole('cell')
       .map((cell) => cell.textContent);
     expect(cells[1]).toBe('records');
-    expect(cells.slice(5)).toEqual(['12,345', '12,000', '300', '45', '210']);
+    expect(cells.slice(5)).toEqual(['12,345', '12,000', '300', '15', '45', '210']);
 
     const failed = rows[2] as HTMLElement;
     expect(within(failed).getByText('failed')).toBeInTheDocument();

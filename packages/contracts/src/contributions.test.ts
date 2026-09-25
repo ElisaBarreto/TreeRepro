@@ -26,6 +26,9 @@ const record = {
   createdBy: { id: uuid, name: 'Ada' },
   intent: null,
   respondsTo: null,
+  recordCode: 'EB_1',
+  quantitative: null,
+  references: [],
 };
 
 describe('RFC-71 R1 listContributionsQuerySchema', () => {

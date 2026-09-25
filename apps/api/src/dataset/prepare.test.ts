@@ -6,6 +6,7 @@ import {
   preparePlots,
   prepareReferences,
   prepareSynonyms,
+  prepareUserPlots,
 } from './prepare.ts';
 
 const speciesPerPlot = (rows: string[][]) =>
@@ -209,5 +210,57 @@ describe('RFC-68 R14 preparePlots, out-of-range codes', () => {
     const out = preparePlots([], pis);
     expect(out.anomalies.some((a) => a.kind === 'malformed_plot_code')).toBe(true);
     expect(out.rows).toEqual([]);
+  });
+});
+
+describe('RFC-68 R14 prepareUserPlots', () => {
+  const pis = (rows: string[][]) =>
+    parseCsv(
+      [
+        'FirstName,LastName,WorkEmail,PlotCode',
+        ...rows.map((r) => r.map((c) => `"${c}"`).join(',')),
+      ].join('\n'),
+    );
+
+  it('gives one user_email,plot_id row per PI and plot, trimmed, empty parts dropped, pairs distinct', () => {
+    const out = prepareUserPlots(
+      pis([
+        ['Ana', 'B', ' ana@x.org ', 'ABU-02| ABU-01 ||ABU-02'],
+        ['Ana', 'B', 'ana@x.org', 'ABU-01'],
+        ['Caio', 'D', 'caio@y.org', 'BDF-01'],
+      ]),
+    );
+    expect(out.header).toEqual(['user_email', 'plot_id']);
+    expect(out.rows).toEqual([
+      ['ana@x.org', 'ABU-01'],
+      ['ana@x.org', 'ABU-02'],
+      ['caio@y.org', 'BDF-01'],
+    ]);
+    expect(out.anomalies).toEqual([]);
+  });
+
+  it('reports a blank e-mail or a blank plot list instead of skipping the row in silence', () => {
+    const out = prepareUserPlots(
+      pis([
+        ['Ana', 'B', '', 'ABU-01'],
+        ['Caio', 'D', 'caio@y.org', ' | '],
+      ]),
+    );
+    expect(out.rows).toEqual([]);
+    const blanks = out.anomalies.filter((a) => a.kind === 'blank_field');
+    expect(blanks.map((a) => a.detail)).toEqual([
+      'row 2: WorkEmail is blank',
+      'row 3: PlotCode is blank',
+    ]);
+  });
+
+  it('drops a pair whose plot code is anomalous, as preparePlots does, and keeps the rest of the row', () => {
+    const out = prepareUserPlots(pis([['Ana', 'B', 'ana@x.org', '37226|ABU-01|Dec.01']]));
+    expect(out.rows).toEqual([['ana@x.org', 'ABU-01']]);
+    expect(out.anomalies.map((a) => a.kind).sort()).toEqual([
+      'date_serial_plot_code',
+      'malformed_plot_code',
+    ]);
+    expect(out.anomalies.every((a) => a.detail.startsWith('row 2:'))).toBe(true);
   });
 });
