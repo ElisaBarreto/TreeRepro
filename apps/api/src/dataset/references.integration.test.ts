@@ -10,6 +10,7 @@ import {
   traitByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
+import { randomIsbn } from '../../test/helpers/isbn.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
@@ -18,6 +19,7 @@ import { bibliographicReferences } from '../db/schema/references.ts';
 import { updateReference } from './catalog.ts';
 import {
   createReferenceFromDoi,
+  ensureBookReference,
   ensurePersonalObservation,
   getReference,
   searchReferences,
@@ -236,6 +238,50 @@ describe('RFC-61 R4 references', () => {
     expect(foundPo).toBeDefined();
     expect(foundPo?.kind).toBe('personal_observation');
     expect(foundPo?.observer?.name).toBe(user.name);
+  });
+
+  it('RFC-61 R4 the default list holds publications and books, never personal observations', async () => {
+    const { user } = await createUser(t.db);
+    const k = tag();
+    const book = await ensureBookReference(t.db, {
+      isbn: randomIsbn(),
+      citation: `Doe (2001). Book ${k}.`,
+      actorId: user.id,
+    });
+    const pub = await createReference(t.db, { citationKey: `Pub_${k}` });
+
+    const byDefault = await searchReferences(t.db, UNRESTRICTED, { q: k, limit: 10 });
+    expect(byDefault.data.map((r) => r.id).sort()).toEqual([book.id, pub.id].sort());
+    expect(byDefault.data.find((r) => r.id === book.id)).toMatchObject({
+      kind: 'book',
+      isbn: expect.stringMatching(/^97[89]\d{10}$/),
+    });
+    const books = await searchReferences(t.db, UNRESTRICTED, { q: k, limit: 10, kind: 'book' });
+    expect(books.data.map((r) => r.id)).toEqual([book.id]);
+    const pubs = await searchReferences(t.db, UNRESTRICTED, {
+      q: k,
+      limit: 10,
+      kind: 'publication',
+    });
+    expect(pubs.data.map((r) => r.id)).toEqual([pub.id]);
+  });
+
+  it('RFC-61 R6, R10 a book keeps its citation: clearing it is refused, rewriting it is not', async () => {
+    const { user } = await createUser(t.db);
+    const book = await ensureBookReference(t.db, {
+      isbn: randomIsbn(),
+      citation: 'Doe (2001). Seeds.',
+      actorId: user.id,
+    });
+    await expect(
+      updateReference(t.db, { id: book.id, fullCitation: null, actorId: user.id }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'fullCitation' }] });
+    const updated = await updateReference(t.db, {
+      id: book.id,
+      fullCitation: 'Doe (2002). Seeds, second edition.',
+      actorId: user.id,
+    });
+    expect(updated.fullCitation).toBe('Doe (2002). Seeds, second edition.');
   });
 
   it('updateReference on a personal observation throws REFERENCE_IS_PERSONAL', async () => {

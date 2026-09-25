@@ -1,5 +1,5 @@
 import type { Reference, ReferenceDetail, ReferenceKind } from '@treerepro/contracts';
-import { and, asc, count, desc, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, ne, or, type SQL, sql } from 'drizzle-orm';
 import { traitVisible, UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -80,7 +80,7 @@ const isUsageCount = (part: string) => isDigits(part) && Number.isSafeInteger(Nu
  * existing category; unknown throws 400 `VALIDATION_FAILED`) keeps
  * references with a `reference_traits` row for any visible trait of that
  * category (RFC-61 R9).
- * @rfc RFC-61 R4, R9
+ * @rfc RFC-61 R4, R9, R10
  */
 export async function searchReferences(
   db: DbExecutor,
@@ -95,10 +95,13 @@ export async function searchReferences(
   },
 ): Promise<{ data: Reference[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
-  // No `kind` means publications only: a personal observation belongs to its
-  // observer and is never offered as a source to pick from (RFC-61 R7).
-  if (input.kind !== 'all') {
-    conditions.push(eq(bibliographicReferences.kind, input.kind ?? 'publication'));
+  // No `kind` means every kind but personal observations: an observation
+  // belongs to its observer and is never offered as a source to pick from
+  // (RFC-61 R7); publications and books are (RFC-61 R4).
+  if (input.kind === undefined) {
+    conditions.push(ne(bibliographicReferences.kind, 'personal_observation'));
+  } else if (input.kind !== 'all') {
+    conditions.push(eq(bibliographicReferences.kind, input.kind));
   }
   if (input.q) {
     const pattern = likePattern(input.q, 'substring');

@@ -402,7 +402,7 @@ export async function createReference(
   });
 }
 
-/** `null` clears a metadata field; `citationKey` is never null. @rfc RFC-61 R6 */
+/** `null` clears a metadata field; `citationKey` is never null. @rfc RFC-61 R6, R10 */
 export async function updateReference(
   db: DbExecutor,
   input: ReferenceFields & { id: string; actorId: string },
@@ -419,6 +419,13 @@ export async function updateReference(
         'REFERENCE_IS_PERSONAL',
         'Personal observation references cannot be edited',
       );
+    }
+    // A book is recorded under its citation (RFC-61 R10); the check
+    // `bibliographic_references_book_check` would refuse the update anyway.
+    if (current.kind === 'book' && input.fullCitation === null) {
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'fullCitation', message: 'A book needs its citation' },
+      ]);
     }
     const fields: string[] = [];
     const set: Partial<Pick<ReferenceRow, (typeof REFERENCE_FIELDS)[number]>> = {};
