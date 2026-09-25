@@ -3,11 +3,13 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createSpecies } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
+import { randomIsbn } from '../../test/helpers/isbn.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { speciesNames } from '../db/schema/taxa.ts';
 import { addSpeciesName, createReference, updateReference } from './catalog.ts';
+import { ensureBookReference } from './references.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -191,5 +193,92 @@ describe('RFC-61 R6 references carry a short and a full citation', () => {
       .from(auditLog)
       .where(eq(auditLog.targetId, created.id));
     expect(audits.filter((a) => a.action === 'references.updated')).toHaveLength(0);
+  });
+});
+
+describe('RFC-61 R6, R10 a curator writes a book by its ISBN', () => {
+  const t = useTestDb();
+
+  it('an ISBN on create makes a book, normalised, and needs the full citation', async () => {
+    const { user } = await createUser(t.db);
+    await expect(
+      createReference(t.db, { citationKey: `B_${tag()}`, isbn: randomIsbn(), actorId: user.id }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'fullCitation' }] });
+    const isbn = randomIsbn();
+    const created = await createReference(t.db, {
+      citationKey: `B_${tag()}`,
+      isbn: `${isbn.slice(0, 3)}-${isbn.slice(3)}`,
+      fullCitation: 'Doe (2001). Seeds.',
+      actorId: user.id,
+    });
+    expect(created).toMatchObject({ kind: 'book', isbn });
+    await expect(
+      createReference(t.db, {
+        citationKey: `B_${tag()}`,
+        isbn,
+        fullCitation: 'Another',
+        actorId: user.id,
+      }),
+    ).rejects.toMatchObject({ code: 'REFERENCE_ISBN_TAKEN' });
+  });
+
+  it('an ISBN on update is taken by a book only, and stays unique', async () => {
+    const { user } = await createUser(t.db);
+    const publication = await createReference(t.db, {
+      citationKey: `P_${tag()}`,
+      actorId: user.id,
+    });
+    await expect(
+      updateReference(t.db, { id: publication.id, isbn: randomIsbn(), actorId: user.id }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'isbn' }] });
+    const [a, b] = [randomIsbn(), randomIsbn()];
+    const book = await createReference(t.db, {
+      citationKey: `B_${tag()}`,
+      isbn: a,
+      fullCitation: 'Doe (2001).',
+      actorId: user.id,
+    });
+    await createReference(t.db, {
+      citationKey: `B_${tag()}`,
+      isbn: b,
+      fullCitation: 'Roe (2002).',
+      actorId: user.id,
+    });
+    await expect(
+      updateReference(t.db, { id: book.id, isbn: b, actorId: user.id }),
+    ).rejects.toMatchObject({ code: 'REFERENCE_ISBN_TAKEN' });
+    const fixed = await updateReference(t.db, {
+      id: book.id,
+      isbn: randomIsbn(),
+      actorId: user.id,
+    });
+    expect(fixed.isbn).not.toBe(a);
+  });
+
+  it('a new ISBN on a book keyed by its ISBN moves the key along, so the old ISBN can be cited again', async () => {
+    const { user } = await createUser(t.db);
+    const [oldIsbn, newIsbn] = [randomIsbn(), randomIsbn()];
+    const book = await ensureBookReference(t.db, {
+      isbn: oldIsbn,
+      citation: 'Doe (2001).',
+      actorId: user.id,
+    });
+    const moved = await updateReference(t.db, { id: book.id, isbn: newIsbn, actorId: user.id });
+    expect(moved).toMatchObject({ isbn: newIsbn, citationKey: `isbn:${newIsbn}` });
+    const again = await ensureBookReference(t.db, {
+      isbn: oldIsbn,
+      citation: 'Doe (2001).',
+      actorId: user.id,
+    });
+    expect(again.id).not.toBe(book.id);
+  });
+
+  it('a book whose isbn: key another reference holds answers REFERENCE_KEY_TAKEN, not a 500', async () => {
+    const { user } = await createUser(t.db);
+    const isbn = randomIsbn();
+    await createReference(t.db, { citationKey: `isbn:${isbn}`, actorId: user.id });
+    await expect(
+      ensureBookReference(t.db, { isbn, citation: 'Doe (2001).', actorId: user.id }),
+    ).rejects.toMatchObject({ code: 'REFERENCE_KEY_TAKEN' });
   });
 });

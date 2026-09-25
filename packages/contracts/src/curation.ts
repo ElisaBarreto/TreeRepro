@@ -14,6 +14,7 @@ import {
   traitRefSchema,
   userRefSchema,
 } from './dataset.ts';
+import { isValidIsbn } from './isbn.ts';
 import { cursorQuerySchema } from './pagination.ts';
 
 /** Free text attached to a write: 1–2,000 characters, trimmed. @rfc RFC-65 R1 */
@@ -30,10 +31,25 @@ export const recordValueSchema = z.union([
 
 /** @rfc RFC-80 R1 */
 export const doiSchema = z.string().trim().min(7).max(300);
-/** One source of a claim: a local reference or a DOI to resolve. @rfc RFC-80 R5 */
+/** An ISBN-10 or ISBN-13 as typed, hyphens and spaces allowed, with a valid check digit. @rfc RFC-61 R10 */
+export const isbnSchema = z
+  .string()
+  .trim()
+  .min(10)
+  .max(20)
+  .refine((isbn) => isValidIsbn(isbn) !== null, { message: 'Invalid ISBN' });
+/** The citation a book is recorded under: authors, year, title. @rfc RFC-61 R10 */
+export const bookCitationSchema = z.string().trim().min(1).max(2000);
+/**
+ * One source of a claim: a local reference, a DOI to resolve, or a book by
+ * ISBN with its citation (never looked up).
+ * @rfc RFC-80 R5
+ * @rfc RFC-61 R10
+ */
 export const sourceRefSchema = z.union([
   z.strictObject({ id: z.uuid() }),
   z.strictObject({ doi: doiSchema }),
+  z.strictObject({ isbn: isbnSchema, citation: bookCitationSchema }),
 ]);
 /** @rfc RFC-70 R1 */
 export const sourcesSchema = z.union([
@@ -240,7 +256,7 @@ export const speciesNameBodySchema = z
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
-/** @rfc RFC-61 R6 */
+/** @rfc RFC-61 R6, R10 */
 export const createReferenceBodySchema = z.strictObject({
   citationKey: text(2000),
   title: text(1000).optional(),
@@ -249,10 +265,11 @@ export const createReferenceBodySchema = z.strictObject({
   journal: text(1000).optional(),
   doi: text(500).optional(),
   url: text(500).optional(),
+  isbn: isbnSchema.optional(),
   shortCitation: text(200).optional(),
   fullCitation: text(2000).optional(),
 });
-/** @rfc RFC-61 R6 */
+/** @rfc RFC-61 R6, R10 */
 export const updateReferenceBodySchema = nonEmpty(
   {
     citationKey: text(2000).optional(),
@@ -262,6 +279,8 @@ export const updateReferenceBodySchema = nonEmpty(
     journal: text(1000).nullable().optional(),
     doi: text(500).nullable().optional(),
     url: text(500).nullable().optional(),
+    // Never null: a book keeps its ISBN (RFC-61 R10).
+    isbn: isbnSchema.optional(),
     shortCitation: text(200).nullable().optional(),
     fullCitation: text(2000).nullable().optional(),
   },

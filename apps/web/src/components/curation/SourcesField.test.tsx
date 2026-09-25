@@ -220,6 +220,79 @@ describe('RFC-70 R1 SourcesField', () => {
     await userEvent.type(doiRow(), DOI);
     expect(screen.getByText('This DOI is already listed.')).toBeInTheDocument();
   });
+
+  it('RFC-61 R10 takes a book by ISBN and citation, with no DOI check', async () => {
+    const { onValidity } = mount();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'ISBN' }), '0-306-40615-2');
+    expect(onValidity).toHaveBeenLastCalledWith(false);
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Citation' }),
+      'Doe, J. (2001). Seeds of the tropics.',
+    );
+    await userEvent.tab();
+    await waitFor(() => expect(onValidity).toHaveBeenLastCalledWith(true));
+    expect(curation.resolveDoi).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText('This will be recorded as your personal observation'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('RFC-61 R10 blocks a book with a bad ISBN or no citation, and says why once the ISBN is left', async () => {
+    const { onValidity } = mount();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    const isbn = screen.getByRole('textbox', { name: 'ISBN' });
+    await userEvent.type(isbn, '0-306-40615-3');
+    expect(screen.queryByText('Not a valid ISBN')).not.toBeInTheDocument();
+    await userEvent.tab();
+    expect(screen.getByText('Not a valid ISBN')).toBeInTheDocument();
+    expect(screen.getByText('Give the citation of the book')).toBeInTheDocument();
+    expect(onValidity).toHaveBeenLastCalledWith(false);
+    await userEvent.clear(isbn);
+    await userEvent.type(isbn, '978-0-306-40615-7');
+    expect(screen.queryByText('Not a valid ISBN')).not.toBeInTheDocument();
+    expect(onValidity).toHaveBeenLastCalledWith(false);
+  });
+
+  it('RFC-61 R10 asks for the ISBN of a book given only its citation; a blank book row asks nothing', async () => {
+    const { onValidity } = mount();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    await userEvent.click(screen.getByRole('textbox', { name: 'ISBN' }));
+    await userEvent.tab();
+    expect(screen.queryByText('Give the ISBN of the book')).not.toBeInTheDocument();
+    expect(onValidity).toHaveBeenLastCalledWith(true);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Citation' }), 'Doe (2001).');
+    await userEvent.tab();
+    expect(screen.getByText('Give the ISBN of the book')).toBeInTheDocument();
+    expect(onValidity).toHaveBeenLastCalledWith(false);
+  });
+
+  it('RFC-61 R10 counts book rows toward the ten and removes them again', async () => {
+    mount();
+    // 1 DOI row + 7 more + 2 books = the ten rows the field allows.
+    for (let i = 0; i < 7; i += 1) {
+      await userEvent.click(screen.getByRole('button', { name: 'Add another reference' }));
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    expect(screen.getByRole('textbox', { name: 'ISBN 2' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Citation 2' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add a book (ISBN)' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add another reference' })).not.toBeInTheDocument();
+    const removes = screen.getAllByRole('button', { name: 'Remove' });
+    await userEvent.click(removes[removes.length - 1] as HTMLElement);
+    expect(screen.queryByRole('textbox', { name: 'ISBN 2' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add a book (ISBN)' })).toBeInTheDocument();
+  });
+
+  it('shows the API error of a book under its field', async () => {
+    mount({ 'sources.references.0.citation': 'Citation is too long.' });
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'ISBN' }), '9780306406157');
+    expect(screen.getByRole('textbox', { name: 'Citation' })).toHaveAccessibleDescription(
+      'Authors, year, title Citation is too long.',
+    );
+  });
 });
 
 describe('RFC-70 R1 sourcesToBody', () => {
@@ -229,5 +302,22 @@ describe('RFC-70 R1 sourcesToBody', () => {
 
   it('reads no DOI at all as a personal observation', () => {
     expect(sourcesToBody({ dois: [''] })).toEqual({ personalObservation: true });
+  });
+
+  it('RFC-61 R10 sends the books after the DOIs, trimmed, and drops blank book rows', () => {
+    expect(
+      sourcesToBody({
+        dois: ['10.1/x', ''],
+        books: [
+          { isbn: ' 0-306-40615-2 ', citation: ' Doe (2001). Seeds. ' },
+          { isbn: '', citation: '  ' },
+        ],
+      }),
+    ).toEqual({
+      references: [{ doi: '10.1/x' }, { isbn: '0-306-40615-2', citation: 'Doe (2001). Seeds.' }],
+    });
+    expect(sourcesToBody({ dois: [''], books: [{ isbn: '', citation: '' }] })).toEqual({
+      personalObservation: true,
+    });
   });
 });

@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { createReference } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { fakeDoiClient } from '../../test/helpers/doi.ts';
+import { randomIsbn } from '../../test/helpers/isbn.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { ensurePersonalObservation } from './references.ts';
-import { resolveDoi, resolveSources } from './sources.ts';
+import { resolveDoi, resolveSourceRef, resolveSources } from './sources.ts';
 
 describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
   const t = useTestDb();
@@ -191,5 +192,87 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     expect((known as { reference: { citationKey: string } }).reference.citationKey).toBe(
       'doi:10.2222/y',
     );
+  });
+
+  it('RFC-61 R10 a book is one reference per ISBN, whether given as ISBN-10 or ISBN-13', async () => {
+    const { user } = await createUser(t.db);
+    const ctx = { db: t.db, doi: fakeDoiClient() };
+    const citation = 'Doe, J. (2001). Seeds of the tropics. Tropical Press.';
+    // A fixed pair (the one book this file names by hand), so the ISBN-10
+    // form can be written out; every other test uses randomIsbn().
+    const [id] = await resolveSources(ctx, user.id, {
+      references: [{ isbn: '0-306-40615-2', citation }],
+    });
+    const byId = eq(bibliographicReferences.id, id ?? '');
+    const [row] = await t.db.select().from(bibliographicReferences).where(byId);
+    expect(row).toMatchObject({
+      kind: 'book',
+      isbn: '9780306406157',
+      citationKey: 'isbn:9780306406157',
+      fullCitation: citation,
+      shortCitation: citation,
+      doi: null,
+      title: null,
+      createdBy: user.id,
+    });
+    // Again, as the ISBN-13 and with another citation: the same reference,
+    // its citation untouched, no second audit entry.
+    expect(
+      await resolveSources(ctx, user.id, {
+        references: [{ isbn: '978-0-306-40615-7', citation: 'Another text' }],
+      }),
+    ).toEqual([id]);
+    const [again] = await t.db.select().from(bibliographicReferences).where(byId);
+    expect(again?.fullCitation).toBe(citation);
+    const audits = await t.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.targetId, id ?? ''));
+    expect(audits.map((a) => [a.action, a.metadata])).toEqual([
+      ['references.created', { source: 'isbn' }],
+    ]);
+    // The confirmation's supporting reference goes through the same path.
+    expect(
+      await resolveSourceRef(ctx, user.id, { isbn: '9780306406157', citation }, 'reference'),
+    ).toBe(id);
+  });
+
+  it('RFC-61 R10 cuts a long citation to 200 characters for the short citation only', async () => {
+    const { user } = await createUser(t.db);
+    const ctx = { db: t.db, doi: fakeDoiClient() };
+    const citation = `${'Author, A.; '.repeat(25)}(2001). Seeds.`;
+    const [id] = await resolveSources(ctx, user.id, {
+      references: [{ isbn: randomIsbn(), citation }],
+    });
+    const [row] = await t.db
+      .select()
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.id, id ?? ''));
+    expect(row?.fullCitation).toBe(citation);
+    expect(row?.shortCitation).toBe(`${citation.slice(0, 199)}…`);
+    expect(row?.shortCitation).toHaveLength(200);
+  });
+
+  it('RFC-61 R10 refuses a malformed ISBN and counts one book given twice once', async () => {
+    const { user } = await createUser(t.db);
+    const ctx = { db: t.db, doi: fakeDoiClient() };
+    await expect(
+      resolveSources(ctx, user.id, { references: [{ isbn: '0-306-40615-3', citation: 'X' }] }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.0.isbn' }],
+    });
+    const isbn = randomIsbn();
+    await expect(
+      resolveSources(ctx, user.id, {
+        references: [
+          { isbn, citation: 'A' },
+          { isbn, citation: 'A' },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.1.isbn' }],
+    });
   });
 });

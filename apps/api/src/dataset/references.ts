@@ -1,8 +1,9 @@
 import type { Reference, ReferenceDetail, ReferenceKind } from '@treerepro/contracts';
-import { and, asc, count, desc, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, ne, or, type SQL, sql } from 'drizzle-orm';
 import { traitVisible, UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { isUniqueViolation } from '../db/errors.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
 import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
@@ -41,6 +42,7 @@ export function toReference(
     observer: observer?.id ? { id: observer.id, name: observer.name } : null,
     shortCitation: row.shortCitation,
     fullCitation: row.fullCitation,
+    isbn: row.isbn,
   };
 }
 
@@ -79,7 +81,7 @@ const isUsageCount = (part: string) => isDigits(part) && Number.isSafeInteger(Nu
  * existing category; unknown throws 400 `VALIDATION_FAILED`) keeps
  * references with a `reference_traits` row for any visible trait of that
  * category (RFC-61 R9).
- * @rfc RFC-61 R4, R9
+ * @rfc RFC-61 R4, R9, R10
  */
 export async function searchReferences(
   db: DbExecutor,
@@ -94,10 +96,13 @@ export async function searchReferences(
   },
 ): Promise<{ data: Reference[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
-  // No `kind` means publications only: a personal observation belongs to its
-  // observer and is never offered as a source to pick from (RFC-61 R7).
-  if (input.kind !== 'all') {
-    conditions.push(eq(bibliographicReferences.kind, input.kind ?? 'publication'));
+  // No `kind` means every kind but personal observations: an observation
+  // belongs to its observer and is never offered as a source to pick from
+  // (RFC-61 R7); publications and books are (RFC-61 R4).
+  if (input.kind === undefined) {
+    conditions.push(ne(bibliographicReferences.kind, 'personal_observation'));
+  } else if (input.kind !== 'all') {
+    conditions.push(eq(bibliographicReferences.kind, input.kind));
   }
   if (input.q) {
     const pattern = likePattern(input.q, 'substring');
@@ -324,6 +329,71 @@ export function fullCitationFrom(metadata: DoiMetadata, doi: string): string {
     Boolean(part),
   );
   return `${parts.join('. ')}. https://doi.org/${doi}`;
+}
+
+/**
+ * The `book` reference of a normalised ISBN-13, created on first use with
+ * `citation` as its full citation and, cut to 200 characters, as its short
+ * one; the citation key is `isbn:<isbn>`. A later use of the same ISBN
+ * returns the existing reference and leaves its citation as it was. `ON
+ * CONFLICT DO NOTHING` rather than a caught 23505, for the reason
+ * {@link createReferenceFromDoi} gives.
+ * @rfc RFC-61 R10
+ * @rfc RFC-80 R5
+ */
+export async function ensureBookReference(
+  db: DbExecutor,
+  input: { isbn: string; citation: string; actorId: string },
+): Promise<{ id: string }> {
+  const readByIsbn = async (executor: DbExecutor) => {
+    const [row] = await executor
+      .select({ id: bibliographicReferences.id })
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.isbn, input.isbn))
+      .limit(1);
+    return row;
+  };
+
+  const existing = await readByIsbn(db);
+  if (existing) return existing;
+
+  const shortCitation =
+    input.citation.length <= 200 ? input.citation : `${input.citation.slice(0, 199)}…`;
+  return db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(bibliographicReferences)
+      .values({
+        citationKey: `isbn:${input.isbn}`,
+        kind: 'book',
+        isbn: input.isbn,
+        fullCitation: input.citation,
+        shortCitation,
+        createdBy: input.actorId,
+      })
+      // Only a race on the ISBN is expected; a curator's reference already
+      // keyed `isbn:<isbn>` is a conflict to report, not to swallow.
+      .onConflictDoNothing({ target: bibliographicReferences.isbn })
+      .returning({ id: bibliographicReferences.id })
+      .catch((err: unknown) => {
+        if (isUniqueViolation(err)) {
+          throw new AppError('REFERENCE_KEY_TAKEN', 'Another reference has this citation key');
+        }
+        throw err;
+      });
+    if (inserted) {
+      await recordAudit(tx, {
+        actorUserId: input.actorId,
+        action: 'references.created',
+        targetType: 'bibliographic_references',
+        targetId: inserted.id,
+        metadata: { source: 'isbn' },
+      });
+      return inserted;
+    }
+    const raced = await readByIsbn(tx);
+    if (!raced) throw new Error('ensureBookReference: reference not found after insert');
+    return raced;
+  });
 }
 
 /**

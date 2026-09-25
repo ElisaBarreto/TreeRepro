@@ -609,6 +609,7 @@ export const REFERENCE: Reference = {
   observer: null,
   shortCitation: null,
   fullCitation: null,
+  isbn: null,
 };
 
 /** The personal-observation reference of USER, as the references screens see it. @rfc RFC-61 R7 */
@@ -628,6 +629,7 @@ export const PERSONAL_OBSERVATION: Reference = {
   observer: { id: USER.id, name: USER.name },
   shortCitation: null,
   fullCitation: null,
+  isbn: null,
 };
 
 /** @rfc RFC-61 R7 */

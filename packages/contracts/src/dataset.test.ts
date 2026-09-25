@@ -181,7 +181,24 @@ describe('RFC-61 R4 referenceSchema', () => {
     observer: null,
     shortCitation: null,
     fullCitation: null,
+    isbn: null,
   };
+
+  it('RFC-61 R10 requires isbn, nullable, and knows the book kind', () => {
+    const book = { ...reference, kind: 'book', isbn: '9780306406157' };
+    expect(referenceSchema.parse(book)).toEqual(book);
+    const { isbn: _i, ...withoutIsbn } = reference;
+    expect(referenceSchema.safeParse(withoutIsbn).success).toBe(false);
+    expect(
+      referenceRefSchema.parse({
+        id: uuid,
+        citationKey: 'isbn:9780306406157',
+        kind: 'book',
+        observer: null,
+        shortCitation: 'Doe (2001)',
+      }).kind,
+    ).toBe('book');
+  });
 
   it('every item carries its usage per role as non-negative integers', () => {
     expect(referenceSchema.parse(reference)).toEqual(reference);

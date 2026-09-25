@@ -104,7 +104,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     await openPage();
     expect(
       screen.getByText(
-        'Articles cited by the records, most used first. Search by citation key or title.',
+        'References cited by the records, most used first. Search by citation key or title.',
       ),
     ).toBeInTheDocument();
     const link = await screen.findByRole('link', { name: 'Smith2001' });
@@ -122,7 +122,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
         .map((th) => th.textContent),
-    ).toEqual(['Article', 'As primary', 'As secondary', 'Year', 'DOI']);
+    ).toEqual(['Reference', 'As primary', 'As secondary', 'Year', 'DOI / ISBN']);
     expect(
       rows
         .slice(1)
@@ -192,10 +192,10 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     );
     await openPage();
     expect(screen.getByText('Searching…')).toBeInTheDocument();
-    expect(screen.queryByText('No articles match.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
 
     resolvePage(page([]));
-    expect(await screen.findByText('No articles match.')).toBeInTheDocument();
+    expect(await screen.findByText('No references match.')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Pagination' })).not.toBeInTheDocument();
   });
 
@@ -233,7 +233,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'You do not have permission to do this.',
     );
-    expect(screen.queryByText('No articles match.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No references match.')).not.toBeInTheDocument();
     first.unmount();
 
     dataset.searchReferences.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
@@ -263,6 +263,50 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     // sidebar entry and the breadcrumb, so only the heading disambiguates.
     await openPage();
     expect(screen.queryByRole('button', { name: 'New reference' })).not.toBeInTheDocument();
+  });
+
+  it('RFC-61 R10 shows a book by its citation, with its ISBN in the DOI / ISBN column', async () => {
+    const book: Reference = {
+      ...REFERENCE,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f05',
+      citationKey: 'isbn:9780306406157',
+      kind: 'book',
+      isbn: '9780306406157',
+      title: null,
+      doi: null,
+      url: null,
+      shortCitation: 'Doe, J. (2001). Seeds of the tropics.',
+      fullCitation: 'Doe, J. (2001). Seeds of the tropics.',
+    };
+    dataset.searchReferences.mockResolvedValue(page([book]));
+    await openPage();
+    const link = await screen.findByRole('link', { name: 'Doe, J. (2001). Seeds of the tropics.' });
+    const row = cells(link.closest('tr') as HTMLElement);
+    expect(row[4]).toHaveTextContent(/^ISBN 9780306406157$/);
+    expect(within(row[4] as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('RFC-61 R10 never flags a book, however long its citation, as a pasted full citation', async () => {
+    const citation = `Doe, J., Roe, R. and Poe, P. (2001). Seeds of the tropics: a field guide. Tropical Press.`;
+    const book: Reference = {
+      ...REFERENCE,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8f06',
+      citationKey: 'isbn:9780306406157',
+      kind: 'book',
+      isbn: '9780306406157',
+      doi: null,
+      shortCitation: citation,
+      fullCitation: citation,
+    };
+    dataset.searchReferences.mockResolvedValue(page([book]));
+    await openPage();
+    // The label is cut to fit; the whole citation is the link's title.
+    const link = await screen.findByTitle(citation);
+    expect(
+      within(cells(link.closest('tr') as HTMLElement)[0] as HTMLElement).queryByText(
+        'full citation',
+      ),
+    ).not.toBeInTheDocument();
   });
 });
 

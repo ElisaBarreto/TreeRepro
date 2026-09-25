@@ -9,6 +9,8 @@ import {
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
   resolveDoiResultSchema,
+  sourceRefSchema,
+  sourcesSchema,
   speciesNameBodySchema,
   updateGenusBodySchema,
   updateReferenceBodySchema,
@@ -205,6 +207,7 @@ describe('RFC-80 resolveDoiResultSchema', () => {
           observer: null,
           shortCitation: null,
           fullCitation: null,
+          isbn: null,
         },
       }).success,
     ).toBe(true);
@@ -336,6 +339,16 @@ describe('RFC-60 R9, RFC-61 R6, RFC-62 R6 catalog bodies', () => {
     expect(updateReferenceBodySchema.safeParse({ shortCitation: null }).success).toBe(true);
     expect(updateReferenceBodySchema.safeParse({ fullCitation: null }).success).toBe(true);
   });
+
+  it('RFC-61 R6, R10 takes an ISBN on create and update, never null, always well-formed', () => {
+    const book = { citationKey: 'K', isbn: '0-306-40615-2', fullCitation: 'Doe (2001).' };
+    expect(createReferenceBodySchema.safeParse(book).success).toBe(true);
+    expect(createReferenceBodySchema.safeParse({ ...book, isbn: '0-306-40615-3' }).success).toBe(
+      false,
+    );
+    expect(updateReferenceBodySchema.safeParse({ isbn: '9780306406157' }).success).toBe(true);
+    expect(updateReferenceBodySchema.safeParse({ isbn: null }).success).toBe(false);
+  });
 });
 
 describe('RFC-60 R4, R9 speciesNameBodySchema', () => {
@@ -380,5 +393,40 @@ describe('RFC-60 R4, R9 speciesNameBodySchema', () => {
     if (!strayKey.success) {
       expect(strayKey.error.issues[0]?.path).toEqual(['gbifUsageKey']);
     }
+  });
+});
+
+describe('RFC-61 R10, RFC-80 R5 a book among the sources', () => {
+  const citation = 'Doe, J. (2001). Seeds of the tropics.';
+
+  it('takes an ISBN-10 or ISBN-13 with its citation, beside a DOI', () => {
+    expect(
+      sourcesSchema.safeParse({
+        references: [{ doi: '10.1111/geb.13000' }, { isbn: '0-306-40615-2', citation }],
+      }).success,
+    ).toBe(true);
+    expect(sourceRefSchema.safeParse({ isbn: '978 0 306 40615 7', citation }).success).toBe(true);
+  });
+
+  it('refuses a bad check digit, a missing, blank or over-long citation, and a citation alone', () => {
+    for (const source of [
+      { isbn: '0-306-40615-3', citation },
+      { isbn: '9780306406157' },
+      { isbn: '9780306406157', citation: '   ' },
+      { isbn: '9780306406157', citation: 'x'.repeat(2001) },
+      { citation },
+      { isbn: '9780306406157', citation, doi: '10.1111/geb.13000' },
+    ]) {
+      expect(sourceRefSchema.safeParse(source).success).toBe(false);
+    }
+  });
+
+  it('a confirmation may name a book as its supporting reference', () => {
+    expect(
+      annotateRecordBodySchema.safeParse({
+        kind: 'confirm',
+        reference: { isbn: '9780306406157', citation },
+      }).success,
+    ).toBe(true);
   });
 });

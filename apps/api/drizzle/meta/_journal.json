@@ -260,6 +260,13 @@
       "when": 1790358964540,
       "tag": "0036_record_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790367785920,
+      "tag": "0037_book_references",
+      "breakpoints": true
     }
   ]
 }

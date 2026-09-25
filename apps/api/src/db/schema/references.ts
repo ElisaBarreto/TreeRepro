@@ -28,7 +28,11 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' 
  * `short_citation` (1–200 characters) and `full_citation` (1–2,000) hold the
  * display citation, written by a curator or derived from Crossref (RFC-61 R8);
  * the lengths are enforced by the contract, not by the column.
- * @rfc RFC-61 R1, R2, R4, R5
+ *
+ * A `book` (RFC-61 R10) carries `isbn`, the normalised ISBN-13 of
+ * `isValidIsbn`, unique, and its citation in `full_citation`; no other kind
+ * has an ISBN. Both are enforced by the checks below, not only by the contract.
+ * @rfc RFC-61 R1, R2, R4, R5, R10
  */
 export const bibliographicReferences = pgTable(
   'bibliographic_references',
@@ -52,6 +56,7 @@ export const bibliographicReferences = pgTable(
     observerUserId: uuid('observer_user_id').references(() => users.id),
     shortCitation: text('short_citation'),
     fullCitation: text('full_citation'),
+    isbn: text('isbn'),
   },
   (t) => [
     uniqueIndex('bibliographic_references_citation_key_idx').on(t.citationKey),
@@ -69,7 +74,7 @@ export const bibliographicReferences = pgTable(
     ),
     check(
       'bibliographic_references_kind_check',
-      sql`${t.kind} in ('publication', 'personal_observation')`,
+      sql`${t.kind} in ('publication', 'book', 'personal_observation')`,
     ),
     check(
       'bibliographic_references_observer_check',
@@ -78,6 +83,12 @@ export const bibliographicReferences = pgTable(
     uniqueIndex('bibliographic_references_observer_idx')
       .on(t.observerUserId)
       .where(sql`${t.kind} = 'personal_observation'`),
+    uniqueIndex('bibliographic_references_isbn_idx').on(t.isbn),
+    check(
+      'bibliographic_references_book_check',
+      sql`(${t.kind} = 'book') = (${t.isbn} is not null) and (${t.kind} <> 'book' or ${t.fullCitation} is not null)`,
+    ),
+    check('bibliographic_references_isbn_check', sql`${t.isbn} ~ '^97[89][0-9]{10}$'`),
   ],
 );
 

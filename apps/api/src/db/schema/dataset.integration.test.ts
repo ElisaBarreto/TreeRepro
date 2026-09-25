@@ -10,6 +10,7 @@ import {
   traitByKey,
 } from '../../../test/helpers/dataset.ts';
 import { unwrapDbError, useTestDb, withRollback } from '../../../test/helpers/db.ts';
+import { randomIsbn } from '../../../test/helpers/isbn.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import { recordAnnotations } from './curation.ts';
 import { traitCategories, traitLevels, traits } from './dictionary.ts';
@@ -623,7 +624,7 @@ describe('RFC-67 R1 plot tables', () => {
   });
 });
 
-describe('RFC-61 R1, R7 reference kinds', () => {
+describe('RFC-61 R1, R7, R10 reference kinds', () => {
   const t = useTestDb();
   it('personal observation needs an observer, one per user; a publication has none', async () => {
     await withRollback(t.db, async (tx) => {
@@ -652,6 +653,38 @@ describe('RFC-61 R1, R7 reference kinds', () => {
             }),
           ),
         ),
+      ).rejects.toMatchObject({ code: '23505' });
+    });
+  });
+
+  it('RFC-61 R10 a book needs a 13-digit ISBN and a citation; an ISBN is unique and only a book has one', async () => {
+    await withRollback(t.db, async (tx) => {
+      const isbn = randomIsbn();
+      const insert = (values: typeof bibliographicReferences.$inferInsert) =>
+        unwrapDbError(tx.transaction((sp) => sp.insert(bibliographicReferences).values(values)));
+      // A book without an ISBN, without a citation, or with an ISBN-10 left un-normalised.
+      for (const values of [
+        { citationKey: `b-${rand()}`, kind: 'book' as const, fullCitation: 'Doe (2001). Seeds.' },
+        { citationKey: `b-${rand()}`, kind: 'book' as const, isbn },
+        {
+          citationKey: `b-${rand()}`,
+          kind: 'book' as const,
+          isbn: '030640615X',
+          fullCitation: 'x',
+        },
+        // A publication carrying an ISBN.
+        { citationKey: `b-${rand()}`, isbn, fullCitation: 'Doe (2001). Seeds.' },
+      ]) {
+        await expect(insert(values)).rejects.toMatchObject({ code: '23514' });
+      }
+      await tx.insert(bibliographicReferences).values({
+        citationKey: `isbn:${isbn}`,
+        kind: 'book',
+        isbn,
+        fullCitation: 'Doe (2001). Seeds.',
+      });
+      await expect(
+        insert({ citationKey: `b-${rand()}`, kind: 'book', isbn, fullCitation: 'Other' }),
       ).rejects.toMatchObject({ code: '23505' });
     });
   });

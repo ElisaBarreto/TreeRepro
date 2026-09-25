@@ -80,6 +80,8 @@ function metadataRows(
         DASH
       ),
     },
+    // A book only (RFC-61 R10): every other reference would read "—" here.
+    ...(reference.isbn ? [{ label: 'ISBN', value: reference.isbn }] : []),
     {
       label: 'URL',
       value: reference.url ? (
@@ -171,14 +173,14 @@ function ReferenceRecords({
   return (
     <section className="flex flex-col gap-3">
       <h2 className="font-display text-section font-semibold text-canopy-950">
-        Records citing this article
+        Records citing this reference
       </h2>
       {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
       {list.isLoading && !list.error ? (
         <p className="text-body text-mist-500">Loading records…</p>
       ) : null}
       {!list.isLoading && !list.error && list.items.length === 0 ? (
-        <EmptyState title="No records cite this article yet." />
+        <EmptyState title="No records cite this reference yet." />
       ) : null}
       {list.items.length > 0 ? (
         <RecordTable
@@ -211,7 +213,7 @@ function ReferenceRecords({
  * registered as the shell's trailing crumb, so the breadcrumb reads
  * `Data › References › <label>` once the reference resolved (RFC-13 R3).
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-61 R4, R6, R7, R8, R9
+ * @rfc RFC-61 R4, R6, R7, R8, R9, R10
  */
 export function ReferencePage({ id }: { id: string }) {
   const me = useMe();
@@ -245,7 +247,7 @@ export function ReferencePage({ id }: { id: string }) {
     <>
       <PageHeader
         title={<span className="break-words">{referenceLabel(data)}</span>}
-        description={`Used as the primary article in ${records(data.primaryCount)} and as the secondary article in ${records(data.secondaryCount)}.`}
+        description={`Used as the primary reference in ${records(data.primaryCount)} and as the secondary reference in ${records(data.secondaryCount)}.`}
         actions={
           hasPermission(me, 'references.manage') ? (
             <Button variant="secondary" onClick={() => setEditing(true)}>

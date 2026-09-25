@@ -59,7 +59,7 @@ export interface ReferencesSearch {
  * `references.manage`, opens `ReferenceDialog` and navigates to the created
  * reference on success.
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-61 R4, R6
+ * @rfc RFC-61 R4, R6, R10
  */
 export function ReferencesPage({
   search,
@@ -101,7 +101,7 @@ export function ReferencesPage({
     <>
       <PageHeader
         title="References"
-        description="Articles cited by the records, most used first. Search by citation key or title."
+        description="References cited by the records, most used first. Search by citation key or title."
         actions={
           hasPermission(me, 'references.manage') ? (
             <Button onClick={() => setCreating(true)}>New reference</Button>
@@ -171,7 +171,7 @@ export function ReferencesPage({
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading ? <p className="text-body text-mist-500">Searching…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (
-          <EmptyState title="No articles match." />
+          <EmptyState title="No references match." />
         ) : null}
         {list.items.length > 0 ? <ReferenceTable items={list.items} /> : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
@@ -185,11 +185,11 @@ function ReferenceTable({ items }: { items: Reference[] }) {
     <Table>
       <Thead>
         <Tr>
-          <Th>Article</Th>
+          <Th>Reference</Th>
           <Th className="text-right">As primary</Th>
           <Th className="text-right">As secondary</Th>
           <Th>Year</Th>
-          <Th>DOI</Th>
+          <Th>DOI / ISBN</Th>
         </Tr>
       </Thead>
       <Tbody>
@@ -199,7 +199,9 @@ function ReferenceTable({ items }: { items: Reference[] }) {
           // never looks like a DOI or an index to `articleKind`.
           const label = referenceLabel(reference);
           const shown = truncate(label, KEY_MAX);
-          const kind = articleKind(label);
+          // A book's label is its citation by design (RFC-61 R10), not a key
+          // pasted as one, so it is never flagged.
+          const kind = reference.kind === 'book' ? null : articleKind(label);
           return (
             <Tr key={reference.id}>
               <Td>
@@ -228,6 +230,8 @@ function ReferenceTable({ items }: { items: Reference[] }) {
                   >
                     {reference.doi}
                   </a>
+                ) : reference.isbn ? (
+                  `ISBN ${reference.isbn}`
                 ) : (
                   DASH
                 )}

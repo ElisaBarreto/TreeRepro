@@ -178,7 +178,7 @@ export const genusSchema = taxonRefSchema.extend({ family: taxonRefSchema.nullab
 export const userRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 
 /** @rfc RFC-61 R7 */
-export const REFERENCE_KINDS = ['publication', 'personal_observation'] as const;
+export const REFERENCE_KINDS = ['publication', 'book', 'personal_observation'] as const;
 export type ReferenceKind = (typeof REFERENCE_KINDS)[number];
 
 /** @rfc RFC-70 R1 */
@@ -212,8 +212,9 @@ export const referenceRefSchema = z.strictObject({
  * `primaryCount` / `secondaryCount`: records naming the reference in that
  * role; a record naming the same reference in both roles counts once in each.
  * `shortCitation` and `fullCitation` are a derived or written display
- * citation (R6, R8).
- * @rfc RFC-61 R1, R4
+ * citation (R6, R8). `isbn`: the normalised ISBN-13 of a `book`, null for
+ * every other kind (R10).
+ * @rfc RFC-61 R1, R4, R10
  */
 export const referenceSchema = z.strictObject({
   id: z.uuid(),
@@ -231,6 +232,7 @@ export const referenceSchema = z.strictObject({
   observer: userRefSchema.nullable(),
   shortCitation: z.string().nullable(),
   fullCitation: z.string().nullable(),
+  isbn: z.string().nullable(),
 });
 
 /**
