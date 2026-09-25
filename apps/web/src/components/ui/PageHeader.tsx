@@ -19,7 +19,7 @@ export function PageHeader({
         </h1>
         {description ? <p className="mt-1.5 text-body text-mist-500">{description}</p> : null}
       </div>
-      {actions ? <div className="flex gap-2.5">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap gap-2.5">{actions}</div> : null}
     </header>
   );
 }

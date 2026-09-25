@@ -208,7 +208,7 @@ export function ContributionsPage({
       <div className="flex flex-col gap-6">
         {summary.isError ? <Alert tone="error">{pageErrorMessage(summary.error)}</Alert> : null}
         {summary.data ? <StatTiles label="Summary" tiles={tilesOf(summary.data)} /> : null}
-        <nav aria-label="Contribution kind" className="flex gap-2">
+        <nav aria-label="Contribution kind" className="flex flex-wrap gap-2">
           {TABS.map((tab) => (
             <Link
               key={tab.kind}

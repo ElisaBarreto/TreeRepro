@@ -93,7 +93,7 @@ function TaxaEditor() {
         description="Families and genera of the catalog: create, rename and move. Species are edited on their own page."
       />
       {families.isError ? <Alert tone="error">{pageErrorMessage(families.error)}</Alert> : null}
-      <div className="grid gap-6 md:grid-cols-[16rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[16rem_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
           <Button onClick={() => setDialog({ kind: 'newFamily' })}>New family</Button>
           <Field id={ids.filter} label="Filter families">

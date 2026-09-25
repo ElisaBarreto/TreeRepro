@@ -19,7 +19,7 @@ export function Section({ id, title, description, children }: SectionProps) {
   return (
     <section
       aria-labelledby={headingId}
-      className="grid gap-6 border-t border-canopy-700/10 py-8 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10"
+      className="grid grid-cols-1 gap-6 border-t border-canopy-700/10 py-8 md:grid-cols-[280px_minmax(0,1fr)] md:gap-10"
     >
       <div className="flex flex-col gap-1.5">
         <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
