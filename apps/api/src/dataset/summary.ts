@@ -20,7 +20,7 @@ interface TraitAggregate {
   not_numeric: number;
   empty: number;
   numeric_min: number | null;
-  numeric_median: number | null;
+  numeric_mean: number | null;
   numeric_max: number | null;
   numeric_count: number;
 }
@@ -36,6 +36,9 @@ interface LevelAggregate {
  * One call for the species page: per category and trait, counts on both axes,
  * level distribution or numeric spread, and whether any record is validated.
  * `null` when the species itself is invisible to `visibility`.
+ * The numeric spread follows spec R-5: the smallest and largest of single,
+ * min, max and mean, and the mean of each record's single value or, without
+ * one, its mean.
  * @rfc RFC-63 R10
  * @rfc RFC-70 R7
  * @rfc RFC-33 R2, R3
@@ -62,10 +65,10 @@ export async function speciesTraitSummary(
         count(*) filter (where r.harmonisation = 'multi_value')::int as multi_value,
         count(*) filter (where r.harmonisation = 'not_numeric')::int as not_numeric,
         count(*) filter (where r.harmonisation = 'empty')::int as empty,
-        min(r.numeric_value)::float8 as numeric_min,
-        (percentile_cont(0.5) within group (order by r.numeric_value))::float8 as numeric_median,
-        max(r.numeric_value)::float8 as numeric_max,
-        count(r.numeric_value)::int as numeric_count
+        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as numeric_min,
+        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as numeric_max,
+        avg(coalesce(r.numeric_value, r.mean_value))::float8 as numeric_mean,
+        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value) is not null)::int as numeric_count
       from trait_records r
       join traits t on t.id = r.trait_id
       join trait_categories c on c.key = t.category_key
@@ -121,12 +124,11 @@ export async function speciesTraitSummary(
         row !== undefined &&
         row.numeric_count > 0 &&
         row.numeric_min !== null &&
-        row.numeric_median !== null &&
         row.numeric_max !== null
           ? {
               min: row.numeric_min,
-              median: row.numeric_median,
               max: row.numeric_max,
+              mean: row.numeric_mean,
               count: row.numeric_count,
             }
           : null,

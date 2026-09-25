@@ -104,7 +104,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       recordCount: 4,
       harmonisationCounts: { harmonised: 3, notNumeric: 1 },
       levels: null,
-      numeric: { min: 1, median: 2, max: 4, count: 3 },
+      numeric: { min: 1, max: 4, mean: expect.closeTo(7 / 3, 10), count: 3 },
       validated: false,
     });
     // A withdrawn record is no longer a validated one (spec R-1).
@@ -114,6 +114,53 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     );
     expect(await speciesTraitSummary(t.db, UNRESTRICTED, (await createSpecies(t.db)).id)).toEqual(
       [],
+    );
+  });
+
+  it('spec R-5 numeric: extremes over single/min/max/mean; mean of each single, else the record mean', async () => {
+    const { user } = await createUser(t.db);
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const ref = await createReference(t.db);
+    const manual = {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual' as const,
+      createdBy: user.id,
+    };
+    await createRecord(t.db, { ...manual, valueText: '5', numericValue: 5 });
+    await createRecord(t.db, { ...manual, valueText: 'min=2;max=8', minValue: 2, maxValue: 8 });
+    await createRecord(t.db, {
+      ...manual,
+      valueText: 'mean=4;sd=1;n=10',
+      meanValue: 4,
+      sdValue: 1,
+      n: 10,
+    });
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
+    expect(numeric).toEqual({ min: 2, max: 8, mean: 4.5, count: 3 });
+  });
+
+  it('spec R-5 mean is null when no record has a single value or a mean', async () => {
+    const { user } = await createUser(t.db);
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const ref = await createReference(t.db);
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      valueText: 'min=1;max=3',
+      minValue: 1,
+      maxValue: 3,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    expect(summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric).toEqual(
+      { min: 1, max: 3, mean: null, count: 1 },
     );
   });
 
