@@ -4,6 +4,8 @@ import {
   HARMONISATION_STATUSES,
   NAME_SOURCES,
   NAME_TYPES,
+  numericValueSchema,
+  quantitativeValueSchema,
   RECORD_INTENTS,
   recordDetailSchema,
   recordSchema,
@@ -20,19 +22,10 @@ export const curationNoteSchema = z.string().trim().min(1).max(2000);
 /** A catalog name or key: 1–200 characters, trimmed. @rfc RFC-60 R9 */
 export const catalogNameSchema = z.string().trim().min(1).max(200);
 
-/** Largest magnitude a manual number may have (RFC-64 R6). @rfc RFC-64 R6 */
-export const NUMERIC_VALUE_LIMIT = 1e308;
-
-/** @rfc RFC-65 R1 */
-export const numericValueSchema = z
-  .number()
-  .finite()
-  .refine((n) => Math.abs(n) < NUMERIC_VALUE_LIMIT, { message: 'Number is out of range' });
-
-/** A level for a categorical trait, or a number for a quantitative one. @rfc RFC-65 R1 */
+/** A level for a categorical trait, or a quantitative value for a quantitative one. @rfc RFC-65 R1 */
 export const recordValueSchema = z.union([
   z.strictObject({ levelId: z.uuid() }),
-  z.strictObject({ numeric: numericValueSchema }),
+  z.strictObject({ quantitative: quantitativeValueSchema }),
 ]);
 
 /** @rfc RFC-80 R1 */

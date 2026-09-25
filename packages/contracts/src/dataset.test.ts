@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HARMONISATION_STATUSES,
   IMPORT_BATCH_KINDS,
+  IMPORT_REJECT_REASONS,
   importBatchSchema,
   listGeneraQuerySchema,
   listRecordsQuerySchema,
@@ -10,6 +11,7 @@ import {
   listTraitSpeciesQuerySchema,
   listTraitsQuerySchema,
   NAME_TYPES,
+  quantitativeValueSchema,
   REVIEW_STATUSES,
   recordDetailSchema,
   recordSchema,
@@ -90,6 +92,9 @@ describe('RFC-63 R8 recordSchema', () => {
       createdBy: null,
       intent: null,
       respondsTo: null,
+      recordCode: 'EB_1',
+      quantitative: null,
+      references: [],
     };
     expect(recordSchema.parse(record)).toEqual(record);
     expect(recordSchema.safeParse({ ...record, extra: true }).success).toBe(false);
@@ -140,13 +145,22 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
               empty: 0,
             },
             levels: null,
-            numeric: { min: 1.5, median: 2, max: 2.5, count: 2 },
+            numeric: { min: 1.5, max: 2.5, mean: 2, count: 2 },
             validated: true,
           },
         ],
       },
     ];
     expect(speciesTraitsSchema.parse(payload)).toEqual(payload);
+    const quantitativeTrait = payload[0]?.traits[1];
+    expect(
+      speciesTraitsSchema.safeParse([
+        {
+          category: { key: 'flower_color', label: 'Flower color' },
+          traits: [{ ...quantitativeTrait, numeric: { min: 1, max: 3, mean: null, count: 1 } }],
+        },
+      ]).success,
+    ).toBe(true);
   });
 });
 
@@ -285,10 +299,33 @@ describe('RFC-64 R11 importBatchSchema', () => {
       rowsDuplicate: 1,
       rowsRejected: 1,
       rowsPending: 2,
+      rowsAlreadyImported: 0,
       unknownLevels: [{ trait: 'pollinator_group', value: 'bees', count: 2 }],
       error: null,
     };
     expect(importBatchSchema.parse(batch)).toEqual(batch);
+  });
+
+  it('requires rowsAlreadyImported (RFC-64 R11)', () => {
+    const { rowsAlreadyImported: _rai, ...withoutRowsAlreadyImported } = {
+      id: uuid,
+      fileName: 'sample.csv',
+      fileSha256: 'a'.repeat(64),
+      status: 'completed',
+      kind: 'records',
+      runBy: { id: uuid, name: 'Ada' },
+      startedAt: '2026-09-13T00:00:00.000Z',
+      finishedAt: '2026-09-13T00:01:00.000Z',
+      rowsTotal: 10,
+      rowsInserted: 8,
+      rowsDuplicate: 1,
+      rowsRejected: 1,
+      rowsPending: 2,
+      rowsAlreadyImported: 0,
+      unknownLevels: [] as { trait: string; value: string; count: number }[],
+      error: null,
+    };
+    expect(importBatchSchema.safeParse(withoutRowsAlreadyImported).success).toBe(false);
   });
 });
 
@@ -308,6 +345,7 @@ describe('RFC-68 R1 import batch kinds', () => {
       rowsDuplicate: 1,
       rowsRejected: 1,
       rowsPending: 2,
+      rowsAlreadyImported: 0,
       unknownLevels: [{ trait: 'pollinator_group', value: 'bees', count: 2 }],
       error: null,
     };
@@ -599,5 +637,35 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
 
   it('spec R-1 has no accepted value', () => {
     expect(Object.keys(traitSpeciesItemSchema.shape)).not.toContain('accepted');
+  });
+});
+
+describe('RFC-65 R1 quantitativeValueSchema (spec R-5)', () => {
+  it('takes any of the six fields with at least one of single, min, max, mean', () => {
+    expect(quantitativeValueSchema.parse({ single: 3 })).toEqual({ single: 3 });
+    expect(
+      quantitativeValueSchema.parse({ min: 1, max: 4, mean: 2.5, sd: 0.4, n: 12 }),
+    ).toEqual({ min: 1, max: 4, mean: 2.5, sd: 0.4, n: 12 });
+    expect(quantitativeValueSchema.safeParse({}).success).toBe(false);
+    expect(quantitativeValueSchema.safeParse({ sd: 1, n: 3 }).success).toBe(false);
+  });
+
+  it('refuses min > max, a negative sd, n below 1 or fractional, out-of-range numbers and extra keys', () => {
+    expect(quantitativeValueSchema.safeParse({ min: 5, max: 2 }).success).toBe(false);
+    expect(quantitativeValueSchema.safeParse({ min: 2, max: 2 }).success).toBe(true);
+    expect(quantitativeValueSchema.safeParse({ mean: 2, sd: -0.1 }).success).toBe(false);
+    expect(quantitativeValueSchema.safeParse({ mean: 2, n: 0 }).success).toBe(false);
+    expect(quantitativeValueSchema.safeParse({ mean: 2, n: 1.5 }).success).toBe(false);
+    expect(quantitativeValueSchema.safeParse({ single: 1e308 }).success).toBe(false);
+    expect(quantitativeValueSchema.safeParse({ single: Number.NaN }).success).toBe(false);
+    expect(quantitativeValueSchema.safeParse({ single: 1, median: 2 }).success).toBe(false);
+  });
+});
+
+describe('RFC-64 R7 reject reasons (spec R-2)', () => {
+  it('include the two ID reasons', () => {
+    expect(IMPORT_REJECT_REASONS).toEqual(
+      expect.arrayContaining(['invalid_record_id', 'duplicate_record_id']),
+    );
   });
 });
