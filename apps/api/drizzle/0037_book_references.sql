@@ -1,0 +1,6 @@
+ALTER TABLE "bibliographic_references" DROP CONSTRAINT "bibliographic_references_kind_check";--> statement-breakpoint
+ALTER TABLE "bibliographic_references" ADD COLUMN "isbn" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "bibliographic_references_isbn_idx" ON "bibliographic_references" USING btree ("isbn");--> statement-breakpoint
+ALTER TABLE "bibliographic_references" ADD CONSTRAINT "bibliographic_references_book_check" CHECK (("bibliographic_references"."kind" = 'book') = ("bibliographic_references"."isbn" is not null) and ("bibliographic_references"."kind" <> 'book' or "bibliographic_references"."full_citation" is not null));--> statement-breakpoint
+ALTER TABLE "bibliographic_references" ADD CONSTRAINT "bibliographic_references_isbn_check" CHECK ("bibliographic_references"."isbn" ~ '^97[89][0-9]{10}$');--> statement-breakpoint
+ALTER TABLE "bibliographic_references" ADD CONSTRAINT "bibliographic_references_kind_check" CHECK ("bibliographic_references"."kind" in ('publication', 'book', 'personal_observation'));

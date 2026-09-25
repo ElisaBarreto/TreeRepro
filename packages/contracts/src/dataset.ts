@@ -178,7 +178,7 @@ export const genusSchema = taxonRefSchema.extend({ family: taxonRefSchema.nullab
 export const userRefSchema = z.strictObject({ id: z.uuid(), name: z.string() });
 
 /** @rfc RFC-61 R7 */
-export const REFERENCE_KINDS = ['publication', 'personal_observation'] as const;
+export const REFERENCE_KINDS = ['publication', 'book', 'personal_observation'] as const;
 export type ReferenceKind = (typeof REFERENCE_KINDS)[number];
 
 /** @rfc RFC-70 R1 */
