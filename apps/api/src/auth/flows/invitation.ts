@@ -11,7 +11,7 @@ import { activateUser, createInvitedUser, findUserByEmail, UserEmailTakenError }
 export interface InviteInput {
   email: string;
   name: string;
-  /** Set as the user's roles in the same transaction (RFC-50 R3). */
+  /** Set as a new user's roles in the same transaction; a re-invite keeps the roles (RFC-50 R3). */
   roleIds?: string[];
   /** Null for the seed command. */
   actorUserId: string | null;
@@ -61,7 +61,8 @@ export async function inviteUser(
         targetType: 'user',
         targetId: user.id,
       });
-      if (input.roleIds !== undefined) {
+      // A re-invite only re-issues the link; roles change through RFC-50 R5.
+      if (input.roleIds !== undefined && !existing) {
         await setUserRoles(
           { ...ctx, db: tx },
           { userId: user.id, roleIds: input.roleIds, actorUserId: input.actorUserId },
@@ -70,8 +71,6 @@ export async function inviteUser(
       return { user, raw, expiresAt };
     }),
   );
-  // A cache fill that raced the commit would hold the old roles (RFC-32 R3).
-  if (input.roleIds !== undefined) await ctx.permissionCache.invalidate([result.user.id]);
   const link = `${ctx.appOrigin}/invite/${result.raw}`;
   const mail = inviteEmail({
     name: result.user.name,

@@ -35,12 +35,16 @@ const LOCAL_MESSAGES: Record<string, string> = {
 };
 
 /**
- * The roles the actor may hand out: all of them for an admin (who alone
- * holds the whole catalog, RFC-32 R1, RFC-31 R15); otherwise never `admin`
- * and only roles whose stored permissions the actor all holds.
+ * The roles the actor may hand out: all of them for an admin (an admin holds
+ * the whole catalog, RFC-32 R1); otherwise never `admin` and only roles whose
+ * stored permissions the actor all holds.
  * @rfc RFC-31 R12, R14
  */
 export function assignableRoles(roles: Role[], permissions: readonly string[]): Role[] {
+  // ponytail: "holds the whole catalog" stands for "holds admin"; until RFC-31
+  // R15 lands a custom role could store the whole catalog, be offered `admin`
+  // here and be refused by the API. Expose admin standing on /api/auth/me if
+  // that ever matters.
   if (PERMISSION_KEYS.every((key) => permissions.includes(key))) return roles;
   return roles.filter(
     (role) =>

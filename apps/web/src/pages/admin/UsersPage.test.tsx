@@ -132,6 +132,17 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
     expect(screen.queryByRole('button', { name: 'Invite user' })).not.toBeInTheDocument();
   });
 
+  it('RFC-50 R3 hides Invite user without roles.read, which the role picker needs', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...ADMIN_ME,
+      permissions: ADMIN_ME.permissions.filter((key) => key !== 'roles.read'),
+    });
+    admin.listUsers.mockResolvedValue(page([ADMIN_USER]));
+    await openPage();
+    await screen.findByRole('table');
+    expect(screen.queryByRole('button', { name: 'Invite user' })).not.toBeInTheDocument();
+  });
+
   it('RFC-50 R3 invites a user and refreshes the list', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     admin.listUsers

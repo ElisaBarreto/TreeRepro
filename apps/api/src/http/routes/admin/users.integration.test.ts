@@ -5,6 +5,7 @@ import {
   type PermissionKey,
   userSchema,
 } from '@treerepro/contracts';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
@@ -17,6 +18,7 @@ import { adminRoleId, createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser, randomEmail } from '../../../../test/helpers/users.ts';
 import { findUserByEmail } from '../../../auth/users.ts';
+import { auditLog } from '../../../db/schema/audit-log.ts';
 import { forgetCached } from '../../../redis/cache.ts';
 
 async function adminCookie(t: ReturnType<typeof useTestApp>) {
@@ -137,6 +139,14 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
 describe('RFC-50 R3, RFC-31 R12, R14 roles of an invitation', () => {
   const t = useTestApp();
 
+  async function auditCount(action: string, actorUserId: string) {
+    const rows = await t.db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, action), eq(auditLog.actorUserId, actorUserId)));
+    return rows.length;
+  }
+
   async function inviter(permissions: PermissionKey[]) {
     const role = await createRole(t.db, { permissions });
     const { user } = await createUser(t.db, { roles: [role.id] });
@@ -188,10 +198,13 @@ describe('RFC-50 R3, RFC-31 R12, R14 roles of an invitation', () => {
     expect(
       await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
     ).toMatchObject({ targetType: 'user', metadata: { reason: 'admin_role', added: [admin] } });
+    expect(await auditCount('roles.delegation_refused', actor.id)).toBe(1);
+    expect(await auditCount('auth.invite.created', actor.id)).toBe(0);
+    expect(await auditCount('users.roles_changed', actor.id)).toBe(0);
   });
 
   it('a non-admin invites within their ceiling and is refused above it', async () => {
-    const { cookie } = await inviter(['users.invite', 'users.read']);
+    const { actor, cookie } = await inviter(['users.invite', 'users.read']);
     const within = await createRole(t.db, { permissions: ['users.read'] });
     const above = await createRole(t.db, { permissions: ['users.update'] });
     const ok = await call(t.app, 'POST', '/api/admin/users', {
@@ -208,6 +221,35 @@ describe('RFC-50 R3, RFC-31 R12, R14 roles of an invitation', () => {
     expect(refused.status).toBe(403);
     expect((await refused.json()).error.code).toBe('PERMISSION_DENIED');
     expect(await findUserByEmail(t.db, email)).toBeNull();
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { actorUserId: actor.id }),
+    ).toMatchObject({ metadata: { reason: 'ceiling', added: [above.id] } });
+    expect(await auditCount('roles.delegation_refused', actor.id)).toBe(1);
+  });
+
+  it('re-inviting an invited user re-issues the invitation and leaves their roles as they are', async () => {
+    const { cookie: adminCookieValue } = await adminCookie(t);
+    const kept = await createRole(t.db, { permissions: ['users.read'] });
+    const email = randomEmail();
+    const first = await call(t.app, 'POST', '/api/admin/users', {
+      cookie: adminCookieValue,
+      body: { email, name: 'Grace', roles: [kept.id] },
+    });
+    const { data } = await first.json();
+    const { actor, cookie } = await inviter(['users.invite', 'users.read']);
+    const other = await createRole(t.db, { permissions: ['users.read'] });
+    const sent = t.mail.sent.length;
+    const again = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email, name: 'Grace', roles: [other.id] },
+    });
+    expect(again.status).toBe(201);
+    expect((await again.json()).data).toMatchObject({
+      id: data.id,
+      roles: [{ id: kept.id, name: kept.name }],
+    });
+    expect(t.mail.sent).toHaveLength(sent + 1);
+    expect(await auditCount('users.roles_changed', actor.id)).toBe(0);
   });
 });
 
