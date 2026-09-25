@@ -7,12 +7,18 @@ describe('RFC-10 R5 SMTP mailer', () => {
   it('sends from the configured address through the transport', async () => {
     const sendMail = vi.fn().mockResolvedValue({});
     const mailer = createMailer({ sendMail }, 'TreeRepro <no-reply@localhost>');
-    await mailer.send({ to: 'ada@example.test', subject: 'Hi', text: 'Hello' });
+    await mailer.send({
+      to: 'ada@example.test',
+      subject: 'Hi',
+      text: 'Hello',
+      html: '<p>Hello</p>',
+    });
     expect(sendMail).toHaveBeenCalledWith({
       from: 'TreeRepro <no-reply@localhost>',
       to: 'ada@example.test',
       subject: 'Hi',
       text: 'Hello',
+      html: '<p>Hello</p>',
     });
   });
 
@@ -27,12 +33,17 @@ describe('RFC-10 R5 SMTP mailer', () => {
       to: 'ada@example.test',
       subject: 'Subj',
       text: 'Body',
+      html: '<p>Rich</p>',
     });
     const info = (await spy.mock.results[0]?.value) as { message: Buffer };
     const raw = info.message.toString();
     expect(raw).toContain('Subject: Subj');
     expect(raw).toContain('To: ada@example.test');
     expect(raw).toContain('Body');
+    // RFC-10 R16: both parts travel, the text one first.
+    expect(raw).toContain('multipart/alternative');
+    expect(raw).toContain('<p>Rich</p>');
+    expect(raw.indexOf('text/plain')).toBeLessThan(raw.indexOf('text/html'));
   });
 
   it('propagates transport failures', async () => {
@@ -40,7 +51,7 @@ describe('RFC-10 R5 SMTP mailer', () => {
       { sendMail: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')) },
       'x@y',
     );
-    await expect(mailer.send({ to: 'a@b', subject: 's', text: 't' })).rejects.toThrow(
+    await expect(mailer.send({ to: 'a@b', subject: 's', text: 't', html: 'h' })).rejects.toThrow(
       'ECONNREFUSED',
     );
   });

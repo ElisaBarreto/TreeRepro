@@ -4,9 +4,16 @@ import { digestEmail, inviteEmail, passwordResetEmail } from './templates.ts';
 
 const expiresAt = new Date('2026-09-15T10:00:00Z');
 
+const ORIGIN = 'http://localhost';
+
 describe('RFC-20 R4, RFC-21 R5 email templates', () => {
   it('invitation carries the link, the expiry and the name', () => {
-    const mail = inviteEmail({ name: 'Ada', link: 'http://localhost/invite/abc', expiresAt });
+    const mail = inviteEmail({
+      name: 'Ada',
+      link: 'http://localhost/invite/abc',
+      expiresAt,
+      appOrigin: ORIGIN,
+    });
     expect(mail.subject).toBe('You have been invited to TreeRepro');
     expect(mail.text).toContain('Ada');
     expect(mail.text).toContain('http://localhost/invite/abc');
@@ -18,10 +25,50 @@ describe('RFC-20 R4, RFC-21 R5 email templates', () => {
       name: 'Ada',
       link: 'http://localhost/reset-password/abc',
       expiresAt,
+      appOrigin: ORIGIN,
     });
     expect(mail.subject).toBe('Reset your TreeRepro password');
     expect(mail.text).toContain('http://localhost/reset-password/abc');
     expect(mail.text).toMatch(/ignore this email/i);
+  });
+});
+
+describe('RFC-10 R16 HTML parts of the account e-mails', () => {
+  it('the invitation welcomes by name and links the button and the fallback to the invite', () => {
+    const mail = inviteEmail({
+      name: 'Ada',
+      link: 'http://localhost/invite/abc',
+      expiresAt,
+      appOrigin: ORIGIN,
+    });
+    expect(mail.html).toContain('Welcome to TreeRepro, Ada');
+    expect(mail.html.match(/href="http:\/\/localhost\/invite\/abc"/g)).toHaveLength(2);
+    expect(mail.html).toContain('2026-09-15 10:00 UTC');
+    expect(mail.html).toContain('Accept and set your password');
+  });
+
+  it('the password reset links to the reset page and says to ignore it if not requested', () => {
+    const mail = passwordResetEmail({
+      name: 'Ada',
+      link: 'http://localhost/reset-password/abc',
+      expiresAt,
+      appOrigin: ORIGIN,
+    });
+    expect(mail.html).toContain('href="http://localhost/reset-password/abc"');
+    expect(mail.html).toContain('2026-09-15 10:00 UTC');
+    expect(mail.html).toMatch(/ignore this email/i);
+  });
+
+  it('escapes a name and a link that carry markup', () => {
+    const hostile = { name: '<img src=x onerror=alert(1)>', link: 'http://localhost/x?a="><b>' };
+    for (const mail of [
+      inviteEmail({ ...hostile, expiresAt, appOrigin: ORIGIN }),
+      passwordResetEmail({ ...hostile, expiresAt, appOrigin: ORIGIN }),
+    ]) {
+      expect(mail.html).not.toContain('<img src=x');
+      expect(mail.html).not.toContain('"><b>');
+      expect(mail.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    }
   });
 });
 
@@ -131,6 +178,54 @@ describe('RFC-74 R5 digestEmail', () => {
     // The rest of the e-mail is untouched — the line is a prefix, not a mode.
     expect(mail.text).toContain('Records added (contests and complements included): 2');
     expect(mail.text).not.toContain('@');
+  });
+
+  it('RFC-10 R16 the HTML part carries the counts, the queues and each item linked to its drawer', () => {
+    const mail = digestEmail({ digest: digest(), appOrigin: APP_ORIGIN, date: '2026-09-17' });
+    for (const label of [
+      'Records added',
+      'Contests',
+      'Complements',
+      'Validations',
+      'Disputes',
+      'Withdrawals',
+      'Species proposals',
+      'Pending groups',
+      'Disputed records',
+    ])
+      expect(mail.html).toContain(label);
+    expect(mail.html).toContain('Cecropia pachystachya');
+    expect(mail.html).toContain('Grace Hopper');
+    expect(mail.html).toContain(
+      `href="${APP_ORIGIN}/app/species/018f2a00-0000-7000-8000-000000000001?record=018f2a00-0000-7000-8000-0000000000aa"`,
+    );
+    expect(mail.html).toContain(`href="${APP_ORIGIN}/app/curation/pending"`);
+    expect(mail.html).toContain('2026-09-16 06:00 UTC');
+    // RFC-74 R5: no address; the layout's one `@` is its `@media` rule.
+    expect(mail.html.replace('@media', '')).not.toContain('@');
+    expect(mail.html).not.toContain('Resent');
+  });
+
+  it('RFC-10 R16 the HTML part shows the resend line on a repeat and escapes record text', () => {
+    const mail = digestEmail({
+      digest: digest({ contests: [item({ valueText: '<b>x</b>', actorName: 'A & B' })] }),
+      appOrigin: APP_ORIGIN,
+      date: '2026-09-17',
+      resent: true,
+    });
+    expect(mail.html).toContain('the previous run for this window did not finish');
+    expect(mail.html).toContain('&lt;b&gt;x&lt;/b&gt;');
+    expect(mail.html).toContain('A &amp; B');
+  });
+
+  it('RFC-10 R16 the HTML part says so when a set is empty', () => {
+    const mail = digestEmail({
+      digest: digest({ contests: [], disputes: [] }),
+      appOrigin: APP_ORIGIN,
+      date: '2026-09-17',
+    });
+    expect(mail.html.match(/None in this window\./g)).toHaveLength(2);
+    expect(mail.html).not.toContain(`${APP_ORIGIN}/app/species/`);
   });
 
   it('carries no resend line on an ordinary run', () => {

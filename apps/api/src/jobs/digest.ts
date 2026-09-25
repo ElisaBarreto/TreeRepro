@@ -590,7 +590,7 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
     let failed = 0;
     for (const recipient of recipients) {
       try {
-        await mailer.send({ to: recipient.email, subject: mail.subject, text: mail.text });
+        await mailer.send({ to: recipient.email, ...mail });
       } catch (err) {
         failed += 1;
         // R5: a failed send is logged and counted, and the tick carries on.
