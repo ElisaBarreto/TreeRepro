@@ -13,6 +13,8 @@ main() {
   [ "${#sha}" -eq 40 ] || { echo "expected a full commit SHA" >&2; exit 2; }
 
   cd "$(dirname "$0")/.."
+  # Production overrides even if .env lost its COMPOSE_FILE line.
+  export COMPOSE_FILE=compose.yml:compose.prod.yml
   exec 9>/tmp/treerepro-deploy.lock
   flock 9
 
