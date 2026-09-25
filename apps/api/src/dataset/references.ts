@@ -41,6 +41,7 @@ export function toReference(
     observer: observer?.id ? { id: observer.id, name: observer.name } : null,
     shortCitation: row.shortCitation,
     fullCitation: row.fullCitation,
+    isbn: row.isbn,
   };
 }
 

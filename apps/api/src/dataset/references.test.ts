@@ -20,9 +20,16 @@ const baseRow: ReferenceRow = {
   observerUserId: null,
   shortCitation: null,
   fullCitation: null,
+  isbn: null,
 };
 
 describe('RFC-61 R1, R4 toReference', () => {
+  it('RFC-61 R10 carries the ISBN of a book through', () => {
+    const ref = toReference({ ...baseRow, kind: 'book', isbn: '9780306406157' });
+    expect(ref).toMatchObject({ kind: 'book', isbn: '9780306406157' });
+    expect(toReference(baseRow).isbn).toBeNull();
+  });
+
   it('carries the row shortCitation and fullCitation through', () => {
     const row: ReferenceRow = {
       ...baseRow,

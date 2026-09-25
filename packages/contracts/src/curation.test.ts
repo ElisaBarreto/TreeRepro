@@ -205,6 +205,7 @@ describe('RFC-80 resolveDoiResultSchema', () => {
           observer: null,
           shortCitation: null,
           fullCitation: null,
+          isbn: null,
         },
       }).success,
     ).toBe(true);
