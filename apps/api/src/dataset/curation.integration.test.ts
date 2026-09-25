@@ -14,12 +14,7 @@ import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { recordReferences } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
-import { AppError } from '../http/errors.ts';
-import {
-  annotateRecord,
-  createRecords,
-  nextRecordCodes,
-} from './curation.ts';
+import { annotateRecord, createRecords, nextRecordCodes } from './curation.ts';
 import { listDisputed, mapPending, pendingTraits } from './queues.ts';
 import { getRecord } from './records.ts';
 

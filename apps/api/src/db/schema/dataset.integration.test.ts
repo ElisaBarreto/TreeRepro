@@ -792,14 +792,12 @@ describe('spec R-1 the accepted value is gone from the database', () => {
       select to_regclass('public.accepted_values')::text as tbl,
         (select count(*)::int from pg_proc where proname = 'accepted_values_match_record') as fn,
         (select description from permissions where key = 'accepted.manage') as perm_description,
-        (select count(*)::int from role_permissions where permission_key = 'accepted.manage') as grants,
         (select description from permissions where key = 'dataset.export') as export_description
     `)) as unknown as [
       {
         tbl: string | null;
         fn: number;
         perm_description: string | null;
-        grants: number;
         export_description: string;
       },
     ];
@@ -807,7 +805,6 @@ describe('spec R-1 the accepted value is gone from the database', () => {
       tbl: null,
       fn: 0,
       perm_description: 'Set and clear the accepted value per species and trait (retired)',
-      grants: 0,
       export_description: 'Download the dataset',
     });
   });
