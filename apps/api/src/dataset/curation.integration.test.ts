@@ -1,3 +1,4 @@
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -10,6 +11,9 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import { referenceTraits } from '../db/schema/reference-traits.ts';
+import { recordReferences } from '../db/schema/records.ts';
+import { bibliographicReferences } from '../db/schema/references.ts';
 import { AppError } from '../http/errors.ts';
 import {
   annotateRecord,
@@ -188,6 +192,67 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       code: 'RECORD_DUPLICATE',
       details: [{ path: 'sources.references.0', message: record?.id }],
     });
+  });
+
+  it('RFC-61 R4, R9 an extra reference equal to the secondary is not double-counted', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
+    const primary = await createReference(t.db);
+    const shared = await createReference(t.db);
+
+    const res = await createRecords(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { levelId: trait.levels[0]?.id as string },
+      referenceIds: [primary.id, shared.id],
+      secondaryReferenceId: shared.id,
+    });
+    // `shared` shows up as the secondary reference (owner amendment 4: primary,
+    // then the secondary, then record_references), not as an extra: it gets
+    // no record_references row of its own, so its usage is not double-counted.
+    expect(res.created[0]?.references.map((r) => r.id)).toEqual([primary.id, shared.id]);
+
+    const [row] = await t.db
+      .select({
+        primaryCount: bibliographicReferences.primaryCount,
+        secondaryCount: bibliographicReferences.secondaryCount,
+      })
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.id, shared.id));
+    expect(row).toMatchObject({ primaryCount: 0, secondaryCount: 1 });
+
+    const [usage] = await t.db
+      .select({ recordCount: referenceTraits.recordCount })
+      .from(referenceTraits)
+      .where(
+        and(eq(referenceTraits.referenceId, shared.id), eq(referenceTraits.traitId, trait.id)),
+      );
+    expect(usage?.recordCount).toBe(1);
+  });
+
+  it('spec R-4 a repeated extra reference writes one record_references row, not a 500', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
+    const primary = await createReference(t.db);
+    const extra = await createReference(t.db);
+
+    const res = await createRecords(t.db, UNRESTRICTED, {
+      actorId: user.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { levelId: trait.levels[0]?.id as string },
+      referenceIds: [primary.id, extra.id, extra.id],
+    });
+    expect(res.created[0]?.references.map((r) => r.id)).toEqual([primary.id, extra.id]);
+
+    const rows = await t.db
+      .select()
+      .from(recordReferences)
+      .where(eq(recordReferences.recordId, res.created[0]?.id as string));
+    expect(rows).toHaveLength(1);
   });
 
   it('spec R-5 stores the six quantitative fields and derives value_text from them', async () => {

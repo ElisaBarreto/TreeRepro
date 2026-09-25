@@ -197,7 +197,24 @@ export async function mapPending(
       if (resolved.levelId !== null) levels.push({ id: resolved.levelId, key: resolved.levelKey });
     }
   } else {
-    await resolveValue(db, visibility, trait, { quantitative: { single: input.value.numeric } });
+    // `resolveValue` reports an out-of-range number at `value.quantitative.single`
+    // (its own value shape); `mapPending`'s own body takes `value.numeric`
+    // (unchanged by plan 13f), and that is the path the web MapDialog reads
+    // its error off of, so the detail is remapped back before it leaves here.
+    try {
+      await resolveValue(db, visibility, trait, { quantitative: { single: input.value.numeric } });
+    } catch (err) {
+      if (err instanceof AppError && err.details) {
+        throw new AppError(
+          err.code,
+          err.message,
+          err.details.map((d) =>
+            d.path === 'value.quantitative.single' ? { ...d, path: 'value.numeric' } : d,
+          ),
+        );
+      }
+      throw err;
+    }
     numeric = String(input.value.numeric);
   }
   const chosenCount = levels.length === 0 ? 1 : levels.length;

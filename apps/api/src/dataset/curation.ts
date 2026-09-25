@@ -252,6 +252,18 @@ export async function createRecords(
     value.levelKey !== null ? value.levelKey : quantitativeText(value.quantitative);
   const [primaryReferenceId, ...moreReferenceIds] = input.referenceIds;
   if (primaryReferenceId === undefined) throw validation('sources', 'A reference is required');
+  // `record_references` counts a reference's usage once per record (RFC-61
+  // R4, R9): a reference already recorded as the primary or the secondary
+  // role, or repeated among the extras, would otherwise be double-counted —
+  // or, for a repeat, hit the table's primary key as a 500. Kept in first-
+  // occurrence order.
+  const seenReferenceIds = new Set<string>([primaryReferenceId]);
+  if (input.secondaryReferenceId !== undefined) seenReferenceIds.add(input.secondaryReferenceId);
+  const extraReferenceIds = moreReferenceIds.filter((referenceId) => {
+    if (seenReferenceIds.has(referenceId)) return false;
+    seenReferenceIds.add(referenceId);
+    return true;
+  });
 
   return db.transaction(async (tx) => {
     if (input.intent === 'contest' && input.respondsToRecordId) {
@@ -310,10 +322,10 @@ export async function createRecords(
       ]);
     }
 
-    if (moreReferenceIds.length > 0) {
+    if (extraReferenceIds.length > 0) {
       await tx
         .insert(recordReferences)
-        .values(moreReferenceIds.map((referenceId) => ({ recordId: inserted.id, referenceId })));
+        .values(extraReferenceIds.map((referenceId) => ({ recordId: inserted.id, referenceId })));
     }
 
     if (input.intent === 'contest' && input.respondsToRecordId) {
