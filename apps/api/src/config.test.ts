@@ -72,6 +72,15 @@ describe('RFC-10 R5 loadConfig', () => {
     );
   });
 
+  it('RFC-20 R4 INVITE_CONTACT_EMAIL is trimmed, optional and must be an address', () => {
+    expect(loadConfig(env({ INVITE_CONTACT_EMAIL: '  a@b.test ' })).inviteContactEmail).toBe(
+      'a@b.test',
+    );
+    expect(loadConfig(env({ INVITE_CONTACT_EMAIL: '' })).inviteContactEmail).toBeUndefined();
+    expect(loadConfig(env()).inviteContactEmail).toBeUndefined();
+    expect(() => loadConfig(env({ INVITE_CONTACT_EMAIL: 'nope' }))).toThrow(/INVITE_CONTACT_EMAIL/);
+  });
+
   it('coerces numeric ports', () => {
     expect(loadConfig(env({ PORT: '4000', DB_PORT: '6543' })).port).toBe(4000);
   });

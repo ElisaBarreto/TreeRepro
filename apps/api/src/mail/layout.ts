@@ -2,9 +2,9 @@
  * The HTML frame every e-mail shares: a dark canopy page, the emblem and the
  * wordmark, a white card, and a footer saying why the mail arrived.
  *
- * Mail clients are not browsers: layout is nested tables, every style is
- * inline, and there is no web font (the Sora/Manrope stacks fall back to the
- * system face). Gradients and rounded corners are progressive — Outlook for
+ * Mail clients are not browsers: layout is nested tables and every style is
+ * inline. Sora and Manrope load through `@font-face` from the app origin;
+ * clients that ignore it (Gmail) fall back to the system face. Gradients and rounded corners are progressive — Outlook for
  * Windows drops them and keeps the solid colour underneath.
  */
 
