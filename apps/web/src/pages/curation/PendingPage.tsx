@@ -83,7 +83,7 @@ export function PendingPage({
         <EmptyState title="Nothing is pending harmonisation." />
       ) : null}
       {traits.data && traits.data.length > 0 ? (
-        <div className="grid gap-6 md:grid-cols-[16rem_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[16rem_minmax(0,1fr)]">
           <ul aria-label="Traits with pending values" className="flex flex-col gap-1">
             {traits.data.map((entry) => (
               <li key={entry.trait.id}>

@@ -2,8 +2,10 @@ import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } fr
 
 /** @rfc RFC-13 R5 */
 export function Table({ children }: { children: ReactNode }) {
+  // `relative`: an absolutely positioned cell child (`sr-only` "Actions")
+  // would otherwise escape the scroll container and widen the page.
   return (
-    <div className="overflow-x-auto rounded-xl border border-canopy-700/15 bg-white">
+    <div className="relative overflow-x-auto rounded-xl border border-canopy-700/15 bg-white">
       <table className="w-full text-left text-cell">{children}</table>
     </div>
   );

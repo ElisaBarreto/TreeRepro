@@ -118,7 +118,7 @@ export function AuditPage() {
       <div className="flex flex-col gap-6">
         <form
           onSubmit={apply}
-          className="grid gap-4 md:grid-cols-[1fr_1fr_auto_auto_auto] md:items-end"
+          className="grid gap-4 md:grid-cols-2 md:items-end xl:grid-cols-[1fr_1fr_auto_auto_auto]"
           noValidate
         >
           <Field id={ids.actor} label="Actor" error={errors.actor}>

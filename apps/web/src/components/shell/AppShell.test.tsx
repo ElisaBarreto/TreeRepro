@@ -1,4 +1,5 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { forwardRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ADMIN_ME, ME } from '../../test/fixtures.ts';
@@ -408,5 +409,84 @@ describe('RFC-13 R3 hierarchical breadcrumb', () => {
     expect(within(entry).getByText('Species')).toHaveAttribute('aria-current', 'page');
     unmount();
     location.pathname = '/app';
+  });
+});
+
+describe('RFC-13 R12 AppShell nav drawer below lg', () => {
+  it('opens the sidebar nav as a modal drawer from the menu button', async () => {
+    location.pathname = '/app';
+    location.search = {};
+    const user = userEvent.setup();
+    renderWithProviders(<AppShell>child</AppShell>, { me: ADMIN_ME });
+    const menu = screen.getByRole('button', { name: 'Open menu' });
+    expect(menu).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
+
+    await user.click(menu);
+    const drawer = screen.getByRole('dialog', { name: 'Menu' });
+    expect(drawer).toHaveAttribute('aria-modal', 'true');
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+    expect(within(drawer).getByRole('navigation', { name: 'Admin' })).toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: 'Species' })).toHaveAttribute(
+      'href',
+      '/app/species',
+    );
+    expect(within(drawer).getByRole('button', { name: 'Close' })).toHaveFocus();
+    // The shell behind it is inert (R10): the menu button and the page content.
+    expect(menu.closest('[inert]')).not.toBeNull();
+    expect(screen.getByText('child').closest('[inert]')).not.toBeNull();
+  });
+
+  it('closes the drawer when a nav link is followed', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AppShell>child</AppShell>, { me: ADMIN_ME });
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    const drawer = screen.getByRole('dialog', { name: 'Menu' });
+    await user.click(within(drawer).getByRole('link', { name: 'Species' }));
+    expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
+  });
+
+  it('closes the drawer on Escape and returns focus to the menu button', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    const menu = screen.getByRole('button', { name: 'Open menu' });
+    await user.click(menu);
+    expect(screen.getByRole('dialog', { name: 'Menu' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
+    expect(menu).toHaveAttribute('aria-expanded', 'false');
+    expect(menu).toHaveFocus();
+    expect(menu.closest('[inert]')).toBeNull();
+  });
+
+  it('closes the drawer once the viewport reaches lg (64rem)', async () => {
+    let onChange: ((event: { matches: boolean }) => void) | undefined;
+    const matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: (_: string, listener: typeof onChange) => {
+        onChange = listener;
+      },
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal('matchMedia', matchMedia);
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+      expect(matchMedia).toHaveBeenCalledWith('(min-width: 64rem)');
+      await user.click(screen.getByRole('button', { name: 'Open menu' }));
+      expect(screen.getByRole('dialog', { name: 'Menu' })).toBeInTheDocument();
+      act(() => onChange?.({ matches: true }));
+      expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('names the icon-only Sign out button', () => {
+    renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveAttribute(
+      'aria-label',
+      'Sign out',
+    );
   });
 });
