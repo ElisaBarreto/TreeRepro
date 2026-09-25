@@ -13,7 +13,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 ### 1.1 Records
 
 - **R-1 No accepted value.** The platform stores every claim and never picks one. Removed: `accepted_values`, `GET|PUT /api/species/:id/traits/:traitId/accepted`, **Set as accepted**, `AcceptedSection`, the `accepted` line and badge, and the permission `accepted.manage`. Wherever a screen counted "accepted", it counts **validated** instead: a species × trait is validated when at least one of its visible records has a validation.
-- **R-2 Record ID.** Every record has `record_code`: text, unique, not null. An imported record takes the value of the file's `ID` column, which must match `^EB_[0-9]+$`; a missing, malformed or repeated ID rejects the row. A record created on the platform gets `'TR_' || nextval('record_code_tr_seq')` from the database. Gaps in the `TR_` sequence are accepted.
+- **R-2 Record ID.** Every record has `record_code`: text, unique, not null. An imported record takes the value of the file's `ID` column, which must match `^EB_[0-9]+$`; a missing, malformed or repeated ID rejects the row. A record created on the platform gets `'TR_' || nextval('record_code_tr_seq')` from the database. Gaps in the `TR_` sequence are accepted. **Split entries get letter suffixes:** an import row split into several levels (`a;b`, RFC-64 R6) gives `EB_1a`, `EB_1b`, …; a platform form with several levels takes one sequence number and gives `TR_7a`, `TR_7b`, …; a single-level entry keeps the bare code (`EB_1`, `TR_5`). Suffixes run a–z, then aa, ab, … Stored codes match `^(EB|TR)_[0-9]+([a-z]+)?$`.
 - **R-3 Categorical value.** One level per record. A form with several levels creates **one record per level**.
 - **R-4 Several references, one record.** All the references given in a form belong to each record it creates. The first goes to `primary_reference_id` as today; the rest go to `record_references (record_id, reference_id)`. Imported records do not use `record_references`. Screens and the export list a record's references joined by `; `. The reference counters and `reference_traits` count `record_references` rows as usages.
 - **R-5 Quantitative value.** `numeric_value` is the **single value**. The new nullable columns are `min_value`, `max_value`, `mean_value`, `sd_value` and `n`. At least one of single, min, max and mean is required. Also `min_value ≤ max_value`, `sd_value ≥ 0` and `n` is an integer ≥ 1. The import fills only the single value. The trait card summary shows the smallest value found across the species' records (over single, min, max and mean), the largest, and the mean of each record's single value, or its mean when it has no single value.
@@ -83,7 +83,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 
 ## 2. Screens (species page)
 
-- A legend at the top of the page: 👍 **Validate** · 👎 **Contest** · ＋ **Complement**.
+- A legend at the top of the page: 👍 **Validate** · 👎 **Contest** · ＋ **Complement**. The symbols are drawn as `Icon` stroke glyphs (`thumbsUp`, `thumbsDown`, `plus` in `components/ui/Icon.tsx`), never emoji (workspace UI pattern: "No emoji"); the emoji in this spec are shorthand.
 - A categorical trait card lists **every** level the species has (the cap of 5 bars goes). Each level has 👍 👎 ＋.
   - 👍 opens "Do you confirm that this record is correct?" with an optional supporting reference, then validates every record of that level (R-6).
   - 👎 and ＋ open the entry dialog.
@@ -149,6 +149,7 @@ Plans run in parallel; these names are the contract between them. A plan that ne
 | Owner | Name | Shape |
 |---|---|---|
 | 13f | `trait_records.record_code` | `text not null unique`; manual default `'TR_' \|\| nextval('record_code_tr_seq')` |
+| 13f | `nextRecordCodes(tx, count): Promise<string[]>` | one `nextval('record_code_tr_seq')`; `['TR_7']` for 1, `['TR_7a','TR_7b',…]` for more; 13g's create path calls it with the number of records actually created |
 | 13f | `trait_records.min_value`, `max_value`, `mean_value`, `sd_value` | `numeric`, nullable; `numeric_value` stays and means *single* |
 | 13f | `trait_records.n` | `integer`, nullable, `>= 1` |
 | 13f | `record_references` | `(record_id uuid → trait_records, reference_id uuid → bibliographic_references)`, PK on both |
@@ -157,7 +158,7 @@ Plans run in parallel; these names are the contract between them. A plan that ne
 | 13f | trait summary `numeric` | `{ min, max, mean, count } \| null` (replaces `{ min, median, max, count }`) |
 | 13f | record item | gains `recordCode`, `quantitative: QuantitativeValue \| null`, `references: ReferenceSummary[]` (primary first, then `record_references`) |
 | 13d | `bibliographic_references.isbn` | `text` unique, 13 digits; `kind` gains `'book'` |
-| 13d | source input (contracts) | `{ personalObservation: true } \| Array<{ id } \| { doi } \| { isbn, citation }>` (1–10) |
+| 13d | source input (contracts) | `{ personalObservation: true } \| { references: SourceRef[] }` (1–10), `SourceRef = { id } \| { doi } \| { isbn, citation }` — the existing wrapper is kept |
 | 13d | `isValidIsbn(input): string \| null` | in `packages/contracts` — returns normalised ISBN-13 or null |
 | 13e | trait summary / trait page / coverage | `accepted*` fields removed; `validated` / `validatedCount` / `percentValidated` added; coverage `/top?mode=missing\|least_validated` |
 | 13e, 13i | export | 13e: `GET /api/export/records.csv` (interim, all visible non-withdrawn records); 13i replaces it with `GET /api/export/dataset.zip` |
