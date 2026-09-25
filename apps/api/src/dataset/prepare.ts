@@ -263,6 +263,45 @@ export function preparePlots(
 }
 
 /**
+ * The PIs' plots, for the `user_plots` import (RFC-68 R11): one row per
+ * `WorkEmail` and plot code, `PlotCode` split on `|` as in `preparePlots`, so
+ * a pair never names a plot that plots.import.csv leaves out. The e-mail is
+ * only trimmed here; the importer matches it through the blind index.
+ * @rfc RFC-68 R14
+ */
+export function prepareUserPlots(piRows: Record<string, string>[]): Prepared {
+  const anomalies: Anomaly[] = [];
+  const pairs = new Set<string>();
+  piRows.forEach((r, i) => {
+    const email = norm(r.WorkEmail);
+    const codes = (r.PlotCode ?? '')
+      .split('|')
+      .map(norm)
+      .filter((c) => c !== '');
+    if (!email || codes.length === 0) {
+      anomalies.push({
+        kind: 'blank_field',
+        detail: `row ${i + 2}: ${!email ? 'WorkEmail' : 'PlotCode'} is blank`,
+      });
+      return;
+    }
+    for (const code of codes) {
+      const bad = checkPlotCode(code);
+      if (bad) {
+        anomalies.push({ kind: bad.kind, detail: `row ${i + 2}: ${bad.detail}` });
+        continue;
+      }
+      pairs.add(`${email}\u0000${code}`);
+    }
+  });
+  return {
+    header: ['user_email', 'plot_id'],
+    rows: [...pairs].sort().map((p) => p.split('\u0000') as [string, string]),
+    anomalies,
+  };
+}
+
+/**
  * `url` is left empty on purpose: the web app builds the `https://doi.org/`
  * link from the stored DOI (RFC-61 R4), so filling it here would duplicate a
  * value that is derived elsewhere.

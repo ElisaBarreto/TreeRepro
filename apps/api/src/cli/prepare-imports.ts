@@ -4,7 +4,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { IMPORT_COLUMNS, readFirstLine } from '../dataset/import.ts';
+import { headerMatches, readFirstLine } from '../dataset/import.ts';
 import {
   type Anomaly,
   type Prepared,
@@ -13,6 +13,7 @@ import {
   preparePlots,
   prepareReferences,
   prepareSynonyms,
+  prepareUserPlots,
 } from '../dataset/prepare.ts';
 
 const USAGE = 'usage: prepare-imports --source <dir> --out <dir> [--skip-anomalies]\n';
@@ -83,8 +84,8 @@ function report(name: string, anomalies: Anomaly[], full: boolean): void {
 let exitCode = 0;
 try {
   // RFC-64 R2 owns this header; the records file is reported, never rewritten.
-  const header = (await readFirstLine(join(source, RECORDS))).replace(/^﻿/, '').replace(/\r$/, '');
-  const matches = header === IMPORT_COLUMNS.join(',');
+  // The first line is parsed as a CSV record, exactly as the importer does.
+  const matches = headerMatches(await readFirstLine(join(source, RECORDS)));
   process.stdout.write(
     `${RECORDS}: header ${matches ? 'matches RFC-64 R2 — import it as it is' : 'DOES NOT match RFC-64 R2'}\n`,
   );
@@ -111,6 +112,7 @@ const outputs: [string, Prepared][] = [
   ['synonyms.import.csv', prepareSynonyms(speciesRows)],
   ['plots.import.csv', preparePlots(speciesRows, piRows)],
   ['references.import.csv', prepareReferences(refRows)],
+  ['user-plots.import.csv', prepareUserPlots(piRows)],
 ];
 
 for (const [name, prepared] of outputs) {
