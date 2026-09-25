@@ -28,8 +28,9 @@ prefixes="daily"
 sha="$(sha256sum "$target" | cut -d' ' -f1)"
 for prefix in $prefixes; do
   # Credentials through a config on stdin, never on the command line.
+  # ponytail: single PUT caps a dump at 5 GiB (R2 limit); switch to multipart if the dump nears it.
   printf 'user = "%s:%s"\n' "$R2_ACCESS_KEY_ID" "$(cat /run/secrets/r2_secret_access_key)" \
-    | curl -fsS -K - --retry 3 --aws-sigv4 "aws:amz:auto:s3" \
+    | curl -fsS -K - --retry 3 --connect-timeout 20 --max-time 1800 --aws-sigv4 "aws:amz:auto:s3" \
       -H "x-amz-content-sha256: $sha" -T "$target" \
       "$R2_ENDPOINT/$R2_BUCKET/$prefix/$name"
   echo "backup uploaded: $prefix/$name"
