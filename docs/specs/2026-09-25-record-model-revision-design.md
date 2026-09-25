@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-25
 **Status:** approved design; nothing implemented yet
+**Amendments:** 2026-09-25 — owner ruling: a contest states the correct levels; its levels that already have records become validations, its new levels become contest records, and every other existing level is contested (named in the request as `contestedLevelIds`, checked by the API). A contest is stored even when it creates no record, its contested set is fixed at submission, and the entry dialog shows a per-level confirmation summary before submit when the trait already has levels with records (R-7–R-10, R-17, R-20, §2, §6). A contest stands only while something it contests has a visible record, and E holds active levels only (R-8, R-9). 2026-09-25 — owner ruling: records of a deactivated level, and contests naming one, are visible only to holders of `dataset.read_inactive` (R-14).
 **Scope:** the owner's change list of 2026-09-25: the home page, adding and annotating records, contests, the end of the accepted value, withdrawal, book references, quantitative summaries, record IDs, the full export and the help pages. Every decision below was confirmed with the owner on 2026-09-25.
 
 This file is both the index and the design. Each issue has its own implementation plan under `docs/plans/2026-09-25-revision-<NN><letter>-<slug>.md`.
@@ -21,18 +22,18 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 ### 1.2 Validation
 
 - **R-6 Validate** writes a `confirm` annotation, with an optional supporting reference (DOI or ISBN). A user cannot validate their own record. Each user counts once per record. A validation cannot be undone.
-- **R-7 Duplicate means validation.** When a new entry matches a visible record of the same species and trait, no record is created. A categorical entry matches on the same level; a quantitative entry matches when all six fields are identical. The user's references become validations of the existing record, one `confirm` per reference, or a single `confirm` without a reference. The response names the record as "matches an existing record — counted as your validation". If the matching record is the user's own, the response only reports the duplicate. When a form mixes new and matching levels, the new levels create records and the matching ones become validations.
+- **R-7 Duplicate means validation.** When a new entry matches a visible record of the same species and trait, no record is created. A categorical entry matches on the same level; a quantitative entry matches when all six fields are identical. The user's references become validations of the existing record, one `confirm` per reference, or a single `confirm` without a reference. The response names the record as "matches an existing record — counted as your validation". If the matching record is the user's own, the response only reports the duplicate. When a form mixes new and matching levels, the new levels create records and the matching ones become validations. Matching is the same for every intent; a contest adds one step (R-8): the existing levels it does not give are the levels it contests.
 
 ### 1.3 Contest
 
-- **R-8 Contest a level.** A contest is a new record with `intent = 'contest'` whose value differs from the level it contests. It **carries a value**; a contest without one does not exist. `responds_to_record_id` points to one record of the contested level, and the contest applies to **every** record of that level for the species and trait. Contesting "blue" in {red, blue, orange} touches only blue. A quantitative contest responds to one record.
-- **R-9 Contested.** A level (or a quantitative record) is contested while a contest responding to it is neither withdrawn nor resolved. A species × trait is contested when one of its levels or records is. **Contested is the only status** in the platform, and every viewer sees it.
+- **R-8 Contest states the correct levels.** A categorical contest states which levels are correct. Let E be the active levels that have a visible record for the species and trait when it is submitted, and S the levels it gives (at least one). The levels of S ∩ E become the user's validations (R-6, R-7: one `confirm` per reference, own records only reported as duplicates) and create no record; the levels of S \ E create records with `intent = 'contest'`; the levels of E \ S are **contested** by it. Example: a flower is blue, yellow and red; a contest giving only red validates red and contests blue and yellow; one giving only green creates a green record and contests all three. The request names the contested levels (`contestedLevelIds`); the API recomputes E \ S and answers 400 `VALIDATION_FAILED` with path `contestedLevelIds` unless they are equal, and with path `intent` ("A contest must contest at least one level; this is a complement") when E \ S is empty. The contest is stored even when it creates no record (the storage is plan 13g's), and its contested set is fixed at submission: a level that first appears later is not contested by it. `respondsToRecordId` no longer defines a categorical contest; a complement may still respond to a record. A quantitative contest is unchanged: one record that responds to one record, contests it, and must differ from it in at least one of the six fields.
+- **R-9 Contested.** A contest is *standing* while it is not withdrawn, carries no Keep both, and at least one level it names (or the quantitative record it responds to) still has a visible record; a level emptied by Withdraw level that later gets a visible record again is contested again by a contest that is still standing. A level is contested while a standing contest names it and the level still has a visible record; a quantitative record is contested while a standing contest responds to it. A species × trait is contested when one of its levels or records is. **Contested is the only status** in the platform, and every viewer sees it.
 - **R-10 Resolve.** Resolving requires `records.review` (manager or admin), in one of two ways:
-  - withdraw one side: the contest record, or the contested level through **Withdraw level**, which withdraws every record of that level the actor may withdraw;
-  - or **Keep both**, which writes a `resolve` annotation on the contest record.
+  - withdraw one side: the contest (**Withdraw contest**: its records, or the contest itself when it created none), or a contested level through **Withdraw level**, which withdraws every record of that level the actor may withdraw;
+  - or **Keep both**, a `resolve` on the contest, which clears every level it names.
 
-  The flag clears once the level has no visible record left, or through Keep both. A manager's Withdraw level cannot remove imported records (R-12); when some remain, the page names them and offers Keep both or an admin's withdrawal.
-- **R-11 Neutral and Dispute are removed** from the API and the UI. The contested flag is derived from contest records, not from `dispute` annotations. Old `dispute` and `neutral` rows stay in the table and are ignored.
+  A level's flag clears once no standing contest names it, or once the level has no visible record left. A manager's Withdraw level cannot remove imported records (R-12), for example; when records remain that the actor cannot withdraw, the page names them as such and offers Keep both or an admin's withdrawal.
+- **R-11 Neutral and Dispute are removed** from the API and the UI. The contested flag is derived from contests, not from `dispute` annotations. Old `dispute` and `neutral` rows stay in the table and are ignored.
 
 ### 1.4 Withdrawal
 
@@ -44,7 +45,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 
 ### 1.5 Visibility and filters
 
-- **R-14** Records whose harmonisation is not `harmonised` (unknown levels and the like) and the **unresolved** taxon badge are visible only to holders of `records.review`.
+- **R-14** Records whose harmonisation is not `harmonised` (unknown levels and the like) and the **unresolved** taxon badge are visible only to holders of `records.review`. Records of a deactivated level, and contests naming one, are visible only to holders of `dataset.read_inactive` (owner ruling 2026-09-25).
 - **R-15** Species list filters:
   - **Contested**, for everyone;
   - **Has unknown levels**, for `records.review`;
@@ -71,16 +72,16 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
     ```
 
     `n_validations` and `n_contests` count distinct users. `references` is the `; `-joined list.
-  - `annotations.csv`: one row per validation and per contest: `record_code, kind (validation|contest), user_name, date, reference, contest_record_code`. User names only, never e-mail addresses.
+  - `annotations.csv`: one row per validation and per contest: `record_code, kind (validation|contest), user_name, date, reference, contest_record_code`. User names only, never e-mail addresses. A contest (not withdrawn, resolved included) gives one row per visible record it contests — every visible record of each level it names, or the one record a quantitative contest responds to — with that record's code in `record_code` and the codes of the records the contest created, joined by `; `, in `contest_record_code` (empty when it created none).
 
 ### 1.7b Imports after the test phase
 
 - **R-19 Incremental import.** Later imports add records with new `EB_n` IDs. A row whose `ID` already exists in the database is skipped and counted as `already imported` in the report (not a reject), so a full file with old and new rows can be sent again.
 - **R-20 Replace that preserves the platform.** `import:records --replace-imported` replaces the imported (`EB_`) records and keeps everything users produced. In one transaction:
-  1. write the **annotation sheet** `replace-<batch>-annotations.csv`: every validation, contest, resolve and withdrawal on an `EB_` record, and every `TR_` contest responding to an `EB_` record (`record_code, kind, user_name, date, reference, contest_record_code`);
+  1. write the **annotation sheet** `replace-<batch>-annotations.csv`: every validation, contest, resolve and withdrawal on an `EB_` record, and every quantitative `TR_` contest responding to an `EB_` record (`record_code, kind, user_name, date, reference, contest_record_code`); a categorical contest names levels, not records, so the replace leaves it untouched, and it contests a level again once the new file gives that level a visible record;
   2. delete the `EB_` records and their annotations only (species, genera, families, references, plots, plot species, user plots, synonyms, proposals and every `TR_` record stay; the file adds what is missing);
   3. import the new file;
-  4. **re-link by `record_code`**: annotations and `TR_` contests pointing to an `EB_n` present in the new file are attached to the new record; the ones whose `EB_n` is gone are marked `orphan` in the sheet and dropped, and an orphaned `TR_` contest becomes an independent record (intent and target cleared);
+  4. **re-link by `record_code`**: annotations and quantitative `TR_` contests pointing to an `EB_n` present in the new file are attached to the new record; the ones whose `EB_n` is gone are marked `orphan` in the sheet and dropped, and an orphaned `TR_` contest becomes an independent record (intent and target cleared);
   5. recompute the counters (`species_trait_coverage`, `species.trait_count`, reference usage counts, `reference_traits`).
 
   Runs as `treerepro_migrator` through the runbook's one-off container, production included, after a `pg_dump`. The old total `--replace` (RFC-64 R12) is refused whenever a `TR_` record exists — it is for the test phase only.
@@ -99,9 +100,9 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 - A legend at the top of the page: 👍 **Validate** · 👎 **Contest** · ＋ **Complement**. The symbols are drawn as `Icon` stroke glyphs (`thumbsUp`, `thumbsDown`, `plus` in `components/ui/Icon.tsx`), never emoji (workspace UI pattern: "No emoji"); the emoji in this spec are shorthand.
 - A categorical trait card lists **every** level the species has (the cap of 5 bars goes). Each level has 👍 👎 ＋.
   - 👍 opens "Do you confirm that this record is correct?" with an optional supporting reference, then validates every record of that level (R-6).
-  - 👎 and ＋ open the entry dialog.
+  - 👎 opens the entry dialog with **Contest** chosen, that level unchecked and every other level with records checked; the user adjusts. ＋ opens the entry dialog.
 - A quantitative trait has the same three buttons on each row of the record panel.
-- **Entry dialog.** When the species already has records for the trait, the first step is a required choice between **Contest** and **Complement**. Every other field and the submit button stay disabled until the user answers. This applies from the card's ＋ as well (2.1). Level selection is multiple (checkboxes). A quantitative trait gets the six fields. Sources accept a DOI, an ISBN with its citation, or neither (personal observation).
+- **Entry dialog.** When the species already has records for the trait, the first step is a required choice between **Contest** and **Complement**. Every other field and the submit button stay disabled until the user answers. This applies from the card's ＋ as well (2.1). Level selection is multiple (checkboxes). Before submit, a categorical entry on a trait that already has levels with records (E not empty, R-8) shows a **confirmation summary** of what it will do per level — "Validate red · Contest blue, yellow · Add green" — and the user must confirm it (a first entry on a trait with no records has nothing to validate or contest and needs none); the request sends the contested levels as `contestedLevelIds` (R-8). A quantitative trait gets the six fields. Sources accept a DOI, an ISBN with its citation, or neither (personal observation).
 - **Record panel.** Columns are sortable with a server-side `sort` parameter, validated against the list of sortable columns: value, references, origin, added. A counts column shows ✓ n / ✗ n and a **Contested** badge. Withdrawn records are not shown.
 - The `?` trait tip is larger.
 
@@ -115,7 +116,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 | **13d** book references | 7 | R-16 | `db/schema/references.ts`, `dataset/sources.ts`, `contracts curation.ts` (sources schema only), `SourcesField`, `DoiField`, `ReferencesPage` | 13a |
 | **13e** no accepted | 4 | R-1; interim export of all records | `dataset/curation.ts` (accepted block), `coverage.ts`, `trait-page.ts`, `contributions.ts`, `export.ts`, `summary.ts` (accepted part), `AcceptedSection`, `TraitCard` | 13a |
 | **13f** record schema | IDs, 13 | R-2, R-4, R-5; the import reads `ID`; **reimport runbook** | `db/schema/records.ts`, `dataset/import.ts`, `summary.ts` (numeric part), `contracts` (value schema) | 13a |
-| **13g** contest & withdrawal | 2.2, 3, 6, 9, 10, 11 | R-3, R-6…R-15; Disputed page (Keep both, Withdraw level) | `dataset/curation.ts` (annotations), `records.ts`, `queues.ts`, `taxa.ts` (filters), counter triggers, `DisputedPage`, species filters | 13e, 13f |
+| **13g** contest & withdrawal | 2.2, 3, 6, 9, 10, 11 | R-3, R-6…R-15; Contested queue (Keep both, Withdraw contest, Withdraw level) | `dataset/curation.ts` (annotations), `records.ts`, `queues.ts`, `taxa.ts` (filters), counter triggers, `DisputedPage`, species filters | 13e, 13f |
 | **13h** species page | 2.1, 2.3, 2.4, 2.6 | §2 | `TraitCard`, `TraitPanel`, `RecordTable`, `ui/Table`, `RecordActions`, `AddEntriesDialog`, `ContestDialog`, `ValueField` | 13g, 13d |
 | **13i** full export | 5, 12 | R-17 | `dataset/export.ts`, export route, the link on the species search | 13g |
 | **13k** preserving reimport | R-20 | `--replace-imported`, annotation sheet, re-link by code, counter recompute, runbook | `dataset/import.ts` (+ a new `dataset/replace-imported.ts`), import CLI, RFC-64 | 13f, 13g, 13i |
@@ -176,7 +177,10 @@ Plans run in parallel; these names are the contract between them. A plan that ne
 | 13d | `isValidIsbn(input): string \| null` | in `packages/contracts` — returns normalised ISBN-13 or null |
 | 13e | trait summary / trait page / coverage | `accepted*` fields removed; `validated` / `validatedCount` / `percentValidated` added; coverage `/top?mode=missing\|least_validated` |
 | 13e, 13i | export | 13e: `GET /api/export/records.csv` (interim, all visible non-withdrawn records); 13i replaces it with `GET /api/export/dataset.zip` |
-| 13g | annotations | `POST /api/records/:id/annotations` body `{ kind: 'confirm', referenceSource? } \| { kind: 'withdraw' } \| { kind: 'resolve' }` (no `note`; `neutral`/`dispute` → 400) |
+| 13g | create body | `POST /api/records` `{ speciesId, traitId, value, sources, intent?, respondsToRecordId?, contestedLevelIds?, rawValue?, note?, secondaryReferenceId? }`; a categorical contest sends `contestedLevelIds` (= E \ S, R-8) and no `respondsToRecordId`; a complement or a quantitative contest sends `respondsToRecordId` |
+| 13g | annotations | `POST /api/records/:id/annotations` body `{ kind: 'confirm', referenceSource? } \| { kind: 'withdraw' }` (no `note`; `neutral`/`dispute`/`resolve` → 400) |
+| 13g | contest actions | `POST /api/contests/:id/resolve` (`records.review`, Keep both) and `POST /api/contests/:id/withdraw` (author or `records.withdraw`), both 200 `{ data: null }` (RFC-65 R16) |
+| 13g | contested queue item | `{ id, species, trait, createdBy, createdAt, levels: [{ levelId, key, contested }] \| null, target: RecordItem \| null, records: RecordItem[] }` (RFC-65 R10) |
 | 13g | level actions | `POST /api/species/:id/traits/:traitId/levels/:levelId/validate` body `{ referenceSource? }`; `POST …/levels/:levelId/withdraw` (`records.review`) |
 | 13g | create response | `{ created: RecordItem[], validated: [{ recordId, recordCode }], duplicates: [{ recordId, recordCode }] }` |
 | 13g | record item counts | `validationCount`, `contestCount` (distinct users), `contested: boolean` |
