@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-25
 **Status:** approved design; nothing implemented yet
-**Amendments:** 2026-09-25 — owner ruling: a contest states the correct levels; its levels that already have records become validations, its new levels become contest records, and every other existing level is contested (named in the request as `contestedLevelIds`, checked by the API). A contest is stored even when it creates no record, its contested set is fixed at submission, and the entry dialog shows a per-level confirmation summary before submit when the trait already has levels with records (R-7–R-10, R-17, R-20, §2, §6). A contest stands only while something it contests has a visible record, and E holds active levels only (R-8, R-9).
+**Amendments:** 2026-09-25 — owner ruling: a contest states the correct levels; its levels that already have records become validations, its new levels become contest records, and every other existing level is contested (named in the request as `contestedLevelIds`, checked by the API). A contest is stored even when it creates no record, its contested set is fixed at submission, and the entry dialog shows a per-level confirmation summary before submit when the trait already has levels with records (R-7–R-10, R-17, R-20, §2, §6). A contest stands only while something it contests has a visible record, and E holds active levels only (R-8, R-9). 2026-09-25 — owner ruling: records of a deactivated level, and contests naming one, are visible only to holders of `dataset.read_inactive` (R-14).
 **Scope:** the owner's change list of 2026-09-25: the home page, adding and annotating records, contests, the end of the accepted value, withdrawal, book references, quantitative summaries, record IDs, the full export and the help pages. Every decision below was confirmed with the owner on 2026-09-25.
 
 This file is both the index and the design. Each issue has its own implementation plan under `docs/plans/2026-09-25-revision-<NN><letter>-<slug>.md`.
@@ -32,7 +32,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
   - withdraw one side: the contest (**Withdraw contest**: its records, or the contest itself when it created none), or a contested level through **Withdraw level**, which withdraws every record of that level the actor may withdraw;
   - or **Keep both**, a `resolve` on the contest, which clears every level it names.
 
-  A level's flag clears once no standing contest names it, or once the level has no visible record left. A manager's Withdraw level cannot remove imported records (R-12); when some remain, the page names them and offers Keep both or an admin's withdrawal.
+  A level's flag clears once no standing contest names it, or once the level has no visible record left. A manager's Withdraw level cannot remove imported records (R-12), for example; when records remain that the actor cannot withdraw, the page names them as such and offers Keep both or an admin's withdrawal.
 - **R-11 Neutral and Dispute are removed** from the API and the UI. The contested flag is derived from contests, not from `dispute` annotations. Old `dispute` and `neutral` rows stay in the table and are ignored.
 
 ### 1.4 Withdrawal
@@ -45,7 +45,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 
 ### 1.5 Visibility and filters
 
-- **R-14** Records whose harmonisation is not `harmonised` (unknown levels and the like) and the **unresolved** taxon badge are visible only to holders of `records.review`.
+- **R-14** Records whose harmonisation is not `harmonised` (unknown levels and the like) and the **unresolved** taxon badge are visible only to holders of `records.review`. Records of a deactivated level, and contests naming one, are visible only to holders of `dataset.read_inactive` (owner ruling 2026-09-25).
 - **R-15** Species list filters:
   - **Contested**, for everyone;
   - **Has unknown levels**, for `records.review`;
