@@ -19,7 +19,6 @@ export const MAIL_COLORS = {
   mist100: '#cfd8d3',
   mist300: '#a9b8b2',
   mist400: '#8fa39c',
-  mist500: '#6f817b',
   pollen500: '#e8a33d',
   pollen400: '#f2c14e',
   pollen300: '#ffd777',
@@ -119,7 +118,7 @@ export function emailLayout(input: {
 </style>
 </head>
 <body style="margin:0;padding:0;background-color:${MAIL_COLORS.page};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:${MAIL_COLORS.page};">${escapeHtml(input.preheader)}</div>
+<div style="display:none;mso-hide:all;visibility:hidden;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:${MAIL_COLORS.page};">${escapeHtml(input.preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${MAIL_COLORS.page};">
 <tr><td align="center" style="padding:40px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
@@ -130,7 +129,7 @@ ${top}
 <tr><td class="tr-card-pad" style="padding:36px 40px 40px;">${input.body}</td></tr>
 </table>
 </td></tr>
-<tr><td style="padding:24px 8px 0;font-family:${BODY_FONT};font-size:13px;line-height:20px;color:${MAIL_COLORS.mist400};">${escapeHtml(input.footer)}<br><span style="color:${MAIL_COLORS.mist500};">TreeRepro</span></td></tr>
+<tr><td style="padding:24px 8px 0;font-family:${BODY_FONT};font-size:13px;line-height:20px;color:${MAIL_COLORS.mist400};">${escapeHtml(input.footer)}<br><span style="color:${MAIL_COLORS.mist400};">TreeRepro</span></td></tr>
 </table>
 </td></tr>
 </table>

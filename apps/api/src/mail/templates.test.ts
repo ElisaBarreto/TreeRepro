@@ -208,7 +208,16 @@ describe('RFC-74 R5 digestEmail', () => {
 
   it('RFC-10 R16 the HTML part shows the resend line on a repeat and escapes record text', () => {
     const mail = digestEmail({
-      digest: digest({ contests: [item({ valueText: '<b>x</b>', actorName: 'A & B' })] }),
+      digest: digest({
+        contests: [
+          item({
+            speciesName: '<i>s</i>',
+            traitKey: '<u>k</u>',
+            valueText: '<b>x</b>',
+            actorName: 'A & B',
+          }),
+        ],
+      }),
       appOrigin: APP_ORIGIN,
       date: '2026-09-17',
       resent: true,
@@ -216,6 +225,8 @@ describe('RFC-74 R5 digestEmail', () => {
     expect(mail.html).toContain('the previous run for this window did not finish');
     expect(mail.html).toContain('&lt;b&gt;x&lt;/b&gt;');
     expect(mail.html).toContain('A &amp; B');
+    expect(mail.html).toContain('&lt;i&gt;s&lt;/i&gt;');
+    expect(mail.html).toContain('&lt;u&gt;k&lt;/u&gt;');
   });
 
   it('RFC-10 R16 the HTML part says so when a set is empty', () => {
