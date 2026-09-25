@@ -45,6 +45,11 @@ If the run fails, the transaction rolls back, the pending sheet stays, and the `
 
 13j runs beside this plan and touches only `content/help/*`.
 
+## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
+
+1. **Sheet publication after commit.** If renaming the final sheet fails after a successful COMMIT, the CLI exits 0 with a clear warning (`batch <id> committed; final sheet left at <path>.tmp — rename it by hand`), never a rollback message; the runbook says to check `import_batches.status` before any retry.
+2. **Sheet directory check**: before creating the batch, `stat` the path (must be a directory) and create-then-delete a probe file in it; any failure exits 1 before anything is written.
+
 ## Global Constraints
 
 - The README non-negotiables apply:

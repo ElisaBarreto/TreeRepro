@@ -31,6 +31,8 @@ The plans were written in parallel; the orchestrator's cross-review settled thes
 2. **Source input keeps the wrapper.** 13d keeps `{ personalObservation: true } | { references: SourceRef[] }` (spec §6 amended). `sourcesToBody` returns that shape; `ValidateDialog` sends `referenceSource: body.references[0]` when the body is not a personal observation (Spec note 4 resolved this way).
 3. **Level validate response.** 13g answers `200 { data: { validated: RecordCodeRef[] } }` (and level withdraw `{ data: { withdrawn: RecordCodeRef[] } }`). Mocks use `{ data: { validated: [] } }`; `validateLevel` may keep returning `Promise<void>`.
 4. **Record withdraw** answers `200 { data: null }` (13a RFC-65 R3 amended to match 13g); the drawer closes on success.
+5. **Quantitative group error is announced**: give the group error element an `id` and set the fieldset's `aria-describedby` to `"<hintId> <errorId>"` when the error is shown.
+ The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
 
 ## Global Constraints
 

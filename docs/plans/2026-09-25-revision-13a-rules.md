@@ -21,6 +21,9 @@
    - **RFC-64 R15 — Replace that preserves the platform.** Text: copy spec R-20 verbatim (steps 1–5, the migrator/runbook sentence). Amend RFC-64 R12: the total `--replace` is refused (exit 1) whenever a `trait_records` row with `origin = 'manual'` exists.
    - **RFC-66 R9 — Platform-only export.** `GET /api/export/dataset.zip?scope=platform`: `records.csv` holds only `TR_` records; `annotations.csv` holds every validation and contest (on `TR_` and `EB_` records). `scope` is `all` (default) or `platform`; anything else → 400 `VALIDATION_FAILED` path `scope`. Audited with `scope` in the metadata.
    Mapping rows: R-19 → RFC-64 R14 (13f), R-20 → RFC-64 R15 + R12 (13k), R-21 → RFC-66 R9 (13i).
+4. **RFC-61 R4 default** (from 13d): the reference list without a `kind` filter returns every kind except `personal_observation` (so books appear). Write this into RFC-61 R4.
+5. **Where the new rules go:** RFC-64 R14 and R15 are added in the task that edits RFC-64; RFC-66 R9 in the task that edits RFC-66; add all three to the new-rule table and to the final "every new rule number exists" check.
+ The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
 
 ## Global Constraints
 

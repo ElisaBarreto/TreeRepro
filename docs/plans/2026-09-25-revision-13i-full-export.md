@@ -16,6 +16,8 @@
 
 1. **Platform-only scope** (spec R-21, RFC-66 R9 as added by 13a). `GET /api/export/dataset.zip?scope=all|platform` (default `all`; other values → 400 `VALIDATION_FAILED`, path `scope`). With `platform`, `records.csv` holds only records whose `origin = 'manual'` (`TR_` codes) and `annotations.csv` still holds every validation and contest by users, on `TR_` and `EB_` records alike. File name `treerepro-platform-<date>.zip`; audit metadata `{ format: 'zip', scope: 'platform' }`. Add one integration test per scope (a `TR_` and an `EB_` record, one validation on the `EB_` one: platform → one row in records.csv, one in annotations.csv) and a second download link "Export platform contributions (ZIP)" next to the full one.
 2. **Share the annotations query.** Plan 13k writes the same annotation rows (plus `orphan`) to the replace sheet; export the builder used for `annotations.csv` (e.g. `annotationRowsQuery(db, { recordOrigin?: 'imported' | 'manual' })`) so 13k can reuse it. Name it in this plan's Interfaces.
+3. **Long downloads**: no new enforcement; add a line to the runbook/README export section documenting that the production Caddy `read`/`write` timeouts bound how long an export can hold its cursor, and state the current values.
+ The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
 
 ## Global Constraints
 

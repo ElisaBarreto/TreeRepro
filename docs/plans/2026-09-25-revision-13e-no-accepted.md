@@ -12,6 +12,10 @@
 
 **Depends on:** 13a (RFC amendments) merged to `main`. Runs in wave 1 in parallel with 13b, 13c, 13d and 13f. 13g starts after this plan merges.
 
+## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
+
+1. **`validatedSql` excludes withdrawn records**: a record counts as validated only when it has a `confirm` and no `withdraw` annotation (the plan's own definition) — make the SQL fragment require both conditions, and add one test with a validated-then-withdrawn record counting zero.
+
 ## Global Constraints
 
 - **README rules apply:** RFC first, TDD (a failing test before production code), no DB mocks, a JSDoc `@rfc RFC-NN Rx` tag on every export, English everywhere. Claim the 13e issue first by adding the `in-progress` label and assigning it to yourself. Remove the label when the PR merges.

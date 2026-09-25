@@ -51,6 +51,8 @@
 
 1. **A categorical match validates the whole level** (owner decision: level actions act on every record of the level; 13a RFC-65 R13). When a new categorical entry matches an existing level, write the validations on **every** visible record of that level that is not the actor's own and not already validated by them — exactly what `validateLevel` does; reuse it from the create path instead of picking the oldest match. It is a duplicate (no writes) only when every record of the level is the actor's own. `validated` in the create response lists every record validated. Spec note 4 below is superseded. Quantitative matches (six identical fields) still validate the single matching record.
 2. **Record withdraw** answers `200 { data: null }` — 13a's RFC-65 R3 text was amended to match this plan.
+3. **Contest target liveness under the lock.** Check that the contested target is live (not withdrawn; for a categorical level, at least one live record remains) *inside* the create transaction, after taking the same lock the withdraw paths take (`pg_advisory_xact_lock` on species×trait, or `SELECT … FOR UPDATE` on the target rows — use whatever the withdraw path uses), so a concurrent withdrawal cannot leave a contest pointing at a withdrawn target. Add a test: target withdrawn → contest refused with 409 `RECORD_WITHDRAWN`-equivalent 404 (`RECORD_NOT_FOUND`, since withdrawn records are invisible).
+ The task bodies below predate these amendments: where they disagree, the amendment wins and the executor edits the task code accordingly.
 
 ## Global Constraints
 

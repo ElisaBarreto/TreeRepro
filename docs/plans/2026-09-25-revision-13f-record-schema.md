@@ -17,6 +17,7 @@
 1. **A stored ID is skipped, not rejected** (spec R-19, RFC-64 R14 as added by 13a). Later imports are incremental and may resend old rows. In the import, a row whose `ID` equals a stored `record_code`, or is the base of stored suffixed codes (`EB_4` when `EB_4a` exists), is skipped and counted in a new column `import_batches.rows_already_imported bigint not null default 0` (same migration as `record_code`); the CLI report prints `already imported: <n>`. A repeated ID inside the same file is still rejected (`duplicate_record_id`). Change the forced re-import test accordingly: the 22 stored rows count as `rowsAlreadyImported: 22`, `rowsRejected` stays at the fixture's own rejects, and no second record is created. Everything else in this plan that says "every stored ID now rejects its row" is superseded.
 2. **Runbook:** the one-off reimport of this test phase stays the total `--replace` (no user data yet). Add a closing line: after this phase, reimports use `--replace-imported` (plan 13k); the total `--replace` becomes refused once any `TR_` record exists (RFC-64 R12 as amended).
 3. **Withdraw response and `nextRecordCodes`** — unchanged from spec §6.
+4. **`references` includes the secondary reference.** A record item's `references` is primary, then the legacy `secondary_reference_id` when present, then the `record_references` rows — the same order 13i's export uses.
 
 ## Global Constraints
 

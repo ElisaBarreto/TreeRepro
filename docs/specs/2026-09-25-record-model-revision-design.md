@@ -152,7 +152,7 @@ These rules are what plan 13a writes into the RFCs. Every other plan codes again
 
 ## 5. Decisions and deliberate cuts
 
-- **Reimport.** When the new source file with `ID` arrives, the imported records are replaced through the replacing import of RFC-64 R12. The runbook in 13f stops unless manual records, annotations and `record_references` are all zero, and takes a `pg_dump` first. `accepted_values` is dropped without keeping its rows (the owner confirmed it holds no real data).
+- **Reimport (this test phase only).** When the new source file with `ID` arrives, the imported records are replaced through the total replacing import of RFC-64 R12 — acceptable only now, while no user data exists. After this phase, reimports use `--replace-imported` (R-20, plan 13k) and the total replace is refused once any `TR_` record exists. The runbook in 13f stops unless manual records, annotations and `record_references` are all zero, and takes a `pg_dump` first. `accepted_values` is dropped without keeping its rows (the owner confirmed it holds no real data).
 - **ZIP.** The API has no ZIP library, and `records.csv` can reach about 2 GB. 13i adds one small streaming ZIP dependency with ZIP64 support (candidate: `yazl`), pinned exact.
 - **Cut:** undoing a validation, reverting a resolution, migrating old `dispute`/`neutral` rows, and ISSN. Add when asked.
 

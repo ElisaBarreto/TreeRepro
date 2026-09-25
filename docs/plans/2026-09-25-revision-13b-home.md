@@ -12,6 +12,10 @@
 
 **Depends on:** 13a (merged first). It amends RFC-72 R1 (the dashboard contract) and R3 (the copy) for spec R-18. This plan cites those rules by their existing ids, RFC-72 R1 and R3, as amended by 13a (see Spec notes).
 
+## Cross-review amendments (2026-09-25 — owner decisions after the plan was written; apply these)
+
+1. **Coverage fixture keys depend on merge order with 13e.** 13e renames `curation.coverage.accepted`/`percentAccepted` to `validated`/`percentValidated`. Whichever of 13b and 13e merges second updates the dashboard fixture in its rebase so it matches the strict schema on `main`.
+
 ## Global Constraints
 
 - English everywhere: code, comments, docs, UI, commits.
