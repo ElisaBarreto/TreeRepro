@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | accepted |
+| Status | draft |
 | Category | access control |
 | Supersedes | — |
 
@@ -23,7 +23,7 @@ Roles are named sets of permissions created by administrators. A user holds any 
 - **R7** Anti-lockout: the last `active` user holding `admin` cannot lose it — `setUserRoles` answers 409 `ROLE_LAST_ADMIN` when the change would remove `admin` from that user. `assertNotLastAdmin(userId)` exposes the same check for suspension (RFC-50 R6); the check holds a transaction-scoped advisory lock so concurrent removals serialize. Suspended and invited holders do not count.
 - **R8** Every service takes the actor's user id (null for the seed command) and runs in one transaction with its audit entry; a failed audit rolls the change back (RFC-41 R5).
 - **R9** `pnpm seed:admin` assigns `admin` to the invited user (RFC-20 R8); running it again for the same invited user keeps the role.
-- **R10** Permission sets of the seeded roles. `contributor`: `dataset.read`, `records.create`, `records.annotate`, `taxa.propose`. `manager`: the contributor set plus `dataset.read_inactive`, `records.review`, `records.withdraw`, `imports.read`, `contributions.read`, `coverage.read`. Managers do not hold `traits.manage`: a missing level is escalated to the admin.
+- **R10** Permission sets of the seeded roles. `contributor`: `dataset.read`, `records.create`, `records.annotate`, `taxa.propose`. `manager`: the contributor set plus `dataset.read_inactive`, `records.review`, `records.withdraw`, `imports.read`, `contributions.read`, `coverage.read`. Managers do not hold `traits.manage`: a missing level is escalated to the admin. No seeded role stores `records.withdraw_imported` (RFC-65 R4): only `admin` withdraws imported records.
 - **R11** `GET /api/admin/roles` items carry `isSystem` and, for a system role with stored permissions, its permission keys; the web role list renders system roles read-only.
 - **R12** Delegation ceiling: an actor never hands out more than they hold. The actor's effective permissions are RFC-32 R1, resolved from the database at the time of the call. `setUserRoles`: the `admin` system role is added to or removed from a user only by an actor who holds `admin`; every other role added must have a stored permission set contained in the actor's effective permissions; removing a role is never limited by the ceiling. `createRole` and `updateRole`: every permission the call writes into the role that the role does not already store must be held by the actor. An actor who holds `admin` holds everything, so the ceiling never binds them. The CLI's `null` actor (R8) is unrestricted.
 - **R13** Self-change: an actor never changes their own roles — `setUserRoles` with `userId` equal to the actor is refused, whatever the set — and never changes the permission set of a role they hold, unless they hold `admin`; `updateRole` on a held role may still change `name` and `description`. A holder of `admin` who wants a different set asks another administrator.
@@ -43,3 +43,4 @@ None.
 - 2026-09-18 — R10: manager gains `coverage.read` (RFC-69 R5-R7, plan 11c).
 - 2026-09-19 — R10: contributor and manager gain `taxa.propose` (RFC-75, plan 12c).
 - 2026-09-20 — R12–R14 added, Context amended: delegation ceiling, self-change, refusal audit (security audit 2026-09-19, issue #118 F-02, plan #120 step 1).
+- 2026-09-25 — R10: `records.withdraw_imported` is admin-only (record model revision R-12; plan 13a). `draft` until plan 13g.
