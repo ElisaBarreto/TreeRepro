@@ -2,11 +2,17 @@ import type { PermissionKey } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../test/helpers/app.ts';
-import { createPlot, createVisibilityFixture } from '../test/helpers/dataset.ts';
+import {
+  createContest,
+  createPlot,
+  createRecord,
+  createVisibilityFixture,
+} from '../test/helpers/dataset.ts';
 import { adminRoleId } from '../test/helpers/roles.ts';
 import { loginAs } from '../test/helpers/session.ts';
 import { createUser } from '../test/helpers/users.ts';
 import type { Visibility } from './access/visibility.ts';
+import { traitLevels } from './db/schema/dictionary.ts';
 import type { AppEnv } from './http/env.ts';
 import { guardPermission } from './http/guards.ts';
 import {
@@ -39,6 +45,26 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
     const fx = await createVisibilityFixture(t.db, admin.user.id);
     const plot = await createPlot(t.db);
     const level = fx.activeTrait.levels[0]?.id as string;
+    // A level and a contest of their own, so the withdraw and resolve calls
+    // change nothing the sweep reads on another route.
+    const [sweptLevel] = await t.db
+      .insert(traitLevels)
+      .values({ traitId: fx.activeTrait.id, key: `swept-${Date.now()}`, sortOrder: 99 })
+      .returning({ id: traitLevels.id });
+    await createRecord(t.db, {
+      speciesId: fx.shownSpecies.id,
+      traitId: fx.activeTrait.id,
+      valueText: 'swept',
+      levelId: sweptLevel?.id,
+      primaryReferenceId: fx.reference.id,
+      origin: 'manual',
+      createdBy: admin.user.id,
+    });
+    const contest = await createContest(t.db, {
+      speciesId: fx.shownSpecies.id,
+      traitId: fx.activeTrait.id,
+      createdBy: admin.user.id,
+    });
 
     // The outer app sees the same request context as the handlers it wraps,
     // so it can read what `visibilityOf` recorded once the handler is done.
@@ -58,10 +84,14 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
       ['/api/references', fx.reference.id],
       ['/api/records', fx.visible.id],
       ['/api/plots', plot.id],
+      ['/api/contests', contest.id],
     ];
     const concrete = (path: string): string => {
       const [, id] = ids.find(([prefix]) => path.startsWith(`${prefix}/`)) ?? [];
-      return path.replace(':traitId', fx.activeTrait.id).replace(':id', id ?? '0'.repeat(32));
+      return path
+        .replace(':traitId', fx.activeTrait.id)
+        .replace(':levelId', sweptLevel?.id ?? '')
+        .replace(':id', id ?? '0'.repeat(32));
     };
     // Query strings and bodies the route's schema requires.
     const inputs: Record<string, { query?: string; body?: unknown }> = {

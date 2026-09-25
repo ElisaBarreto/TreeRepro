@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
+  createContest,
   createImportBatch,
   createRecord,
   createReference,
@@ -18,10 +19,18 @@ import { traitLevels } from '../db/schema/dictionary.ts';
 import { recordReferences } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
-import { annotateRecord, createRecords, nextRecordCodes } from './curation.ts';
+import {
+  annotateRecord,
+  createRecords,
+  nextRecordCodes,
+  validateLevel,
+  withdrawLevel,
+} from './curation.ts';
 import { listDisputed, mapPending, pendingTraits } from './queues.ts';
 import { getRecord, listRecords } from './records.ts';
 import { ensurePersonalObservation } from './references.ts';
+import { speciesTraitSummary } from './summary.ts';
+import { getSpecies } from './taxa.ts';
 
 describe('RFC-33 R5 createRecord and annotateRecord by viewer', () => {
   const t = useTestDb();
@@ -1000,5 +1009,220 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
         value: { levelIds: [f.level('red'), foreign.levels[0]?.id as string] },
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'value.levelIds.1' }] });
+  });
+});
+
+describe('RFC-70 R3 createRecords: a secondary reference named among the sources still supports the validation', () => {
+  const t = useTestDb();
+
+  it('sources [A, B] with secondaryReferenceId B matching another user record confirm with A and B', async () => {
+    const { user: me } = await createUser(t.db);
+    const { user: other } = await createUser(t.db);
+    const a = await createReference(t.db);
+    const b = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['blue'] });
+    const sp = await createSpecies(t.db);
+    const blue = trait.levels[0]?.id as string;
+    const theirs = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'blue',
+      levelId: blue,
+      primaryReferenceId: a.id,
+      origin: 'manual',
+      createdBy: other.id,
+    });
+    const out = await createRecords(t.db, UNRESTRICTED, {
+      actorId: me.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { levelIds: [blue] },
+      referenceIds: [a.id, b.id],
+      secondaryReferenceId: b.id,
+    });
+    expect(out.validated.map((v) => v.recordId)).toEqual([theirs.id]);
+    const refs = await t.db
+      .select({ referenceId: recordAnnotations.referenceId })
+      .from(recordAnnotations)
+      .where(and(eq(recordAnnotations.recordId, theirs.id), eq(recordAnnotations.actorId, me.id)));
+    expect(refs.map((r) => r.referenceId).sort()).toEqual([a.id, b.id].sort());
+  });
+});
+
+describe('RFC-65 R13, R14, RFC-70 R4 level actions', () => {
+  const t = useTestDb();
+
+  /** blue: theirs (manual), mine (manual), imported; red: none. */
+  async function blueLevel() {
+    const { user: me } = await createUser(t.db);
+    const { user: other } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const ref2 = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['blue', 'red'] });
+    const sp = await createSpecies(t.db);
+    const blue = trait.levels[0]?.id as string;
+    const red = trait.levels[1]?.id as string;
+    const base = { speciesId: sp.id, traitId: trait.id, valueText: 'blue', levelId: blue };
+    const theirs = await createRecord(t.db, {
+      ...base,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: other.id,
+    });
+    const mine = await createRecord(t.db, {
+      ...base,
+      primaryReferenceId: ref2.id,
+      origin: 'manual',
+      createdBy: me.id,
+    });
+    const batch = await createImportBatch(t.db);
+    const imported = await createRecord(t.db, {
+      ...base,
+      primaryReferenceId: (await createReference(t.db)).id,
+      importBatchId: batch.id,
+    });
+    const at = { speciesId: sp.id, traitId: trait.id, levelId: blue };
+    return { me, other, ref, trait, sp, blue, red, theirs, mine, imported, at };
+  }
+
+  const ids = (refs: { recordId: string }[]) => refs.map((r) => r.recordId).sort();
+
+  it('R13 validateLevel confirms every visible record of the level except the actor own, once', async () => {
+    const f = await blueLevel();
+    const first = await validateLevel(t.db, UNRESTRICTED, {
+      ...f.at,
+      actorId: f.me.id,
+      referenceId: f.ref.id,
+    });
+    expect(ids(first.validated)).toEqual(
+      ids([{ recordId: f.theirs.id }, { recordId: f.imported.id }]),
+    );
+    const confirms = await t.db
+      .select({ recordId: recordAnnotations.recordId, referenceId: recordAnnotations.referenceId })
+      .from(recordAnnotations)
+      .where(and(eq(recordAnnotations.actorId, f.me.id), eq(recordAnnotations.kind, 'confirm')));
+    expect(confirms).toHaveLength(2);
+    expect(confirms.every((c) => c.referenceId === f.ref.id)).toBe(true);
+    const again = await validateLevel(t.db, UNRESTRICTED, { ...f.at, actorId: f.me.id });
+    expect(again.validated).toEqual([]);
+    expect((await getRecord(t.db, UNRESTRICTED, f.mine.id))?.annotations).toEqual([]);
+  });
+
+  it('R13 errors: species, trait, foreign or invisible level, no record, only own records', async () => {
+    const f = await blueLevel();
+    const zero = '00000000-0000-4000-8000-000000000000';
+    const run = (over: Partial<typeof f.at>, v = UNRESTRICTED) =>
+      validateLevel(t.db, v, { ...f.at, ...over, actorId: f.me.id });
+    await expect(run({ speciesId: zero })).rejects.toMatchObject({ code: 'SPECIES_NOT_FOUND' });
+    await expect(run({ traitId: zero })).rejects.toMatchObject({ code: 'TRAIT_NOT_FOUND' });
+    const foreign = await createTrait(t.db, { levels: ['x'] });
+    await expect(run({ levelId: foreign.levels[0]?.id as string })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'levelId' }],
+    });
+    await t.db.update(traitLevels).set({ active: false }).where(eq(traitLevels.id, f.red));
+    await expect(run({ levelId: f.red }, RESTRICTED)).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'levelId' }],
+    });
+    await expect(run({ levelId: f.red })).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
+    await createRecord(t.db, {
+      speciesId: f.sp.id,
+      traitId: f.trait.id,
+      valueText: 'red',
+      levelId: f.red,
+      primaryReferenceId: f.ref.id,
+      origin: 'manual',
+      createdBy: f.me.id,
+    });
+    await expect(run({ levelId: f.red })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  });
+
+  it('R14 withdrawLevel: a manager leaves imported records in remaining, an admin withdraws them; counters drop', async () => {
+    const f = await blueLevel();
+    const { user: manager } = await createUser(t.db);
+    const before = (await getSpecies(t.db, UNRESTRICTED, f.sp.id))?.recordCount;
+    const out = await withdrawLevel(t.db, UNRESTRICTED, {
+      ...f.at,
+      actorId: manager.id,
+      canWithdrawAny: true,
+      canWithdrawImported: false,
+    });
+    expect(ids(out.withdrawn)).toEqual(ids([{ recordId: f.theirs.id }, { recordId: f.mine.id }]));
+    expect(ids(out.remaining)).toEqual([f.imported.id]);
+    expect((await getSpecies(t.db, UNRESTRICTED, f.sp.id))?.recordCount).toBe((before ?? 0) - 2);
+    expect(await getRecord(t.db, UNRESTRICTED, f.imported.id)).not.toBeNull();
+    const admin = await withdrawLevel(t.db, UNRESTRICTED, {
+      ...f.at,
+      actorId: manager.id,
+      canWithdrawAny: true,
+      canWithdrawImported: true,
+    });
+    expect(ids(admin.withdrawn)).toEqual([f.imported.id]);
+    expect(admin.remaining).toEqual([]);
+    expect((await getSpecies(t.db, UNRESTRICTED, f.sp.id))?.recordCount).toBe((before ?? 0) - 3);
+    await expect(
+      withdrawLevel(t.db, UNRESTRICTED, {
+        ...f.at,
+        actorId: manager.id,
+        canWithdrawAny: true,
+        canWithdrawImported: true,
+      }),
+    ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
+  });
+
+  it('R14 an author without records.withdraw withdraws only their own; a foreign level is 400 levelId', async () => {
+    const f = await blueLevel();
+    const out = await withdrawLevel(t.db, UNRESTRICTED, {
+      ...f.at,
+      actorId: f.me.id,
+      canWithdrawAny: false,
+      canWithdrawImported: false,
+    });
+    expect(ids(out.withdrawn)).toEqual([f.mine.id]);
+    expect(ids(out.remaining)).toEqual(
+      ids([{ recordId: f.theirs.id }, { recordId: f.imported.id }]),
+    );
+    const foreign = await createTrait(t.db, { levels: ['x'] });
+    await expect(
+      withdrawLevel(t.db, UNRESTRICTED, {
+        ...f.at,
+        levelId: foreign.levels[0]?.id as string,
+        actorId: f.me.id,
+        canWithdrawAny: true,
+        canWithdrawImported: true,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'levelId' }] });
+  });
+
+  it('RFC-63 R14, RFC-65 R15 emptying a contested level clears its contested flag', async () => {
+    const f = await blueLevel();
+    await createRecord(t.db, {
+      speciesId: f.sp.id,
+      traitId: f.trait.id,
+      valueText: 'red',
+      levelId: f.red,
+      primaryReferenceId: f.ref.id,
+      origin: 'manual',
+      createdBy: f.other.id,
+    });
+    await createContest(t.db, {
+      speciesId: f.sp.id,
+      traitId: f.trait.id,
+      createdBy: f.other.id,
+      levelIds: [f.blue],
+    });
+    const contested = async () =>
+      (await speciesTraitSummary(t.db, UNRESTRICTED, f.sp.id))
+        ?.flatMap((c) => c.traits)
+        .find((x) => x.trait.id === f.trait.id)?.contested;
+    expect(await contested()).toBe(true);
+    await withdrawLevel(t.db, UNRESTRICTED, {
+      ...f.at,
+      actorId: f.me.id,
+      canWithdrawAny: true,
+      canWithdrawImported: true,
+    });
+    expect(await contested()).toBe(false);
   });
 });

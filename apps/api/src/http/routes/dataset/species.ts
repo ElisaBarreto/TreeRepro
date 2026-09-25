@@ -1,19 +1,24 @@
 import {
   createSpeciesBodySchema,
   idParamSchema,
+  levelActionParamSchema,
   listSpeciesQuerySchema,
   speciesNameBodySchema,
   speciesTraitsQuerySchema,
   updateSpeciesBodySchema,
+  validateLevelBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { userScopeOf, visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
+import { validateLevel, withdrawLevel } from '../../../dataset/curation.ts';
+import { resolveSourceRef } from '../../../dataset/sources.ts';
 import { speciesTraitSummary } from '../../../dataset/summary.ts';
 import { getSpecies, searchSpecies } from '../../../dataset/taxa.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
+import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
@@ -25,6 +30,7 @@ import { proposalRoutes } from './proposals.ts';
  * Hono can never read "proposals" as a species id.
  * @rfc RFC-60 R6, R7, R9, R10
  * @rfc RFC-63 R10
+ * @rfc RFC-65 R13, R14
  * @rfc RFC-75 R2, R3
  */
 export function speciesRoutes(ctx: AuthContext) {
@@ -140,5 +146,59 @@ export function speciesRoutes(ctx: AuthContext) {
           },
           201,
         ),
+    )
+    .post(
+      '/:id/traits/:traitId/levels/:levelId/validate',
+      requirePermission(ctx, 'records.annotate'),
+      validate('param', levelActionParamSchema),
+      validate('json', validateLevelBodySchema),
+      async (c) => {
+        const { id, traitId, levelId } = c.req.valid('param');
+        const body = c.req.valid('json');
+        const actor = currentUser(c);
+        const visibility = await visibilityOf(ctx, c);
+        const referenceId = body.referenceSource
+          ? await resolveSourceRef(
+              { db: ctx.db, doi: ctx.doi },
+              actor.id,
+              body.referenceSource,
+              'referenceSource',
+            )
+          : undefined;
+        const data = await validateLevel(ctx.db, visibility, {
+          speciesId: id,
+          traitId,
+          levelId,
+          actorId: actor.id,
+          referenceId,
+        });
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
+        });
+        return c.json({ data }, 201);
+      },
+    )
+    .post(
+      '/:id/traits/:traitId/levels/:levelId/withdraw',
+      requirePermission(ctx, 'records.review'),
+      validate('param', levelActionParamSchema),
+      async (c) => {
+        const { id, traitId, levelId } = c.req.valid('param');
+        const actor = currentUser(c);
+        const permissions = currentPermissions(c);
+        const visibility = await visibilityOf(ctx, c);
+        const data = await withdrawLevel(ctx.db, visibility, {
+          speciesId: id,
+          traitId,
+          levelId,
+          actorId: actor.id,
+          canWithdrawAny: permissions.has('records.withdraw'),
+          canWithdrawImported: permissions.has('records.withdraw_imported'),
+        });
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          actorId: actor.id,
+        });
+        return c.json({ data }, 201);
+      },
     );
 }

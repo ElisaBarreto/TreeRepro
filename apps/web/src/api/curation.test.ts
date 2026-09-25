@@ -23,7 +23,10 @@ import {
   fetchPendingTraits,
   invalidateAfterRecordWrite,
   mapPending,
+  resolveContest,
   resolveDoi,
+  withdrawContest,
+  withdrawLevel,
 } from './curation.ts';
 
 installFetchMock();
@@ -123,5 +126,32 @@ describe('query keys and invalidation', () => {
     expect(client.getQueryState(['records', 'r1'])?.isInvalidated).toBe(true);
     expect(client.getQueryState(['species', 's', 'traits'])?.isInvalidated).toBe(true);
     expect(client.getQueryState(['species', 'other'])?.isInvalidated).toBe(false);
+  });
+});
+
+describe('RFC-65 R14 withdrawLevel', () => {
+  it('posts to the level and unwraps { withdrawn, remaining }', async () => {
+    const ref = { recordId: RECORD.id, recordCode: RECORD.recordCode };
+    mockJson(201, { data: { withdrawn: [ref], remaining: [] } });
+    const levelId = RECORD_DETAIL.level?.id ?? '';
+    const result = await withdrawLevel(SPECIES.id, SEXUAL_SYSTEM.id, levelId);
+    expect(lastRequest().url).toBe(
+      `/api/species/${SPECIES.id}/traits/${SEXUAL_SYSTEM.id}/levels/${levelId}/withdraw`,
+    );
+    expect(lastRequest().init?.method).toBe('POST');
+    expect(result).toEqual({ withdrawn: [ref], remaining: [] });
+  });
+});
+
+describe('RFC-65 R16 contest actions', () => {
+  it('resolveContest and withdrawContest post to the contest and answer nothing', async () => {
+    mockJson(200, { data: null });
+    await expect(resolveContest(RECORD.id)).resolves.toBeUndefined();
+    expect(lastRequest().url).toBe(`/api/contests/${RECORD.id}/resolve`);
+    expect(lastRequest().init?.method).toBe('POST');
+    mockJson(200, { data: null });
+    await expect(withdrawContest(RECORD.id)).resolves.toBeUndefined();
+    expect(lastRequest().url).toBe(`/api/contests/${RECORD.id}/withdraw`);
+    expect(lastRequest().init?.method).toBe('POST');
   });
 });

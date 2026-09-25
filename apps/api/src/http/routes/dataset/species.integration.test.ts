@@ -548,3 +548,63 @@ describe('RFC-33 R6, RFC-67 R8 species scope and plot filter matrix', () => {
     );
   });
 });
+
+describe('RFC-65 R13, R14 level routes', () => {
+  const t = useTestApp();
+
+  it('validate (records.annotate, referenceSource) answers 201; withdraw needs records.review and answers 201 { withdrawn, remaining }', async () => {
+    const { user: contributor } = await createUser(t.db, {
+      roles: [await systemRoleId(t.db, 'contributor')],
+    });
+    const { user: manager } = await createUser(t.db, {
+      roles: [await systemRoleId(t.db, 'manager')],
+    });
+    const { user: author } = await createUser(t.db);
+    const c = await loginAs(t, contributor);
+    const m = await loginAs(t, manager);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['blue'] });
+    const sp = await createSpecies(t.db);
+    const blue = trait.levels[0]?.id as string;
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'blue',
+      levelId: blue,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: author.id,
+    });
+    const base = `/api/species/${sp.id}/traits/${trait.id}/levels/${blue}`;
+    const v = await call(t.app, 'POST', `${base}/validate`, {
+      cookie: c.cookie,
+      body: { referenceSource: { id: ref.id } },
+    });
+    expect(v.status).toBe(201);
+    expect((await v.json()).data).toEqual({
+      validated: [{ recordId: rec.id, recordCode: expect.stringMatching(/^TR_/) }],
+    });
+    const foreign = await createTrait(t.db, { levels: ['x'] });
+    const bad = await call(
+      t.app,
+      'POST',
+      `/api/species/${sp.id}/traits/${trait.id}/levels/${foreign.levels[0]?.id}/validate`,
+      { cookie: c.cookie, body: {} },
+    );
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error.details).toEqual([
+      expect.objectContaining({ path: 'levelId' }),
+    ]);
+    const refused = await call(t.app, 'POST', `${base}/withdraw`, { cookie: c.cookie, body: {} });
+    expect(refused.status).toBe(403);
+    const w = await call(t.app, 'POST', `${base}/withdraw`, { cookie: m.cookie, body: {} });
+    expect(w.status).toBe(201);
+    expect((await w.json()).data).toEqual({
+      withdrawn: [{ recordId: rec.id, recordCode: expect.stringMatching(/^TR_/) }],
+      remaining: [],
+    });
+    const gone = await call(t.app, 'POST', `${base}/withdraw`, { cookie: m.cookie, body: {} });
+    expect(gone.status).toBe(404);
+    expect((await gone.json()).error.code).toBe('RECORD_NOT_FOUND');
+  });
+});

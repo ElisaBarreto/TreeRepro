@@ -447,9 +447,10 @@ export async function createRecords(
       .from(bibliographicReferences)
       .where(eq(bibliographicReferences.id, primaryReferenceId));
     // A personal observation is no supporting reference: its validation
-    // carries none (RFC-70 R3).
+    // carries none (RFC-70 R3). Every distinct source supports it — the
+    // secondary included, which `extraReferenceIds` leaves out.
     const supporting =
-      kinds[0]?.kind === 'personal_observation' ? [] : [primaryReferenceId, ...extraReferenceIds];
+      kinds[0]?.kind === 'personal_observation' ? [] : [...new Set(input.referenceIds)];
 
     const validated: RecordCodeRef[] = [];
     const duplicates: RecordCodeRef[] = [];
@@ -696,5 +697,157 @@ export async function annotateRecord(
     // The record is now invisible to every viewer (RFC-33 R2): there is no
     // detail left to answer with.
     return null;
+  });
+}
+
+/** A visible record of one level, with what `mayWithdraw` needs. */
+interface LevelRecord {
+  recordId: string;
+  recordCode: string;
+  origin: RecordOrigin;
+  createdBy: string | null;
+}
+
+interface LevelInput {
+  speciesId: string;
+  traitId: string;
+  levelId: string;
+  actorId: string;
+}
+
+/**
+ * The checks the two level actions share, under the species × trait lock:
+ * species and trait visible (404), the level the trait's and visible (400
+ * path `levelId`, RFC-33 R5), and at least one visible record of it for the
+ * species (404 `RECORD_NOT_FOUND`).
+ */
+async function levelRecords(
+  tx: DbExecutor,
+  visibility: Visibility,
+  input: LevelInput,
+): Promise<LevelRecord[]> {
+  await lockSpeciesTrait(tx, input.speciesId, input.traitId);
+  await requireSpecies(tx, visibility, input.speciesId);
+  await requireTrait(tx, visibility, input.traitId);
+  const [level] = await tx
+    .select({ id: traitLevels.id })
+    .from(traitLevels)
+    .where(
+      and(
+        eq(traitLevels.id, input.levelId),
+        eq(traitLevels.traitId, input.traitId),
+        levelVisible(visibility),
+      ),
+    )
+    .limit(1);
+  if (!level) throw validation('levelId', 'Level does not belong to this trait');
+  const rows = await tx
+    .select({
+      recordId: traitRecords.id,
+      recordCode: traitRecords.recordCode,
+      origin: traitRecords.origin,
+      createdBy: traitRecords.createdBy,
+    })
+    .from(traitRecords)
+    .where(
+      and(
+        eq(traitRecords.speciesId, input.speciesId),
+        eq(traitRecords.traitId, input.traitId),
+        eq(traitRecords.levelId, input.levelId),
+        recordVisible(visibility),
+      ),
+    )
+    .orderBy(traitRecords.id);
+  if (rows.length === 0) throw new AppError('RECORD_NOT_FOUND', 'Record not found');
+  return rows;
+}
+
+const codeRef = (r: LevelRecord): RecordCodeRef => ({
+  recordId: r.recordId,
+  recordCode: r.recordCode,
+});
+
+/**
+ * Validate a level: one `confirm` on every visible record of the species ×
+ * trait × level that the actor did not create and has not yet validated.
+ * 403 when every visible record is the actor's own. `validated` lists the
+ * records newly validated, empty when all already were.
+ * @rfc RFC-65 R13
+ * @rfc RFC-70 R4
+ * @rfc RFC-33 R5
+ */
+export async function validateLevel(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: LevelInput & { referenceId?: string },
+): Promise<{ validated: RecordCodeRef[] }> {
+  return db.transaction(async (tx) => {
+    const others = (await levelRecords(tx, visibility, input)).filter(
+      (r) => r.createdBy !== input.actorId,
+    );
+    if (others.length === 0) {
+      throw new AppError('PERMISSION_DENIED', 'You cannot validate your own record');
+    }
+    const confirmed = await tx
+      .selectDistinct({ recordId: recordAnnotations.recordId })
+      .from(recordAnnotations)
+      .where(
+        and(
+          eq(recordAnnotations.actorId, input.actorId),
+          eq(recordAnnotations.kind, 'confirm'),
+          inArray(
+            recordAnnotations.recordId,
+            others.map((r) => r.recordId),
+          ),
+        ),
+      );
+    const already = new Set(confirmed.map((c) => c.recordId));
+    const todo = others.filter((r) => !already.has(r.recordId));
+    for (const r of todo) {
+      await confirmOnce(
+        tx,
+        r.recordId,
+        input.actorId,
+        input.referenceId ? [input.referenceId] : [],
+      );
+    }
+    return { validated: todo.map(codeRef) };
+  });
+}
+
+/**
+ * Withdraw a level: a `withdraw` on every visible record of the species ×
+ * trait × level the actor may withdraw (`mayWithdraw`); `remaining` lists the
+ * visible records they may not, which keep the level contested.
+ * @rfc RFC-65 R4, R14
+ * @rfc RFC-33 R5
+ */
+export async function withdrawLevel(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: LevelInput & { canWithdrawAny: boolean; canWithdrawImported: boolean },
+): Promise<{ withdrawn: RecordCodeRef[]; remaining: RecordCodeRef[] }> {
+  return db.transaction(async (tx) => {
+    const rows = await levelRecords(tx, visibility, input);
+    const mine = rows.filter((r) => mayWithdraw(r, input));
+    const inserted =
+      mine.length === 0
+        ? []
+        : await tx
+            .insert(recordAnnotations)
+            .values(
+              mine.map((r) => ({
+                recordId: r.recordId,
+                actorId: input.actorId,
+                kind: 'withdraw' as const,
+              })),
+            )
+            .onConflictDoNothing()
+            .returning({ recordId: recordAnnotations.recordId });
+    const done = new Set(inserted.map((i) => i.recordId));
+    return {
+      withdrawn: mine.filter((r) => done.has(r.recordId)).map(codeRef),
+      remaining: rows.filter((r) => !mayWithdraw(r, input)).map(codeRef),
+    };
   });
 }

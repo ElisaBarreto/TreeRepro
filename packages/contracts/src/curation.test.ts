@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   annotateRecordBodySchema,
+  contestParamSchema,
   createLevelBodySchema,
   createRecordBodySchema,
   createRecordsResultSchema,
   createReferenceBodySchema,
   disputedRecordSchema,
+  levelActionParamSchema,
   listDisputedQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
@@ -16,6 +18,9 @@ import {
   updateGenusBodySchema,
   updateReferenceBodySchema,
   updateTraitBodySchema,
+  validateLevelBodySchema,
+  validateLevelResultSchema,
+  withdrawLevelResultSchema,
 } from './curation.ts';
 import { cursorQuerySchema } from './pagination.ts';
 
@@ -465,8 +470,36 @@ describe('RFC-61 R10, RFC-80 R5 a book among the sources', () => {
     expect(
       annotateRecordBodySchema.safeParse({
         kind: 'confirm',
-        reference: { isbn: '9780306406157', citation },
+        referenceSource: { isbn: '9780306406157', citation },
       }).success,
     ).toBe(true);
+    });
+  });
+
+describe('RFC-65 R13, R14, R16 level and contest actions', () => {
+  it('levelActionParamSchema takes three uuids; contestParamSchema one', () => {
+    expect(
+      levelActionParamSchema.safeParse({ id: uuid, traitId: uuid, levelId: other }).success,
+    ).toBe(true);
+    expect(
+      levelActionParamSchema.safeParse({ id: uuid, traitId: uuid, levelId: 'x' }).success,
+    ).toBe(false);
+    expect(contestParamSchema.safeParse({ id: uuid }).success).toBe(true);
+    expect(contestParamSchema.safeParse({ id: 'x' }).success).toBe(false);
+  });
+
+  it('validateLevelBodySchema takes an optional referenceSource and nothing else', () => {
+    expect(validateLevelBodySchema.safeParse({}).success).toBe(true);
+    expect(validateLevelBodySchema.safeParse({ referenceSource: { id: uuid } }).success).toBe(true);
+    expect(validateLevelBodySchema.safeParse({ note: 'x' }).success).toBe(false);
+  });
+
+  it('the results list record code refs; withdraw adds remaining', () => {
+    const ref = { recordId: uuid, recordCode: 'TR_1' };
+    expect(validateLevelResultSchema.safeParse({ validated: [ref] }).success).toBe(true);
+    expect(withdrawLevelResultSchema.safeParse({ withdrawn: [ref], remaining: [] }).success).toBe(
+      true,
+    );
+    expect(withdrawLevelResultSchema.safeParse({ withdrawn: [ref] }).success).toBe(false);
   });
 });

@@ -114,6 +114,32 @@ export const annotateRecordBodySchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('withdraw') }),
 ]);
 
+/** A level of one species × trait, for the level actions. @rfc RFC-65 R13, R14 */
+export const levelActionParamSchema = z.strictObject({
+  id: z.uuid(),
+  traitId: z.uuid(),
+  levelId: z.uuid(),
+});
+/** Validate a level: an optional supporting reference, as in RFC-65 R3. @rfc RFC-65 R13 */
+export const validateLevelBodySchema = z.strictObject({
+  referenceSource: sourceRefSchema.optional(),
+});
+/** The records newly validated; empty when all already were. @rfc RFC-65 R13 */
+export const validateLevelResultSchema = z.strictObject({
+  validated: z.array(recordCodeRefSchema),
+});
+/**
+ * `withdrawn`: the records withdrawn. `remaining`: the visible records of the
+ * level the actor may not withdraw (RFC-65 R4).
+ * @rfc RFC-65 R14
+ */
+export const withdrawLevelResultSchema = z.strictObject({
+  withdrawn: z.array(recordCodeRefSchema),
+  remaining: z.array(recordCodeRefSchema),
+});
+/** A contest, by the `id` of the contested queue. @rfc RFC-65 R16 */
+export const contestParamSchema = z.strictObject({ id: z.uuid() });
+
 /** @rfc RFC-80 R4 */
 export const resolveDoiQuerySchema = z.strictObject({ doi: doiSchema });
 
@@ -344,6 +370,9 @@ export type CreateRecordBody = z.infer<typeof createRecordBodySchema>;
 export type CreateRecordsResult = z.infer<typeof createRecordsResultSchema>;
 export type RecordCodeRef = z.infer<typeof recordCodeRefSchema>;
 export type AnnotateRecordBody = z.infer<typeof annotateRecordBodySchema>;
+export type ValidateLevelBody = z.infer<typeof validateLevelBodySchema>;
+export type ValidateLevelResult = z.infer<typeof validateLevelResultSchema>;
+export type WithdrawLevelResult = z.infer<typeof withdrawLevelResultSchema>;
 export type ResolveDoiQuery = z.infer<typeof resolveDoiQuerySchema>;
 export type ResolveDoiResult = z.infer<typeof resolveDoiResultSchema>;
 export type PendingTrait = z.infer<typeof pendingTraitSchema>;

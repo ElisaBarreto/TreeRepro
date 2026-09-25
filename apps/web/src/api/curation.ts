@@ -17,6 +17,8 @@ import {
   type ResolveDoiResult,
   recordDetailSchema,
   resolveDoiResultSchema,
+  type WithdrawLevelResult,
+  withdrawLevelResultSchema,
 } from '@treerepro/contracts';
 import { z } from 'zod';
 import { apiFetch } from './client.ts';
@@ -101,6 +103,32 @@ export async function mapPending(body: MapPendingBody): Promise<MapResult> {
 /** `intent: 'contest'` narrows the queue to disputes a contest generated. @rfc RFC-65 R10 */
 export function fetchDisputed(params: { cursor?: string; limit?: number; intent?: 'contest' }) {
   return apiFetch(withQuery('/records/disputed', params), listEnvelopeSchema(disputedRecordSchema));
+}
+
+/**
+ * Withdraw a level; `remaining` lists the records the actor may not withdraw.
+ * @rfc RFC-65 R14
+ */
+export async function withdrawLevel(
+  speciesId: string,
+  traitId: string,
+  levelId: string,
+): Promise<WithdrawLevelResult> {
+  return (
+    await apiFetch(
+      `/species/${speciesId}/traits/${traitId}/levels/${levelId}/withdraw`,
+      dataEnvelopeSchema(withdrawLevelResultSchema),
+      { method: 'POST' },
+    )
+  ).data;
+}
+/** Keep both. @rfc RFC-65 R16 */
+export async function resolveContest(id: string): Promise<void> {
+  await apiFetch(`/contests/${id}/resolve`, dataEnvelopeSchema(z.null()), { method: 'POST' });
+}
+/** Withdraw contest. @rfc RFC-65 R16 */
+export async function withdrawContest(id: string): Promise<void> {
+  await apiFetch(`/contests/${id}/withdraw`, dataEnvelopeSchema(z.null()), { method: 'POST' });
 }
 
 /**
