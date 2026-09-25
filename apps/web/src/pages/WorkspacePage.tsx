@@ -8,10 +8,10 @@ import { AwaitingTable } from '../components/workspace/AwaitingTable.tsx';
 import { CurationCards } from '../components/workspace/CurationCards.tsx';
 import { GettingStartedCard } from '../components/workspace/GettingStartedCard.tsx';
 import { IntroCard } from '../components/workspace/IntroCard.tsx';
-import { MissingTraitsList } from '../components/workspace/MissingTraitsList.tsx';
 import { QuickActions } from '../components/workspace/QuickActions.tsx';
 import { ScopeCard } from '../components/workspace/ScopeCard.tsx';
 import { type StatTile, StatTiles } from '../components/workspace/StatTiles.tsx';
+import { TraitsWithDataList } from '../components/workspace/TraitsWithDataList.tsx';
 import { pageErrorMessage } from '../lib/errors.ts';
 import { useMe } from '../lib/session.ts';
 
@@ -35,9 +35,9 @@ function contributionTiles(summary: ContributionSummary): StatTile[] {
 /**
  * The workspace home as a dashboard (RFC-72 R1, spec §4): what the project
  * is, the viewer's own plot scope, quick actions into the species list, the
- * records waiting on their review, the traits most missing data, their own
+ * records waiting on their review, the traits with the most data, their own
  * contributions and — for a reviewer — the curation queues. The page reads
- * one query; every section but "Top traits missing data" and "Your
+ * one query; every section but "Top traits with data" and "Your
  * contributions" degrades independently when its part of the answer is
  * `null` (no plots, no review permission), rather than the page failing
  * whole.
@@ -49,7 +49,6 @@ export function WorkspacePage() {
   const query = useQuery({ queryKey: dashboardKeys.mine, queryFn: fetchDashboard });
   const [open, setOpen] = useState<string | null>(null);
   const data = query.data;
-  const hasPlots = data ? data.scope !== null : false;
 
   return (
     <>
@@ -79,22 +78,14 @@ export function WorkspacePage() {
             </section>
           ) : null}
 
-          <section aria-labelledby="missing-traits-heading" className={SECTION_CLASS}>
-            <h2 id="missing-traits-heading" className={HEADING_CLASS}>
-              {hasPlots
-                ? 'Top traits missing data in your plots'
-                : 'Top traits missing data in the dataset'}
+          <section aria-labelledby="traits-with-data-heading" className={SECTION_CLASS}>
+            <h2 id="traits-with-data-heading" className={HEADING_CLASS}>
+              Top traits with data
             </h2>
-            {data.contributor.topMissingTraits.length === 0 ? (
-              <EmptyState
-                title={
-                  hasPlots
-                    ? 'Every trait in your plots has data.'
-                    : 'Every trait in the dataset has data.'
-                }
-              />
+            {data.contributor.topTraitsWithData.length === 0 ? (
+              <EmptyState title="No trait has data yet." />
             ) : (
-              <MissingTraitsList traits={data.contributor.topMissingTraits} hasPlots={hasPlots} />
+              <TraitsWithDataList traits={data.contributor.topTraitsWithData} />
             )}
           </section>
 

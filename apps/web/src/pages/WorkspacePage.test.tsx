@@ -11,6 +11,7 @@ import {
   NEW_CONTRIBUTOR_DASHBOARD,
   NO_PLOTS_DASHBOARD,
   REVIEWER_DASHBOARD,
+  TOP_TRAITS_WITH_DATA,
 } from '../test/dataset-fixtures.ts';
 import { ME } from '../test/fixtures.ts';
 import { renderAt } from '../test/router.tsx';
@@ -37,10 +38,6 @@ vi.mock('../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/dataset.ts')>()),
   ...dataset,
 }));
-
-function hrefUrl(href: string | null) {
-  return new URL(href ?? '', 'https://example.org');
-}
 
 beforeEach(() => {
   for (const mock of [
@@ -132,48 +129,37 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     ).toBeInTheDocument();
   });
 
-  it('links the top missing traits with scope=plots when the viewer has plots, and without it when they do not', async () => {
-    const first = renderAt('/app/');
+  it('lists the top traits with data, each linking to its trait page, with or without plots', async () => {
+    const [first] = TOP_TRAITS_WITH_DATA;
+    if (!first) throw new Error('fixture has no traits');
+    const withPlots = renderAt('/app/');
     expect(
-      await screen.findByRole('heading', { name: 'Top traits missing data in your plots' }),
+      await screen.findByRole('heading', { name: 'Top traits with data' }),
     ).toBeInTheDocument();
-    const withPlots = hrefUrl(screen.getByRole('link', { name: 'seed mass' }).getAttribute('href'));
-    expect(withPlots.searchParams.get('scope')).toBe('plots');
-    first.unmount();
+    expect(screen.getByRole('link', { name: 'seed mass' })).toHaveAttribute(
+      'href',
+      `/app/traits/${first.trait.id}`,
+    );
+    withPlots.unmount();
 
     dashboard.fetchDashboard.mockResolvedValue(NO_PLOTS_DASHBOARD);
     renderAt('/app/');
     expect(
-      await screen.findByRole('heading', { name: 'Top traits missing data in the dataset' }),
+      await screen.findByRole('heading', { name: 'Top traits with data' }),
     ).toBeInTheDocument();
-    const withoutPlots = hrefUrl(
-      screen.getByRole('link', { name: 'seed mass' }).getAttribute('href'),
+    expect(screen.getByRole('link', { name: 'seed mass' })).toHaveAttribute(
+      'href',
+      `/app/traits/${first.trait.id}`,
     );
-    expect(withoutPlots.searchParams.has('scope')).toBe(false);
   });
 
-  it('shows the empty state when no trait is missing data', async () => {
+  it('shows the empty state when no trait has data', async () => {
     dashboard.fetchDashboard.mockResolvedValue({
       ...DASHBOARD,
-      contributor: {
-        ...DASHBOARD.contributor,
-        topMissingTraits: [],
-      },
+      contributor: { ...DASHBOARD.contributor, topTraitsWithData: [] },
     });
     renderAt('/app/');
-    expect(await screen.findByText('Every trait in your plots has data.')).toBeInTheDocument();
-  });
-
-  it('shows the empty state without plots when no trait is missing data', async () => {
-    dashboard.fetchDashboard.mockResolvedValue({
-      ...NO_PLOTS_DASHBOARD,
-      contributor: {
-        ...NO_PLOTS_DASHBOARD.contributor,
-        topMissingTraits: [],
-      },
-    });
-    renderAt('/app/');
-    expect(await screen.findByText('Every trait in the dataset has data.')).toBeInTheDocument();
+    expect(await screen.findByText('No trait has data yet.')).toBeInTheDocument();
   });
 
   it('shows the contribution summary as tiles linking to /app/contributions', async () => {

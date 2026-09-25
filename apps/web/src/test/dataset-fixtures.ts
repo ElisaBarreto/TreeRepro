@@ -954,17 +954,17 @@ export const DASHBOARD_SCOPE: NonNullable<Dashboard['scope']> = {
   restricted: true,
 };
 
-/** Ranked traits missing data, descending by missing-species count. @rfc RFC-72 R1 */
-export const TOP_MISSING_TRAITS: Dashboard['contributor']['topMissingTraits'] = [
+/** Ranked traits with data, descending by species count. @rfc RFC-72 R1 */
+export const TOP_TRAITS_WITH_DATA: Dashboard['contributor']['topTraitsWithData'] = [
   {
     trait: SEED_MASS,
     category: { key: 'seed', label: 'Seed' },
-    missingSpeciesCount: 5,
+    speciesCount: 40,
   },
   {
     trait: POLLINATION_MODE,
     category: { key: 'pollination', label: 'Pollination' },
-    missingSpeciesCount: 2,
+    speciesCount: 12,
   },
 ];
 
@@ -978,7 +978,7 @@ export const AWAITING_VALIDATION: NonNullable<Dashboard['contributor']['awaiting
 export const DASHBOARD_CONTRIBUTOR: Dashboard['contributor'] = {
   missingCells: 14,
   awaitingValidation: AWAITING_VALIDATION,
-  topMissingTraits: TOP_MISSING_TRAITS,
+  topTraitsWithData: TOP_TRAITS_WITH_DATA,
   summary: CONTRIBUTION_SUMMARY,
 };
 
@@ -986,7 +986,7 @@ export const DASHBOARD_CONTRIBUTOR: Dashboard['contributor'] = {
 export const NO_PLOTS_CONTRIBUTOR: Dashboard['contributor'] = {
   missingCells: null,
   awaitingValidation: null,
-  topMissingTraits: TOP_MISSING_TRAITS,
+  topTraitsWithData: TOP_TRAITS_WITH_DATA,
   summary: CONTRIBUTION_SUMMARY,
 };
 
