@@ -133,7 +133,7 @@ function searchKey(value: SpeciesSearchValue): string {
  * (a `sort=name` cursor has two keys, a `sort=completeness` cursor three).
  * The records column is shown exactly while a trait filter is set, since
  * `traitRecordCount` answers "how many records for that trait" and is null
- * otherwise. The export link is a plain download, gated by dataset.export.
+ * otherwise. The export links are plain downloads, gated by dataset.export.
  * With `taxa.manage`, "New species" opens the species editor and a created
  * species opens its own page (RFC-60 R9). The form's status filter is
  * carried through to the search and the query key (RFC-33 R7).
