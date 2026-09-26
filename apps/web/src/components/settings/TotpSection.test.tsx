@@ -134,6 +134,9 @@ describe('RFC-23 R7 disabling TOTP', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
     const dialog = await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
     expect(dialog).toHaveAttribute('open');
+    // RFC-82 R3: the dialog warns, and the key list is refetched after.
+    expect(screen.getByText('This also revokes every API key you hold.')).toBeInTheDocument();
+    queryClient.setQueryData(['me', 'api-keys'], { eligible: true, keys: [] });
     await userEvent.type(screen.getByLabelText('Password'), 'my passphrase');
     await userEvent.type(screen.getByLabelText('Code or recovery code'), 'abcde-fghij');
     await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
@@ -148,6 +151,7 @@ describe('RFC-23 R7 disabling TOTP', () => {
         user: { totpEnabled: false },
       }),
     );
+    expect(queryClient.getQueryState(['me', 'api-keys'])?.isInvalidated).toBe(true);
     // The password in the mutation's `variables` leaves the MutationCache with the dialog.
     await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
   });

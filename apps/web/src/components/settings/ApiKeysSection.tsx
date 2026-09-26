@@ -20,7 +20,8 @@ import {
   Tr,
 } from '../ui/index.ts';
 
-const KEYS_KEY = ['me', 'api-keys'] as const;
+/** Refetched by the flows that revoke every key (password, TOTP). @rfc RFC-82 R3, R7 */
+export const API_KEYS_QUERY_KEY = ['me', 'api-keys'] as const;
 
 // Not exported: no @rfc tag needed (RFC-00 R6 applies to exports only).
 // Date only: the time made the table overflow a 1200 px viewport.
@@ -58,7 +59,7 @@ export function ApiKeysSection() {
   const queryClient = useQueryClient();
   const [secret, setSecret] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
-  const keys = useQuery({ queryKey: KEYS_KEY, queryFn: listApiKeys });
+  const keys = useQuery({ queryKey: API_KEYS_QUERY_KEY, queryFn: listApiKeys });
   const create = useMutation({
     // Wrapped, not passed bare: TanStack Query calls mutationFn with a second
     // (context) argument that a directly-passed reference — and its mock in
@@ -74,13 +75,13 @@ export function ApiKeysSection() {
     // settles the mutation, so a render that reads the mutation's own state
     // never observes the error (PasswordSection's `errors` state does the same).
     onError: (error) => setCreateError(createErrorMessage(error)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: KEYS_KEY }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY }),
   });
   const revoke = useMutation({
     mutationFn: (id: string) => revokeApiKey(id),
     // A revoked key's secret must not stay on screen inviting a copy.
     onSuccess: () => setSecret(null),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: KEYS_KEY }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY }),
   });
 
   if (!keys.data?.eligible) return null;

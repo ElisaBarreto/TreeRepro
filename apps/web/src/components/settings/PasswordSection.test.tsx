@@ -36,6 +36,17 @@ describe('RFC-21 R7 PasswordSection', () => {
     expect(screen.getByLabelText('Current password')).toHaveValue('');
   });
 
+  it('RFC-82 R3 warns that API keys are revoked and refreshes the key list on success', async () => {
+    auth.changePassword.mockResolvedValue(undefined);
+    const { queryClient } = renderWithProviders(<PasswordSection />, { me: ME });
+    queryClient.setQueryData(['me', 'api-keys'], { eligible: true, keys: [] });
+    expect(screen.getByText('This also revokes every API key you hold.')).toBeInTheDocument();
+    await fill(OLD, NEW, NEW);
+    await waitFor(() =>
+      expect(queryClient.getQueryState(['me', 'api-keys'])?.isInvalidated).toBe(true),
+    );
+  });
+
   it('checks the confirmation locally and maps AUTH_INVALID_CREDENTIALS and AUTH_PASSWORD_WEAK', async () => {
     renderWithProviders(<PasswordSection />, { me: ME });
     await fill(OLD, NEW, 'different');

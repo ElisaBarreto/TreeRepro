@@ -12,6 +12,7 @@ import { ApiError } from '../../api/client.ts';
 import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
 import { ME_QUERY_KEY, useMe } from '../../lib/session.ts';
 import { Alert, Button, Dialog, Field, Input, Section } from '../ui/index.ts';
+import { API_KEYS_QUERY_KEY } from './ApiKeysSection.tsx';
 
 /** @rfc RFC-13 R6 */
 export function totpErrorMessage(error: unknown): string {
@@ -121,6 +122,8 @@ export function TotpSection() {
     onSuccess: () => {
       setEnabled(false);
       resetDisableForm();
+      // Disabling TOTP revoked every API key (RFC-82 R3).
+      void queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });
     },
   });
 
@@ -291,6 +294,7 @@ export function TotpSection() {
               className="flex flex-col gap-4"
               noValidate
             >
+              <p className="text-body text-canopy-800">This also revokes every API key you hold.</p>
               <Field id={ids.password} label="Password" error={passwordError}>
                 <Input
                   id={ids.password}
