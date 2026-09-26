@@ -47,6 +47,8 @@ COPY --from=build /workspace/apps/api/dist ./apps/api/dist
 COPY --from=build /workspace/apps/api/drizzle ./apps/api/drizzle
 COPY --from=build /workspace/apps/api/seed ./apps/api/seed
 COPY --from=build /workspace/apps/api/maps ./apps/api/maps
+# RFC-82 R20: GET /api/docs and GET /api/docs/openapi.json read this at runtime.
+COPY docs/api ./docs/api
 WORKDIR /workspace/apps/api
 USER node
 EXPOSE 3000

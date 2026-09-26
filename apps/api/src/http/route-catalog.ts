@@ -79,8 +79,8 @@ export interface CatalogEntry {
 /**
  * One entry per route mounted on the API, in the order
  * `routes-guarded.integration.test.ts` lists them. Every mounted route is
- * catalogued and every catalogued route is mounted (its own meta-test); the
- * docs routes of Task 6 are not entries here.
+ * catalogued and every catalogued route is mounted (its own meta-test),
+ * `GET /api/docs` and `GET /api/docs/openapi.json` (RFC-82 R20) included.
  * @rfc RFC-82 R16
  */
 export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
@@ -519,4 +519,8 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
     summary: 'Run up to 500 operations through the API in one request',
     response: dataEnvelopeSchema(batchResponseSchema),
   },
+
+  // docs
+  'GET /api/docs': { summary: 'Read this guide as Markdown' },
+  'GET /api/docs/openapi.json': { summary: 'Read the generated OpenAPI 3.1 reference' },
 };

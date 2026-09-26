@@ -180,6 +180,8 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'POST /api/plots/:id/species',
         'DELETE /api/plots/:id/species/:speciesId',
         'POST /api/batch',
+        'GET /api/docs',
+        'GET /api/docs/openapi.json',
       ].sort(),
     );
   });
