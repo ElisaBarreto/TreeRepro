@@ -181,6 +181,15 @@ An operation is refused with `status: 400` and a `VALIDATION_FAILED` body, witho
 
 Every operation's `body` is fixed when you send the batch, so there is no way to feed the id one operation just created into a later operation of the same batch — you only learn what was created when the whole response comes back. If a later write needs an id an earlier one creates, send two batches and read the first one's `results` before building the second. Re-sending an entire batch is safe: mapping an already-mapped pending group creates nothing, and a catalog create that collides answers the same duplicate error a single call would (for example 409 `FAMILY_NAME_TAKEN`) (RFC-82 R15).
 
+### A batch that takes too long
+
+The batch answers only once its last operation has run. Requests reach the API through a proxy (Cloudflare) that gives up on an answer that has not started within about 100 seconds and replies **524** itself: an HTML page, not the JSON envelope. The API does not see that. It keeps running the remaining operations, and each one still commits; you only lose the list of results.
+
+So:
+
+- Keep batches of writes small: at most **100 operations**. The 500 cap is what the API accepts, not what a slow write can finish in time.
+- Treat any answer that is not JSON (a 524, a 502, a gateway error page) as "unknown": some, all or none of the operations ran. Do not resend the same batch blindly. Re-read the state first (for pending groups, list them again: a group the lost batch mapped no longer appears, and mapping one of its leftovers again creates nothing, RFC-82 R15), then send only what is still left. A catalog create that then answers a duplicate error (for example 409 `FAMILY_NAME_TAKEN`) was done by the lost batch.
+
 ## Limits
 
 Every key has its own budget, independent of everyone else's: 3000 units per 10 minutes (RFC-24 R3). A single request costs 1 unit; a batch of `n` operations costs `n` units, charged before any operation runs.
@@ -206,7 +215,7 @@ A missing resource usually answers a code specific to it instead of the generic 
 
 ## Examples
 
-Both examples read the key from the environment (never hard-code it), list the pending traits, fetch one trait's pending groups, map them all in a single batch, print whatever failed, and treat 401 as fatal. On 429 they sleep for `Retry-After` and resend the same batch — safe, because a 429 batch ran nothing (RFC-82 R14). Base URL: `https://treerepro.elisabarreto.com.br`.
+Both examples read the key from the environment (never hard-code it), list the pending traits, fetch one trait's pending groups, map them in batches of 100, print whatever failed, and treat 401 as fatal. An answer that is not JSON (a 524 from the proxy, see "A batch that takes too long") stops the script: running it again is the recovery, since it lists what is still pending before mapping. On 429 they sleep for `Retry-After` and resend the same batch — safe, because a 429 batch ran nothing (RFC-82 R14). Base URL: `https://treerepro.elisabarreto.com.br`.
 
 ### R (httr2)
 
@@ -231,6 +240,11 @@ call_api <- function(method, path, query = NULL, body = NULL) {
     message("Rate limited, sleeping ", retry_after, "s")
     Sys.sleep(retry_after)
     return(call_api(method, path, query, body)) # nothing ran (RFC-82 R14): safe to resend
+  }
+  if (!grepl("^application/json", resp_content_type(resp))) {
+    # A 524 from the proxy: operations may have run. Re-running the script
+    # re-reads what is still pending, so never resend blindly here.
+    stop("No JSON answer (", resp_status(resp), ") - some operations may have run; run the script again")
   }
   resp_body_json(resp)
 }
@@ -269,7 +283,7 @@ if (length(groups) == 0) {
   quit(save = "no", status = 0)
 }
 
-# 4. Map every group to that level in a single batch
+# 4. Map every group to that level, 100 operations per batch
 ops <- lapply(groups, function(g) {
   list(
     ref = g$sampleRecordId,
@@ -282,13 +296,15 @@ ops <- lapply(groups, function(g) {
     )
   )
 })
-result <- call_api("POST", "/api/batch", body = list(ops = ops))
+for (chunk in split(ops, ceiling(seq_along(ops) / 100))) {
+  result <- call_api("POST", "/api/batch", body = list(ops = unname(chunk)))
 
-# 5. Print every failed operation
-for (r in result$data$results) {
-  if (r$status < 200 || r$status >= 300) {
-    msg <- if (!is.null(r$body$error$message)) r$body$error$message else "<no body>"
-    cat(sprintf("%s: %s %s\n", r$ref, r$status, msg))
+  # 5. Print every failed operation
+  for (r in result$data$results) {
+    if (r$status < 200 || r$status >= 300) {
+      msg <- if (!is.null(r$body$error$message)) r$body$error$message else "<no body>"
+      cat(sprintf("%s: %s %s\n", r$ref, r$status, msg))
+    }
   }
 }
 ```
@@ -316,6 +332,10 @@ def call(method, path, **kwargs):
         print(f"Rate limited, sleeping {retry_after}s", file=sys.stderr)
         time.sleep(retry_after)
         return call(method, path, **kwargs)  # nothing ran (RFC-82 R14): safe to resend
+    if not resp.headers.get("Content-Type", "").startswith("application/json"):
+        # A 524 from the proxy: operations may have run. Re-running the script
+        # re-reads what is still pending, so never resend blindly here.
+        sys.exit(f"No JSON answer ({resp.status_code}) - some operations may have run; run the script again")
     return resp
 
 
@@ -349,7 +369,7 @@ while True:
 if not groups:
     sys.exit("No pending groups for this trait")
 
-# 4. Map every group to that level in a single batch
+# 4. Map every group to that level, 100 operations per batch
 ops = [
     {
         "ref": g["sampleRecordId"],
@@ -363,15 +383,17 @@ ops = [
     }
     for g in groups
 ]
-result = call("POST", "/api/batch", json={"ops": ops}).json()
+for start in range(0, len(ops), 100):
+    result = call("POST", "/api/batch", json={"ops": ops[start : start + 100]}).json()
 
-# 5. Print every failed operation
-for r in result["data"]["results"]:
-    if not (200 <= r["status"] < 300):
-        message = (r["body"] or {}).get("error", {}).get("message", "<no body>")
-        print(f"{r['ref']}: {r['status']} {message}")
+    # 5. Print every failed operation
+    for r in result["data"]["results"]:
+        if not (200 <= r["status"] < 300):
+            message = (r["body"] or {}).get("error", {}).get("message", "<no body>")
+            print(f"{r['ref']}: {r['status']} {message}")
 ```
 
 ## Changelog
 
+- 2026-09-26 — "A batch that takes too long": a batch outliving the proxy timeout answers 524 while its operations keep committing; batches of writes stay at 100 operations, and a script re-reads the state instead of resending. The examples map in batches of 100 and stop on an answer that is not JSON (issue #219). (openapi 03bc32d24279)
 - 2026-09-26 — First version: API keys (14a), batch (14b), this guide and the generated reference (14c). (openapi 03bc32d24279)
