@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -19,8 +19,8 @@ Curators need the dataset as files for analysis and publication: every record wi
 - **R5** The response streams: rows are read through a server-side cursor in batches and written into the archive as they arrive. The archive uses ZIP64, so `records.csv` may exceed 4 GiB. Neither a file nor the archive is ever held in memory.
 - **R6** An audit entry `dataset.exported` with `metadata: { format: 'zip', scope }` — `scope` being the request's `all` or `platform` (R9) — is recorded before the first byte is sent; an interrupted download still counts as an export.
 - **R7** Errors raised before the stream starts (401, 403) use the RFC-11 error envelope. The file body is the documented exception to RFC-11 R2.
-- **R8** (interim: written by plan 13e, retired by plan 13i) `GET /api/export/records.csv` (`dataset.export`) streams a single CSV of every visible record (R2's population). Its columns, in order: `family, genus, species, name_source, category, trait, value, unit, level, numeric_value, raw_value, primary_reference, secondary_reference, origin, intent, created_at, record_id`. `value` is `value_text`, and `primary_reference` and `secondary_reference` print as R2 prints a reference (its citation key, or `Personal observation`). Rows follow R3's order with `record_id` as the last key. The format follows R4 with `Content-Type: text/csv; charset=utf-8` and `filename="treerepro-records-<YYYY-MM-DD>.csv"`, the streaming follows R5, and the audit follows R6 with `metadata: { format: 'csv', scope: 'all' }`. It replaces `GET /api/export/accepted.csv` until `dataset.zip` exists.
-- **R9** Platform-only export. `GET /api/export/dataset.zip?scope=platform` gives `records.csv` with the `TR_` records only (RFC-63 R12) and `annotations.csv` with every validation and contest made by users, on `TR_` and `EB_` records alike. `scope` is `all` (the default, R1–R3) or `platform`; any other value answers 400 `VALIDATION_FAILED` with path `scope`. Both scopes follow R2–R7, and the audit entry carries the scope (R6). There is no scheduled copy: the daily encrypted backup already holds everything.
+- **R8** (retired by plan 13i) `GET /api/export/records.csv` (`dataset.export`) streams a single CSV of every visible record (R2's population). Its columns, in order: `family, genus, species, name_source, category, trait, value, unit, level, numeric_value, raw_value, primary_reference, secondary_reference, origin, intent, created_at, record_id`. `value` is `value_text`, and `primary_reference` and `secondary_reference` print as R2 prints a reference (its citation key, or `Personal observation`). Rows follow R3's order with `record_id` as the last key. The format follows R4 with `Content-Type: text/csv; charset=utf-8` and `filename="treerepro-records-<YYYY-MM-DD>.csv"`, the streaming follows R5, and the audit follows R6 with `metadata: { format: 'csv', scope: 'all' }`. It replaces `GET /api/export/accepted.csv` until `dataset.zip` exists.
+- **R9** Platform-only export. `GET /api/export/dataset.zip?scope=platform` gives `records.csv` with the `TR_` records only (RFC-63 R12) and `annotations.csv` with every validation and contest made by users, on `TR_` and `EB_` records alike. `scope` is `all` (the default, R1–R3) or `platform`; any other value answers 400 `VALIDATION_FAILED` with path `scope`. Both scopes follow R2–R7, and the audit entry carries the scope (R6). There is no scheduled copy: the daily encrypted backup already holds everything. The response headers of R4 use `filename="treerepro-platform-<YYYY-MM-DD>.zip"` for `scope=platform`, in place of `treerepro-dataset-<YYYY-MM-DD>.zip`.
 
 ## Open questions
 
@@ -34,3 +34,4 @@ None.
 - 2026-09-17 — Personal observation label in R2 (plan 09a).
 - 2026-09-20 — R2 and Context: the export takes the viewer's visibility (RFC-33 R1–R3); security audit 2026-09-19, issue #118 F-01.
 - 2026-09-25 — Context, R1–R7 amended: `dataset.zip` with `records.csv` and `annotations.csv` replaces `accepted.csv`, and the formula guard covers a leading line feed; R8 added: the interim single-file export of plan 13e; R9 added: the platform-only scope (record model revision R-17, R-21; plan 13a); owner ruling: a contest states the correct levels (R2: one contest row per contested record, `contest_record_code` lists the contest's own records); R1: only the admin role exports (owner ruling). `draft` until plan 13i.
+- 2026-09-26 — R8 formally retired (plan 13i: `dataset.zip` is the only export route); R9: the platform scope's ZIP file name; accepted (plan 13i).
