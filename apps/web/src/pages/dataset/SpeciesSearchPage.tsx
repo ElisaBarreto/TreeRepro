@@ -6,7 +6,7 @@ import {
   type TraitDataMode,
 } from '@treerepro/contracts';
 import { useEffect, useState } from 'react';
-import { EXPORT_RECORDS_URL } from '../../api/curation.ts';
+import { EXPORT_DATASET_URL, EXPORT_PLATFORM_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
 import { ProposeSpeciesDialog } from '../../components/catalog/ProposeSpeciesDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
@@ -219,14 +219,23 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
                 <Button onClick={() => setCreating(true)}>New species</Button>
               ) : null}
               {hasPermission(me, 'dataset.export') ? (
-                <a
-                  href={EXPORT_RECORDS_URL}
-                  download
-                  // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
-                  className={buttonClassName({ variant: 'secondary' })}
-                >
-                  Export records (CSV)
-                </a>
+                <>
+                  <a
+                    href={EXPORT_DATASET_URL}
+                    download
+                    // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
+                    className={buttonClassName({ variant: 'secondary' })}
+                  >
+                    Export dataset (ZIP)
+                  </a>
+                  <a
+                    href={EXPORT_PLATFORM_URL}
+                    download
+                    className={buttonClassName({ variant: 'secondary' })}
+                  >
+                    Export platform contributions (ZIP)
+                  </a>
+                </>
               ) : null}
             </>
           ) : undefined

@@ -17,7 +17,8 @@ import {
   annotateRecord,
   createRecords,
   curationKeys,
-  EXPORT_RECORDS_URL,
+  EXPORT_DATASET_URL,
+  EXPORT_PLATFORM_URL,
   fetchContested,
   fetchPendingGroups,
   fetchPendingTraits,
@@ -115,7 +116,8 @@ describe('query keys and invalidation', () => {
   it('curationKeys nest under the dataset prefixes; invalidateAfterRecordWrite marks records and the species stale', async () => {
     expect(curationKeys.pendingGroups('t')).toEqual(['records', 'pending', 'groups', 't']);
     expect(curationKeys.contested).toEqual(['records', 'contested']);
-    expect(EXPORT_RECORDS_URL).toBe('/api/export/records.csv');
+    expect(EXPORT_DATASET_URL).toBe('/api/export/dataset.zip');
+    expect(EXPORT_PLATFORM_URL).toBe('/api/export/dataset.zip?scope=platform');
     const client = new QueryClient();
     client.setQueryData(['records', { speciesId: 's' }], { data: [], meta: { nextCursor: null } });
     client.setQueryData(['records', 'r1'], RECORD_DETAIL);

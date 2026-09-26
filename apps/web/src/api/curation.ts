@@ -38,8 +38,11 @@ export const curationKeys = {
   contested: ['records', 'contested'] as const,
 };
 
-/** The file download of RFC-66; a plain link, the session cookie authenticates it. @rfc RFC-66 R8 */
-export const EXPORT_RECORDS_URL = '/api/export/records.csv';
+/** The full dataset download of RFC-66; a plain link, the session cookie authenticates it. @rfc RFC-66 R1 */
+export const EXPORT_DATASET_URL = '/api/export/dataset.zip';
+
+/** The platform-only download of RFC-66 R9; a plain link, the session cookie authenticates it. @rfc RFC-66 R9 */
+export const EXPORT_PLATFORM_URL = '/api/export/dataset.zip?scope=platform';
 
 /** @rfc RFC-70 R1, R3 */
 export async function createRecords(body: CreateRecordBody): Promise<CreateRecordsResult> {
