@@ -145,7 +145,16 @@ function csvStream<Row extends object>(
         controller.close();
         return;
       }
-      controller.enqueue(encoder.encode(next.value.map(toLine).join('')));
+      let text: string;
+      try {
+        text = next.value.map(toLine).join('');
+      } catch (err) {
+        // A throwing `pull()` errors the stream without calling `cancel()`,
+        // so the cursor would wait forever for this batch's continuation.
+        await batches.return?.();
+        throw err;
+      }
+      controller.enqueue(encoder.encode(text));
     },
     async cancel() {
       if (inflight) await inflight.catch(() => undefined);
@@ -392,6 +401,8 @@ export function datasetZip(
   let current: Readable | null = null;
   const entry = (name: string, csv: () => ReadableStream<Uint8Array>) => {
     zip.addReadStreamLazy(name, { mtime: options.now }, (cb) => {
+      // The client left before this entry's turn: open no cursor for it.
+      if (output.destroyed) return cb(new Error('aborted'), undefined as unknown as Readable);
       const source = Readable.fromWeb(csv());
       source.once('error', (err) => output.destroy(err));
       current = source;

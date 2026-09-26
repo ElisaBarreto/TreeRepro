@@ -11,10 +11,12 @@ import {
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { exportScene, parseCsv, readAll, unzip } from '../../test/helpers/export.ts';
+import { TEST_HMAC_KEY, TEST_KEYRING } from '../../test/helpers/pii.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { createDb } from '../db/client.ts';
 import { traitLevels } from '../db/schema/dictionary.ts';
+import { configurePii, keyringFromHex, PiiDecryptError } from '../security/pii.ts';
 import {
   ANNOTATION_COLUMNS,
   annotationRowsQuery,
@@ -281,6 +283,44 @@ describe('RFC-66 R5 connection safety', () => {
     await pending.catch(() => undefined);
 
     await expect(withTimeout(db.execute(sql`select 1`), 5000)).resolves.toBeDefined();
+  });
+
+  it('a row that fails to format releases the cursor, and the ZIP errors instead of completing', async () => {
+    handle ??= createDb(inject('databaseUrl'), { max: 1 });
+    const { db } = handle;
+    const trait = await createTrait(db, { levels: ['red'] });
+    const ref = await createReference(db);
+    const sp = await createSpecies(db);
+    const { user } = await createUser(db);
+    const rec = await createRecord(db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'red',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await createAnnotation(db, { recordId: rec.id, actorId: user.id, kind: 'confirm' });
+
+    // A keyring whose `v1` is another key: every stored `users.name` then
+    // fails GCM authentication, a real PiiDecryptError from `toLine`. The
+    // keyring is captured when `annotationsCsv` runs, and this worker's
+    // module state is its own, so no other test file sees it.
+    configurePii(keyringFromHex('v1', { v1: 'b'.repeat(64) }), TEST_HMAC_KEY);
+    try {
+      await expect(
+        readAll(annotationsCsv(db, UNRESTRICTED, { scope: 'all', batch: 2 })),
+      ).rejects.toThrow(PiiDecryptError);
+      await expect(withTimeout(db.execute(sql`select 1`), 5000)).resolves.toBeDefined();
+
+      await expect(
+        readAll(datasetZip(db, UNRESTRICTED, { scope: 'all', now: new Date(), batch: 2 })),
+      ).rejects.toThrow(PiiDecryptError);
+      await expect(withTimeout(db.execute(sql`select 1`), 5000)).resolves.toBeDefined();
+    } finally {
+      configurePii(TEST_KEYRING, TEST_HMAC_KEY);
+    }
   });
 
   it('cancelling the ZIP mid-entry releases the cursor of the entry being written', async () => {
