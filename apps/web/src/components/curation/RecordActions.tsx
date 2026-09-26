@@ -283,7 +283,12 @@ export function RecordActions({
           <div className="pt-3">{doiField}</div>
         </details>
       ) : null}
-      {error ? <Alert tone="error">{actionErrorMessage(error)}</Alert> : null}
+      {/* A failed withdrawal already shows its error inside the confirm
+          dialog below; showing it here too would say the same sentence
+          twice. */}
+      {error && !confirmingWithdraw ? (
+        <Alert tone="error">{actionErrorMessage(error)}</Alert>
+      ) : null}
       {contesting ? (
         <ContestDialog
           record={record}

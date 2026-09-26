@@ -520,6 +520,16 @@ describe('RFC-70 R4, RFC-65 R4 RecordActions after spec R-11 and R-12', () => {
     await waitFor(() => expect(onGone).toHaveBeenCalled());
   });
 
+  it('a failed withdrawal shows its error once, inside the confirm dialog, not again in the drawer', async () => {
+    curation.annotateRecord.mockRejectedValue(new ApiError(500, 'SERVER_ERROR', 'boom'));
+    renderWithProviders(<RecordActions record={MINE} />, { me: perms('records.annotate') });
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Withdraw this record?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Withdraw' }));
+    expect(await within(dialog).findByText('Something went wrong. Try again.')).toBeInTheDocument();
+    expect(screen.getAllByText('Something went wrong. Try again.')).toHaveLength(1);
+  });
+
   it('an imported record offers Withdraw only with records.withdraw_imported', () => {
     const imported: RecordDetail = { ...THEIRS, origin: 'import', createdBy: null };
     const first = renderWithProviders(<RecordActions record={imported} />, {

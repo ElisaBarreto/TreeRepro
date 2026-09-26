@@ -522,6 +522,52 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
     expect(rest[0]?.record?.id).toBe(record.id);
   });
 
+  it('a resolution names its contest first VISIBLE record: the lower-record_code record withdrawn, the second one still stands', async () => {
+    const { user: a } = await createUser(t.db);
+    const { species, trait, reference } = await scene(t.db);
+    // Created first, so the lower record_code — then withdrawn.
+    const withdrawn = await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'gamma',
+      levelId: level(trait.levels, 'gamma'),
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: a.id,
+      intent: 'contest',
+    });
+    const kept = await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'beta',
+      levelId: level(trait.levels, 'beta'),
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: a.id,
+      intent: 'contest',
+    });
+    await createAnnotation(t.db, { recordId: withdrawn.id, actorId: a.id, kind: 'withdraw' });
+    const contest = await createContest(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      createdBy: a.id,
+      recordIds: [withdrawn.id, kept.id],
+    });
+    const resolve = await createContestEvent(t.db, {
+      contestId: contest.id,
+      actorId: a.id,
+      kind: 'resolve',
+    });
+
+    const page = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      limit: 10,
+    });
+    const rows = asAnnotations(page.data);
+    expect(rows.map((r) => r.id)).toEqual([resolve.id]);
+    expect(rows[0]?.record?.id).toBe(kept.id);
+  });
+
   it('RFC-61 R4, R7 an annotation citing a personal observation carries its observer', async () => {
     const { user: a } = await createUser(t.db);
     const { user: observer } = await createUser(t.db, {

@@ -105,9 +105,13 @@ async function listRecordContributions(
 }
 
 /**
- * The first record a contest created, by `record_code`, when it is visible
- * to the viewer (RFC-33 R2: species, trait, live, harmonised, level);
- * `null` when it created none, or when that first record is not visible.
+ * The first record VISIBLE to the viewer among the ones a contest created, by
+ * `record_code` (RFC-33 R2: species, trait, live, harmonised, level); `null`
+ * when it created none, or none it created is visible. The visibility
+ * condition sits inside the ordered subquery, not after it, so a withdrawn or
+ * otherwise invisible first-by-code record is skipped in favour of the next
+ * visible one, rather than yielding `null` while a later record still stands
+ * — the same shape the digest's own first-record subquery uses (`digest.ts`).
  * `contestIdCol` is a `contests.id` reference in the caller's query.
  * @rfc RFC-71 R3
  * @rfc RFC-63 R14
@@ -116,12 +120,10 @@ function firstVisibleContestRecordIdSql(
   v: Visibility,
   contestIdCol: SQL | typeof contests.id,
 ): SQL<string | null> {
-  const first = sql`(select fcr_r.id from ${traitRecords} fcr_r
+  return sql<string | null>`(select fcr_r.id from ${traitRecords} fcr_r
     join ${contestRecords} fcr_c on fcr_c.record_id = fcr_r.id
-    where fcr_c.contest_id = ${contestIdCol}
+    where fcr_c.contest_id = ${contestIdCol} and ${recordFullyVisible(v, sql`fcr_r.id`)}
     order by fcr_r.record_code asc limit 1)`;
-  return sql<string | null>`(select fcv_r.id from ${traitRecords} fcv_r
-    where fcv_r.id = ${first} and ${recordFullyVisible(v, sql`fcv_r.id`)})`;
 }
 
 /** One page of the viewer's Keep-both resolutions (RFC-71 R3, RFC-65 R16). */
