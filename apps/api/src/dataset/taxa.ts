@@ -27,7 +27,7 @@ import {
   pageOf,
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
-import { recordContestedSql } from './contests.ts';
+import { contestStandingSql } from './contests.ts';
 import { requireTrait } from './dictionary.ts';
 import { liveSql, recordVisible } from './records.ts';
 
@@ -288,14 +288,15 @@ export async function speciesListConditions(
   }
 
   // RFC-60 R6, RFC-63 R14: contested is open to every viewer; unknown levels,
-  // like `unresolved` above, is reviewer-only and ignored otherwise.
+  // like `unresolved` above, is reviewer-only and ignored otherwise. A species
+  // is contested exactly when it has a standing contest: one that names a
+  // level with a visible record, or responds to a visible record.
   if (filters.contested) {
     conditions.push(
-      sql`exists (select 1 from ${traitRecords} ctr join ${traits} ctt on ctt.id = ctr.trait_id
-        where ctr.species_id = ${species.id}
+      sql`exists (select 1 from contests ctk join ${traits} ctt on ctt.id = ctk.trait_id
+        where ctk.species_id = ${species.id}
           and ${traitVisible(visibility, sql`ctt.active`)}
-          and ${recordVisible(visibility, sql`ctr.id`, sql`ctr.harmonisation`)}
-          and ${recordContestedSql(visibility, sql`ctr.id`)})`,
+          and ${contestStandingSql(visibility, 'ctk')})`,
     );
   }
   if (filters.unknownLevels && visibility.review) {

@@ -98,6 +98,16 @@ describe('RFC-70 R4 RecordActions by permission', () => {
     expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
   });
 
+  it('does not offer Validate on the viewer own record, which the API refuses (RFC-65 R3)', () => {
+    renderWithProviders(<RecordActions record={MINE} />, { me: CONTRIBUTOR });
+    expect(screen.queryByRole('button', { name: VALIDATE })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'What does Validate mean?' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: ADD })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+  });
+
   it('withholds Add different record from a viewer the API would refuse', () => {
     // The button's only action is `POST /api/records`, which needs
     // `records.create`; validating only needs `records.annotate`.
@@ -112,7 +122,11 @@ describe('RFC-70 R4 RecordActions by permission', () => {
   });
 
   it('spec 7.1 gives Add different record a red outline, not the solid red of Withdraw', () => {
-    renderWithProviders(<RecordActions record={MINE} />, { me: CONTRIBUTOR });
+    // Someone else's record, so Validate is offered; `records.withdraw` puts
+    // Withdraw beside it.
+    renderWithProviders(<RecordActions record={THEIRS} />, {
+      me: perms('dataset.read', 'records.annotate', 'records.create', 'records.withdraw'),
+    });
     const add = screen.getByRole('button', { name: ADD });
     const withdraw = screen.getByRole('button', { name: 'Withdraw' });
     // The contributor's main action: red, but an outline — the solid red fill
@@ -150,7 +164,11 @@ describe('RFC-70 R4 RecordActions by permission', () => {
   });
 
   it('spec R-1 offers no Set as accepted and no accepted badge, even with every permission', () => {
-    renderWithProviders(<RecordActions record={CURATED_RECORD_DETAIL} />, { me: ADMIN_ME });
+    // Someone else's record: Validate is not offered on one's own.
+    renderWithProviders(
+      <RecordActions record={{ ...CURATED_RECORD_DETAIL, createdBy: THEIRS.createdBy }} />,
+      { me: ADMIN_ME },
+    );
     expect(screen.getByRole('button', { name: VALIDATE })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Set as accepted' })).not.toBeInTheDocument();
     expect(screen.queryByText('accepted value')).not.toBeInTheDocument();

@@ -160,6 +160,10 @@ function RecordBody({
                 size="text-label"
               />
             </Badge>
+          ) : record.intent ? (
+            // A categorical contest answers no single record (RFC-63 R14): its
+            // intent alone is shown (RFC-70 R6).
+            <Badge tone={INTENT_TONES[record.intent]}>{record.intent}</Badge>
           ) : null}
         </div>
       </DrawerSection>

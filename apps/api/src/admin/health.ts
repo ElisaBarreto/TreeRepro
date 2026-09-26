@@ -5,6 +5,7 @@ import { computeCoverageTotals } from '../dataset/coverage.ts';
 import { toImportBatch } from '../dataset/import.ts';
 import { countOpenProposals, countProposalsCreated } from '../dataset/proposals.ts';
 import { countContested, countPendingGroups } from '../dataset/queues.ts';
+import { liveSql } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { type ImportBatchRow, importBatches } from '../db/schema/imports.ts';
 import type { JobRunRow } from '../db/schema/job-runs.ts';
@@ -209,7 +210,8 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
   const activityP = started(
     db.execute(sql`
     select
-      (select count(*)::int from trait_records r where ${within(sql`r.created_at`)}) as records_7d,
+      (select count(*)::int from trait_records r
+        where ${within(sql`r.created_at`)} and ${liveSql(sql`r.id`)}) as records_7d,
       (select count(*)::int from record_annotations a where ${within(sql`a.created_at`)})
         as annotations_7d`),
   ) as unknown as Promise<[ActivityRow | undefined]>;
@@ -228,7 +230,7 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
     left join (
       select r.created_at::date as day, count(*)::int as n
       from trait_records r
-      where r.created_at >= current_date - ${BY_DAY_SPAN - 1}::int
+      where r.created_at >= current_date - ${BY_DAY_SPAN - 1}::int and ${liveSql(sql`r.id`)}
       group by 1) r on r.day = d.day
     left join (
       select a.created_at::date as day, count(*)::int as n

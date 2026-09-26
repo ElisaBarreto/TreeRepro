@@ -27,7 +27,7 @@ import {
   isUuid,
   pageOf,
 } from '../http/cursor.ts';
-import { contestCountSql, recordContestedSql } from './contests.ts';
+import { contestCountSql, recordContestedSql, recordFullyVisible } from './contests.ts';
 
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
 const secondaryRef = alias(bibliographicReferences, 'secondary_ref');
@@ -573,7 +573,12 @@ export async function getRecord(
     db
       .select({ id: traitRecords.id })
       .from(traitRecords)
-      .where(eq(traitRecords.supersedesRecordId, id))
+      .where(
+        and(
+          eq(traitRecords.supersedesRecordId, id),
+          recordFullyVisible(visibility, sql`${traitRecords.id}`),
+        ),
+      )
       .orderBy(desc(traitRecords.id)),
     db
       .select({
@@ -585,7 +590,12 @@ export async function getRecord(
       })
       .from(traitRecords)
       .leftJoin(users, eq(users.id, traitRecords.createdBy))
-      .where(eq(traitRecords.respondsToRecordId, id))
+      .where(
+        and(
+          eq(traitRecords.respondsToRecordId, id),
+          recordFullyVisible(visibility, sql`${traitRecords.id}`),
+        ),
+      )
       .orderBy(desc(traitRecords.id)),
   ]);
   const b = batch[0];

@@ -1,5 +1,5 @@
 import type { ContributionAnnotation, ContributionRecord } from '@treerepro/contracts';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
@@ -16,6 +16,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
+import { traitLevels } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
 import { contributionSummary, listContributions } from './contributions.ts';
 import { ensurePersonalObservation } from './references.ts';
@@ -168,6 +169,38 @@ describe('RFC-71 R2 listContributions kind=records', () => {
     expect(rows.data.find((r) => r.id === a1.id)?.responseCount).toBe(2);
     expect(rows.data.find((r) => r.id === a2.id)?.responseCount).toBe(0);
     expect(rows.data[0]).not.toHaveProperty('isAccepted');
+  });
+
+  it('does not count a withdrawn response', async () => {
+    const { user: a } = await createUser(t.db);
+    const { user: b } = await createUser(t.db);
+    const { species, trait, reference } = await scene(t.db);
+    const target = await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'alpha',
+      levelId: level(trait.levels, 'alpha'),
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: a.id,
+    });
+    const response = await createRecord(t.db, {
+      speciesId: species.id,
+      traitId: trait.id,
+      valueText: 'gamma',
+      levelId: level(trait.levels, 'gamma'),
+      primaryReferenceId: reference.id,
+      origin: 'manual',
+      createdBy: b.id,
+      intent: 'complement',
+      respondsToRecordId: target.id,
+    });
+    const countOf = async () =>
+      (await listRecordsOf(t.db, UNRESTRICTED, a.id)).data.find((r) => r.id === target.id)
+        ?.responseCount;
+    expect(await countOf()).toBe(1);
+    await createAnnotation(t.db, { recordId: response.id, actorId: b.id, kind: 'withdraw' });
+    expect(await countOf()).toBe(0);
   });
 
   it('filters by trait, by species and by review status', async () => {
@@ -812,6 +845,50 @@ describe('RFC-71 R2-R4 visibility', () => {
     // R4: the numbers stay true whatever the viewer may see.
     expect(await contributionSummary(t.db, a.id)).toEqual({
       records: 3,
+      contests: 0,
+      complements: 0,
+      validations: 1,
+    });
+  });
+});
+
+describe('RFC-71 R2, R3 with RFC-33 R2 level clause', () => {
+  const t = useTestDb();
+
+  it('a record on a deactivated level leaves a restricted viewer lists; the summary stays viewer-blind', async () => {
+    const { user: a } = await createUser(t.db);
+    const { user: b } = await createUser(t.db);
+    const { species, trait, reference } = await scene(t.db);
+    const record = (valueText: string, by: string) =>
+      createRecord(t.db, {
+        speciesId: species.id,
+        traitId: trait.id,
+        valueText,
+        levelId: level(trait.levels, valueText),
+        primaryReferenceId: reference.id,
+        origin: 'manual',
+        createdBy: by,
+      });
+    const mine = await record('alpha', a.id);
+    const theirs = await record('beta', b.id);
+    await createAnnotation(t.db, { recordId: theirs.id, actorId: a.id, kind: 'confirm' });
+    await t.db
+      .update(traitLevels)
+      .set({ active: false })
+      .where(inArray(traitLevels.id, [level(trait.levels, 'alpha'), level(trait.levels, 'beta')]));
+
+    const annotationsOf = (v: Visibility) =>
+      listContributions(t.db, v, a.id, { kind: 'annotations', limit: 50 });
+    expect((await listRecordsOf(t.db, RESTRICTED, a.id)).data).toEqual([]);
+    expect((await annotationsOf(RESTRICTED)).data).toEqual([]);
+    expect((await listRecordsOf(t.db, UNRESTRICTED, a.id)).data.map((r) => r.id)).toEqual([
+      mine.id,
+    ]);
+    expect(
+      asAnnotations((await annotationsOf(UNRESTRICTED)).data).map((r) => r.record?.id),
+    ).toEqual([theirs.id]);
+    expect(await contributionSummary(t.db, a.id)).toEqual({
+      records: 1,
       contests: 0,
       complements: 0,
       validations: 1,

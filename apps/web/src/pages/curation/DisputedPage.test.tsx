@@ -116,9 +116,12 @@ describe('RFC-65 R10 DisputedPage is the contested queue', () => {
     });
     renderAt('/app/curation/disputed');
     const row = (await screen.findAllByRole('row'))[1] as HTMLElement;
-    const contested = await within(row).findByText('alpha');
-    const cleared = within(row).getByText('gamma');
+    const contested = (await within(row).findByText('alpha')).parentElement as HTMLElement;
+    const cleared = within(row).getByText('gamma').parentElement as HTMLElement;
     expect(contested.className).not.toBe(cleared.className);
+    // Not by colour alone (WCAG 1.4.1): the cleared level says so in words.
+    expect(contested).toHaveTextContent(/^alpha$/);
+    expect(cleared).toHaveTextContent(/^gamma \(cleared\)$/);
   });
 
   it('a quantitative contest shows the target as the contested value and "No record" for its empty records list', async () => {

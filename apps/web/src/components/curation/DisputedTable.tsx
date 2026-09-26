@@ -87,8 +87,11 @@ export function DisputedTable({
               {item.levels ? (
                 <div className="flex flex-wrap gap-1.5">
                   {item.levels.map((level) => (
+                    // Colour is not the only cue (WCAG 1.4.1): a level the
+                    // contest names but no longer contests says so in words.
                     <Badge key={level.levelId} tone={level.contested ? 'amber' : 'neutral'}>
-                      {level.key}
+                      <span>{level.key}</span>
+                      {level.contested ? null : <span> (cleared)</span>}
                     </Badge>
                   ))}
                 </div>

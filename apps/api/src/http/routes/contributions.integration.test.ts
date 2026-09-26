@@ -29,13 +29,16 @@ describe('RFC-71 R1, R2, R3, R4 GET /api/me/contributions', () => {
     const { user, cookie } = await reader();
     const { user: other } = await createUser(t.db);
     const species = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { levels: ['alpha', 'beta'] });
+    // Harmonised records (a level each): a pending record is visible to a
+    // reviewer only, its author included (RFC-33 R2, RFC-71 R2).
+    const trait = await createTrait(t.db, { levels: ['alpha', 'beta', 'gamma'] });
     const reference = await createReference(t.db);
     const mine = async (valueText: string, createdBy: string) =>
       createRecord(t.db, {
         speciesId: species.id,
         traitId: trait.id,
         valueText,
+        levelId: trait.levels.find((l) => l.key === valueText)?.id,
         primaryReferenceId: reference.id,
         origin: 'manual',
         createdBy,
@@ -81,6 +84,7 @@ describe('RFC-71 R1, R2, R3, R4 GET /api/me/contributions', () => {
       speciesId: species.id,
       traitId: trait.id,
       valueText: 'alpha',
+      levelId: trait.levels[0]?.id,
       primaryReferenceId: reference.id,
       origin: 'manual',
       createdBy: other.id,

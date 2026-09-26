@@ -37,8 +37,11 @@ function visibleRecordOfLevel(v: Visibility, speciesId: SQL, traitId: SQL, level
       and ${recordVisible(v, sql`vl_r.id`, sql`vl_r.harmonisation`)})`;
 }
 
-/** The record `recordId` is visible to the viewer, species and trait included (RFC-33 R2). */
-function recordFullyVisible(v: Visibility, recordId: SQL): SQL {
+/**
+ * The record `recordId` is visible to the viewer, species and trait included.
+ * @rfc RFC-33 R2
+ */
+export function recordFullyVisible(v: Visibility, recordId: SQL): SQL {
   return sql`exists (select 1 from trait_records fv_r
     join species fv_s on fv_s.id = fv_r.species_id
     join traits fv_t on fv_t.id = fv_r.trait_id

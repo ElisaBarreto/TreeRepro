@@ -127,6 +127,33 @@ describe('RFC-63 R14 contested is derived from contest storage', () => {
     );
   });
 
+  it('a contest on one species naming blue does not contest another species blue record', async () => {
+    const f = await colours(t.db);
+    const other = await createSpecies(t.db);
+    const otherBlue = await createRecord(t.db, {
+      speciesId: other.id,
+      traitId: f.trait.id,
+      valueText: 'blue',
+      levelId: f.level('blue'),
+      primaryReferenceId: f.ref.id,
+      origin: 'manual',
+      createdBy: f.bo.id,
+    });
+    await createContest(t.db, {
+      speciesId: f.sp.id,
+      traitId: f.trait.id,
+      createdBy: f.cy.id,
+      levelIds: [f.level('blue')],
+    });
+    expect((await items(t.db, UNRESTRICTED, f.sp.id, f.trait.id)).get(f.blue1.id)).toMatchObject({
+      contested: true,
+      contestCount: 1,
+    });
+    const otherItems = await items(t.db, UNRESTRICTED, other.id, f.trait.id);
+    expect(otherItems.get(otherBlue.id)).toMatchObject({ contested: false, contestCount: 0 });
+    expect((await summaryOf(t.db, UNRESTRICTED, other.id, f.trait.id))?.contested).toBe(false);
+  });
+
   it('RFC-65 R15 resolve, withdraw event, withdrawing the created records, or emptying the level clears the flag', async () => {
     for (const end of ['resolve', 'withdraw event', 'withdraw records', 'empty level'] as const) {
       const f = await colours(t.db);

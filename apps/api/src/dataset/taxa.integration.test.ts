@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createContest,
+  createContestEvent,
   createFamily,
   createGenus,
   createImportBatch,
@@ -194,6 +195,37 @@ describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)'
     // fixture species still matches.
     expect(await names(RESTRICTED, { unknownLevels: true })).toHaveLength(3);
     expect(await names(RESTRICTED, { unresolved: true })).toHaveLength(3);
+  });
+
+  it('contested lists no species whose only contest is resolved (RFC-63 R14)', async () => {
+    const q = `Resolvum-${tag()}`;
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const [level] = trait.levels as [{ id: string; key: string }];
+    const sp = await createSpecies(t.db, { canonicalName: `${q} resolved` });
+    await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: level.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const contest = await createContest(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      createdBy: user.id,
+      levelIds: [level.id],
+    });
+    const listed = async () =>
+      (await searchSpecies(t.db, RESTRICTED, { q, limit: 50, contested: true })).data.map(
+        (s) => s.id,
+      );
+    expect(await listed()).toEqual([sp.id]);
+    await createContestEvent(t.db, { contestId: contest.id, actorId: user.id, kind: 'resolve' });
+    expect(await listed()).toEqual([]);
   });
 });
 

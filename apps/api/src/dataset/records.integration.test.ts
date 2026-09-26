@@ -298,6 +298,44 @@ describe('RFC-33 R3, R4 listRecords and getRecord by viewer', () => {
   });
 });
 
+describe('RFC-70 R6 getRecord lists only visible responses and successors', () => {
+  const t = useTestDb();
+
+  it('a withdrawn quantitative contest record no longer appears in its target responses', async () => {
+    const { user } = await createUser(t.db);
+    const { user: other } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const q = (v: number, by: string, extra: object = {}) =>
+      createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        valueText: String(v),
+        numericValue: v,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: by,
+        ...extra,
+      });
+    const target = await q(1, user.id);
+    const contest = await q(2, other.id, { intent: 'contest', respondsToRecordId: target.id });
+    const successor = await q(3, other.id, { supersedesRecordId: target.id });
+    const before = await getRecord(t.db, UNRESTRICTED, target.id);
+    expect(before?.responses.map((r) => r.id)).toEqual([contest.id]);
+    expect(before?.supersededBy).toEqual([{ id: successor.id }]);
+
+    for (const recordId of [contest.id, successor.id]) {
+      await t.db
+        .insert(recordAnnotations)
+        .values({ recordId, actorId: other.id, kind: 'withdraw' });
+    }
+    const after = await getRecord(t.db, UNRESTRICTED, target.id);
+    expect(after?.responses).toEqual([]);
+    expect(after?.supersededBy).toEqual([]);
+  });
+});
+
 describe('RFC-63 R8, R9 record code, quantitative value and references (spec R-2, R-4, R-5)', () => {
   const t = useTestDb();
 

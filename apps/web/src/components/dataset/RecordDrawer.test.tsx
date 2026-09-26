@@ -159,12 +159,23 @@ describe('RFC-70 R6 RecordDrawer responses', () => {
     expect(await screen.findByText(`complements record ${short(RECORD.id)}`)).toBeInTheDocument();
   });
 
+  it('badges a categorical contest record, which answers no single record, with its intent alone', async () => {
+    dataset.fetchRecord.mockResolvedValue({ ...CONTEST_RECORD_DETAIL, respondsTo: null });
+    renderDrawer(
+      <RecordDrawer recordId={CONTEST_RECORD_DETAIL.id} onClose={() => undefined} />,
+      VIEWER,
+    );
+    expect(await screen.findByText('contest', { exact: true })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^contests record/ })).not.toBeInTheDocument();
+  });
+
   it('shows no badge on a record that answers nothing', async () => {
     dataset.fetchRecord.mockResolvedValue(RECORD_DETAIL);
     renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, VIEWER);
     await screen.findByText('Dioecious');
     expect(screen.queryByText(/^contests record/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^complements record/)).not.toBeInTheDocument();
+    expect(screen.queryByText('contest', { exact: true })).not.toBeInTheDocument();
   });
 
   it('lists the records that answer this one, with an author only where there is one', async () => {

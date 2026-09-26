@@ -46,7 +46,8 @@ const DOI_SUMMARY = 'Add a supporting DOI (optional)';
  * anything here, because a different value is a record of its own, never a
  * bare validation, and so needs the `records.create` that creating one
  * takes. Validate is out of reach once the viewer has already validated the
- * record — a validation is never undone (spec R-6).
+ * record — a validation is never undone (spec R-6) — and is not offered on
+ * the viewer's own record, which the API refuses to confirm (RFC-65 R3).
  *
  * Withdraw (spec R-12: author, `records.withdraw` for manual,
  * `records.withdraw_imported` for imported records) asks for confirmation
@@ -133,6 +134,9 @@ export function RecordActions({
   // that can only fail.
   const canContest = canAnnotate && hasPermission(me, 'records.create');
   const isAuthor = record.createdBy?.id === me.user.id;
+  // The API refuses a confirm on one's own record (RFC-65 R3, 403): the
+  // button is not offered.
+  const canValidate = canAnnotate && !isAuthor;
   const canWithdraw =
     canAnnotate &&
     (isAuthor ||
@@ -216,7 +220,7 @@ export function RecordActions({
   return (
     <DrawerSection title="Actions">
       <div className="flex flex-wrap items-center gap-2">
-        {canAnnotate ? (
+        {canValidate ? (
           <>
             <Button
               variant="primary"
@@ -269,7 +273,7 @@ export function RecordActions({
           </Button>
         ) : null}
       </div>
-      {canAnnotate && !validated ? (
+      {canValidate && !validated ? (
         // One element, whatever the field has to say: swapping the wrapper's
         // type would remount the input — and a block clears on the very
         // keystroke that starts correcting it, so the contributor would lose

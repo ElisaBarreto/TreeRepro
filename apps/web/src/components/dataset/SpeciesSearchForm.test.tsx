@@ -138,7 +138,7 @@ describe('RFC-33 R6, RFC-67 R8 SpeciesSearchForm plot scope & filter', () => {
   const PLOT_A = { id: 'p-1', code: 'PLT-A', name: 'Plot Alpha' };
   const PLOT_B = { id: 'p-2', code: 'PLT-B', name: 'Plot Beta' };
 
-  it('renders no scope group when user has no plots and no plots.manage', () => {
+  it('offers no plot select and no outside-plots checkbox when user has no plots and no plots.manage', () => {
     renderWithProviders(
       <SpeciesSearchForm
         value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}

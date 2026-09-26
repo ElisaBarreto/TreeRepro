@@ -1,18 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
-import {
-  levelVisible,
-  speciesVisible,
-  traitVisible,
-  type Visibility,
-} from '../access/visibility.ts';
+import type { Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { contestEvents, contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
+import { contestEvents, contestRecords, contests } from '../db/schema/contests.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
-import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
-import { species } from '../db/schema/taxa.ts';
 import { AppError } from '../http/errors.ts';
-import { contestWithdrawnSql } from './contests.ts';
+import { contestVisibleSql, contestWithdrawnSql } from './contests.ts';
 import { lockSpeciesTrait } from './curation.ts';
 import { recordVisible } from './records.ts';
 
@@ -21,11 +14,7 @@ const notFound = () => new AppError('RECORD_NOT_FOUND', 'Contest not found');
 /**
  * The contest the actor may act on, read under its species × trait lock
  * (E3): a bare by-id lookup takes the lock, then the contest must be not
- * withdrawn and its species, trait and every level it names visible (404
- * otherwise).
- * ponytail: the visibility predicate mirrors `contestVisibleSql` in
- * `contributions.ts`, which plan 13g Task 8 promotes to `contests.ts`;
- * reuse that one once both have merged.
+ * withdrawn and visible to the actor (`contestVisibleSql`; 404 otherwise).
  */
 async function requireContest(
   tx: DbExecutor,
@@ -42,18 +31,11 @@ async function requireContest(
   const [row] = await tx
     .select({ id: contests.id, createdBy: contests.createdBy })
     .from(contests)
-    .innerJoin(species, eq(species.id, contests.speciesId))
-    .innerJoin(traits, eq(traits.id, contests.traitId))
     .where(
       and(
         eq(contests.id, contestId),
-        speciesVisible(visibility),
-        traitVisible(visibility),
+        contestVisibleSql(visibility, contests.id),
         sql`not ${contestWithdrawnSql('contests')}`,
-        sql`not exists (select 1 from ${contestLevels}
-          join ${traitLevels} on ${traitLevels.id} = ${contestLevels.levelId}
-          where ${contestLevels.contestId} = ${contests.id}
-            and not ${levelVisible(visibility)})`,
       ),
     )
     .limit(1);

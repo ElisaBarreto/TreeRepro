@@ -154,9 +154,11 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
       await contest.getByRole('button', { name: 'Add record', exact: true }).click();
 
       // RFC-70 R3: the record the API created opens in the drawer the contest
-      // was started from, badged with what it says about the record it answers.
+      // was started from. A categorical contest answers no single record
+      // (RFC-63 R14), so the drawer badges its intent alone (RFC-70 R6).
       await expect(contest).toBeHidden();
-      await expect(drawer.getByRole('button', { name: /^contests record/ })).toBeVisible();
+      await expect(drawer.getByText('contest', { exact: true })).toBeVisible();
+      await expect(drawer.getByRole('button', { name: /^contests record/ })).toHaveCount(0);
       await expect(drawer.getByText(contestedLevel.key, { exact: true }).first()).toBeVisible();
 
       const observation = drawer.getByRole('link', {

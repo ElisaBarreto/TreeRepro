@@ -137,8 +137,8 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await page.goto('/app/contributions');
       await expect(page.getByRole('heading', { name: 'My contributions' })).toBeVisible();
 
-      // R4: the summary tiles count the record, its contest intent, the
-      // validation and the generated dispute — this fresh contributor has
+      // R4: the summary tiles count the record, the contest (a contest row of
+      // its own, RFC-63 R14) and the validation — this fresh contributor has
       // done nothing else, so every other count stays zero. Label and value
       // are pinned separately (as StatTiles.test.tsx does with
       // toHaveTextContent), not as one exact string of the two stacked

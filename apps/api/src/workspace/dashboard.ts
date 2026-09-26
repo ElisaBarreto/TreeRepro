@@ -6,7 +6,7 @@ import { coverageTotals } from '../dataset/coverage.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
 import { countContested, countPendingGroups } from '../dataset/queues.ts';
-import { harmonisedFor, itemQuery, toItem } from '../dataset/records.ts';
+import { itemQuery, recordVisible, toItem } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
@@ -210,7 +210,7 @@ async function awaitingValidation(
         and ps.plot_id = any(${sql.param(plotIds)}::uuid[]))`,
     sql`not exists (select 1 from record_annotations a
       where a.record_id = trait_records.id and a.kind in ('confirm', 'withdraw'))`,
-    harmonisedFor(visibility, traitRecords.harmonisation),
+    recordVisible(visibility),
   ) as SQL;
   const [rows, [total]] = await Promise.all([
     db
@@ -250,7 +250,15 @@ async function hydrateAwaiting(
 ): Promise<Dashboard['contributor']['awaitingValidation']> {
   if (cached === null) return null;
   if (cached.recordIds.length === 0) return { count: cached.count, records: [] };
-  const items = await itemQuery(db, visibility).where(inArray(traitRecords.id, cached.recordIds));
+  // The ids are cached: a record withdrawn or hidden since then drops out.
+  const items = await itemQuery(db, visibility).where(
+    and(
+      inArray(traitRecords.id, cached.recordIds),
+      speciesVisible(visibility),
+      traitVisible(visibility),
+      recordVisible(visibility),
+    ),
+  );
   const itemById = new Map(items.map((i) => [i.record.id, toItem(i)]));
   return {
     count: cached.count,

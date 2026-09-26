@@ -150,6 +150,13 @@ describe('RFC-65 R16 Withdraw contest', () => {
       .where(eq(contestEvents.contestId, f.contest.id));
     expect(events).toEqual([{ kind: 'withdraw', actorId: f.ana.id }]);
     expect(await state(t.db, f.contest.id)).toEqual({ withdrawn: true, resolved: false });
+    await expect(
+      withdrawContest(t.db, UNRESTRICTED, {
+        contestId: f.contest.id,
+        actorId: f.ana.id,
+        canWithdrawAny: false,
+      }),
+    ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
   });
 
   it('refuses anyone but the author or a records.withdraw holder; a resolved contest may still be withdrawn', async () => {

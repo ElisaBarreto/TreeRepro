@@ -17,8 +17,8 @@ import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
-import { contestVisibleSql, contestWithdrawnSql } from './contests.ts';
-import { itemQuery, liveSql, reviewStatusSql, toItem } from './records.ts';
+import { contestVisibleSql, contestWithdrawnSql, recordFullyVisible } from './contests.ts';
+import { itemQuery, liveSql, recordVisible, reviewStatusSql, toItem } from './records.ts';
 
 const annotationRefObserver = alias(users, 'annotation_ref_observer');
 
@@ -28,10 +28,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const dayStart = (isoDate: string) => new Date(`${isoDate}T00:00:00.000Z`);
 const dayAfter = (isoDate: string) => new Date(dayStart(isoDate).getTime() + DAY_MS);
 
-/** Records responding to this one (RFC-70 R1). */
+/** Live records responding to this one (RFC-70 R1). */
 function responseCountSql(recordId: SQL): SQL<number> {
   return sql<number>`(select count(*) from ${traitRecords} x
-    where x.responds_to_record_id = ${recordId})::int`;
+    where x.responds_to_record_id = ${recordId} and ${liveSql(sql`x.id`)})::int`;
 }
 
 /**
@@ -84,7 +84,7 @@ async function listRecordContributions(
     eq(traitRecords.origin, 'manual'),
     speciesVisible(visibility),
     traitVisible(visibility),
-    liveSql(traitRecords.id),
+    recordVisible(visibility),
     ...recordFilters(visibility, input),
   ];
   if (input.cursor) conditions.push(lt(traitRecords.id, decodeCursor(input.cursor)));
@@ -106,7 +106,7 @@ async function listRecordContributions(
 
 /**
  * The first record a contest created, by `record_code`, when it is visible
- * to the viewer (species, trait and live, as elsewhere in this module);
+ * to the viewer (RFC-33 R2: species, trait, live, harmonised, level);
  * `null` when it created none, or when that first record is not visible.
  * `contestIdCol` is a `contests.id` reference in the caller's query.
  * @rfc RFC-71 R3
@@ -121,12 +121,7 @@ function firstVisibleContestRecordIdSql(
     where fcr_c.contest_id = ${contestIdCol}
     order by fcr_r.record_code asc limit 1)`;
   return sql<string | null>`(select fcv_r.id from ${traitRecords} fcv_r
-    join ${species} fcv_s on fcv_s.id = fcv_r.species_id
-    join ${traits} fcv_t on fcv_t.id = fcv_r.trait_id
-    where fcv_r.id = ${first}
-      and ${speciesVisible(v, sql`fcv_s.active`, sql`fcv_s.id`)}
-      and ${traitVisible(v, sql`fcv_t.active`)}
-      and ${liveSql(sql`fcv_r.id`)})`;
+    where fcv_r.id = ${first} and ${recordFullyVisible(v, sql`fcv_r.id`)})`;
 }
 
 /** One page of the viewer's Keep-both resolutions (RFC-71 R3, RFC-65 R16). */
@@ -220,7 +215,7 @@ async function listAnnotationContributions(
     eq(recordAnnotations.kind, 'confirm'),
     speciesVisible(visibility),
     traitVisible(visibility),
-    liveSql(traitRecords.id),
+    recordVisible(visibility),
     ...recordFilters(visibility, input),
   ];
   if (cursorId) confirmConditions.push(lt(recordAnnotations.id, cursorId));
