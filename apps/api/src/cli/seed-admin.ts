@@ -21,6 +21,7 @@ import { createDoiClient } from '../integrations/doi.ts';
 import { createTaxonomyClient } from '../integrations/taxonomy.ts';
 import { createLogger } from '../logger.ts';
 import { createMailer, createSmtpTransport } from '../mail/mailer.ts';
+import { defaultMapsDir } from '../maps/manifest.ts';
 import { createRedis } from '../redis/client.ts';
 import { configurePii } from '../security/pii.ts';
 import { APP_VERSION } from '../version.ts';
@@ -57,6 +58,7 @@ const ctx: AuthContext = {
   taxonomy: createTaxonomyClient({ wcvpDatasetKey: null, version: APP_VERSION }),
   appOrigin: config.appOrigin,
   inviteContactEmail: config.inviteContactEmail,
+  mapsDir: defaultMapsDir(),
   now: Date.now,
 };
 

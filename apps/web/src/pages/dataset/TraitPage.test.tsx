@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MeResponse, TraitDetail, TraitSpeciesItem } from '@treerepro/contracts';
+import type { MapEntry, MeResponse, TraitDetail, TraitSpeciesItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
+import { mapFileUrl } from '../../api/maps.ts';
 import {
   FAMILIES,
   FAMILY,
@@ -33,11 +34,23 @@ const dataset = vi.hoisted(() => ({
   fetchFamilies: vi.fn(),
   fetchGenera: vi.fn(),
 }));
+// `TraitPage`'s Maps section calls `useMaps()` itself (RFC-76 R8); mocked
+// directly, the same way `MapsPage.test.tsx` does — `fetchMaps` is defined
+// in the same module and a same-module reference `vi.mock` never reaches.
+const maps = vi.hoisted(() => ({ useMaps: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
 }));
+vi.mock('../../api/maps.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/maps.ts')>()),
+  ...maps,
+}));
+
+function mapsResult(data: MapEntry[]) {
+  return { data, isPending: false, isSuccess: true, isError: false, error: null };
+}
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
 const page = (data: TraitSpeciesItem[], nextCursor: string | null = null) => ({
@@ -51,11 +64,13 @@ beforeEach(() => {
   dataset.fetchTraitSpecies.mockReset();
   dataset.fetchFamilies.mockReset();
   dataset.fetchGenera.mockReset();
+  maps.useMaps.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchTrait.mockResolvedValue(SEXUAL_SYSTEM_DETAIL);
   dataset.fetchTraitSpecies.mockResolvedValue(page([TRAIT_SPECIES_WITH_DATA]));
   dataset.fetchFamilies.mockResolvedValue(FAMILIES);
   dataset.fetchGenera.mockResolvedValue({ data: [], meta: { nextCursor: null } });
+  maps.useMaps.mockReturnValue(mapsResult([]));
 });
 
 // Opens the trait's own page and waits for the header to name it — the
@@ -353,6 +368,55 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
       'You do not have permission to do this.',
     );
     expect(definition('Species with data')).toHaveTextContent('12');
+  });
+});
+
+describe('RFC-76 R8 TraitPage maps section', () => {
+  it('shows the completeness thumbnail and a link to the trait’s maps page', async () => {
+    maps.useMaps.mockReturnValue(
+      mapsResult([
+        {
+          traitId: SEXUAL_SYSTEM_DETAIL.id,
+          kind: 'completeness',
+          levelId: null,
+          file: 'sexual_system_completeness.svg',
+          dataVersion: '2026-09-01',
+        },
+      ]),
+    );
+    await openPage();
+    const section = screen.getByRole('heading', { name: 'Maps' }).closest('section') as HTMLElement;
+    const img = within(section).getByRole('img');
+    expect(img).toHaveAttribute('src', mapFileUrl('sexual_system_completeness.svg'));
+    expect(img).toHaveAttribute('alt', 'Data completeness map of sexual system');
+    expect(
+      within(section).getByRole('link', { name: 'See all maps for this trait →' }),
+    ).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_DETAIL.id}`);
+  });
+
+  it('shows the link alone when the trait has maps but no completeness row', async () => {
+    maps.useMaps.mockReturnValue(
+      mapsResult([
+        {
+          traitId: SEXUAL_SYSTEM_DETAIL.id,
+          kind: 'prevalence',
+          levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11',
+          file: 'sexual_system_prevalence.svg',
+          dataVersion: '2026-09-01',
+        },
+      ]),
+    );
+    await openPage();
+    const section = screen.getByRole('heading', { name: 'Maps' }).closest('section') as HTMLElement;
+    expect(within(section).queryByRole('img')).not.toBeInTheDocument();
+    expect(
+      within(section).getByRole('link', { name: 'See all maps for this trait →' }),
+    ).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_DETAIL.id}`);
+  });
+
+  it('shows no "Maps" heading at all when the trait has no maps', async () => {
+    await openPage();
+    expect(screen.queryByRole('heading', { name: 'Maps' })).not.toBeInTheDocument();
   });
 });
 

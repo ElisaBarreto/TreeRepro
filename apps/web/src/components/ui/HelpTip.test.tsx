@@ -140,6 +140,24 @@ describe('RFC-13 R11 HelpTip', () => {
     expect(screen.queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
   });
 
+  // RFC-76 R8: a trait card's tip carries a second link to its maps, beside
+  // "Learn more", only when the trait has any.
+  it('renders extraLink beside "Learn more" when given, and neither without it', async () => {
+    const withLink = renderInRouter(
+      <HelpTip learnMore="/" extraLink={{ to: '/app/maps/t1', label: 'Maps' }}>
+        Explains things.
+      </HelpTip>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'What does this mean?' }));
+    expect(screen.getByRole('link', { name: 'Learn more' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Maps' })).toHaveAttribute('href', '/app/maps/t1');
+    withLink.unmount();
+
+    render(<HelpTip>Explains things.</HelpTip>);
+    fireEvent.click(screen.getByRole('button', { name: 'What does this mean?' }));
+    expect(screen.queryByRole('link', { name: 'Maps' })).not.toBeInTheDocument();
+  });
+
   it('shows a larger trigger — a 28px button around a 20px icon — keeping its focus ring', () => {
     render(<HelpTip>Explains things.</HelpTip>);
     const button = screen.getByRole('button', { name: 'What does this mean?' });

@@ -6,6 +6,7 @@ import {
   createContest,
   createPlot,
   createRecord,
+  createTrait,
   createVisibilityFixture,
 } from '../test/helpers/dataset.ts';
 import { adminRoleId } from '../test/helpers/roles.ts';
@@ -44,6 +45,8 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
     const { cookie } = await loginAs(t, admin.user);
     const fx = await createVisibilityFixture(t.db, admin.user.id);
     const plot = await createPlot(t.db);
+    // The trait the default maps fixture names, so both map routes answer 200.
+    await createTrait(t.db, { key: 'map_fixture' });
     const level = fx.activeTrait.levels[0]?.id as string;
     // A level and a contest of their own, so the withdraw and resolve calls
     // change nothing the sweep reads on another route.
@@ -91,6 +94,7 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
       return path
         .replace(':traitId', fx.activeTrait.id)
         .replace(':levelId', sweptLevel?.id ?? '')
+        .replace(':name', 'map_fixture-completeness.svg')
         .replace(':id', id ?? '0'.repeat(32));
     };
     // Query strings and bodies the route's schema requires.

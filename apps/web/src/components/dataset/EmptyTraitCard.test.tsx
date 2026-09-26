@@ -1,14 +1,32 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DICTIONARY,
+  DICTIONARY_SELF_COMPATIBILITY,
   SEED_LENGTH_MISSING_SUMMARY,
   SELF_COMPATIBILITY_MISSING_SUMMARY,
 } from '../../test/dataset-fixtures.ts';
 import { tipText } from '../../test/render.tsx';
 import { withRouter } from '../../test/router.tsx';
 import { EmptyTraitCard } from './EmptyTraitCard.tsx';
+
+// `EmptyTraitCard` calls `useHasMaps()` itself (RFC-76 R8), which calls
+// `useMaps()` in its own module-level closure — a same-module reference
+// `vi.mock`'s replacement of an exported `useMaps` binding never reaches (the
+// same reason `MapsPage.test.tsx` mocks `useMaps` directly rather than
+// `fetchMaps`). So this file mocks `useHasMaps` itself, directly, rather
+// than through a `QueryClientProvider` it otherwise has no need for.
+const maps = vi.hoisted(() => ({ useHasMaps: vi.fn() }));
+vi.mock('../../api/maps.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/maps.ts')>()),
+  ...maps,
+}));
+
+beforeEach(() => {
+  maps.useHasMaps.mockReset();
+  maps.useHasMaps.mockReturnValue(false);
+});
 
 describe('RFC-70 R7 EmptyTraitCard', () => {
   it('names the trait, says "No records yet" and shows the HelpTip description', async () => {
@@ -63,5 +81,46 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
     rerender(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} onAdd={onAdd} />);
     await userEvent.click(screen.getByRole('button', { name: 'Add the first entry' }));
     expect(onAdd).toHaveBeenCalledTimes(1);
+  });
+
+  describe('RFC-76 R8 maps link in the HelpTip', () => {
+    it('adds a Maps link beside Learn more when the trait has a description and maps', async () => {
+      maps.useHasMaps.mockReturnValue(true);
+      render(
+        withRouter(
+          <EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} dictionary={DICTIONARY} />,
+        ),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'What does self compatibility mean?' }),
+      );
+      expect(maps.useHasMaps).toHaveBeenCalledWith(DICTIONARY_SELF_COMPATIBILITY.id);
+      const tip = screen.getByRole('tooltip');
+      expect(within(tip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
+      expect(within(tip).getByRole('link', { name: 'Maps' })).toHaveAttribute(
+        'href',
+        `/app/maps/${DICTIONARY_SELF_COMPATIBILITY.id}`,
+      );
+    });
+
+    it('still shows the popover, holding the Maps link and no Learn more, for a trait with maps but no description', async () => {
+      maps.useHasMaps.mockReturnValue(true);
+      render(withRouter(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} />));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'What does self compatibility mean?' }),
+      );
+      const tip = screen.getByRole('tooltip');
+      expect(within(tip).getByRole('link', { name: 'Maps' })).toHaveAttribute(
+        'href',
+        `/app/maps/${SELF_COMPATIBILITY_MISSING_SUMMARY.trait.id}`,
+      );
+      expect(within(tip).queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
+    });
+
+    it('renders no HelpTip at all for a trait with neither a description nor maps', () => {
+      maps.useHasMaps.mockReturnValue(false);
+      render(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} />);
+      expect(screen.queryByRole('button', { name: /What does .* mean\?/ })).not.toBeInTheDocument();
+    });
   });
 });

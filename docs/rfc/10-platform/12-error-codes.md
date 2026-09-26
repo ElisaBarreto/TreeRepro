@@ -12,7 +12,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 
 ## Rules
 
-- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, or a generic word for cross-cutting codes).
+- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, `MAP_`, or a generic word for cross-cutting codes).
 - **R2** A code is never renamed, reused with a different meaning, or given a different status once published. Retiring a code keeps its row with "(retired)".
 - **R3** The catalog below is mirrored exactly by `ERROR_CODES` in `packages/contracts/src/error-codes.ts`; a test parses this table and fails on any difference.
 - **R4** Each code maps to exactly one HTTP status (RFC-11 R4).
@@ -82,6 +82,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `HELP_SECTION_NOT_FOUND` | 404 | Help section id does not exist (RFC-73 R6). |
 | `HELP_SLUG_TAKEN` | 409 | Another help topic has the slug generated from this title (RFC-73 R6). |
 | `HELP_ANCHOR_TAKEN` | 409 | The topic already has a section with the anchor generated from this title (RFC-73 R6). |
+| `MAP_NOT_FOUND` | 404 | No map this viewer may see has that file name (RFC-76 R5). |
 
 ## Open questions
 
@@ -106,3 +107,4 @@ None.
 - 2026-09-25 — REFERENCE_ISBN_TAKEN, named by RFC-61 R6 as amended for book references (spec R-16, plan 13d).
 - 2026-09-25 — RECORD_DUPLICATE, RECORD_WITHDRAWN and RECORD_NOT_WITHDRAWABLE retired: a claim-key collision is reported in `duplicates` (RFC-70 R3), a withdrawn record answers 404 `RECORD_NOT_FOUND` (RFC-65 R3), and the withdrawal permission split answers 403 `PERMISSION_DENIED` (RFC-65 R4) (plan 13g).
 - 2026-09-26 — HELP_TOPIC_NOT_FOUND, HELP_SECTION_NOT_FOUND, HELP_SLUG_TAKEN, HELP_ANCHOR_TAKEN (RFC-73 R6, issue #172).
+- 2026-09-26 — MAP_NOT_FOUND, and `MAP_` admitted to R1's prefix list (RFC-76 R5, issue #197).

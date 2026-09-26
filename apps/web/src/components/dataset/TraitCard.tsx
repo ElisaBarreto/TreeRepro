@@ -1,4 +1,5 @@
 import type { Dictionary, RecordIntent, TraitSummary } from '@treerepro/contracts';
+import { useHasMaps } from '../../api/maps.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { Badge, Button, HelpTip } from '../ui/index.ts';
@@ -46,11 +47,14 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
  * badge, and Validate/Contest/Complement — each present only when the page
  * passes its handler. Beside the card sit the `?` with the dictionary's
  * description (RFC-13 R11) and the "+" that opens the entry dialog for the
- * trait (RFC-65 R1).
+ * trait (RFC-65 R1). The `?` also opens for a trait with no description but
+ * maps of its own, holding a **Maps** link to its trait maps page, when
+ * `useMaps` names one (RFC-76 R8); a failed maps query reads as no maps.
  * @rfc RFC-13 R11
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1
  * @rfc RFC-70 R1, R4
+ * @rfc RFC-76 R8
  */
 export function TraitCard({
   summary,
@@ -73,6 +77,7 @@ export function TraitCard({
   const maxCount = Math.max(0, ...levels.map((level) => level.count));
   const name = humaniseKey(trait.key);
   const tip = traitTip(dictionary, trait);
+  const hasMaps = useHasMaps(trait.id);
 
   return (
     <CardFrame>
@@ -163,12 +168,13 @@ export function TraitCard({
         ) : null}
       </div>
       <span className="flex shrink-0 items-center gap-1">
-        {tip ? (
+        {tip || hasMaps ? (
           <HelpTip
             label={`What does ${name} mean?`}
-            learnMore={helpHref('vocabulary', 'descriptions')}
+            learnMore={tip ? helpHref('vocabulary', 'descriptions') : undefined}
+            extraLink={hasMaps ? { to: `/app/maps/${trait.id}`, label: 'Maps' } : undefined}
           >
-            {tip}
+            {tip ?? 'Global maps are available for this trait.'}
           </HelpTip>
         ) : null}
         {onAdd ? (

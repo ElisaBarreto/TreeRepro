@@ -163,6 +163,18 @@ describe('RFC-13 R3 AppShell navigation', () => {
     expect(screen.queryByRole('link', { name: 'Species' })).not.toBeInTheDocument();
   });
 
+  it('RFC-76 R6 shows Maps under Data with dataset.read, right after Traits', () => {
+    renderWithProviders(<AppShell>child</AppShell>, {
+      me: { ...ME, permissions: ['dataset.read'] },
+    });
+    const data = screen.getByRole('navigation', { name: 'Data' });
+    const links = within(data)
+      .getAllByRole('link')
+      .map((link) => link.textContent);
+    expect(links.indexOf('Maps')).toBe(links.indexOf('Traits') + 1);
+    expect(within(data).getByRole('link', { name: 'Maps' })).toHaveAttribute('href', '/app/maps');
+  });
+
   it('RFC-71 shows My contributions under Data with dataset.read', () => {
     const { unmount } = renderWithProviders(<AppShell>child</AppShell>, { me: ME });
     expect(screen.queryByRole('link', { name: 'My contributions' })).not.toBeInTheDocument();

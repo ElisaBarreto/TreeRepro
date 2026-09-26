@@ -29,6 +29,12 @@ const catalog = vi.hoisted(() => ({
   updateTrait: vi.fn(),
   createLevel: vi.fn(),
 }));
+// `TraitRows` calls `useHasMaps()` itself (RFC-76 R8), which calls
+// `useMaps()` in its own module-level closure — a same-module reference
+// `vi.mock`'s replacement of an exported `useMaps` binding never reaches (the
+// same reason `MapsPage.test.tsx` mocks `useMaps` directly rather than
+// `fetchMaps`). So this file mocks `useHasMaps` itself, directly.
+const maps = vi.hoisted(() => ({ useHasMaps: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -37,6 +43,10 @@ vi.mock('../../api/dataset.ts', async (importOriginal) => ({
 vi.mock('../../api/catalog.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
   ...catalog,
+}));
+vi.mock('../../api/maps.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/maps.ts')>()),
+  ...maps,
 }));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
@@ -48,6 +58,8 @@ beforeEach(() => {
   catalog.createTrait.mockReset();
   catalog.updateTrait.mockReset();
   catalog.createLevel.mockReset();
+  maps.useHasMaps.mockReset();
+  maps.useHasMaps.mockReturnValue(false);
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
 });
@@ -159,6 +171,24 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     dataset.fetchDictionary.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     await openPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+});
+
+describe('RFC-76 R8 TraitsPage maps link', () => {
+  it('shows a Maps link named after the trait for one with maps, and none for one without', async () => {
+    maps.useHasMaps.mockImplementation((traitId: string) => traitId === SEXUAL_SYSTEM_TRAIT.id);
+    await openPage();
+    const link = await screen.findByRole('link', { name: 'Maps of sexual system' });
+    expect(link).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_TRAIT.id}`);
+    expect(screen.queryByRole('link', { name: 'Maps of seed mass' })).not.toBeInTheDocument();
+  });
+
+  it('sizes the touch target at least as large as the HelpTip trigger (size-7, 28px)', async () => {
+    maps.useHasMaps.mockImplementation((traitId: string) => traitId === SEXUAL_SYSTEM_TRAIT.id);
+    await openPage();
+    const link = await screen.findByRole('link', { name: 'Maps of sexual system' });
+    expect(link.className).toContain('size-7');
+    expect(link.className).not.toContain('size-6');
   });
 });
 

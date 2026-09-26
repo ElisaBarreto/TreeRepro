@@ -1,18 +1,36 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TraitSummary } from '@treerepro/contracts';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DICTIONARY,
   DICTIONARY_SEED_MASS,
   DICTIONARY_SEXUAL_SYSTEM,
   POLLINATION_MODE_SUMMARY,
   SEED_MASS_SUMMARY,
+  SEXUAL_SYSTEM,
   SEXUAL_SYSTEM_SUMMARY,
 } from '../../test/dataset-fixtures.ts';
 import { tipText } from '../../test/render.tsx';
 import { withRouter } from '../../test/router.tsx';
 import { TraitCard } from './TraitCard.tsx';
+
+// `TraitCard` calls `useHasMaps()` itself (RFC-76 R8), which calls `useMaps()`
+// in its own module-level closure — a same-module reference `vi.mock`'s
+// replacement of an exported `useMaps` binding never reaches (the same
+// reason `MapsPage.test.tsx` mocks `useMaps` directly rather than
+// `fetchMaps`). So this file mocks `useHasMaps` itself, directly, rather
+// than through a `QueryClientProvider` it otherwise has no need for.
+const maps = vi.hoisted(() => ({ useHasMaps: vi.fn() }));
+vi.mock('../../api/maps.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/maps.ts')>()),
+  ...maps,
+}));
+
+beforeEach(() => {
+  maps.useHasMaps.mockReset();
+  maps.useHasMaps.mockReturnValue(false);
+});
 
 // Three levels, the top one validated twice and contested.
 const LEVELLED: TraitSummary = {
@@ -186,5 +204,44 @@ describe('RFC-63 R10 TraitCard', () => {
   it('renders no HelpTip when the dictionary has no description for the trait', () => {
     render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
     expect(screen.queryByRole('button', { name: /What does .* mean\?/ })).not.toBeInTheDocument();
+  });
+
+  describe('RFC-76 R8 maps link in the HelpTip', () => {
+    it('adds a Maps link beside Learn more when the trait has a description and maps', async () => {
+      // `DICTIONARY_SEXUAL_SYSTEM.id` differs from `SEXUAL_SYSTEM.id` — the
+      // summaries and the dictionary use separate fixture ids on purpose.
+      maps.useHasMaps.mockReturnValue(true);
+      const summary = { ...LEVELLED, trait: DICTIONARY_SEXUAL_SYSTEM };
+      render(withRouter(<TraitCard summary={summary} dictionary={DICTIONARY} onOpen={() => {}} />));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'What does sexual system mean?' }),
+      );
+      expect(maps.useHasMaps).toHaveBeenCalledWith(DICTIONARY_SEXUAL_SYSTEM.id);
+      const tip = screen.getByRole('tooltip');
+      expect(within(tip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
+      expect(within(tip).getByRole('link', { name: 'Maps' })).toHaveAttribute(
+        'href',
+        `/app/maps/${DICTIONARY_SEXUAL_SYSTEM.id}`,
+      );
+    });
+
+    it('still shows the popover, with only the Maps link and no Learn more, for a trait with maps but no description', async () => {
+      maps.useHasMaps.mockReturnValue(true);
+      render(withRouter(<TraitCard summary={LEVELLED} onOpen={() => {}} />));
+      const tip = await screen.findByRole('button', { name: 'What does sexual system mean?' });
+      await userEvent.click(tip);
+      const popover = screen.getByRole('tooltip');
+      expect(within(popover).getByRole('link', { name: 'Maps' })).toHaveAttribute(
+        'href',
+        `/app/maps/${SEXUAL_SYSTEM.id}`,
+      );
+      expect(within(popover).queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
+    });
+
+    it('renders no HelpTip at all for a trait with neither a description nor maps', () => {
+      maps.useHasMaps.mockReturnValue(false);
+      render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
+      expect(screen.queryByRole('button', { name: /What does .* mean\?/ })).not.toBeInTheDocument();
+    });
   });
 });
