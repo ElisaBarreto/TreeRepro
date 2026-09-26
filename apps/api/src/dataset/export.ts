@@ -429,10 +429,22 @@ export function datasetZip(
   zip.end();
   // Pulled, not pushed: `Readable.toWeb` keeps enqueuing chunks already in
   // flight after a cancel, and that throws an uncaught `ERR_INVALID_STATE`
-  // (issue #207). `ReadableStream.from` reads through the async iterator,
-  // whose `return()` on cancel destroys `output`. The iterator listens for
-  // `error` only once read; until then this listener keeps an early failure
-  // from being an uncaught `error` event, and the first read still throws it.
+  // (issue #207). The iterator listens for `error` only once read; until then
+  // this listener keeps an early failure from being an uncaught `error` event,
+  // and the first read still throws it.
   output.on('error', () => undefined);
-  return ReadableStream.from(output);
+  const chunks = output[Symbol.asyncIterator]();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await chunks.next();
+      if (next.done) controller.close();
+      else controller.enqueue(next.value);
+    },
+    // Destroyed here, not left to `chunks.return()`: on an iterator never read
+    // (a batch cancels a ZIP answer unread) `return()` skips the generator's
+    // cleanup, so `output` and the entry's cursor would stay open (issue #216).
+    cancel() {
+      output.destroy();
+    },
+  });
 }
