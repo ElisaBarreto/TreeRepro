@@ -367,20 +367,24 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     );
   });
 
-  it('RFC-66 R8 shows the export link only with dataset.export', async () => {
+  it('RFC-66 R1, R9 shows both export links only with dataset.export', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'dataset.export'] });
     renderAt('/app/species');
-    const link = await screen.findByRole('link', { name: /export records/i });
-    expect(link).toHaveAttribute('href', '/api/export/records.csv');
+    const link = await screen.findByRole('link', { name: 'Export dataset (ZIP)' });
+    expect(link).toHaveAttribute('href', '/api/export/dataset.zip');
     expect(link).toHaveAttribute('download');
+    const platformLink = screen.getByRole('link', { name: 'Export platform contributions (ZIP)' });
+    expect(platformLink).toHaveAttribute('href', '/api/export/dataset.zip?scope=platform');
+    expect(platformLink).toHaveAttribute('download');
   });
 
-  it('hides the export link without dataset.export', async () => {
+  it('hides the export links without dataset.export', async () => {
     dataset.searchSpecies.mockResolvedValue(page([]));
     await openPage();
     await screen.findByRole('heading', { level: 1, name: 'Species' });
-    expect(screen.queryByRole('link', { name: /export records/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /export dataset/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /export platform/i })).not.toBeInTheDocument();
   });
 
   it('RFC-60 R9 offers "New species" to taxa.manage and navigates to the created species', async () => {

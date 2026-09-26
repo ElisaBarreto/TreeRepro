@@ -609,6 +609,14 @@ export const listImportsQuerySchema = cursorQuerySchema.extend({
   kind: z.enum(IMPORT_BATCH_KINDS).optional(),
 });
 
+/** `all` is the whole dataset (the default); `platform` keeps the `TR_` records. @rfc RFC-66 R9 */
+export const EXPORT_SCOPES = ['all', 'platform'] as const;
+
+/** @rfc RFC-66 R9 */
+export const exportDatasetQuerySchema = z.strictObject({
+  scope: z.enum(EXPORT_SCOPES).optional(),
+});
+
 export type TaxonRef = z.infer<typeof taxonRefSchema>;
 export type ListSpeciesQuery = z.infer<typeof listSpeciesQuerySchema>;
 export type SpeciesListItem = z.infer<typeof speciesListItemSchema>;
@@ -642,3 +650,4 @@ export type UnknownLevel = z.infer<typeof unknownLevelSchema>;
 export type ImportBatch = z.infer<typeof importBatchSchema>;
 export type ImportReject = z.infer<typeof importRejectSchema>;
 export type ListImportsQuery = z.infer<typeof listImportsQuerySchema>;
+export type ExportDatasetQuery = z.infer<typeof exportDatasetQuerySchema>;

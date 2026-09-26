@@ -6,7 +6,7 @@ import {
   type TraitDataMode,
 } from '@treerepro/contracts';
 import { useEffect, useState } from 'react';
-import { EXPORT_RECORDS_URL } from '../../api/curation.ts';
+import { EXPORT_DATASET_URL, EXPORT_PLATFORM_URL } from '../../api/curation.ts';
 import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
 import { ProposeSpeciesDialog } from '../../components/catalog/ProposeSpeciesDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
@@ -133,7 +133,7 @@ function searchKey(value: SpeciesSearchValue): string {
  * (a `sort=name` cursor has two keys, a `sort=completeness` cursor three).
  * The records column is shown exactly while a trait filter is set, since
  * `traitRecordCount` answers "how many records for that trait" and is null
- * otherwise. The export link is a plain download, gated by dataset.export.
+ * otherwise. The export links are plain downloads, gated by dataset.export.
  * With `taxa.manage`, "New species" opens the species editor and a created
  * species opens its own page (RFC-60 R9). The form's status filter is
  * carried through to the search and the query key (RFC-33 R7).
@@ -219,14 +219,23 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
                 <Button onClick={() => setCreating(true)}>New species</Button>
               ) : null}
               {hasPermission(me, 'dataset.export') ? (
-                <a
-                  href={EXPORT_RECORDS_URL}
-                  download
-                  // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
-                  className={buttonClassName({ variant: 'secondary' })}
-                >
-                  Export records (CSV)
-                </a>
+                <>
+                  <a
+                    href={EXPORT_DATASET_URL}
+                    download
+                    // Dressed as the kit's secondary `Button` (md): a download stays an anchor.
+                    className={buttonClassName({ variant: 'secondary' })}
+                  >
+                    Export dataset (ZIP)
+                  </a>
+                  <a
+                    href={EXPORT_PLATFORM_URL}
+                    download
+                    className={buttonClassName({ variant: 'secondary' })}
+                  >
+                    Export platform contributions (ZIP)
+                  </a>
+                </>
               ) : null}
             </>
           ) : undefined

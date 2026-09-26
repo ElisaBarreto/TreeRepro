@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { csvRow, EXPORT_COLUMNS } from './export.ts';
+import { ANNOTATION_COLUMNS, csvRow, RECORD_COLUMNS } from './export.ts';
 
 describe('RFC-66 R4 csvRow', () => {
   it('joins with commas, ends with CRLF, quotes fields holding quotes, commas or line breaks', () => {
@@ -9,26 +9,46 @@ describe('RFC-66 R4 csvRow', () => {
     );
     expect(csvRow([''])).toBe('\r\n');
   });
+});
 
-  it('R8 the header names the seventeen columns in order', () => {
-    expect([...EXPORT_COLUMNS]).toEqual([
+describe('RFC-66 R2 column lists', () => {
+  it('records.csv names the 24 columns of spec R-17 in order', () => {
+    expect([...RECORD_COLUMNS]).toEqual([
+      'record_code',
       'family',
       'genus',
       'species',
       'name_source',
       'category',
       'trait',
-      'value',
       'unit',
       'level',
-      'numeric_value',
+      'value_single',
+      'value_min',
+      'value_max',
+      'value_mean',
+      'value_sd',
+      'value_n',
       'raw_value',
-      'primary_reference',
-      'secondary_reference',
+      'references',
       'origin',
       'intent',
+      'responds_to',
+      'contested',
+      'n_validations',
+      'n_contests',
       'created_at',
-      'record_id',
+    ]);
+  });
+
+  it('annotations.csv names six columns and no e-mail', () => {
+    expect([...ANNOTATION_COLUMNS]).toEqual([
+      'record_code',
+      'kind',
+      'user_name',
+      'date',
+      'reference',
+      'contest_record_code',
     ]);
   });
 });
