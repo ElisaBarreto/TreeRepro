@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { basename } from 'node:path';
+import { open, rm, stat, unlink } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import {
   type HarmonisationStatus,
   IMPORT_REJECT_REASONS,
@@ -27,6 +28,12 @@ import {
   isUuid,
   pageOf,
 } from '../http/cursor.ts';
+import {
+  type DetachedImported,
+  detachImported,
+  publishSheet,
+  relinkImported,
+} from './replace-imported.ts';
 import { isReplaceAllowed, resetDataset } from './reset.ts';
 
 /**
@@ -88,17 +95,25 @@ export function describeError(err: unknown): string {
   return [message, pg?.detail, pg?.where].filter(Boolean).join(' — ').slice(0, 2000);
 }
 
-/** Why an import did not start. @rfc RFC-64 R2, R3 */
+/** Why an import did not start. @rfc RFC-64 R2, R3, R12, R15 */
 export class ImportRefusedError extends Error {
   readonly reason:
     | 'dictionary_empty'
     | 'header_mismatch'
     | 'already_imported'
-    | 'replace_not_allowed';
+    | 'replace_not_allowed'
+    | 'platform_records_exist'
+    | 'sheet_not_writable';
   readonly batchId: string | undefined;
 
   constructor(
-    reason: 'dictionary_empty' | 'header_mismatch' | 'already_imported' | 'replace_not_allowed',
+    reason:
+      | 'dictionary_empty'
+      | 'header_mismatch'
+      | 'already_imported'
+      | 'replace_not_allowed'
+      | 'platform_records_exist'
+      | 'sheet_not_writable',
     message: string,
     batchId?: string,
   ) {
@@ -350,6 +365,35 @@ export interface ImportInput {
    * same transaction (RFC-64 R12). Accounts and the trait dictionary survive.
    */
   replace?: boolean;
+  /**
+   * Replace only the imported (`EB_`) records and keep everything users
+   * produced, re-linked by `record_code` (RFC-64 R15). `sheetDir` receives
+   * `replace-<batch id>-annotations.csv`.
+   */
+  replaceImported?: { sheetDir: string };
+}
+
+/**
+ * `access(W_OK)` can lie (a directory whose mode bit says writable but whose
+ * filesystem refuses the write, e.g. some read-only mounts), so this proves
+ * it by creating and removing a real file. Runs before any batch row exists,
+ * so a refusal here leaves nothing behind.
+ * @rfc RFC-64 R15
+ */
+async function assertSheetWritable(dir: string): Promise<void> {
+  try {
+    const info = await stat(dir);
+    if (!info.isDirectory()) throw new Error(`${dir} is not a directory`);
+    const probe = join(dir, `.replace-probe-${randomUUID()}`);
+    const handle = await open(probe, 'wx');
+    await handle.close();
+    await unlink(probe);
+  } catch {
+    throw new ImportRefusedError(
+      'sheet_not_writable',
+      `The annotation sheet directory ${dir} is not writable`,
+    );
+  }
 }
 
 /**
@@ -367,6 +411,7 @@ const IMPORT_LOCK_KEY = 4664;
  * @rfc RFC-64 R12
  * @rfc RFC-64 R13
  * @rfc RFC-64 R14
+ * @rfc RFC-64 R15
  */
 export async function importRecords(db: Db, input: ImportInput): Promise<ImportBatch> {
   const [dictionary] = await db.select({ n: count() }).from(traits);
@@ -384,6 +429,17 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
       'replace_not_allowed',
       'A replacing import is not available in production',
     );
+  }
+  if (input.replace && input.replaceImported) {
+    throw new ImportRefusedError(
+      'replace_not_allowed',
+      '--replace and --replace-imported exclude each other',
+    );
+  }
+  // R15: the sheet is the only copy of what the run detaches, so its
+  // directory has to take a file before anything else happens.
+  if (input.replaceImported) {
+    await assertSheetWritable(input.replaceImported.sheetDir);
   }
   validateHeader(await readFirstLine(input.filePath));
   const fileSha256 = await sha256File(input.filePath);
@@ -405,7 +461,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
 async function runImport(db: Db, input: ImportInput, fileSha256: string): Promise<ImportBatch> {
   // Inside R13's lock: two runs of the same file would otherwise both pass
   // this check before either had written its batch row.
-  if (!input.force && !input.replace) {
+  if (!input.force && !input.replace && !input.replaceImported) {
     const [done] = await db
       .select({ id: importBatches.id })
       .from(importBatches)
@@ -425,17 +481,43 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
       fileName: basename(input.filePath),
       fileSha256,
       runBy: input.runBy ?? null,
-      mode: input.replace ? 'replace' : 'append',
+      mode: input.replace || input.replaceImported ? 'replace' : 'append',
     })
     .returning({ id: importBatches.id });
   if (!batch) throw new Error('importRecords: batch insert returned no row');
 
+  // R15: set inside the transaction below; the cast keeps TypeScript from
+  // narrowing it to `null` across the callback.
+  let detached = null as DetachedImported | null;
   const sql = db.$client;
   try {
     await sql.begin(async (tx) => {
-      // R12: empty what earlier imports loaded, inside this transaction, so a
-      // failure below rolls the wipe back and leaves the old dataset in place.
-      if (input.replace) await resetDataset(tx, batch.id);
+      if (input.replace) {
+        // R12 (Ruling B): refused whenever anything users produced exists — a
+        // manual record, an annotation or a contest — never only a manual
+        // record. The SHARE lock keeps one from arriving between this check
+        // and the wipe.
+        await tx`lock table trait_records, record_annotations, contests in share mode`;
+        const [{ platform }] = (await tx`
+          select
+            exists (select 1 from trait_records where origin = 'manual')
+            or exists (select 1 from record_annotations)
+            or exists (select 1 from contests) as platform`) as [{ platform: boolean }];
+        if (platform) {
+          throw new ImportRefusedError(
+            'platform_records_exist',
+            'Platform data (TR_ records, annotations or contests) exists and --replace would delete it; use --replace-imported (RFC-64 R15)',
+          );
+        }
+        // Empty what earlier imports loaded, inside this transaction, so a
+        // failure below rolls the wipe back and leaves the old dataset in place.
+        await resetDataset(tx, batch.id);
+      }
+      // R15: stash and detach what users produced, write the pending sheet,
+      // delete the EB_ records. The file below then loads into their place.
+      if (input.replaceImported) {
+        detached = await detachImported(tx, batch.id, input.replaceImported.sheetDir);
+      }
       // R4 staging
       await tx`
         create temporary table import_staging (
@@ -688,6 +770,10 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         order by count desc, t.key, r.value_text
         limit 30`) as { trait: string; value: string; count: number }[];
 
+      // R15: re-link by record_code, restore the triggers, recompute the
+      // counters, write the final sheet beside the pending one.
+      if (detached) await relinkImported(tx, detached);
+
       // Recorded in the same transaction as everything above: a crash between
       // COMMIT and a separate post-commit UPDATE could otherwise leave a
       // fully-imported batch stuck at `running`/`failed` forever.
@@ -707,6 +793,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         where id = ${batch.id}`;
     });
   } catch (err) {
+    // R15: the final sheet never outlives a rollback; the pending one stays.
+    if (detached) await rm(`${detached.path}.tmp`, { force: true }).catch(() => undefined);
     // R9: the transaction rolled back; keep the batch as the record of the
     // failure. If even this update fails, don't let that secondary error
     // mask the original one — attach it as `cause` and keep throwing `err`.
@@ -720,6 +808,9 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
     }
     throw err;
   }
+  // R15 (Ruling G): the batch is committed, so a failed rename is not a
+  // failed run; the CLI finds the leftover `.tmp` and says so.
+  if (detached) await publishSheet(detached).catch(() => undefined);
   const result = await getImportBatch(db, batch.id);
   if (!result) throw new Error('importRecords: batch vanished');
   return result;
