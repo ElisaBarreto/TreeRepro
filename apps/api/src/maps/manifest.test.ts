@@ -1,8 +1,17 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hasManifest, parseManifest, readManifest } from './manifest.ts';
+
+// Only `readdir` is wrapped, so a test can make one call answer a directory
+// listing from before a file landed — the retry this file tests for
+// (RFC-76 R1) — while every other fs call (including `readManifest`'s own
+// `readFile`) keeps its real behaviour.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, readdir: vi.fn(actual.readdir) };
+});
 
 const HEADER = 'trait_key,map_kind,level_key,file,data_version';
 const files = new Set(['a.svg', 'b.webp', 'c.svg']);
@@ -82,6 +91,40 @@ describe('readManifest (RFC-76 R1)', () => {
   it('answers no maps for a directory with no manifest.csv', async () => {
     dir = await mkdtemp(join(tmpdir(), 'maps-empty-'));
     expect(await readManifest(dir)).toEqual([]);
+  });
+
+  it('retries once when a listed file is not yet in the directory listing, and succeeds if it has landed by then', async () => {
+    // Simulates a request racing the publisher mid-way through the
+    // documented publish order (README.md "Publishing"): the manifest
+    // already names a.svg, but this read's own `readdir` snapshot is from
+    // just before the file's own copy landed.
+    dir = await mkdtemp(join(tmpdir(), 'maps-race-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\nx,mean,,a.svg,2026-09-01\n`);
+    vi.mocked(readdir).mockImplementationOnce(async () => []);
+    await writeFile(join(dir, 'a.svg'), '');
+
+    const rows = await readManifest(dir);
+
+    expect(rows).toHaveLength(1);
+    expect(vi.mocked(readdir)).toHaveBeenCalledTimes(2);
+  });
+
+  it('still throws, after the one retry, when the listed file never appears', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-missing-file-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\nx,mean,,zzz.svg,2026-09-01\n`);
+
+    await expect(readManifest(dir)).rejects.toThrow(/line 2.*not found/);
+  });
+
+  it('does not retry a manifest problem other than a missing file', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-bad-kind-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\nx,median,,a.svg,2026-09-01\n`);
+    await writeFile(join(dir, 'a.svg'), '');
+    vi.mocked(readdir).mockClear();
+
+    await expect(readManifest(dir)).rejects.toThrow(/unknown map_kind/);
+
+    expect(vi.mocked(readdir)).toHaveBeenCalledTimes(1);
   });
 });
 

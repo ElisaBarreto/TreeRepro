@@ -37,6 +37,19 @@ function fail(line: number, reason: string): never {
   throw new Error(`maps manifest line ${line}: ${reason}`);
 }
 
+/**
+ * Thrown by `parseManifest` specifically when a listed file is not in the
+ * directory — a distinct type so `readManifest` can tell this one problem
+ * apart from every other manifest defect and retry once, since it is the
+ * one a publication in progress can cause transiently (RFC-76 R1: the
+ * publish order in `apps/api/maps/README.md` never deletes a file the live
+ * manifest still names, but the read of `manifest.csv` and the `readdir` of
+ * the directory that names its own files are still two unsynchronized
+ * calls).
+ * @rfc RFC-76 R1
+ */
+export class ManifestFileMissingError extends Error {}
+
 function toIsoDate(value: string): string {
   return new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10);
 }
@@ -86,7 +99,9 @@ export function parseManifest(text: string, filesPresent: ReadonlySet<string>): 
     }
 
     if (!FILE_PATTERN.test(file)) fail(lineNo, `file "${file}" is not a valid file name`);
-    if (!filesPresent.has(file)) fail(lineNo, `file "${file}" not found`);
+    if (!filesPresent.has(file)) {
+      throw new ManifestFileMissingError(`maps manifest line ${lineNo}: file "${file}" not found`);
+    }
 
     if (!DATE_PATTERN.test(dataVersion) || toIsoDate(dataVersion) !== dataVersion) {
       fail(lineNo, `data_version "${dataVersion}" is not a real calendar date`);
@@ -107,13 +122,7 @@ export function parseManifest(text: string, filesPresent: ReadonlySet<string>): 
   return rows;
 }
 
-/**
- * Reads `<dir>/manifest.csv` and the directory listing, then validates the manifest
- * against it (RFC-76 R1). A missing directory or a missing `manifest.csv` means no
- * maps, never an error; any other read error still throws.
- * @rfc RFC-76 R1
- */
-export async function readManifest(dir: string): Promise<ManifestRow[]> {
+async function readAndParseManifest(dir: string): Promise<ManifestRow[]> {
   let text: string;
   let entries: string[];
   try {
@@ -126,6 +135,26 @@ export async function readManifest(dir: string): Promise<ManifestRow[]> {
     throw err;
   }
   return parseManifest(text, new Set(entries));
+}
+
+/**
+ * Reads `<dir>/manifest.csv` and the directory listing, then validates the manifest
+ * against it (RFC-76 R1). A missing directory or a missing `manifest.csv` means no
+ * maps, never an error; any other read error still throws. A read that finds a listed
+ * file missing is retried once, so a request racing a publication in the documented
+ * order (`apps/api/maps/README.md` "Publishing") sees a consistent directory: the
+ * `readFile` of `manifest.csv` and the `readdir` of the directory are two separate,
+ * unsynchronized calls, so one retry gives the second one a chance to observe the file
+ * that landed between them. A second miss still throws.
+ * @rfc RFC-76 R1
+ */
+export async function readManifest(dir: string): Promise<ManifestRow[]> {
+  try {
+    return await readAndParseManifest(dir);
+  } catch (err) {
+    if (!(err instanceof ManifestFileMissingError)) throw err;
+    return await readAndParseManifest(dir);
+  }
 }
 
 /**

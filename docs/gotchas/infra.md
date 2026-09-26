@@ -61,12 +61,27 @@ Drill: run steps 2–6 on a laptop against the dev stack (the same compose files
 ## Trait maps (private)
 **Symptom:** `/srv/maps` does not exist on a fresh server, or a backup restore does not bring the trait maps back.
 **Cause:** The maps are private research output (RFC-76 R1): never committed, and deliberately left out of the backup — the owner regenerates them from the R pipeline rather than storing a second private copy.
-**Fix:** Create the directory by hand once: `sudo mkdir -p /srv/maps` and make it readable by the container's `node` user (world-readable is simplest: `sudo chmod 755 /srv/maps` and the files under it). To publish, check the manifest against the dictionary (RFC-76 R2) *before* the maps go live — "Before publishing" — never after:
+**Fix:** Create the directory by hand once: `sudo mkdir -p /srv/maps` and make it readable by the container's `node` user (world-readable is simplest: `sudo chmod 755 /srv/maps` and the files under it). To publish, check the manifest against the dictionary (RFC-76 R2) *before* the maps go live — "Before publishing" — never after. The first command runs on the laptop; the other two run *on the server* (`/srv/treerepro`), logged in as an administrator with Docker access — never the CI deploy key above, which is forced to `scripts/deploy.sh` and can do nothing else. The server's own `.env` sets `COMPOSE_FILE=compose.yml:compose.prod.yml` (`scripts/deploy.sh` re-exports the same value, in case it is ever lost), so a plain `docker compose` there already picks the production overrides:
 
 ```sh
 rsync -rtv --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
-docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next
-rsync -rt --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next'
+ssh <admin>@<server> '
+  rsync -rt --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
+  rsync -rt --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
+  rsync -rt --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+'
 ```
+
+The publish step is three `rsync` calls, not one, so a request never catches
+`manifest.csv` naming a file that isn't there yet (RFC-76 R1): copy every
+new/changed image first (no `--delete`, `manifest.csv` excluded, so the old
+manifest's files stay all present); then `manifest.csv` alone (`rsync`'s
+temp-file-and-rename is atomic on the same filesystem, so a concurrent read
+never sees a half-written file — and the new manifest now names only files
+the first step already copied); only then the full synced copy with
+`--delete`, which just removes what the new manifest no longer lists.
+`readManifest` also retries once on a "file not found" outright, for
+whatever this order doesn't cover (RFC-76 R1).
 
 Never swap the two directories with `mv`: `compose.prod.yml` binds `/srv/maps:/maps:ro` into `api` by inode, so a running container keeps the old directory open no matter what the name `/srv/maps` points to afterwards — only copying into the same inode (`rsync` onto the existing directory, as above) is visible to it. `--chmod=D755,F644` keeps every directory and file readable by the container's `node` user regardless of the umask on the machine running `rsync`. No restart needed either way: the API reads the directory on every request.

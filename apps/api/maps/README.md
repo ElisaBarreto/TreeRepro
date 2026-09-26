@@ -30,28 +30,50 @@ Each map is an image, listed on one line of `manifest.csv`:
 
 Publishing is copying files to the server and checking them, never a pull
 request, and the check runs **before** the maps go live (RFC-76 R2 "Before
-publishing"):
+publishing"). The first command runs on the laptop; the other two run *on
+the server*, logged in as an administrator with Docker access (not the CI
+deploy key, which is forced to `scripts/deploy.sh` and can do nothing else —
+`docs/gotchas/infra.md` "Deploy"); the server's own `.env` sets
+`COMPOSE_FILE`, so a plain `docker compose` there already picks
+`compose.prod.yml`:
 
 ```sh
 rsync -rtv --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
-docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next
-rsync -rt --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next'
+ssh <admin>@<server> '
+  rsync -rt --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
+  rsync -rt --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
+  rsync -rt --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+'
 ```
 
-1. Stage the R pipeline's output (including `manifest.csv`) in a side-by-side
-   directory, `/srv/maps.next`, never the live `/srv/maps`.
-2. Validate the staged directory against R1 and the trait dictionary in the
-   database (RFC-76 R2); exits 1 and prints one line per problem if any row
-   is wrong, *and exits 1 (with `no manifest.csv in <dir>` on stderr) if the
-   directory or its `manifest.csv` is missing* — a passing check must never
-   wave an empty or mistargeted copy through to the next step's
-   `rsync --delete` — 0 otherwise. It writes nothing.
-3. Only once that check reports 0 problems, sync the staged directory onto
-   the live one.
+1. From the laptop, stage the R pipeline's output (including `manifest.csv`)
+   in a side-by-side directory on the server, `/srv/maps.next`, never the
+   live `/srv/maps`.
+2. On the server, validate the staged directory against R1 and the trait
+   dictionary in the database (RFC-76 R2); exits 1 and prints one line per
+   problem if any row is wrong, *and exits 1 (with `no manifest.csv in <dir>`
+   on stderr) if the directory or its `manifest.csv` is missing* — a passing
+   check must never wave an empty or mistargeted copy through to step 3 — 0
+   otherwise. It writes nothing.
+3. Only once that check reports 0 problems, publish onto the live directory
+   in three steps, so `GET /api/maps` and `GET /api/maps/files/*` — which
+   read `manifest.csv` and list the directory on every request — never see
+   a manifest naming a file that isn't there yet (RFC-76 R1): first copy
+   every new or changed image, without deleting anything and without
+   `manifest.csv` itself, so the old manifest's files are all still present;
+   then copy `manifest.csv` alone — `rsync` writes it to a temporary name
+   in the destination and renames it into place, atomic on the same
+   filesystem, so a concurrent read never sees a half-written file — the new
+   manifest now names only files already copied in the first step; then a
+   final synced copy with `--delete` removes whatever the new manifest no
+   longer lists. An extra image present but not yet listed, between the
+   first and second steps, is harmless (R1 never requires every file in the
+   directory to be listed, only that every listed file exist).
 
 No restart needed: the API reads the directory on every request. See
-`docs/gotchas/infra.md` "Trait maps (private)" for why the last step is an
-`rsync`, never an `mv`.
+`docs/gotchas/infra.md` "Trait maps (private)" for why the last rsync of
+step 3 is an `rsync`, never an `mv`.
 
 To replace a map, overwrite the file under the same name and update its
 `data_version`, then run the same three steps again.
