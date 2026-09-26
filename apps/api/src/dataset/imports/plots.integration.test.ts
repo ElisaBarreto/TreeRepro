@@ -1,15 +1,17 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { eq, sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { describe, expect, it } from 'vitest';
 import { createPlot, createSpecies } from '../../../test/helpers/dataset.ts';
 import { useTestDb } from '../../../test/helpers/db.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import { auditLog } from '../../db/schema/audit-log.ts';
-import { importRejects } from '../../db/schema/imports.ts';
+import { importBatches, importRejects } from '../../db/schema/imports.ts';
 import { plotSpecies, plots, userPlots } from '../../db/schema/plots.ts';
-import { importPlotSpecies, importPlots, importUserPlots } from './plots.ts';
+import { runSupplementaryImport } from './framework.ts';
+import { importPlotSpecies, importPlots, importUserPlots, USER_PLOTS_HEADER } from './plots.ts';
 
 async function csv(lines: string[], eol = '\n'): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'plots-import-'));
@@ -189,6 +191,27 @@ describe('RFC-68 R11 migration 0041', () => {
       .set({ rawRow: { user_email: 'g***@example.com', plot_id: plot.code } })
       .where(eq(importRejects.batchId, batch.id));
 
+    const [failedBatch, otherBatch] = await t.db
+      .insert(importBatches)
+      .values([
+        {
+          fileName: 'legacy.csv',
+          fileSha256: 'x',
+          kind: 'user_plots',
+          status: 'failed',
+          error: 'missing data — COPY import_staging, line 2: "old@example.com"',
+        },
+        {
+          fileName: 'legacy.csv',
+          fileSha256: 'y',
+          kind: 'species_status',
+          status: 'failed',
+          error: 'bad — COPY import_staging, line 2: "Testus,maybe"',
+        },
+      ])
+      .returning();
+    if (!failedBatch || !otherBatch) throw new Error('batch insert returned no row');
+
     const migration = await readFile(
       new URL('../../../drizzle/0041_reject_email_redaction.sql', import.meta.url),
       'utf8',
@@ -200,5 +223,53 @@ describe('RFC-68 R11 migration 0041', () => {
       .from(importRejects)
       .where(eq(importRejects.batchId, batch.id));
     expect(reject?.rawRow).toEqual({ user_email: '***', plot_id: plot.code });
+    const [failed] = await t.db
+      .select()
+      .from(importBatches)
+      .where(eq(importBatches.id, failedBatch.id));
+    expect(failed?.error).toBe('missing data — COPY import_staging, line 2');
+    const [other] = await t.db
+      .select()
+      .from(importBatches)
+      .where(eq(importBatches.id, otherBatch.id));
+    expect(other?.error).toBe('bad — COPY import_staging, line 2: "Testus,maybe"');
+  });
+
+  it('stores a failed batch error without the quoted row, keeping the line number', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'plots-import-')), `fail-${Date.now()}.csv`);
+    await writeFile(file, 'user_email,plot_id\nalice-copy@uni.org,X\n');
+    const failure = new postgres.PostgresError({
+      message: 'missing data for column "plot_id"',
+      where: 'COPY import_staging, line 2: "alice-copy@uni.org"',
+    } as never);
+    await expect(
+      runSupplementaryImport(t.db, {
+        kind: 'user_plots',
+        header: USER_PLOTS_HEADER,
+        filePath: file,
+        runBy: null,
+        apply: async () => {
+          throw failure;
+        },
+      }),
+    ).rejects.toThrow();
+    const [batch] = await t.db
+      .select()
+      .from(importBatches)
+      .where(eq(importBatches.fileName, basename(file)));
+    expect(batch?.error).toBe('missing data for column "plot_id" — COPY import_staging, line 2');
+  });
+
+  it('keeps a blank e-mail cell blank in the reject', async () => {
+    const plot = await createPlot(t.db);
+    const batch = await importUserPlots(t.db, {
+      filePath: await csv(['user_email,plot_id', `,${plot.code}`]),
+      runBy: null,
+    });
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.rawRow).toEqual({ user_email: '', plot_id: plot.code });
   });
 });

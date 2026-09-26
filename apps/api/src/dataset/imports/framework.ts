@@ -125,7 +125,11 @@ export async function runSupplementaryImport(
         .set({
           status: 'failed',
           finishedAt: new Date(),
-          error: describeError(err),
+          // RFC-68 R11: a user_plots row is an e-mail; keep the line number only.
+          error:
+            input.kind === 'user_plots'
+              ? describeError(err).replace(/(COPY import_staging, line \d+[^:"]*): ".*$/s, '$1')
+              : describeError(err),
         })
         .where(eq(importBatches.id, batch.id));
     } catch (updateErr) {
