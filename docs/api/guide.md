@@ -1,4 +1,4 @@
-openapi-sha256: 1579f65e329d12a86385d8341a72d1904b31827f767af8a7ac6ef3dca135c5be
+openapi-sha256: 03bc32d242798ee00275e94e7c1703d684d3463f48cb6cded253ed3ccbb1597a
 
 # TreeRepro API guide
 
@@ -8,8 +8,7 @@ The external API is not a separate surface: it is the same `/api/*` routes the T
 
 Only a user holding the `admin` system role can create or use a key (RFC-82 R2), so this guide is written for that audience.
 
-- All requests and responses are JSON.
-- Every response is wrapped in the same envelope the workspace uses (RFC-11 R2, R3): a success answers `{ "data": ... }` (a list also carries `"meta": { "nextCursor": ... }`); a failure answers `{ "error": { "code": "...", "message": "...", "details": [...] } }`, `details` present only for `VALIDATION_FAILED`.
+- Most `/api/*` routes, including every one described below and `GET /api/docs/openapi.json`, take and answer JSON, wrapped in the same envelope the workspace uses (RFC-11 R2, R3): a success answers `{ "data": ... }` (a list also carries `"meta": { "nextCursor": ... }`); a failure answers `{ "error": { "code": "...", "message": "...", "details": [...] } }`, `details` present only for `VALIDATION_FAILED`. This does not hold for every route: `GET /api/health` and `GET /api/health/ready` answer a plain body with no envelope, `GET /api/export/dataset.zip` streams a ZIP file, `GET /api/maps/files/:name` streams an image, and `GET /api/docs` itself answers Markdown.
 - The full machine-readable reference — every route, its schemas and its guard — is generated from the running code at `GET /api/docs/openapi.json`. This guide is served at `GET /api/docs`. Both need a key (RFC-82 R20).
 
 ## Authentication and the key lifecycle
@@ -29,7 +28,7 @@ A key expires 90 days after creation. There is no renewal endpoint: create a new
 A key is also revoked outright, before its 90 days are up, the moment any of these happens to its owner (RFC-82 R3):
 
 - their password is reset or changed,
-- TOTP is disabled (or re-enrolled),
+- TOTP is disabled (re-enrolling always disables the old factor first, which already revokes every key),
 - they sign out everywhere,
 - their account is suspended,
 - an administrator revokes all of their sessions, or
@@ -120,12 +119,12 @@ Quantitative example, with a note explaining the fix:
 {
   "traitId": "5a6b7c8d-9e0f-4a1b-8c2d-3456789012ef",
   "valueText": "12,5",
-  "value": { "numeric": { "single": 12.5 } },
+  "value": { "numeric": 12.5 },
   "note": "Comma used as decimal separator in the source spreadsheet"
 }
 ```
 
-`value` is a categorical mapping (1–20 distinct level ids) or a quantitative one (`numeric` takes the same shape as any manual measurement: `single`, `min`, `max`, `mean`, `sd`, `n`, at least one of the first four). `note` is optional free text, 1–2000 characters.
+`value` is a categorical mapping (1–20 distinct level ids) or a quantitative one (`numeric` is one finite number — unlike a manual measurement, a mapped value is always a single point, never a range or a summary statistic). `note` is optional free text, 1–2000 characters.
 
 Response, either way:
 
@@ -145,7 +144,7 @@ Request body:
 {
   "ops": [
     { "ref": "row-1", "method": "POST", "path": "/api/records/pending/map", "body": { "...": "..." } },
-    { "ref": "row-2", "method": "GET", "path": "/api/records/pending/traits" }
+    { "ref": "row-2", "method": "PATCH", "path": "/api/me", "body": { "name": "New name" } }
   ]
 }
 ```
@@ -163,7 +162,7 @@ Response:
     "summary": { "ok": 1, "failed": 1 },
     "results": [
       { "ref": "row-1", "status": 200, "body": { "data": { "created": 1, "skipped": 0 } } },
-      { "ref": "row-2", "status": 401, "body": { "error": { "code": "AUTH_UNAUTHENTICATED", "message": "..." } } }
+      { "ref": "row-2", "status": 400, "body": { "error": { "code": "VALIDATION_FAILED", "message": "Account routes need a session" } } }
     ]
   }
 }
@@ -174,7 +173,9 @@ One result per operation, in the same order as the request, `null` in place of `
 An operation is refused with `status: 400` and a `VALIDATION_FAILED` body, without ever running, when its `path`:
 
 - does not start with `/api/`,
-- is `/api/batch` itself (a batch cannot contain a batch),
+- has a malformed percent-escape (an invalid `%` sequence), so it cannot even be decoded,
+- resolves (dot segments and percent-decoding applied, the same normalisation the operation would run at) to a pathname that no longer starts with `/api/`,
+- is `/api/batch` itself, normalised, or anything under it (a batch cannot contain a batch),
 - targets a self-service route (the same ones listed above), or
 - is a `GET` carrying a `body`.
 
@@ -188,18 +189,20 @@ When a batch would not fit in what is left of the current window, it answers 429
 
 ## Errors
 
-Every error follows the same envelope: `{ "error": { "code", "message", "details"? } }`. Scripts should branch on `code`, never on `message`. The codes an external caller is most likely to meet:
+Every error follows the same envelope: `{ "error": { "code", "message", "details"? } }`. A script should branch on the HTTP status first, then on `code` — never on `message`. The codes an external caller is most likely to meet:
 
 | Code | HTTP status | Meaning |
 |---|---|---|
 | `AUTH_UNAUTHENTICATED` | 401 | No key, an unrecognised, expired or revoked key, or a cookie sent alongside one. Stop; do not retry. |
 | `PERMISSION_DENIED` | 403 | The key's owner lacks the route's permission, or the route is off-limits to a key at all (identity, role and session management). |
 | `VALIDATION_FAILED` | 400 | The request failed schema validation. `details` is an array of `{ path, message }`, one per failing field (`details[0].path`, for example). |
-| `NOT_FOUND` | 404 | The route or the resource does not exist. |
+| `VALIDATION_INVALID_JSON` | 400 | The request body is not valid JSON. |
+| `REQUEST_TOO_LARGE` | 413 | The request body exceeds 1 MiB. |
+| `NOT_FOUND` | 404 | An unknown route, or an id-based lookup whose route has no more specific not-found code. |
 | `RATE_LIMITED` | 429 | Too many requests for this key; see Limits above. |
 | `INTERNAL_ERROR` | 500 | Unexpected failure on the server; safe to retry later, not immediately. |
 
-Every other code is one of the domain-specific ones catalogued in RFC-12 (`docs/rfc/10-platform/12-error-codes.md`, mirrored by `packages/contracts/src/error-codes.ts`) — for instance `FAMILY_NAME_TAKEN` (409) when a catalog create collides with an existing name.
+A missing resource usually answers a code specific to it instead of the generic `NOT_FOUND` above — `SPECIES_NOT_FOUND`, `TRAIT_NOT_FOUND`, `RECORD_NOT_FOUND`, `MAP_NOT_FOUND`, and so on; check `packages/contracts/src/error-codes.ts` for the full list, or the HTTP status alone (every one of these is 404). Every other code is one of the domain-specific ones catalogued in RFC-12 (`docs/rfc/10-platform/12-error-codes.md`, mirrored by that same file) — for instance `FAMILY_NAME_TAKEN` (409) when a catalog create collides with an existing name.
 
 ## Examples
 
@@ -232,14 +235,41 @@ call_api <- function(method, path, query = NULL, body = NULL) {
   resp_body_json(resp)
 }
 
-# 1. List pending traits, take the first
+# 1. List pending traits, take the first categorical one (levelIds mapping
+# below needs a categorical trait; a quantitative one maps to a plain number
+# instead, see "Fixing pending records" above)
 traits <- call_api("GET", "/api/records/pending/traits")$data
-trait_id <- traits[[1]]$trait$id
+categorical <- Filter(function(t) t$trait$valueType == "categorical", traits)
+if (length(categorical) == 0) {
+  message("No pending categorical traits right now")
+  quit(save = "no", status = 0)
+}
+trait_id <- categorical[[1]]$trait$id
 
-# 2. Fetch that trait's pending groups
-groups <- call_api("GET", "/api/records/pending", query = list(traitId = trait_id))$data
+# 2. Pick a real, active level to map every group to (a real script maps each
+# valueText to the level it actually means; this picks one just to demonstrate the call)
+levels <- call_api("GET", paste0("/api/traits/", trait_id))$data$levels
+active_levels <- Filter(function(l) l$active, levels)
+if (length(active_levels) == 0) stop("Trait has no active level to map to")
+level_id <- active_levels[[1]]$id
 
-# 3. Map every group to a level (replace with a real level id from GET /api/traits/:id)
+# 3. Fetch every page of that trait's pending groups
+groups <- list()
+cursor <- NULL
+repeat {
+  query <- list(traitId = trait_id)
+  if (!is.null(cursor)) query$cursor <- cursor
+  page <- call_api("GET", "/api/records/pending", query = query)
+  groups <- c(groups, page$data)
+  cursor <- page$meta$nextCursor
+  if (is.null(cursor)) break
+}
+if (length(groups) == 0) {
+  message("No pending groups for this trait")
+  quit(save = "no", status = 0)
+}
+
+# 4. Map every group to that level in a single batch
 ops <- lapply(groups, function(g) {
   list(
     ref = g$sampleRecordId,
@@ -248,13 +278,13 @@ ops <- lapply(groups, function(g) {
     body = list(
       traitId = trait_id,
       valueText = g$valueText,
-      value = list(levelIds = list("00000000-0000-0000-0000-000000000000"))
+      value = list(levelIds = list(level_id))
     )
   )
 })
 result <- call_api("POST", "/api/batch", body = list(ops = ops))
 
-# 4. Print every failed operation
+# 5. Print every failed operation
 for (r in result$data$results) {
   if (r$status < 200 || r$status >= 300) {
     msg <- if (!is.null(r$body$error$message)) r$body$error$message else "<no body>"
@@ -289,14 +319,37 @@ def call(method, path, **kwargs):
     return resp
 
 
-# 1. List pending traits, take the first
+# 1. List pending traits, take the first categorical one (levelIds mapping
+# below needs a categorical trait; a quantitative one maps to a plain number
+# instead, see "Fixing pending records" above)
 traits = call("GET", "/api/records/pending/traits").json()["data"]
-trait_id = traits[0]["trait"]["id"]
+categorical = [t for t in traits if t["trait"]["valueType"] == "categorical"]
+if not categorical:
+    sys.exit("No pending categorical traits right now")
+trait_id = categorical[0]["trait"]["id"]
 
-# 2. Fetch that trait's pending groups
-groups = call("GET", "/api/records/pending", params={"traitId": trait_id}).json()["data"]
+# 2. Pick a real, active level to map every group to (a real script maps each
+# valueText to the level it actually means; this picks one just to demonstrate the call)
+levels = call("GET", f"/api/traits/{trait_id}").json()["data"]["levels"]
+active_levels = [level for level in levels if level["active"]]
+if not active_levels:
+    sys.exit("Trait has no active level to map to")
+level_id = active_levels[0]["id"]
 
-# 3. Map every group to a level (replace with a real level id from GET /api/traits/:id)
+# 3. Fetch every page of that trait's pending groups
+groups = []
+cursor = None
+while True:
+    params = {"traitId": trait_id, **({"cursor": cursor} if cursor else {})}
+    page = call("GET", "/api/records/pending", params=params).json()
+    groups.extend(page["data"])
+    cursor = page["meta"]["nextCursor"]
+    if not cursor:
+        break
+if not groups:
+    sys.exit("No pending groups for this trait")
+
+# 4. Map every group to that level in a single batch
 ops = [
     {
         "ref": g["sampleRecordId"],
@@ -305,14 +358,14 @@ ops = [
         "body": {
             "traitId": trait_id,
             "valueText": g["valueText"],
-            "value": {"levelIds": ["00000000-0000-0000-0000-000000000000"]},
+            "value": {"levelIds": [level_id]},
         },
     }
     for g in groups
 ]
 result = call("POST", "/api/batch", json={"ops": ops}).json()
 
-# 4. Print every failed operation
+# 5. Print every failed operation
 for r in result["data"]["results"]:
     if not (200 <= r["status"] < 300):
         message = (r["body"] or {}).get("error", {}).get("message", "<no body>")
@@ -321,4 +374,4 @@ for r in result["data"]["results"]:
 
 ## Changelog
 
-- 2026-09-26 — First version: API keys (14a), batch (14b), this guide and the generated reference (14c).
+- 2026-09-26 — First version: API keys (14a), batch (14b), this guide and the generated reference (14c). (openapi 03bc32d24279)
