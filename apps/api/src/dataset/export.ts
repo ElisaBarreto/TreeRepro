@@ -1,6 +1,8 @@
+import { Readable } from 'node:stream';
 import type { RecordOrigin } from '@treerepro/contracts';
 import { type SQL, sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { ZipFile } from 'yazl';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { Db } from '../db/client.ts';
 import { getPii } from '../security/pii.ts';
@@ -366,4 +368,40 @@ export function annotationsCsv(
       ]),
     options.batch ?? BATCH,
   );
+}
+
+/**
+ * The full dataset as one ZIP: `records.csv`, then `annotations.csv`,
+ * deflated. yazl pumps its entries one at a time and opens the lazy one only
+ * when its turn comes, so the two cursors never hold two pooled connections
+ * at once. ZIP64 is written as soon as a size or offset needs it. A client
+ * abort cancels the returned stream, which destroys yazl's output; that
+ * `close` destroys the entry being pumped, which cancels its cursor (the
+ * `cancel()` of `csvStream`). A failing query destroys the output with the
+ * error, so the download ends cut short instead of looking complete. yazl
+ * attaches no `error` listener to its input, so this function attaches one.
+ * @rfc RFC-66 R4, R5
+ */
+export function datasetZip(
+  db: Db,
+  visibility: Visibility,
+  options: ExportOptions & { now: Date },
+): ReadableStream<Uint8Array> {
+  const zip = new ZipFile();
+  const output = zip.outputStream as Readable;
+  let current: Readable | null = null;
+  const entry = (name: string, csv: () => ReadableStream<Uint8Array>) => {
+    zip.addReadStreamLazy(name, { mtime: options.now }, (cb) => {
+      const source = Readable.fromWeb(csv());
+      source.once('error', (err) => output.destroy(err));
+      current = source;
+      cb(null, source);
+    });
+  };
+  entry('records.csv', () => recordsCsv(db, visibility, options));
+  entry('annotations.csv', () => annotationsCsv(db, visibility, options));
+  zip.once('error', (err: Error) => output.destroy(err));
+  output.once('close', () => current?.destroy());
+  zip.end();
+  return Readable.toWeb(output);
 }

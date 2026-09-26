@@ -10,7 +10,7 @@ import {
   createTrait,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
-import { exportScene, parseCsv, readAll } from '../../test/helpers/export.ts';
+import { exportScene, parseCsv, readAll, unzip } from '../../test/helpers/export.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { createDb } from '../db/client.ts';
@@ -20,6 +20,7 @@ import {
   annotationRowsQuery,
   annotationsCsv,
   csvRow,
+  datasetZip,
   RECORD_COLUMNS,
   recordsCsv,
 } from './export.ts';
@@ -166,6 +167,20 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     expect(await hidden(RESTRICTED)).toHaveLength(0);
     expect(await hidden(UNRESTRICTED)).toHaveLength(1);
   });
+
+  it('R4 the ZIP holds records.csv then annotations.csv, each a BOM-led RFC 4180 file', async () => {
+    const s = await exportScene(t.db);
+    const zip = datasetZip(t.db, UNRESTRICTED, { scope: 'all', now: new Date() });
+    const files = await unzip(await new Response(zip).arrayBuffer());
+    expect([...files.keys()]).toEqual(['records.csv', 'annotations.csv']);
+    const records = parseCsv(files.get('records.csv') ?? '');
+    const annotations = parseCsv(files.get('annotations.csv') ?? '');
+    expect(records.bom && annotations.bom).toBe(true);
+    expect(`${records.header}\r\n`).toBe(csvRow(RECORD_COLUMNS));
+    expect(`${annotations.header}\r\n`).toBe(csvRow(ANNOTATION_COLUMNS));
+    expect(records.rows.map((r) => r[0])).toContain(s.code.r1);
+    expect(annotations.rows.map((r) => r[5])).toContain(s.code.c1);
+  });
 });
 
 describe('RFC-66 R9 platform scope', () => {
@@ -264,6 +279,32 @@ describe('RFC-66 R5 connection safety', () => {
     const pending = reader.read();
     await reader.cancel();
     await pending.catch(() => undefined);
+
+    await expect(withTimeout(db.execute(sql`select 1`), 5000)).resolves.toBeDefined();
+  });
+
+  it('cancelling the ZIP mid-entry releases the cursor of the entry being written', async () => {
+    handle ??= createDb(inject('databaseUrl'), { max: 1 });
+    const { db } = handle;
+    const trait = await createTrait(db, { valueType: 'quantitative', unit: 'mm' });
+    const sp = await createSpecies(db);
+    const ref = await createReference(db);
+    const { user } = await createUser(db);
+    // Enough rows that the cursor is still open when the client goes away:
+    // the pipe's buffers and deflate hold far less than 20 000 rows.
+    await db.execute(sql`
+      insert into trait_records (species_id, trait_id, value_text, numeric_value, harmonisation,
+        origin, created_by, primary_reference_id)
+      select ${sp.id}, ${trait.id}, g::text, g, 'harmonised', 'manual', ${user.id}, ${ref.id}
+      from generate_series(1, 200000) g`);
+
+    const reader = datasetZip(db, UNRESTRICTED, {
+      scope: 'all',
+      now: new Date(),
+      batch: 50,
+    }).getReader();
+    await reader.read();
+    await reader.cancel();
 
     await expect(withTimeout(db.execute(sql`select 1`), 5000)).resolves.toBeDefined();
   });
