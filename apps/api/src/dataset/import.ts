@@ -37,13 +37,13 @@ import {
 import { isReplaceAllowed, resetDataset } from './reset.ts';
 
 /**
- * The header of the compiled dataset, in file order: an unnamed first column
- * (R's row number, read and ignored, never kept in `raw_row`), the 15 known
- * columns, and `ID`, the record code (spec R-2).
+ * The header of the compiled dataset, in file order: `ID`, the record code
+ * (spec R-2), then the 27 known columns (issue #223). The old 17-column file,
+ * with its unnamed R row-number column, is refused.
  * @rfc RFC-64 R2
  */
 export const IMPORT_COLUMNS = [
-  '',
+  'ID',
   'primary_reference',
   'secondary_reference',
   'wcvp_species',
@@ -59,7 +59,18 @@ export const IMPORT_COLUMNS = [
   'original_value_clean',
   'trait_value_type',
   'harmonised_value',
-  'ID',
+  'statistic',
+  'sample_size',
+  'source_folder',
+  'file_name',
+  'wcvp_taxonomic_status',
+  'taxon_order',
+  'unit_harmonisation_status',
+  'min',
+  'max',
+  'sd',
+  'se',
+  'statistic_record_codes',
 ] as const;
 
 /** A number as the importer accepts it: at most three exponent digits (RFC-64 R6); the SQL below uses the same expression. @rfc RFC-64 R6 */
@@ -518,25 +529,36 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
       if (input.replaceImported) {
         detached = await detachImported(tx, batch.id, input.replaceImported.sheetDir);
       }
+      // RFC-60 R2: trimmed, whitespace collapsed, null when empty.
+      const collapsed = (column: string) =>
+        tx`nullif(btrim(regexp_replace(${tx(column)}, '\\s+', ' ', 'g')), '')`;
+      // R6 number rule: length cap, pattern, then the magnitude bound on the cast.
+      const asNumber = (column: string) =>
+        tx`case when length(${tx(column)}) <= ${NUMBER_MAX_LENGTH} and ${tx(column)} ~ ${NUMBER_PATTERN_SQL}
+                then (case when abs(${tx(column)}::numeric) < 1e308 then ${tx(column)}::numeric end) end`;
       // R4 staging
       await tx`
         create temporary table import_staging (
           row_no bigserial primary key,
-          row_label text,
+          source_id text,
           primary_reference text, secondary_reference text,
           wcvp_species text, wcvp_genus text, wcvp_family text,
           gbif_species text, gbif_usage_key text,
           original_species_name text, secondary_source_species_name text,
           original_trait_name text, final_standard_trait text, broad_category text,
           original_value_clean text, trait_value_type text, harmonised_value text,
-          source_id text
+          statistic text, sample_size text, source_folder text, file_name text,
+          wcvp_taxonomic_status text, taxon_order text, unit_harmonisation_status text,
+          min text, max text, sd text, se text, statistic_record_codes text
         ) on commit drop`;
       const writable = await tx`
         copy import_staging (
-          row_label, primary_reference, secondary_reference, wcvp_species, wcvp_genus, wcvp_family,
+          source_id, primary_reference, secondary_reference, wcvp_species, wcvp_genus, wcvp_family,
           gbif_species, gbif_usage_key, original_species_name, secondary_source_species_name,
           original_trait_name, final_standard_trait, broad_category, original_value_clean,
-          trait_value_type, harmonised_value, source_id
+          trait_value_type, harmonised_value, statistic, sample_size, source_folder, file_name,
+          wcvp_taxonomic_status, taxon_order, unit_harmonisation_status, min, max, sd, se,
+          statistic_record_codes
         ) from stdin with (format csv, header true, encoding 'UTF8')`.writable();
       await pipelineWithIdleGuard(
         createReadStream(input.filePath),
@@ -555,7 +577,14 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           add column species_name text, add column name_source text,
           add column genus_name text, add column family_name text, add column gbif_name text,
           add column trait_key text, add column primary_key text, add column secondary_key text,
-          add column value text`;
+          add column value text,
+          add column stat text, add column n_text text, add column unit_status text,
+          add column src_folder text, add column src_file text, add column tax_status text,
+          add column order_name text, add column min_text text, add column max_text text,
+          add column sd_text text, add column se_text text, add column folded text[],
+          add column value_num numeric, add column min_num numeric, add column max_num numeric,
+          add column sd_num numeric, add column se_num numeric, add column n_int integer,
+          add column bad_measurement boolean not null default false`;
       await tx`
         update import_staging set
           record_code = nullif(trim(source_id), ''),
@@ -576,7 +605,48 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           trait_key = nullif(trim(final_standard_trait), ''),
           primary_key = nullif(trim(primary_reference), ''),
           secondary_key = nullif(trim(secondary_reference), ''),
-          value = regexp_replace(trim(coalesce(harmonised_value, '')), '\\s+', ' ', 'g')`;
+          value = regexp_replace(trim(coalesce(harmonised_value, '')), '\\s+', ' ', 'g'),
+          stat = ${collapsed('statistic')}, n_text = ${collapsed('sample_size')},
+          unit_status = ${collapsed('unit_harmonisation_status')},
+          src_folder = ${collapsed('source_folder')}, src_file = ${collapsed('file_name')},
+          tax_status = ${collapsed('wcvp_taxonomic_status')}, order_name = ${collapsed('taxon_order')},
+          min_text = ${collapsed('min')}, max_text = ${collapsed('max')},
+          sd_text = ${collapsed('sd')}, se_text = ${collapsed('se')},
+          folded = nullif(array(
+            select btrim(x) from unnest(string_to_array(statistic_record_codes, ';'))
+              with ordinality as c(x, i)
+            where btrim(x) <> '' order by i), '{}')`;
+      // R6 number rule on the value and on each statistic column (null when not a number).
+      await tx`
+        update import_staging set
+          value_num = ${asNumber('value')}, min_num = ${asNumber('min_text')},
+          max_num = ${asNumber('max_text')}, sd_num = ${asNumber('sd_text')},
+          se_num = ${asNumber('se_text')},
+          n_int = case when n_text ~ '^[0-9]{1,10}$' and n_text::bigint between 1 and 2147483647
+                       then n_text::integer end`;
+      // R7 invalid_measurement, on rows whose trait is known; the reject insert
+      // ranks it after every other reason.
+      await tx`
+        update import_staging s set bad_measurement = true
+        from traits t
+        where t.key = s.trait_key and (
+          (s.stat is not null
+            and s.stat not in ('single_or_unspecified', 'mean', 'median', 'derived_midpoint'))
+          or (s.unit_status is not null and s.unit_status not in
+            ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable'))
+          or exists (select 1 from unnest(s.folded) c where c !~ '^EB_[0-9]+$')
+          or (t.value_type = 'quantitative' and (
+            (s.min_text is not null and s.min_num is null)
+            or (s.max_text is not null and s.max_num is null)
+            or (s.sd_text is not null and s.sd_num is null)
+            or (s.se_text is not null and s.se_num is null)
+            or s.sd_num < 0 or s.se_num < 0
+            or s.min_num > s.max_num
+            or (s.n_text is not null and s.n_int is null)
+            or (s.value <> '' and s.value_num is null
+                and num_nonnulls(s.min_text, s.max_text, s.sd_text, s.se_text, s.n_text) > 0)
+            or (s.value = '' and s.min_text is null and s.max_text is null
+                and num_nonnulls(s.sd_text, s.se_text, s.n_text) > 0))))`;
       // R7 (spec R-2): an ID that is missing or malformed, or already given by
       // an earlier row of the file. The reason ranks after the older ones (the
       // reject insert below).
@@ -616,6 +686,14 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         insert into families (name)
         select distinct family_name from import_staging where family_name is not null
         on conflict (name) do nothing`;
+      // R5: the one change an import makes to an existing row — a null
+      // order_name is filled from the first taxon_order naming the family.
+      await tx`
+        update families f set order_name = o.order_name
+        from (select distinct on (family_name) family_name, order_name from import_staging
+              where family_name is not null and order_name is not null
+              order by family_name, row_no) o
+        where f.name = o.family_name and f.order_name is null`;
       await tx`
         insert into genera (name, family_id)
         select distinct on (s.genus_name) s.genus_name, f.id
@@ -652,7 +730,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           case when s.species_name is null then 'no_species_name'
                when t.id is null then 'unknown_trait'
                when s.primary_key is null and s.secondary_key is null then 'no_reference'
-               else s.id_problem end,
+               when s.id_problem is not null then s.id_problem
+               else 'invalid_measurement' end,
           jsonb_build_object(
             'ID', coalesce(s.source_id, ''),
             'primary_reference', coalesce(s.primary_reference, ''),
@@ -669,12 +748,24 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             'broad_category', coalesce(s.broad_category, ''),
             'original_value_clean', coalesce(s.original_value_clean, ''),
             'trait_value_type', coalesce(s.trait_value_type, ''),
-            'harmonised_value', coalesce(s.harmonised_value, ''))
+            'harmonised_value', coalesce(s.harmonised_value, ''),
+            'statistic', coalesce(s.statistic, ''),
+            'sample_size', coalesce(s.sample_size, ''),
+            'source_folder', coalesce(s.source_folder, ''),
+            'file_name', coalesce(s.file_name, ''),
+            'wcvp_taxonomic_status', coalesce(s.wcvp_taxonomic_status, ''),
+            'taxon_order', coalesce(s.taxon_order, ''),
+            'unit_harmonisation_status', coalesce(s.unit_harmonisation_status, ''),
+            'min', coalesce(s.min, ''),
+            'max', coalesce(s.max, ''),
+            'sd', coalesce(s.sd, ''),
+            'se', coalesce(s.se, ''),
+            'statistic_record_codes', coalesce(s.statistic_record_codes, ''))
         from import_staging s left join traits t on t.key = s.trait_key
         where not s.already_imported
           and (s.species_name is null or t.id is null
                or (s.primary_key is null and s.secondary_key is null)
-               or s.id_problem is not null)`;
+               or s.id_problem is not null or s.bad_measurement)`;
 
       // R6, R8 records
       const inserted = await tx`
@@ -690,6 +781,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           select s.row_no, s.record_code, s.species_name, s.primary_key, s.secondary_key,
             s.original_value_clean, s.original_trait_name, s.original_species_name,
             s.secondary_source_species_name, s.broad_category,
+            s.value_num, s.min_num, s.max_num, s.sd_num, s.se_num, s.n_int, s.stat,
+            s.unit_status, s.src_folder, s.src_file, s.tax_status, s.folded,
             t.id as trait_id, t.value_type, pv.value_text,
             cardinality(split.vals) as part_count, pv.part_no
           from import_staging s
@@ -709,7 +802,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             end as vals
           ) split
           cross join lateral unnest(split.vals) with ordinality as pv(value_text, part_no)
-          where s.id_problem is null and not s.already_imported
+          where s.id_problem is null and not s.already_imported and not s.bad_measurement
             and (s.primary_key is not null or s.secondary_key is not null)
         ),
         resolved as (
@@ -724,9 +817,15 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             nullif(trim(p.broad_category), '') as raw_category,
             pr.id as primary_reference_id, sr.id as secondary_reference_id,
             lv.id as level_id,
-            case when p.value_type = 'quantitative' and length(p.value_text) <= ${NUMBER_MAX_LENGTH} and p.value_text ~ ${NUMBER_PATTERN_SQL}
-                 then (case when abs(p.value_text::numeric) < 1e308 then p.value_text::numeric end) end as numeric_value
+            p.unit_status, p.src_folder, p.src_file, p.tax_status, p.folded,
+            q.numeric_value, q.min_value, q.max_value, q.sd_value, q.se_value, q.n, q.statistic
           from parts p
+          -- R6: the statistic columns belong to a quantitative trait; a
+          -- categorical row ignores them.
+          left join lateral (
+            select p.value_num as numeric_value, p.min_num as min_value, p.max_num as max_value,
+              p.sd_num as sd_value, p.se_num as se_value, p.n_int as n, p.stat as statistic
+          ) q on p.value_type = 'quantitative'
           join species sp on sp.canonical_name = p.species_name
           left join bibliographic_references pr on pr.citation_key = p.primary_key
           left join bibliographic_references sr on sr.citation_key = p.secondary_key
@@ -734,20 +833,32 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
                                    and lower(lv.key) = lower(p.value_text)
         )
         insert into trait_records (
-          species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
+          species_id, trait_id, level_id, numeric_value, min_value, max_value, sd_value, se_value, n,
+          statistic, value_text, harmonisation,
           raw_value, original_trait_name, original_species_name, secondary_source_species_name, raw_category,
           primary_reference_id, secondary_reference_id, origin, import_batch_id, import_row_no,
-          record_code)
-        select species_id, trait_id, level_id, numeric_value, value_text,
-          case when value_text = '' then 'empty'
+          record_code, unit_status, source_folder, source_file, taxonomic_status, folded_record_codes)
+        select species_id, trait_id, level_id, numeric_value, min_value, max_value, sd_value, se_value, n,
+          statistic, final_text,
+          case when final_text = '' then 'empty'
                when value_type = 'categorical' and level_id is not null then 'harmonised'
                when value_type = 'categorical' then 'unknown_level'
-               when numeric_value is not null then 'harmonised'
+               when coalesce(numeric_value, min_value, max_value) is not null then 'harmonised'
                else 'not_numeric' end,
           raw_value, original_trait_name, original_species_name, secondary_source_species_name, raw_category,
           primary_reference_id, secondary_reference_id, 'import', ${batch.id}, row_no,
-          record_code
-        from resolved
+          record_code, unit_status, src_folder, src_file, tax_status, folded
+        from (
+          -- RFC-63 R15: the value alone keeps its text; with any statistic
+          -- column, every present field as <name>=<value> in a fixed order.
+          select r.*, case
+              when num_nonnulls(min_value, max_value, sd_value, se_value, n) = 0 then r.value_text
+              else concat_ws(';', 'single=' || numeric_value::text, 'min=' || min_value::text,
+                'max=' || max_value::text, 'sd=' || sd_value::text, 'se=' || se_value::text,
+                'n=' || n::text)
+            end as final_text
+          from resolved r
+        ) f
         order by row_no
         on conflict on constraint trait_records_claim_key do nothing`;
 

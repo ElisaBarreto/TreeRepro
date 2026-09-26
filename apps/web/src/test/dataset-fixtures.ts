@@ -721,6 +721,7 @@ export const IMPORT_REJECT: ImportReject = {
   rowNo: 42,
   reason: 'unknown_trait',
   rawRow: {
+    ID: 'EB_12',
     primary_reference: 'Smith2001',
     secondary_reference: '',
     wcvp_species: 'Adenanthera pavonina',
@@ -736,6 +737,18 @@ export const IMPORT_REJECT: ImportReject = {
     original_value_clean: 'yellow',
     trait_value_type: 'categorical',
     harmonised_value: '',
+    statistic: '',
+    sample_size: '',
+    source_folder: '',
+    file_name: '',
+    wcvp_taxonomic_status: '',
+    taxon_order: '',
+    unit_harmonisation_status: '',
+    min: '',
+    max: '',
+    sd: '',
+    se: '',
+    statistic_record_codes: '',
   },
 };
 

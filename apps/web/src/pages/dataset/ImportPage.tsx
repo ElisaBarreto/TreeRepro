@@ -31,6 +31,7 @@ const REASONS: Record<ImportRejectReason, string> = {
 // JSON object, whose keys come back in no useful order, so the list is
 // rendered in this order; any other key the API sends follows.
 const RAW_ROW_COLUMNS = [
+  'ID',
   'primary_reference',
   'secondary_reference',
   'wcvp_species',
@@ -46,7 +47,18 @@ const RAW_ROW_COLUMNS = [
   'original_value_clean',
   'trait_value_type',
   'harmonised_value',
-  'ID',
+  'statistic',
+  'sample_size',
+  'source_folder',
+  'file_name',
+  'wcvp_taxonomic_status',
+  'taxon_order',
+  'unit_harmonisation_status',
+  'min',
+  'max',
+  'sd',
+  'se',
+  'statistic_record_codes',
 ];
 
 function orderedColumns(rawRow: Record<string, string>): string[] {

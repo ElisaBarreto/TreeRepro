@@ -222,3 +222,8 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
 
 Nothing else needs reloading: species, taxa, references, plots, plot species, user plots, synonyms and proposals were never touched, and the file adds whatever is missing.
 
+
+## The 28-column file (issue #223)
+**Symptom:** An older export — the 17-column file with R's unnamed row-number column first and `ID` last, or a 16-column file with no `ID` at all — is refused with `header_mismatch`, and rows that used to load now land in the batch report as `invalid_measurement`.
+**Cause:** RFC-64 R2 now takes exactly the owner's 28 columns, `ID` first. `statistic` says what `harmonised_value` is (`single_or_unspecified`, `mean`, `median` or `derived_midpoint`), never `min`/`max`/`sd`/`se`/`n` as the pre-2026-09-27 exports used it. The statistic columns `min`, `max`, `sd`, `se` and `sample_size` fill `min_value`, `max_value`, `sd_value`, `se_value` and `n` on a quantitative trait only, and are ignored on a categorical one (design D4). A malformed combination — a bad number, a negative spread, `min > max`, a spread with no value or bound, an unknown statistic or unit status, a folded code that is not `EB_<n>` — would break a `trait_records` CHECK and abort the whole transaction, so RFC-64 R7 rejects it first as `invalid_measurement`.
+**Fix:** Import only a 28-column release; an old export is not converted. Read the `invalid_measurement` rows in the batch report (Import page or `import_rejects.raw_row`, which holds all 28 columns) and fix them upstream.
