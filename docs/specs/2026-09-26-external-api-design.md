@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-26
 **Status:** approved design; nothing implemented yet
+**Amendments:** 2026-09-26 (plan 14a): R-6 covers every self-service route (RFC-32 R5), not only account routes, because `requireSession` now demands a cookie session; the audit actions are `auth.api_key.created` and `auth.api_key.revoked`, following the RFC-41 naming; creating a key needs TOTP enabled (409 `AUTH_TOTP_NOT_ENABLED`) and is limited to 5 per 15 minutes per user.
 **Scope:** script access (R, Python) to the whole platform with a personal API key, a batch endpoint, and self-updating documentation. Every decision below was confirmed with the owner on 2026-09-26.
 
 ## 0. Why
