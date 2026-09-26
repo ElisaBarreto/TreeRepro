@@ -4,6 +4,7 @@ import { type FormEvent, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { createApiKey, listApiKeys, revokeApiKey } from '../../api/me.ts';
 import { GENERIC_MESSAGE } from '../../lib/errors.ts';
+import { useMe } from '../../lib/session.ts';
 import {
   Alert,
   Badge,
@@ -22,10 +23,9 @@ import {
 const KEYS_KEY = ['me', 'api-keys'] as const;
 
 // Not exported: no @rfc tag needed (RFC-00 R6 applies to exports only).
+// Date only: the time made the table overflow a 1200 px viewport.
 function formatWhen(iso: string | null): string {
-  return iso
-    ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
-    : '—';
+  return iso ? new Date(iso).toLocaleDateString('en-GB', { dateStyle: 'medium' }) : '—';
 }
 
 function createErrorMessage(error: unknown): string {
@@ -53,6 +53,7 @@ const TONE = { active: 'green', expired: 'neutral', revoked: 'neutral' } as cons
  */
 export function ApiKeysSection() {
   const ids = { name: useId(), password: useId(), code: useId() };
+  const me = useMe();
   const formRef = useRef<HTMLFormElement>(null);
   const queryClient = useQueryClient();
   const [secret, setSecret] = useState<string | null>(null);
@@ -77,6 +78,8 @@ export function ApiKeysSection() {
   });
   const revoke = useMutation({
     mutationFn: (id: string) => revokeApiKey(id),
+    // A revoked key's secret must not stay on screen inviting a copy.
+    onSuccess: () => setSecret(null),
     onSettled: () => queryClient.invalidateQueries({ queryKey: KEYS_KEY }),
   });
 
@@ -116,7 +119,6 @@ export function ApiKeysSection() {
         <Table>
           <Thead>
             <Tr>
-              <Th>Name</Th>
               <Th>Key</Th>
               <Th>Expires</Th>
               <Th>Last used</Th>
@@ -129,11 +131,13 @@ export function ApiKeysSection() {
             {keys.data.keys.map((k) => (
               <Tr key={k.id}>
                 <Td>
-                  {k.name} <Badge tone={TONE[k.state]}>{k.state}</Badge>
+                  {/* Name, prefix and state stacked in one cell: a column each overflowed 1200 px. */}
+                  <span className="block">{k.name}</span>
+                  <span className="block whitespace-nowrap font-mono text-meta">{`tr_live_${k.prefix}…`}</span>
+                  <Badge tone={TONE[k.state]}>{k.state}</Badge>
                 </Td>
-                <Td className="font-mono">{`tr_live_${k.prefix}…`}</Td>
-                <Td>{formatWhen(k.expiresAt)}</Td>
-                <Td>{formatWhen(k.lastUsedAt)}</Td>
+                <Td className="whitespace-nowrap">{formatWhen(k.expiresAt)}</Td>
+                <Td className="whitespace-nowrap">{formatWhen(k.lastUsedAt)}</Td>
                 <Td className="text-right">
                   {k.state === 'active' ? (
                     <Button
@@ -152,34 +156,38 @@ export function ApiKeysSection() {
           </Tbody>
         </Table>
       ) : null}
-      <form ref={formRef} onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
-        <Field id={ids.name} label="Key name">
-          <Input id={ids.name} name="name" maxLength={60} required />
-        </Field>
-        <Field id={ids.password} label="Current password">
-          <Input
-            id={ids.password}
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
-        </Field>
-        <Field id={ids.code} label="Verification code">
-          <Input
-            id={ids.code}
-            name="code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            required
-          />
-        </Field>
-        <div>
-          <Button type="submit" pending={create.isPending}>
-            Create key
-          </Button>
-        </div>
-      </form>
+      {me.user.totpEnabled ? (
+        <form ref={formRef} onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
+          <Field id={ids.name} label="Key name">
+            <Input id={ids.name} name="name" maxLength={60} required />
+          </Field>
+          <Field id={ids.password} label="Current password">
+            <Input
+              id={ids.password}
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+            />
+          </Field>
+          <Field id={ids.code} label="Verification code">
+            <Input
+              id={ids.code}
+              name="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+            />
+          </Field>
+          <div>
+            <Button type="submit" pending={create.isPending}>
+              Create key
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Alert tone="info">Enable two-factor authentication first to create a key.</Alert>
+      )}
     </Section>
   );
 }

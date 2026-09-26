@@ -13,6 +13,8 @@ const me = vi.hoisted(() => ({
 }));
 vi.mock('../../api/me.ts', () => me);
 
+const ME_TOTP = { ...ME, user: { ...ME.user, totpEnabled: true } };
+
 const KEY = {
   id: '0199a1b2-0000-7000-8000-000000000001',
   name: 'laptop',
@@ -31,7 +33,7 @@ beforeEach(() => {
 describe('RFC-82 R7 ApiKeysSection', () => {
   it('renders nothing for a user who is not eligible', async () => {
     me.listApiKeys.mockResolvedValue({ eligible: false, keys: [] });
-    const { container } = renderWithProviders(<ApiKeysSection />, { me: ME });
+    const { container } = renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
     await waitFor(() => expect(me.listApiKeys).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });
@@ -43,7 +45,7 @@ describe('RFC-82 R7 ApiKeysSection', () => {
       secret: 'tr_live_SECRET',
     });
     me.revokeApiKey.mockResolvedValue(undefined);
-    renderWithProviders(<ApiKeysSection />, { me: ME });
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
 
     expect(await screen.findByText('laptop')).toBeInTheDocument();
     expect(screen.getByText('tr_live_AbCdEfGh…')).toBeInTheDocument();
@@ -62,6 +64,27 @@ describe('RFC-82 R7 ApiKeysSection', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Revoke laptop' }));
     expect(me.revokeApiKey).toHaveBeenCalledWith(KEY.id);
+    await waitFor(() => expect(screen.queryByText('tr_live_SECRET')).not.toBeInTheDocument());
+  });
+
+  it('shows dates without the time', async () => {
+    me.listApiKeys.mockResolvedValue({
+      eligible: true,
+      keys: [{ ...KEY, lastUsedAt: '2026-10-01T15:42:00.000Z' }],
+    });
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
+    expect(await screen.findByText('25 Dec 2026')).toBeInTheDocument();
+    expect(screen.getByText('1 Oct 2026')).toBeInTheDocument();
+  });
+
+  it('asks for two-factor authentication instead of showing the form when it is off', async () => {
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [KEY] });
+    renderWithProviders(<ApiKeysSection />, { me: ME });
+    expect(await screen.findByText('laptop')).toBeInTheDocument();
+    expect(
+      screen.getByText('Enable two-factor authentication first to create a key.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Key name')).not.toBeInTheDocument();
   });
 
   async function fillAndSubmitCreate() {
@@ -79,7 +102,7 @@ describe('RFC-82 R7 ApiKeysSection', () => {
   ] as const)('maps %s to its message on a failed create', async (code, message) => {
     me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
     me.createApiKey.mockRejectedValueOnce(new ApiError(400, code, 'x'));
-    renderWithProviders(<ApiKeysSection />, { me: ME });
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
     await screen.findByLabelText('Key name');
     await fillAndSubmitCreate();
     expect(await screen.findByText(message)).toBeInTheDocument();
@@ -88,7 +111,7 @@ describe('RFC-82 R7 ApiKeysSection', () => {
   it('shows the generic message for an unmapped create failure', async () => {
     me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
     me.createApiKey.mockRejectedValueOnce(new ApiError(500, 'UNKNOWN_ERROR', 'x'));
-    renderWithProviders(<ApiKeysSection />, { me: ME });
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
     await screen.findByLabelText('Key name');
     await fillAndSubmitCreate();
     expect(await screen.findByText('Something went wrong. Try again.')).toBeInTheDocument();
@@ -97,7 +120,7 @@ describe('RFC-82 R7 ApiKeysSection', () => {
   it('shows the generic message when revoking a key fails', async () => {
     me.listApiKeys.mockResolvedValue({ eligible: true, keys: [KEY] });
     me.revokeApiKey.mockRejectedValueOnce(new ApiError(500, 'UNKNOWN_ERROR', 'x'));
-    renderWithProviders(<ApiKeysSection />, { me: ME });
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
     await userEvent.click(await screen.findByRole('button', { name: 'Revoke laptop' }));
     expect(await screen.findByText('Something went wrong. Try again.')).toBeInTheDocument();
   });
