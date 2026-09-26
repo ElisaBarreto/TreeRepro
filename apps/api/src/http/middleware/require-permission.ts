@@ -11,9 +11,23 @@ export interface RequirePermissionOptions {
   resource?: (c: Context<AppEnv>) => Promise<boolean> | boolean;
 }
 
+/**
+ * Permissions that create or change identities, roles or sessions: an API key
+ * never exercises them, so a leaked key cannot outlive its own revocation.
+ * @rfc RFC-82 R6
+ */
+export const KEY_REFUSED_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<PermissionKey>([
+  'users.invite',
+  'users.update',
+  'users.suspend',
+  'users.delete',
+  'roles.manage',
+  'sessions.revoke',
+]);
+
 const DENIED = () => new AppError('PERMISSION_DENIED', 'You do not have permission to do this');
 
-/** @rfc RFC-32 R4, R7 */
+/** @rfc RFC-32 R4, R7, RFC-82 R6 */
 export function requirePermission(
   ctx: AccessContext,
   key: PermissionKey,
@@ -25,6 +39,7 @@ export function requirePermission(
       if (!user) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
       const permissions = await resolvePermissions(ctx, user.id);
       if (!permissions.has(key)) throw DENIED();
+      if (c.get('apiKey') && KEY_REFUSED_PERMISSIONS.has(key)) throw DENIED();
       if (options.resource && !(await options.resource(c))) throw DENIED();
       c.set('permissions', permissions);
       await next();

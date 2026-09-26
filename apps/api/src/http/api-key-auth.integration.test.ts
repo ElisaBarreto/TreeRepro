@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { call, randomIp, useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
+import { createReference, createSpecies, createTrait } from '../../test/helpers/dataset.ts';
 import { adminRoleId } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
@@ -8,6 +9,7 @@ import { generateApiKey } from '../auth/api-keys.ts';
 import { RATE_LIMITS } from '../auth/rate-limit.ts';
 import { hashToken } from '../auth/tokens.ts';
 import { apiKeys } from '../db/schema/api-keys.ts';
+import { getPii } from '../security/pii.ts';
 
 describe('RFC-82 R3-R6, R8, R9 Bearer authentication', () => {
   const t = useTestApp();
@@ -111,17 +113,17 @@ describe('RFC-82 R3-R6, R8, R9 Bearer authentication', () => {
 
   it('R5 a Bearer-only write needs no Origin; a cookie write still does', async () => {
     const { user, raw } = await adminWithKey();
-    const res = await call(t.app, 'POST', '/api/admin/roles', {
+    const res = await call(t.app, 'POST', '/api/families', {
       headers: bearer(raw),
       origin: null,
-      body: { name: `r-${Date.now()}`, permissions: [] },
+      body: { name: `Keyaceae-${Date.now()}` },
     });
     expect(res.status).toBe(201);
     const { cookie } = await loginAs(t, user);
-    const cookieRes = await call(t.app, 'POST', '/api/admin/roles', {
+    const cookieRes = await call(t.app, 'POST', '/api/families', {
       cookie,
       origin: null,
-      body: { name: 'x', permissions: [] },
+      body: { name: 'Cookieaceae' },
     });
     expect((await cookieRes.json()).error.code).toBe('SECURITY_INVALID_ORIGIN');
   });
@@ -138,22 +140,59 @@ describe('RFC-82 R3-R6, R8, R9 Bearer authentication', () => {
     }
   });
 
-  it('R8 audit entries written with a key carry via and apiKeyId', async () => {
-    const { user, raw, key } = await adminWithKey();
-    const name = `r-${Date.now()}`;
-    await call(t.app, 'POST', '/api/admin/roles', {
+  it('R6 a key is refused on identity and role management, and a cookie is not', async () => {
+    const { user, raw } = await adminWithKey();
+    const res = await call(t.app, 'POST', '/api/admin/roles', {
       headers: bearer(raw),
       origin: null,
-      body: { name, permissions: [] },
+      body: { name: `r-${Date.now()}`, permissions: [] },
     });
-    expect(await lastAudit(t.db, 'roles.created', { actorUserId: user.id })).toMatchObject({
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('PERMISSION_DENIED');
+    const { cookie } = await loginAs(t, user);
+    const cookieRes = await call(t.app, 'POST', '/api/admin/roles', {
+      cookie,
+      body: { name: `r-${Date.now()}`, permissions: [] },
+    });
+    expect(cookieRes.status).toBe(201);
+  });
+
+  it('R8 audit entries written with a key carry via and apiKeyId', async () => {
+    const { user, raw, key } = await adminWithKey();
+    await call(t.app, 'POST', '/api/families', {
+      headers: bearer(raw),
+      origin: null,
+      body: { name: `Keyaceae-${Date.now()}` },
+    });
+    expect(await lastAudit(t.db, 'taxa.created', { actorUserId: user.id })).toMatchObject({
       metadata: { via: 'api_key', apiKeyId: key.id },
     });
   });
 
+  it("R8 a record written with a key is created by the key's owner", async () => {
+    const { user, raw } = await adminWithKey();
+    const species = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['red', 'blue'] });
+    const ref = await createReference(t.db);
+    const res = await call(t.app, 'POST', '/api/records', {
+      headers: bearer(raw),
+      origin: null,
+      body: {
+        speciesId: species.id,
+        traitId: trait.id,
+        value: { levelIds: [trait.levels[0]?.id] },
+        sources: { references: [{ id: ref.id }] },
+      },
+    });
+    expect(res.status).toBe(201);
+    expect((await res.json()).data.created[0].createdBy).toMatchObject({ id: user.id });
+  });
+
   it('R9 a key-authenticated request is counted in global:api_key, not global:ip', async () => {
     const { raw, key } = await adminWithKey();
-    await call(t.app, 'GET', '/api/admin/roles', { headers: bearer(raw), origin: null });
+    const ip = randomIp();
+    await call(t.app, 'GET', '/api/admin/roles', { headers: bearer(raw), origin: null, ip });
     expect(await t.redis.exists(`rl:global:api_key:${key.id}`)).toBe(1);
+    expect(await t.redis.exists(`rl:global:ip:${getPii().blindIndex(ip)}`)).toBe(0);
   });
 });
