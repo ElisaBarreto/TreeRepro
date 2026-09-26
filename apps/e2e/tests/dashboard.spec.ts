@@ -129,7 +129,10 @@ test.describe('RFC-72 workspace dashboard (plan 11b)', () => {
       // ── Validate it from the record drawer. ─────────────────────────────
       const drawer = page.getByRole('dialog', { name: 'Record', exact: true });
       await expect(drawer).toBeVisible();
-      await drawer.getByRole('button', { name: '✓ Validate', exact: true }).click();
+      await drawer.getByRole('button', { name: 'Validate', exact: true }).click();
+      const confirmation = page.getByRole('dialog', { name: /^Validate / });
+      await confirmation.getByRole('button', { name: 'Validate', exact: true }).click();
+      await expect(confirmation).toBeHidden();
       await expect(drawer.getByText('You validated this record')).toBeVisible();
       await drawer.getByRole('button', { name: 'Close' }).click();
 

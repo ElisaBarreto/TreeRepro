@@ -35,11 +35,9 @@ async function create<T>(admin: BrowserContext, path: string, body: unknown): Pr
 
 /**
  * The trait card's own button, the one that opens the trait's records. The
- * `?` beside it ("What does <trait> mean?") and the `+` ("Add value for
- * <trait>") carry the trait's name too, so the name alone matches three
- * buttons; only the card's own starts with it. The keys this file creates are
- * letters, digits and underscores, so nothing in them is a regular-expression
- * metacharacter.
+ * `?` ("What does <trait> mean?"), the `+` ("Add value for <trait>") and the
+ * level buttons ("Validate <level> for <trait>") carry the name too, but only
+ * the card's own starts with it.
  */
 function traitCard(page: Page, name: string) {
   return page.getByRole('button', { name: new RegExp(`^${name}`) });
@@ -50,8 +48,12 @@ function humanised(key: string): string {
   return key.replaceAll('_', ' ');
 }
 
+const CONTEST = 'Contest — The existing value is wrong; mine should replace it.';
+const COMPLEMENT =
+  'Complement — The existing value is also correct; I am adding another observation.';
+
 test.describe('RFC-70 contributor workflow (plan 09b)', () => {
-  test('a contributor validates a record, contests it as a personal observation, and adds the first entry for a trait with no data', async ({
+  test('a contributor validates and contests a level from its card, must say contest or complement first, and adds the first entry for a trait with no data', async ({
     browser,
   }) => {
     const admin = await adminContext(browser);
@@ -113,79 +115,86 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
     const page = contributor.page;
 
     try {
-      // ── The contributor opens the record and agrees with it ──────────────
+      // ── The contributor validates the seeded level from its card (spec §2, R-6) ──
       await page.goto(`/app/species/${species.id}`);
       await expect(page.getByRole('heading', { level: 1 })).toContainText(speciesName);
-      await traitCard(page, recordedName).click();
-
-      const panel = page.getByRole('dialog', { name: recordedName });
-      await panel.getByRole('button', { name: seededLevel.key, exact: true }).click();
-
-      // exact: true throughout — "Record" is a substring of the contest
-      // dialog's own title, and "Validate" of its help tip's label.
-      const drawer = page.getByRole('dialog', { name: 'Record', exact: true });
-      await expect(drawer.getByRole('link', { name: `E2E-${stamp}` })).toBeVisible();
-      await drawer.getByRole('button', { name: '✓ Validate', exact: true }).click();
-
-      // RFC-70 R4: the confirmation is attached to the record and the button
-      // is out of reach, because the viewer's own latest stance is now
-      // `confirm`.
-      await expect(drawer.getByText('You validated this record')).toBeVisible();
-      await expect(drawer.getByRole('button', { name: '✓ Validate', exact: true })).toBeDisabled();
-      await expect(drawer.getByText('confirm', { exact: true })).toBeVisible();
-
-      // ── …then contests it with a value of their own ──────────────────────
-      await drawer.getByRole('button', { name: '+ Add different record', exact: true }).click();
-      const contest = page.getByRole('dialog', {
-        name: `Add a different record for ${recordedName} of ${speciesName}`,
-      });
-      await contest
-        .getByRole('radio', {
-          name: 'Contest — The existing value is wrong; mine should replace it.',
+      await expect(page.getByRole('list', { name: 'Legend' })).toContainText('Validate');
+      await page
+        .getByRole('button', {
+          name: `Validate ${seededLevel.key} for ${recordedName}`,
+          exact: true,
         })
-        .check();
-      await contest.getByLabel('Level').selectOption({ label: contestedLevel.key });
-      // No DOI at all: RFC-80 R5 records the claim under the contributor's
-      // own personal-observation reference. (The stack has no network, so a
-      // DOI could not resolve here in any case.)
-      await expect(
-        contest.getByText('This will be recorded as your personal observation'),
-      ).toBeVisible();
-      await contest.getByRole('button', { name: 'Add record', exact: true }).click();
+        .click();
+      const validate = page.getByRole('dialog', { name: `Validate ${seededLevel.key}` });
+      await expect(validate.getByText('Do you confirm that this record is correct?')).toBeVisible();
+      await validate.getByRole('button', { name: 'Validate', exact: true }).click();
+      await expect(validate).toBeHidden();
+      const levels = page.getByRole('list', { name: `Levels of ${recordedName}` });
+      await expect(levels.getByRole('listitem').filter({ hasText: seededLevel.key })).toContainText(
+        '✓ 1',
+      );
 
-      // RFC-70 R3: the record the API created opens in the drawer the contest
-      // was started from. A categorical contest answers no single record
-      // (RFC-63 R14), so the drawer badges its intent alone (RFC-70 R6).
+      // ── …then contests it from the same row, as a personal observation ──
+      await page
+        .getByRole('button', {
+          name: `Contest ${seededLevel.key} for ${recordedName}`,
+          exact: true,
+        })
+        .click();
+      const contest = page.getByRole('dialog', { name: `Add entries for ${recordedName}` });
+      await expect(contest.getByRole('radio', { name: CONTEST })).toBeChecked();
+      await contest.getByRole('checkbox', { name: contestedLevel.key }).check();
+      // Every categorical entry with a non-empty E shows what it will do per
+      // level behind a required confirmation (RFC-70 R10): here E is the
+      // seeded level alone (the contested level has no record yet), so the
+      // seeded level is contested and the checked one is added.
+      const confirmContest = contest.getByRole('checkbox', {
+        name: `Confirm: Contest ${seededLevel.key} · Add ${contestedLevel.key}`,
+      });
+      await expect(confirmContest).toBeVisible();
+      await confirmContest.check();
+      await contest.getByRole('button', { name: 'Add record(s)', exact: true }).click();
       await expect(contest).toBeHidden();
+
+      // RFC-70 R3: the record the API created opens in the drawer, badged
+      // with what it says about the record it answers. A categorical contest
+      // answers no single record (RFC-63 R14), so the drawer badges its
+      // intent alone (RFC-70 R6, 13g's pair).
+      const drawer = page.getByRole('dialog', { name: 'Record', exact: true });
       await expect(drawer.getByText('contest', { exact: true })).toBeVisible();
       await expect(drawer.getByRole('button', { name: /^contests record/ })).toHaveCount(0);
       await expect(drawer.getByText(contestedLevel.key, { exact: true }).first()).toBeVisible();
-
       const observation = drawer.getByRole('link', {
         name: `Personal observation (${contributorName})`,
         exact: true,
       });
       await expect(observation).toBeVisible();
-      // RFC-61 R7: the reference itself names its observer — the citation key
-      // (`personal-observation:<user id>`) is never shown.
       await observation.click();
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(
         `Personal observation (${contributorName})`,
       );
 
-      // ── …and records the first entry for a trait with no data ────────────
+      // ── The card's own + asks Contest or Complement first (item 2.1) ─────
       await page.goto(`/app/species/${species.id}`);
-      // The recorded trait's card first, so the summary has demonstrably
-      // arrived: without the flag it lists the traits that have records only,
-      // and the absence below would otherwise also hold while it loads.
+      await page
+        .getByRole('button', { name: `Add value for ${recordedName}`, exact: true })
+        .click();
+      const entry = page.getByRole('dialog', { name: `Add entries for ${recordedName}` });
+      await expect(entry.getByRole('checkbox', { name: seededLevel.key })).toBeDisabled();
+      await expect(
+        entry.getByRole('button', { name: 'Add record(s)', exact: true }),
+      ).toBeDisabled();
+      await entry.getByRole('radio', { name: COMPLEMENT }).check();
+      await entry.getByLabel('Responding to').selectOption({ label: seededLevel.key });
+      await expect(entry.getByRole('checkbox', { name: seededLevel.key })).toBeEnabled();
+      await entry.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(entry).toBeHidden();
+
+      // ── …and records the first entry for a trait with no data ────────────
       await expect(traitCard(page, recordedName)).toBeVisible();
       await expect(page.getByText(untouchedName)).toHaveCount(0);
       await page.getByRole('checkbox', { name: 'Show traits with no data' }).check();
 
-      // RFC-70 R7 lists every active trait the species has no record for, so
-      // "Add the first entry" repeats across the page: the one wanted is the
-      // one inside the card that names this trait (the innermost `div` holding
-      // the name is the card's own body).
       const emptyCard = page.locator('div').filter({ hasText: untouchedName }).last();
       await expect(emptyCard.getByText('No records yet')).toBeVisible();
       await emptyCard.getByRole('button', { name: 'Add the first entry' }).click();
@@ -193,15 +202,15 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
       const entries = page.getByRole('dialog', {
         name: `Add entries for ${untouchedName} (mm)`,
       });
-      await entries.getByLabel('Number (mm)').fill('12.5');
+      await entries.getByLabel('Single value (mm)').fill('12.5');
       await entries.getByRole('button', { name: 'Add record(s)', exact: true }).click();
 
       await expect(entries).toBeHidden();
-      await expect(drawer.getByText('12.5 mm')).toBeVisible();
+      // R-2: a record created on the platform takes a TR_ code.
+      await expect(drawer.getByText('Record ID')).toBeVisible();
+      await expect(drawer.getByText(/^TR_\d+[a-z]*$/)).toBeVisible();
       await drawer.getByRole('button', { name: 'Close' }).click();
 
-      // The card is no longer empty: the summary the write invalidated now
-      // counts the record, so the trait renders as an ordinary trait card.
       await expect(traitCard(page, untouchedName)).toContainText('1 record');
     } finally {
       await contributor.context.close();
