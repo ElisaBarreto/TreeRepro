@@ -334,6 +334,31 @@ describe('RFC-70 R1 AddEntriesDialog submission', () => {
     );
     expect(curation.createRecords).not.toHaveBeenCalled();
   });
+
+  it('RFC-80 R4 drops the not-resolved alert once the DOI resolves', async () => {
+    curation.resolveDoi
+      .mockResolvedValueOnce({ status: 'not_found', reference: null })
+      .mockResolvedValue({
+        status: 'resolvable',
+        reference: null,
+        preview: { title: 'Seed size', authors: 'Moles, A.', year: 2023, journal: 'GEB' },
+      });
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    const doi = within(dialog).getByRole('textbox', { name: 'DOI' });
+    await userEvent.type(doi, '10.1111/geb.13000x');
+    await userEvent.tab();
+    await within(dialog).findByText('DOI not found');
+    await userEvent.click(submit(dialog));
+    const notReady = 'Each DOI must resolve before the record can be added.';
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(notReady);
+    await userEvent.clear(doi);
+    await userEvent.type(doi, '10.1111/geb.13000');
+    await userEvent.tab();
+    expect(await within(dialog).findByText('Resolved: Seed size (2023)')).toBeInTheDocument();
+    expect(within(dialog).queryByText(notReady)).not.toBeInTheDocument();
+  });
 });
 
 describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {

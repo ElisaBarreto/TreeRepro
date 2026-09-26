@@ -49,7 +49,7 @@ export function ValidateDialog({ subject, speciesId, write, onClose }: ValidateD
   }
 
   let alert: string | null = null;
-  if (blocked) alert = SOURCES_NOT_READY;
+  if (blocked && !ready) alert = SOURCES_NOT_READY;
   else if (save.isError) {
     alert = Object.values(fieldErrors(save.error))[0] ?? contributionErrorMessage(save.error);
   }

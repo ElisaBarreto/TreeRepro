@@ -305,8 +305,10 @@ export function AddEntriesDialog({
     if (path === 'sources' || path.startsWith('sources.')) sourceErrors[path] = message;
   }
   const unowned = Object.entries(serverErrors).find(([path]) => !OWNED_PATH.test(path))?.[1];
+  // The not-resolved sentence goes once every DOI resolves; it only ever holds that one.
+  const formMessage = sourcesReady ? undefined : local.form;
   const alertMessage =
-    local.form ?? (save.isError ? (unowned ?? contributionErrorMessage(save.error)) : undefined);
+    formMessage ?? (save.isError ? (unowned ?? contributionErrorMessage(save.error)) : undefined);
 
   // A new trait (or category) starts the answer and the value over: they
   // belonged to the old one.
