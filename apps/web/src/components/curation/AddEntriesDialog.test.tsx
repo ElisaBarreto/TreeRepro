@@ -416,12 +416,16 @@ describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
     await userEvent.click(await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST }));
     const loads = dataset.fetchSpeciesTraits.mock.calls.length;
+    const dictionaryLoads = dataset.fetchDictionary.mock.calls.length;
     await userEvent.click(submit(dialog));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'The contested levels changed; reload them',
     );
     await waitFor(() =>
       expect(dataset.fetchSpeciesTraits.mock.calls.length).toBeGreaterThan(loads),
+    );
+    await waitFor(() =>
+      expect(dataset.fetchDictionary.mock.calls.length).toBeGreaterThan(dictionaryLoads),
     );
     expect(within(dialog).getByRole('checkbox', { name: CONFIRM_CONTEST })).not.toBeChecked();
     expect(submit(dialog)).toBeDisabled();
@@ -477,6 +481,37 @@ describe('RFC-70 R3 AddEntriesDialog result (R-7)', () => {
     expect(onCreated).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole('button', { name: 'EB_3' }));
     expect(onOpenRecord).toHaveBeenCalledWith(EXISTING.id);
+  });
+
+  it("RFC-70 R2 shows a refusal of the responded record in the API's own words", async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING_MASS]));
+    curation.createRecords.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'respondsToRecordId', message: 'The responded record is of another trait' },
+      ]),
+    );
+    mount({ initialTrait: DICTIONARY_SEED_MASS, respondTo: { recordId: EXISTING_MASS.id } });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for seed mass (mg)' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: COMPLEMENT_LABEL }));
+    await userEvent.type(
+      within(dialog).getByRole('spinbutton', { name: 'Single value (mg)' }),
+      '2',
+    );
+    await userEvent.click(submit(dialog));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'The responded record is of another trait',
+    );
+  });
+
+  it('hands an answer that is not a contest up even when it names nothing', async () => {
+    const EMPTY = { created: [], validated: [], duplicates: [] };
+    curation.createRecords.mockResolvedValue(EMPTY);
+    const { onCreated } = mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    await userEvent.click(submit(dialog));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(EMPTY));
+    expect(within(dialog).queryByRole('list')).toBeNull();
   });
 
   it('says a contest that created nothing was recorded, instead of closing silently', async () => {

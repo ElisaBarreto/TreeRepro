@@ -52,7 +52,7 @@ const LEGEND = 'text-label font-bold uppercase tracking-[0.08em] text-canopy-800
 const NOTHING_CONTESTED = 'A contest must contest at least one level; this is a complement';
 // The paths a control of this form shows its error under; any other detail
 // (`contestedLevelIds`, `intent`) has no field, so the alert says it verbatim.
-const OWNED_PATH = /^(value|sources|traitId|categoryKey|respondsTo)/;
+const OWNED_PATH = /^(value|sources|traitId|categoryKey|respondsTo)(\.|$)/;
 
 // ponytail: stand-in for Task 2's `recordValueLabel` (`../dataset/RecordTable.tsx`,
 // another lane); delete it and import that one when the lanes meet.
@@ -298,7 +298,7 @@ export function AddEntriesDialog({
     // closed on silently.
     onInvalidated: (result) => {
       const matched = result.validated.length > 0 || result.duplicates.length > 0;
-      if (matched || result.created.length === 0) setAnswered(result);
+      if (matched || (intent === 'contest' && result.created.length === 0)) setAnswered(result);
       else onCreated(result);
     },
   });
