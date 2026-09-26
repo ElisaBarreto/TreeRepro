@@ -59,11 +59,11 @@ async function writeSheet(
   path: string,
   rows: SheetRow[],
   status: (row: SheetRow) => string,
-  flag: 'wx' | 'w',
 ): Promise<void> {
-  // 0600: the sheet names users (RFC-40); fsync, because the pending copy is
-  // the record of what the run detached if everything after it fails.
-  const file = await open(path, flag, 0o600);
+  // 0600: the sheet names users (RFC-40); `wx`, so neither copy ever
+  // overwrites a file already there; fsync, because the pending copy is the
+  // record of what the run detached if everything after it fails.
+  const file = await open(path, 'wx', 0o600);
   try {
     await file.writeFile(
       `\uFEFF${csvRow(SHEET_COLUMNS)}${rows.map((r) => csvRow([...r.fields, status(r)])).join('')}`,
@@ -156,7 +156,7 @@ export async function detachImported(
     ],
   }));
   const path = sheetPath(sheetDir, batchId);
-  await writeSheet(path, sheetRows, () => 'pending', 'wx');
+  await writeSheet(path, sheetRows, () => 'pending');
 
   await tx`
     update trait_records k set intent = null, responds_to_record_id = null
@@ -179,7 +179,8 @@ export async function detachImported(
  * are not withdrawn (RFC-63 R13): the mirror of 0038's
  * `trait_records_uncount`, with 13f's `record_references` counted on its own.
  * The deletes of detachImported decremented nothing, so an incremental fix
- * would be wrong.
+ * would be wrong. `first_record_at` / `last_record_at` are taken over live
+ * records, which can differ from the incremental triggers that never rewind them.
  */
 async function recomputeCounters(tx: TransactionSql): Promise<void> {
   await tx`
@@ -280,6 +281,21 @@ export async function relinkImported(
     from replace_links l
     where l.link = 'supersedes' and l.id = k.id
       and k.supersedes_record_id = k.id and k.primary_reference_id is not null`;
+  // A harmonisation whose EB_ record is gone and that has no primary
+  // reference would be a manual record with no reference at all
+  // (trait_records_origin_check). Stop here; the rollback restores everything.
+  const stuck = await tx<{ own: string; target: string }[]>`
+    select k.record_code as own, l.target_code as target
+    from replace_links l join trait_records k on k.id = l.id
+    where l.link = 'supersedes' and k.supersedes_record_id = k.id
+    order by 1`;
+  if (stuck.length > 0) {
+    throw new Error(
+      `Cannot orphan a harmonisation without a primary reference: ${stuck
+        .map((s) => `${s.own} harmonises ${s.target}`)
+        .join('; ')}. Put these rows back in the file (RFC-64 R15)`,
+    );
+  }
   for (const [table, trigger] of R15_TRIGGERS) {
     await tx`alter table ${tx(table)} enable trigger ${tx(trigger)}`;
   }
@@ -293,11 +309,8 @@ export async function relinkImported(
     where (l.link = 'responds_to' and k.responds_to_record_id is not null)
        or (l.link = 'supersedes' and k.supersedes_record_id is not null)`;
   const keys = new Set(relinked.map((r) => r.key));
-  await writeSheet(
-    `${detached.path}.tmp`,
-    detached.rows,
-    (row) => (keys.has(row.key) ? 'relinked' : 'orphan'),
-    'w',
+  await writeSheet(`${detached.path}.tmp`, detached.rows, (row) =>
+    keys.has(row.key) ? 'relinked' : 'orphan',
   );
 }
 

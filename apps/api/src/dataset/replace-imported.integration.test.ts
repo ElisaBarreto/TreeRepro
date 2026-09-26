@@ -529,4 +529,133 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
       ['EB_6', 'contest', 'Bob Relink', iso, 'REL_B', await codeOf(fx.qContest), 'relinked'],
     ]);
   });
+
+  it('R9, R15 a file that fails after the wipe rolls everything back; the sheet stays, every row pending', async () => {
+    const before = await snapshot();
+    const sheetDir = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+    await expect(
+      importRecords(t.db, {
+        filePath: fx.bad,
+        replaceImported: { sheetDir },
+        copyIdleTimeoutMs: 2000,
+      }),
+    ).rejects.toThrow();
+    expect(await snapshot()).toEqual(before);
+    const s = await sheet(sheetDir);
+    expect(s.names).toHaveLength(1); // no .tmp left behind
+    expect(s.names[0]).toMatch(/^replace-[0-9a-f-]{36}-annotations\.csv$/);
+    // The complement orphaned by the previous run is independent now, so it
+    // has no row.
+    expect(s.rows.map((r) => [r[0], r[1], r[6]])).toEqual([
+      ['EB_1', 'validation', 'pending'],
+      ['EB_3', 'withdraw', 'pending'],
+      ['EB_5', 'harmonisation', 'pending'],
+      ['EB_6', 'contest', 'pending'],
+    ]);
+    const [failed] = await t.db
+      .select({ status: importBatches.status })
+      .from(importBatches)
+      .where(eq(importBatches.fileName, 'bad.csv'));
+    expect(failed?.status).toBe('failed');
+  });
+
+  it('R15 refuses to orphan a harmonisation that has no primary reference; nothing changes', async () => {
+    // EB_9 names only a secondary reference; its harmonisation inherits exactly that.
+    const late = join(fx.dir, 'late.csv');
+    await writeFile(late, csv(line('EB_9', 'greyish', '', 'REL_S')));
+    await importRecords(t.db, { filePath: late });
+    const eb9 = (await importedByCode()).EB_9 as string;
+    const [relS] = await t.db
+      .select({ id: bibliographicReferences.id })
+      .from(bibliographicReferences)
+      .where(eq(bibliographicReferences.citationKey, 'REL_S'));
+    await createRecord(t.db, {
+      speciesId: fx.speciesId,
+      traitId: fx.traitId,
+      origin: 'manual',
+      valueText: 'gray',
+      levelId: (await levelByKey(t.db, fx.traitId, 'gray')).id,
+      rawValue: 'greyish',
+      primaryReferenceId: null,
+      secondaryReferenceId: relS?.id as string,
+      createdBy: fx.alice,
+      supersedesRecordId: eb9,
+    });
+    const before = await snapshot();
+    const sheetDir = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+    // v2 has no EB_9.
+    await expect(
+      importRecords(t.db, { filePath: fx.v2, replaceImported: { sheetDir } }),
+    ).rejects.toThrow(/TR_\d+[a-z]* harmonises EB_9/);
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('R15 re-links only to a record of the same species and trait (RFC-63 R2); otherwise the response and the harmonisation are orphans', async () => {
+    // EB_7 is a flower_color record with a TR_ complement and a TR_
+    // harmonisation; the new file makes EB_7 a diaspore_length value.
+    const late = join(fx.dir, 'late7.csv');
+    await writeFile(late, csv(line('EB_7', 'purplish')));
+    await importRecords(t.db, { filePath: late });
+    const eb7 = (await importedByCode()).EB_7 as string;
+    const level = async (key: string) => (await levelByKey(t.db, fx.traitId, key)).id;
+    const manual = { speciesId: fx.speciesId, traitId: fx.traitId, origin: 'manual' as const };
+    const complement = (
+      await createRecord(t.db, {
+        ...manual,
+        valueText: 'white',
+        levelId: await level('white'),
+        primaryReferenceId: fx.relB,
+        createdBy: fx.alice,
+        intent: 'complement' as const,
+        respondsToRecordId: eb7,
+      })
+    ).id;
+    const mapping = (
+      await createRecord(t.db, {
+        ...manual,
+        valueText: 'gray',
+        levelId: await level('gray'),
+        rawValue: 'purplish',
+        primaryReferenceId: fx.relA,
+        createdBy: fx.alice,
+        supersedesRecordId: eb7,
+      })
+    ).id;
+    const moved = join(fx.dir, 'moved.csv');
+    await writeFile(
+      moved,
+      csv(
+        line('EB_1', 'blue'),
+        line('EB_3', 'white'),
+        line('EB_4', 'yellow'),
+        line('EB_5', 'bluish'),
+        line('EB_6', '12', 'REL_A', '', 'diaspore_length', 'quantitative'),
+        line('EB_7', '9', 'REL_A', '', 'diaspore_length', 'quantitative'),
+        line('EB_9', 'greyish', '', 'REL_S'),
+      ),
+    );
+    const sheetDir = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+
+    await importRecords(t.db, { filePath: moved, replaceImported: { sheetDir } });
+
+    const rows = await t.db
+      .select({
+        id: traitRecords.id,
+        intent: traitRecords.intent,
+        respondsTo: traitRecords.respondsToRecordId,
+        supersedes: traitRecords.supersedesRecordId,
+      })
+      .from(traitRecords)
+      .where(eq(traitRecords.origin, 'manual'));
+    expect(rows.find((r) => r.id === complement)).toMatchObject({
+      intent: null,
+      respondsTo: null,
+    });
+    expect(rows.find((r) => r.id === mapping)).toMatchObject({ supersedes: null });
+    const s = await sheet(sheetDir);
+    expect(s.rows.filter((r) => r[0] === 'EB_7').map((r) => [r[1], r[6]])).toEqual([
+      ['complement', 'orphan'],
+      ['harmonisation', 'orphan'],
+    ]);
+  });
 });
