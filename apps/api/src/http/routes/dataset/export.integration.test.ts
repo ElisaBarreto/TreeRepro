@@ -73,6 +73,24 @@ describe('RFC-66 GET /api/export/dataset.zip', () => {
     expect(audit?.metadata).toEqual({ format: 'zip', scope: 'platform' });
   });
 
+  it('R5 a client that cancels before the first chunk crashes nothing (issue #207)', async () => {
+    const role = await createRole(t.db, { permissions: ['dataset.export'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, user);
+    await exportScene(t.db);
+    const uncaught: unknown[] = [];
+    const onUncaught = (err: unknown) => uncaught.push(err);
+    process.on('uncaughtException', onUncaught);
+    try {
+      const res = await call(t.app, 'GET', '/api/export/dataset.zip', { cookie });
+      await res.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } finally {
+      process.off('uncaughtException', onUncaught);
+    }
+    expect(uncaught).toEqual([]);
+  });
+
   it('R7 an unknown scope is a 400 VALIDATION_FAILED naming scope', async () => {
     const role = await createRole(t.db, { permissions: ['dataset.export'] });
     const { user } = await createUser(t.db, { roles: [role.id] });

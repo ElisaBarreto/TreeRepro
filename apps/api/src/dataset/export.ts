@@ -427,5 +427,12 @@ export function datasetZip(
   zip.once('error', (err: Error) => output.destroy(err));
   output.once('close', () => current?.destroy());
   zip.end();
-  return Readable.toWeb(output);
+  // Pulled, not pushed: `Readable.toWeb` keeps enqueuing chunks already in
+  // flight after a cancel, and that throws an uncaught `ERR_INVALID_STATE`
+  // (issue #207). `ReadableStream.from` reads through the async iterator,
+  // whose `return()` on cancel destroys `output`. The iterator listens for
+  // `error` only once read; until then this listener keeps an early failure
+  // from being an uncaught `error` event, and the first read still throws it.
+  output.on('error', () => undefined);
+  return ReadableStream.from(output);
 }
