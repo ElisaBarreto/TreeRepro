@@ -36,11 +36,10 @@ async function create<T>(admin: BrowserContext, path: string, body: unknown): Pr
 
 /**
  * The trait card's own button, the one that opens the trait's records. The
- * `?` beside it ("What does <trait> mean?") and the `+` ("Add value for
- * <trait>") carry the trait's name too, so the name alone matches three
- * buttons; only the card's own starts with it. The key this file creates is
- * letters, digits and underscores, so nothing in it is a regular-expression
- * metacharacter.
+ * `?` ("What does <trait> mean?"), the `+` ("Add value for <trait>") and the
+ * level buttons ("Validate <level> for <trait>") carry the name too, but only
+ * the card's own starts with it. The key this file creates is letters, digits
+ * and underscores, so nothing in it is a regular-expression metacharacter.
  */
 function traitCard(page: Page, name: string) {
   return page.getByRole('button', { name: new RegExp(`^${name}`) });
