@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import type { Dictionary, MapEntry, MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/client.ts';
 import { mapFileUrl } from '../../api/maps.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
@@ -165,5 +166,19 @@ describe('RFC-76 R6 MapsPage', () => {
     await openPage();
     expect(await screen.findByText('No maps yet.')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Trait categories' })).not.toBeInTheDocument();
+  });
+
+  it('RFC-13 R4 a permission failure on the maps query shows the permission sentence', async () => {
+    maps.useMaps.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isSuccess: false,
+      isError: true,
+      error: new ApiError(403, 'PERMISSION_DENIED', 'x'),
+    });
+    await openPage();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You do not have permission to do this.',
+    );
   });
 });
