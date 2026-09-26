@@ -399,6 +399,35 @@ describe('RFC-82 R3 account-recovery actions revoke every active key', () => {
     await expectRevoked(keys, user.id, 'logout_all');
   });
 
+  it('sign out everywhere waits for a key creation in flight and revokes that key too', async () => {
+    const { user } = await adminWithKeys();
+    const raw = generateApiKey();
+    let signOut: Promise<number> | undefined;
+    const inFlight = await t.db.transaction(async (tx) => {
+      // What createApiKey does: lock the user row, then insert.
+      await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .for('no key update');
+      const [row] = await tx
+        .insert(apiKeys)
+        .values({
+          userId: user.id,
+          name: 'in-flight',
+          keyHash: hashToken(raw),
+          keyPrefix: raw.slice(8, 16),
+          expiresAt: new Date(t.clock.now + 86_400_000),
+        })
+        .returning();
+      signOut = logoutAll(ctxOf(t), { user, ...META });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return row;
+    });
+    await signOut;
+    await expectRevoked([{ id: inFlight?.id ?? '', raw }], user.id, 'logout_all');
+  });
+
   it('admin role removed', async () => {
     const { user, keys } = await adminWithKeys();
     const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });

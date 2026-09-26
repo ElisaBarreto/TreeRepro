@@ -117,10 +117,11 @@ export async function createApiKey(
   const secret = generateApiKey();
   const now = new Date(ctx.now());
   const row = await ctx.db.transaction(async (tx) => {
-    // Re-read under the row lock the revoking flows take: a password reset,
-    // TOTP disable, suspension or demotion that committed while the password
-    // was being verified must not be followed by a key that outlives it
-    // (RFC-82 R3). NO KEY UPDATE conflicts with their FOR UPDATE / UPDATE.
+    // Re-read under the row lock every revoking flow takes (revokeAllApiKeys
+    // locks it too): a password reset, TOTP disable, suspension or demotion
+    // that committed while the password was being verified must not be
+    // followed by a key that outlives it, and a revocation that starts while
+    // this transaction is open waits for it and revokes the key (RFC-82 R3).
     const [locked] = await tx
       .select()
       .from(users)
@@ -239,6 +240,14 @@ export async function revokeAllApiKeys(
     now: Date;
   } & Partial<RequestMeta>,
 ): Promise<void> {
+  // Users row first, as createApiKey and revokeApiKey lock it: a creation in
+  // flight commits before this UPDATE reads api_keys, so its key is revoked
+  // too, whatever the calling flow did to the row (RFC-82 R3).
+  await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, input.userId))
+    .for('no key update');
   const rows = await tx
     .update(apiKeys)
     .set({ revokedAt: input.now })
