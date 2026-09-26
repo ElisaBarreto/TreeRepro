@@ -65,6 +65,7 @@ Every PR must pass `Verify`, `Images` (build + Trivy), `E2E` (Playwright against
 5. **English everywhere.** Code, comments, docs, UI, commits.
 6. **Latest stable versions, pinned exact.** No legacy versions.
 7. **Claim an issue before working on it, release it when you stop.** Whoever picks up an issue assigns it to themselves and adds the `in-progress` label first, so an issue carrying both is known to be in someone's hands and one without is free to take. The label means *someone is working on this right now* and nothing else, so `label:in-progress` is the list of claimed work and a closed issue never carries it. GitHub does not remove labels on close, so finishing an issue — closing it by hand or through a PR's `Closes #n` — includes `gh issue edit <n> --remove-label in-progress` for every issue the merge closed; a closed issue still labelled is a mistake, fix it on sight. Dropping an issue without closing it means removing the label and the assignment, so it reads as free again.
+8. **An epic's issues are its sub-issues.** Every issue created for an epic — its plans, and any follow-up opened while it runs — is attached to the epic as a GitHub sub-issue when it is created (`gh api -X POST repos/ElisaBarreto/TreeRepro/issues/<epic>/sub_issues -F sub_issue_id=$(gh api repos/ElisaBarreto/TreeRepro/issues/<n> -q .id)`), so the epic's sub-issue panel is the single list of its work and its progress. The epic body links them rather than keeping a separate checklist.
 
 ## Where things go
 
