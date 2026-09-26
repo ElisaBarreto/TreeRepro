@@ -117,15 +117,26 @@ export async function createApiKey(
   const secret = generateApiKey();
   const now = new Date(ctx.now());
   const row = await ctx.db.transaction(async (tx) => {
-    // Re-read under the row lock the revoking flows take: a password reset or
-    // a suspension that committed while the password was being verified must
-    // not be followed by a key that outlives it (RFC-82 R3).
-    const [locked] = await tx.select().from(users).where(eq(users.id, user.id)).for('update');
+    // Re-read under the row lock the revoking flows take: a password reset,
+    // TOTP disable, suspension or demotion that committed while the password
+    // was being verified must not be followed by a key that outlives it
+    // (RFC-82 R3). NO KEY UPDATE conflicts with their FOR UPDATE / UPDATE.
+    const [locked] = await tx
+      .select()
+      .from(users)
+      .where(eq(users.id, user.id))
+      .for('no key update');
     if (locked?.status !== 'active') {
       throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
     }
     if (locked.passwordHash !== user.passwordHash) {
       throw new AppError('AUTH_INVALID_CREDENTIALS', 'Password is incorrect');
+    }
+    if (locked.totpEnabledAt === null || locked.totpSecret !== user.totpSecret) {
+      throw new AppError('AUTH_TOTP_NOT_ENABLED', 'Enable two-factor authentication first');
+    }
+    if (!(await holdsAdminRole(tx, user.id))) {
+      throw new AppError('PERMISSION_DENIED', 'Only administrators can create API keys');
     }
     const [inserted] = await tx
       .insert(apiKeys)
@@ -174,7 +185,11 @@ export async function revokeApiKey(
   await ctx.db.transaction(async (tx) => {
     // Users row first, as suspendUser and createApiKey lock it, so the lock
     // order is the same everywhere and the two cannot deadlock.
-    await tx.select({ id: users.id }).from(users).where(eq(users.id, input.user.id)).for('update');
+    await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, input.user.id))
+      .for('no key update');
     const [row] = await tx
       .update(apiKeys)
       .set({ revokedAt: now })

@@ -123,7 +123,7 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
     ).rejects.toMatchObject({ code: 'AUTH_TOTP_INVALID' });
   });
 
-  it('R2 refuses when the password changed or the user was suspended after the request loaded them', async () => {
+  it('R2, R3 refuses when the password, status, TOTP or admin role changed after the request loaded the user', async () => {
     const { user, secret } = await admin();
     await t.db.update(users).set({ passwordHash: 'changed' }).where(eq(users.id, user.id));
     await expect(
@@ -147,7 +147,46 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
         ...META,
       }),
     ).rejects.toMatchObject({ code: 'AUTH_UNAUTHENTICATED' });
-    for (const u of [user, other.user]) {
+
+    // TOTP disabled after the request loaded the user.
+    const noTotp = await admin();
+    await t.db
+      .update(users)
+      .set({ totpSecret: null, totpEnabledAt: null })
+      .where(eq(users.id, noTotp.user.id));
+    await expect(
+      createApiKey(ctxOf(t), {
+        user: noTotp.user,
+        name: 'stale',
+        password: DEFAULT_PASSWORD,
+        code: code(noTotp.secret),
+        ...META,
+      }),
+    ).rejects.toMatchObject({ code: 'AUTH_TOTP_NOT_ENABLED' });
+
+    // Admin role removed while the password and code were being verified.
+    const demoted = await admin();
+    const ctx = ctxOf(t);
+    const racing = {
+      ...ctx,
+      mfa: {
+        ...ctx.mfa,
+        claimTotpCounter: async (userId: string, counter: number) => {
+          await t.db.delete(userRoles).where(eq(userRoles.userId, demoted.user.id));
+          return ctx.mfa.claimTotpCounter(userId, counter);
+        },
+      },
+    };
+    await expect(
+      createApiKey(racing, {
+        user: demoted.user,
+        name: 'stale',
+        password: DEFAULT_PASSWORD,
+        code: code(demoted.secret),
+        ...META,
+      }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    for (const u of [user, other.user, noTotp.user, demoted.user]) {
       expect(await t.db.select().from(apiKeys).where(eq(apiKeys.userId, u.id))).toEqual([]);
     }
   });
