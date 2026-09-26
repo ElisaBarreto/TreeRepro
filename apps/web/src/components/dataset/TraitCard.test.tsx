@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { TraitSummary } from '@treerepro/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import {
   DICTIONARY,
@@ -13,31 +14,48 @@ import { tipText } from '../../test/render.tsx';
 import { withRouter } from '../../test/router.tsx';
 import { TraitCard } from './TraitCard.tsx';
 
+// Three levels, the top one validated twice and contested.
+const LEVELLED: TraitSummary = {
+  ...SEXUAL_SYSTEM_SUMMARY,
+  contested: true,
+  levels: [
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20',
+      key: 'dioecious',
+      count: 4,
+      validationCount: 2,
+      contested: true,
+    },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21',
+      key: 'monoecious',
+      count: 1,
+      validationCount: 0,
+      contested: false,
+    },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22',
+      key: 'hermaphrodite',
+      count: 1,
+      validationCount: 1,
+      contested: false,
+    },
+  ],
+};
+
 describe('RFC-63 R10 TraitCard', () => {
-  it('is a button named after the trait, with the record count, level bars and the pending line', () => {
-    render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={() => {}} />);
-    const card = screen.getByRole('button', { name: /sexual system/ });
+  it('is a button named after the trait, with the record count, the pending line and the trait’s Contested badge', () => {
+    render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
+    const card = screen.getByRole('button', { name: /^sexual system/ });
     expect(card).toHaveTextContent('8 records');
-    // Each bar's label sits next to its count.
-    const rows = within(card)
-      .getAllByText(/^(dioecious|monoecious|hermaphrodite)$/, { selector: '.truncate' })
-      .map((label) => label.parentElement?.textContent);
-    expect(rows).toEqual(['dioecious4', 'monoecious1', 'hermaphrodite1']);
-    // The widest bar is the top level; the others scale against it in tenths.
-    const fills = card.querySelectorAll('.bg-canopy-500');
-    expect(fills).toHaveLength(3);
-    expect(fills[0]?.className).toContain('w-full');
-    expect(fills[1]?.className).toContain('w-3/10');
-    expect(fills[2]?.className).toContain('w-3/10');
     expect(card).toHaveTextContent('2 pending');
-    expect(card).not.toHaveTextContent('accepted');
-    expect(card).not.toHaveAttribute('style');
-    expect(card.querySelector('[style]')).toBeNull();
+    expect(within(card).getByText('Contested')).toBeInTheDocument();
+    expect(card.parentElement?.querySelector('[style]')).toBeNull();
   });
 
-  it('shows at most five levels', () => {
-    const many = {
-      ...SEXUAL_SYSTEM_SUMMARY,
+  it('spec §2 lists every level of the species, with no cap', () => {
+    const many: TraitSummary = {
+      ...LEVELLED,
       levels: Array.from({ length: 7 }, (_, i) => ({
         levelId: `018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d${20 + i}`,
         key: `level_${i}`,
@@ -47,19 +65,73 @@ describe('RFC-63 R10 TraitCard', () => {
       })),
     };
     render(<TraitCard summary={many} onOpen={() => {}} />);
-    expect(screen.getAllByText(/^level_\d$/)).toHaveLength(5);
-    expect(screen.queryByText('level_5')).not.toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Levels of sexual system' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(7);
+    expect(within(list).getByText('level_6')).toBeInTheDocument();
   });
 
-  it('shows min · mean · max with the unit for a quantitative trait, without a pending line', () => {
-    render(<TraitCard summary={SEED_MASS_SUMMARY} onOpen={() => {}} />);
+  it('shows per level its record count, its validations, a bar and a Contested badge where it applies', () => {
+    render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
+    const list = screen.getByRole('list', { name: 'Levels of sexual system' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('dioecious');
+    expect(items[0]).toHaveTextContent('4 records');
+    expect(items[0]).toHaveTextContent('✓ 2');
+    expect(within(items[0] as HTMLElement).getByText('Contested')).toBeInTheDocument();
+    expect(items[1]).toHaveTextContent('1 record');
+    expect(within(items[1] as HTMLElement).queryByText('Contested')).not.toBeInTheDocument();
+    const fills = list.querySelectorAll('.bg-canopy-500');
+    expect(fills[0]?.className).toContain('w-full');
+    expect(fills[1]?.className).toContain('w-3/10');
+  });
+
+  it('spec §2 gives each level Validate, Contest and Complement, outside the card’s own button', async () => {
+    const onValidateLevel = vi.fn();
+    const onRespondLevel = vi.fn();
+    const onOpen = vi.fn();
+    render(
+      <TraitCard
+        summary={LEVELLED}
+        onOpen={onOpen}
+        onValidateLevel={onValidateLevel}
+        onRespondLevel={onRespondLevel}
+      />,
+    );
+    const card = screen.getByRole('button', { name: /^sexual system/ });
+    const validate = screen.getByRole('button', { name: 'Validate dioecious for sexual system' });
+    expect(card.contains(validate)).toBe(false);
+    await userEvent.click(validate);
+    expect(onValidateLevel).toHaveBeenCalledWith(LEVELLED.levels?.[0]);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Contest monoecious for sexual system' }),
+    );
+    expect(onRespondLevel).toHaveBeenLastCalledWith(LEVELLED.levels?.[1], 'contest');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Complement hermaphrodite for sexual system' }),
+    );
+    expect(onRespondLevel).toHaveBeenLastCalledWith(LEVELLED.levels?.[2], 'complement');
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('offers only the actions the page passes', () => {
+    render(<TraitCard summary={LEVELLED} onOpen={() => {}} onValidateLevel={vi.fn()} />);
+    expect(
+      screen.getByRole('button', { name: 'Validate dioecious for sexual system' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Contest / })).not.toBeInTheDocument();
+  });
+
+  it('shows min · mean · max with the unit for a quantitative trait, and no level list', () => {
+    render(
+      <TraitCard
+        summary={{ ...SEED_MASS_SUMMARY, numeric: { min: 0.5, max: 3, mean: 1.25, count: 3 } }}
+        onOpen={() => {}}
+      />,
+    );
     const card = screen.getByRole('button', { name: /seed mass/ });
-    expect(card).toHaveTextContent('mg');
-    expect(card).toHaveTextContent('3 records');
-    expect(within(card).getByText('min · mean · max')).toBeInTheDocument();
+    expect(card).toHaveTextContent('min · mean · max');
     expect(within(card).getByText('0.5 · 1.25 · 3 mg')).toBeInTheDocument();
-    expect(card).not.toHaveTextContent('pending');
-    expect(card).not.toHaveTextContent('accepted');
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
   it('spec R-5 shows a dash for the mean when no record has a single value or a mean', () => {
@@ -86,22 +158,19 @@ describe('RFC-63 R10 TraitCard', () => {
   it('renders an Add value button, named after the trait, beside the card when onAdd is given', async () => {
     const onAdd = vi.fn();
     const onOpen = vi.fn();
-    render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={onOpen} onAdd={onAdd} />);
+    render(<TraitCard summary={LEVELLED} onOpen={onOpen} onAdd={onAdd} />);
     await userEvent.click(screen.getByRole('button', { name: 'Add value for sexual system' }));
     expect(onAdd).toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
   });
 
   it('RFC-13 R11 shows a HelpTip with the trait description from the dictionary, outside the open button', async () => {
-    const summary = { ...SEXUAL_SYSTEM_SUMMARY, trait: DICTIONARY_SEXUAL_SYSTEM };
-    // Through a router: the tip carries a "Learn more" link (RFC-73 R4).
+    const summary = { ...LEVELLED, trait: DICTIONARY_SEXUAL_SYSTEM };
     render(withRouter(<TraitCard summary={summary} dictionary={DICTIONARY} onOpen={() => {}} />));
     const card = await screen.findByRole('button', { name: /^sexual system/ });
     const tip = screen.getByRole('button', { name: 'What does sexual system mean?' });
     expect(card.contains(tip)).toBe(false);
     await userEvent.click(tip);
-    // A categorical trait is measured in nothing, so the tip is the
-    // description and no more (spec §7.5).
     expect(tipText(screen.getByRole('tooltip'))).toBe(
       'Distribution of male and female function among individuals.',
     );
@@ -115,7 +184,7 @@ describe('RFC-63 R10 TraitCard', () => {
   });
 
   it('renders no HelpTip when the dictionary has no description for the trait', () => {
-    render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={() => {}} />);
+    render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
     expect(screen.queryByRole('button', { name: /What does .* mean\?/ })).not.toBeInTheDocument();
   });
 });
