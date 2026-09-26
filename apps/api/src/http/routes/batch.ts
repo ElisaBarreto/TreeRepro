@@ -72,10 +72,8 @@ async function run(
     if (/^application\/json\b/i.test(res.headers.get('content-type') ?? '')) {
       return { ref, status: res.status, body: await res.json() };
     }
-    // Drained, not cancelled: cancelling a `Readable.toWeb` stream (the dataset
-    // ZIP, RFC-66) before its first chunk throws an uncaught exception in Node's
-    // adapter. Draining costs what the same single call would.
-    await res.body?.pipeTo(new WritableStream());
+    // Cancelled, not drained: the body is never sent, so an export stops here.
+    await res.body?.cancel();
     return { ref, status: res.status, body: null };
   } catch (err) {
     // An operation that already committed keeps its result: the batch goes on (R11).

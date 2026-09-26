@@ -29,3 +29,8 @@
 **Symptom:** `Cannot find module '@node-rs/argon2-<platform>'` after `pnpm install`, or a slow first test.
 **Cause:** The package ships prebuilt binaries as optional dependencies per platform (`darwin-arm64`, `linux-x64-musl`, …); pnpm installs only the one matching the host. The lockfile lists them all, so the Alpine image resolves `linux-x64-musl` (or `linux-arm64-musl`). No build script runs.
 **Fix:** Keep the lockfile committed; never add `--no-optional`. Each hash costs ~50 ms at the RFC-21 parameters — tests reuse one hash per password through `test/helpers/users.ts`.
+
+## `Readable.toWeb` throws after a cancel
+**Symptom:** A client that aborts a streamed download (or `res.body.cancel()` in a test) crashes the process: uncaught `TypeError: Invalid state: Controller is already closed` (`ERR_INVALID_STATE`) from `node:internal/webstreams/adapters` (issue #207).
+**Cause:** `Readable.toWeb` puts the Node stream in flowing mode and enqueues each `data` chunk; a chunk already in flight when the web stream is cancelled is enqueued on the closed controller.
+**Fix:** Return `ReadableStream.from(nodeReadable)` instead: it pulls through the async iterator, whose `return()` on cancel destroys the source (`datasetZip`, RFC-66 R5).
