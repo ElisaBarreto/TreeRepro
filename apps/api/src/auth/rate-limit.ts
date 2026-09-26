@@ -14,7 +14,8 @@ export interface RateLimitDecision {
 }
 
 export interface RateLimiter {
-  hit(scope: string, key: string, rule: RateLimitRule): Promise<RateLimitDecision>;
+  /** `cost` units are recorded together, or none (RFC-24 R1); default 1. */
+  hit(scope: string, key: string, rule: RateLimitRule, cost?: number): Promise<RateLimitDecision>;
 }
 
 const MINUTE = 60_000;
@@ -55,18 +56,26 @@ export const RATE_LIMITS = {
   apiKeyCreate: { limit: 5, windowMs: QUARTER_HOUR },
 } as const satisfies Record<string, RateLimitRule>;
 
-// KEYS[1] = sorted set; ARGV = now(ms), window(ms), limit, member.
+// KEYS[1] = sorted set; ARGV = now(ms), window(ms), limit, member, cost.
+// Admits when count + cost fits the limit and records `cost` members;
+// otherwise records nothing and returns the wait until enough units leave.
 // Returns {allowed(0|1), retryAfter(ms)}.
 const HIT_SCRIPT = `
 local now = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local cost = tonumber(ARGV[5])
 redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, now - window)
 local count = redis.call('ZCARD', KEYS[1])
-if count >= tonumber(ARGV[3]) then
-  local oldest = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
-  return {0, tonumber(oldest[2]) + window - now}
+if count + cost > limit then
+  if cost > limit then return {0, window} end
+  local lacking = count + cost - limit
+  local nth = redis.call('ZRANGE', KEYS[1], lacking - 1, lacking - 1, 'WITHSCORES')
+  return {0, tonumber(nth[2]) + window - now}
 end
-redis.call('ZADD', KEYS[1], now, ARGV[4])
+for i = 1, cost do
+  redis.call('ZADD', KEYS[1], now, ARGV[4] .. ':' .. i)
+end
 redis.call('PEXPIRE', KEYS[1], window)
 return {1, 0}
 `;
@@ -74,7 +83,7 @@ return {1, 0}
 /** @rfc RFC-24 R1, R2 */
 export function createRateLimiter(redis: Redis, now: () => number = Date.now): RateLimiter {
   return {
-    async hit(scope, key, rule) {
+    async hit(scope, key, rule, cost = 1) {
       const t = now();
       const member = `${t}-${randomBytes(4).toString('hex')}`;
       const result = (await redis.eval(
@@ -85,6 +94,7 @@ export function createRateLimiter(redis: Redis, now: () => number = Date.now): R
         String(rule.windowMs),
         String(rule.limit),
         member,
+        String(cost),
       )) as [number, number];
       if (result[0] === 1) return { allowed: true, retryAfterSeconds: 0 };
       return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(result[1] / 1000)) };

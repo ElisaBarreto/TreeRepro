@@ -7,6 +7,7 @@ import { createUser } from '../test/helpers/users.ts';
 import { generateApiKey } from './auth/api-keys.ts';
 import { hashToken } from './auth/tokens.ts';
 import { apiKeys } from './db/schema/api-keys.ts';
+import { API_KEY_ROUTES } from './http/api-key-routes.ts';
 import { guardKind, guardPermission } from './http/guards.ts';
 import { PUBLIC_ROUTES } from './http/public-routes.ts';
 import { SELF_SERVICE_ROUTES } from './http/self-service-routes.ts';
@@ -30,7 +31,7 @@ function endpoints(routes: RouteEntry[]): Map<string, RouteEntry[]> {
 describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () => {
   const t = useTestApp();
 
-  it('public routes carry no guard, self-service routes requireSession, everything else requirePermission', () => {
+  it('public routes carry no guard, self-service routes requireSession, API-key routes requireApiKey, everything else requirePermission', () => {
     const wrong: string[] = [];
     for (const [key, entries] of endpoints(t.app.routes as RouteEntry[])) {
       const kinds = new Set(entries.map((e) => guardKind(e.handler)).filter(Boolean));
@@ -42,9 +43,13 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
           wrong.push(`${key}: self-service must carry requireSession only`);
         if (path.startsWith('/api/admin/'))
           wrong.push(`${key}: admin routes cannot be self-service`);
+      } else if (API_KEY_ROUTES.includes(key)) {
+        if (!kinds.has('apiKey') || kinds.size !== 1)
+          wrong.push(`${key}: API-key routes carry requireApiKey only`);
       } else {
         if (!kinds.has('permission')) wrong.push(`${key}: needs requirePermission`);
         if (kinds.has('session')) wrong.push(`${key}: carries both guards`);
+        if (kinds.has('apiKey')) wrong.push(`${key}: requireApiKey outside API_KEY_ROUTES`);
       }
     }
     expect(wrong).toEqual([]);
@@ -52,8 +57,11 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
 
   it('the allowlists name only routes that exist and do not overlap', () => {
     const keys = [...endpoints(t.app.routes as RouteEntry[]).keys()];
-    for (const route of [...PUBLIC_ROUTES, ...SELF_SERVICE_ROUTES]) expect(keys).toContain(route);
+    for (const route of [...PUBLIC_ROUTES, ...SELF_SERVICE_ROUTES, ...API_KEY_ROUTES])
+      expect(keys).toContain(route);
     expect(PUBLIC_ROUTES.filter((r) => SELF_SERVICE_ROUTES.includes(r))).toEqual([]);
+    expect(PUBLIC_ROUTES.filter((r) => API_KEY_ROUTES.includes(r))).toEqual([]);
+    expect(SELF_SERVICE_ROUTES.filter((r) => API_KEY_ROUTES.includes(r))).toEqual([]);
   });
 
   it('exposes exactly the routes RFC-22 R1 lists', () => {
@@ -171,6 +179,7 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'GET /api/plots/:id/users',
         'POST /api/plots/:id/species',
         'DELETE /api/plots/:id/species/:speciesId',
+        'POST /api/batch',
       ].sort(),
     );
   });
@@ -207,6 +216,7 @@ describe('RFC-01 R6 negative sweep over every route', () => {
   it('every route with a body schema rejects an unknown field with 400 VALIDATION_FAILED', async () => {
     const admin = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
     const { cookie } = await loginAs(t, admin.user);
+    // `POST /api/batch` needs a key; its unknown-field case is in batch.integration.test.ts.
     const withBody = [
       'POST /api/auth/login',
       'POST /api/auth/login/totp',
@@ -265,7 +275,12 @@ describe('RFC-01 R6 negative sweep over every route', () => {
     const plain = (await loginAs(t, nobody.user)).cookie;
     const adminCookie = (await loginAs(t, admin.user)).cookie;
     for (const key of endpoints(t.app.routes as RouteEntry[]).keys()) {
-      if (PUBLIC_ROUTES.includes(key) || SELF_SERVICE_ROUTES.includes(key)) continue;
+      if (
+        PUBLIC_ROUTES.includes(key) ||
+        SELF_SERVICE_ROUTES.includes(key) ||
+        API_KEY_ROUTES.includes(key)
+      )
+        continue;
       const [method, path] = key.split(' ') as [string, string];
       const denied = await call(t.app, method, concrete(path), {
         body: method === 'GET' ? undefined : {},
@@ -320,7 +335,12 @@ describe('RFC-01 R6 negative sweep over every route', () => {
     const headers = await adminKey();
     const refused: string[] = [];
     for (const [key, entries] of endpoints(t.app.routes as RouteEntry[])) {
-      if (PUBLIC_ROUTES.includes(key) || SELF_SERVICE_ROUTES.includes(key)) continue;
+      if (
+        PUBLIC_ROUTES.includes(key) ||
+        SELF_SERVICE_ROUTES.includes(key) ||
+        API_KEY_ROUTES.includes(key)
+      )
+        continue;
       const permission = entries.map((e) => guardPermission(e.handler)).find(Boolean);
       const [method, path] = key.split(' ') as [string, string];
       const res = await call(t.app, method, concrete(path), {

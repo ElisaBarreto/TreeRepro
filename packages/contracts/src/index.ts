@@ -3,6 +3,7 @@ import './zod-jitless.ts';
 export * from './api-keys.ts';
 export * from './audit.ts';
 export * from './auth.ts';
+export * from './batch.ts';
 export * from './contributions.ts';
 export * from './coverage.ts';
 export * from './curation.ts';

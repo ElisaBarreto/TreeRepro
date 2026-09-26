@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { RATE_LIMITS, type RateLimiter, type RateLimitRule } from '../../auth/rate-limit.ts';
 import { getPii } from '../../security/pii.ts';
+import { batchDispatch } from '../batch-dispatch.ts';
 import { clientIp } from '../client-ip.ts';
 import type { AppEnv } from '../env.ts';
 import { RateLimitedError } from '../errors.ts';
@@ -48,11 +49,13 @@ export function rateLimit(
 
 /**
  * @rfc RFC-24 R4
- * @rfc RFC-82 R9
+ * @rfc RFC-82 R9, R14
  */
 export function globalRateLimit(limiter: RateLimiter): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (c.req.path.startsWith('/api/health')) return next();
+    // RFC-82 R14: the batch paid for its operations before dispatching them.
+    if (batchDispatch.getStore()) return next();
     const apiKey = c.get('apiKey');
     const session = c.get('session');
     const decision = apiKey
