@@ -19,8 +19,11 @@ import { VoteButton } from './VoteButton.tsx';
  * record. A quantitative trait's rows carry Validate/Contest/Complement
  * (spec §2) — a categorical trait's levels carry them on the card instead —
  * each present only when the page passes its handler, that is, when the
- * viewer holds the permission it needs.
+ * viewer holds the permission it needs. Validate is further hidden on the
+ * viewer's own row, since the API refuses to confirm it (spec R-6, mirroring
+ * {@link RecordActions}).
  * @rfc RFC-63 R9
+ * @rfc RFC-65 R3
  * @rfc RFC-70 R1, R4
  */
 export function TraitPanel({
@@ -30,6 +33,7 @@ export function TraitPanel({
   onSelectRecord,
   onValidateRecord,
   onRespondRecord,
+  isOwnRecord,
 }: {
   speciesId: string;
   summary: TraitSummary;
@@ -37,6 +41,8 @@ export function TraitPanel({
   onSelectRecord: (id: string) => void;
   onValidateRecord?: (record: RecordItem) => void;
   onRespondRecord?: (record: RecordItem, intent: RecordIntent) => void;
+  /** True when the record was created by the viewer (spec R-6). */
+  isOwnRecord?: (record: RecordItem) => boolean;
 }) {
   const traitId = summary.trait.id;
   const [sort, setSort] = useState<{ by: RecordSort; order: SortOrder }>({
@@ -83,7 +89,7 @@ export function TraitPanel({
                     header: 'Actions',
                     cell: (record) => (
                       <span className="flex gap-1.5">
-                        {onValidateRecord ? (
+                        {onValidateRecord && !isOwnRecord?.(record) ? (
                           <VoteButton
                             icon="thumbsUp"
                             label={`Validate ${record.recordCode}`}

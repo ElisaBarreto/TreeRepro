@@ -343,6 +343,7 @@ export function SpeciesPage({
           summary={openTrait}
           onClose={() => setOpenTraitId(null)}
           onSelectRecord={setOpenRecord}
+          isOwnRecord={(record) => record.createdBy?.id === me.user.id}
           onValidateRecord={
             canAnnotate
               ? (record) =>

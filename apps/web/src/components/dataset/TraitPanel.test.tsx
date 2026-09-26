@@ -103,6 +103,23 @@ describe('spec §2 TraitPanel row actions', () => {
     expect(within(panel).queryByRole('button', { name: 'Contest TR_7' })).not.toBeInTheDocument();
   });
 
+  it('hides Validate on the viewer’s own row, but keeps it on someone else’s (spec R-6)', async () => {
+    const theirs: RecordItem = {
+      ...MASS,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e98',
+      recordCode: 'TR_8',
+      createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e99', name: 'Grace' },
+    };
+    dataset.fetchRecords.mockResolvedValue(page([MASS, theirs]));
+    mount(SEED_MASS_SUMMARY, {
+      onValidateRecord: vi.fn(),
+      isOwnRecord: (record) => record.createdBy?.id === MASS.createdBy?.id,
+    });
+    const panel = await screen.findByRole('dialog', { name: 'seed mass' });
+    expect(await within(panel).findByRole('button', { name: 'Validate TR_8' })).toBeVisible();
+    expect(within(panel).queryByRole('button', { name: 'Validate TR_7' })).not.toBeInTheDocument();
+  });
+
   it('leaves the rows of a categorical trait alone: its levels carry the actions on the card', async () => {
     dataset.fetchRecords.mockResolvedValue(page([{ ...RECORD, recordCode: 'EB_1' }]));
     mount(SEXUAL_SYSTEM_SUMMARY, { onValidateRecord: vi.fn(), onRespondRecord: vi.fn() });

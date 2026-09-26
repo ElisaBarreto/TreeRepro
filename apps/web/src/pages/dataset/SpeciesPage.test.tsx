@@ -855,7 +855,12 @@ describe('RFC-70 R4, R9 SpeciesPage legend and record decisions', () => {
       ...READER,
       permissions: ['dataset.read', 'records.annotate'],
     });
-    dataset.fetchRecords.mockResolvedValue(page([MASS]));
+    // Someone else's record: the viewer's own carries no Validate (spec R-6).
+    const theirs = {
+      ...MASS,
+      createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e99', name: 'Grace' },
+    };
+    dataset.fetchRecords.mockResolvedValue(page([theirs]));
     await openPage();
     await userEvent.click(screen.getByRole('button', { name: /^seed mass/ }));
     const panel = await screen.findByRole('dialog', { name: 'seed mass' });
@@ -863,8 +868,21 @@ describe('RFC-70 R4, R9 SpeciesPage legend and record decisions', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Validate TR_7' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Validate' }));
     await waitFor(() =>
-      expect(curation.annotateRecord).toHaveBeenCalledWith(MASS.id, { kind: 'confirm' }),
+      expect(curation.annotateRecord).toHaveBeenCalledWith(theirs.id, { kind: 'confirm' }),
     );
+  });
+
+  it('hides Validate on the viewer’s own record in a quantitative trait’s panel (spec R-6)', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...READER,
+      permissions: ['dataset.read', 'records.annotate'],
+    });
+    dataset.fetchRecords.mockResolvedValue(page([MASS]));
+    await openPage();
+    await userEvent.click(screen.getByRole('button', { name: /^seed mass/ }));
+    const panel = await screen.findByRole('dialog', { name: 'seed mass' });
+    await within(panel).findByRole('columnheader', { name: 'Added' });
+    expect(within(panel).queryByRole('button', { name: 'Validate TR_7' })).not.toBeInTheDocument();
   });
 
   it('contests one record from a quantitative trait’s panel, that record responded to', async () => {
