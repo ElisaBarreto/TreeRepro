@@ -225,7 +225,7 @@ describe('RFC-63 R10 TraitCard', () => {
       );
     });
 
-    it('still shows the popover, with only the Maps link, for a trait with maps but no description', async () => {
+    it('still shows the popover, with only the Maps link and no Learn more, for a trait with maps but no description', async () => {
       maps.useHasMaps.mockReturnValue(true);
       render(withRouter(<TraitCard summary={LEVELLED} onOpen={() => {}} />));
       const tip = await screen.findByRole('button', { name: 'What does sexual system mean?' });
@@ -235,6 +235,7 @@ describe('RFC-63 R10 TraitCard', () => {
         'href',
         `/app/maps/${SEXUAL_SYSTEM.id}`,
       );
+      expect(within(popover).queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
     });
 
     it('renders no HelpTip at all for a trait with neither a description nor maps', () => {

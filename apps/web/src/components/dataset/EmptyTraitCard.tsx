@@ -44,7 +44,7 @@ export function EmptyTraitCard({
           {tip || hasMaps ? (
             <HelpTip
               label={`What does ${name} mean?`}
-              learnMore={helpHref('vocabulary', 'descriptions')}
+              learnMore={tip ? helpHref('vocabulary', 'descriptions') : undefined}
               extraLink={hasMaps ? { to: `/app/maps/${trait.id}`, label: 'Maps' } : undefined}
             >
               {tip ?? 'Global maps are available for this trait.'}

@@ -103,7 +103,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
       );
     });
 
-    it('still shows the popover, holding the Maps link, for a trait with maps but no description', async () => {
+    it('still shows the popover, holding the Maps link and no Learn more, for a trait with maps but no description', async () => {
       maps.useHasMaps.mockReturnValue(true);
       render(withRouter(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} />));
       await userEvent.click(
@@ -114,6 +114,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
         'href',
         `/app/maps/${SELF_COMPATIBILITY_MISSING_SUMMARY.trait.id}`,
       );
+      expect(within(tip).queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
     });
 
     it('renders no HelpTip at all for a trait with neither a description nor maps', () => {
