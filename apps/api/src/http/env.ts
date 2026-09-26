@@ -10,6 +10,7 @@ export type AppEnv = {
     logger: Logger;
     session?: SessionRecord;
     user?: UserRow;
+    apiKey?: { id: string };
     permissions?: ReadonlySet<PermissionKey>;
     visibility?: Visibility;
     userScope?: { plots: PlotRef[]; restricted: boolean };

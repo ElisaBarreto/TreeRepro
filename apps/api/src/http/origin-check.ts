@@ -1,13 +1,23 @@
 import type { MiddlewareHandler } from 'hono';
+import { bearerToken } from '../auth/api-keys.ts';
 import type { AppEnv } from './env.ts';
 import { AppError } from './errors.ts';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-/** @rfc RFC-02 R3 */
+/**
+ * @rfc RFC-02 R3
+ * @rfc RFC-82 R5
+ */
 export function originCheck(appOrigin: string): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    if (!SAFE_METHODS.has(c.req.method) && c.req.header('origin') !== appOrigin) {
+    // RFC-82 R5: a Bearer header with no Cookie header cannot be a browser's
+    // cross-site request, so it is exempt from the Origin check. Whether a
+    // request "carries a key" is decided the same way resolveSession decides
+    // it authenticates one, via `bearerToken`, so the two never disagree.
+    const bearerOnly =
+      bearerToken(c.req.header('authorization')) !== null && !c.req.header('cookie');
+    if (!bearerOnly && !SAFE_METHODS.has(c.req.method) && c.req.header('origin') !== appOrigin) {
       throw new AppError('SECURITY_INVALID_ORIGIN', 'Request origin is not allowed');
     }
     await next();

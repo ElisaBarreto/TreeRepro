@@ -49,4 +49,17 @@ describe('RFC-02 R3 origin check', () => {
     // the check let it through.
     expect((await app().request('/m', { method: 'OPTIONS' })).status).toBe(404);
   });
+
+  it('RFC-82 R5 exempts a Bearer request without cookies, but not one carrying a cookie too', async () => {
+    const res = await app().request('/m', {
+      method: 'POST',
+      headers: { authorization: 'Bearer tr_live_x' },
+    });
+    expect(res.status).toBe(200);
+    const withCookie = await app().request('/m', {
+      method: 'POST',
+      headers: { authorization: 'Bearer tr_live_x', cookie: 'a=b' },
+    });
+    expect(withCookie.status).toBe(403);
+  });
 });

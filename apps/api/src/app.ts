@@ -101,7 +101,7 @@ export function createApp(deps: AppDeps) {
   app.use(requestLogger(deps.logger));
   app.use(originCheck(deps.config.appOrigin));
   app.use(bodyLimit({ maxSize: BODY_LIMIT_BYTES }));
-  app.use(resolveSession({ sessions: deps.sessions, db: deps.db }));
+  app.use(resolveSession({ sessions: deps.sessions, db: deps.db, now: deps.now }));
   app.use(globalRateLimit(deps.limiter));
 
   app.route('/health', healthRoutes(deps.health));

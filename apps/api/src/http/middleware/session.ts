@@ -1,5 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { auditVia } from '../../audit/via.ts';
+import { bearerToken, findUsableKey } from '../../auth/api-keys.ts';
 import type { SessionRecord, SessionStore } from '../../auth/sessions.ts';
 import { findUserById } from '../../auth/users.ts';
 import type { Db } from '../../db/client.ts';
@@ -42,15 +44,31 @@ export function readMfaCookie(c: Context<AppEnv>): string | undefined {
 
 /**
  * Runs on every request: a valid cookie puts `session` and `user` on the
- * context; an invalid one is revoked and cleared. Never rejects by itself.
+ * context; an invalid one is revoked and cleared. A Bearer header
+ * authenticates independently of the cookie and never sets `session`, so a
+ * key never reaches a self-service route (RFC-82 R6). Never rejects a
+ * request that carries neither.
  * @rfc RFC-22 R7
+ * @rfc RFC-82 R3, R4
  */
 export function resolveSession(deps: {
   sessions: SessionStore;
   db: Db;
+  now?: () => number;
 }): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
+    const raw = bearerToken(c.req.header('authorization'));
     const rawId = getCookie(c, SESSION_COOKIE);
+    if (raw !== null) {
+      // RFC-82 R3, R4: a Bearer header authenticates or the request stops here.
+      if (rawId)
+        throw new AppError('AUTH_UNAUTHENTICATED', 'Use a session or an API key, not both');
+      const found = await findUsableKey({ db: deps.db, now: deps.now ?? Date.now }, raw);
+      if (!found) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
+      c.set('user', found.user);
+      c.set('apiKey', { id: found.id });
+      return auditVia.run({ apiKeyId: found.id }, () => next());
+    }
     if (rawId) {
       const session = await deps.sessions.get(rawId);
       const user = session ? await findUserById(deps.db, session.userId) : null;
@@ -66,9 +84,12 @@ export function resolveSession(deps: {
   };
 }
 
-/** @rfc RFC-22 R8 */
+/**
+ * @rfc RFC-22 R8
+ * @rfc RFC-82 R6
+ */
 export const requireSession: MiddlewareHandler<AppEnv> = markGuard(async (c, next) => {
-  if (!c.get('user')) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
+  if (!c.get('session')) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
   await next();
 }, 'session');
 
