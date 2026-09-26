@@ -116,10 +116,11 @@ describe('RFC-21 R7 changePassword', () => {
 describe('RFC-23 R2, R3, R7 TOTP calls; RFC-22 R9 logoutAll', () => {
   it('setup returns secret and uri; confirm returns the recovery codes; disable and logoutAll post', async () => {
     mockJson(200, { data: { secret: 'JBSWY3DPEHPK3PXP', otpauthUri: 'otpauth://totp/x' } });
-    await expect(totpSetup()).resolves.toEqual({
+    await expect(totpSetup('pw')).resolves.toEqual({
       secret: 'JBSWY3DPEHPK3PXP',
       otpauthUri: 'otpauth://totp/x',
     });
+    expect(JSON.parse(String(lastRequest().init?.body))).toEqual({ password: 'pw' });
     mockJson(200, {
       data: { recoveryCodes: Array.from({ length: 10 }, (_, i) => `abcde-fghi${i}`) },
     });

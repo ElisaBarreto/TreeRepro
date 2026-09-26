@@ -18,10 +18,14 @@ import { updateTotp } from '../users.ts';
 export async function startTotpSetup(
   ctx: AuthContext,
   user: UserRow,
+  password: string,
 ): Promise<{ secret: string; otpauthUri: string }> {
   if (user.totpEnabledAt !== null) {
     throw new AppError('AUTH_TOTP_ALREADY_ENABLED', 'Two-factor authentication is already enabled');
   }
+  const verified =
+    user.passwordHash !== null && (await verifyPassword(user.passwordHash, password));
+  if (!verified) throw new AppError('AUTH_INVALID_CREDENTIALS', 'Password is incorrect');
   const secret = generateTotpSecret();
   await ctx.mfa.putSetupSecret(user.id, secret);
   return { secret, otpauthUri: totpUri(secret, user.email) };

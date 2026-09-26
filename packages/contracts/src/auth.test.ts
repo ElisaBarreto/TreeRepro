@@ -11,6 +11,7 @@ import {
   recoveryCodeSchema,
   tokenSchema,
   totpDisableBodySchema,
+  totpSetupBodySchema,
 } from './auth.ts';
 
 const TOKEN = 'A'.repeat(43);
@@ -64,6 +65,9 @@ describe('RFC-02 R2 auth request schemas are strict', () => {
       totpDisableBodySchema.safeParse({ password: 'a', recoveryCode: 'abcde-fghij' }).success,
     ).toBe(true);
     expect(totpDisableBodySchema.safeParse({ password: 'a' }).success).toBe(false);
+    expect(totpSetupBodySchema.safeParse({ password: 'a' }).success).toBe(true);
+    expect(totpSetupBodySchema.safeParse({}).success).toBe(false);
+    expect(totpSetupBodySchema.safeParse({ password: '' }).success).toBe(false);
   });
 
   it('RFC-22 R10 authUserSchema shape', () => {

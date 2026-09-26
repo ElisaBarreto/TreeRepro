@@ -56,6 +56,9 @@ export const changePasswordBodySchema = z.strictObject({
   newPassword: passwordSchema,
 });
 
+/** @rfc RFC-23 R2 */
+export const totpSetupBodySchema = z.strictObject({ password: z.string().min(1).max(128) });
+
 /** @rfc RFC-23 R3 */
 export const totpConfirmBodySchema = z.strictObject({ code: totpCodeSchema });
 
@@ -145,6 +148,7 @@ export type ForgotPasswordBody = z.infer<typeof forgotPasswordBodySchema>;
 export type ResetPasswordBody = z.infer<typeof resetPasswordBodySchema>;
 export type ChangePasswordBody = z.infer<typeof changePasswordBodySchema>;
 export type TotpConfirmBody = z.infer<typeof totpConfirmBodySchema>;
+export type TotpSetupBody = z.infer<typeof totpSetupBodySchema>;
 export type TotpDisableBody = z.infer<typeof totpDisableBodySchema>;
 export type AuthUser = z.infer<typeof authUserSchema>;
 export type SignedIn = z.infer<typeof signedInSchema>;

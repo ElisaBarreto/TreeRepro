@@ -23,6 +23,14 @@ vi.mock('qrcode', () => ({
     return Promise.resolve();
   }),
 }));
+/** Opens the setup dialog and submits the password (RFC-23 R2). */
+async function startSetup(password = 'my passphrase') {
+  await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+  await screen.findByRole('dialog', { name: 'Set up two-factor authentication' });
+  await userEvent.type(screen.getByLabelText('Password'), password);
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+}
+
 const CODES = Array.from({ length: 10 }, (_, i) => `abcde-fgh${i}${i}`);
 
 beforeEach(() => {
@@ -40,8 +48,9 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     auth.totpConfirm.mockResolvedValue(CODES);
     const { queryClient } = renderWithProviders(<TotpSection />, { me: ME });
     expect(screen.getByText('Two-factor authentication is off.')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await startSetup();
     expect(await screen.findByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument();
+    expect(auth.totpSetup).toHaveBeenCalledWith('my passphrase');
     const canvas = screen.getByRole('img', { name: 'QR code for your authenticator app' });
     await waitFor(() => expect(canvas).not.toHaveAttribute('style'));
     expect(canvas).toHaveClass('size-48');
@@ -63,7 +72,7 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     auth.totpSetup.mockResolvedValue({ secret: 'S', otpauthUri: 'otpauth://totp/x' });
     auth.totpConfirm.mockRejectedValue(new ApiError(401, 'AUTH_TOTP_INVALID', 'x'));
     renderWithProviders(<TotpSection />, { me: ME });
-    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await startSetup();
     await userEvent.type(await screen.findByLabelText('Verification code'), '000000');
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('That code is not valid.');
@@ -72,7 +81,7 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
   it('validates the code locally before calling the API', async () => {
     auth.totpSetup.mockResolvedValue({ secret: 'S', otpauthUri: 'otpauth://totp/x' });
     renderWithProviders(<TotpSection />, { me: ME });
-    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await startSetup();
     await userEvent.type(await screen.findByLabelText('Verification code'), '12345');
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(
@@ -85,10 +94,33 @@ describe('RFC-23 R2, R3 enabling TOTP', () => {
     auth.totpSetup.mockResolvedValue({ secret: 'S', otpauthUri: 'otpauth://totp/x' });
     auth.totpConfirm.mockImplementation(() => new Promise(() => {}));
     renderWithProviders(<TotpSection />, { me: ME });
-    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await startSetup();
     await userEvent.type(await screen.findByLabelText('Verification code'), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled());
+  });
+});
+
+describe('RFC-23 R2 setup asks for the password', () => {
+  it('requires a password before calling the API', async () => {
+    renderWithProviders(<TotpSection />, { me: ME });
+    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await screen.findByRole('dialog', { name: 'Set up two-factor authentication' });
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText('Enter your password.')).toBeInTheDocument();
+    expect(auth.totpSetup).not.toHaveBeenCalled();
+  });
+
+  it('maps a wrong password and forgets it after Cancel', async () => {
+    auth.totpSetup.mockRejectedValueOnce(new ApiError(401, 'AUTH_INVALID_CREDENTIALS', 'x'));
+    const { queryClient } = renderWithProviders(<TotpSection />, { me: ME });
+    await startSetup('wrong password');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your password is incorrect.');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Password')).toHaveValue('');
   });
 });
 

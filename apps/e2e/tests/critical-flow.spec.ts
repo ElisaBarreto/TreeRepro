@@ -142,6 +142,9 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     await page.getByRole('link', { name: 'Settings' }).click();
     const totp = page.getByRole('region', { name: 'Two-factor authentication' });
     await totp.getByRole('button', { name: 'Set up' }).click();
+    const start = page.getByRole('dialog', { name: 'Set up two-factor authentication' });
+    await start.getByLabel('Password').fill(currentPassword);
+    await start.getByRole('button', { name: 'Continue' }).click();
     const secret = await totp.getByText(/^[A-Z2-7]{16,}$/).textContent();
     if (!secret) throw new Error('no TOTP secret shown');
     totpSecret = secret;

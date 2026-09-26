@@ -72,26 +72,38 @@ type Stage =
 export function TotpSection() {
   const me = useMe();
   const queryClient = useQueryClient();
-  const ids = { code: useId(), password: useId(), disableCode: useId() };
+  const ids = {
+    code: useId(),
+    setupPassword: useId(),
+    password: useId(),
+    disableCode: useId(),
+  };
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
+  const [starting, setStarting] = useState(false);
+  const [setupPasswordError, setSetupPasswordError] = useState<string>();
   const [disabling, setDisabling] = useState(false);
   const [codeFieldError, setCodeFieldError] = useState<string | null>(null);
   const [disableFieldErrors, setDisableFieldErrors] = useState<{
     password?: string;
     code?: string;
   }>({});
+  const setupFormRef = useRef<HTMLFormElement>(null);
   const disableFormRef = useRef<HTMLFormElement>(null);
   const setEnabled = (totpEnabled: boolean) =>
     queryClient.setQueryData<MeResponse>(ME_QUERY_KEY, (old) =>
       old ? { ...old, user: { ...old.user, totpEnabled } } : old,
     );
 
-  // gcTime 0: the secret and the recovery codes in these mutations' `data`
-  // leave the MutationCache as soon as they are reset, not five minutes later.
+  // gcTime 0: the password in `variables`, the secret and the recovery codes in
+  // these mutations' `data` leave the MutationCache as soon as they are reset,
+  // not five minutes later.
   const setup = useMutation({
-    mutationFn: () => totpSetup(),
+    mutationFn: (password: string) => totpSetup(password),
     gcTime: 0,
-    onSuccess: (data) => setStage({ kind: 'setup', ...data }),
+    onSuccess: (data) => {
+      setStarting(false);
+      setStage({ kind: 'setup', ...data });
+    },
   });
   const confirm = useMutation({
     mutationFn: (code: string) => totpConfirm(code),
@@ -140,6 +152,26 @@ export function TotpSection() {
     setup.reset();
     confirm.reset();
     setStage({ kind: 'idle' });
+  }
+
+  /** Dismisses the password dialog; a failed attempt's error and password go with it. */
+  function closeStart() {
+    if (setup.isPending) return;
+    setup.reset();
+    setSetupPasswordError(undefined);
+    setupFormRef.current?.reset();
+    setStarting(false);
+  }
+
+  function submitStart(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const password = String(new FormData(event.currentTarget).get('password') ?? '');
+    if (!password) {
+      setSetupPasswordError('Enter your password.');
+      return;
+    }
+    setSetupPasswordError(undefined);
+    setup.mutate(password);
   }
 
   function cancelSetup() {
@@ -295,12 +327,42 @@ export function TotpSection() {
       ) : (
         <>
           <p className="text-body text-canopy-800">Two-factor authentication is off.</p>
-          {setup.isError ? <Alert tone="error">{totpErrorMessage(setup.error)}</Alert> : null}
           <div>
-            <Button onClick={() => setup.mutate()} pending={setup.isPending}>
-              Set up
-            </Button>
+            <Button onClick={() => setStarting(true)}>Set up</Button>
           </div>
+          <Dialog
+            open={starting}
+            title="Set up two-factor authentication"
+            onClose={closeStart}
+            closeDisabled={setup.isPending}
+          >
+            <form
+              ref={setupFormRef}
+              onSubmit={submitStart}
+              className="flex flex-col gap-4"
+              noValidate
+            >
+              <Field id={ids.setupPassword} label="Password" error={setupPasswordError}>
+                <Input
+                  id={ids.setupPassword}
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  invalid={Boolean(setupPasswordError)}
+                  required
+                />
+              </Field>
+              {setup.isError ? <Alert tone="error">{totpErrorMessage(setup.error)}</Alert> : null}
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" onClick={closeStart} disabled={setup.isPending}>
+                  Cancel
+                </Button>
+                <Button type="submit" pending={setup.isPending}>
+                  Continue
+                </Button>
+              </div>
+            </form>
+          </Dialog>
         </>
       )}
     </Section>

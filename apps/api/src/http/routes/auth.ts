@@ -7,6 +7,7 @@ import {
   resetPasswordBodySchema,
   totpConfirmBodySchema,
   totpDisableBodySchema,
+  totpSetupBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { resolvePermissions } from '../../access/permissions.ts';
@@ -165,8 +166,10 @@ export function authRoutes(ctx: AuthContext) {
         return c.json({ data: { status: 'ok' as const } });
       },
     )
-    .post('/totp/setup', requireSession, async (c) =>
-      c.json({ data: await startTotpSetup(ctx, currentUser(c)) }),
+    .post('/totp/setup', requireSession, validate('json', totpSetupBodySchema), async (c) =>
+      c.json({
+        data: await startTotpSetup(ctx, currentUser(c), c.req.valid('json').password),
+      }),
     )
     .post('/totp/confirm', requireSession, validate('json', totpConfirmBodySchema), async (c) =>
       c.json({
