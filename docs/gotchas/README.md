@@ -18,3 +18,4 @@ Concrete pitfalls of this project's code and infrastructure. One file per area, 
 | Dataset import | `import.md` |
 | Dataset curation | `dataset.md` |
 | GBIF taxonomy lookup | `taxonomy.md` |
+| External API (RFC-82) | `api.md` |

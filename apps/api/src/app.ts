@@ -14,6 +14,7 @@ import type { AppEnv } from './http/env.ts';
 import { createErrorHandler, errorBody } from './http/errors.ts';
 import { globalRateLimit } from './http/middleware/rate-limit.ts';
 import { resolveSession } from './http/middleware/session.ts';
+import type { RouteEntry } from './http/openapi.ts';
 import { originCheck } from './http/origin-check.ts';
 import { requestLogger } from './http/request-logger.ts';
 import { adminRoutes } from './http/routes/admin/index.ts';
@@ -24,6 +25,7 @@ import { coverageRoutes } from './http/routes/coverage.ts';
 import { dashboardRoutes } from './http/routes/dashboard.ts';
 import { datasetRoutes } from './http/routes/dataset/index.ts';
 import { myProposalRoutes } from './http/routes/dataset/proposals.ts';
+import { defaultGuidePath, docsRoutes } from './http/routes/docs.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
 import { helpRoutes } from './http/routes/help.ts';
 import { meRoutes } from './http/routes/me.ts';
@@ -50,6 +52,8 @@ export interface AppDeps {
   permissionCache: PermissionCache;
   /** Default `apps/api/maps/`; tests point it at a fixture (RFC-76 R1). */
   mapsDir?: string;
+  /** Default `docs/api/guide.md`; tests point it at a fixture (RFC-82 R20). */
+  guidePath?: string;
   /** Epoch ms; tests inject a controllable clock. */
   now?: () => number;
 }
@@ -64,7 +68,7 @@ export const BODY_LIMIT_BYTES = 1024 * 1024;
  * @rfc RFC-22 R7
  * @rfc RFC-24 R4
  * @rfc RFC-76 R1
- * @rfc RFC-82 R11
+ * @rfc RFC-82 R11, R20
  */
 export function createApp(deps: AppDeps) {
   const ctx: AuthContext = {
@@ -129,6 +133,11 @@ export function createApp(deps: AppDeps) {
   app.route(
     '/batch',
     batchRoutes(ctx, (request) => Promise.resolve(root.fetch(request))),
+  );
+  // RFC-82 R20: the guide and the generated reference, both API-key routes.
+  app.route(
+    '/docs',
+    docsRoutes(() => root.routes as RouteEntry[], deps.guidePath ?? defaultGuidePath()),
   );
   app.route('/', datasetRoutes(ctx));
 

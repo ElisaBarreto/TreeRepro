@@ -3,5 +3,10 @@
  * `"<METHOD> <path>"`; each carries `requireApiKey` and nothing else.
  * @rfc RFC-32 R5
  * @rfc RFC-82 R10
+ * @rfc RFC-82 R20
  */
-export const API_KEY_ROUTES: readonly string[] = ['POST /api/batch'];
+export const API_KEY_ROUTES: readonly string[] = [
+  'POST /api/batch',
+  'GET /api/docs',
+  'GET /api/docs/openapi.json',
+];

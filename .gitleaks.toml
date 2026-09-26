@@ -75,3 +75,16 @@ paths = [
   '''^apps/api/src/integrations/fixtures/gbif/backbone-exact\.json$''',
   '''^apps/api/src/integrations/fixtures/gbif/backbone-variant\.json$''',
 ]
+
+# The external API guide pins the SHA-256 of the generated OpenAPI reference
+# on its first line (`openapi-sha256: <64 hex>`, RFC-82 R19). A public digest
+# of a public document, not a secret; `generic-api-key` flags it because a
+# 64-hex value follows a `sha256:`-style name. Scoped by the whole match (the
+# literal prefix plus exactly 64 lowercase hex) AND by the one file, so any
+# other value in that file, or this line anywhere else, still fails the job.
+[[rules.allowlists]]
+description = "openapi-sha256 line of the API guide (RFC-82 R19) — a public digest, not a secret"
+condition = "and"
+regexTarget = "match"
+regexes = ['''^openapi-sha256: [0-9a-f]{64}$''']
+paths = ['''^docs/api/guide\.md$''']

@@ -217,7 +217,7 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     await anonymous.dispose();
   });
 
-  test('RFC-82 R10-R15 sends a batch with the key and sees its effect in the workspace', async () => {
+  test('RFC-82 R10-R15, R20 sends a batch with the key, reads the docs and sees its effect in the workspace', async () => {
     const family = `E2ebatchaceae${Date.now()}`;
     const anonymous = await request.newContext();
     const res = await anonymous.post(`${BASE_URL}/api/batch`, {
@@ -234,6 +234,18 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     const { data } = await res.json();
     expect(data.summary).toEqual({ ok: 1, failed: 2 });
     expect(data.results.map((r: { status: number }) => r.status)).toEqual([201, 409, 400]);
+
+    // RFC-82 R20: the guide and the reference ship in the production image.
+    const guide = await anonymous.get(`${BASE_URL}/api/docs`, {
+      headers: { authorization: `Bearer ${apiSecret}` },
+    });
+    expect(guide.status()).toBe(200);
+    expect(await guide.text()).toMatch(/^openapi-sha256: [0-9a-f]{64}\r?\n/);
+    const reference = await anonymous.get(`${BASE_URL}/api/docs/openapi.json`, {
+      headers: { authorization: `Bearer ${apiSecret}` },
+    });
+    expect(reference.status()).toBe(200);
+    expect((await reference.json()).paths['/api/batch']).toBeDefined();
     await anonymous.dispose();
 
     await page.goto(`${BASE_URL}/app/taxa`);
