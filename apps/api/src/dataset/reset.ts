@@ -42,8 +42,9 @@ export const RESET_TABLES = [
  * why this runs as the migrator role and never as `treerepro_app`, and why
  * `treerepro_app` keeps holding no `UPDATE`/`DELETE` on these tables.
  * @rfc RFC-63 R4
+ * @rfc RFC-64 R12, R15
  */
-const APPEND_ONLY_TRIGGERS: readonly [string, string][] = [
+export const APPEND_ONLY_TRIGGERS: readonly [string, string][] = [
   ['trait_records', 'trait_records_append_only'],
   ['trait_records', 'trait_records_no_truncate'],
   ['record_annotations', 'record_annotations_append_only'],

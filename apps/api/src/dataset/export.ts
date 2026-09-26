@@ -173,15 +173,22 @@ function visibleRecord(v: Visibility): SQL {
     and ${recordVisible(v, sql`r.id`, sql`r.harmonisation`)}`;
 }
 
-/** A reference as the export prints it: its citation key, or `Personal observation`. */
-const REF_LABEL = sql`case when b.kind = 'personal_observation' then 'Personal observation' else b.citation_key end`;
+/**
+ * A reference as the export prints it: its citation key, or `Personal observation`.
+ * @rfc RFC-66 R2
+ * @rfc RFC-64 R15
+ */
+export const REF_LABEL = sql`case when b.kind = 'personal_observation' then 'Personal observation' else b.citation_key end`;
 
 /**
  * Record `r`'s references, `; `-joined: primary, secondary, then
  * `record_references` (RFC-63 R16). A reference named twice is kept once, in
  * its earliest slot, as in the API's item.
+ * @rfc RFC-66 R2
+ * @rfc RFC-63 R16
+ * @rfc RFC-64 R15
  */
-const REFERENCES_OF_R = sql`(select string_agg(y.label, '; ' order by y.pos, y.key)
+export const REFERENCES_OF_R = sql`(select string_agg(y.label, '; ' order by y.pos, y.key)
   from (select distinct on (x.id) ${REF_LABEL} as label, x.pos, b.citation_key as key
     from (select r.primary_reference_id as id, 0 as pos
           union all select r.secondary_reference_id, 1
