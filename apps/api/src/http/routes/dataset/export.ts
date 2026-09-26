@@ -33,7 +33,7 @@ export function exportRoutes(ctx: AuthContext) {
       c.header('Content-Type', 'text/csv; charset=utf-8');
       c.header('Content-Disposition', `attachment; filename="treerepro-records-${day}.csv"`);
       c.header('Cache-Control', 'no-store');
-      return c.body(recordsCsv(ctx.db, visibility));
+      return c.body(recordsCsv(ctx.db, visibility, { scope: 'all' }));
     },
   );
 }
