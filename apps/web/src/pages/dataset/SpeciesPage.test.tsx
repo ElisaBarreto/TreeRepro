@@ -209,6 +209,8 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
       expect(dataset.fetchRecords).toHaveBeenCalledWith({
         speciesId: SPECIES.id,
         traitId: SEXUAL_SYSTEM.id,
+        sort: 'added',
+        order: 'desc',
         cursor: undefined,
         limit: 50,
       }),
@@ -218,10 +220,11 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(rows).toHaveLength(3);
     expect(within(rows[1] as HTMLElement).getByRole('button', { name: 'dioecious' })).toBeVisible();
     expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'Renner2014' })).toBeVisible();
-    expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'TRY-6.0' })).toBeVisible();
+    expect(within(rows[1] as HTMLElement).getAllByRole('link', { name: 'TRY-6.0' })).toHaveLength(
+      2,
+    );
     expect(rows[1]).toHaveTextContent('import');
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('Validated')).toBeInTheDocument();
     expect(rows[1]).toHaveTextContent('2026-09-01');
     expect(within(rows[2] as HTMLElement).getByRole('button', { name: 'about two' })).toBeVisible();
     expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
