@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { captureLogger } from '../../test/helpers/logger.ts';
 import type { AppEnv } from './env.ts';
 import { createErrorHandler } from './errors.ts';
-import { validate } from './validate.ts';
+import { validate, validatorSchema } from './validate.ts';
 
 const bodySchema = z.strictObject({ name: z.string().min(1), age: z.number().int() });
 const querySchema = z.strictObject({ limit: z.coerce.number().int().max(200).optional() });
@@ -73,5 +73,18 @@ describe('RFC-02 R2 strict validation', () => {
     const res = await app().request('/things?limit=999');
     expect(res.status).toBe(400);
     expect((await res.json()).error.details[0].path).toBe('limit');
+  });
+});
+
+describe('RFC-82 R16 validatorSchema', () => {
+  it('returns the target and schema a validate() middleware was built with', () => {
+    const schema = z.strictObject({ id: z.string() });
+    expect(validatorSchema(validate('param', schema))).toEqual({ target: 'param', schema });
+    expect(validatorSchema(validate('json', schema))).toEqual({ target: 'json', schema });
+  });
+
+  it('returns undefined for any other function', () => {
+    expect(validatorSchema(() => undefined)).toBeUndefined();
+    expect(validatorSchema('x')).toBeUndefined();
   });
 });

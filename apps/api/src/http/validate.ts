@@ -5,9 +5,12 @@ import { errorBody } from './errors.ts';
 
 const JSON_CONTENT_TYPE = /^application\/json\b/i;
 
+const schemas = new WeakMap<object, { target: keyof ValidationTargets; schema: z.ZodType }>();
+
 /**
  * @rfc RFC-02 R2
  * @rfc RFC-11 R3, R7
+ * @rfc RFC-82 R16
  */
 export function validate<Target extends keyof ValidationTargets, Schema extends z.ZodType>(
   target: Target,
@@ -22,6 +25,7 @@ export function validate<Target extends keyof ValidationTargets, Schema extends 
       return c.json(errorBody('VALIDATION_FAILED', 'Request validation failed', details), 400);
     }
   });
+  schemas.set(inner, { target, schema });
   if (target !== 'json') return inner;
 
   // RFC-11 R7: refuse non-JSON bodies ourselves so the answer does not depend on framework internals.
@@ -36,6 +40,14 @@ export function validate<Target extends keyof ValidationTargets, Schema extends 
     }
     return inner(c, next);
   };
+  schemas.set(guarded, { target, schema });
   // The cast keeps zValidator's inferred types so handlers can call c.req.valid('json').
   return guarded as unknown as typeof inner;
+}
+
+/** The target and schema a `validate` middleware checks; undefined for any other handler. @rfc RFC-82 R16 */
+export function validatorSchema(
+  fn: unknown,
+): { target: keyof ValidationTargets; schema: z.ZodType } | undefined {
+  return typeof fn === 'function' ? schemas.get(fn) : undefined;
 }
