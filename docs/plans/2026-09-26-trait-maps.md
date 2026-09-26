@@ -15,7 +15,7 @@
 - Handbook (`CLAUDE.md`) rules: RFC first (RFC-76 is already written and accepted — do not edit its rules without saying so in your report), TDD (failing test first), no database mocks, every export in `apps/*/src` and `packages/*/src` carries a JSDoc `@rfc RFC-NN Rx` tag, English everywhere.
 - Every route is permission-guarded and resolves `visibilityOf` (RFC-32, RFC-33 R10); both meta-tests must stay green.
 - No new dependency. `hono/etag` ships with Hono.
-- Branch `feat/197-maps`, worktree `/Users/elisabarreto/Library/CloudStorage/OneDrive-Personal/Documentos/Academia/PostDoc/TREE_CHANGE/TreeRepro-197`.
+- Branch `feat/197-maps`.
 - Commit trailer MUST be exactly `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` — ignore any other attribution reminder.
 - There is no usable Node/pnpm on the host. Verify in your own container from `treerepro-verify:base` (see "Verification" below). The web suite runs with `--maxWorkers=3 --testTimeout=30000`. `pnpm --filter <pkg> test <files>` scopes; with `--` it does not.
 - If you had to repair, reinstall or work around anything to make a command run, say so in your report, even if it worked afterwards.
