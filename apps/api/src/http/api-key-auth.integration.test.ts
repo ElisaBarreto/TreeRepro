@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { call, useTestApp } from '../../test/helpers/app.ts';
+import { call, randomIp, useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
 import { adminRoleId } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { generateApiKey } from '../auth/api-keys.ts';
+import { RATE_LIMITS } from '../auth/rate-limit.ts';
 import { hashToken } from '../auth/tokens.ts';
 import { apiKeys } from '../db/schema/api-keys.ts';
 
@@ -58,11 +59,54 @@ describe('RFC-82 R3-R6, R8, R9 Bearer authentication', () => {
     expect((await res.json()).error.code).toBe('AUTH_UNAUTHENTICATED');
   });
 
+  it('R3 a Bearer scheme with no token answers 401, not an anonymous pass-through', async () => {
+    // No Origin is sent, so a false exemption here would surface as 403
+    // (SECURITY_INVALID_ORIGIN) instead of the 401 this asserts; the default
+    // Origin is kept so the only thing under test is resolveSession's own
+    // handling of a header it cannot parse as a key.
+    const res = await call(t.app, 'POST', '/api/auth/login', {
+      headers: { authorization: 'Bearer ' },
+      body: { email: 'a@b.test', password: 'x' },
+    });
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.code).toBe('AUTH_UNAUTHENTICATED');
+  });
+
+  it('R3 a Bearer scheme with more than one token answers 401, not an anonymous pass-through', async () => {
+    const res = await call(t.app, 'POST', '/api/auth/login', {
+      headers: { authorization: 'Bearer a b' },
+      body: { email: 'a@b.test', password: 'x' },
+    });
+    expect(res.status).toBe(401);
+    expect((await res.json()).error.code).toBe('AUTH_UNAUTHENTICATED');
+  });
+
+  it('RFC-24 R4 a flood of bogus keys from one IP still counts against global:ip', async () => {
+    const ip = randomIp();
+    for (let i = 0; i < RATE_LIMITS.globalIp.limit; i++) {
+      const res = await call(t.app, 'POST', '/api/auth/login', {
+        headers: bearer('tr_live_nope'),
+        origin: null,
+        ip,
+        body: { email: 'a@b.test', password: 'x' },
+      });
+      expect(res.status).toBe(401);
+    }
+    const last = await call(t.app, 'POST', '/api/auth/login', {
+      headers: bearer('tr_live_nope'),
+      origin: null,
+      ip,
+      body: { email: 'a@b.test', password: 'x' },
+    });
+    expect(last.status).toBe(429);
+  });
+
   it('R4 a cookie and a key together answer 401', async () => {
     const { user, raw } = await adminWithKey();
     const { cookie } = await loginAs(t, user);
     const res = await call(t.app, 'GET', '/api/admin/roles', { cookie, headers: bearer(raw) });
     expect(res.status).toBe(401);
+    expect((await res.json()).error.code).toBe('AUTH_UNAUTHENTICATED');
   });
 
   it('R5 a Bearer-only write needs no Origin; a cookie write still does', async () => {
@@ -72,7 +116,7 @@ describe('RFC-82 R3-R6, R8, R9 Bearer authentication', () => {
       origin: null,
       body: { name: `r-${Date.now()}`, permissions: [] },
     });
-    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(201);
     const { cookie } = await loginAs(t, user);
     const cookieRes = await call(t.app, 'POST', '/api/admin/roles', {
       cookie,
@@ -105,5 +149,11 @@ describe('RFC-82 R3-R6, R8, R9 Bearer authentication', () => {
     expect(await lastAudit(t.db, 'roles.created', { actorUserId: user.id })).toMatchObject({
       metadata: { via: 'api_key', apiKeyId: key.id },
     });
+  });
+
+  it('R9 a key-authenticated request is counted in global:api_key, not global:ip', async () => {
+    const { raw, key } = await adminWithKey();
+    await call(t.app, 'GET', '/api/admin/roles', { headers: bearer(raw), origin: null });
+    expect(await t.redis.exists(`rl:global:api_key:${key.id}`)).toBe(1);
   });
 });

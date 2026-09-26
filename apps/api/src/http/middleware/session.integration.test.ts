@@ -15,7 +15,7 @@ describe('RFC-22 R5, R7, R8 session middleware', () => {
 
   function app() {
     const a = new Hono<AppEnv>();
-    a.use(resolveSession({ sessions: t.sessions, db: t.db }));
+    a.use(resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }));
     a.get('/who', (c) =>
       c.json({ user: c.get('user')?.id ?? null, session: c.get('session')?.id ?? null }),
     );
