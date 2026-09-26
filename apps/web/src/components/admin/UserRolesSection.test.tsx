@@ -44,6 +44,16 @@ describe('RFC-50 R5 UserRolesSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('RFC-82 R3 does not mention API keys for a user who is not an admin', async () => {
+    admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_READERS]);
+    const reader = { ...ADMIN_USER, roles: [{ id: ROLE_READERS.id, name: ROLE_READERS.name }] };
+    renderWithProviders(<UserRolesSection user={reader} canEdit />, { me: ADMIN_ME });
+    expect(await screen.findByText('Readers')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Removing the admin role also revokes every API key this user holds.'),
+    ).not.toBeInTheDocument();
+  });
+
   it('re-seeds the checked set when a new user prop arrives with different roles', async () => {
     admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_READERS]);
     const utils = renderWithProviders(<UserRolesSection user={ADMIN_USER} canEdit />, {
