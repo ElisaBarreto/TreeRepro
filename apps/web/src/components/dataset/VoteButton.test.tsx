@@ -18,6 +18,7 @@ describe('RFC-13 R5 VoteButton', () => {
       'text-body',
       'group-hover/vote:visible',
       'group-focus-within/vote:visible',
+      'group-hover/vote:group-focus-within/vote:delay-0',
     );
     expect(button.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
     await userEvent.click(button);

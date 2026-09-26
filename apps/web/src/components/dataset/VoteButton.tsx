@@ -27,7 +27,7 @@ export function VoteButton({
       </Button>
       <span
         aria-hidden="true"
-        className="pointer-events-none invisible absolute right-0 bottom-full z-20 mb-1 w-max max-w-72 rounded-[10px] border border-canopy-700/15 bg-white px-3 py-2 text-body text-canopy-900 opacity-0 shadow transition-opacity group-hover/vote:visible group-hover/vote:opacity-100 group-hover/vote:delay-150 group-focus-within/vote:visible group-focus-within/vote:opacity-100"
+        className="pointer-events-none invisible absolute right-0 bottom-full z-20 mb-1 w-max max-w-72 rounded-[10px] border border-canopy-700/15 bg-white px-3 py-2 text-body text-canopy-900 opacity-0 shadow transition-opacity group-hover/vote:visible group-hover/vote:opacity-100 group-hover/vote:delay-150 group-focus-within/vote:visible group-focus-within/vote:opacity-100 group-hover/vote:group-focus-within/vote:delay-0"
       >
         {label}
       </span>
