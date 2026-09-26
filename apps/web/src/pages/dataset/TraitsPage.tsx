@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { TRAIT_VALUE_TYPES, type Trait, type TraitValueType } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
+import { mapsByTrait, useMaps } from '../../api/maps.ts';
 import { EditTraitDialog } from '../../components/catalog/EditTraitDialog.tsx';
 import { LevelsEditor } from '../../components/catalog/LevelsEditor.tsx';
 import { NewTraitDialog } from '../../components/catalog/NewTraitDialog.tsx';
@@ -12,6 +13,7 @@ import {
   Button,
   EmptyState,
   Field,
+  Icon,
   Input,
   PageHeader,
   Select,
@@ -51,9 +53,11 @@ export interface TraitsSearch {
  * can unfold its levels as chips; an inactive trait is badged, an active one
  * needs no badge. Inactive traits and levels stay visible because records
  * may still cite them. With `traits.manage`, a header action creates a trait
- * and each row can edit its own.
+ * and each row can edit its own. A row whose trait has maps carries a `map`
+ * icon link to its maps page beside its name (RFC-76 R8).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-62 R5, R6
+ * @rfc RFC-76 R8
  */
 export function TraitsPage({
   search,
@@ -289,6 +293,10 @@ function TraitRows({
   const [open, setOpen] = useState(false);
   const levelsId = useId();
   const name = humaniseKey(trait.key);
+  // A failed maps query reads the same as "no maps" (RFC-76 R8): `maps.data`
+  // is simply `undefined` until then.
+  const maps = useMaps();
+  const hasMaps = (mapsByTrait(maps.data ?? []).get(trait.id) ?? []).length > 0;
   return (
     <>
       <Tr>
@@ -302,6 +310,16 @@ function TraitRows({
               {name}
             </Link>
             {trait.active ? null : <Badge>inactive</Badge>}
+            {hasMaps ? (
+              <Link
+                to="/app/maps/$traitId"
+                params={{ traitId: trait.id }}
+                aria-label={`Maps of ${name}`}
+                className="inline-flex size-6 items-center justify-center rounded-full text-mist-400 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+              >
+                <Icon name="map" size={16} />
+              </Link>
+            ) : null}
           </span>
         </Td>
         <Td>{TRAIT_VALUE_TYPE_LABELS[trait.valueType]}</Td>

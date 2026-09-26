@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Dictionary, MeResponse } from '@treerepro/contracts';
+import type { Dictionary, MapEntry, MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
@@ -29,6 +29,10 @@ const catalog = vi.hoisted(() => ({
   updateTrait: vi.fn(),
   createLevel: vi.fn(),
 }));
+// `TraitRows` calls `useMaps()` itself (RFC-76 R8); mocked directly, the same
+// way `MapsPage.test.tsx` does — `fetchMaps` is defined in the same module
+// and a same-module reference `vi.mock` never reaches.
+const maps = vi.hoisted(() => ({ useMaps: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -38,6 +42,14 @@ vi.mock('../../api/catalog.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
   ...catalog,
 }));
+vi.mock('../../api/maps.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/maps.ts')>()),
+  ...maps,
+}));
+
+function mapsResult(data: MapEntry[]) {
+  return { data, isPending: false, isSuccess: true, isError: false, error: null };
+}
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
 const MANAGER: MeResponse = { ...ME, permissions: ['dataset.read', 'traits.manage'] };
@@ -48,8 +60,10 @@ beforeEach(() => {
   catalog.createTrait.mockReset();
   catalog.updateTrait.mockReset();
   catalog.createLevel.mockReset();
+  maps.useMaps.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
+  maps.useMaps.mockReturnValue(mapsResult([]));
 });
 
 async function openPage() {
@@ -159,6 +173,26 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     dataset.fetchDictionary.mockRejectedValue(new ApiError(500, 'INTERNAL_ERROR', 'x'));
     await openPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong. Try again.');
+  });
+});
+
+describe('RFC-76 R8 TraitsPage maps link', () => {
+  it('shows a Maps link named after the trait for one with maps, and none for one without', async () => {
+    maps.useMaps.mockReturnValue(
+      mapsResult([
+        {
+          traitId: SEXUAL_SYSTEM_TRAIT.id,
+          kind: 'completeness',
+          levelId: null,
+          file: 'x.svg',
+          dataVersion: '2026-09-01',
+        },
+      ]),
+    );
+    await openPage();
+    const link = await screen.findByRole('link', { name: 'Maps of sexual system' });
+    expect(link).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_TRAIT.id}`);
+    expect(screen.queryByRole('link', { name: 'Maps of seed mass' })).not.toBeInTheDocument();
   });
 });
 

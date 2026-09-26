@@ -50,6 +50,10 @@ const dataset = vi.hoisted(() => ({
   fetchGenera: vi.fn(),
 }));
 const catalog = vi.hoisted(() => ({ updateSpecies: vi.fn(), addSpeciesName: vi.fn() }));
+// The trait cards call `useMaps()` themselves (RFC-76 R8); mocked directly,
+// the same way `MapsPage.test.tsx` does, so this file never has to reason
+// about the maps manifest to keep its species-page assertions passing.
+const maps = vi.hoisted(() => ({ useMaps: vi.fn() }));
 // `invalidateAfterRecordWrite` keeps the real signature so one test can
 // swap the real implementation in.
 const curation = vi.hoisted(() => ({
@@ -73,6 +77,10 @@ vi.mock('../../api/curation.ts', async (importOriginal) => ({
 vi.mock('../../api/catalog.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/catalog.ts')>()),
   ...catalog,
+}));
+vi.mock('../../api/maps.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/maps.ts')>()),
+  ...maps,
 }));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
@@ -99,6 +107,14 @@ beforeEach(() => {
   curation.invalidateAfterRecordWrite.mockReset().mockResolvedValue(undefined);
   catalog.updateSpecies.mockReset();
   catalog.addSpeciesName.mockReset();
+  maps.useMaps.mockReset();
+  maps.useMaps.mockReturnValue({
+    data: [],
+    isPending: false,
+    isSuccess: true,
+    isError: false,
+    error: null,
+  });
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchSpecies.mockResolvedValue(SPECIES);
   dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS);

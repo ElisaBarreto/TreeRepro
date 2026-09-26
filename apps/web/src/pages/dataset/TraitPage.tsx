@@ -3,12 +3,14 @@ import { Link } from '@tanstack/react-router';
 import type { TraitDetail, TraitSpeciesMode } from '@treerepro/contracts';
 import { type ReactNode, useEffect, useId, useState } from 'react';
 import { datasetKeys, fetchTrait, fetchTraitSpecies } from '../../api/dataset.ts';
+import { mapAlt, mapsByTrait, useMaps } from '../../api/maps.ts';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import {
   TaxonomyFilters,
   type TaxonomyFiltersValue,
 } from '../../components/dataset/TaxonomyFilters.tsx';
 import { TraitSpeciesTable } from '../../components/dataset/TraitSpeciesTable.tsx';
+import { MapFigure } from '../../components/maps/MapFigure.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import { Alert, Badge, Chip, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
@@ -164,6 +166,39 @@ function Distribution({ trait }: { trait: TraitDetail }) {
 }
 
 /**
+ * The trait's own maps (RFC-76 R8), when it has any: the completeness map as
+ * a thumbnail (left out when the manifest has none for this trait) and a
+ * link to the trait's full maps page. A trait with no maps visible to this
+ * viewer renders nothing at all — not even the heading — and a failed
+ * `useMaps` query reads the same as no maps.
+ * @rfc RFC-76 R8
+ */
+function TraitMaps({ trait }: { trait: TraitDetail }) {
+  const maps = useMaps();
+  const entries = mapsByTrait(maps.data ?? []).get(trait.id) ?? [];
+  if (entries.length === 0) return null;
+  const completeness = entries.find((entry) => entry.kind === 'completeness');
+  const name = humaniseKey(trait.key);
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-display text-section font-semibold text-canopy-950">Maps</h2>
+      {completeness ? (
+        <div className="max-w-sm">
+          <MapFigure entry={completeness} alt={mapAlt('completeness', name)} size="thumb" />
+        </div>
+      ) : null}
+      <Link
+        to="/app/maps/$traitId"
+        params={{ traitId: trait.id }}
+        className="font-medium text-canopy-900 underline-offset-2 hover:underline"
+      >
+        See all maps for this trait →
+      </Link>
+    </section>
+  );
+}
+
+/**
  * The species of the trait, tab by tab: the ones with a record for it and
  * the ones without (RFC-62 R8). The tabs and the taxonomy filters are search
  * params, so a tab and a family are a link; the name is written back on the
@@ -301,16 +336,18 @@ function TraitSpecies({
  * One trait (RFC-62 R7): what it is — its category, unit, description, value
  * type and whether it is still active — how many species have data for it,
  * lack it or have a validated record, and how its harmonised records are
- * distributed. Below that, the species themselves, with data and without
- * (RFC-62 R8), each tab a paginated table narrowed by the taxonomy filters;
- * a species with no record yet links to its own page opened on the traits it
- * is missing, which is where the first entry is made. The species section
- * mounts only once the trait resolved, so an unknown id shows one alert and
- * no empty tables. The category and the trait's own name are registered as
- * the shell's trailing crumbs, so the breadcrumb reads
- * `Data › Traits › <Category> › <trait>` (RFC-13 R3).
+ * distributed. Below that, a Maps section (RFC-76 R8) when the trait has any,
+ * then the species themselves, with data and without (RFC-62 R8), each tab a
+ * paginated table narrowed by the taxonomy filters; a species with no record
+ * yet links to its own page opened on the traits it is missing, which is
+ * where the first entry is made. The species section mounts only once the
+ * trait resolved, so an unknown id shows one alert and no empty tables. The
+ * category and the trait's own name are registered as the shell's trailing
+ * crumbs, so the breadcrumb reads `Data › Traits › <Category> › <trait>`
+ * (RFC-13 R3).
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-62 R7, R8
+ * @rfc RFC-76 R8
  */
 export function TraitPage({
   id,
@@ -369,6 +406,7 @@ export function TraitPage({
       <div className="flex flex-col gap-8">
         <Facts trait={loaded} />
         <Distribution trait={loaded} />
+        <TraitMaps trait={loaded} />
         <TraitSpecies trait={loaded} search={search} onSearchChange={onSearchChange} />
       </div>
     </>
