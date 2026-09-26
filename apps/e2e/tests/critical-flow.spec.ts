@@ -19,6 +19,7 @@ let csp: CspWatch;
 let page: Page;
 let currentPassword = adminPassword();
 let totpSecret = '';
+let apiSecret = '';
 
 test.beforeAll(async ({ browser }) => {
   context = await browser.newContext();
@@ -191,6 +192,7 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     await section.getByRole('button', { name: 'Create key' }).click();
     const secret = (await section.locator('code').textContent())?.trim();
     expect(secret).toMatch(/^tr_live_/);
+    apiSecret = secret ?? '';
 
     // A context with no storage state: `page.request` would ride along with
     // the admin's session cookie, and R4 refuses a request carrying both.
@@ -213,6 +215,33 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     });
     expect(selfService.status()).toBe(401);
     await anonymous.dispose();
+  });
+
+  test('RFC-82 R10-R15 sends a batch with the key and sees its effect in the workspace', async () => {
+    const family = `E2ebatchaceae${Date.now()}`;
+    const anonymous = await request.newContext();
+    const res = await anonymous.post(`${BASE_URL}/api/batch`, {
+      headers: { authorization: `Bearer ${apiSecret}` },
+      data: {
+        ops: [
+          { ref: 'new', method: 'POST', path: '/api/families', body: { name: family } },
+          { ref: 'dup', method: 'POST', path: '/api/families', body: { name: family } },
+          { ref: 'nested', method: 'POST', path: '/api/batch', body: { ops: [] } },
+        ],
+      },
+    });
+    expect(res.status()).toBe(200);
+    const { data } = await res.json();
+    expect(data.summary).toEqual({ ok: 1, failed: 2 });
+    expect(data.results.map((r: { status: number }) => r.status)).toEqual([201, 409, 400]);
+    await anonymous.dispose();
+
+    await page.goto(`${BASE_URL}/app/taxa`);
+    // Not getByText: an alphabetically-early family name is auto-selected by
+    // TaxaEditor and then renders twice (the sidebar list button and the
+    // <h2> heading), which a plain text locator matches ambiguously. The
+    // sidebar button is unique whether or not the family ends up selected.
+    await expect(page.getByRole('button', { name: family })).toBeVisible();
   });
 
   test('RFC-31 R3, RFC-50 R3 creates the Readers role and invites B holding it', async () => {
