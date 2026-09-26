@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -45,3 +45,4 @@ None.
 - 2026-09-25 — R4, R7, R14 amended: the four contest tables (`contests`, `contest_levels`, `contest_records`, `contest_events`) are append-only like `trait_records` and `record_annotations`; Keep both is stored as a `resolve` row of `contest_events`, not a `record_annotations` row; a contest's storage across the four tables (plan 13g).
 - 2026-09-25 — R4: RFC-64 R15 also deletes and re-inserts, with their ids, the annotations it re-links, and rewrites `supersedes_record_id` of the `TR_` rows it re-links (spec R-20; plan 13k). `draft` until plan 13k merges.
 - 2026-09-26 — accepted: implemented by plan 13g.
+- 2026-09-26 — accepted (plan 13k).

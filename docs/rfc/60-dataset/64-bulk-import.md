@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -63,3 +63,4 @@ Tolerating a decimal comma and mapping known aliases (`bees` → `bee`) at impor
 - 2026-09-25 — R12: the truncation closure gains the four contest tables, `contests`, `contest_levels`, `contest_records`, `contest_events` (plan 13g).
 - 2026-09-25 — R1, R3, R12, R15: the replace-imported command, its sheet, its orphans, and the total replace's in-transaction platform check (spec R-20; plan 13k). `draft` until plan 13k merges.
 - 2026-09-26 — R15: the pending sheet is written at the final name and the final rows go to `<name>.tmp`, renamed over it after COMMIT (the Precision had the two roles inverted; plan 13k).
+- 2026-09-26 — accepted (plan 13k).
