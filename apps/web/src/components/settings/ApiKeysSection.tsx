@@ -23,6 +23,26 @@ import {
 /** Refetched by the flows that revoke every key (password, TOTP). @rfc RFC-82 R3, R7 */
 export const API_KEYS_QUERY_KEY = ['me', 'api-keys'] as const;
 
+/**
+ * Whether the API says the user may hold keys (`eligible`); the same query
+ * the section runs, so Settings makes one request.
+ * @rfc RFC-82 R7
+ */
+export function useApiKeysEligible(): boolean {
+  return useQuery({ queryKey: API_KEYS_QUERY_KEY, queryFn: listApiKeys }).data?.eligible === true;
+}
+
+/**
+ * One line under the flows that revoke every key, shown only to a user who
+ * may hold keys.
+ * @rfc RFC-82 R3
+ */
+export function RevokesApiKeysNote() {
+  return useApiKeysEligible() ? (
+    <p className="text-body text-canopy-800">This also revokes every API key you hold.</p>
+  ) : null;
+}
+
 // Not exported: no @rfc tag needed (RFC-00 R6 applies to exports only).
 // Date only: the time made the table overflow a 1200 px viewport.
 function formatWhen(iso: string | null): string {

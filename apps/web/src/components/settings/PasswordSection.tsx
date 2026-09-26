@@ -5,7 +5,7 @@ import { ApiError } from '../../api/client.ts';
 import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
 import { PASSWORD_HINT } from '../auth/PasswordFields.tsx';
 import { Alert, Button, Field, Input, Section } from '../ui/index.ts';
-import { API_KEYS_QUERY_KEY } from './ApiKeysSection.tsx';
+import { API_KEYS_QUERY_KEY, RevokesApiKeysNote } from './ApiKeysSection.tsx';
 
 /** @rfc RFC-13 R6 */
 export function passwordErrorMessage(error: unknown): string {
@@ -78,7 +78,7 @@ export function PasswordSection() {
   return (
     <Section id="password" title="Password" description="Changing it signs out every other device.">
       <form ref={formRef} onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
-        <p className="text-body text-canopy-800">This also revokes every API key you hold.</p>
+        <RevokesApiKeysNote />
         <Field id={ids.current} label="Current password" error={errors.currentPassword}>
           <Input
             id={ids.current}

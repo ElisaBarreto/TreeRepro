@@ -14,6 +14,12 @@ const auth = vi.hoisted(() => ({
   fetchMe: vi.fn(),
 }));
 vi.mock('../../api/auth.ts', () => auth);
+const me = vi.hoisted(() => ({
+  listApiKeys: vi.fn(),
+  createApiKey: vi.fn(),
+  revokeApiKey: vi.fn(),
+}));
+vi.mock('../../api/me.ts', () => me);
 vi.mock('qrcode', () => ({
   toCanvas: vi.fn((canvas: HTMLCanvasElement) => {
     // Besides drawing, qrcode's canvas renderer sets style.width/height,
@@ -34,6 +40,8 @@ async function startSetup(password = 'my passphrase') {
 const CODES = Array.from({ length: 10 }, (_, i) => `abcde-fgh${i}${i}`);
 
 beforeEach(() => {
+  me.listApiKeys.mockReset();
+  me.listApiKeys.mockResolvedValue({ eligible: false, keys: [] });
   auth.totpSetup.mockReset();
   auth.totpConfirm.mockReset();
   auth.totpDisable.mockReset();
@@ -127,6 +135,7 @@ describe('RFC-23 R2 setup asks for the password', () => {
 describe('RFC-23 R7 disabling TOTP', () => {
   it('asks for password and code in a dialog, then flips the flag', async () => {
     auth.totpDisable.mockResolvedValue(undefined);
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
     const { queryClient } = renderWithProviders(<TotpSection />, {
       me: { ...ME, user: { ...USER, totpEnabled: true } },
     });
@@ -135,8 +144,10 @@ describe('RFC-23 R7 disabling TOTP', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
     expect(dialog).toHaveAttribute('open');
     // RFC-82 R3: the dialog warns, and the key list is refetched after.
-    expect(screen.getByText('This also revokes every API key you hold.')).toBeInTheDocument();
-    queryClient.setQueryData(['me', 'api-keys'], { eligible: true, keys: [] });
+    expect(
+      await screen.findByText('This also revokes every API key you hold.'),
+    ).toBeInTheDocument();
+    const before = me.listApiKeys.mock.calls.length;
     await userEvent.type(screen.getByLabelText('Password'), 'my passphrase');
     await userEvent.type(screen.getByLabelText('Code or recovery code'), 'abcde-fghij');
     await userEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
@@ -151,9 +162,18 @@ describe('RFC-23 R7 disabling TOTP', () => {
         user: { totpEnabled: false },
       }),
     );
-    expect(queryClient.getQueryState(['me', 'api-keys'])?.isInvalidated).toBe(true);
+    // Invalidating the observed query refetches it.
+    await waitFor(() => expect(me.listApiKeys.mock.calls.length).toBeGreaterThan(before));
     // The password in the mutation's `variables` leaves the MutationCache with the dialog.
     await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+  });
+
+  it('RFC-82 R3 does not mention API keys to a user who cannot hold one', async () => {
+    renderWithProviders(<TotpSection />, { me: { ...ME, user: { ...USER, totpEnabled: true } } });
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }));
+    await screen.findByRole('dialog', { name: 'Disable two-factor authentication' });
+    await waitFor(() => expect(me.listApiKeys).toHaveBeenCalled());
+    expect(screen.queryByText('This also revokes every API key you hold.')).not.toBeInTheDocument();
   });
 
   it('accepts a six-digit code alongside the password', async () => {

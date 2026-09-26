@@ -35,6 +35,14 @@ beforeEach(() => {
 });
 
 describe('RFC-50 R9 UserSessionsSection', () => {
+  it('RFC-82 R3 says that signing out everywhere also revokes the API keys', async () => {
+    admin.listUserSessions.mockResolvedValue([]);
+    renderWithProviders(<UserSessionsSection userId={ADMIN_USER.id} canRevoke />, { me: ADMIN_ME });
+    expect(
+      await screen.findByText('This also revokes every API key this user holds.'),
+    ).toBeInTheDocument();
+  });
+
   it('shows an empty state when the list is empty', async () => {
     admin.listUserSessions.mockResolvedValue([]);
     renderWithProviders(<UserSessionsSection userId={ADMIN_USER.id} canRevoke />, { me: ADMIN_ME });

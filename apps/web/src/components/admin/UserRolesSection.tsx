@@ -83,6 +83,9 @@ export function UserRolesSection({ user, canEdit }: { user: User; canEdit: boole
           </ul>
           {save.isSuccess ? <Alert tone="success">Roles saved.</Alert> : null}
           {save.isError ? <Alert tone="error">{userErrorMessage(save.error)}</Alert> : null}
+          <p className="text-meta text-mist-500">
+            Removing the admin role also revokes every API key this user holds.
+          </p>
           <div>
             <Button type="submit" pending={save.isPending} disabled={!roles.data}>
               Save roles
