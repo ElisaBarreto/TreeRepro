@@ -462,8 +462,8 @@ describe('RFC-61 R10, RFC-80 R5 a book among the sources', () => {
         referenceSource: { isbn: '9780306406157', citation },
       }).success,
     ).toBe(true);
-    });
   });
+});
 
 describe('RFC-65 R13, R14, R16 level and contest actions', () => {
   it('levelActionParamSchema takes three uuids; contestParamSchema one', () => {

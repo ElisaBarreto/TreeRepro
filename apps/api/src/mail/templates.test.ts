@@ -211,13 +211,14 @@ describe('RFC-74 R5 digestEmail', () => {
       'Contests',
       'Complements',
       'Validations',
-      'Disputes',
       'Withdrawals',
       'Species proposals',
       'Pending groups',
-      'Disputed records',
+      'Open contests',
     ])
       expect(mail.html).toContain(label);
+    expect(mail.html).not.toContain('Disputes');
+    expect(mail.html).not.toContain('Disputed');
     expect(mail.html).toContain('Cecropia pachystachya');
     expect(mail.html).toContain('Grace Hopper');
     expect(mail.html).toContain(
@@ -237,7 +238,7 @@ describe('RFC-74 R5 digestEmail', () => {
           item({
             speciesName: '<i>s</i>',
             traitKey: '<u>k</u>',
-            valueText: '<b>x</b>',
+            contested: '<b>x</b>',
             actorName: 'A & B',
           }),
         ],
@@ -255,11 +256,11 @@ describe('RFC-74 R5 digestEmail', () => {
 
   it('RFC-10 R16 the HTML part says so when a set is empty', () => {
     const mail = digestEmail({
-      digest: digest({ contests: [], disputes: [] }),
+      digest: digest({ contests: [] }),
       appOrigin: APP_ORIGIN,
       date: '2026-09-17',
     });
-    expect(mail.html.match(/None in this window\./g)).toHaveLength(2);
+    expect(mail.html.match(/None in this window\./g)).toHaveLength(1);
     expect(mail.html).not.toContain(`${APP_ORIGIN}/app/species/`);
   });
 
