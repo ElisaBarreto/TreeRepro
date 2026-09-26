@@ -1,14 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { EmptyState } from '../../../components/ui/index.ts';
+import { TraitMapsPage } from '../../../pages/maps/TraitMapsPage.tsx';
 
-// Registers the route so `MapsPage`'s cards (`Link to="/app/maps/$traitId"`)
-// resolve under the typed router; the real page (RFC-76 R7) replaces this
-// placeholder in the next plan step.
-function TraitMapsPlaceholder() {
-  return <EmptyState title="Maps for this trait are coming soon." />;
+function TraitMapsRoute() {
+  const { traitId } = Route.useParams();
+  return <TraitMapsPage key={traitId} traitId={traitId} />;
 }
 
-/** @rfc RFC-76 R6 */
+/** @rfc RFC-76 R7 */
 export const Route = createFileRoute('/app/maps/$traitId')({
-  component: TraitMapsPlaceholder,
+  component: TraitMapsRoute,
 });
