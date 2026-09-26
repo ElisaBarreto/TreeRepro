@@ -1,4 +1,4 @@
-openapi-sha256: 03bc32d242798ee00275e94e7c1703d684d3463f48cb6cded253ed3ccbb1597a
+openapi-sha256: d52998a814de5eb20488e9fd968a291c789a5bd93c5ae71e203c4561929d5f93
 
 # TreeRepro API guide
 
@@ -10,6 +10,7 @@ Only a user holding the `admin` system role can create or use a key (RFC-82 R2),
 
 - Most `/api/*` routes, including every one described below and `GET /api/docs/openapi.json`, take and answer JSON, wrapped in the same envelope the workspace uses (RFC-11 R2, R3): a success answers `{ "data": ... }` (a list also carries `"meta": { "nextCursor": ... }`); a failure answers `{ "error": { "code": "...", "message": "...", "details": [...] } }`, `details` present only for `VALIDATION_FAILED`. This does not hold for every route: `GET /api/health` and `GET /api/health/ready` answer a plain body with no envelope, `GET /api/export/dataset.zip` streams a ZIP file, `GET /api/maps/files/:name` streams an image, and `GET /api/docs` itself answers Markdown.
 - The full machine-readable reference — every route, its schemas and its guard — is generated from the running code at `GET /api/docs/openapi.json`. This guide is served at `GET /api/docs`. Both need a key (RFC-82 R20).
+- Without a key at hand, **Settings › API keys** in the workspace lists every route a key reaches, with its summary and the permission it needs (RFC-82 R22).
 
 ## Authentication and the key lifecycle
 
@@ -395,5 +396,6 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-09-26 — `GET /api/me/api-keys/endpoints` (session only, admin system role): the routes a key reaches, shown in Settings › API keys (issue #221). (openapi d52998a814de)
 - 2026-09-26 — "A batch that takes too long": a batch outliving the proxy timeout answers 524 while its operations keep committing; batches of writes stay at 100 operations, and a script re-reads the state instead of resending. The examples map in batches of 100 and stop on an answer that is not JSON (issue #219). (openapi 03bc32d24279)
 - 2026-09-26 — First version: API keys (14a), batch (14b), this guide and the generated reference (14c). (openapi 03bc32d24279)
