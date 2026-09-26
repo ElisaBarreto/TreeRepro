@@ -56,6 +56,7 @@ export function ApiKeysSection() {
   const formRef = useRef<HTMLFormElement>(null);
   const queryClient = useQueryClient();
   const [secret, setSecret] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const keys = useQuery({ queryKey: KEYS_KEY, queryFn: listApiKeys });
   const create = useMutation({
     // Wrapped, not passed bare: TanStack Query calls mutationFn with a second
@@ -67,6 +68,11 @@ export function ApiKeysSection() {
       setSecret(out.secret);
       formRef.current?.reset();
     },
+    // Hook-level, not read from `create.isError`/`create.error`: the mutate-time
+    // `onSettled` below calls `create.reset()` inside the same notify cycle that
+    // settles the mutation, so a render that reads the mutation's own state
+    // never observes the error (PasswordSection's `errors` state does the same).
+    onError: (error) => setCreateError(createErrorMessage(error)),
     onSettled: () => queryClient.invalidateQueries({ queryKey: KEYS_KEY }),
   });
   const revoke = useMutation({
@@ -80,6 +86,7 @@ export function ApiKeysSection() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     setSecret(null);
+    setCreateError(null);
     create.mutate(
       {
         name: String(data.get('name') ?? ''),
@@ -103,7 +110,7 @@ export function ApiKeysSection() {
           <code className="mt-2 block break-all font-mono text-meta">{secret}</code>
         </Alert>
       ) : null}
-      {create.isError ? <Alert tone="error">{createErrorMessage(create.error)}</Alert> : null}
+      {createError ? <Alert tone="error">{createError}</Alert> : null}
       {revoke.isError ? <Alert tone="error">{GENERIC_MESSAGE}</Alert> : null}
       {keys.data.keys.length > 0 ? (
         <Table>

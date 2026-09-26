@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/client.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { ApiKeysSection } from './ApiKeysSection.tsx';
@@ -61,5 +62,43 @@ describe('RFC-82 R7 ApiKeysSection', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Revoke laptop' }));
     expect(me.revokeApiKey).toHaveBeenCalledWith(KEY.id);
+  });
+
+  async function fillAndSubmitCreate() {
+    await userEvent.type(screen.getByLabelText('Key name'), 'script');
+    await userEvent.type(screen.getByLabelText('Current password'), 'pw');
+    await userEvent.type(screen.getByLabelText('Verification code'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Create key' }));
+  }
+
+  it.each([
+    ['AUTH_INVALID_CREDENTIALS', 'Your current password is incorrect.'],
+    ['AUTH_TOTP_INVALID', 'The verification code is not valid.'],
+    ['AUTH_TOTP_NOT_ENABLED', 'Enable two-factor authentication first.'],
+    ['RATE_LIMITED', 'Too many attempts. Wait a moment and try again.'],
+  ] as const)('maps %s to its message on a failed create', async (code, message) => {
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
+    me.createApiKey.mockRejectedValueOnce(new ApiError(400, code, 'x'));
+    renderWithProviders(<ApiKeysSection />, { me: ME });
+    await screen.findByLabelText('Key name');
+    await fillAndSubmitCreate();
+    expect(await screen.findByText(message)).toBeInTheDocument();
+  });
+
+  it('shows the generic message for an unmapped create failure', async () => {
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
+    me.createApiKey.mockRejectedValueOnce(new ApiError(500, 'UNKNOWN_ERROR', 'x'));
+    renderWithProviders(<ApiKeysSection />, { me: ME });
+    await screen.findByLabelText('Key name');
+    await fillAndSubmitCreate();
+    expect(await screen.findByText('Something went wrong. Try again.')).toBeInTheDocument();
+  });
+
+  it('shows the generic message when revoking a key fails', async () => {
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [KEY] });
+    me.revokeApiKey.mockRejectedValueOnce(new ApiError(500, 'UNKNOWN_ERROR', 'x'));
+    renderWithProviders(<ApiKeysSection />, { me: ME });
+    await userEvent.click(await screen.findByRole('button', { name: 'Revoke laptop' }));
+    expect(await screen.findByText('Something went wrong. Try again.')).toBeInTheDocument();
   });
 });
