@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { errorEnvelopeSchema, type PermissionKey } from '@treerepro/contracts';
+import { type ApiEndpoint, errorEnvelopeSchema, type PermissionKey } from '@treerepro/contracts';
 import { z } from 'zod';
 import { type GuardKind, guardKind, guardPermission } from './guards.ts';
 import { KEY_REFUSED_PERMISSIONS } from './middleware/require-permission.ts';
@@ -112,6 +112,44 @@ function groupByRoute(routes: readonly RouteEntry[]): Map<string, RouteEntry[]> 
   return grouped;
 }
 
+/** A route's guard class and permission, read from its middleware. */
+function guardOf(entries: readonly RouteEntry[]): {
+  kind: GuardKind | 'public';
+  permission: PermissionKey | undefined;
+} {
+  return {
+    kind:
+      entries.map((e) => guardKind(e.handler)).find((k): k is GuardKind => k !== undefined) ??
+      'public',
+    permission: entries.map((e) => guardPermission(e.handler)).find((p) => p !== undefined),
+  };
+}
+
+/**
+ * Every catalogued route a key reaches — permission-guarded ones except those
+ * a key is refused (RFC-82 R6), and the API-key routes — sorted by path, then
+ * method, from the same mounted routes and catalog as the reference.
+ * @rfc RFC-82 R22
+ */
+export function keyEndpoints(routes: readonly RouteEntry[]): ApiEndpoint[] {
+  const grouped = groupByRoute(routes);
+  const endpoints: ApiEndpoint[] = [];
+  for (const [key, catalog] of Object.entries(ROUTE_CATALOG)) {
+    const entries = grouped.get(key);
+    if (!entries) continue;
+    const { kind, permission } = guardOf(entries);
+    const reached =
+      kind === 'apiKey' ||
+      (kind === 'permission' && permission && !KEY_REFUSED_PERMISSIONS.has(permission));
+    if (!reached) continue;
+    const [method, path] = key.split(' ') as [ApiEndpoint['method'], string];
+    endpoints.push({ method, path, summary: catalog.summary, permission: permission ?? null });
+  }
+  return endpoints.sort((a, b) =>
+    a.path === b.path ? (a.method < b.method ? -1 : 1) : a.path < b.path ? -1 : 1,
+  );
+}
+
 /**
  * Builds the OpenAPI 3.1 reference from the routes Hono mounted and the
  * route catalog: one operation per catalogued route, its guard class and
@@ -133,10 +171,7 @@ export function buildOpenApi(routes: readonly RouteEntry[]): Record<string, unkn
     if (!entries) throw new Error(`buildOpenApi: catalogued route not mounted: ${key}`);
     const [method, path] = key.split(' ') as [string, string];
 
-    const kind: GuardKind | 'public' =
-      entries.map((e) => guardKind(e.handler)).find((k): k is GuardKind => k !== undefined) ??
-      'public';
-    const permission = entries.map((e) => guardPermission(e.handler)).find((p) => p !== undefined);
+    const { kind, permission } = guardOf(entries);
 
     const parameters: unknown[] = [];
     let requestBody: unknown;

@@ -19,6 +19,7 @@ import {
   Thead,
   Tr,
 } from '../ui/index.ts';
+import { ApiEndpointsPanel } from './ApiEndpointsPanel.tsx';
 
 /** Refetched by the flows that revoke every key (password, TOTP). @rfc RFC-82 R3, R7 */
 export const API_KEYS_QUERY_KEY = ['me', 'api-keys'] as const;
@@ -70,7 +71,7 @@ const TONE = { active: 'green', expired: 'neutral', revoked: 'neutral' } as cons
 /**
  * Hidden unless the API says the user may hold keys; the secret is shown once
  * and leaves the mutation cache with the section (gcTime 0, as PasswordSection).
- * @rfc RFC-82 R1, R2, R7
+ * @rfc RFC-82 R1, R2, R7, R22
  */
 export function ApiKeysSection() {
   const ids = { name: useId(), password: useId(), code: useId() };
@@ -209,6 +210,7 @@ export function ApiKeysSection() {
       ) : (
         <Alert tone="info">Enable two-factor authentication first to create a key.</Alert>
       )}
+      <ApiEndpointsPanel />
     </Section>
   );
 }

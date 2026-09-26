@@ -18,6 +18,7 @@ export const SELF_SERVICE_ROUTES: readonly string[] = [
   'GET /api/me/sessions',
   'DELETE /api/me/sessions/:id',
   'GET /api/me/api-keys',
+  'GET /api/me/api-keys/endpoints',
   'POST /api/me/api-keys',
   'DELETE /api/me/api-keys/:id',
   'GET /api/help',

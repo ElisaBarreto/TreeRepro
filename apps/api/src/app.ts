@@ -114,7 +114,10 @@ export function createApp(deps: AppDeps) {
 
   app.route('/health', healthRoutes(deps.health));
   app.route('/auth', authRoutes(ctx));
-  app.route('/me', meRoutes(ctx));
+  app.route(
+    '/me',
+    meRoutes(ctx, () => root.routes as RouteEntry[]),
+  );
   // Hono takes several routers on one prefix: the contributions reads need
   // `dataset.read`, so they stay out of the self-service router (RFC-71 R1).
   app.route('/me', contributionRoutes(ctx));
