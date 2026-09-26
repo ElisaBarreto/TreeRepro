@@ -26,11 +26,11 @@ Authentication routes are brute-force targets and every route can be flooded. Li
   | `references/resolve` | user id | 60 per minute |
   | `taxonomy/match` | user id | 30 per minute |
   | `apiKeyCreate` | user id | 5 per 15 minutes |
-  | `apiKey` | key id | 3000 per 10 minutes |
+  | `global:api_key` | key id | 3000 per 10 minutes |
 
   The `invite/accept`/`password/reset` limit is configurable (`RATE_LIMIT_TOKEN_IP`), defaulting to 10 when unset.
 
-- **R4** The global limiter runs on every request after the session is resolved (RFC-22 R7); `GET /api/health` and `GET /api/health/ready` are exempt. A key-authenticated request uses the per-key bucket (RFC-82 R9).
+- **R4** The global limiter runs on every request after the session is resolved (RFC-22 R7); `GET /api/health` and `GET /api/health/ready` are exempt. A key-authenticated request uses the per-key bucket (RFC-82 R9). A Bearer header that does not authenticate is counted against `global:ip` before its 401, so it may answer 429 instead (RFC-82 R3).
 - **R5** Route limiters run before request validation, so malformed bodies count. The email key is read from the raw body when present; a body without a usable email is limited by IP only.
 - **R6** A login rejected by a limiter is audited as `auth.login.failure` with `metadata.reason = "rate_limited"` and a null actor.
 - **R7** Keys never contain personal data: the email and the IP enter a key only as their RFC-40 R5 blind index; session and MFA ids enter as their HMAC form (RFC-22 R4).
@@ -47,3 +47,4 @@ None.
 - 2026-09-18 — R3: `invite/accept`/`password/reset` limit is configurable, 10 by default.
 - 2026-09-19 — R3: `taxonomy/match` limiter, 30 per minute per user (RFC-81 R4, plan 12c).
 - 2026-09-26 — R3, R4: `apiKeyCreate` and `apiKey` buckets (RFC-82, plan 14a).
+- 2026-09-26 — R3: the per-key bucket is named `global:api_key`, as in RFC-82 R9; R4: a failing Bearer counts against `global:ip`.

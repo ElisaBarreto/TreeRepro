@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { ctxOf, useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
 import { adminRoleId, systemRoleId } from '../../test/helpers/roles.ts';
+import { loginAs } from '../../test/helpers/session.ts';
 import { createUser, DEFAULT_PASSWORD } from '../../test/helpers/users.ts';
+import { reactivateUser, suspendUser } from '../admin/users.ts';
 import { apiKeys } from '../db/schema/api-keys.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { users } from '../db/schema/users.ts';
@@ -15,6 +17,10 @@ import {
   listApiKeys,
   revokeApiKey,
 } from './api-keys.ts';
+import { changePassword, resetPassword } from './flows/password.ts';
+import { logoutAll } from './flows/session.ts';
+import { disableTotp } from './flows/totp.ts';
+import { hashToken, issueToken } from './tokens.ts';
 import { generateTotpCode, generateTotpSecret } from './totp.ts';
 
 const META = { ip: '10.0.0.1', userAgent: 'test-agent' };
@@ -224,5 +230,105 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
       ['one', 'revoked'],
     ]);
     expect(second.key.id).toBe(list.keys[0]?.id);
+  });
+});
+
+describe('RFC-82 R3 account-recovery actions revoke every active key', () => {
+  const t = useTestApp();
+  const NEW_PASSWORD = 'another perfectly fine passphrase';
+
+  async function adminWithKeys() {
+    const secret = generateTotpSecret();
+    const { user } = await createUser(t.db, {
+      totpSecret: secret,
+      roles: [await adminRoleId(t.db)],
+    });
+    const keys = [];
+    for (const name of ['a', 'b']) {
+      const raw = generateApiKey();
+      const [row] = await t.db
+        .insert(apiKeys)
+        .values({
+          userId: user.id,
+          name,
+          keyHash: hashToken(raw),
+          keyPrefix: raw.slice(8, 16),
+          expiresAt: new Date(t.clock.now + 86_400_000),
+        })
+        .returning();
+      if (!row) throw new Error('adminWithKeys: insert returned no row');
+      keys.push({ id: row.id, raw });
+    }
+    return { user, secret, keys };
+  }
+
+  async function expectRevoked(
+    keys: { id: string; raw: string }[],
+    actorUserId: string,
+    reason: string,
+  ) {
+    const deps = { db: t.db, now: () => t.clock.now };
+    for (const key of keys) {
+      const [row] = await t.db.select().from(apiKeys).where(eq(apiKeys.id, key.id));
+      expect(row?.revokedAt?.getTime()).toBe(t.clock.now);
+      expect(await findUsableKey(deps, key.raw)).toBeNull();
+      expect(await lastAudit(t.db, 'auth.api_key.revoked', { targetId: key.id })).toMatchObject({
+        actorUserId,
+        targetType: 'api_key',
+        metadata: { reason },
+      });
+    }
+  }
+
+  it('password reset', async () => {
+    const { user, keys } = await adminWithKeys();
+    const { raw } = await t.db.transaction((tx) =>
+      issueToken(tx, { userId: user.id, kind: 'password_reset', now: new Date(t.clock.now) }),
+    );
+    await resetPassword(ctxOf(t), { token: raw, newPassword: NEW_PASSWORD, ...META });
+    await expectRevoked(keys, user.id, 'password_reset');
+  });
+
+  it('password change', async () => {
+    const { user, keys } = await adminWithKeys();
+    const { rawId } = await loginAs(t, user);
+    const session = await t.sessions.get(rawId);
+    if (!session) throw new Error('password change: no session');
+    await changePassword(ctxOf(t), {
+      user,
+      session,
+      currentPassword: DEFAULT_PASSWORD,
+      newPassword: NEW_PASSWORD,
+      ...META,
+    });
+    await expectRevoked(keys, user.id, 'password_change');
+  });
+
+  it('TOTP disable', async () => {
+    const { user, secret, keys } = await adminWithKeys();
+    await disableTotp(ctxOf(t), {
+      user,
+      password: DEFAULT_PASSWORD,
+      code: generateTotpCode(secret, t.clock.now),
+      ...META,
+    });
+    await expectRevoked(keys, user.id, 'totp_disabled');
+  });
+
+  it('sign out everywhere', async () => {
+    const { user, keys } = await adminWithKeys();
+    await logoutAll(ctxOf(t), { user, ...META });
+    await expectRevoked(keys, user.id, 'logout_all');
+  });
+
+  it('suspension, and reactivation brings no key back', async () => {
+    const { user, keys } = await adminWithKeys();
+    const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    await suspendUser(ctxOf(t), { actorUserId: actor.id, id: user.id, ...META });
+    await expectRevoked(keys, actor.id, 'user_suspended');
+    await reactivateUser(ctxOf(t), { actorUserId: actor.id, id: user.id, ...META });
+    for (const key of keys) {
+      expect(await findUsableKey({ db: t.db, now: () => t.clock.now }, key.raw)).toBeNull();
+    }
   });
 });

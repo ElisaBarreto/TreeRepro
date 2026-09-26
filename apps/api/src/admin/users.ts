@@ -2,6 +2,7 @@ import type { PlotRef, User, UserRoleRef, UserStatus } from '@treerepro/contract
 import { and, asc, desc, eq, inArray, lt, type SQL, sql } from 'drizzle-orm';
 import { assertNotLastAdmin, recordingRefusal, setUserRoles } from '../access/roles.ts';
 import { recordAudit } from '../audit/audit.ts';
+import { revokeAllApiKeys } from '../auth/api-keys.ts';
 import type { AuthContext, RequestMeta } from '../auth/context.ts';
 import { inviteUser } from '../auth/flows/invitation.ts';
 import { findUserById, updateName } from '../auth/users.ts';
@@ -251,7 +252,7 @@ export async function updateUser(
   return user;
 }
 
-/** @rfc RFC-50 R6 */
+/** @rfc RFC-50 R6, RFC-82 R3 */
 export async function suspendUser(
   ctx: AuthContext,
   input: AdminActor & { id: string },
@@ -272,6 +273,14 @@ export async function suspendUser(
       action: 'users.suspended',
       targetType: 'user',
       targetId: row.id,
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
+    await revokeAllApiKeys(tx, {
+      userId: row.id,
+      actorUserId: input.actorUserId,
+      reason: 'user_suspended',
+      now,
       ip: input.ip,
       userAgent: input.userAgent,
     });

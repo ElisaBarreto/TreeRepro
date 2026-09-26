@@ -2,6 +2,7 @@ import { recordAudit } from '../../audit/audit.ts';
 import type { UserRow } from '../../db/schema/users.ts';
 import { AppError } from '../../http/errors.ts';
 import { passwordResetEmail } from '../../mail/templates.ts';
+import { revokeAllApiKeys } from '../api-keys.ts';
 import type { AuthContext, RequestMeta } from '../context.ts';
 import {
   checkPasswordPolicy,
@@ -47,7 +48,7 @@ export async function forgotPassword(
   }
 }
 
-/** @rfc RFC-21 R6 */
+/** @rfc RFC-21 R6, RFC-82 R3 */
 export async function resetPassword(
   ctx: AuthContext,
   input: { token: string; newPassword: string } & RequestMeta,
@@ -71,12 +72,20 @@ export async function resetPassword(
       ip: input.ip,
       userAgent: input.userAgent,
     });
+    await revokeAllApiKeys(tx, {
+      userId: user.id,
+      actorUserId: user.id,
+      reason: 'password_reset',
+      now,
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
     return user.id;
   });
   await ctx.sessions.revokeAll(userId);
 }
 
-/** @rfc RFC-21 R7 */
+/** @rfc RFC-21 R7, RFC-82 R3 */
 export async function changePassword(
   ctx: AuthContext,
   input: {
@@ -101,6 +110,14 @@ export async function changePassword(
       action: 'auth.password.changed',
       targetType: 'user',
       targetId: input.user.id,
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
+    await revokeAllApiKeys(tx, {
+      userId: input.user.id,
+      actorUserId: input.user.id,
+      reason: 'password_change',
+      now,
       ip: input.ip,
       userAgent: input.userAgent,
     });

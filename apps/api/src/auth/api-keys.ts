@@ -185,3 +185,49 @@ export async function revokeApiKey(
     });
   });
 }
+
+/** Why every key of a user was revoked at once (RFC-82 R3). */
+export type ApiKeyRevocationReason =
+  | 'password_reset'
+  | 'password_change'
+  | 'totp_disabled'
+  | 'logout_all'
+  | 'user_suspended';
+
+/**
+ * Revokes every active key of `userId` inside the caller's transaction, one
+ * `auth.api_key.revoked` entry per key carrying the reason.
+ * @rfc RFC-82 R3, R8
+ */
+export async function revokeAllApiKeys(
+  tx: DbExecutor,
+  input: {
+    userId: string;
+    actorUserId: string;
+    reason: ApiKeyRevocationReason;
+    now: Date;
+  } & RequestMeta,
+): Promise<void> {
+  const rows = await tx
+    .update(apiKeys)
+    .set({ revokedAt: input.now })
+    .where(
+      and(
+        eq(apiKeys.userId, input.userId),
+        isNull(apiKeys.revokedAt),
+        gt(apiKeys.expiresAt, input.now),
+      ),
+    )
+    .returning({ id: apiKeys.id });
+  for (const row of rows) {
+    await recordAudit(tx, {
+      actorUserId: input.actorUserId,
+      action: 'auth.api_key.revoked',
+      targetType: 'api_key',
+      targetId: row.id,
+      ip: input.ip,
+      userAgent: input.userAgent,
+      metadata: { reason: input.reason },
+    });
+  }
+}
