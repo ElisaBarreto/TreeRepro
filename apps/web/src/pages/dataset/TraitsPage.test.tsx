@@ -182,6 +182,14 @@ describe('RFC-76 R8 TraitsPage maps link', () => {
     expect(link).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_TRAIT.id}`);
     expect(screen.queryByRole('link', { name: 'Maps of seed mass' })).not.toBeInTheDocument();
   });
+
+  it('sizes the touch target at least as large as the HelpTip trigger (size-7, 28px)', async () => {
+    maps.useHasMaps.mockImplementation((traitId: string) => traitId === SEXUAL_SYSTEM_TRAIT.id);
+    await openPage();
+    const link = await screen.findByRole('link', { name: 'Maps of sexual system' });
+    expect(link.className).toContain('size-7');
+    expect(link.className).not.toContain('size-6');
+  });
 });
 
 describe('RFC-62 R5 TraitsPage filters', () => {
