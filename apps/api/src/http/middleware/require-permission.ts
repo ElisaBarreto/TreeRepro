@@ -27,7 +27,10 @@ export const KEY_REFUSED_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<Permi
 
 const DENIED = () => new AppError('PERMISSION_DENIED', 'You do not have permission to do this');
 
-/** @rfc RFC-32 R4, R7, RFC-82 R6 */
+/**
+ * @rfc RFC-32 R4, R7
+ * @rfc RFC-82 R6
+ */
 export function requirePermission(
   ctx: AccessContext,
   key: PermissionKey,

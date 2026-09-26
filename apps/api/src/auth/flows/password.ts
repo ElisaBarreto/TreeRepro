@@ -48,7 +48,10 @@ export async function forgotPassword(
   }
 }
 
-/** @rfc RFC-21 R6, RFC-82 R3 */
+/**
+ * @rfc RFC-21 R6
+ * @rfc RFC-82 R3
+ */
 export async function resetPassword(
   ctx: AuthContext,
   input: { token: string; newPassword: string } & RequestMeta,
@@ -85,7 +88,10 @@ export async function resetPassword(
   await ctx.sessions.revokeAll(userId);
 }
 
-/** @rfc RFC-21 R7, RFC-82 R3 */
+/**
+ * @rfc RFC-21 R7
+ * @rfc RFC-82 R3
+ */
 export async function changePassword(
   ctx: AuthContext,
   input: {

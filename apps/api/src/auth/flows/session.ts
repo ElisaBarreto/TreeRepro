@@ -21,7 +21,10 @@ export async function logout(
   });
 }
 
-/** @rfc RFC-22 R9, RFC-82 R3 */
+/**
+ * @rfc RFC-22 R9
+ * @rfc RFC-82 R3
+ */
 export async function logoutAll(
   ctx: AuthContext,
   input: { user: UserRow } & RequestMeta,

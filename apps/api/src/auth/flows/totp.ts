@@ -67,7 +67,10 @@ export async function confirmTotpSetup(
   return { recoveryCodes };
 }
 
-/** @rfc RFC-23 R7, RFC-82 R3 */
+/**
+ * @rfc RFC-23 R7
+ * @rfc RFC-82 R3
+ */
 export async function disableTotp(
   ctx: AuthContext,
   input: { user: UserRow; password: string; code?: string; recoveryCode?: string } & RequestMeta,

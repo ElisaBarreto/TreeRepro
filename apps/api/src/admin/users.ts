@@ -252,7 +252,10 @@ export async function updateUser(
   return user;
 }
 
-/** @rfc RFC-50 R6, RFC-82 R3 */
+/**
+ * @rfc RFC-50 R6
+ * @rfc RFC-82 R3
+ */
 export async function suspendUser(
   ctx: AuthContext,
   input: AdminActor & { id: string },
