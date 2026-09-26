@@ -24,9 +24,13 @@ export function generateApiKey(): string {
   return API_KEY_PREFIX + randomBytes(32).toString('base64url');
 }
 
-/** The token of an `Authorization: Bearer …` header, or null. @rfc RFC-82 R3 */
+/**
+ * The token of an `Authorization: Bearer …` header, or null. The scheme is
+ * matched case-insensitively (HTTP auth schemes are, per RFC 7235 §2.1).
+ * @rfc RFC-82 R3
+ */
 export function bearerToken(header: string | undefined): string | null {
-  const match = header?.match(/^Bearer (\S+)$/);
+  const match = header?.match(/^Bearer\s+(\S+)$/i);
   return match?.[1] ?? null;
 }
 
@@ -156,12 +160,18 @@ export async function revokeApiKey(
   ctx: AuthContext,
   input: { user: UserRow; id: string } & RequestMeta,
 ): Promise<void> {
+  const now = new Date(ctx.now());
   await ctx.db.transaction(async (tx) => {
     const [row] = await tx
       .update(apiKeys)
-      .set({ revokedAt: new Date(ctx.now()) })
+      .set({ revokedAt: now })
       .where(
-        and(eq(apiKeys.id, input.id), eq(apiKeys.userId, input.user.id), isNull(apiKeys.revokedAt)),
+        and(
+          eq(apiKeys.id, input.id),
+          eq(apiKeys.userId, input.user.id),
+          isNull(apiKeys.revokedAt),
+          gt(apiKeys.expiresAt, now),
+        ),
       )
       .returning({ id: apiKeys.id });
     if (!row) throw new AppError('NOT_FOUND', 'API key not found');

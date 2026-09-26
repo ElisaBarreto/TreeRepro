@@ -36,7 +36,9 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
   it('R1 generates tr_live_ keys of 43 base64url characters and reads a Bearer header', () => {
     expect(generateApiKey()).toMatch(/^tr_live_[A-Za-z0-9_-]{43}$/);
     expect(bearerToken('Bearer tr_live_abc')).toBe('tr_live_abc');
+    expect(bearerToken('bearer tr_live_x')).toBe('tr_live_x');
     expect(bearerToken('Basic abc')).toBeNull();
+    expect(bearerToken('Basic x')).toBeNull();
     expect(bearerToken(undefined)).toBeNull();
   });
 
@@ -117,34 +119,53 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
   it('R3 resolves a usable key and refuses revoked, expired, suspended and demoted owners', async () => {
     const { user, secret } = await admin();
     const deps = { db: t.db, now: () => t.clock.now };
-    const make = async (offset: number) =>
-      (
-        await createApiKey(ctxOf(t), {
-          user,
-          name: 'k',
-          password: DEFAULT_PASSWORD,
-          code: code(secret, offset),
-          ...META,
-        })
-      ).secret;
+    const make = async (offset: number) => {
+      const out = await createApiKey(ctxOf(t), {
+        user,
+        name: 'k',
+        password: DEFAULT_PASSWORD,
+        code: code(secret, offset),
+        ...META,
+      });
+      return { id: out.key.id, secret: out.secret };
+    };
+    const lastUsedAtOf = async (id: string) => {
+      const [row] = await t.db.select().from(apiKeys).where(eq(apiKeys.id, id));
+      return row?.lastUsedAt ?? null;
+    };
 
     const ok = await make(0);
-    expect((await findUsableKey(deps, ok))?.user.id).toBe(user.id);
+    expect((await findUsableKey(deps, ok.secret))?.user.id).toBe(user.id);
     expect(await findUsableKey(deps, 'tr_live_unknown')).toBeNull();
 
-    const expired = await make(1);
+    // R3: last_used_at is written at most once a minute per key.
+    const firstTouch = await lastUsedAtOf(ok.id);
+    expect(firstTouch?.getTime()).toBe(t.clock.now);
+    t.clock.now += 59_999; // still within the one-minute window
+    await findUsableKey(deps, ok.secret);
+    expect((await lastUsedAtOf(ok.id))?.getTime()).toBe(firstTouch?.getTime());
+    t.clock.now += 2; // now 60_001ms after the first touch: past the window
+    await findUsableKey(deps, ok.secret);
+    expect((await lastUsedAtOf(ok.id))?.getTime()).toBe(t.clock.now);
+
+    const expired = await make(0);
     await t.db
       .update(apiKeys)
       .set({ expiresAt: new Date(t.clock.now - 1) })
-      .where(eq(apiKeys.keyPrefix, expired.slice(8, 16)));
-    expect(await findUsableKey(deps, expired)).toBeNull();
+      .where(eq(apiKeys.id, expired.id));
+    expect(await findUsableKey(deps, expired.secret)).toBeNull();
+
+    const revoked = await make(1);
+    await revokeApiKey(ctxOf(t), { user, id: revoked.id, ...META });
+    expect(await findUsableKey(deps, revoked.secret)).toBeNull();
 
     await t.db.delete(userRoles).where(eq(userRoles.userId, user.id));
-    expect(await findUsableKey(deps, ok)).toBeNull();
+    expect(await findUsableKey(deps, ok.secret)).toBeNull();
     await t.db.insert(userRoles).values({ userId: user.id, roleId: await adminRoleId(t.db) });
+    expect(await findUsableKey(deps, ok.secret)).not.toBeNull();
 
     await t.db.update(users).set({ status: 'suspended' }).where(eq(users.id, user.id));
-    expect(await findUsableKey(deps, ok)).toBeNull();
+    expect(await findUsableKey(deps, ok.secret)).toBeNull();
   });
 
   it('R7, R8 lists own keys newest first and revokes only own active keys', async () => {
@@ -177,6 +198,24 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
         targetId: first.key.id,
       },
     );
+
+    // Ruling (R7): "any other id answers 404" also covers a key of the caller's
+    // own that has already expired — revoking it is not distinguishable from
+    // revoking someone else's or an unknown one.
+    const expired = await createApiKey(ctxOf(t), {
+      user: b.user,
+      name: 'expired',
+      password: DEFAULT_PASSWORD,
+      code: code(b.secret, 0),
+      ...META,
+    });
+    await t.db
+      .update(apiKeys)
+      .set({ expiresAt: new Date(t.clock.now - 1) })
+      .where(eq(apiKeys.id, expired.key.id));
+    await expect(
+      revokeApiKey(ctxOf(t), { user: b.user, id: expired.key.id, ...META }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
 
     const list = await listApiKeys(ctxOf(t), a.user);
     expect(list.eligible).toBe(true);
