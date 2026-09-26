@@ -38,12 +38,13 @@ deploy key, which is forced to `scripts/deploy.sh` and can do nothing else —
 `compose.prod.yml`:
 
 ```sh
-rsync -rtv --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
+rsync -rtvc --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
 ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next'
 ssh <admin>@<server> '
-  rsync -rt --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
-  rsync -rt --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
-  rsync -rt --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+  set -e
+  rsync -rtc --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
+  rsync -rtc --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
+  rsync -rtc --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
 '
 ```
 

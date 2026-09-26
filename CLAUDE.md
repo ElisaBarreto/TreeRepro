@@ -40,12 +40,13 @@ Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite
 - `pnpm --filter @treerepro/api seed:traits` — load the trait dictionary (`apps/api/seed/trait-dictionary.csv`); idempotent, but a level renamed through the API reappears under its old key on the next run unless the CSV is updated too (see `docs/gotchas/dataset.md`). The file may carry an optional seventh column `active` (`true`/`false`, default `true`) so a trait can be loaded already deactivated (RFC-62 R2). Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api seed:traits`. In production: `docker compose exec api node dist/cli/seed-traits.js`.
 - `pnpm --filter @treerepro/api check:maps [--dir <dir>]` — checks a maps directory against the manifest rules and the trait dictionary in the database *before* the maps go live (RFC-76 R2 "Before publishing", default `--dir` is `MAPS_DIR`); prints one line per problem then the count shown and the count of problems, exits 1 if any or if the directory or its `manifest.csv` is missing (`no manifest.csv in <dir>` on stderr — a publishing gate must not pass an empty or mistargeted copy through to the `rsync --delete` that follows), writes nothing. Against the dev stack: `docker compose exec api pnpm --filter @treerepro/api check:maps`. In production, staged next to the live directory, never after it: the first command below runs on the laptop, the other two on the server (`/srv/treerepro`, an administrator's own login with Docker access, never the CI deploy key — `docs/gotchas/infra.md` "Deploy" and "Trait maps (private)"); the three-`rsync` publish order keeps a request from ever seeing `manifest.csv` name a file that isn't there yet (RFC-76 R1):
   ```sh
-  rsync -rtv --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
+  rsync -rtvc --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
   ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next'
   ssh <admin>@<server> '
-    rsync -rt --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
-    rsync -rt --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
-    rsync -rt --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+    set -e
+    rsync -rtc --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
+    rsync -rtc --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
+    rsync -rtc --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
   '
   ```
 - `pnpm --filter @treerepro/api prepare:imports --source <dir> --out <dir> [--skip-anomalies]` — turns the raw exports into the headers the `import:*` commands expect — `plot-species`, `synonyms`, `plots`, `references` and `user-plots` (`.import.csv`) (RFC-68 R14); reads and writes files only, never a database. It reports anything suspicious — a plot code that is an Excel date serial (with the date it decodes to and the code that implies), a plot code outside `AAA-NN`, a blank required field, one reference key carrying two DOIs, a local name resolving to two accepted names — and refuses to write the affected file unless `--skip-anomalies`, which then lists every dropped row. `sample_data.csv` is checked against RFC-64 R2 and reported, never rewritten.
