@@ -10,7 +10,15 @@ describe('RFC-13 R5 VoteButton', () => {
       <VoteButton icon="thumbsUp" label="Validate dioecious for sexual system" onClick={onClick} />,
     );
     const button = screen.getByRole('button', { name: 'Validate dioecious for sexual system' });
-    expect(button).toHaveAttribute('title', 'Validate dioecious for sexual system');
+    // Issue #214: an app-drawn tip, not the browser's slow, small `title`.
+    expect(button).not.toHaveAttribute('title');
+    const tip = screen.getByText('Validate dioecious for sexual system');
+    expect(tip).toHaveAttribute('aria-hidden', 'true');
+    expect(tip).toHaveClass(
+      'text-body',
+      'group-hover/vote:visible',
+      'group-focus-within/vote:visible',
+    );
     expect(button.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
     await userEvent.click(button);
     expect(onClick).toHaveBeenCalledTimes(1);
