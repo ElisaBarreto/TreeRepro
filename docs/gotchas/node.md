@@ -33,4 +33,4 @@
 ## `Readable.toWeb` throws after a cancel
 **Symptom:** A client that aborts a streamed download (or `res.body.cancel()` in a test) crashes the process: uncaught `TypeError: Invalid state: Controller is already closed` (`ERR_INVALID_STATE`) from `node:internal/webstreams/adapters` (issue #207).
 **Cause:** `Readable.toWeb` puts the Node stream in flowing mode and enqueues each `data` chunk; a chunk already in flight when the web stream is cancelled is enqueued on the closed controller.
-**Fix:** Return `ReadableStream.from(nodeReadable)` instead: it pulls through the async iterator, whose `return()` on cancel destroys the source (`datasetZip`, RFC-66 R5).
+**Fix:** Pull through the source's async iterator in a `ReadableStream` of your own whose `cancel()` calls `nodeReadable.destroy()` (`datasetZip`, RFC-66 R5). Not `ReadableStream.from(nodeReadable)` alone: its cancel calls the iterator's `return()`, and on an iterator never read that skips the generator's cleanup, so the source stays open (issue #216: a batch cancelling the export unread held a pooled connection for good).
