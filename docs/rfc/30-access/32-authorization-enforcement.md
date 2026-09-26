@@ -8,7 +8,7 @@
 
 ## Context
 
-The backend is the only authority (RFC-02 R1). Every route that is not public and not self-service names one permission and is guarded by one middleware. Effective permissions are derived from roles (RFC-31) and cached briefly.
+The backend is the only authority (RFC-02 R1). Every route that is not public, self-service or API-key (R5) names one permission and is guarded by one middleware. Effective permissions are derived from roles (RFC-31) and cached briefly.
 
 ## Rules
 
