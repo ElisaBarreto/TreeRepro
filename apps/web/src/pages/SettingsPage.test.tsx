@@ -8,6 +8,9 @@ vi.mock('../api/me.ts', () => ({
   updateName: vi.fn(),
   listSessions: vi.fn().mockResolvedValue([]),
   revokeSession: vi.fn(),
+  listApiKeys: vi.fn().mockResolvedValue({ eligible: false, keys: [] }),
+  createApiKey: vi.fn(),
+  revokeApiKey: vi.fn(),
 }));
 vi.mock('../api/auth.ts', () => ({
   changePassword: vi.fn(),

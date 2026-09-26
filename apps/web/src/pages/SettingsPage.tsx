@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
+import { ApiKeysSection } from '../components/settings/ApiKeysSection.tsx';
 import { PasswordSection } from '../components/settings/PasswordSection.tsx';
 import { ProfileSection } from '../components/settings/ProfileSection.tsx';
 import { SessionsSection } from '../components/settings/SessionsSection.tsx';
@@ -18,6 +19,7 @@ export function SettingsPage() {
         <ProfileSection />
         <PasswordSection />
         <TotpSection />
+        <ApiKeysSection />
         <SessionsSection onSignedOutEverywhere={() => navigate({ to: '/' })} />
       </div>
     </>
