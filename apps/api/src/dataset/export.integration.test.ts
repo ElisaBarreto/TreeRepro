@@ -375,4 +375,27 @@ describe('RFC-66 R5 connection safety', () => {
 
     await expect(withTimeout(db.execute(sql`select 1`), 5000)).resolves.toBeDefined();
   });
+
+  it('cancelling the ZIP before its first read releases the cursor (issue #216)', async () => {
+    handle ??= createDb(inject('databaseUrl'), { max: 1 });
+    const { db } = handle;
+    const trait = await createTrait(db, { valueType: 'quantitative', unit: 'mm' });
+    const sp = await createSpecies(db);
+    const ref = await createReference(db);
+    const { user } = await createUser(db);
+    await db.execute(sql`
+      insert into trait_records (species_id, trait_id, value_text, numeric_value, harmonisation,
+        origin, created_by, primary_reference_id)
+      select ${sp.id}, ${trait.id}, g::text, g, 'harmonised', 'manual', ${user.id}, ${ref.id}
+      from generate_series(1, 50000) g`);
+
+    // What `POST /api/batch` does with a ZIP answer: cancel it unread. The
+    // archive pumps into its buffers regardless, so the entry's cursor is
+    // open and stalled by then; without the fix it never closes.
+    const zip = datasetZip(db, UNRESTRICTED, { scope: 'all', now: new Date(), batch: 50 });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await zip.cancel();
+
+    await expect(withTimeout(db.execute(sql`select 1`), 5000)).resolves.toBeDefined();
+  });
 });
