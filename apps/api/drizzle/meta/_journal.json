@@ -267,6 +267,13 @@
       "when": 1790367785920,
       "tag": "0037_book_references",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790382470302,
+      "tag": "0038_contest_withdrawal",
+      "breakpoints": true
     }
   ]
 }
