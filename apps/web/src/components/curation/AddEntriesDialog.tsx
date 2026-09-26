@@ -18,9 +18,10 @@ import {
 import { helpHref } from '../../content/help/href.ts';
 import { categoriesWithActiveTraits, traitDescription } from '../../lib/dictionary.ts';
 import { fieldErrors } from '../../lib/errors.ts';
-import { formatNumber, humaniseKey } from '../../lib/format.ts';
+import { humaniseKey } from '../../lib/format.ts';
 import { useMe } from '../../lib/session.ts';
 import { useRecordWrite } from '../../lib/use-record-write.ts';
+import { recordValueLabel } from '../dataset/RecordTable.tsx';
 import { Alert, Button, Dialog, Field, HelpTip, Select } from '../ui/index.ts';
 import { contributionErrorMessage, SOURCES_NOT_READY } from './errors.ts';
 import { EMPTY_SOURCES, SourcesField, type SourcesValue, sourcesToBody } from './SourcesField.tsx';
@@ -53,15 +54,6 @@ const NOTHING_CONTESTED = 'A contest must contest at least one level; this is a 
 // The paths a control of this form shows its error under; any other detail
 // (`contestedLevelIds`, `intent`) has no field, so the alert says it verbatim.
 const OWNED_PATH = /^(value|sources|traitId|categoryKey|respondsTo)(\.|$)/;
-
-// ponytail: stand-in for Task 2's `recordValueLabel` (`../dataset/RecordTable.tsx`,
-// another lane); delete it and import that one when the lanes meet.
-function recordValueLabel(record: RecordItem): string {
-  if (record.level) return record.level.key;
-  const n = record.quantitative?.single ?? record.quantitative?.mean;
-  if (n === undefined || n === null) return record.valueText || '(empty)';
-  return `${formatNumber(n)}${record.trait.unit ? ` ${record.trait.unit}` : ''}`;
-}
 
 /** The two things a new value can mean about the value it answers (R-8). */
 const INTENTS: ReadonlyArray<{ value: RecordIntent; label: string; example: string }> = [

@@ -432,7 +432,15 @@ describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
   });
 
   it('comes pre-answered from a quantitative row, naming the record by its ID', async () => {
-    dataset.fetchRecords.mockResolvedValue(page([EXISTING_MASS]));
+    // A second record with a mean, an SD and an n but no single value: its
+    // option reads as the record table's value column does (RFC-63 R8).
+    const summarised: RecordItem = {
+      ...EXISTING_MASS,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e92',
+      recordCode: 'TR_8',
+      quantitative: { mean: 1.25, sd: 0.2, n: 4 },
+    };
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING_MASS, summarised]));
     curation.createRecords.mockResolvedValue(CREATED);
     mount({
       initialTrait: DICTIONARY_SEED_MASS,
@@ -448,6 +456,9 @@ describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
     const target = within(dialog).getByRole('combobox', { name: 'Responding to' });
     expect(target).toHaveValue(EXISTING_MASS.id);
     expect(within(target).getByRole('option', { name: 'TR_4 · 1.25 mg' })).toBeInTheDocument();
+    expect(
+      within(target).getByRole('option', { name: 'TR_8 · mean 1.25 · SD 0.2 mg (n = 4)' }),
+    ).toBeInTheDocument();
     await userEvent.type(
       within(dialog).getByRole('spinbutton', { name: 'Single value (mg)' }),
       '2',
