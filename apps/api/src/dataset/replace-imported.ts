@@ -242,12 +242,19 @@ async function recomputeCounters(tx: TransactionSql): Promise<void> {
  * RFC-64 R15 steps 4–5, after the new file's records are inserted and before
  * the batch is recorded:
  * - Re-attach by `record_code`.
+ * - For what is still unlinked, re-attach to the new imported record whose
+ *   `folded_record_codes` names the old code (RFC-64 R15 step 4, D11): the
+ *   smallest `record_code` in `(length, text)` order wins when several new
+ *   records list it; a response or harmonisation still needs the same
+ *   species and trait (RFC-63 R2), while an annotation has no such rule but
+ *   is dropped by `on conflict do nothing` when it would break a unique
+ *   index (e.g. a second `withdraw` on the surviving record).
  * - Restore the triggers.
  * - Recompute the counters.
  * - Write the final sheet beside the pending one, as `<sheet>.tmp`.
  *   {@link publishSheet} renames it after COMMIT.
  * @rfc RFC-64 R15
- * @rfc RFC-63 R2, R4
+ * @rfc RFC-63 R1, R2, R4
  */
 export async function relinkImported(
   tx: TransactionSql,
@@ -275,6 +282,46 @@ export async function relinkImported(
     join trait_records r on r.record_code = l.target_code and r.origin = 'import'
     where l.link = 'supersedes' and l.id = k.id
       and r.species_id = k.species_id and r.trait_id = k.trait_id`;
+
+  // Second pass (RFC-64 R15 step 4, D11): for whatever `record_code`
+  // matching left unlinked, look for a new imported record that folded the
+  // old code into itself. Ties go to the smallest `record_code` in
+  // `(length, text)` order.
+  await tx`
+    insert into record_annotations (id, record_id, actor_id, kind, note, reference_id, generated, created_at)
+    select s.id, f.id, s.actor_id, s.kind, s.note, s.reference_id, s.generated, s.created_at
+    from replace_annotations s
+    join (
+      select distinct on (code) code, r.id, r.species_id, r.trait_id
+      from trait_records r, unnest(r.folded_record_codes) code
+      where r.origin = 'import'
+      order by code, length(r.record_code), r.record_code
+    ) f on f.code = s.record_code
+    where not exists (select 1 from record_annotations a where a.id = s.id)
+    on conflict do nothing`;
+  await tx`
+    update trait_records k set intent = l.intent, responds_to_record_id = f.id
+    from replace_links l
+    join (
+      select distinct on (code) code, r.id, r.species_id, r.trait_id
+      from trait_records r, unnest(r.folded_record_codes) code
+      where r.origin = 'import'
+      order by code, length(r.record_code), r.record_code
+    ) f on f.code = l.target_code
+    where l.link = 'responds_to' and l.id = k.id and k.responds_to_record_id is null
+      and f.species_id = k.species_id and f.trait_id = k.trait_id`;
+  await tx`
+    update trait_records k set supersedes_record_id = f.id
+    from replace_links l
+    join (
+      select distinct on (code) code, r.id, r.species_id, r.trait_id
+      from trait_records r, unnest(r.folded_record_codes) code
+      where r.origin = 'import'
+      order by code, length(r.record_code), r.record_code
+    ) f on f.code = l.target_code
+    where l.link = 'supersedes' and l.id = k.id and k.supersedes_record_id = k.id
+      and f.species_id = k.species_id and f.trait_id = k.trait_id`;
+
   // An orphaned harmonisation with a primary reference stands on its own.
   await tx`
     update trait_records k set supersedes_record_id = null
