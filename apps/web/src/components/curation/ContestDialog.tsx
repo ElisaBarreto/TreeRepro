@@ -8,7 +8,7 @@ import {
 } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
 import { createRecords } from '../../api/curation.ts';
-import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
+import { datasetKeys, fetchDictionary, fetchSpeciesTraits } from '../../api/dataset.ts';
 import { fieldErrors } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { useMe } from '../../lib/session.ts';
@@ -38,7 +38,10 @@ const LOCAL_MESSAGES: Record<string, string> = {
   'value.numeric': 'Enter a number.',
 };
 
-const VALUE_PATHS = ['value', 'value.levelId', 'value.numeric'] as const;
+const VALUE_PATHS = ['value', 'value.levelIds.0', 'value.levelId', 'value.numeric'] as const;
+
+/** RFC-70 R10: a categorical contest that leaves no level of E unchosen. */
+const NOTHING_CONTESTED = 'A contest must contest at least one level; this is a complement';
 
 // A validation detail that lands under a field is the message; the alert
 // above the buttons would only repeat it in vaguer words. The contest rule
@@ -66,21 +69,24 @@ function apiAlertMessage(error: unknown, errors: Record<string, string>): string
  * the record it answers — it *contests* it (the existing value is wrong) or
  * *complements* it (both hold) — and only then the record itself, whose
  * fields stay disabled until that is answered, because the same value means
- * two different things and the API's side effects differ (a contest disputes
- * the record it answers, RFC-70 R3). Changing the answer keeps what was
+ * two different things and the API's side effects differ (a contest is
+ * stored and marks what it contests, RFC-70 R3). Changing the answer keeps what was
  * already typed: only the refusal the last attempt earned is dropped, since
  * "a contest carries a different value" stops applying the moment the intent
  * becomes a complement.
  *
  * The value comes from the record's own trait, its levels from the shared
  * dictionary query; the sources from {@link SourcesField}, so no DOI at all
- * means the contributor's personal observation. A 201 that carries
- * `duplicates` is not a failure (RFC-70 R3): the claims that already existed
- * are named, with a link each, before the record that was created is handed
- * up — only a 409 `RECORD_DUPLICATE`, where nothing was created at all, is
- * an error.
+ * means the contributor's personal observation. A categorical contest
+ * responds to no record (RFC-70 R1): it names the levels it contests, E \ S
+ * — E the active levels with visible records, read off the species' trait
+ * summary, S the chosen level — and cannot be sent when that is empty
+ * (RFC-70 R10). A 201 that matched existing records is not a failure (RFC-70
+ * R3): the claims that already existed and the records counted as the
+ * contributor's validation are named, with a link each, before the record
+ * that was created is handed up.
  * @rfc RFC-13 R6, R10
- * @rfc RFC-70 R1, R2, R3
+ * @rfc RFC-70 R1, R2, R3, R10
  */
 export function ContestDialog({
   record,
@@ -111,12 +117,28 @@ export function ContestDialog({
   const levels =
     dictionary.data?.flatMap((c) => c.traits).find((t) => t.id === record.trait.id)?.levels ?? [];
   const valueType = record.trait.valueType;
+  const summary = useQuery({
+    queryKey: datasetKeys.speciesTraits(record.speciesId, false),
+    queryFn: () => fetchSpeciesTraits(record.speciesId),
+  });
+  const categoricalContest = intent === 'contest' && valueType === 'categorical';
+  // E \ S (RFC-63 R14): the summary lists the levels with visible records;
+  // only the active ones count.
+  const activeIds = new Set(levels.filter((level) => level.active).map((level) => level.id));
+  const contestedLevelIds = (
+    summary.data?.flatMap((c) => c.traits).find((t) => t.trait.id === record.trait.id)?.levels ?? []
+  )
+    .map((level) => level.levelId)
+    .filter((id) => activeIds.has(id) && id !== levelId);
+  const nothingContested =
+    categoricalContest && summary.isSuccess && levelId !== '' && contestedLevelIds.length === 0;
+  const contestBlocked = categoricalContest && (!summary.isSuccess || nothingContested);
 
   const save = useRecordWrite<CreateRecordBody, CreateRecordsResult>({
     write: createRecords,
     speciesId: record.speciesId,
     onInvalidated: (result) => {
-      if (result.duplicates.length === 0) onCreated(result);
+      if (result.duplicates.length === 0 && result.validated.length === 0) onCreated(result);
       else setAnswered(result);
     },
   });
@@ -155,7 +177,7 @@ export function ContestDialog({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!intent) return;
+    if (!intent || contestBlocked) return;
     // Required fields first: `value` is a union, so a missing level or a
     // `NaN` fails both branches and Zod reports one issue at `value`, never
     // at the nested path the messages key on (as in `AddEntriesDialog`).
@@ -179,10 +201,12 @@ export function ContestDialog({
       speciesId: record.speciesId,
       traitId: record.trait.id,
       value:
-        valueType === 'quantitative' ? { quantitative: { single: Number(numeric) } } : { levelId },
+        valueType === 'quantitative'
+          ? { quantitative: { single: Number(numeric) } }
+          : { levelIds: [levelId] },
       sources: sourcesToBody(sources),
       intent,
-      respondsToRecordId: record.id,
+      ...(categoricalContest ? { contestedLevelIds } : { respondsToRecordId: record.id }),
     };
     const parsed = createRecordBodySchema.safeParse(candidate);
     if (!parsed.success) {
@@ -205,22 +229,33 @@ export function ContestDialog({
     return (
       <Dialog open title={title} onClose={onClose}>
         <div className="flex flex-col gap-4">
-          <Alert tone="info">One of these claims already existed.</Alert>
+          <Alert tone="info">
+            {[
+              answered.duplicates.length > 0 ? 'One of these claims already existed.' : null,
+              answered.validated.length > 0
+                ? 'Matches an existing record — counted as your validation.'
+                : null,
+            ]
+              .filter((sentence) => sentence !== null)
+              .join(' ')}
+          </Alert>
           <ul className="flex flex-col gap-1">
-            {answered.duplicates.map((duplicate) => (
-              <li key={duplicate.recordId}>
+            {[...answered.duplicates, ...answered.validated].map((ref) => (
+              <li key={ref.recordId}>
                 <button
                   type="button"
                   className="text-left text-cell font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-                  onClick={() => onOpenRecord(duplicate.recordId)}
+                  onClick={() => onOpenRecord(ref.recordId)}
                 >
-                  {`Open record …${duplicate.recordId.slice(-6)}`}
+                  {`Open record …${ref.recordId.slice(-6)}`}
                 </button>
               </li>
             ))}
           </ul>
           <div className="flex justify-end">
-            <Button onClick={() => onCreated(answered)}>Open the record you added</Button>
+            <Button onClick={() => onCreated(answered)}>
+              {answered.created.length > 0 ? 'Open the record you added' : 'Close'}
+            </Button>
           </div>
         </div>
       </Dialog>
@@ -290,12 +325,13 @@ export function ContestDialog({
           <p className="text-meta text-mist-500">{`Recorded as ${me.user.name}`}</p>
         </fieldset>
 
+        {nothingContested ? <Alert tone="info">{NOTHING_CONTESTED}</Alert> : null}
         {alertMessage ? <Alert tone="error">{alertMessage}</Alert> : null}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
             Cancel
           </Button>
-          <Button type="submit" pending={save.isPending} disabled={!intent}>
+          <Button type="submit" pending={save.isPending} disabled={!intent || contestBlocked}>
             Add record
           </Button>
         </div>

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -46,3 +46,4 @@ Merging two species rows (synonyms discovered later) and WCVP/GBIF lookups when 
 - 2026-09-18 — R7: the detail's `traitCount` named as R6's field and its visibility-blindness stated, against a review reading that would have filtered it (CodeRabbit, plan 10a).
 - 2026-09-18 — R1, R4, R6, R7, R9 amended: synonyms and common names (`name_type`, `language`), two-tier species search (`matchedNameType`), the names writes and their validation — migration `0026_species_names` (RFC-68 R12; plan 10b).
 - 2026-09-25 — R6: `contested` filter for every viewer, `unknownLevels` and `unresolved` for `records.review` only, `unresolvedTaxon` null for other viewers (record model revision R-14, R-15; plan 13a). `draft` until plan 13g.
+- 2026-09-26 — accepted: implemented by plan 13g.

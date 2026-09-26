@@ -1,10 +1,12 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
-  DISPUTED_RECORD,
+  CONTESTED_ITEM,
   MAP_RESULT,
   PENDING_GROUPS,
+  PENDING_RECORD,
   PENDING_TRAITS,
+  RECORD,
   RECORD_DETAIL,
   REFERENCE,
   SEXUAL_SYSTEM,
@@ -16,12 +18,15 @@ import {
   createRecords,
   curationKeys,
   EXPORT_RECORDS_URL,
-  fetchDisputed,
+  fetchContested,
   fetchPendingGroups,
   fetchPendingTraits,
   invalidateAfterRecordWrite,
   mapPending,
+  resolveContest,
   resolveDoi,
+  withdrawContest,
+  withdrawLevel,
 } from './curation.ts';
 
 installFetchMock();
@@ -30,20 +35,22 @@ const body = () => JSON.parse(String(lastRequest().init?.body));
 
 describe('RFC-70 R1, R3 createRecords', () => {
   it('posts the body and unwraps the created records', async () => {
-    mockJson(201, { data: { created: [RECORD_DETAIL], duplicates: [] } });
+    const validated = [{ recordId: PENDING_RECORD.id, recordCode: PENDING_RECORD.recordCode }];
+    mockJson(201, { data: { created: [RECORD], validated, duplicates: [] } });
     const result = await createRecords({
       speciesId: SPECIES.id,
       traitId: SEXUAL_SYSTEM.id,
-      value: { levelId: RECORD_DETAIL.level?.id ?? '' },
+      value: { levelIds: [RECORD_DETAIL.level?.id ?? ''] },
       sources: { references: [{ id: RECORD_DETAIL.primaryReference?.id ?? '' }] },
     });
     expect(lastRequest().url).toBe('/api/records');
     expect(lastRequest().init?.method).toBe('POST');
-    expect(body().value).toEqual({ levelId: RECORD_DETAIL.level?.id });
+    expect(body().value).toEqual({ levelIds: [RECORD_DETAIL.level?.id] });
     expect(body().sources).toEqual({
       references: [{ id: RECORD_DETAIL.primaryReference?.id }],
     });
-    expect(result.created[0]?.id).toBe(RECORD_DETAIL.id);
+    expect(result.created[0]?.id).toBe(RECORD.id);
+    expect(result.validated).toEqual(validated);
     expect(result.duplicates).toEqual([]);
   });
 });
@@ -58,17 +65,27 @@ describe('RFC-80 R4 resolveDoi', () => {
   });
 });
 
-describe('RFC-65 R3 annotateRecord', () => {
+describe('RFC-65 R3, RFC-70 R4 annotateRecord', () => {
   it('posts to the record and unwraps the detail', async () => {
     mockJson(201, { data: RECORD_DETAIL });
-    await annotateRecord(RECORD_DETAIL.id, { kind: 'dispute', note: 'No.' });
+    await annotateRecord(RECORD_DETAIL.id, {
+      kind: 'confirm',
+      referenceSource: { id: REFERENCE.id },
+    });
     expect(lastRequest().url).toBe(`/api/records/${RECORD_DETAIL.id}/annotations`);
-    expect(body()).toEqual({ kind: 'dispute', note: 'No.' });
+    expect(body()).toEqual({ kind: 'confirm', referenceSource: { id: REFERENCE.id } });
+  });
+
+  it('RFC-33 R2 a withdraw answers 200 { data: null }, which unwraps to null', async () => {
+    mockJson(200, { data: null });
+    const result = await annotateRecord(RECORD_DETAIL.id, { kind: 'withdraw' });
+    expect(lastRequest().url).toBe(`/api/records/${RECORD_DETAIL.id}/annotations`);
+    expect(result).toBeNull();
   });
 });
 
 describe('RFC-65 R8–R10 queues', () => {
-  it('pending traits, pending groups with cursor, mapping and the disputed list', async () => {
+  it('pending traits, pending groups with cursor, mapping and the contested queue', async () => {
     mockJson(200, { data: PENDING_TRAITS });
     expect(await fetchPendingTraits()).toEqual(PENDING_TRAITS);
     expect(lastRequest().url).toBe('/api/records/pending/traits');
@@ -86,18 +103,17 @@ describe('RFC-65 R8–R10 queues', () => {
     });
     expect(lastRequest().url).toBe('/api/records/pending/map');
     expect(result).toEqual(MAP_RESULT);
-    mockJson(200, { data: [DISPUTED_RECORD], meta: { nextCursor: null } });
-    const disputed = await fetchDisputed({ limit: 50 });
+    mockJson(200, { data: [CONTESTED_ITEM], meta: { nextCursor: null } });
+    const contested = await fetchContested({ limit: 50 });
     expect(lastRequest().url).toBe('/api/records/disputed?limit=50');
-    expect(disputed.data[0]?.latestDispute.actor.name).toBe(
-      DISPUTED_RECORD.latestDispute.actor.name,
-    );
+    expect(contested.data).toEqual([CONTESTED_ITEM]);
   });
 });
 
 describe('query keys and invalidation', () => {
   it('curationKeys nest under the dataset prefixes; invalidateAfterRecordWrite marks records and the species stale', async () => {
     expect(curationKeys.pendingGroups('t')).toEqual(['records', 'pending', 'groups', 't']);
+    expect(curationKeys.contested).toEqual(['records', 'contested']);
     expect(EXPORT_RECORDS_URL).toBe('/api/export/records.csv');
     const client = new QueryClient();
     client.setQueryData(['records', { speciesId: 's' }], { data: [], meta: { nextCursor: null } });
@@ -109,5 +125,32 @@ describe('query keys and invalidation', () => {
     expect(client.getQueryState(['records', 'r1'])?.isInvalidated).toBe(true);
     expect(client.getQueryState(['species', 's', 'traits'])?.isInvalidated).toBe(true);
     expect(client.getQueryState(['species', 'other'])?.isInvalidated).toBe(false);
+  });
+});
+
+describe('RFC-65 R14 withdrawLevel', () => {
+  it('posts to the level and unwraps { withdrawn, remaining }', async () => {
+    const ref = { recordId: RECORD.id, recordCode: RECORD.recordCode };
+    mockJson(201, { data: { withdrawn: [ref], remaining: [] } });
+    const levelId = RECORD_DETAIL.level?.id ?? '';
+    const result = await withdrawLevel(SPECIES.id, SEXUAL_SYSTEM.id, levelId);
+    expect(lastRequest().url).toBe(
+      `/api/species/${SPECIES.id}/traits/${SEXUAL_SYSTEM.id}/levels/${levelId}/withdraw`,
+    );
+    expect(lastRequest().init?.method).toBe('POST');
+    expect(result).toEqual({ withdrawn: [ref], remaining: [] });
+  });
+});
+
+describe('RFC-65 R16 contest actions', () => {
+  it('resolveContest and withdrawContest post to the contest and answer nothing', async () => {
+    mockJson(200, { data: null });
+    await expect(resolveContest(RECORD.id)).resolves.toBeUndefined();
+    expect(lastRequest().url).toBe(`/api/contests/${RECORD.id}/resolve`);
+    expect(lastRequest().init?.method).toBe('POST');
+    mockJson(200, { data: null });
+    await expect(withdrawContest(RECORD.id)).resolves.toBeUndefined();
+    expect(lastRequest().url).toBe(`/api/contests/${RECORD.id}/withdraw`);
+    expect(lastRequest().init?.method).toBe('POST');
   });
 });

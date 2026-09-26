@@ -34,7 +34,9 @@ export const contributionRecordSchema = recordSchema.extend({
 
 /**
  * `generated` is kept even though it mirrors `annotationSchema`
- * (`dataset.ts`): the web page renders it as "automatic".
+ * (`dataset.ts`): the web page renders it as "automatic". `record` is null
+ * for a Keep-both resolution (`kind: 'resolve'`) whose contest created no
+ * record, or created one the viewer cannot see (RFC-65 R16).
  * @rfc RFC-71 R3
  */
 export const contributionAnnotationSchema = z.strictObject({
@@ -44,17 +46,22 @@ export const contributionAnnotationSchema = z.strictObject({
   reference: referenceRefSchema.nullable(),
   generated: z.boolean(),
   createdAt: z.iso.datetime(),
-  record: recordSchema,
+  record: recordSchema.nullable(),
 });
 
-/** @rfc RFC-71 R4 */
+/**
+ * `contests` counts the viewer's contests that are not withdrawn (RFC-63
+ * R14), one per contest, whether or not it created a record — not the
+ * viewer's records with `intent = 'contest'`. `disputes` and `withdrawn` are
+ * gone: `dispute` is retired (RFC-63 R7) and a withdrawn record leaves the
+ * dataset (RFC-63 R13), so neither is a standing to report.
+ * @rfc RFC-71 R4
+ */
 export const contributionSummarySchema = z.strictObject({
   records: z.number().int().nonnegative(),
   contests: z.number().int().nonnegative(),
   complements: z.number().int().nonnegative(),
   validations: z.number().int().nonnegative(),
-  disputes: z.number().int().nonnegative(),
-  withdrawn: z.number().int().nonnegative(),
 });
 
 export type ListContributionsQuery = z.infer<typeof listContributionsQuerySchema>;

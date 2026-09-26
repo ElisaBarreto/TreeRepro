@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  createContest,
+  createContestEvent,
   createFamily,
   createGenus,
   createImportBatch,
@@ -15,6 +17,7 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import type { Visibility } from '../access/visibility.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
 import { species } from '../db/schema/taxa.ts';
 import { encodeCompositeCursor } from '../http/cursor.ts';
@@ -124,6 +127,105 @@ describe('RFC-60 R6 searchSpecies', () => {
     expect(flag(resolved.id)).toBe(false);
     expect(flag(noGenus.id)).toBe(true);
     expect(flag(gbif.id)).toBe(true);
+  });
+});
+
+describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)', () => {
+  const t = useTestDb();
+  const REVIEWER: Visibility = { inactive: false, plotIds: null, review: true };
+
+  it('contested for everyone; unknownLevels and unresolved only for a reviewer', async () => {
+    const k = tag();
+    const q = `Filtrum-${k}`;
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const [level] = trait.levels as [{ id: string; key: string }];
+    const contested = await createSpecies(t.db, { canonicalName: `${q} contested` });
+    const unknown = await createSpecies(t.db, { canonicalName: `${q} unknown` });
+    const plain = await createSpecies(t.db, { canonicalName: `${q} plain` });
+
+    // A categorical contest naming a level that has a visible record (RFC-63
+    // R14): the contest is stored on its own — never a contest record
+    // responding to a target (superseded by plan 13g's storage, RFC-63 R14).
+    await createRecord(t.db, {
+      speciesId: contested.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: level.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await createContest(t.db, {
+      speciesId: contested.id,
+      traitId: trait.id,
+      createdBy: user.id,
+      levelIds: [level.id],
+    });
+
+    const batch = await createImportBatch(t.db);
+    await createRecord(t.db, {
+      speciesId: unknown.id,
+      traitId: trait.id,
+      valueText: 'zzz',
+      harmonisation: 'unknown_level',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+
+    await createRecord(t.db, {
+      speciesId: plain.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: level.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const names = async (v: Visibility, f: object) =>
+      (await searchSpecies(t.db, v, { q, limit: 50, ...f })).data
+        .map((s) => s.canonicalName)
+        .sort();
+
+    expect(await names(RESTRICTED, { contested: true })).toEqual([`${q} contested`]);
+    expect(await names(REVIEWER, { unknownLevels: true })).toEqual([`${q} unknown`]);
+    // Reviewer-only filters are ignored for any other viewer (RFC-60 R6): every
+    // fixture species still matches.
+    expect(await names(RESTRICTED, { unknownLevels: true })).toHaveLength(3);
+    expect(await names(RESTRICTED, { unresolved: true })).toHaveLength(3);
+  });
+
+  it('contested lists no species whose only contest is resolved (RFC-63 R14)', async () => {
+    const q = `Resolvum-${tag()}`;
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const [level] = trait.levels as [{ id: string; key: string }];
+    const sp = await createSpecies(t.db, { canonicalName: `${q} resolved` });
+    await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: level.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const contest = await createContest(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      createdBy: user.id,
+      levelIds: [level.id],
+    });
+    const listed = async () =>
+      (await searchSpecies(t.db, RESTRICTED, { q, limit: 50, contested: true })).data.map(
+        (s) => s.id,
+      );
+    expect(await listed()).toEqual([sp.id]);
+    await createContestEvent(t.db, { contestId: contest.id, actorId: user.id, kind: 'resolve' });
+    expect(await listed()).toEqual([]);
   });
 });
 

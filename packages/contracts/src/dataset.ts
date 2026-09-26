@@ -28,8 +28,14 @@ export type HarmonisationStatus = (typeof HARMONISATION_STATUSES)[number];
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
 
-/** @rfc RFC-63 R7 */
-export const ANNOTATION_KINDS = ['confirm', 'dispute', 'neutral', 'withdraw'] as const;
+/**
+ * `record_annotations` stores `confirm` and `withdraw`; `dispute` and
+ * `neutral` rows written before plan 13g stay and every rule ignores them.
+ * `resolve` (Keep both) is a `contest_events` row, never a record annotation:
+ * it is here only for the contributions list (RFC-71 R3).
+ * @rfc RFC-63 R7
+ */
+export const ANNOTATION_KINDS = ['confirm', 'dispute', 'neutral', 'withdraw', 'resolve'] as const;
 export type AnnotationKind = (typeof ANNOTATION_KINDS)[number];
 
 /** @rfc RFC-64 R3 */
@@ -79,8 +85,13 @@ export type ImportBatchKind = (typeof IMPORT_BATCH_KINDS)[number];
 export const SPECIES_STATUSES = ['active', 'inactive', 'all'] as const;
 export type SpeciesStatus = (typeof SPECIES_STATUSES)[number];
 
-/** @rfc RFC-63 R6 */
-export const REVIEW_STATUSES = ['unreviewed', 'confirmed', 'disputed', 'withdrawn'] as const;
+/**
+ * Review state, derived per viewer: contested (the record or its level is
+ * contested, RFC-63 R14) > validated (a `confirm`) > unvalidated. A withdrawn
+ * record has none: it is invisible.
+ * @rfc RFC-63 R6
+ */
+export const REVIEW_STATUSES = ['contested', 'validated', 'unvalidated'] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
 /** Path parameter of every dataset detail route. @rfc RFC-60 R7 */
@@ -111,6 +122,8 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   familyId: z.uuid().optional(),
   genusId: z.uuid().optional(),
   unresolved: z.enum(['true', 'false']).optional(),
+  contested: z.enum(['true', 'false']).optional(),
+  unknownLevels: z.enum(['true', 'false']).optional(),
   status: z.enum(SPECIES_STATUSES).optional(),
   scope: z.enum(SPECIES_SCOPES).optional(),
   plotId: z.uuid().optional(),
@@ -124,9 +137,11 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
  * `traitRecordCount` is `null` when no `traitId` filter was given, `0` in
  * missing mode, and the coverage row's `record_count` otherwise.
  * `matchedNameType` is the type of the alternative name that matched
- * (`matchedName`), else `null`.
+ * (`matchedName`), else `null`. `unresolvedTaxon` is reviewer-only data
+ * (RFC-33 R2): the flag for a `records.review` holder, `null` for every
+ * other viewer.
  * @rfc RFC-60 R3, R6
- * @rfc RFC-33 R7
+ * @rfc RFC-33 R2, R7
  * @rfc RFC-69 R1
  */
 export const speciesListItemSchema = z.strictObject({
@@ -138,7 +153,7 @@ export const speciesListItemSchema = z.strictObject({
   family: taxonRefSchema.nullable(),
   matchedName: z.string().nullable(),
   matchedNameType: z.enum(NAME_TYPES).nullable(),
-  unresolvedTaxon: z.boolean(),
+  unresolvedTaxon: z.boolean().nullable(),
   traitCount: z.number().int().nonnegative(),
   traitRecordCount: z.number().int().nonnegative().nullable(),
 });
@@ -406,7 +421,12 @@ export const quantitativeValueSchema = z
     message: 'sd must not be negative',
   });
 
-/** @rfc RFC-63 R8 */
+/**
+ * `validationCount` counts distinct `confirm` actors, `contestCount` distinct
+ * authors of the contests not withdrawn that name the record's level or
+ * respond to it; `contested` follows RFC-63 R14 for the viewer.
+ * @rfc RFC-63 R8
+ */
 export const recordSchema = z.strictObject({
   id: z.uuid(),
   recordCode: z.string(),
@@ -427,6 +447,9 @@ export const recordSchema = z.strictObject({
   createdBy: userRefSchema.nullable(),
   intent: z.enum(RECORD_INTENTS).nullable(),
   respondsTo: z.strictObject({ id: z.uuid() }).nullable(),
+  validationCount: z.number().int().nonnegative(),
+  contestCount: z.number().int().nonnegative(),
+  contested: z.boolean(),
 });
 
 /** @rfc RFC-63 R8 */
@@ -465,12 +488,23 @@ export const recordDetailSchema = recordSchema.extend({
   ),
 });
 
+/** Sortable columns of the record panel (spec §2). @rfc RFC-63 R9 */
+export const RECORD_SORTS = ['value', 'references', 'origin', 'added'] as const;
+/** @rfc RFC-63 R9 */
+export type RecordSort = (typeof RECORD_SORTS)[number];
+/** @rfc RFC-63 R9 */
+export const SORT_ORDERS = ['asc', 'desc'] as const;
+/** @rfc RFC-63 R9 */
+export type SortOrder = (typeof SORT_ORDERS)[number];
+
 /** @rfc RFC-63 R9 */
 export const listRecordsQuerySchema = cursorQuerySchema
   .extend({
     speciesId: z.uuid().optional(),
     traitId: z.uuid().optional(),
     referenceId: z.uuid().optional(),
+    sort: z.enum(RECORD_SORTS).optional(),
+    order: z.enum(SORT_ORDERS).optional(),
   })
   .refine(
     (q) =>
@@ -495,7 +529,14 @@ export const traitSummarySchema = z.strictObject({
   harmonisationCounts: harmonisationCountsSchema,
   levels: z
     .array(
-      z.strictObject({ levelId: z.uuid(), key: z.string(), count: z.number().int().nonnegative() }),
+      z.strictObject({
+        levelId: z.uuid(),
+        key: z.string(),
+        count: z.number().int().nonnegative(),
+        /** Distinct actors who validated at least one visible record of the level. */
+        validationCount: z.number().int().nonnegative(),
+        contested: z.boolean(),
+      }),
     )
     .nullable(),
   numeric: z
@@ -508,6 +549,8 @@ export const traitSummarySchema = z.strictObject({
     .nullable(),
   /** At least one of the species' records on the trait is validated (spec R-1). */
   validated: z.boolean(),
+  /** A level or record of the trait is contested (RFC-63 R14). */
+  contested: z.boolean(),
 });
 
 /** @rfc RFC-70 R7 */

@@ -75,6 +75,8 @@ export function searchSpecies(params: {
   familyId?: string;
   genusId?: string;
   unresolved?: boolean;
+  contested?: boolean;
+  unknownLevels?: boolean;
   status?: SpeciesStatus;
   scope?: 'plots' | 'all';
   plotId?: string;

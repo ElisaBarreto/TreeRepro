@@ -12,10 +12,6 @@ export function contributionErrorMessage(error: unknown): string {
     switch (error.code) {
       case 'DOI_LOOKUP_FAILED':
         return 'The DOI registry could not be reached. Try again in a moment.';
-      case 'RECORD_DUPLICATE':
-        return 'Every reference already supports this exact claim. Validate the existing record instead.';
-      case 'RECORD_WITHDRAWN':
-        return 'This record is withdrawn; it cannot be contested.';
       case 'VALIDATION_FAILED':
         return 'Check the highlighted fields.';
     }

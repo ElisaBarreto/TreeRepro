@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | access control |
 | Supersedes | — |
 
@@ -46,3 +46,4 @@ None.
 - 2026-09-20 — R12–R14 added, Context amended: delegation ceiling, self-change, refusal audit (security audit 2026-09-19, issue #118 F-02, plan #120 step 1).
 - 2026-09-25 — R10: `records.withdraw_imported` is admin-only; R15 added: `dataset.export` and `records.withdraw_imported` cannot be granted to a custom role (owner ruling) (record model revision R-12; plan 13a). `draft` until plan 13g.
 - 2026-09-26 — R14: the invite dialog offers only the roles within the actor's ceiling (issue #171).
+- 2026-09-26 — accepted: implemented by plan 13g.

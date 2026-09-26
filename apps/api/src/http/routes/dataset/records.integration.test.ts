@@ -1,10 +1,11 @@
-import type { PermissionKey } from '@treerepro/contracts';
+import { contestedQueueItemSchema, type PermissionKey } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { TestApp } from '../../../../test/helpers/app.ts';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import {
   createAnnotation,
+  createContest,
   createImportBatch,
   createRecord,
   createReference,
@@ -22,7 +23,12 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
   const t = useTestApp();
 
   it('lists by species+trait or by reference, rejects other combinations, answers detail and summary', async () => {
-    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    // The one record this test creates is a pending import (no level, no
+    // quantitative field): visible only to a `records.review` holder
+    // (RFC-33 R2). The role carries it because this test is about the shape
+    // of the record and summary routes, not about pending-record visibility
+    // — that is `live-records.integration.test.ts`'s job.
+    const role = await createRole(t.db, { permissions: ['dataset.read', 'records.review'] });
     const { user } = await createUser(t.db, { roles: [role.id] });
     const { cookie } = await loginAs(t, user);
     const sp1 = await createSpecies(t.db);
@@ -88,6 +94,60 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
     expect(noSpecies.status).toBe(404);
     expect((await noSpecies.json()).error.code).toBe('SPECIES_NOT_FOUND');
   });
+
+  it('accepts sort and order, and refuses an unknown value for either (RFC-63 R9)', async () => {
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, user);
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const ref = await createReference(t.db);
+    const r1 = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: '1',
+      numericValue: 1,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const r2 = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const sorted = await call(
+      t.app,
+      'GET',
+      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&sort=value&order=asc`,
+      { cookie },
+    );
+    expect(sorted.status).toBe(200);
+    expect((await sorted.json()).data.map((r: { id: string }) => r.id)).toEqual([r1.id, r2.id]);
+
+    const badSort = await call(
+      t.app,
+      'GET',
+      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&sort=species`,
+      { cookie },
+    );
+    expect(badSort.status).toBe(400);
+    expect((await badSort.json()).error.details[0].path).toBe('sort');
+
+    const badOrder = await call(
+      t.app,
+      'GET',
+      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&order=ascending`,
+      { cookie },
+    );
+    expect(badOrder.status).toBe(400);
+    expect((await badOrder.json()).error.details[0].path).toBe('order');
+  });
 });
 
 /** A signed-in user holding exactly these permissions. */
@@ -112,7 +172,7 @@ async function manager(t: TestApp) {
 describe('RFC-65 R1, R2 POST /api/records', () => {
   const t = useTestApp();
 
-  it('creates a categorical record with the level key as value_text and answers the detail', async () => {
+  it('RFC-70 R3 creates a categorical record with the level key as value_text and answers the record item', async () => {
     const { user, cookie } = await scientist(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['red', 'blue'] });
@@ -122,7 +182,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       body: {
         speciesId: sp1.id,
         traitId: trait.id,
-        value: { levelId: trait.levels[0]?.id },
+        value: { levelIds: [trait.levels[0]?.id] },
         sources: { references: [{ id: ref.id }] },
         rawValue: 'Reds',
         note: 'Table 2',
@@ -137,17 +197,14 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       level: { id: trait.levels[0]?.id, key: 'red' },
       numericValue: null,
       harmonisation: 'harmonised',
-      review: 'unreviewed',
+      review: 'unvalidated',
       origin: 'manual',
       createdBy: { id: user.id, name: 'Test User' },
       primaryReference: { id: ref.id },
       secondaryReference: null,
-      rawValue: 'Reds',
-      note: 'Table 2',
-      importBatch: null,
-      supersedes: null,
-      supersededBy: [],
     });
+    const detail = await call(t.app, 'GET', `/api/records/${data.created[0].id}`, { cookie });
+    expect((await detail.json()).data).toMatchObject({ rawValue: 'Reds', note: 'Table 2' });
   });
 
   it('creates a quantitative record with the canonical number as value_text', async () => {
@@ -216,10 +273,13 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       });
     const cases: [Record<string, unknown>, string][] = [
       [{ traitId: cat.id, value: { quantitative: { single: 1 } } }, 'value'],
-      [{ traitId: quant.id, value: { levelId: cat.levels[0]?.id } }, 'value'],
-      [{ traitId: cat.id, value: { levelId: other.levels[0]?.id } }, 'value.levelId'],
-      [{ traitId: other.id, value: { levelId: other.levels[0]?.id } }, 'value.levelId'],
-      [{ traitId: inactiveTrait.id, value: { levelId: inactiveTrait.levels[0]?.id } }, 'traitId'],
+      [{ traitId: quant.id, value: { levelIds: [cat.levels[0]?.id] } }, 'value'],
+      [{ traitId: cat.id, value: { levelIds: [other.levels[0]?.id] } }, 'value.levelIds.0'],
+      [{ traitId: other.id, value: { levelIds: [other.levels[0]?.id] } }, 'value.levelIds.0'],
+      [
+        { traitId: inactiveTrait.id, value: { levelIds: [inactiveTrait.levels[0]?.id] } },
+        'traitId',
+      ],
     ];
     for (const [body, path] of cases) {
       const res = await post(body);
@@ -239,7 +299,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
     const base = {
       speciesId: sp1.id,
       traitId: trait.id,
-      value: { levelId: trait.levels[0]?.id },
+      value: { levelIds: [trait.levels[0]?.id] },
       sources: { references: [{ id: ref.id }] },
     };
     for (const [body, code] of [
@@ -254,7 +314,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
     }
   });
 
-  it('R2 an identical claim answers 409 RECORD_DUPLICATE naming the existing record', async () => {
+  it("RFC-65 R2 (retired) the same entry again answers 201 naming the actor's own record in duplicates", async () => {
     const { cookie } = await scientist(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a'] });
@@ -262,28 +322,33 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
     const body = {
       speciesId: sp1.id,
       traitId: trait.id,
-      value: { levelId: trait.levels[0]?.id },
+      value: { levelIds: [trait.levels[0]?.id] },
       sources: { references: [{ id: ref.id }] },
       rawValue: 'A',
     };
     const first = await call(t.app, 'POST', '/api/records', { cookie, body });
     expect(first.status).toBe(201);
-    const firstId = (await first.json()).data.created[0].id;
-    const again = await call(t.app, 'POST', '/api/records', { cookie, body });
-    expect(again.status).toBe(409);
-    const err = (await again.json()).error;
-    expect(err.code).toBe('RECORD_DUPLICATE');
-    expect(err.details).toEqual([{ path: 'sources.references.0', message: firstId }]);
-    // a different raw value is a different claim
-    const other = await call(t.app, 'POST', '/api/records', {
-      cookie,
-      body: { ...body, rawValue: 'a.' },
-    });
-    expect(other.status).toBe(201);
+    const created = (await first.json()).data.created[0];
+    // A different raw value of the same level still matches (RFC-70 R3).
+    for (const again of [body, { ...body, rawValue: 'a.' }]) {
+      const res = await call(t.app, 'POST', '/api/records', { cookie, body: again });
+      expect(res.status).toBe(201);
+      expect((await res.json()).data).toEqual({
+        created: [],
+        validated: [],
+        duplicates: [{ recordId: created.id, recordCode: created.recordCode }],
+      });
+    }
   });
 
   it('RFC-63 R8 the detail shows supersedes and supersededBy', async () => {
-    const { user, cookie } = await scientist(t);
+    // The original is a pending import: visible only to a `records.review`
+    // holder (RFC-33 R2), which this test is not otherwise about.
+    const { user, cookie } = await scientist(t, [
+      'records.create',
+      'dataset.read',
+      'records.review',
+    ]);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a'] });
     const ref = await createReference(t.db);
@@ -344,7 +409,7 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
       body: {
         speciesId: sp1.id,
         traitId: trait.id,
-        value: { levelId: trait.levels[0]?.id },
+        value: { levelIds: [trait.levels[0]?.id] },
         sources: { references: [{ id: ref.id }] },
       },
     });
@@ -555,7 +620,7 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
     const original = await call(t.app, 'GET', `/api/records/${f.reds1.id}`, { cookie: f.cookie });
     const detail = (await original.json()).data;
     expect(detail.supersededBy).toHaveLength(1);
-    expect(detail.review).toBe('unreviewed');
+    expect(detail.review).toBe('unvalidated');
     const mapped = await call(t.app, 'GET', `/api/records/${detail.supersededBy[0].id}`, {
       cookie: f.cookie,
     });
@@ -700,158 +765,57 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
 describe('RFC-65 R10 GET /api/records/disputed', () => {
   const t = useTestApp();
 
-  type DisputedItem = {
-    id: string;
-    contestedBy: {
-      id: string;
-      valueText: string;
-      createdBy: { id: string; name: string } | null;
-    }[];
-  };
-
-  const itemsOf = async (cookie: string, query = '') => {
-    const items: DisputedItem[] = [];
-    let cursor: string | null = null;
-    do {
-      const res = await call(
-        t.app,
-        'GET',
-        `/api/records/disputed?limit=200${query}${cursor ? `&cursor=${cursor}` : ''}`,
-        { cookie },
-      );
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      items.push(...(body.data as DisputedItem[]));
-      cursor = body.meta.nextCursor;
-    } while (cursor);
-    return items;
-  };
-
-  const idsOf = async (cookie: string, query = '') =>
-    (await itemsOf(cookie, query)).map((r) => r.id);
-
-  it('lists standing disputes newest first, drops them after a changed stance, never withdrawn records', async () => {
-    const author = await manager(t);
-    const b = await scientist(t, ['records.annotate']);
+  it('answers the standing contests as queue items, and rejects a bad cursor', async () => {
+    const reviewer = await manager(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a', 'b'] });
     const ref = await createReference(t.db);
-    const mk = (i: number) =>
-      createRecord(t.db, {
-        speciesId: sp1.id,
-        traitId: trait.id,
-        valueText: ['a', 'b'][i] ?? 'a',
-        levelId: trait.levels[i]?.id,
-        primaryReferenceId: ref.id,
-        origin: 'manual',
-        createdBy: author.user.id,
-      });
-    const older = await mk(0);
-    const newer = await mk(1);
-    await createAnnotation(t.db, {
-      recordId: older.id,
-      actorId: b.user.id,
-      kind: 'dispute',
-      note: 'Older claim wrong',
-    });
-    await createAnnotation(t.db, {
-      recordId: newer.id,
-      actorId: b.user.id,
-      kind: 'dispute',
-      note: 'Newer claim wrong',
-    });
-    const ids = await idsOf(author.cookie);
-    expect(ids).toContain(newer.id);
-    expect(ids).toContain(older.id);
-    expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
-    const first = await call(t.app, 'GET', '/api/records/disputed?limit=200', {
-      cookie: author.cookie,
-    });
-    const item = (await first.json()).data.find((r: { id: string }) => r.id === newer.id);
-    expect(item).toMatchObject({
-      review: 'disputed',
-      latestDispute: { actor: { id: b.user.id, name: 'Test User' }, note: 'Newer claim wrong' },
-    });
-    // the disputer steps back: gone
-    await createAnnotation(t.db, { recordId: newer.id, actorId: b.user.id, kind: 'neutral' });
-    expect(await idsOf(author.cookie)).not.toContain(newer.id);
-    // withdrawn records never appear
-    await createAnnotation(t.db, {
-      recordId: older.id,
-      actorId: author.user.id,
-      kind: 'withdraw',
-      note: 'Retracted',
-    });
-    expect(await idsOf(author.cookie)).not.toContain(older.id);
-    const bad = await call(t.app, 'GET', '/api/records/disputed?cursor=nope', {
-      cookie: author.cookie,
-    });
-    expect(bad.status).toBe(400);
-  });
-
-  it('carries ?intent=contest through to the queue, and rejects any other intent', async () => {
-    const author = await manager(t);
-    const contester = await scientist(t, ['records.create', 'dataset.read']);
-    const sp1 = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
-    const ref = await createReference(t.db);
-    const contestRef = await createReference(t.db);
-    const base = await createRecord(t.db, {
+    await createRecord(t.db, {
       speciesId: sp1.id,
       traitId: trait.id,
       valueText: 'a',
       levelId: trait.levels[0]?.id,
       primaryReferenceId: ref.id,
       origin: 'manual',
-      createdBy: author.user.id,
+      createdBy: reviewer.user.id,
     });
-    const byHand = await createRecord(t.db, {
+    const contest = await createContest(t.db, {
       speciesId: sp1.id,
       traitId: trait.id,
-      valueText: 'b',
-      levelId: trait.levels[1]?.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: author.user.id,
+      createdBy: reviewer.user.id,
+      levelIds: [trait.levels[0]?.id as string],
     });
-    await createAnnotation(t.db, {
-      recordId: byHand.id,
-      actorId: author.user.id,
-      kind: 'dispute',
-      note: 'Raised by hand, not by a contest',
-    });
-    const contest = await call(t.app, 'POST', '/api/records', {
-      cookie: contester.cookie,
-      body: {
-        speciesId: sp1.id,
-        traitId: trait.id,
-        value: { levelId: trait.levels[1]?.id },
-        sources: { references: [{ id: contestRef.id }] },
-        intent: 'contest',
-        respondsToRecordId: base.id,
-      },
-    });
-    expect(contest.status).toBe(201);
-    const contestId: string = (await contest.json()).data.created[0].id;
 
-    // The filter reaches the query rather than being dropped by the handler:
-    // the hand-raised dispute is in the unfiltered queue and out of this one.
-    const generated = await itemsOf(author.cookie, '&intent=contest');
-    expect(generated.map((r) => r.id)).toContain(base.id);
-    expect(generated.map((r) => r.id)).not.toContain(byHand.id);
-    expect(await idsOf(author.cookie)).toContain(byHand.id);
-    expect(generated.find((r) => r.id === base.id)?.contestedBy).toEqual([
-      {
-        id: contestId,
-        valueText: 'b',
-        createdBy: { id: contester.user.id, name: 'Test User' },
-      },
-    ]);
-
-    const rejected = await call(t.app, 'GET', '/api/records/disputed?intent=complement', {
-      cookie: author.cookie,
+    const items: unknown[] = [];
+    let cursor: string | null = null;
+    do {
+      const res = await call(
+        t.app,
+        'GET',
+        `/api/records/disputed?limit=200${cursor ? `&cursor=${cursor}` : ''}`,
+        { cookie: reviewer.cookie },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      items.push(...body.data);
+      cursor = body.meta.nextCursor;
+    } while (cursor);
+    const item = items
+      .map((i) => contestedQueueItemSchema.parse(i))
+      .find((i) => i.id === contest.id);
+    expect(item).toMatchObject({
+      species: { id: sp1.id },
+      trait: { id: trait.id, key: trait.key },
+      createdBy: { id: reviewer.user.id },
+      levels: [{ levelId: trait.levels[0]?.id, key: 'a', contested: true }],
+      target: null,
+      records: [],
     });
-    expect(rejected.status).toBe(400);
+
+    const bad = await call(t.app, 'GET', '/api/records/disputed?cursor=nope', {
+      cookie: reviewer.cookie,
+    });
+    expect(bad.status).toBe(400);
   });
 });
 
@@ -876,41 +840,28 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
   const annotate = (cookie: string, id: string, body: Record<string, unknown>) =>
     call(t.app, 'POST', `/api/records/${id}/annotations`, { cookie, body });
 
-  it('R3 stances drive the review axis of RFC-63 R6 and answer the detail', async () => {
+  it('R3 a confirm drives the review axis of RFC-63 R6 and answers the detail', async () => {
     const a = await scientist(t, ['records.annotate', 'dataset.read']);
-    // `b` also reviews: a dispute and a neutral need `records.review`
-    // (RFC-70 R4), a confirmation does not.
-    const b = await scientist(t, ['records.annotate', 'records.review', 'dataset.read']);
+    const b = await scientist(t, ['records.annotate', 'dataset.read']);
     const { rec } = await manualRecord(a.user.id);
-    const confirmed = await annotate(a.cookie, rec.id, { kind: 'confirm' });
+    const confirmed = await annotate(b.cookie, rec.id, { kind: 'confirm' });
     expect(confirmed.status).toBe(201);
-    expect((await confirmed.json()).data).toMatchObject({ id: rec.id, review: 'confirmed' });
-    const disputed = await annotate(b.cookie, rec.id, {
-      kind: 'dispute',
-      note: 'Figure 3 says otherwise',
-    });
-    expect((await disputed.json()).data).toMatchObject({ review: 'disputed' });
-    const stepped = await annotate(b.cookie, rec.id, { kind: 'neutral' });
-    const steppedBody = await stepped.json();
-    expect(steppedBody.data).toMatchObject({ review: 'confirmed' });
-    const body = steppedBody.data;
-    expect(body.annotations.map((x: { kind: string }) => x.kind)).toEqual([
-      'neutral',
-      'dispute',
-      'confirm',
-    ]);
-    expect(body.annotations[1]).toMatchObject({
-      actor: { id: b.user.id, name: 'Test User' },
-      note: 'Figure 3 says otherwise',
-    });
+    const body = (await confirmed.json()).data;
+    expect(body).toMatchObject({ id: rec.id, review: 'validated' });
+    expect(body.annotations.map((x: { kind: string }) => x.kind)).toEqual(['confirm']);
+    expect(body.annotations[0]).toMatchObject({ actor: { id: b.user.id, name: 'Test User' } });
   });
 
-  it('R3 a dispute needs a note; an unknown record answers 404', async () => {
+  it('RFC-70 R4, RFC-65 R3 neutral, dispute and resolve answer 400 VALIDATION_FAILED path kind; an unknown record answers 404', async () => {
     const a = await scientist(t, ['records.annotate']);
     const { rec } = await manualRecord(a.user.id);
-    const noNote = await annotate(a.cookie, rec.id, { kind: 'dispute' });
-    expect(noNote.status).toBe(400);
-    expect((await noNote.json()).error.details[0].path).toBe('note');
+    for (const kind of ['neutral', 'dispute', 'resolve']) {
+      const res = await annotate(a.cookie, rec.id, { kind });
+      expect(res.status, kind).toBe(400);
+      const problem = await res.json();
+      expect(problem.error.code).toBe('VALIDATION_FAILED');
+      expect(problem.error.details[0].path).toBe('kind');
+    }
     const missing = await annotate(a.cookie, '00000000-0000-7000-8000-000000000000', {
       kind: 'confirm',
     });
@@ -918,49 +869,101 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     expect((await missing.json()).error.code).toBe('RECORD_NOT_FOUND');
   });
 
+  it('RFC-33 R2 a pending record is invisible to a non-reviewer, who gets 404 RECORD_NOT_FOUND annotating it', async () => {
+    const sp1 = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const pending = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: trait.id,
+      valueText: 'not a number',
+      harmonisation: 'not_numeric',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    const contributor = await scientist(t, ['records.annotate']);
+    const res = await annotate(contributor.cookie, pending.id, { kind: 'confirm' });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe('RECORD_NOT_FOUND');
+    const reviewer = await scientist(t, ['records.annotate', 'records.review']);
+    const ok = await annotate(reviewer.cookie, pending.id, { kind: 'confirm' });
+    expect(ok.status).toBe(201);
+  });
+
   it('R4 the author withdraws a manual record; nothing more can be annotated afterwards', async () => {
     const a = await scientist(t, ['records.annotate']);
     const { rec } = await manualRecord(a.user.id);
-    const withdrawn = await annotate(a.cookie, rec.id, { kind: 'withdraw', note: 'Wrong species' });
-    expect(withdrawn.status).toBe(201);
-    expect((await withdrawn.json()).data.review).toBe('withdrawn');
+    const withdrawn = await annotate(a.cookie, rec.id, { kind: 'withdraw' });
+    // RFC-33 R2: a withdrawn record is visible to no viewer, so there is no
+    // detail left to answer with (plan 13g amendment 2).
+    expect(withdrawn.status).toBe(200);
+    expect((await withdrawn.json()).data).toBeNull();
+    // RFC-65 R3: a withdrawn record is invisible, so a further annotation
+    // answers 404 RECORD_NOT_FOUND, not a stale RECORD_WITHDRAWN.
     const after = await annotate(a.cookie, rec.id, { kind: 'confirm' });
-    expect(after.status).toBe(409);
-    expect((await after.json()).error.code).toBe('RECORD_WITHDRAWN');
+    expect(after.status).toBe(404);
+    expect((await after.json()).error.code).toBe('RECORD_NOT_FOUND');
   });
 
-  it('R4 a third party needs records.withdraw', async () => {
+  it('R4 a third party needs records.withdraw for a manual record', async () => {
     const author = await scientist(t, ['records.annotate']);
     const other = await scientist(t, ['records.annotate']);
     const curator = await scientist(t, ['records.annotate', 'records.withdraw']);
     const { rec } = await manualRecord(author.user.id);
-    const denied = await annotate(other.cookie, rec.id, { kind: 'withdraw', note: 'Not mine' });
+    const denied = await annotate(other.cookie, rec.id, { kind: 'withdraw' });
     expect(denied.status).toBe(403);
     expect((await denied.json()).error.code).toBe('PERMISSION_DENIED');
-    const allowed = await annotate(curator.cookie, rec.id, {
-      kind: 'withdraw',
-      note: 'Retracted by the author by email',
-    });
-    expect(allowed.status).toBe(201);
+    const allowed = await annotate(curator.cookie, rec.id, { kind: 'withdraw' });
+    expect(allowed.status).toBe(200);
+    expect((await allowed.json()).data).toBeNull();
   });
+});
 
-  it('R4 import records are never withdrawn', async () => {
-    const a = await scientist(t, ['records.annotate']);
-    const sp1 = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { levels: ['a'] });
+describe('RFC-70 R4, RFC-65 R4 POST /api/records/:id/annotations', () => {
+  const t = useTestApp();
+
+  it('neutral and dispute answer 400; the manager withdraws manual but not imported; admin withdraws imported', async () => {
+    const { user: manager } = await createUser(t.db, {
+      roles: [await systemRoleId(t.db, 'manager')],
+    });
+    const { user: admin } = await createUser(t.db, { roles: [await systemRoleId(t.db, 'admin')] });
+    const m = await loginAs(t, manager);
+    const a = await loginAs(t, admin);
     const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
     const batch = await createImportBatch(t.db);
     const imported = await createRecord(t.db, {
-      speciesId: sp1.id,
+      speciesId: sp.id,
       traitId: trait.id,
       valueText: 'a',
       levelId: trait.levels[0]?.id,
       primaryReferenceId: ref.id,
       importBatchId: batch.id,
     });
-    const res = await annotate(a.cookie, imported.id, { kind: 'withdraw', note: 'x' });
-    expect(res.status).toBe(409);
-    expect((await res.json()).error.code).toBe('RECORD_NOT_WITHDRAWABLE');
+    for (const body of [{ kind: 'neutral' }, { kind: 'dispute', note: 'x' }]) {
+      const res = await call(t.app, 'POST', `/api/records/${imported.id}/annotations`, {
+        body,
+        cookie: m.cookie,
+      });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+    const refused = await call(t.app, 'POST', `/api/records/${imported.id}/annotations`, {
+      body: { kind: 'withdraw' },
+      cookie: m.cookie,
+    });
+    expect(refused.status).toBe(403);
+    const ok = await call(t.app, 'POST', `/api/records/${imported.id}/annotations`, {
+      body: { kind: 'withdraw' },
+      cookie: a.cookie,
+    });
+    // RFC-65 R3, R4: withdraw answers 200 { data: null } (E6 and the RFCs win
+    // over the brief's 201 here).
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).data).toBeNull();
+    const gone = await call(t.app, 'GET', `/api/records/${imported.id}`, { cookie: a.cookie });
+    expect(gone.status).toBe(404);
   });
 });
 
@@ -1009,7 +1012,7 @@ describe('RFC-70 contribution route tests', () => {
       body: {
         speciesId: sp1.id,
         traitId: trait.id,
-        value: { levelId: trait.levels[0]?.id },
+        value: { levelIds: [trait.levels[0]?.id] },
         sources: { personalObservation: true },
       },
     });
@@ -1019,13 +1022,12 @@ describe('RFC-70 contribution route tests', () => {
     expect(data.created[0].primaryReference.kind).toBe('personal_observation');
   });
 
-  it('POST /:id/annotations gates neutral by records.review and supports confirm with DOI reference', async () => {
+  it('POST /:id/annotations supports confirm with a DOI reference; a bad reference is reported under referenceSource', async () => {
     const { cookie: contributorCookie } = await scientist(t, [
       'records.create',
       'records.annotate',
       'dataset.read',
     ]);
-    const { cookie: managerCookie } = await manager(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['red'] });
     const ref = await createReference(t.db);
@@ -1037,20 +1039,6 @@ describe('RFC-70 contribution route tests', () => {
       primaryReferenceId: ref.id,
       importBatchId: (await createImportBatch(t.db)).id,
     });
-
-    // neutral by contributor without records.review -> 403
-    const forbidden = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
-      cookie: contributorCookie,
-      body: { kind: 'neutral', note: 'just neutral' },
-    });
-    expect(forbidden.status).toBe(403);
-
-    // neutral by manager with records.review -> 201
-    const allowed = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
-      cookie: managerCookie,
-      body: { kind: 'neutral', note: 'just neutral' },
-    });
-    expect(allowed.status).toBe(201);
 
     // confirm with DOI reference
     const doi = '10.1111/confirm.doi';
@@ -1064,7 +1052,7 @@ describe('RFC-70 contribution route tests', () => {
       cookie: contributorCookie,
       body: {
         kind: 'confirm',
-        reference: { doi },
+        referenceSource: { doi },
       },
     });
     expect(confirmed.status).toBe(201);
@@ -1078,16 +1066,121 @@ describe('RFC-70 contribution route tests', () => {
     // the shape the resolver happens to use internally.
     const malformed = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
       cookie: contributorCookie,
-      body: { kind: 'confirm', reference: { doi: 'not-a-doi' } },
+      body: { kind: 'confirm', referenceSource: { doi: 'not-a-doi' } },
     });
     expect(malformed.status).toBe(400);
-    expect((await malformed.json()).error.details[0].path).toBe('reference.doi');
+    expect((await malformed.json()).error.details[0].path).toBe('referenceSource.doi');
 
     const unknown = await call(t.app, 'POST', `/api/records/${rec.id}/annotations`, {
       cookie: contributorCookie,
-      body: { kind: 'confirm', reference: { id: '00000000-0000-7000-8000-000000000000' } },
+      body: { kind: 'confirm', referenceSource: { id: '00000000-0000-7000-8000-000000000000' } },
     });
     expect(unknown.status).toBe(404);
-    expect((await unknown.json()).error.details[0].path).toBe('reference.id');
+    expect((await unknown.json()).error.details[0].path).toBe('referenceSource.id');
+  });
+});
+
+describe('RFC-70 R1-R3 POST /api/records answers created, validated and duplicates', () => {
+  const t = useTestApp();
+
+  async function fixture() {
+    const { user, cookie } = await scientist(t);
+    const { user: other } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['a', 'b', 'c'] });
+    const sp = await createSpecies(t.db);
+    const [la, lb, lc] = trait.levels.map((l) => l.id) as [string, string, string];
+    const recA = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'a',
+      levelId: la,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: other.id,
+    });
+    const post = (body: Record<string, unknown>) =>
+      call(t.app, 'POST', '/api/records', {
+        cookie,
+        body: {
+          speciesId: sp.id,
+          traitId: trait.id,
+          sources: { personalObservation: true },
+          ...body,
+        },
+      });
+    return { user, other, trait, sp, la, lb, lc, recA, post };
+  }
+
+  it('201 for a mix: a matched level is a validation, a new level creates; again, the own record is a duplicate', async () => {
+    const f = await fixture();
+    const both = await f.post({ value: { levelIds: [f.la, f.lb] } });
+    expect(both.status).toBe(201);
+    const body = (await both.json()).data;
+    expect(body.created.map((r: { level: { id: string } }) => r.level.id)).toEqual([f.lb]);
+    expect(body.validated).toEqual([{ recordId: f.recA.id, recordCode: expect.any(String) }]);
+    const again = await f.post({ value: { levelIds: [f.lb] } });
+    expect(again.status).toBe(201);
+    expect((await again.json()).data).toEqual({
+      created: [],
+      validated: [],
+      duplicates: [{ recordId: body.created[0].id, recordCode: body.created[0].recordCode }],
+    });
+  });
+
+  it('a categorical contest sends contestedLevelIds = E \\ S; E \\ S empty is 400 path intent; a stale set is 400 path contestedLevelIds', async () => {
+    const f = await fixture();
+    const empty = await f.post({
+      value: { levelIds: [f.la] },
+      intent: 'contest',
+      contestedLevelIds: [],
+    });
+    expect(empty.status).toBe(400);
+    expect((await empty.json()).error.details).toEqual([
+      {
+        path: 'intent',
+        message: 'A contest must contest at least one level; this is a complement',
+      },
+    ]);
+    const stale = await f.post({
+      value: { levelIds: [f.lb] },
+      intent: 'contest',
+      contestedLevelIds: [f.la, f.lc],
+    });
+    expect(stale.status).toBe(400);
+    expect((await stale.json()).error.details[0].path).toBe('contestedLevelIds');
+    const ok = await f.post({
+      value: { levelIds: [f.lb] },
+      intent: 'contest',
+      contestedLevelIds: [f.la],
+    });
+    expect(ok.status).toBe(201);
+    expect((await ok.json()).data.created[0]).toMatchObject({
+      intent: 'contest',
+      respondsTo: null,
+    });
+    const contested = await call(t.app, 'GET', `/api/records/${f.recA.id}`, {
+      cookie: (await loginAs(t, f.user)).cookie,
+    });
+    expect((await contested.json()).data.contested).toBe(true);
+  });
+
+  it('a categorical contest naming a responded record is 400 path intent; a complement on a withdrawn record is 404', async () => {
+    const f = await fixture();
+    const wrong = await f.post({
+      value: { levelIds: [f.lb] },
+      intent: 'contest',
+      respondsToRecordId: f.recA.id,
+    });
+    expect(wrong.status).toBe(400);
+    expect((await wrong.json()).error.details[0].path).toBe('intent');
+    await createAnnotation(t.db, { recordId: f.recA.id, actorId: f.other.id, kind: 'withdraw' });
+    const gone = await f.post({
+      value: { levelIds: [f.lb] },
+      intent: 'complement',
+      respondsToRecordId: f.recA.id,
+    });
+    expect(gone.status).toBe(404);
+    expect((await gone.json()).error.code).toBe('RECORD_NOT_FOUND');
   });
 });

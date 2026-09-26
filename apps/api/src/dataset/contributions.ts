@@ -3,11 +3,13 @@ import type {
   ContributionRecord,
   ContributionSummary,
   ListContributionsQuery,
+  RecordItem,
 } from '@treerepro/contracts';
 import { and, count, desc, eq, gte, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { contestEvents, contestRecords, contests } from '../db/schema/contests.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
@@ -15,7 +17,8 @@ import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
-import { itemQuery, reviewStatusSql, toItem } from './records.ts';
+import { contestVisibleSql, contestWithdrawnSql, recordFullyVisible } from './contests.ts';
+import { itemQuery, liveSql, recordVisible, reviewStatusSql, toItem } from './records.ts';
 
 const annotationRefObserver = alias(users, 'annotation_ref_observer');
 
@@ -25,28 +28,22 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const dayStart = (isoDate: string) => new Date(`${isoDate}T00:00:00.000Z`);
 const dayAfter = (isoDate: string) => new Date(dayStart(isoDate).getTime() + DAY_MS);
 
-/** Records responding to this one (RFC-70 R1). */
+/** Live records responding to this one (RFC-70 R1). */
 function responseCountSql(recordId: SQL): SQL<number> {
   return sql<number>`(select count(*) from ${traitRecords} x
-    where x.responds_to_record_id = ${recordId})::int`;
-}
-
-/** Has anybody withdrawn this record (RFC-63 R6)? */
-function withdrawnSql(recordId: SQL): SQL<boolean> {
-  return sql<boolean>`exists (select 1 from ${recordAnnotations} w
-    where w.record_id = ${recordId} and w.kind = 'withdraw')`;
+    where x.responds_to_record_id = ${recordId} and ${liveSql(sql`x.id`)})::int`;
 }
 
 /**
  * The filters of RFC-71 R1, all of them predicates on the record: for
  * `kind=annotations` they apply to the annotated record (R3).
  */
-function recordFilters(input: ListContributionsQuery): SQL[] {
+function recordFilters(visibility: Visibility, input: ListContributionsQuery): SQL[] {
   const conditions: SQL[] = [];
   if (input.traitId) conditions.push(eq(traitRecords.traitId, input.traitId));
   if (input.speciesId) conditions.push(eq(traitRecords.speciesId, input.speciesId));
   if (input.review) {
-    conditions.push(sql`${reviewStatusSql(traitRecords.id)} = ${input.review}`);
+    conditions.push(sql`${reviewStatusSql(visibility, traitRecords.id)} = ${input.review}`);
   }
   if (input.intent) {
     conditions.push(
@@ -87,10 +84,11 @@ async function listRecordContributions(
     eq(traitRecords.origin, 'manual'),
     speciesVisible(visibility),
     traitVisible(visibility),
-    ...recordFilters(input),
+    recordVisible(visibility),
+    ...recordFilters(visibility, input),
   ];
   if (input.cursor) conditions.push(lt(traitRecords.id, decodeCursor(input.cursor)));
-  const rows = await itemQuery(db)
+  const rows = await itemQuery(db, visibility)
     .where(and(...conditions))
     .orderBy(desc(traitRecords.id))
     .limit(input.limit + 1);
@@ -106,25 +104,127 @@ async function listRecordContributions(
   return { data, nextCursor };
 }
 
-/** @rfc RFC-71 R3 */
+/**
+ * The first record VISIBLE to the viewer among the ones a contest created, by
+ * `record_code` (RFC-33 R2: species, trait, live, harmonised, level); `null`
+ * when it created none, or none it created is visible. The visibility
+ * condition sits inside the ordered subquery, not after it, so a withdrawn or
+ * otherwise invisible first-by-code record is skipped in favour of the next
+ * visible one, rather than yielding `null` while a later record still stands
+ * — the same shape the digest's own first-record subquery uses (`digest.ts`).
+ * `contestIdCol` is a `contests.id` reference in the caller's query.
+ * @rfc RFC-71 R3
+ * @rfc RFC-63 R14
+ */
+function firstVisibleContestRecordIdSql(
+  v: Visibility,
+  contestIdCol: SQL | typeof contests.id,
+): SQL<string | null> {
+  return sql<string | null>`(select fcr_r.id from ${traitRecords} fcr_r
+    join ${contestRecords} fcr_c on fcr_c.record_id = fcr_r.id
+    where fcr_c.contest_id = ${contestIdCol} and ${recordFullyVisible(v, sql`fcr_r.id`)}
+    order by fcr_r.record_code asc limit 1)`;
+}
+
+/** One page of the viewer's Keep-both resolutions (RFC-71 R3, RFC-65 R16). */
+async function listResolutions(
+  db: DbExecutor,
+  visibility: Visibility,
+  userId: string,
+  input: ListContributionsQuery & { limit: number },
+  cursorId: string | undefined,
+): Promise<{ id: string; createdAt: Date; recordId: string | null }[]> {
+  const recordIdSql = firstVisibleContestRecordIdSql(visibility, contests.id);
+  const conditions: SQL[] = [
+    eq(contestEvents.actorId, userId),
+    eq(contestEvents.kind, 'resolve'),
+    // A resolution on a contest the viewer cannot see (its species, trait,
+    // or a level it names) is omitted outright (RFC-33 R2, R3; RFC-65 R16),
+    // regardless of whether the contest created a visible record.
+    contestVisibleSql(visibility, contests.id),
+  ];
+  // RFC-71 R3: speciesId/traitId name the contest's own species and trait;
+  // review and intent read the resolution's record and exclude it when that
+  // record is null (no record, or one the viewer cannot see). from/to bound
+  // the resolution event's own date (controller ruling): a record-less
+  // resolution is still listable by date, unlike review/intent which have
+  // nothing to read without a record.
+  if (input.traitId) conditions.push(eq(contests.traitId, input.traitId));
+  if (input.speciesId) conditions.push(eq(contests.speciesId, input.speciesId));
+  if (input.review) {
+    conditions.push(
+      sql`${recordIdSql} is not null and ${reviewStatusSql(visibility, recordIdSql)} = ${input.review}`,
+    );
+  }
+  if (input.intent) {
+    conditions.push(
+      input.intent === 'none'
+        ? sql`${recordIdSql} is not null and exists (select 1 from ${traitRecords} lr_i where lr_i.id = ${recordIdSql} and lr_i.intent is null)`
+        : sql`${recordIdSql} is not null and exists (select 1 from ${traitRecords} lr_i where lr_i.id = ${recordIdSql} and lr_i.intent = ${input.intent})`,
+    );
+  }
+  if (input.from) conditions.push(gte(contestEvents.createdAt, dayStart(input.from)));
+  if (input.to) conditions.push(lt(contestEvents.createdAt, dayAfter(input.to)));
+  if (cursorId) conditions.push(lt(contestEvents.id, cursorId));
+  return db
+    .select({
+      id: contestEvents.id,
+      createdAt: contestEvents.createdAt,
+      recordId: recordIdSql.as('record_id'),
+    })
+    .from(contestEvents)
+    .innerJoin(contests, eq(contests.id, contestEvents.contestId))
+    .where(and(...conditions))
+    .orderBy(desc(contestEvents.id))
+    .limit(input.limit + 1);
+}
+
+type MergedAnnotationRow = {
+  id: string;
+  kind: 'confirm' | 'resolve';
+  note: string | null;
+  generated: boolean;
+  createdAt: Date;
+  recordId: string | null;
+  referenceId: string | null;
+  citationKey: string | null;
+  referenceKind: (typeof bibliographicReferences.$inferSelect)['kind'] | null;
+  referenceObserverId: string | null;
+  referenceObserverName: string | null;
+  shortCitation: string | null;
+};
+
+/**
+ * `kind=annotations`: the viewer's `confirm` annotations on visible records,
+ * unioned with their Keep-both resolutions (`contest_events` rows of kind
+ * `resolve`, never stored in `record_annotations`), newest first on a keyset
+ * cursor across both sources — both primary keys are uuidv7, so comparing
+ * them directly orders the merge. `withdraw`, `dispute` and `neutral` rows
+ * are never listed.
+ * @rfc RFC-71 R3
+ * @rfc RFC-65 R16
+ */
 async function listAnnotationContributions(
   db: DbExecutor,
   visibility: Visibility,
   userId: string,
   input: ListContributionsQuery & { limit: number },
 ): Promise<{ data: ContributionAnnotation[]; nextCursor: string | null }> {
-  const conditions: SQL[] = [
+  const cursorId = input.cursor ? decodeCursor(input.cursor) : undefined;
+
+  const confirmConditions: SQL[] = [
     eq(recordAnnotations.actorId, userId),
+    eq(recordAnnotations.kind, 'confirm'),
     speciesVisible(visibility),
     traitVisible(visibility),
-    ...recordFilters(input),
+    recordVisible(visibility),
+    ...recordFilters(visibility, input),
   ];
-  if (input.cursor) conditions.push(lt(recordAnnotations.id, decodeCursor(input.cursor)));
-  const rows = await db
+  if (cursorId) confirmConditions.push(lt(recordAnnotations.id, cursorId));
+  const confirmRows = await db
     .select({
       id: recordAnnotations.id,
       recordId: recordAnnotations.recordId,
-      kind: recordAnnotations.kind,
       note: recordAnnotations.note,
       generated: recordAnnotations.generated,
       createdAt: recordAnnotations.createdAt,
@@ -147,46 +247,63 @@ async function listAnnotationContributions(
       annotationRefObserver,
       eq(annotationRefObserver.id, bibliographicReferences.observerUserId),
     )
-    .where(and(...conditions))
+    .where(and(...confirmConditions))
     .orderBy(desc(recordAnnotations.id))
     .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.id));
+
+  const resolveRows = await listResolutions(db, visibility, userId, input, cursorId);
+
+  const merged: MergedAnnotationRow[] = [
+    ...confirmRows.map((r) => ({ ...r, kind: 'confirm' as const })),
+    ...resolveRows.map((r) => ({
+      id: r.id,
+      kind: 'resolve' as const,
+      note: null,
+      generated: false,
+      createdAt: r.createdAt,
+      recordId: r.recordId,
+      referenceId: null,
+      citationKey: null,
+      referenceKind: null,
+      referenceObserverId: null,
+      referenceObserverName: null,
+      shortCitation: null,
+    })),
+  ].sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+
+  const { page, nextCursor } = pageOf(merged, input.limit, (r) => encodeCursor(r.id));
   if (page.length === 0) return { data: [], nextCursor };
-  // The record items come through the shared join, as the disputed queue does.
-  const items = await itemQuery(db).where(
-    inArray(
-      traitRecords.id,
-      page.map((r) => r.recordId),
-    ),
-  );
-  const itemById = new Map(items.map((i) => [i.record.id, toItem(i)]));
-  const data = page.flatMap((r) => {
-    const record = itemById.get(r.recordId);
-    if (!record) return [];
-    return [
-      {
-        id: r.id,
-        kind: r.kind,
-        note: r.note,
-        reference:
-          r.referenceId && r.citationKey && r.referenceKind
-            ? {
-                id: r.referenceId,
-                citationKey: r.citationKey,
-                kind: r.referenceKind,
-                observer:
-                  r.referenceObserverId && r.referenceObserverName
-                    ? { id: r.referenceObserverId, name: r.referenceObserverName }
-                    : null,
-                shortCitation: r.shortCitation,
-              }
-            : null,
-        generated: r.generated,
-        createdAt: r.createdAt.toISOString(),
-        record,
-      },
-    ];
-  });
+
+  const recordIds = [
+    ...new Set(page.map((r) => r.recordId).filter((id): id is string => id !== null)),
+  ];
+  const itemById = new Map<string, RecordItem>();
+  if (recordIds.length > 0) {
+    const items = await itemQuery(db, visibility).where(inArray(traitRecords.id, recordIds));
+    for (const i of items) itemById.set(i.record.id, toItem(i));
+  }
+
+  const data: ContributionAnnotation[] = page.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    note: r.note,
+    reference:
+      r.referenceId && r.citationKey && r.referenceKind
+        ? {
+            id: r.referenceId,
+            citationKey: r.citationKey,
+            kind: r.referenceKind,
+            observer:
+              r.referenceObserverId && r.referenceObserverName
+                ? { id: r.referenceObserverId, name: r.referenceObserverName }
+                : null,
+            shortCitation: r.shortCitation,
+          }
+        : null,
+    generated: r.generated,
+    createdAt: r.createdAt.toISOString(),
+    record: r.recordId ? (itemById.get(r.recordId) ?? null) : null,
+  }));
   return { data, nextCursor };
 }
 
@@ -211,39 +328,55 @@ export async function listContributions(
 
 /**
  * One user's standing: one count per number, each over an indexed column.
- * Visibility deliberately plays no part (RFC-71 R4).
+ * Visibility deliberately plays no part (RFC-71 R4). `contests` counts the
+ * viewer's contests that are not withdrawn (RFC-63 R14), one per contest,
+ * whether or not it created a record — never the viewer's records with
+ * `intent = 'contest'`.
  * @rfc RFC-71 R4, R5
  */
 export async function contributionSummary(
   db: DbExecutor,
   userId: string,
 ): Promise<ContributionSummary> {
-  const mine = and(eq(traitRecords.createdBy, userId), eq(traitRecords.origin, 'manual')) as SQL;
+  const mine = and(
+    eq(traitRecords.createdBy, userId),
+    eq(traitRecords.origin, 'manual'),
+    liveSql(sql`${traitRecords.id}`),
+  ) as SQL;
   const records = async (where: SQL): Promise<number> => {
     const [row] = await db.select({ n: count() }).from(traitRecords).where(where);
     return row?.n ?? 0;
   };
-  const annotations = async (kind: 'confirm' | 'dispute'): Promise<number> => {
+  const contestsCount = async (): Promise<number> => {
+    const [row] = await db
+      .select({ n: count() })
+      .from(contests)
+      .where(and(eq(contests.createdBy, userId), sql`not ${contestWithdrawnSql('contests')}`));
+    return row?.n ?? 0;
+  };
+  const validationsCount = async (): Promise<number> => {
     const [row] = await db
       .select({ n: count() })
       .from(recordAnnotations)
-      .where(and(eq(recordAnnotations.actorId, userId), eq(recordAnnotations.kind, kind)));
+      .where(
+        and(
+          eq(recordAnnotations.actorId, userId),
+          eq(recordAnnotations.kind, 'confirm'),
+          sql`exists (select 1 from ${traitRecords} sv_r where sv_r.id = ${recordAnnotations.recordId} and ${liveSql(sql`sv_r.id`)})`,
+        ),
+      );
     return row?.n ?? 0;
   };
-  const [contributed, contests, complements, validations, disputes, withdrawn] = await Promise.all([
+  const [contributed, contestsN, complements, validations] = await Promise.all([
     records(mine),
-    records(and(mine, eq(traitRecords.intent, 'contest')) as SQL),
+    contestsCount(),
     records(and(mine, eq(traitRecords.intent, 'complement')) as SQL),
-    annotations('confirm'),
-    annotations('dispute'),
-    records(and(mine, withdrawnSql(sql`${traitRecords.id}`)) as SQL),
+    validationsCount(),
   ]);
   return {
     records: contributed,
-    contests,
+    contests: contestsN,
     complements,
     validations,
-    disputes,
-    withdrawn,
   };
 }

@@ -4,6 +4,8 @@ import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import {
   createAnnotation,
+  createContest,
+  createContestEvent,
   createImportBatch,
   createRecord,
   createReference,
@@ -62,6 +64,7 @@ const ANCHOR_DAYS = {
   exclusivityEarly: 227,
   queues: 229,
   lists: 233,
+  recordLink: 235,
   // Task 4's `runDigest` tests. Each takes its own offset for the same reason
   // as the four above, and none of them reuses one: the windows are one hour
   // either side of the anchor and the anchors are days apart.
@@ -94,7 +97,7 @@ const windowAround = (at: Date): DigestWindow => ({
  * Freezes the transaction's snapshot, and fails loudly if the driver ever
  * stops honouring the request.
  *
- * `pendingGroups` and `disputedNow` are current dataset-wide counts (RFC-65 R8,
+ * `pendingGroups` and `contestedNow` are current dataset-wide counts (RFC-65 R8,
  * R10) that no window can isolate, so the only honest assertion about them is a
  * before/after delta — and a delta is only comparable while a sibling suite
  * cannot commit between the two reads. Same guard, and the same shared
@@ -128,17 +131,20 @@ async function scene(tx: DbTransaction) {
 describe('RFC-74 R3 computeDigest', () => {
   const t = useTestDb();
 
-  it("counts the window's activity and lists the contests and the disputes", async () => {
+  it("counts the window's activity and lists the contests with what each contests", async () => {
     await withRollback(t.db, async (tx) => {
       const at = anchor(ANCHOR_DAYS.counts);
       const s = await scene(tx);
+      const quantitative = await createTrait(tx, { valueType: 'quantitative' });
       const [{ user: ada }, { user: grace }] = await Promise.all([
         createUser(tx, { name: 'Ada Lovelace', password: null }),
         createUser(tx, { name: 'Grace Hopper', password: null }),
       ]);
+      const manual = (over: Parameters<typeof createRecord>[1]) =>
+        createRecord(tx, { ...over, createdAt: at });
 
-      // The contested record arrives by import, so it is not a "manual record
-      // created" and the window's `records` is the two responses alone.
+      // The contested records arrive by import, so they are not "manual
+      // records created" and the window's `records` is the manual ones alone.
       const base = await createRecord(tx, {
         speciesId: s.species.id,
         traitId: s.trait.id,
@@ -149,7 +155,17 @@ describe('RFC-74 R3 computeDigest', () => {
         importBatchId: s.batch.id,
         createdAt: at,
       });
-      const contest = await createRecord(tx, {
+      const target = await createRecord(tx, {
+        speciesId: s.species.id,
+        traitId: quantitative.id,
+        valueText: '5',
+        numericValue: 5,
+        primaryReferenceId: s.reference.id,
+        importBatchId: s.batch.id,
+        createdAt: at,
+      });
+      // 1. A categorical contest that created `beta` and contests `alpha`.
+      const beta = await manual({
         speciesId: s.species.id,
         traitId: s.trait.id,
         valueText: 'beta',
@@ -158,10 +174,57 @@ describe('RFC-74 R3 computeDigest', () => {
         origin: 'manual',
         createdBy: ada.id,
         intent: 'contest',
-        respondsToRecordId: base.id,
+      });
+      const withRecord = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: ada.id,
+        levelIds: [s.level('alpha')],
+        recordIds: [beta.id],
         createdAt: at,
       });
-      const complement = await createRecord(tx, {
+      // 2. A record-less contest naming two levels.
+      const recordLess = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: grace.id,
+        levelIds: [s.level('gamma'), s.level('alpha')],
+        createdAt: at,
+      });
+      // 3. A quantitative contest answering 5 with 7.
+      const seven = await manual({
+        speciesId: s.species.id,
+        traitId: quantitative.id,
+        valueText: '7',
+        numericValue: 7,
+        primaryReferenceId: s.reference.id,
+        origin: 'manual',
+        createdBy: ada.id,
+        intent: 'contest',
+        respondsToRecordId: target.id,
+      });
+      const onTarget = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: quantitative.id,
+        createdBy: ada.id,
+        recordIds: [seven.id],
+        createdAt: at,
+      });
+      // 4. A contest withdrawn since: neither counted nor listed.
+      const withdrawn = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: grace.id,
+        levelIds: [s.level('alpha')],
+        createdAt: at,
+      });
+      await createContestEvent(tx, {
+        contestId: withdrawn.id,
+        actorId: grace.id,
+        kind: 'withdraw',
+      });
+
+      const complement = await manual({
         speciesId: s.species.id,
         traitId: s.trait.id,
         valueText: 'gamma',
@@ -171,7 +234,17 @@ describe('RFC-74 R3 computeDigest', () => {
         createdBy: grace.id,
         intent: 'complement',
         respondsToRecordId: base.id,
-        createdAt: at,
+      });
+      // A manual record withdrawn in the window: a withdrawal, not a record.
+      const gone = await manual({
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        valueText: 'alpha',
+        levelId: s.level('alpha'),
+        rawValue: 'a second claim',
+        primaryReferenceId: s.reference.id,
+        origin: 'manual',
+        createdBy: grace.id,
       });
       await Promise.all([
         createAnnotation(tx, {
@@ -193,26 +266,9 @@ describe('RFC-74 R3 computeDigest', () => {
           createdAt: at,
         }),
         createAnnotation(tx, {
-          recordId: base.id,
-          actorId: grace.id,
-          kind: 'dispute',
-          note: 'The reference says otherwise',
-          createdAt: at,
-        }),
-        // RFC-74 R3 counts human disputes only.
-        createAnnotation(tx, {
-          recordId: complement.id,
-          actorId: ada.id,
-          kind: 'dispute',
-          note: 'auto',
-          generated: true,
-          createdAt: at,
-        }),
-        createAnnotation(tx, {
-          recordId: complement.id,
+          recordId: gone.id,
           actorId: grace.id,
           kind: 'withdraw',
-          note: 'Wrong species',
           createdAt: at,
         }),
       ]);
@@ -232,108 +288,145 @@ describe('RFC-74 R3 computeDigest', () => {
       const digest = await computeDigest(tx, windowAround(at));
 
       expect(digest.counts).toMatchObject({
-        records: 2,
-        contests: 1,
+        records: 3,
+        contests: 3,
         complements: 1,
         validations: 3,
-        disputes: 1,
         withdrawals: 1,
         proposals: proposalsBefore + 1,
       });
       expect(digest.window).toEqual(windowAround(at));
 
-      // The names are decrypted on read by the column type (RFC-40 R8), which
-      // is what the recipients are meant to read.
+      // Newest first; one timestamp, so the uuidv7 id breaks the tie. The
+      // names are decrypted on read by the column type (RFC-40 R8).
+      const item = { speciesId: s.species.id, speciesName: s.species.canonicalName, createdAt: at };
       expect(digest.contests).toEqual([
         {
-          speciesId: s.species.id,
-          speciesName: s.species.canonicalName,
-          traitKey: s.trait.key,
-          valueText: 'beta',
+          ...item,
+          contestId: onTarget.id,
+          traitKey: quantitative.key,
+          contested: '5',
           actorName: 'Ada Lovelace',
-          recordId: contest.id,
-          createdAt: at,
+          recordId: seven.id,
         },
-      ]);
-      expect(digest.disputes).toEqual([
         {
-          speciesId: s.species.id,
-          speciesName: s.species.canonicalName,
+          ...item,
+          contestId: recordLess.id,
           traitKey: s.trait.key,
-          valueText: 'alpha',
+          contested: 'alpha, gamma',
           actorName: 'Grace Hopper',
-          recordId: base.id,
-          createdAt: at,
+          recordId: null,
+        },
+        {
+          ...item,
+          contestId: withRecord.id,
+          traitKey: s.trait.key,
+          contested: 'alpha',
+          actorName: 'Ada Lovelace',
+          recordId: beta.id,
         },
       ]);
     });
   });
 
-  it('lists the ten newest of each and leaves the eleventh out, while the counts stay uncapped', async () => {
+  it('lists the ten newest contests and leaves the eleventh out, while the count stays uncapped', async () => {
     // Ruling E and both halves of R3's "the 10 newest": the cap AND the order.
-    // Eleven contests and eleven disputes, two minutes apart inside one window,
-    // so dropping `limit` shows an eleventh item and flipping the sort shows
-    // the ten oldest — either way the expected arrays below stop matching.
+    // Eleven contests two minutes apart inside one window, so dropping
+    // `limit` shows an eleventh item and flipping the sort shows the ten
+    // oldest — either way the expected array below stops matching.
     await withRollback(t.db, async (tx) => {
       const at = anchor(ANCHOR_DAYS.lists);
       const s = await scene(tx);
       const { user } = await createUser(tx, { name: 'Ada Lovelace', password: null });
-      /** Index 0 is the newest; index 10 is the one that must fall off both lists. */
+      /** Index 0 is the newest; index 10 is the one that must fall off the list. */
       const staggered = (index: number): Date => new Date(at.getTime() - index * 2 * 60_000);
-      const label = (what: string, index: number): string =>
-        `${what}-${String(index).padStart(2, '0')}`;
 
-      const base = await createRecord(tx, {
-        speciesId: s.species.id,
-        traitId: s.trait.id,
-        valueText: 'alpha',
-        levelId: s.level('alpha'),
-        primaryReferenceId: s.reference.id,
-        importBatchId: s.batch.id,
-        createdAt: staggered(11),
-      });
-      // Oldest first, so the uuidv7 ids rise with `created_at` and the id
-      // tiebreak in the query can never disagree with the timestamps.
+      const byIndex: string[] = [];
+      // Oldest first, so the uuidv7 ids rise with `created_at`.
       for (let index = 10; index >= 0; index--) {
-        await createRecord(tx, {
+        const contest = await createContest(tx, {
           speciesId: s.species.id,
           traitId: s.trait.id,
-          valueText: label('contest', index),
-          primaryReferenceId: s.reference.id,
-          origin: 'manual',
           createdBy: user.id,
-          intent: 'contest',
-          respondsToRecordId: base.id,
+          levelIds: [s.level('alpha')],
           createdAt: staggered(index),
         });
-        const disputed = await createRecord(tx, {
-          speciesId: s.species.id,
-          traitId: s.trait.id,
-          valueText: label('dispute', index),
-          primaryReferenceId: s.reference.id,
-          origin: 'manual',
-          createdBy: user.id,
-          createdAt: staggered(index),
-        });
-        await createAnnotation(tx, {
-          recordId: disputed.id,
-          actorId: user.id,
-          kind: 'dispute',
-          note: 'Needs a second reference',
-          createdAt: staggered(index),
-        });
+        byIndex[index] = contest.id;
       }
 
       const digest = await computeDigest(tx, windowAround(at));
 
-      const newestTen = (what: string): string[] =>
-        Array.from({ length: DIGEST_LIST_LIMIT }, (_, index) => label(what, index));
-      expect(digest.contests).toHaveLength(DIGEST_LIST_LIMIT);
-      expect(digest.contests.map((c) => c.valueText)).toEqual(newestTen('contest'));
-      expect(digest.disputes).toHaveLength(DIGEST_LIST_LIMIT);
-      expect(digest.disputes.map((d) => d.valueText)).toEqual(newestTen('dispute'));
-      // The cap is on the lists alone: R3's counts describe the whole window.
-      expect(digest.counts).toMatchObject({ contests: 11, disputes: 11 });
+      expect(digest.contests.map((c) => c.contestId)).toEqual(byIndex.slice(0, DIGEST_LIST_LIMIT));
+      // The cap is on the list alone: R3's counts describe the whole window.
+      expect(digest.counts).toMatchObject({ contests: 11 });
+    });
+  });
+
+  it("links to the contest's next live record once the first-created one is withdrawn, or to the species once none remain", async () => {
+    await withRollback(t.db, async (tx) => {
+      const at = anchor(ANCHOR_DAYS.recordLink);
+      const s = await scene(tx);
+      const { user: ada } = await createUser(tx, { name: 'Ada Lovelace', password: null });
+      const manual = (over: Parameters<typeof createRecord>[1]) =>
+        createRecord(tx, { ...over, createdAt: at });
+
+      // A categorical contest that created two records for `beta`: the
+      // first (lowest record_code, so "first created") is withdrawn, so the
+      // link must skip to the second, still-live one — not the species.
+      const first = await manual({
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        valueText: 'beta',
+        levelId: s.level('beta'),
+        primaryReferenceId: s.reference.id,
+        origin: 'manual',
+        createdBy: ada.id,
+        intent: 'contest',
+      });
+      const second = await manual({
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        valueText: 'beta',
+        // Distinct from `first`'s claim key (species, trait, value, raw
+        // value, references): otherwise `trait_records_claim_key` refuses it.
+        rawValue: 'a second claim',
+        levelId: s.level('beta'),
+        primaryReferenceId: s.reference.id,
+        origin: 'manual',
+        createdBy: ada.id,
+        intent: 'contest',
+      });
+      const partlyWithdrawn = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: ada.id,
+        levelIds: [s.level('alpha')],
+        recordIds: [first.id, second.id],
+        createdAt: at,
+      });
+      await createAnnotation(tx, {
+        recordId: first.id,
+        actorId: ada.id,
+        kind: 'withdraw',
+        createdAt: at,
+      });
+
+      // A record-less contest naming a level: it created nothing to begin
+      // with, so the link falls back to the species — the same fallback the
+      // fix must leave untouched.
+      const recordLess = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: ada.id,
+        levelIds: [s.level('gamma')],
+        createdAt: at,
+      });
+
+      const digest = await computeDigest(tx, windowAround(at));
+      const byId = new Map(digest.contests.map((c) => [c.contestId, c]));
+
+      expect(byId.get(partlyWithdrawn.id)?.recordId).toBe(second.id);
+      expect(byId.get(recordLess.id)?.recordId).toBeNull();
     });
   });
 
@@ -416,9 +509,8 @@ describe('RFC-74 R3 computeDigest', () => {
         importBatchId: s.batch.id,
         createdAt: before,
       });
-      // One record whose only standing stance is a dispute: one disputed
-      // record (RFC-65 R10).
-      const disputed = await createRecord(tx, {
+      // One standing contest, created before the window (RFC-65 R10).
+      await createRecord(tx, {
         speciesId: s.species.id,
         traitId: s.trait.id,
         valueText: 'alpha',
@@ -428,22 +520,21 @@ describe('RFC-74 R3 computeDigest', () => {
         createdBy: user.id,
         createdAt: before,
       });
-      await createAnnotation(tx, {
-        recordId: disputed.id,
-        actorId: user.id,
-        kind: 'dispute',
-        note: 'Needs a second reference',
+      await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: user.id,
+        levelIds: [s.level('alpha')],
         createdAt: before,
       });
 
       const after = await computeDigest(tx, windowAround(at));
       expect(after.counts.pendingGroups).toBe(baseline.counts.pendingGroups + 1);
-      expect(after.counts.disputedNow).toBe(baseline.counts.disputedNow + 1);
+      expect(after.counts.contestedNow).toBe(baseline.counts.contestedNow + 1);
       // Nothing of this landed in the window, and R4's activity sum is the
       // window's alone.
-      expect(after.counts).toMatchObject({ records: 0, disputes: 0, validations: 0 });
+      expect(after.counts).toMatchObject({ records: 0, contests: 0, validations: 0 });
       expect(after.contests).toEqual([]);
-      expect(after.disputes).toEqual([]);
     });
   });
 });
@@ -790,13 +881,12 @@ describe('RFC-74 R2, R5 runDigest', () => {
           contests: 0,
           complements: 0,
           validations: 0,
-          disputes: 0,
           withdrawals: 0,
           proposals: 0,
           // Current dataset-wide queue sizes (RFC-65 R8, R10): no window can
           // isolate them, so only their presence is asserted here.
           pendingGroups: expect.any(Number),
-          disputedNow: expect.any(Number),
+          contestedNow: expect.any(Number),
         },
       });
 
@@ -861,13 +951,12 @@ describe('RFC-74 R2, R5 runDigest', () => {
           contests: 0,
           complements: 0,
           validations: 0,
-          disputes: 0,
           withdrawals: 0,
           proposals: 0,
           // Current dataset-wide queue sizes (RFC-65 R8, R10): no window can
           // isolate them, so only their presence is asserted here.
           pendingGroups: expect.any(Number),
-          disputedNow: expect.any(Number),
+          contestedNow: expect.any(Number),
         },
       });
       // A SELECT with no ORDER BY: compared as a set, never an array, so an

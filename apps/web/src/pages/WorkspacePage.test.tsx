@@ -165,7 +165,7 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
   it('shows the contribution summary as a label/value list linking to /app/contributions', async () => {
     renderAt('/app/');
     const list = await screen.findByRole('list', { name: 'Your contributions' });
-    expect(within(list).getAllByRole('listitem')).toHaveLength(6);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(4);
     expect(list).toHaveTextContent('Records');
     expect(list).toHaveTextContent(String(DASHBOARD.contributor.summary.records));
     expect(screen.getByRole('link', { name: 'View your contributions' })).toHaveAttribute(
@@ -205,7 +205,7 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(await screen.findByRole('heading', { name: 'Curation' })).toBeInTheDocument();
     const meters = screen.getAllByRole('meter');
     expect(meters).toHaveLength(2);
-    expect(screen.getByRole('link', { name: /^Disputed/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Contested/ })).toHaveAttribute(
       'href',
       '/app/curation/disputed',
     );

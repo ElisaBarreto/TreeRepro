@@ -12,7 +12,7 @@ const record = {
   level: { id: uuid, key: 'blue' },
   numericValue: null,
   harmonisation: 'harmonised',
-  review: 'unreviewed',
+  review: 'unvalidated',
   primaryReference: null,
   secondaryReference: null,
   origin: 'manual',
@@ -20,6 +20,9 @@ const record = {
   createdBy: { id: uuid, name: 'Ada' },
   intent: null,
   respondsTo: null,
+  validationCount: 0,
+  contestCount: 0,
+  contested: false,
   recordCode: 'EB_1',
   quantitative: null,
   references: [],
@@ -30,8 +33,6 @@ const summary = {
   contests: 1,
   complements: 0,
   validations: 2,
-  disputes: 0,
-  withdrawn: 1,
 };
 
 // Named separately (not indexed out of the array below) so the strictness
@@ -72,7 +73,7 @@ const dashboard = {
       percentWithData: 60,
       percentValidated: 40,
     },
-    queues: { pendingGroups: 2, disputed: 1, contested: 0, proposals: 0 },
+    queues: { pendingGroups: 2, contested: 0, proposals: 0 },
   },
 };
 

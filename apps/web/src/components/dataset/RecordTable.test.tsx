@@ -61,7 +61,7 @@ describe('RFC-63 R8 RecordTable', () => {
     expect(secondary).toHaveAttribute('href', `/app/references/${SECONDARY_REFERENCE.id}`);
     expect(rows[1]).toHaveTextContent('import');
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('confirmed')).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('Validated')).toBeInTheDocument();
     expect(rows[1]).toHaveTextContent('2026-09-01');
 
     // PENDING_RECORD has no secondary article.
@@ -166,7 +166,7 @@ describe('RFC-71 R2 RecordTable extra column', () => {
         onSelect={vi.fn()}
         extra={{
           header: 'Status',
-          cell: (record) => (record.review === 'disputed' ? 'contested' : 'quiet'),
+          cell: (record) => (record.review === 'contested' ? 'contested' : 'quiet'),
         }}
       />,
     );

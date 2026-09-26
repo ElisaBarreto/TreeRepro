@@ -178,16 +178,20 @@ ${mailFallbackLink(input.link)}`,
   };
 }
 
-/** One list of the digest: a heading, one entry per item with its link, or `None.` */
+/**
+ * The digest's contest list: a heading, one entry per contest with a link —
+ * to the drawer of the record it created, or to the species page when it
+ * created none — or `None.`
+ */
 function digestSection(title: string, items: readonly DigestItem[], appOrigin: string): string[] {
   if (items.length === 0) return [title, '', 'None.', ''];
   return [
     title,
     '',
     ...items.flatMap((item) => [
-      `- ${item.speciesName} — ${item.traitKey}: ${item.valueText} (${item.actorName})`,
+      `- ${item.speciesName} — ${item.traitKey}: contests ${item.contested} (${item.actorName})`,
       // The `?record=` search param opens the record drawer on the species page.
-      `  ${appOrigin}/app/species/${item.speciesId}?record=${item.recordId}`,
+      `  ${appOrigin}/app/species/${item.speciesId}${item.recordId ? `?record=${item.recordId}` : ''}`,
     ]),
     '',
   ];
@@ -209,9 +213,12 @@ function digestSectionHtml(title: string, items: readonly DigestItem[], appOrigi
     return `${head}${spacer(8)}${mailNote('None in this window.', 'grey', mailIcon(appOrigin, 'check.png', 18))}`;
   const rows = items
     .map((item, i) => {
-      const href = `${appOrigin}/app/species/${item.speciesId}?record=${item.recordId}`;
+      // The `?record=` search param opens the record drawer; a contest that
+      // created none links to the species page instead (same rule as the
+      // plain-text list).
+      const href = `${appOrigin}/app/species/${item.speciesId}${item.recordId ? `?record=${item.recordId}` : ''}`;
       const border = i === items.length - 1 ? '' : `border-bottom:1px solid ${C.mist50};`;
-      return `<tr><td valign="middle" style="padding:14px 12px 14px 0;${border}"><p style="margin:0 0 4px;font-family:${BODY_FONT};font-size:15px;font-weight:600;font-style:italic;color:${C.canopy900};">${escapeHtml(item.speciesName)}</p><p style="margin:0;font-family:${BODY_FONT};font-size:14px;line-height:21px;color:${C.text};"><span style="font-family:Menlo,Consolas,monospace;font-size:12px;padding:2px 6px;border-radius:6px;background-color:${C.mist50};color:${C.canopy800};">${escapeHtml(item.traitKey)}</span> ${escapeHtml(item.valueText)} &middot; by ${escapeHtml(item.actorName)}</p></td><td align="right" valign="middle" style="padding:14px 0;${border}white-space:nowrap;"><a href="${escapeHtml(href)}" style="font-family:${BODY_FONT};font-size:14px;font-weight:600;color:${C.canopy700};text-decoration:none;">Open record</a></td></tr>`;
+      return `<tr><td valign="middle" style="padding:14px 12px 14px 0;${border}"><p style="margin:0 0 4px;font-family:${BODY_FONT};font-size:15px;font-weight:600;font-style:italic;color:${C.canopy900};">${escapeHtml(item.speciesName)}</p><p style="margin:0;font-family:${BODY_FONT};font-size:14px;line-height:21px;color:${C.text};"><span style="font-family:Menlo,Consolas,monospace;font-size:12px;padding:2px 6px;border-radius:6px;background-color:${C.mist50};color:${C.canopy800};">${escapeHtml(item.traitKey)}</span> contests ${escapeHtml(item.contested)} &middot; by ${escapeHtml(item.actorName)}</p></td><td align="right" valign="middle" style="padding:14px 0;${border}white-space:nowrap;"><a href="${escapeHtml(href)}" style="font-family:${BODY_FONT};font-size:14px;font-weight:600;color:${C.canopy700};text-decoration:none;">Open record</a></td></tr>`;
     })
     .join('');
   return `${head}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">${rows}</table>`;
@@ -248,7 +255,7 @@ function digestHtml(input: {
   date: string;
   resent: boolean;
 }): string {
-  const { counts, window, contests, disputes } = input.digest;
+  const { counts, window, contests } = input.digest;
   const beforeCard = input.resent
     ? mailNote(
         `<strong>Resent:</strong> ${escapeHtml(DIGEST_RESENT_LINE.replace(/^Resent: /, ''))}`,
@@ -262,7 +269,7 @@ ${heading('Waiting for review right now', C.canopy800)}
 ${tiles(
   [
     ['Pending groups', counts.pendingGroups],
-    ['Disputed records', counts.disputedNow],
+    ['Open contests', counts.contestedNow],
   ],
   2,
   true,
@@ -275,7 +282,6 @@ ${tiles(
     ['Contests', counts.contests],
     ['Complements', counts.complements],
     ['Validations', counts.validations],
-    ['Disputes', counts.disputes],
     ['Withdrawals', counts.withdrawals],
     ['Species proposals', counts.proposals],
   ],
@@ -283,12 +289,11 @@ ${tiles(
   false,
 )}
 <p style="margin:8px 0 28px;font-family:${BODY_FONT};font-size:13px;color:${C.muted};">Records added includes contests and complements, which are records too.</p>
-${digestSectionHtml('Contests', contests, input.appOrigin)}
-${digestSectionHtml('Disputes', disputes, input.appOrigin)}`;
+${digestSectionHtml('Contests', contests, input.appOrigin)}`;
   return emailLayout({
     appOrigin: input.appOrigin,
     title: `TreeRepro digest — ${input.date}`,
-    preheader: `${counts.pendingGroups} pending groups and ${counts.disputedNow} disputed records waiting for review.`,
+    preheader: `${counts.pendingGroups} pending groups and ${counts.contestedNow} open contests waiting for review.`,
     headerNote: `Daily digest · ${input.date}`,
     beforeCard,
     body,
@@ -299,7 +304,7 @@ ${digestSectionHtml('Disputes', disputes, input.appOrigin)}`;
 
 /**
  * The daily digest as plain text: the window's counts, the queues as they
- * stand and the two lists, each item linking to its record drawer.
+ * stand and the newest contests, each linking to its record drawer.
  *
  * Actor names appear decrypted — every recipient holds `dataset.read` — but
  * no e-mail address ever does, neither a recipient's nor an actor's (R5).
@@ -317,7 +322,7 @@ export function digestEmail(input: {
   /** Whether this run repeats a window a previous one had already begun mailing. */
   resent?: boolean;
 }): MailContent {
-  const { counts, window, contests, disputes } = input.digest;
+  const { counts, window, contests } = input.digest;
   return {
     subject: `TreeRepro digest — ${input.date}`,
     text: [
@@ -331,17 +336,15 @@ export function digestEmail(input: {
       `Contests: ${counts.contests}`,
       `Complements: ${counts.complements}`,
       `Validations: ${counts.validations}`,
-      `Disputes: ${counts.disputes}`,
       `Withdrawals: ${counts.withdrawals}`,
       `Species proposals: ${counts.proposals}`,
       '',
       'Waiting for review right now:',
       '',
       `Pending groups: ${counts.pendingGroups}`,
-      `Disputed records: ${counts.disputedNow}`,
+      `Open contests: ${counts.contestedNow}`,
       '',
       ...digestSection('Contests', contests, input.appOrigin),
-      ...digestSection('Disputes', disputes, input.appOrigin),
       'TreeRepro',
     ].join('\n'),
     html: digestHtml({ ...input, resent: input.resent === true }),

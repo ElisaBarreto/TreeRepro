@@ -287,7 +287,7 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     ).toHaveAttribute('href', `/app/references/${REFERENCE.id}`);
     expect(first[4]).toHaveTextContent(/^—$/);
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('confirmed')).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('Validated')).toBeInTheDocument();
     const second = within(rows[2] as HTMLElement).getAllByRole('cell');
     expect(second[1]).toHaveTextContent('seed mass');
     expect(
@@ -295,7 +295,7 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     ).toBeVisible();
     expect(within(second[4] as HTMLElement).getByRole('link', { name: 'Smith2001' })).toBeVisible();
     expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
-    expect(within(rows[2] as HTMLElement).getByText('disputed')).toBeInTheDocument();
+    expect(within(rows[2] as HTMLElement).getByText('Contested')).toBeInTheDocument();
     const pagination = screen.getByRole('navigation', { name: 'Pagination' });
     expect(within(pagination).getByText('Page 1')).toBeInTheDocument();
     expect(within(pagination).getByRole('button', { name: 'Next' })).toBeDisabled();

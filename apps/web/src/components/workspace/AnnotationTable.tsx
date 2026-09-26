@@ -11,6 +11,7 @@ const TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
   dispute: 'red',
   neutral: 'neutral',
   withdraw: 'neutral',
+  resolve: 'neutral',
 };
 
 /**
@@ -19,9 +20,12 @@ const TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
  * kind, the record it sits on, the note and the reference backing it. An
  * annotation the system wrote in the viewer's name (the dispute a contest
  * raises) reads "automatic". The record cell is a button, so every row opens
- * its record in the drawer by keyboard as well as by mouse.
+ * its record in the drawer by keyboard as well as by mouse — except a
+ * Keep-both resolution whose contest created no record, or created one the
+ * viewer cannot see (RFC-71 R3): its `record` is null and the cell shows a
+ * dash instead, nothing to open.
  * @rfc RFC-71 R3
- * @rfc RFC-65 R3
+ * @rfc RFC-65 R3, R16
  */
 export function AnnotationTable({
   annotations,
@@ -54,14 +58,18 @@ export function AnnotationTable({
               </span>
             </Td>
             <Td>
-              <button
-                type="button"
-                onClick={() => onSelect(annotation)}
-                className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-              >
-                <span className="italic">{annotation.record.species.canonicalName}</span> ›{' '}
-                {humaniseKey(annotation.record.trait.key)}
-              </button>
+              {annotation.record ? (
+                <button
+                  type="button"
+                  onClick={() => onSelect(annotation)}
+                  className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+                >
+                  <span className="italic">{annotation.record.species.canonicalName}</span> ›{' '}
+                  {humaniseKey(annotation.record.trait.key)}
+                </button>
+              ) : (
+                DASH
+              )}
             </Td>
             <Td>{annotation.note ?? DASH}</Td>
             <Td>

@@ -14,6 +14,8 @@ export interface SpeciesSearchValue {
   familyId?: string;
   genusId?: string;
   unresolved: boolean;
+  contested: boolean;
+  unknownLevels: boolean;
   status?: SpeciesStatus;
   scope?: 'plots' | 'all';
   plotId?: string;
@@ -44,9 +46,11 @@ export interface SpeciesSearchValue {
  * `traitData` once the contributor picks a side.
  *
  * **Scope** — the plot select, the outside-plots toggle and, with
- * `dataset.read_inactive`, the Status select (RFC-33 R6, R7, RFC-67 R8);
- * without either the group is neither shown nor reachable, so the value
- * simply never carries a status or a plot.
+ * `dataset.read_inactive`, the Status select (RFC-33 R6, R7, RFC-67 R8),
+ * plus **Contested only** for everyone and **Has unknown levels** with
+ * `records.review` (spec R-15); the unresolved toggle of the Taxonomy group
+ * is shown with `records.review` only. The group itself always renders, so
+ * the two checkboxes it offers every viewer are always reachable.
  *
  * Below the groups, **Order by** chooses between the name order and
  * "Most incomplete first" (`sort=completeness`). Fully controlled — the page
@@ -79,6 +83,7 @@ export function SpeciesSearchForm({
   const hasPlots = Boolean(me.scope?.plots && me.scope.plots.length > 0);
   const canManagePlots = hasPermission(me, 'plots.manage');
   const canReadInactive = hasPermission(me, 'dataset.read_inactive');
+  const canReview = hasPermission(me, 'records.review');
   const showScopeGroup = hasPlots || canManagePlots;
 
   const allPlotsQuery = useQuery({
@@ -112,7 +117,7 @@ export function SpeciesSearchForm({
   return (
     <div className="flex flex-col gap-4">
       <TaxonomyFilters
-        showUnresolved
+        showUnresolved={canReview}
         value={{
           q: value.q,
           familyId: value.familyId,
@@ -208,56 +213,72 @@ export function SpeciesSearchForm({
         </fieldset>
       </FilterGroup>
 
-      {showScopeGroup || canReadInactive ? (
-        <FilterGroup title="Scope" columns="md:grid-cols-[1fr_1fr_auto]">
-          {showScopeGroup ? (
-            <Field id={ids.plot} label="Plot">
-              <Select
-                id={ids.plot}
-                value={value.plotId ?? ''}
-                onChange={(event) =>
-                  onChange({ ...value, plotId: event.target.value || undefined })
-                }
-              >
-                <option value="">All plots</option>
-                {availablePlots.map((plot) => (
-                  <option key={plot.id} value={plot.id}>
-                    {plot.code} — {plot.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          ) : null}
-          {canReadInactive ? (
-            <Field id={ids.status} label="Status">
-              <Select
-                id={ids.status}
-                value={value.status ?? 'all'}
-                onChange={(event) =>
-                  onChange({ ...value, status: event.target.value as SpeciesStatus })
-                }
-              >
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </Select>
-            </Field>
-          ) : null}
-          {hasPlots && !me.scope.restricted ? (
-            <label className={FILTER_CHECK}>
-              <input
-                type="checkbox"
-                className="size-5 accent-canopy-700"
-                checked={value.scope ? value.scope === 'all' : canReadInactive}
-                onChange={(event) =>
-                  onChange({ ...value, scope: event.target.checked ? 'all' : 'plots' })
-                }
-              />
-              Show species outside my plots
-            </label>
-          ) : null}
-        </FilterGroup>
-      ) : null}
+      <FilterGroup title="Scope" columns="md:grid-cols-[1fr_1fr_auto]">
+        {showScopeGroup ? (
+          <Field id={ids.plot} label="Plot">
+            <Select
+              id={ids.plot}
+              value={value.plotId ?? ''}
+              onChange={(event) => onChange({ ...value, plotId: event.target.value || undefined })}
+            >
+              <option value="">All plots</option>
+              {availablePlots.map((plot) => (
+                <option key={plot.id} value={plot.id}>
+                  {plot.code} — {plot.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+        {canReadInactive ? (
+          <Field id={ids.status} label="Status">
+            <Select
+              id={ids.status}
+              value={value.status ?? 'all'}
+              onChange={(event) =>
+                onChange({ ...value, status: event.target.value as SpeciesStatus })
+              }
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </Select>
+          </Field>
+        ) : null}
+        {hasPlots && !me.scope.restricted ? (
+          <label className={FILTER_CHECK}>
+            <input
+              type="checkbox"
+              className="size-5 accent-canopy-700"
+              checked={value.scope ? value.scope === 'all' : canReadInactive}
+              onChange={(event) =>
+                onChange({ ...value, scope: event.target.checked ? 'all' : 'plots' })
+              }
+            />
+            Show species outside my plots
+          </label>
+        ) : null}
+        <label className={FILTER_CHECK}>
+          <input
+            type="checkbox"
+            className="size-5 accent-canopy-700"
+            checked={value.contested}
+            onChange={(event) => onChange({ ...value, contested: event.target.checked })}
+          />
+          Contested only
+        </label>
+        {canReview ? (
+          <label className={FILTER_CHECK}>
+            <input
+              type="checkbox"
+              className="size-5 accent-canopy-700"
+              checked={value.unknownLevels}
+              onChange={(event) => onChange({ ...value, unknownLevels: event.target.checked })}
+            />
+            Has unknown levels
+          </label>
+        ) : null}
+      </FilterGroup>
 
       <div className="md:w-64">
         <Field id={ids.sort} label="Order by">

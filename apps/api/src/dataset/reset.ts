@@ -5,7 +5,8 @@ import type { Sql, TransactionSql } from 'postgres';
  * foreign-key closure: `reference_traits` and `species_proposals` are here not
  * because an import writes them but because they reference tables that are
  * being emptied, and PostgreSQL refuses a partial `TRUNCATE` across a foreign
- * key; `record_references` goes with `trait_records`, which it references.
+ * key; `record_references` and the four contest tables go with `trait_records`,
+ * which they reference.
  * `import_batches` is absent on purpose: the running batch's row is
  * created before the transaction so that RFC-64 R9 can mark it `failed`, and
  * truncating the table would delete it. Earlier batches go by DELETE instead.
@@ -15,6 +16,10 @@ import type { Sql, TransactionSql } from 'postgres';
  */
 export const RESET_TABLES = [
   'record_annotations',
+  'contests',
+  'contest_levels',
+  'contest_records',
+  'contest_events',
   'reference_traits',
   'species_proposals',
   'record_references',
@@ -43,6 +48,14 @@ const APPEND_ONLY_TRIGGERS: readonly [string, string][] = [
   ['trait_records', 'trait_records_no_truncate'],
   ['record_annotations', 'record_annotations_append_only'],
   ['record_annotations', 'record_annotations_no_truncate'],
+  ['contests', 'contests_append_only'],
+  ['contests', 'contests_no_truncate'],
+  ['contest_levels', 'contest_levels_append_only'],
+  ['contest_levels', 'contest_levels_no_truncate'],
+  ['contest_records', 'contest_records_append_only'],
+  ['contest_records', 'contest_records_no_truncate'],
+  ['contest_events', 'contest_events_append_only'],
+  ['contest_events', 'contest_events_no_truncate'],
 ];
 
 /**

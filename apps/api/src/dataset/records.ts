@@ -1,11 +1,14 @@
-import type {
-  QuantitativeValue,
-  RecordDetail,
-  RecordItem,
-  ReferenceKind,
-  ReviewStatus,
+import {
+  type QuantitativeValue,
+  RECORD_ORIGINS,
+  type RecordDetail,
+  type RecordItem,
+  type RecordSort,
+  type ReferenceKind,
+  type ReviewStatus,
+  type SortOrder,
 } from '@treerepro/contracts';
-import { and, desc, eq, lt, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -16,7 +19,15 @@ import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
-import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
+import {
+  decodeCompositeCursor,
+  decodeCursor,
+  encodeCompositeCursor,
+  encodeCursor,
+  isUuid,
+  pageOf,
+} from '../http/cursor.ts';
+import { contestCountSql, recordContestedSql, recordFullyVisible } from './contests.ts';
 
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
 const secondaryRef = alias(bibliographicReferences, 'secondary_ref');
@@ -45,6 +56,17 @@ const extraReferencesSql = sql<ExtraReference[]>`(select coalesce(jsonb_agg(json
   where rr.record_id = ${traitRecords.id})`;
 
 /**
+ * The `value` sort's numeric key (RFC-63 R9): the single/mean/min/max fields
+ * coalesced, or PostgreSQL's numeric `Infinity` — never a real record's
+ * value — for a categorical or still-unharmonised record (see
+ * {@link SORT_KEYS}'s doc comment for why). Read back through
+ * `itemColumns.valueSortKey`'s `::text` cast, never through
+ * `numericValue`'s `mode: 'number'` JS double, which would round a
+ * high-precision value before it went into the cursor.
+ */
+const VALUE_SORT_KEY_SQL = sql`coalesce(${traitRecords.numericValue}, ${traitRecords.meanValue}, ${traitRecords.minValue}, ${traitRecords.maxValue}, 'Infinity'::numeric)`;
+
+/**
  * The single/min/max/mean/sd/n fields of a record as one object (spec R-5),
  * or null when none is set — a purely categorical or level-based record.
  */
@@ -62,25 +84,76 @@ function quantitativeOf(rec: typeof traitRecords.$inferSelect): QuantitativeValu
 }
 
 /**
- * The review axis of one record, derived from its annotations: withdrawn >
- * disputed > confirmed > unreviewed, where a scientist's stance is their
- * latest non-withdraw annotation. `recordId` is wrapped as an `sql` fragment
- * before use: Drizzle's single-table `buildSelection` rewrites a bare top-level
- * `Column` argument (`traitRecords.id`) to an unqualified identifier, which
- * would then resolve inside this function's own correlated subquery over
- * `record_annotations` to that table's own `id` instead of the record being
- * checked — handled here so every caller can pass a bare column.
+ * The review state of one record for the viewer (RFC-63 R6): contested (the
+ * record or its level is contested, RFC-63 R14) > validated (at least one
+ * `confirm`) > unvalidated. `dispute` and `neutral` rows are ignored; a
+ * withdrawn record has no state (it is invisible), so callers filter it out.
+ * `recordId` is wrapped as an `sql` fragment before use: Drizzle's
+ * single-table `buildSelection` rewrites a bare top-level `Column` argument
+ * (`traitRecords.id`) to an unqualified identifier, which would then resolve
+ * inside this function's own correlated subqueries to another table's `id`
+ * instead of the record being checked — handled here so every caller can pass
+ * a bare column.
  * @rfc RFC-63 R6
  */
-export function reviewStatusSql(recordId: SQL | typeof traitRecords.id): SQL<ReviewStatus> {
+export function reviewStatusSql(
+  v: Visibility,
+  recordId: SQL | typeof traitRecords.id,
+): SQL<ReviewStatus> {
   const id = sql`${recordId}`;
-  const stances = sql`(select distinct on (a.actor_id) a.kind from ${recordAnnotations} a
-    where a.record_id = ${id} and a.kind <> 'withdraw' order by a.actor_id, a.id desc)`;
   return sql<ReviewStatus>`case
-    when exists (select 1 from ${recordAnnotations} w where w.record_id = ${id} and w.kind = 'withdraw') then 'withdrawn'
-    when exists (select 1 from ${stances} s where s.kind = 'dispute') then 'disputed'
-    when exists (select 1 from ${stances} s where s.kind = 'confirm') then 'confirmed'
-    else 'unreviewed' end`;
+    when ${recordContestedSql(v, id)} then 'contested'
+    when exists (select 1 from ${recordAnnotations} rs_v where rs_v.record_id = ${id} and rs_v.kind = 'confirm') then 'validated'
+    else 'unvalidated' end`;
+}
+
+/**
+ * No `withdraw` annotation exists for the record (spec R-13): the one
+ * definition of "still in the dataset". `recordId` is wrapped for the reason
+ * given on {@link reviewStatusSql}.
+ * @rfc RFC-63 R6
+ */
+export function liveSql(recordId: SQL | typeof traitRecords.id): SQL {
+  return sql`not exists (select 1 from ${recordAnnotations} lw
+    where lw.record_id = ${sql`${recordId}`} and lw.kind = 'withdraw')`;
+}
+
+/** Harmonised, unless the viewer reviews (spec R-14). @rfc RFC-33 R2 */
+export function harmonisedFor(
+  v: Visibility,
+  harmonisation: SQL | typeof traitRecords.harmonisation = traitRecords.harmonisation,
+): SQL {
+  return v.review ? sql`true` : sql`${harmonisation} = 'harmonised'`;
+}
+
+/**
+ * The level condition of RFC-33 R2: no level, an active level, or a viewer who
+ * holds `dataset.read_inactive`. Resolved through an `exists` on
+ * `trait_records`/`trait_levels` rather than a join, so a caller need only
+ * pass the record's id — the shape both a Drizzle query (`traitRecords.id`,
+ * no join needed) and a raw `sql` alias (`r.id`) already have on hand.
+ * @rfc RFC-33 R2
+ */
+function levelVisibleForRecord(v: Visibility, recordId: SQL | typeof traitRecords.id): SQL {
+  if (v.inactive) return sql`true`;
+  const id = sql`${recordId}`;
+  return sql`not exists (select 1 from ${traitRecords} lvr
+    join ${traitLevels} lvl on lvl.id = lvr.level_id
+    where lvr.id = ${id} and not lvl.active)`;
+}
+
+/**
+ * A record the viewer reads: live, harmonised or reviewed (RFC-33 R2), and on
+ * a level that is null, active, or visible to a `dataset.read_inactive`
+ * holder (RFC-33 R2).
+ * @rfc RFC-33 R2
+ */
+export function recordVisible(
+  v: Visibility,
+  recordId: SQL | typeof traitRecords.id = traitRecords.id,
+  harmonisation: SQL | typeof traitRecords.harmonisation = traitRecords.harmonisation,
+): SQL {
+  return sql`${liveSql(recordId)} and ${harmonisedFor(v, harmonisation)} and ${levelVisibleForRecord(v, recordId)}`;
 }
 
 const itemColumns = {
@@ -102,6 +175,8 @@ const itemColumns = {
   secondaryObserverName: secondaryRefObserver.name,
   authorName: author.name,
   extraReferences: extraReferencesSql,
+  /** RFC-63 R9's `value` sort key, exact (see {@link VALUE_SORT_KEY_SQL}). */
+  valueSortKey: sql<string>`(${VALUE_SORT_KEY_SQL})::text`,
 };
 
 export type ItemRow = {
@@ -123,7 +198,11 @@ export type ItemRow = {
   secondaryObserverName: string | null;
   authorName: string | null;
   extraReferences: ExtraReference[];
+  valueSortKey: string;
   review: ReviewStatus;
+  validationCount: number;
+  contestCount: number;
+  contested: boolean;
 };
 
 /** @rfc RFC-63 R8 */
@@ -190,13 +269,28 @@ export function toItem(r: ItemRow): RecordItem {
     createdBy: rec.createdBy && r.authorName ? { id: rec.createdBy, name: r.authorName } : null,
     intent: rec.intent ?? null,
     respondsTo: rec.respondsToRecordId ? { id: rec.respondsToRecordId } : null,
+    validationCount: r.validationCount,
+    contestCount: r.contestCount,
+    contested: r.contested,
   };
 }
 
-/** The joined select behind every record item; the queues reuse it. @rfc RFC-63 R8 */
-export function itemQuery(db: DbExecutor) {
+/**
+ * The joined select behind every record item; the queues reuse it. `review`
+ * and `contested` are the viewer's (RFC-63 R6, R14).
+ * @rfc RFC-63 R8
+ */
+export function itemQuery(db: DbExecutor, visibility: Visibility) {
+  const id = sql`${traitRecords.id}`;
   return db
-    .select({ ...itemColumns, review: reviewStatusSql(traitRecords.id).as('review') })
+    .select({
+      ...itemColumns,
+      review: reviewStatusSql(visibility, id).as('review'),
+      validationCount: sql<number>`(select count(distinct vc.actor_id) from ${recordAnnotations} vc
+        where vc.record_id = ${id} and vc.kind = 'confirm')::int`.as('validation_count'),
+      contestCount: contestCountSql(id).as('contest_count'),
+      contested: sql<boolean>`${recordContestedSql(visibility, id)}`.as('contested'),
+    })
     .from(traitRecords)
     .innerJoin(species, eq(species.id, traitRecords.speciesId))
     .innerJoin(traits, eq(traits.id, traitRecords.traitId))
@@ -209,9 +303,143 @@ export function itemQuery(db: DbExecutor) {
 }
 
 /**
+ * The records list's non-`added` sort keys (RFC-63 R9), each paired with a
+ * row-value keyset predicate (RFC-11 R6): `id` breaks every tie.
+ *
+ * `value`'s two keys cover both trait kinds at once: a categorical record's
+ * level is null under `trait_records_one_value_check` whenever it carries a
+ * numeric field, and vice versa, so within one species×trait the inactive
+ * branch is always the same sentinel and never affects the order. A
+ * `referenceId` list, though, can span several traits and so mix kinds in one
+ * page: the numeric key is coalesced to PostgreSQL's numeric `Infinity` —
+ * never a real record's value — for a categorical or still-unharmonised
+ * record, so every such record sorts after every quantitative value
+ * ascending (before it, descending); the level key is coalesced to `''` for
+ * a quantitative record. Either sentinel keeps `NULL` out of the row-value
+ * comparison, which a `NULL` operand would otherwise make neither true nor
+ * false and so silently drop rows from a keyset page.
+ *
+ * `references` sorts by the primary reference's `short_citation`, then its
+ * `citation_key` (RFC-63 R16); a record with no primary reference sorts as
+ * if both were `''`.
+ *
+ * `origin` is `not null` (RFC-63 R1): no sentinel needed.
+ */
+const SORT_KEYS: Record<Exclude<RecordSort, 'added'>, SQL[]> = {
+  value: [VALUE_SORT_KEY_SQL, sql`coalesce(${traitLevels.key}, '')`],
+  references: [
+    sql`coalesce(${primaryRef.shortCitation}, '')`,
+    sql`coalesce(${primaryRef.citationKey}, '')`,
+  ],
+  origin: [sql`${traitRecords.origin}`],
+};
+
+/** A cursor part shaped like {@link SORT_KEYS}'s numeric `value` key. */
+function isNumericSortKey(part: string): boolean {
+  return part === 'Infinity' || /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(part);
+}
+
+/** A cursor part naming one of `RECORD_ORIGINS`. */
+function isRecordOrigin(part: string): boolean {
+  return (RECORD_ORIGINS as readonly string[]).includes(part);
+}
+
+/** Any string: a text key has no shape to check beyond the arity itself. */
+function anyText(): boolean {
+  return true;
+}
+
+/**
+ * The cursor values of one row for `sort`, read off the fields `itemQuery`
+ * already selects — the same coalescing {@link SORT_KEYS} applies in SQL, so
+ * the cursor a page's last row emits matches the predicate the next page
+ * decodes it into. `value`'s numeric part comes from `valueSortKey`
+ * (`itemColumns`'s `::text` cast of {@link VALUE_SORT_KEY_SQL}), never
+ * recomputed from `numericValue`'s `mode: 'number'` JS double — a
+ * high-precision value would round on that trip and no longer match the
+ * exact text PostgreSQL compares the next page's cursor against.
+ */
+function sortKeyParts(sort: Exclude<RecordSort, 'added'>, row: ItemRow): string[] {
+  if (sort === 'value') return [row.valueSortKey, row.levelKey ?? ''];
+  if (sort === 'references') return [row.primaryShortCitation ?? '', row.primaryKey ?? ''];
+  return [row.record.origin];
+}
+
+/**
+ * The composite cursor of a non-`added` sort carries the sort's name ahead of
+ * its key values and id, one part longer than the plain keyset the helpers
+ * check by arity ({@link decodeCompositeCursor}) — so a cursor minted under
+ * one sort, or under `added`'s plain uuid cursor, always fails to decode
+ * under another and answers 400 `VALIDATION_FAILED` rather than silently
+ * reusing the wrong columns.
+ * @rfc RFC-63 R9
+ * @rfc RFC-11 R6
+ */
+function encodeSortCursor(sort: Exclude<RecordSort, 'added'>, row: ItemRow): string {
+  return encodeCompositeCursor([sort, ...sortKeyParts(sort, row), row.record.id]);
+}
+
+/**
+ * The keyset predicate for a non-`added` sort: `(k1, k2, id) > (…)` ascending,
+ * `<` descending — a total order because every key is sentinel-coalesced
+ * (see {@link SORT_KEYS}) and `id` never repeats. Each branch casts its own
+ * cursor tuple, `noUncheckedIndexedAccess`-safe, and leads with a validator
+ * pinning the sort's own name so a cursor of another sort or of `added`'s
+ * plain uuid cursor is refused rather than silently mis-decoded.
+ * @rfc RFC-63 R9
+ * @rfc RFC-11 R6
+ */
+function sortCursorCondition(
+  sort: Exclude<RecordSort, 'added'>,
+  order: SortOrder,
+  cursor: string,
+): SQL {
+  const cmp = (lhs: SQL[], rhs: SQL[]): SQL => {
+    const l = sql.join(lhs, sql`, `);
+    const r = sql.join(rhs, sql`, `);
+    return order === 'asc' ? sql`(${l}) > (${r})` : sql`(${l}) < (${r})`;
+  };
+  if (sort === 'value') {
+    const [, k1, k2, id] = decodeCompositeCursor(cursor, 4, [
+      (p) => p === 'value',
+      isNumericSortKey,
+      anyText,
+      isUuid,
+    ]) as [string, string, string, string];
+    return cmp(
+      [...SORT_KEYS.value, sql`${traitRecords.id}`],
+      [sql`${k1}::numeric`, sql`${k2}`, sql`${id}::uuid`],
+    );
+  }
+  if (sort === 'references') {
+    const [, k1, k2, id] = decodeCompositeCursor(cursor, 4, [
+      (p) => p === 'references',
+      anyText,
+      anyText,
+      isUuid,
+    ]) as [string, string, string, string];
+    return cmp(
+      [...SORT_KEYS.references, sql`${traitRecords.id}`],
+      [sql`${k1}`, sql`${k2}`, sql`${id}::uuid`],
+    );
+  }
+  const [, k1, id] = decodeCompositeCursor(cursor, 3, [
+    (p) => p === 'origin',
+    isRecordOrigin,
+    isUuid,
+  ]) as [string, string, string];
+  return cmp([...SORT_KEYS.origin, sql`${traitRecords.id}`], [sql`${k1}`, sql`${id}::uuid`]);
+}
+
+/**
  * Either `speciesId` and `traitId` together, or `referenceId` alone (primary,
- * secondary or `record_references`); ordered `id` descending with a keyset
- * cursor.
+ * secondary or `record_references`). `sort` is `value`, `references`,
+ * `origin` or `added` (spec §2); `added` keeps the keyset cursor on the id
+ * (today's cursor, unchanged), the other sorts page under a composite
+ * keyset cursor of the sort key(s) and the id (RFC-11 R6), `id` breaking
+ * ties. `order` defaults to `desc` for every sort (RFC-63 R9 names one
+ * default, "added desc"; the controller ruling reads that as the general
+ * default, not just `added`'s).
  * @rfc RFC-63 R9
  * @rfc RFC-33 R2, R3
  */
@@ -224,9 +452,15 @@ export async function listRecords(
     referenceId?: string;
     cursor?: string;
     limit: number;
+    sort?: RecordSort;
+    order?: SortOrder;
   },
 ): Promise<{ data: RecordItem[]; nextCursor: string | null }> {
-  const conditions: SQL[] = [speciesVisible(visibility), traitVisible(visibility)];
+  const conditions: SQL[] = [
+    speciesVisible(visibility),
+    traitVisible(visibility),
+    recordVisible(visibility),
+  ];
   if (input.speciesId && input.traitId) {
     conditions.push(
       eq(traitRecords.speciesId, input.speciesId),
@@ -243,12 +477,33 @@ export async function listRecords(
   } else {
     throw new Error('listRecords: speciesId+traitId or referenceId is required');
   }
-  if (input.cursor) conditions.push(lt(traitRecords.id, decodeCursor(input.cursor)));
-  const rows = await itemQuery(db)
+
+  const sort = input.sort ?? 'added';
+  // RFC-63 R9 names one default, "added desc"; the controller ruling reads
+  // that as the general default too, so every sort defaults to `desc` when
+  // `order` is omitted, `added` included.
+  const order = input.order ?? 'desc';
+  const dir = order === 'asc' ? asc : desc;
+
+  if (sort === 'added') {
+    if (input.cursor) {
+      const after = decodeCursor(input.cursor);
+      conditions.push(order === 'asc' ? gt(traitRecords.id, after) : lt(traitRecords.id, after));
+    }
+    const rows = await itemQuery(db, visibility)
+      .where(and(...conditions))
+      .orderBy(dir(traitRecords.id))
+      .limit(input.limit + 1);
+    const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
+    return { data: page.map(toItem), nextCursor };
+  }
+
+  if (input.cursor) conditions.push(sortCursorCondition(sort, order, input.cursor));
+  const rows = await itemQuery(db, visibility)
     .where(and(...conditions))
-    .orderBy(desc(traitRecords.id))
+    .orderBy(...SORT_KEYS[sort].map((k) => dir(k)), dir(traitRecords.id))
     .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeSortCursor(sort, r));
   return { data: page.map(toItem), nextCursor };
 }
 
@@ -263,8 +518,15 @@ export async function getRecord(
   visibility: Visibility,
   id: string,
 ): Promise<RecordDetail | null> {
-  const [row] = await itemQuery(db)
-    .where(and(eq(traitRecords.id, id), speciesVisible(visibility), traitVisible(visibility)))
+  const [row] = await itemQuery(db, visibility)
+    .where(
+      and(
+        eq(traitRecords.id, id),
+        speciesVisible(visibility),
+        traitVisible(visibility),
+        recordVisible(visibility),
+      ),
+    )
     .limit(1);
   if (!row) return null;
   const rec = row.record;
@@ -311,7 +573,12 @@ export async function getRecord(
     db
       .select({ id: traitRecords.id })
       .from(traitRecords)
-      .where(eq(traitRecords.supersedesRecordId, id))
+      .where(
+        and(
+          eq(traitRecords.supersedesRecordId, id),
+          recordFullyVisible(visibility, sql`${traitRecords.id}`),
+        ),
+      )
       .orderBy(desc(traitRecords.id)),
     db
       .select({
@@ -323,7 +590,12 @@ export async function getRecord(
       })
       .from(traitRecords)
       .leftJoin(users, eq(users.id, traitRecords.createdBy))
-      .where(eq(traitRecords.respondsToRecordId, id))
+      .where(
+        and(
+          eq(traitRecords.respondsToRecordId, id),
+          recordFullyVisible(visibility, sql`${traitRecords.id}`),
+        ),
+      )
       .orderBy(desc(traitRecords.id)),
   ]);
   const b = batch[0];

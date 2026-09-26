@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -39,3 +39,4 @@ None.
 - 2026-09-18 — R1, R4, R6, R8 amended, R9 added: `short_citation`, `full_citation`, `q` over `short_citation`, `traitId`/`categoryKey` filters, the DOI-derivation rule, `reference_traits` — migration `0027_references_enriched` (RFC-68 R13; plan 10d).
 - 2026-09-18 — R4: `recordCount` stated visibility-blind, like the per-role counters and RFC-60 R7's; the visible `traits` need not sum to it (issue #103).
 - 2026-09-25 — R1, R3, R4, R6, R9 amended, R10 added: book references with a normalised unique ISBN, the list shows every kind but personal observations by default, `record_references` usages, counters that decrease on withdrawal (record model revision R-4, R-13, R-16; plan 13a). `draft` until plan 13g.
+- 2026-09-26 — accepted: implemented by plan 13g.

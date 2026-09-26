@@ -56,9 +56,20 @@ const SEED_MASS_ID = DICTIONARY[1]?.traits[0]?.id as string;
 
 describe('RFC-13 R2, RFC-60 R6 SpeciesSearchForm genus chip', () => {
   it('shows a neutral fallback chip when genusId is set without a resolved genus name, and Clear removes it', async () => {
-    renderWithProviders(<Controlled initial={{ q: '', unresolved: false, genusId: 'g1' }} />, {
-      me: READER,
-    });
+    renderWithProviders(
+      <Controlled
+        initial={{
+          q: '',
+          unresolved: false,
+          contested: false,
+          unknownLevels: false,
+          genusId: 'g1',
+        }}
+      />,
+      {
+        me: READER,
+      },
+    );
     expect(screen.getByText('Selected genus')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear genus' }));
@@ -70,7 +81,10 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchForm genus chip', () => {
 describe('RFC-13 R8 SpeciesSearchForm genus combobox ARIA', () => {
   it('leaves aria-expanded false and drops aria-controls when the genus query matches nothing', async () => {
     dataset.fetchGenera.mockResolvedValue({ data: [], meta: { nextCursor: null } });
-    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} />, { me: READER });
+    renderWithProviders(
+      <Controlled initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }} />,
+      { me: READER },
+    );
 
     const combobox = screen.getByRole('combobox', { name: 'Genus' });
     await userEvent.type(combobox, 'Zzz');
@@ -82,7 +96,10 @@ describe('RFC-13 R8 SpeciesSearchForm genus combobox ARIA', () => {
 
   it('sets aria-expanded true and points aria-controls at the listbox when suggestions exist', async () => {
     dataset.fetchGenera.mockResolvedValue({ data: GENERA, meta: { nextCursor: null } });
-    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} />, { me: READER });
+    renderWithProviders(
+      <Controlled initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }} />,
+      { me: READER },
+    );
 
     const combobox = screen.getByRole('combobox', { name: 'Genus' });
     await userEvent.type(combobox, 'Aden');
@@ -96,14 +113,20 @@ describe('RFC-13 R8 SpeciesSearchForm genus combobox ARIA', () => {
 describe('RFC-60 R6 SpeciesSearchForm status filter', () => {
   it('RFC-60 R6 shows the status select only with dataset.read_inactive', async () => {
     renderWithProviders(
-      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />,
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={() => {}}
+      />,
       { me: READER },
     );
     expect(screen.queryByLabelText('Status')).toBeNull();
 
     const onChange = vi.fn();
     renderWithProviders(
-      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={onChange} />,
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
       { me: { ...READER, permissions: ['dataset.read', 'dataset.read_inactive'] } },
     );
     await userEvent.selectOptions(screen.getByLabelText('Status'), 'inactive');
@@ -115,9 +138,12 @@ describe('RFC-33 R6, RFC-67 R8 SpeciesSearchForm plot scope & filter', () => {
   const PLOT_A = { id: 'p-1', code: 'PLT-A', name: 'Plot Alpha' };
   const PLOT_B = { id: 'p-2', code: 'PLT-B', name: 'Plot Beta' };
 
-  it('renders no scope group when user has no plots and no plots.manage', () => {
+  it('offers no plot select and no outside-plots checkbox when user has no plots and no plots.manage', () => {
     renderWithProviders(
-      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />,
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={() => {}}
+      />,
       { me: READER },
     );
     expect(screen.queryByLabelText('Plot')).toBeNull();
@@ -133,7 +159,7 @@ describe('RFC-33 R6, RFC-67 R8 SpeciesSearchForm plot scope & filter', () => {
 
     renderWithProviders(
       <SpeciesSearchForm
-        value={{ q: '', unresolved: false, scope: 'plots' }}
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false, scope: 'plots' }}
         onChange={onChange}
       />,
       { me: meWithPlots },
@@ -159,7 +185,10 @@ describe('RFC-33 R6, RFC-67 R8 SpeciesSearchForm plot scope & filter', () => {
     };
 
     renderWithProviders(
-      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />,
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={() => {}}
+      />,
       { me: meRestricted },
     );
 
@@ -171,7 +200,10 @@ describe('RFC-33 R6, RFC-67 R8 SpeciesSearchForm plot scope & filter', () => {
 describe('RFC-60 R6 SpeciesSearchForm groups', () => {
   it('renders Taxonomy, Traits and Scope as named groups', async () => {
     renderWithProviders(
-      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />,
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={() => {}}
+      />,
       {
         me: {
           ...READER,
@@ -186,13 +218,31 @@ describe('RFC-60 R6 SpeciesSearchForm groups', () => {
 
   it('keeps the name, family and genus controls inside Taxonomy', async () => {
     renderWithProviders(
-      <SpeciesSearchForm value={{ q: '', unresolved: false }} onChange={() => {}} />,
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={() => {}}
+      />,
       { me: READER },
     );
     const taxonomy = await screen.findByRole('group', { name: 'Taxonomy' });
     expect(within(taxonomy).getByLabelText('Search species')).toBeInTheDocument();
     expect(within(taxonomy).getByLabelText('Family')).toBeInTheDocument();
     expect(within(taxonomy).getByLabelText('Genus')).toBeInTheDocument();
+    // RFC-60 R6: the unresolved toggle is reviewer-only, so a plain
+    // `dataset.read` viewer does not see it (see the permissions describe
+    // block below for the `records.review` case).
+    expect(within(taxonomy).queryByLabelText('Unresolved taxa only')).not.toBeInTheDocument();
+  });
+
+  it('shows the unresolved toggle in Taxonomy for a records.review holder', async () => {
+    renderWithProviders(
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={() => {}}
+      />,
+      { me: { ...READER, permissions: ['dataset.read', 'records.review'] } },
+    );
+    const taxonomy = await screen.findByRole('group', { name: 'Taxonomy' });
     expect(within(taxonomy).getByLabelText('Unresolved taxa only')).toBeInTheDocument();
   });
 });
@@ -200,9 +250,15 @@ describe('RFC-60 R6 SpeciesSearchForm groups', () => {
 describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
   it('lists the dictionary categories and reports the chosen one', async () => {
     const onChange = vi.fn();
-    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} onChange={onChange} />, {
-      me: READER,
-    });
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      {
+        me: READER,
+      },
+    );
     const category = await screen.findByLabelText('Category');
     expect(await within(category).findByRole('option', { name: 'Seed' })).toBeInTheDocument();
     expect(
@@ -216,9 +272,15 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
 
   it('disables the trait select until a category is chosen and then lists only its traits', async () => {
     const onChange = vi.fn();
-    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} onChange={onChange} />, {
-      me: READER,
-    });
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      {
+        me: READER,
+      },
+    );
     expect(await screen.findByLabelText('Trait')).toBeDisabled();
     await screen.findByRole('option', { name: 'Seed' });
 
@@ -238,7 +300,14 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     const onChange = vi.fn();
     renderWithProviders(
       <Controlled
-        initial={{ q: '', unresolved: false, categoryKey: 'seed', traitId: SEED_MASS_ID }}
+        initial={{
+          q: '',
+          unresolved: false,
+          contested: false,
+          unknownLevels: false,
+          categoryKey: 'seed',
+          traitId: SEED_MASS_ID,
+        }}
         onChange={onChange}
       />,
       { me: READER },
@@ -252,9 +321,15 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
 
   it('enables Has data / Missing data once a category is chosen and reports the choice', async () => {
     const onChange = vi.fn();
-    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} onChange={onChange} />, {
-      me: READER,
-    });
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      {
+        me: READER,
+      },
+    );
     expect(await screen.findByRole('radio', { name: 'Has data' })).toBeDisabled();
     expect(screen.getByRole('radio', { name: 'Missing data' })).toBeDisabled();
     await screen.findByRole('option', { name: 'Seed' });
@@ -275,7 +350,14 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     const onChange = vi.fn();
     renderWithProviders(
       <Controlled
-        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID, traitData: 'missing' }}
+        initial={{
+          q: '',
+          unresolved: false,
+          contested: false,
+          unknownLevels: false,
+          traitId: SEED_MASS_ID,
+          traitData: 'missing',
+        }}
         onChange={onChange}
       />,
       { me: READER },
@@ -298,7 +380,13 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     const onChange = vi.fn();
     renderWithProviders(
       <Controlled
-        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID }}
+        initial={{
+          q: '',
+          unresolved: false,
+          contested: false,
+          unknownLevels: false,
+          traitId: SEED_MASS_ID,
+        }}
         onChange={onChange}
       />,
       { me: READER },
@@ -317,7 +405,14 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     const onChange = vi.fn();
     renderWithProviders(
       <Controlled
-        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID, traitData: 'missing' }}
+        initial={{
+          q: '',
+          unresolved: false,
+          contested: false,
+          unknownLevels: false,
+          traitId: SEED_MASS_ID,
+          traitData: 'missing',
+        }}
         onChange={onChange}
       />,
       { me: READER },
@@ -340,6 +435,8 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
         initial={{
           q: '',
           unresolved: false,
+          contested: false,
+          unknownLevels: false,
           categoryKey: 'seed',
           traitId: SEED_MASS_ID,
           traitData: 'missing',
@@ -365,7 +462,14 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     const onChange = vi.fn();
     renderWithProviders(
       <Controlled
-        initial={{ q: '', unresolved: false, traitId: SEED_MASS_ID, traitData: 'missing' }}
+        initial={{
+          q: '',
+          unresolved: false,
+          contested: false,
+          unknownLevels: false,
+          traitId: SEED_MASS_ID,
+          traitData: 'missing',
+        }}
         onChange={onChange}
       />,
       { me: READER },
@@ -390,6 +494,8 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
         initial={{
           q: '',
           unresolved: false,
+          contested: false,
+          unknownLevels: false,
           categoryKey: 'seed',
           traitId: SEED_MASS_ID,
           traitData: 'missing',
@@ -413,9 +519,15 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
 describe('RFC-60 R6 SpeciesSearchForm order by', () => {
   it('offers Name and Most incomplete first and reports the chosen order', async () => {
     const onChange = vi.fn();
-    renderWithProviders(<Controlled initial={{ q: '', unresolved: false }} onChange={onChange} />, {
-      me: READER,
-    });
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      {
+        me: READER,
+      },
+    );
     const order = await screen.findByLabelText('Order by');
     expect(within(order).getByRole('option', { name: 'Name' })).toBeInTheDocument();
     expect(
@@ -429,5 +541,29 @@ describe('RFC-60 R6 SpeciesSearchForm order by', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Order by'), 'name');
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ sort: undefined }));
+  });
+});
+
+describe('RFC-60 R6 SpeciesSearchForm contested and unknownLevels filters', () => {
+  it('RFC-60 R6 Contested only for everyone; Has unknown levels and Unresolved taxa only for records.review', async () => {
+    const onChange = vi.fn();
+    const value = { q: '', unresolved: false, contested: false, unknownLevels: false };
+    const first = renderWithProviders(<SpeciesSearchForm value={value} onChange={onChange} />, {
+      me: { ...ME, permissions: ['dataset.read'] } as never,
+    });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Contested only' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ contested: true }));
+    expect(screen.queryByRole('checkbox', { name: 'Has unknown levels' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: 'Unresolved taxa only' }),
+    ).not.toBeInTheDocument();
+    first.unmount();
+
+    renderWithProviders(<SpeciesSearchForm value={value} onChange={onChange} />, {
+      me: { ...ME, permissions: ['dataset.read', 'records.review'] } as never,
+    });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Has unknown levels' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ unknownLevels: true }));
+    expect(screen.getByRole('checkbox', { name: 'Unresolved taxa only' })).toBeInTheDocument();
   });
 });

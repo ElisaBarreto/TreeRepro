@@ -1,13 +1,27 @@
 import { ANNOTATION_KINDS } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { traitRecords } from './records.ts';
 import { bibliographicReferences } from './references.ts';
 import { users } from './users.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
-/** Append-only (RFC-63 R4). Written by plan 07 (RFC-65). @rfc RFC-63 R6, R7 */
+/**
+ * Append-only (RFC-63 R4). Written by plan 07 (RFC-65). A `withdraw` row
+ * decrements the record's counters through a statement trigger (migration
+ * `contest_withdrawal`, RFC-63 R13).
+ * @rfc RFC-63 R6, R7, R13
+ */
 export const recordAnnotations = pgTable(
   'record_annotations',
   {
@@ -32,10 +46,13 @@ export const recordAnnotations = pgTable(
     index('record_annotations_record_idx').on(t.recordId, t.id.desc()),
     /** RFC-71 R4: the viewer's own annotations, newest first. */
     index('record_annotations_actor_idx').on(t.actorId, t.id.desc()),
-    check(
-      'record_annotations_note_check',
-      sql`${t.kind} not in ('dispute', 'withdraw') or ${t.note} is not null`,
-    ),
+    /**
+     * One withdrawal per record (RFC-63 R13): the `record_annotations_withdraw_counters`
+     * trigger decrements a record's counters once.
+     */
+    uniqueIndex('record_annotations_withdraw_idx')
+      .on(t.recordId)
+      .where(sql`${t.kind} = 'withdraw'`),
     check(
       'record_annotations_reference_check',
       sql`${t.referenceId} is null or ${t.kind} = 'confirm'`,

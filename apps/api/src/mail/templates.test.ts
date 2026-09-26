@@ -99,10 +99,11 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
 });
 
 const item = (over: Partial<DigestItem> = {}): DigestItem => ({
+  contestId: '018f2a00-0000-7000-8000-0000000000cc',
   speciesId: '018f2a00-0000-7000-8000-000000000001',
   speciesName: 'Cecropia pachystachya',
   traitKey: 'fruit_type',
-  valueText: 'berry',
+  contested: 'berry, drupe',
   actorName: 'Ada Lovelace',
   recordId: '018f2a00-0000-7000-8000-0000000000aa',
   createdAt: new Date('2026-09-17T09:30:00Z'),
@@ -113,24 +114,24 @@ const digest = (over: Partial<Digest> = {}): Digest => ({
   window: { start: new Date('2026-09-16T06:00:00Z'), end: new Date('2026-09-17T06:00:00Z') },
   counts: {
     records: 2,
-    contests: 1,
+    contests: 2,
     complements: 1,
     validations: 3,
-    disputes: 1,
     withdrawals: 1,
     proposals: 0,
     pendingGroups: 4,
-    disputedNow: 2,
+    contestedNow: 2,
   },
-  contests: [item()],
-  disputes: [
+  contests: [
+    item(),
     item({
+      contestId: '018f2a00-0000-7000-8000-0000000000dd',
       speciesId: '018f2a00-0000-7000-8000-000000000002',
       speciesName: 'Inga edulis',
-      traitKey: 'leaf_type',
-      valueText: 'compound',
+      traitKey: 'seed_mass',
+      contested: '12.5',
       actorName: 'Grace Hopper',
-      recordId: '018f2a00-0000-7000-8000-0000000000bb',
+      recordId: null,
     }),
   ],
   ...over,
@@ -147,37 +148,34 @@ describe('RFC-74 R5 digestEmail', () => {
   it('carries every count of R3, the window activity and the current queue sizes apart', () => {
     const mail = digestEmail({ digest: digest(), appOrigin: APP_ORIGIN, date: '2026-09-17' });
     expect(mail.text).toContain('Records added (contests and complements included): 2');
-    expect(mail.text).toContain('Contests: 1');
+    expect(mail.text).toContain('Contests: 2');
     expect(mail.text).toContain('Complements: 1');
     expect(mail.text).toContain('Validations: 3');
-    expect(mail.text).toContain('Disputes: 1');
     expect(mail.text).toContain('Withdrawals: 1');
     expect(mail.text).toContain('Species proposals: 0');
     expect(mail.text).toContain('Pending groups: 4');
-    expect(mail.text).toContain('Disputed records: 2');
+    expect(mail.text).toContain('Open contests: 2');
+    expect(mail.text).not.toContain('Disputes');
+    expect(mail.text).not.toContain('Disputed');
     expect(mail.text).toContain('2026-09-16 06:00 UTC');
     expect(mail.text).toContain('2026-09-17 06:00 UTC');
   });
 
-  it('lists both sets with the species, the trait, the value and the actor name', () => {
+  it('lists the contests with the species, the trait, what each contests and the actor name', () => {
     const mail = digestEmail({ digest: digest(), appOrigin: APP_ORIGIN, date: '2026-09-17' });
-    expect(mail.text).toContain('Cecropia pachystachya');
-    expect(mail.text).toContain('fruit_type');
-    expect(mail.text).toContain('berry');
-    expect(mail.text).toContain('Ada Lovelace');
-    expect(mail.text).toContain('Inga edulis');
-    expect(mail.text).toContain('leaf_type');
-    expect(mail.text).toContain('compound');
-    expect(mail.text).toContain('Grace Hopper');
+    expect(mail.text).toContain(
+      '- Cecropia pachystachya — fruit_type: contests berry, drupe (Ada Lovelace)',
+    );
+    expect(mail.text).toContain('- Inga edulis — seed_mass: contests 12.5 (Grace Hopper)');
   });
 
-  it('links each item to the record drawer on the species page', () => {
+  it('links a contest to the drawer of the record it created, or to the species page when none', () => {
     const mail = digestEmail({ digest: digest(), appOrigin: APP_ORIGIN, date: '2026-09-17' });
     expect(mail.text).toContain(
       `${APP_ORIGIN}/app/species/018f2a00-0000-7000-8000-000000000001?record=018f2a00-0000-7000-8000-0000000000aa`,
     );
     expect(mail.text).toContain(
-      `${APP_ORIGIN}/app/species/018f2a00-0000-7000-8000-000000000002?record=018f2a00-0000-7000-8000-0000000000bb`,
+      `  ${APP_ORIGIN}/app/species/018f2a00-0000-7000-8000-000000000002\n`,
     );
   });
 
@@ -213,13 +211,14 @@ describe('RFC-74 R5 digestEmail', () => {
       'Contests',
       'Complements',
       'Validations',
-      'Disputes',
       'Withdrawals',
       'Species proposals',
       'Pending groups',
-      'Disputed records',
+      'Open contests',
     ])
       expect(mail.html).toContain(label);
+    expect(mail.html).not.toContain('Disputes');
+    expect(mail.html).not.toContain('Disputed');
     expect(mail.html).toContain('Cecropia pachystachya');
     expect(mail.html).toContain('Grace Hopper');
     expect(mail.html).toContain(
@@ -239,7 +238,7 @@ describe('RFC-74 R5 digestEmail', () => {
           item({
             speciesName: '<i>s</i>',
             traitKey: '<u>k</u>',
-            valueText: '<b>x</b>',
+            contested: '<b>x</b>',
             actorName: 'A & B',
           }),
         ],
@@ -257,11 +256,11 @@ describe('RFC-74 R5 digestEmail', () => {
 
   it('RFC-10 R16 the HTML part says so when a set is empty', () => {
     const mail = digestEmail({
-      digest: digest({ contests: [], disputes: [] }),
+      digest: digest({ contests: [] }),
       appOrigin: APP_ORIGIN,
       date: '2026-09-17',
     });
-    expect(mail.html.match(/None in this window\./g)).toHaveLength(2);
+    expect(mail.html.match(/None in this window\./g)).toHaveLength(1);
     expect(mail.html).not.toContain(`${APP_ORIGIN}/app/species/`);
   });
 
@@ -275,9 +274,9 @@ describe('RFC-74 R5 digestEmail', () => {
     }
   });
 
-  it('says so rather than showing an empty list when a set is empty', () => {
+  it('says so rather than showing an empty list when there is no contest', () => {
     const mail = digestEmail({
-      digest: digest({ contests: [], disputes: [] }),
+      digest: digest({ contests: [] }),
       appOrigin: APP_ORIGIN,
       date: '2026-09-17',
     });
@@ -285,8 +284,7 @@ describe('RFC-74 R5 digestEmail', () => {
     // and leave the heading itself unasserted.
     const lines = mail.text.split('\n');
     expect(lines).toContain('Contests');
-    expect(lines).toContain('Disputes');
-    expect(lines.filter((line) => line === 'None.')).toHaveLength(2);
+    expect(lines.filter((line) => line === 'None.')).toHaveLength(1);
     expect(mail.text).not.toContain(`${APP_ORIGIN}/app/species/`);
   });
 });

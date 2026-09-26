@@ -72,7 +72,7 @@ export const platformHealthSchema = z.strictObject({
     proposals7d: n,
     byDay: z.array(z.strictObject({ day: z.iso.date(), records: n, annotations: n })).length(14),
   }),
-  queues: z.strictObject({ pendingGroups: n, disputed: n, contested: n, proposals: n }),
+  queues: z.strictObject({ pendingGroups: n, contested: n, proposals: n }),
   jobs: z.strictObject({
     auditPurge: jobRunSummarySchema.nullable(),
     digest: jobRunSummarySchema.nullable(),

@@ -186,7 +186,6 @@ export function HealthPage() {
               </h2>
               <ul aria-label="Queue totals" className={TILE_GRID}>
                 <StatTile label="Pending groups" value={health.data.queues.pendingGroups} />
-                <StatTile label="Disputed" value={health.data.queues.disputed} />
                 <StatTile label="Contested" value={health.data.queues.contested} />
                 <StatTile label="Proposals" value={health.data.queues.proposals} />
               </ul>

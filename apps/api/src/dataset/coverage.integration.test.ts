@@ -116,8 +116,9 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
       // species and the inactive trait widen only the unrestricted grid.
       expect(after.cells).toBe((grid.active_species + 2) * (grid.active_traits + 2));
       expect(afterInactive.cells).toBe((grid.all_species + 3) * (grid.all_traits + 3));
-      expect(after.withData - before.withData).toBe(3);
-      expect(afterInactive.withData - beforeInactive.withData).toBe(5);
+      // The withdrawn record's cell is gone from coverage (RFC-63 R13, RFC-69 R2).
+      expect(after.withData - before.withData).toBe(2);
+      expect(afterInactive.withData - beforeInactive.withData).toBe(4);
       expect(after.validated - before.validated).toBe(2);
       expect(afterInactive.validated - beforeInactive.validated).toBe(4);
       // Both percentages are readings of the whole grid, never of `withData`

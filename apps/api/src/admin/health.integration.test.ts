@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   createAnnotation,
+  createContest,
   createImportBatch,
   createRecord,
   createReference,
@@ -14,7 +15,7 @@ import { useTestDb, withRollback } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
-import { countContested, countDisputed, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups } from '../dataset/queues.ts';
 import type { DbTransaction } from '../db/client.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { jobRuns } from '../db/schema/job-runs.ts';
@@ -169,6 +170,29 @@ describe('RFC-52 R1 computePlatformHealth', () => {
       for (const recordId of records.slice(0, 2)) {
         await createAnnotation(tx, { recordId, actorId: author.id, kind: 'confirm' });
       }
+      // A fifth record, withdrawn: neither `activity.records7d` nor
+      // `byDay.records` counts it (RFC-52 R1, RFC-63 R14). Its `withdraw`
+      // annotation is activity all the same and counts as the third annotation.
+      const withdrawn = await createRecord(tx, {
+        speciesId: speciesOn.id,
+        traitId: traitOn.id,
+        valueText: 'alpha',
+        levelId: traitOn.levels[0]?.id,
+        rawValue: 'alpha (withdrawn)',
+        primaryReferenceId: reference.id,
+        origin: 'manual',
+        createdBy: author.id,
+      });
+      await createAnnotation(tx, { recordId: withdrawn.id, actorId: author.id, kind: 'withdraw' });
+
+      // RFC-52 R1: one standing contest (unrestricted, so the inactive-species
+      // cell counts too).
+      await createContest(tx, {
+        speciesId: speciesOff.id,
+        traitId: traitOn.id,
+        createdBy: author.id,
+        levelIds: [traitOn.levels[0]?.id as string],
+      });
 
       // RFC-52 R1 / ruling R-H: two proposals created now, only one still
       // open. `activity.proposals7d` must see both, `queues.proposals` one.
@@ -228,7 +252,7 @@ describe('RFC-52 R1 computePlatformHealth', () => {
 
       // Activity.
       expect(after.activity.records7d - before.activity.records7d).toBe(4);
-      expect(after.activity.annotations7d - before.activity.annotations7d).toBe(2);
+      expect(after.activity.annotations7d - before.activity.annotations7d).toBe(3);
       expect(after.activity.proposals7d - before.activity.proposals7d).toBe(2);
 
       // byDay: exactly fourteen consecutive days ending today, no gaps, and
@@ -239,13 +263,12 @@ describe('RFC-52 R1 computePlatformHealth', () => {
       const lastBefore = before.activity.byDay[13];
       expect(last?.day).toBe(today);
       expect((last?.records ?? 0) - (lastBefore?.records ?? 0)).toBe(4);
-      expect((last?.annotations ?? 0) - (lastBefore?.annotations ?? 0)).toBe(2);
+      expect((last?.annotations ?? 0) - (lastBefore?.annotations ?? 0)).toBe(3);
 
-      // Queues: the four plan 11b counters over the unrestricted visibility
+      // Queues: the three counters over the unrestricted visibility
       // (ruling R-I), compared against the services rather than a literal.
       expect(after.queues).toEqual({
         pendingGroups: await countPendingGroups(tx, UNRESTRICTED),
-        disputed: await countDisputed(tx, UNRESTRICTED),
         contested: await countContested(tx, UNRESTRICTED),
         proposals: await countOpenProposals(tx),
       });
@@ -253,6 +276,7 @@ describe('RFC-52 R1 computePlatformHealth', () => {
       // while `activity.proposals7d` above is a CREATION window and moved by
       // two. The same fixture separates the two numbers in one assertion pair.
       expect(after.queues.proposals - before.queues.proposals).toBe(1);
+      expect(after.queues.contested - before.queues.contested).toBe(1);
     });
   });
 

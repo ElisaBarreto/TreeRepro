@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | workspace |
 | Supersedes | — |
 
@@ -34,3 +34,4 @@ None.
 - 2026-09-20 — amended R1: `error` holds a failure code (identifiers only, `job_runs_error_check`), never an exception message; migration 0033 rewrites the rows written before it (issue #114).
 - 2026-09-25 — Context, R3, R4: disputes leave the digest, `contestedNow` replaces `disputedNow` (record model revision R-9, R-11; plan 13a); owner ruling: a contest states the correct levels (R3: `contests` counts contests, the newest name what they contest). `draft` until plan 13g.
 - 2026-09-25 — R5: the digest carries an HTML part next to its plain text (RFC-10 R16, issue #173).
+- 2026-09-26 — accepted: implemented by plan 13g.

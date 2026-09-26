@@ -5,18 +5,19 @@ import { species } from './taxa.ts';
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
 /**
- * One row per species x trait with at least one record: what the species list,
- * the trait page's missing-traits mode and the dashboard read instead of
- * aggregating `trait_records` on every request.
+ * One row per species x trait with at least one record that is not withdrawn:
+ * what the species list, the trait page's missing-traits mode and the
+ * dashboard read instead of aggregating `trait_records` on every request.
  *
  * Maintained by the `trait_records_reference_usage` statement trigger on every
- * insert into `trait_records` — records are append-only (RFC-63 R4), so
- * nothing ever decrements, and withdrawn records still count: coverage answers
- * "is there a record", not "is there a good record". The trigger function is
+ * insert into `trait_records`; a withdrawal decrements it through the
+ * `record_annotations_withdraw_counters` trigger (RFC-63 R13), and a cell whose
+ * last record is withdrawn is deleted. The trigger functions are
  * `SECURITY DEFINER` and owned by the migrator, so the table is read-only for
  * the app role. Visibility (RFC-33) is applied by joining `species` and
  * `traits` and filtering on their `active` flags; this table has no flags.
  * @rfc RFC-69 R1, R2
+ * @rfc RFC-63 R13
  */
 export const speciesTraitCoverage = pgTable(
   'species_trait_coverage',

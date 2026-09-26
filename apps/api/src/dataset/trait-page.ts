@@ -12,6 +12,7 @@ import { cachedJson } from '../redis/cache.ts';
 import type { Redis } from '../redis/client.ts';
 import { validatedPairsSql } from './coverage.ts';
 import { getTrait, requireTrait } from './dictionary.ts';
+import { liveSql } from './records.ts';
 import { searchSpecies } from './taxa.ts';
 
 /** How long a trait's distribution stays cached (RFC-62 R7). */
@@ -61,6 +62,7 @@ async function computeDistribution(
       where r.trait_id = ${traitId}::uuid
         and r.harmonisation = 'harmonised'
         and r.numeric_value is not null
+        and ${liveSql(sql`r.id`)}
         and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
     `)) as unknown as NumericRow[];
     if (!row || row.species_count === 0 || row.min === null || row.max === null) {
@@ -87,6 +89,7 @@ async function computeDistribution(
     join species s on s.id = r.species_id
     where r.trait_id = ${traitId}::uuid
       and r.harmonisation = 'harmonised'
+      and ${liveSql(sql`r.id`)}
       and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
       and ${levelVisible(visibility, sql`l.active`)}
     group by l.id, l.key
@@ -249,6 +252,7 @@ async function enrich(
           max(r.numeric_value)::float8 as numeric_max
         from trait_records r
         where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
+          and ${liveSql(sql`r.id`)}
         group by r.species_id
       `) as unknown as Promise<SpeciesNumericRow[]>,
       validatedRows,
@@ -271,6 +275,7 @@ async function enrich(
         left join trait_levels l
           on l.id = r.level_id and ${levelVisible(visibility, sql`l.active`)}
         where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
+          and ${liveSql(sql`r.id`)}
         group by r.species_id, l.key
         order by count desc, l.key
       `) as unknown as Promise<SpeciesLevelRow[]>,

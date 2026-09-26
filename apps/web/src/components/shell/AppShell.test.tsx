@@ -202,7 +202,7 @@ describe('RFC-13 R3 AppShell navigation', () => {
       'href',
       '/app/curation/pending',
     );
-    expect(within(nav).getByRole('link', { name: 'Disputed' })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: 'Contested' })).toHaveAttribute(
       'href',
       '/app/curation/disputed',
     );

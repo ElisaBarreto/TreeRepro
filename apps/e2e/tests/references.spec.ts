@@ -78,7 +78,7 @@ test.describe('RFC-61 R4, R8, R9 the reference page: DOI link and trait chips (p
       await create<CreatedRecords>(admin, '/api/records', {
         speciesId: species.id,
         traitId: trait.id,
-        value: { levelId: level.id },
+        value: { levelIds: [level.id] },
         sources: { references: [{ id: reference.id }] },
       });
 

@@ -25,6 +25,7 @@ const ANNOTATION_TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
   dispute: 'red',
   neutral: 'neutral',
   withdraw: 'neutral',
+  resolve: 'neutral',
 };
 // A contest says the value is wrong, a complement that both hold (RFC-70 R1);
 // the verb reads the same on the record that answers and on the answers listed.
@@ -119,9 +120,11 @@ function RecordLink({
 function RecordBody({
   record,
   onOpenRecord,
+  onClose,
 }: {
   record: RecordDetail;
   onOpenRecord?: (id: string) => void;
+  onClose?: () => void;
 }) {
   const unit = record.trait.unit;
   return (
@@ -157,11 +160,15 @@ function RecordBody({
                 size="text-label"
               />
             </Badge>
+          ) : record.intent ? (
+            // A categorical contest answers no single record (RFC-63 R14): its
+            // intent alone is shown (RFC-70 R6).
+            <Badge tone={INTENT_TONES[record.intent]}>{record.intent}</Badge>
           ) : null}
         </div>
       </DrawerSection>
 
-      <RecordActions record={record} onOpenRecord={onOpenRecord} />
+      <RecordActions record={record} onOpenRecord={onOpenRecord} onGone={onClose} />
 
       <DrawerSection title="Source">
         <Definitions
@@ -274,11 +281,19 @@ function RecordBody({
   );
 }
 
-function RecordLoader({ id, onOpenRecord }: { id: string; onOpenRecord?: (id: string) => void }) {
+function RecordLoader({
+  id,
+  onOpenRecord,
+  onClose,
+}: {
+  id: string;
+  onOpenRecord?: (id: string) => void;
+  onClose?: () => void;
+}) {
   const query = useQuery({ queryKey: datasetKeys.record(id), queryFn: () => fetchRecord(id) });
   if (query.error && !query.data) return <Alert tone="error">{errorMessage(query.error)}</Alert>;
   if (!query.data) return <p className="text-body text-mist-500">Loading record…</p>;
-  return <RecordBody record={query.data} onOpenRecord={onOpenRecord} />;
+  return <RecordBody record={query.data} onOpenRecord={onOpenRecord} onClose={onClose} />;
 }
 
 /**
@@ -303,7 +318,9 @@ export function RecordDrawer({
 }) {
   return (
     <Drawer open={recordId !== null} title="Record" onClose={onClose}>
-      {recordId !== null ? <RecordLoader id={recordId} onOpenRecord={onOpenRecord} /> : null}
+      {recordId !== null ? (
+        <RecordLoader id={recordId} onOpenRecord={onOpenRecord} onClose={onClose} />
+      ) : null}
     </Drawer>
   );
 }

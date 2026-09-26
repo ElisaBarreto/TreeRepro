@@ -18,7 +18,7 @@ const record = {
   level: { id: uuid, key: 'blue' },
   numericValue: null,
   harmonisation: 'harmonised',
-  review: 'unreviewed',
+  review: 'unvalidated',
   primaryReference: null,
   secondaryReference: null,
   origin: 'manual',
@@ -26,6 +26,9 @@ const record = {
   createdBy: { id: uuid, name: 'Ada' },
   intent: null,
   respondsTo: null,
+  validationCount: 0,
+  contestCount: 0,
+  contested: false,
   recordCode: 'EB_1',
   quantitative: null,
   references: [],
@@ -56,7 +59,7 @@ describe('RFC-71 R1 listContributionsQuerySchema', () => {
         kind: 'annotations',
         traitId: uuid,
         speciesId: uuid,
-        review: 'confirmed',
+        review: 'validated',
         intent: 'contest',
         from: '2026-01-01',
         to: '2026-09-18',
@@ -66,7 +69,7 @@ describe('RFC-71 R1 listContributionsQuerySchema', () => {
       kind: 'annotations',
       traitId: uuid,
       speciesId: uuid,
-      review: 'confirmed',
+      review: 'validated',
       intent: 'contest',
       from: '2026-01-01',
       to: '2026-09-18',
@@ -133,23 +136,39 @@ describe('RFC-71 R3 contributionAnnotationSchema', () => {
     ).toBe(false);
     expect(contributionAnnotationSchema.safeParse({ ...annotation, extra: 1 }).success).toBe(false);
   });
+
+  it('accepts a null record: a Keep-both resolution whose contest created none, or none the viewer can see', () => {
+    const resolution = {
+      id: uuid,
+      kind: 'resolve',
+      note: null,
+      reference: null,
+      generated: false,
+      createdAt: '2026-09-13T00:00:00.000Z',
+      record: null,
+    };
+    expect(contributionAnnotationSchema.parse(resolution)).toEqual(resolution);
+    expect(
+      contributionAnnotationSchema.safeParse({ ...resolution, record: undefined }).success,
+    ).toBe(false);
+  });
 });
 
 describe('RFC-71 R4 contributionSummarySchema', () => {
-  it('is six non-negative integer counts, and no longer accepted', () => {
+  it('is four non-negative integer counts, and no longer disputes, withdrawn or accepted', () => {
     const summary = {
       records: 3,
       contests: 1,
       complements: 0,
       validations: 2,
-      disputes: 0,
-      withdrawn: 1,
     };
     expect(contributionSummarySchema.parse(summary)).toEqual(summary);
     expect(contributionSummarySchema.safeParse({ ...summary, records: -1 }).success).toBe(false);
     expect(contributionSummarySchema.safeParse({ ...summary, records: 1.5 }).success).toBe(false);
     expect(contributionSummarySchema.safeParse({ ...summary, extra: 1 }).success).toBe(false);
     expect(contributionSummarySchema.safeParse({ ...summary, accepted: 2 }).success).toBe(false);
+    expect(contributionSummarySchema.safeParse({ ...summary, disputes: 0 }).success).toBe(false);
+    expect(contributionSummarySchema.safeParse({ ...summary, withdrawn: 0 }).success).toBe(false);
     const { records: _records, ...missingRecords } = summary;
     expect(contributionSummarySchema.safeParse(missingRecords).success).toBe(false);
   });

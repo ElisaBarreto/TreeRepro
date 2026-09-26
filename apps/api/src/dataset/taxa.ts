@@ -27,7 +27,9 @@ import {
   pageOf,
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
+import { contestStandingSql } from './contests.ts';
 import { requireTrait } from './dictionary.ts';
+import { liveSql, recordVisible } from './records.ts';
 
 /**
  * Escapes `%`, `_` and `\` so a search term matches literally. `'exact'`
@@ -135,7 +137,11 @@ interface SpeciesJoinedRow {
   traitRecordCount?: number | null;
 }
 
-function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
+/**
+ * `review`: the viewer holds `records.review` — the unresolved-taxon flag is
+ * reviewer-only data (RFC-33 R2, RFC-60 R6); every other viewer gets `null`.
+ */
+function toListItem(r: SpeciesJoinedRow, review: boolean): SpeciesListItem {
   return {
     id: r.id,
     canonicalName: r.canonicalName,
@@ -145,7 +151,9 @@ function toListItem(r: SpeciesJoinedRow): SpeciesListItem {
     family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
     matchedName: r.matchedName ?? null,
     matchedNameType: r.matchedNameType ?? null,
-    unresolvedTaxon: r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null,
+    unresolvedTaxon: review
+      ? r.nameSource !== 'wcvp' || r.genusId === null || r.familyId === null
+      : null,
     traitCount: r.traitCount,
     traitRecordCount: r.traitRecordCount ?? null,
   };
@@ -175,6 +183,8 @@ export interface SpeciesListFilters {
   familyId?: string;
   genusId?: string;
   unresolved?: boolean;
+  contested?: boolean;
+  unknownLevels?: boolean;
   status?: SpeciesStatus;
   scope?: SpeciesScope;
   plotId?: string;
@@ -206,9 +216,14 @@ export interface SpeciesListFilters {
  * fresh, under every other condition here (visibility, plot scope, status,
  * the taxonomy filters, the trait filters) but never `q` or the cursor
  * itself, which is what the tier is decided over and paged within.
+ * `contested` (RFC-60 R6) keeps species with a contested species × trait
+ * (RFC-63 R14), open to every viewer. `unknownLevels` keeps species with a
+ * visible record whose `harmonisation` is `unknown_level`; like `unresolved`,
+ * it applies only for a `records.review` holder and is ignored otherwise.
  * @rfc RFC-60 R3, R4, R6
  * @rfc RFC-33 R2, R3, R6
  * @rfc RFC-62 R8
+ * @rfc RFC-63 R14
  * @rfc RFC-69 R4
  */
 export async function speciesListConditions(
@@ -266,9 +281,30 @@ export async function speciesListConditions(
   if (status === 'inactive') conditions.push(eq(species.active, false));
   if (filters.familyId) conditions.push(eq(genera.familyId, filters.familyId));
   if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
-  if (filters.unresolved) {
+  if (filters.unresolved && visibility.review) {
     conditions.push(
       sql`(${species.nameSource} <> 'wcvp' or ${species.genusId} is null or ${genera.familyId} is null)`,
+    );
+  }
+
+  // RFC-60 R6, RFC-63 R14: contested is open to every viewer; unknown levels,
+  // like `unresolved` above, is reviewer-only and ignored otherwise. A species
+  // is contested exactly when it has a standing contest: one that names a
+  // level with a visible record, or responds to a visible record.
+  if (filters.contested) {
+    conditions.push(
+      sql`exists (select 1 from contests ctk join ${traits} ctt on ctt.id = ctk.trait_id
+        where ctk.species_id = ${species.id}
+          and ${traitVisible(visibility, sql`ctt.active`)}
+          and ${contestStandingSql(visibility, 'ctk')})`,
+    );
+  }
+  if (filters.unknownLevels && visibility.review) {
+    conditions.push(
+      sql`exists (select 1 from ${traitRecords} utr join ${traits} utt on utt.id = utr.trait_id
+        where utr.species_id = ${species.id} and utr.harmonisation = 'unknown_level'
+          and ${traitVisible(visibility, sql`utt.active`)}
+          and ${recordVisible(visibility, sql`utr.id`, sql`utr.harmonisation`)})`,
     );
   }
 
@@ -389,7 +425,7 @@ export async function searchSpecies(
       ? encodeCompositeCursor([String(tier), String(r.traitCount), r.canonicalName, r.id])
       : encodeCompositeCursor([String(tier), r.canonicalName, r.id]),
   );
-  return { data: page.map(toListItem), nextCursor };
+  return { data: page.map((r) => toListItem(r, visibility.review === true)), nextCursor };
 }
 
 /**
@@ -450,7 +486,9 @@ export async function getSpecies(
     db
       .select({ recordCount: count(), traitCount: countDistinct(traitRecords.traitId) })
       .from(traitRecords)
-      .where(eq(traitRecords.speciesId, id)),
+      // Viewer-blind (RFC-33 R3, RFC-60 R7): every non-withdrawn record
+      // counts, whatever its harmonisation or level visibility.
+      .where(and(eq(traitRecords.speciesId, id), liveSql(traitRecords.id))),
     speciesPlotsQuery,
   ]);
   // `traitRecordCount` answers "records for the one filtered trait" and the
@@ -462,12 +500,15 @@ export async function getSpecies(
   // counts the traits behind it itself. A test compares the live count with
   // the column on rows it has just created, which pins the trigger's
   // arithmetic; nothing detects drift on a row that was written earlier.
-  const { traitRecordCount: _listOnly, ...listItem } = toListItem({
-    ...row,
-    matchedName: null,
-    matchedNameType: null,
-    traitCount: counts?.traitCount ?? 0,
-  });
+  const { traitRecordCount: _listOnly, ...listItem } = toListItem(
+    {
+      ...row,
+      matchedName: null,
+      matchedNameType: null,
+      traitCount: counts?.traitCount ?? 0,
+    },
+    visibility.review === true,
+  );
   return {
     ...listItem,
     plots: speciesPlots,

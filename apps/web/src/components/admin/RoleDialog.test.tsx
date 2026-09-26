@@ -57,6 +57,10 @@ describe('RFC-30 R1, R2 groupPermissions', () => {
     const visibleKeys = groups.flatMap((g) => g.entries.map((e) => e.key));
     expect(visibleKeys).not.toContain('users.delete');
     expect(visibleKeys).not.toContain('accepted.manage');
+    // RFC-31 R15: the admin-only keys are never offered to a custom role.
+    expect(visibleKeys).not.toContain('dataset.export');
+    expect(visibleKeys).not.toContain('records.withdraw_imported');
+    expect(visibleKeys).toContain('records.withdraw');
     // `accepted` never becomes a group of its own: accepted.manage is its
     // only member and it is retired.
     const distinctPrefixes = new Set(
@@ -82,6 +86,25 @@ describe('RFC-31 R4 RoleDialog', () => {
         name: 'Readers',
         description: 'May list users',
         permissions: ['users.read', 'users.delete'],
+      }),
+    );
+  });
+
+  it('RFC-31 R15 drops an admin-only key the edited role still holds from the payload', async () => {
+    admin.updateRole.mockResolvedValue(ROLE_READERS);
+    const role = { ...ROLE_READERS, permissions: ['users.read', 'dataset.export'] };
+    renderWithProviders(<RoleDialog role={role} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const dialog = screen.getByRole('dialog', { name: 'Edit role' });
+    await within(dialog).findByRole('group', { name: 'users' });
+    expect(
+      within(dialog).queryByRole('checkbox', { name: /Download the dataset/ }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save role' }));
+    await waitFor(() =>
+      expect(admin.updateRole).toHaveBeenCalledWith(role.id, {
+        name: 'Readers',
+        description: 'May list users',
+        permissions: ['users.read'],
       }),
     );
   });

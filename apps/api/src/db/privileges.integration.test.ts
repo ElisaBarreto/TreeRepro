@@ -148,8 +148,10 @@ describe('RFC-42 R2, R6, RFC-69 R3 SECURITY DEFINER functions pin search_path wi
     expect(rows.map((r) => r.name)).toEqual([
       'audit_log_purge',
       'job_runs_purge',
+      'record_annotations_withdraw_counters',
       'record_references_usage',
       'trait_records_reference_usage',
+      'trait_records_uncount',
     ]);
     for (const row of rows) {
       const config = row.config as string[] | null;

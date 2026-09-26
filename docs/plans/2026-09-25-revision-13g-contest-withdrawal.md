@@ -57,6 +57,94 @@
 5. **Owner ruling 2026-09-25 — contests state the correct levels** (spec R-8 as amended; RFC-63 R14, RFC-70 R2, R3, R9, R10): a categorical contest no longer responds to a record: the create path takes `contestedLevelIds`, computes E and S under the species × trait lock, answers 400 `VALIDATION_FAILED` with path `intent` when E \ S is empty and with path `contestedLevelIds` when it differs from E \ S, validates S ∩ E, creates S \ E as contest records with `responds_to_record_id` null, and stores the contest with its contested levels even when it creates no record — the storage, its migration, the relaxed `intent`/`responds_to` check (RFC-63 R2), and its place in RFC-64 R12's truncation closure are this plan's. No categorical contest record exists when 13g's migration runs (13f's runbook requires zero manual records); the migration asserts it — it fails if any `intent = 'contest'` record of a categorical trait exists — rather than converting. `openContestSql`, `contestCount`, the summary's `contested` and the contested queue read contests by the levels they name (RFC-63 R8, R14; queue item of RFC-65 R10), and Keep both and Withdraw contest move from the annotations body to `POST /api/contests/:id/resolve` and `…/withdraw` (RFC-65 R3, R15, R16; `resolve` on the annotations route answers 400 path `kind`). Also: RFC-71 R3 (a Keep-both resolution may have `record: null`) and R4 (`contests` counts contests, record-less ones included); RFC-74 R3 (`contests` counts contests; the newest list's `value` becomes `contested`, in `digest.ts` and `digestEmail`); the contested-queue page and its API client move to the new item shape and to the two contest routes; both routes join `routes-guarded` and (`…/resolve`, behind `records.review`) `routes-visibility`; RFC-33 R5 names them. RFC-31 R15 (owner ruling): `dataset.export` and `records.withdraw_imported` cannot be granted to a custom role — `createRole`/`updateRole` refuse them (400 `VALIDATION_FAILED`, path `permissions`), the RoleDialog does not offer them, and the migration deletes any custom-role `role_permissions` row holding either key. Concretely, Task 8 (the contested queue and the counts that read it) reads contests from the new contest storage and their contested levels from the contest's stored levels — never contest rows of `trait_records` or `responds_to_record_id` for a categorical trait — and its tests cover a record-less contest and a contest naming several levels. Where task bodies assume a contest responds to one record's level, the amended rules win.
 6. Owner ruling 2026-09-25 — a record on an inactive level is invisible to a viewer without `dataset.read_inactive` (RFC-33 R2, R5, R9), and a contest naming such a level is invisible too (RFC-65 R10, R16): the record-visibility predicate gains the level condition, the RFC-33 R9 fixture gains a record on an inactive level, and the contest queue and routes apply it.
 
+## Execution rulings (controller, 2026-09-25 — binding over the task bodies and the amendments above)
+
+The merged RFCs (13a with the owner rulings, 13e, 13f) moved past this plan's task bodies. **The RFCs win.** Every executor reads the RFC rules a task cites before coding, and where a task body below disagrees with this section or with an RFC, this section and the RFC win. The rule numbers here are the merged ones.
+
+### E1. Commit trailer
+Every commit ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (the repository's history and the session attribution), not the `(1M context)` form written in the task bodies.
+
+### E2. Contest storage (RFC-63 R4, R7, R14; RFC-65 R16; RFC-70 R3)
+A contest is a row of its own, categorical and quantitative alike. Four insert-only tables, created by this plan's migration:
+- `contests(id uuid pk default uuidv7(), species_id uuid not null → species restrict, trait_id uuid not null → traits restrict, created_by uuid not null → users, created_at timestamptz not null default now())`; indexes `(species_id, trait_id)` and `(created_by, id desc)`.
+- `contest_levels(contest_id → contests restrict, level_id → trait_levels restrict, primary key (contest_id, level_id))`; index `(level_id)`. For a categorical contest: E \ S at submission (fixed forever). None for a quantitative contest.
+- `contest_records(contest_id → contests restrict, record_id → trait_records restrict unique, primary key (contest_id, record_id))`: the records the contest created (S \ E; the one contest record for a quantitative contest, whose `responds_to_record_id` is the contested record).
+- `contest_events(id uuid pk default uuidv7(), contest_id → contests restrict, actor_id → users, kind text not null check in ('resolve', 'withdraw'), created_at timestamptz not null default now(), unique (contest_id, kind))`. `resolve` is Keep both; `withdraw` is Withdraw contest on a contest that created no record.
+- All four get the `dataset_append_only()` row triggers and a no-truncate statement trigger (as 0012 does), and `treerepro_app` holds only `SELECT, INSERT` (follow the grants 0036 gives `record_references`). They join RFC-64 R12's truncation closure and `apps/api/src/dataset/reset.ts`.
+- `trait_records_intent_check` relaxes to RFC-63 R2: `responds_to_record_id` set ⇒ `intent` set; `intent = 'complement'` ⇒ `responds_to_record_id` set. A categorical contest record has `intent = 'contest'` and no `responds_to_record_id`.
+- The migration **asserts** (a `DO` block that raises) that no `intent = 'contest'` record of a categorical trait exists, and **backfills** every existing quantitative contest record as a `contests` row (its species, trait, `created_by`, `created_at`) plus its `contest_records` row. Nothing is converted.
+
+Derived states (RFC-63 R14), all SQL helpers in one new module `apps/api/src/dataset/contests.ts`, taking the viewer's `Visibility` wherever "visible" appears:
+- *withdrawn*: a `withdraw` event exists, or the contest created records and every one of them has a `withdraw` annotation;
+- *resolved*: a `resolve` event exists;
+- *standing*: not withdrawn, not resolved, and at least one level it names has a record visible to the viewer (categorical), or the record it responds to is visible (quantitative);
+- a *level is contested* while it has a visible record and a standing contest of the same species × trait names it; a *record is contested* when its level is (categorical), or when it is visible and a standing contest responds to it (quantitative); a species × trait is contested when one of its levels or records is;
+- `contestCount` on a record (RFC-63 R8): distinct `created_by` of the contests that are not withdrawn (resolved included) and name the record's level for its species × trait, or respond to the record (quantitative).
+
+`ANNOTATION_KINDS` gains `'resolve'` only as a contract value for the contributions list (RFC-71 R3); `record_annotations` never stores it (the annotations route refuses it, RFC-65 R3).
+
+### E3. One lock for every write that reads or changes contested state
+`lockSpeciesTrait(tx, speciesId, traitId)`: `pg_advisory_xact_lock(hashtextextended('<speciesId>:<traitId>', 0))`. Taken by the create path, record withdraw, level validate/withdraw and the two contest actions, before any read they decide on (amendment 3).
+
+### E4. Visibility (RFC-33 R1–R3, R5; RFC-60 R6, R7)
+- `Visibility` gains `review?: boolean` (holder of `records.review`); `UNRESTRICTED` has `review: true`.
+- A record is visible (`recordVisible`) when it is live (no `withdraw`), harmonised or `v.review`, and its level is null, active, or `v.inactive` — on top of the species and trait visibility each query already applies.
+- The counters stay viewer-blind (RFC-33 R3): species `recordCount`/`traitCount` and a reference's `recordCount` skip only withdrawn records. Plan Task 3's `getSpecies` count therefore uses `liveSql`, not `recordVisible`.
+- `unresolvedTaxon` is `boolean | null`: the flag for a `records.review` holder, `null` for every other viewer (RFC-60 R6). Contract and web follow.
+- `validatedPairsSql()` (13e ruling 4) applies the viewer-blind record clause: live, harmonised, level null or active. `records.csv` folds its `includePending` into `Visibility.review`.
+
+### E5. Review state (RFC-63 R6)
+`REVIEW_STATUSES = ['contested', 'validated', 'unvalidated']`. `reviewStatusSql` becomes viewer-dependent (contested needs the viewer). `withdrawn` is no state: a withdrawn record is invisible. The contributions `review` filter takes these values. The web badge and filters follow (13h redesigns them later).
+
+### E6. Annotations (RFC-65 R3, R4; RFC-70 R4)
+Body `{ kind: 'confirm', referenceSource? } | { kind: 'withdraw' }`; `neutral`, `dispute` and `resolve` answer 400 `VALIDATION_FAILED` path `kind`. An invisible or withdrawn record answers 404 `RECORD_NOT_FOUND`. Own record confirm → 403. A confirm the actor already gave with the same reference, or a reference-less confirm when the actor already confirmed the record, inserts nothing and answers as the first. `confirm` → 201 detail; `withdraw` → **200** `{ data: null }`. Withdrawal rights are `mayWithdraw` (author; `records.withdraw` for manual; `records.withdraw_imported` for imported).
+
+### E7. Create (RFC-65 R1, RFC-70 R1–R3)
+- Body gains `contestedLevelIds?` (≤ 100 distinct uuids). RFC-70 R1's combination rule answers 400 path `intent`.
+- Always **201** `{ created, validated, duplicates }`, whatever the mix (the plan's 200 is superseded). `RECORD_DUPLICATE` is never answered.
+- Matching (every intent): a categorical level matches when it has visible records for the species × trait; then every such record not the actor's gets the actor's confirms (one per supporting reference, or one reference-less confirm for a personal observation; nothing duplicated per E6) and is listed in `validated`; each of the actor's own is listed in `duplicates` (amendment 1). A quantitative value matches a visible record with the six fields identical: validation or duplicate of that one record — for a quantitative contest too (RFC-70 R3: it then contests nothing and no contest is stored).
+- Categorical contest, under the lock: E = active levels with a record visible to the actor; S = `levelIds`. E \ S empty → 400 path `intent` ("A contest must contest at least one level; this is a complement"); `contestedLevelIds` ≠ E \ S as a set → 400 path `contestedLevelIds`. Otherwise S ∩ E are validations/duplicates, S \ E create records (`intent = 'contest'`, no `respondsTo`), and the contest is stored (`contests`, `contest_levels` = E \ S, `contest_records` for what it created) even with no record.
+- Quantitative contest: the target is checked inside the lock (invisible or withdrawn → 404 `RECORD_NOT_FOUND`), then RFC-70 R2's "differs in at least one field" (400 path `value`), then matching, then create + store the contest.
+- A claim-key collision creates nothing: listed in `duplicates` when the colliding record is visible to the actor, else named nowhere (RFC-33 R4).
+- Codes: `nextRecordCodes(tx, n)` once, for the records about to be inserted. `record_references` never repeats the primary or the secondary (13f ruling).
+
+### E8. Level actions and contest actions (RFC-65 R13, R14, R16)
+- `…/levels/:levelId/validate` (`records.annotate`): **201** `{ validated }` (records newly validated). Level not of the trait or invisible → 400 path `levelId`; no visible record of it for the species → 404 `RECORD_NOT_FOUND`; every visible record the actor's own → 403.
+- `…/levels/:levelId/withdraw` (`records.review`): **201** `{ withdrawn, remaining }`; same errors without the 403. The web text when `remaining` is not empty: "<n> records remain that you cannot withdraw — an admin can withdraw them, or use Keep both".
+- `POST /api/contests/:id/resolve` (`records.review`) and `POST /api/contests/:id/withdraw` (`records.annotate`; author or `records.withdraw`), both 200 `{ data: null }`, in a new route file mounted at `/api/contests`. Both join `routes-guarded`; `…/resolve` joins `routes-visibility`; RFC-33 R5 already names them.
+
+### E9. Queue, counts, digest, contributions
+- `GET /api/records/disputed` answers RFC-65 R10's item exactly (`id` is the contest id). The contested page's actions: Keep both and Withdraw contest call the contest routes; **Withdraw level** is offered per contested level (level route); a quantitative contest offers **Withdraw record** on its target (annotations route).
+- Dashboard, health: `queues.contested` = standing contests the viewer can see; `disputed` removed. Digest per RFC-74 R3 (unrestricted): `contests` counts contests, the newest 10 carry `contested` (level keys joined by `, `, or the target's `value_text`), `contestedNow`.
+- Contributions per RFC-71 R2–R4: the annotations list is the viewer's `confirm`s on visible records plus their Keep-both events (`kind: 'resolve'`, `record` = the contest's first created record by `record_code`, or `null`); summary `{ records, contests, complements, validations }`, `contests` counting the viewer's contests that are not withdrawn.
+
+### E10. Records list sort (RFC-63 R9)
+A composite **keyset** cursor, not an offset (Spec note 14 superseded). `value`: categorical by level key, quantitative by `coalesce(numeric_value, mean_value, min_value, max_value)`; `references`: `short_citation` then `citation_key`; `origin`; `added` = `id`. Each key is coalesced to a non-null sentinel so a row-value comparison `(k1, k2, id) > (…)` pages it; `id` breaks ties. Bad `sort`/`order` → 400 path `sort`/`order`.
+
+### E11. Permissions (RFC-30 R3, RFC-31 R10, R15)
+`records.withdraw_imported` joins the catalog (admin only; no seeded role row). `createRole`/`updateRole` refuse `dataset.export` and `records.withdraw_imported` (400 path `permissions`); the RoleDialog does not offer them; the migration deletes any custom-role `role_permissions` row holding either.
+
+### E12. Error codes and RFC status
+`RECORD_DUPLICATE`, `RECORD_NOT_WITHDRAWABLE` and `RECORD_WITHDRAWN` stop being thrown by the API; their RFC-12 rows stay marked "(retired)" (the 13e precedent). The RFCs whose changelog says "`draft` until plan 13g" (RFC-31, 52, 60, 61, 63, 65, 69, 72, 74) flip to `accepted` in the last task; RFC-33 (13i), RFC-64 (13k) and RFC-70 (13h) stay draft.
+
+### E13. Spec notes superseded
+Notes 3, 4, 6, 7, 9, 14, 16 and 19 are superseded by E2–E12. Note 12's viewer-blind counters stand (E4).
+
+### E14. Tasks as executed
+1. Docs: the storage choices into RFC-63 R4/R7/R14, RFC-65 R16, RFC-64 R12; RFC-12 retired rows.
+2. The migration (E2 tables, checks, assertion, backfill; withdraw index, note check, `trait_records_uncount` + trigger + backfill; permission row, descriptions, custom-role cleanup), `reset.ts`, RFC-30, the catalog, RFC-31 R15 in the role service and the RoleDialog.
+3. Visibility and reads (E4).
+4. `contests.ts` derivations, record item counts, trait summary levels, review states (E2, E5).
+5. Annotations endpoint and `RecordActions` (E6).
+6. Create path and the minimal dialog changes (E7).
+7. Level actions and contest actions (E8).
+8. Queue API, dashboard, health, digest (E9).
+9. The contested queue page (E9).
+10. Species filters (RFC-60 R6).
+11. Records list sort (E10).
+12. Contributions (E9).
+13. README, gotchas, RFC status flips, pipeline, PR.
+
 ## Global Constraints
 
 - English everywhere: code, comments, docs, UI and commits.

@@ -1,13 +1,11 @@
 import { z } from 'zod';
 import {
-  ANNOTATION_KINDS,
   HARMONISATION_STATUSES,
   NAME_SOURCES,
   NAME_TYPES,
   numericValueSchema,
   quantitativeValueSchema,
   RECORD_INTENTS,
-  recordDetailSchema,
   recordSchema,
   referenceSchema,
   TRAIT_VALUE_TYPES,
@@ -23,9 +21,21 @@ export const curationNoteSchema = z.string().trim().min(1).max(2000);
 /** A catalog name or key: 1–200 characters, trimmed. @rfc RFC-60 R9 */
 export const catalogNameSchema = z.string().trim().min(1).max(200);
 
-/** A level for a categorical trait, or a quantitative value for a quantitative one. @rfc RFC-65 R1 */
+/** 1–N distinct ids. */
+const distinctIds = (max: number) =>
+  z
+    .array(z.uuid())
+    .max(max)
+    .refine((ids) => new Set(ids).size === ids.length, { message: 'Ids must be distinct' });
+
+/**
+ * One to twenty levels for a categorical trait — one record each — or a
+ * quantitative value for a quantitative one.
+ * @rfc RFC-65 R1
+ * @rfc RFC-70 R3
+ */
 export const recordValueSchema = z.union([
-  z.strictObject({ levelId: z.uuid() }),
+  z.strictObject({ levelIds: distinctIds(20).min(1) }),
   z.strictObject({ quantitative: quantitativeValueSchema }),
 ]);
 
@@ -57,45 +67,78 @@ export const sourcesSchema = z.union([
   z.strictObject({ references: z.array(sourceRefSchema).min(1).max(10) }),
 ]);
 
-/** @rfc RFC-65 R1 */
-export const createRecordBodySchema = z
-  .strictObject({
-    speciesId: z.uuid(),
-    traitId: z.uuid(),
-    value: recordValueSchema,
-    sources: sourcesSchema,
-    intent: z.enum(RECORD_INTENTS).optional(),
-    respondsToRecordId: z.uuid().optional(),
-    rawValue: curationNoteSchema.optional(),
-    note: curationNoteSchema.optional(),
-    secondaryReferenceId: z.uuid().optional(),
-  })
-  .refine((b) => (b.intent === undefined) === (b.respondsToRecordId === undefined), {
-    path: ['intent'],
-    message: 'intent and respondsToRecordId come together',
-  });
-
-/** @rfc RFC-70 R3 */
-export const createRecordsResultSchema = z.strictObject({
-  created: z.array(recordDetailSchema),
-  duplicates: z.array(z.strictObject({ recordId: z.uuid(), referenceId: z.uuid() })),
+/**
+ * The intent combination of RFC-70 R1 depends on the trait's value type, so
+ * the service checks it once the trait is known.
+ * @rfc RFC-65 R1
+ * @rfc RFC-70 R1
+ */
+export const createRecordBodySchema = z.strictObject({
+  speciesId: z.uuid(),
+  traitId: z.uuid(),
+  value: recordValueSchema,
+  sources: sourcesSchema,
+  intent: z.enum(RECORD_INTENTS).optional(),
+  respondsToRecordId: z.uuid().optional(),
+  contestedLevelIds: distinctIds(100).optional(),
+  rawValue: curationNoteSchema.optional(),
+  note: curationNoteSchema.optional(),
+  secondaryReferenceId: z.uuid().optional(),
 });
 
-/** @rfc RFC-65 R3 */
-export const annotateRecordBodySchema = z
-  .strictObject({
-    kind: z.enum(ANNOTATION_KINDS),
-    note: curationNoteSchema.optional(),
-    reference: sourceRefSchema.optional(),
-  })
-  .refine((b) => b.note !== undefined || (b.kind !== 'dispute' && b.kind !== 'withdraw'), {
-    message: 'A note is required to dispute or withdraw',
-    path: ['note'],
-  })
-  .refine((b) => b.reference === undefined || b.kind === 'confirm', {
-    path: ['reference'],
-    message: 'Only a confirmation carries a reference',
-  });
+/** A record named by id and code. @rfc RFC-70 R3 */
+export const recordCodeRefSchema = z.strictObject({ recordId: z.uuid(), recordCode: z.string() });
+
+/**
+ * `created`: the new records. `validated`: existing records the entry
+ * matched, now carrying the actor's validation. `duplicates`: matches that
+ * are the actor's own records, or a claim-key collision with a visible record.
+ * @rfc RFC-70 R3
+ */
+export const createRecordsResultSchema = z.strictObject({
+  created: z.array(recordSchema),
+  validated: z.array(recordCodeRefSchema),
+  duplicates: z.array(recordCodeRefSchema),
+});
+
+/**
+ * A validation (with an optional supporting source) or a withdrawal. No note
+ * on either; `neutral`, `dispute` and `resolve` are refused (400 path
+ * `kind`) — Keep both moves to the contest routes (spec R-6, R-10, R-11,
+ * R-12).
+ * @rfc RFC-70 R4
+ * @rfc RFC-65 R3, R4, R10
+ */
+export const annotateRecordBodySchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('confirm'), referenceSource: sourceRefSchema.optional() }),
+  z.strictObject({ kind: z.literal('withdraw') }),
+]);
+
+/** A level of one species × trait, for the level actions. @rfc RFC-65 R13, R14 */
+export const levelActionParamSchema = z.strictObject({
+  id: z.uuid(),
+  traitId: z.uuid(),
+  levelId: z.uuid(),
+});
+/** Validate a level: an optional supporting reference, as in RFC-65 R3. @rfc RFC-65 R13 */
+export const validateLevelBodySchema = z.strictObject({
+  referenceSource: sourceRefSchema.optional(),
+});
+/** The records newly validated; empty when all already were. @rfc RFC-65 R13 */
+export const validateLevelResultSchema = z.strictObject({
+  validated: z.array(recordCodeRefSchema),
+});
+/**
+ * `withdrawn`: the records withdrawn. `remaining`: the visible records of the
+ * level the actor may not withdraw (RFC-65 R4).
+ * @rfc RFC-65 R14
+ */
+export const withdrawLevelResultSchema = z.strictObject({
+  withdrawn: z.array(recordCodeRefSchema),
+  remaining: z.array(recordCodeRefSchema),
+});
+/** A contest, by the `id` of the contested queue. @rfc RFC-65 R16 */
+export const contestParamSchema = z.strictObject({ id: z.uuid() });
 
 /** @rfc RFC-80 R4 */
 export const resolveDoiQuerySchema = z.strictObject({ doi: doiSchema });
@@ -161,38 +204,25 @@ export const mapResultSchema = z.strictObject({
   skipped: z.number().int().nonnegative(),
 });
 
-/** `?intent=contest` keeps records whose standing dispute was generated by a contest. @rfc RFC-65 R10 */
-export const listDisputedQuerySchema = cursorQuerySchema.extend({
-  intent: z.enum(['contest']).optional(),
-});
-
 /**
- * `contestedBy` (RFC-65 R10 amended by plan 11b) holds the non-withdrawn
- * records with `intent = 'contest'` that respond to the disputed record,
- * newest first. It is empty when nothing contests that record, which is the
- * ordinary case for a dispute raised by hand — but not a guarantee: the
- * query filters on the responded record, the intent and the withdrawal, and
- * never on whether the standing dispute was generated. A record that carries
- * both a hand-raised dispute and a live contest therefore arrives with a
- * non-empty array whichever of the two is standing, which is the rule's own
- * reading: the array answers "what value is being offered instead", not "who
- * raised the dispute".
+ * One standing contest of the contested queue. `id` is the contest's own id
+ * (RFC-65 R16). A categorical contest has `levels` (each level it contests,
+ * with whether it still is, RFC-63 R14) and `target: null`; a quantitative
+ * one has `levels: null` and `target` = the record it responds to. `records`
+ * are the visible records the contest created, by `record_code`.
  * @rfc RFC-65 R10
  */
-export const disputedRecordSchema = recordSchema.extend({
-  latestDispute: z.strictObject({
-    id: z.uuid(),
-    actor: userRefSchema,
-    note: z.string().nullable(),
-    createdAt: z.iso.datetime(),
-  }),
-  contestedBy: z.array(
-    z.strictObject({
-      id: z.uuid(),
-      valueText: z.string(),
-      createdBy: userRefSchema.nullable(),
-    }),
-  ),
+export const contestedQueueItemSchema = z.strictObject({
+  id: z.uuid(),
+  species: z.strictObject({ id: z.uuid(), canonicalName: z.string() }),
+  trait: z.strictObject({ id: z.uuid(), key: z.string() }),
+  createdBy: userRefSchema,
+  createdAt: z.iso.datetime(),
+  levels: z
+    .array(z.strictObject({ levelId: z.uuid(), key: z.string(), contested: z.boolean() }))
+    .nullable(),
+  target: recordSchema.nullable(),
+  records: z.array(recordSchema),
 });
 
 const nonEmpty = <T extends z.ZodRawShape>(shape: T, first: keyof T & string) =>
@@ -325,7 +355,15 @@ export type Sources = z.infer<typeof sourcesSchema>;
 export type RecordValue = z.infer<typeof recordValueSchema>;
 export type CreateRecordBody = z.infer<typeof createRecordBodySchema>;
 export type CreateRecordsResult = z.infer<typeof createRecordsResultSchema>;
+/** @rfc RFC-70 R3 */
+export type RecordCodeRef = z.infer<typeof recordCodeRefSchema>;
 export type AnnotateRecordBody = z.infer<typeof annotateRecordBodySchema>;
+/** @rfc RFC-65 R13 */
+export type ValidateLevelBody = z.infer<typeof validateLevelBodySchema>;
+/** @rfc RFC-65 R13 */
+export type ValidateLevelResult = z.infer<typeof validateLevelResultSchema>;
+/** @rfc RFC-65 R14 */
+export type WithdrawLevelResult = z.infer<typeof withdrawLevelResultSchema>;
 export type ResolveDoiQuery = z.infer<typeof resolveDoiQuerySchema>;
 export type ResolveDoiResult = z.infer<typeof resolveDoiResultSchema>;
 export type PendingTrait = z.infer<typeof pendingTraitSchema>;
@@ -333,8 +371,8 @@ export type PendingGroupsQuery = z.infer<typeof pendingGroupsQuerySchema>;
 export type PendingGroup = z.infer<typeof pendingGroupSchema>;
 export type MapPendingBody = z.infer<typeof mapPendingBodySchema>;
 export type MapResult = z.infer<typeof mapResultSchema>;
-export type DisputedRecord = z.infer<typeof disputedRecordSchema>;
-export type ListDisputedQuery = z.infer<typeof listDisputedQuerySchema>;
+/** @rfc RFC-65 R10 */
+export type ContestedQueueItem = z.infer<typeof contestedQueueItemSchema>;
 export type FamilyBody = z.infer<typeof familyBodySchema>;
 export type CreateGenusBody = z.infer<typeof createGenusBodySchema>;
 export type UpdateGenusBody = z.infer<typeof updateGenusBodySchema>;

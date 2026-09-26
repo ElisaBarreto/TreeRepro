@@ -36,8 +36,9 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `dataset.read` | Browse species, traits, references and records |
 | `imports.read` | View import batches and their rejections |
 | `records.create` | Add trait records and map pending values |
-| `records.annotate` | Confirm, dispute and comment on records |
+| `records.annotate` | Validate and contest records |
 | `records.withdraw` | Withdraw any manual record |
+| `records.withdraw_imported` | Withdraw any imported record |
 | `accepted.manage` | Set and clear the accepted value per species and trait (retired) |
 | `taxa.manage` | Create and edit families, genera, species and names |
 | `taxa.propose` | Propose a species for the catalog |
@@ -45,7 +46,7 @@ Permissions are the vocabulary of authorization. They are fixed by code and by t
 | `traits.manage` | Create and edit traits and levels |
 | `dataset.export` | Download the dataset |
 | `dataset.read_inactive` | See inactive species, traits and levels |
-| `records.review` | Work the harmonisation and disputed queues; neutralise or dispute any record with a note |
+| `records.review` | Work the harmonisation and contested queues; resolve contests and withdraw levels |
 | `plots.manage` | Create and edit field plots and their species |
 | `contributions.read` | View any user's contributions |
 | `coverage.read` | View coverage metrics |
@@ -71,3 +72,4 @@ None.
 - 2026-09-19 — taxa.propose (RFC-75, plan 12c).
 - 2026-09-19 — health.read (RFC-52, plan 12d).
 - 2026-09-25 — R1: accepted.manage retired (the accepted value per species and trait goes; row kept per R1) and dataset.export reworded off the accepted value (spec R-1, plan 13e).
+- 2026-09-25 — records.withdraw_imported (admin only, RFC-31 R15, RFC-65 R4); records.annotate and records.review descriptions (spec R-10, R-11; plan 13g).

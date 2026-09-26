@@ -98,15 +98,13 @@ const INTENT_TONES: Record<RecordIntent, 'red' | 'neutral'> = {
   complement: 'neutral',
 };
 
-// RFC-71 R4's six counts, in the order the rule lists them.
+// RFC-71 R4's four counts, in the order the rule lists them.
 function tilesOf(summary: ContributionSummary): StatTile[] {
   return [
     { label: 'Records', value: summary.records },
     { label: 'Contests', value: summary.contests },
     { label: 'Complements', value: summary.complements },
     { label: 'Validations', value: summary.validations },
-    { label: 'Disputes', value: summary.disputes },
-    { label: 'Withdrawn', value: summary.withdrawn },
   ];
 }
 
@@ -315,7 +313,12 @@ export function ContributionsPage({
         {kind === 'annotations' && annotations.length > 0 ? (
           <AnnotationTable
             annotations={annotations}
-            onSelect={(annotation) => setOpen(annotation.record.id)}
+            // A Keep-both resolution's `record` is null when its contest
+            // created none, or one the viewer cannot see (RFC-71 R3): the
+            // row then has nothing to open.
+            onSelect={(annotation) => {
+              if (annotation.record) setOpen(annotation.record.id);
+            }}
           />
         ) : null}
         {rows.items.length > 0 || rows.page > 1 ? <Pagination pager={rows} /> : null}

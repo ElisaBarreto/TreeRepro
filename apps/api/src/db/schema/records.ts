@@ -29,7 +29,7 @@ export const recordCodeTrSeq = pgSequence('record_code_tr_seq');
 /**
  * One claim: a reference reports that a species has a trait with a value.
  * Insert-only (RFC-63 R4; migration 0012 adds the trigger and the revokes).
- * @rfc RFC-63 R1-R3, R5, R12, R15
+ * @rfc RFC-63 R1-R3, R5, R12, R14, R15
  */
 export const traitRecords = pgTable(
   'trait_records',
@@ -119,9 +119,11 @@ export const traitRecords = pgTable(
     index('trait_records_created_by_idx')
       .on(t.createdBy, t.id.desc())
       .where(sql`${t.createdBy} is not null`),
+    /** A categorical contest has an intent and responds to no record (RFC-63 R14). */
     check(
       'trait_records_intent_check',
-      sql`(${t.intent} is null) = (${t.respondsToRecordId} is null)`,
+      sql`(${t.respondsToRecordId} is null or ${t.intent} is not null)
+        and (${t.intent} is distinct from 'complement' or ${t.respondsToRecordId} is not null)`,
     ),
     check(
       'trait_records_reference_check',

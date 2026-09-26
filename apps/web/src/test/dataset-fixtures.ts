@@ -1,10 +1,10 @@
 import type {
+  ContestedQueueItem,
   ContributionAnnotation,
   ContributionRecord,
   ContributionSummary,
   Dashboard,
   Dictionary,
-  DisputedRecord,
   Genus,
   ImportBatch,
   ImportReject,
@@ -107,12 +107,31 @@ export const SEXUAL_SYSTEM_SUMMARY: TraitSummary = {
   recordCount: 8,
   harmonisationCounts: { ...NO_PENDING, harmonised: 6, unknownLevel: 1, multiValue: 1 },
   levels: [
-    { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20', key: 'dioecious', count: 4 },
-    { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious', count: 1 },
-    { levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22', key: 'hermaphrodite', count: 1 },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20',
+      key: 'dioecious',
+      count: 4,
+      validationCount: 0,
+      contested: false,
+    },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21',
+      key: 'monoecious',
+      count: 1,
+      validationCount: 0,
+      contested: false,
+    },
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22',
+      key: 'hermaphrodite',
+      count: 1,
+      validationCount: 0,
+      contested: false,
+    },
   ],
   numeric: null,
   validated: true,
+  contested: false,
 };
 
 /** Quantitative summary, every record harmonised. @rfc RFC-63 R10 */
@@ -123,6 +142,7 @@ export const SEED_MASS_SUMMARY: TraitSummary = {
   levels: null,
   numeric: { min: 0.5, max: 3, mean: 1.25, count: 3 },
   validated: false,
+  contested: false,
 };
 
 /** Categorical summary with a single level and nothing pending. @rfc RFC-63 R10 */
@@ -130,9 +150,18 @@ export const POLLINATION_MODE_SUMMARY: TraitSummary = {
   trait: POLLINATION_MODE,
   recordCount: 1,
   harmonisationCounts: { ...NO_PENDING, harmonised: 1 },
-  levels: [{ levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d23', key: 'insects', count: 1 }],
+  levels: [
+    {
+      levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d23',
+      key: 'insects',
+      count: 1,
+      validationCount: 0,
+      contested: false,
+    },
+  ],
   numeric: null,
   validated: false,
+  contested: false,
 };
 
 /** Two categories in dictionary order. @rfc RFC-63 R10 */
@@ -186,7 +215,7 @@ export const GRACE_PERSONAL_OBSERVATION_REFERENCE: ReferenceRef = {
   shortCitation: null,
 };
 
-/** An imported, harmonised and confirmed categorical record. @rfc RFC-63 R8 */
+/** An imported, harmonised and validated categorical record. @rfc RFC-63 R8 */
 export const RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d50',
   recordCode: 'EB_1',
@@ -198,7 +227,7 @@ export const RECORD: RecordItem = {
   numericValue: null,
   quantitative: null,
   harmonisation: 'harmonised',
-  review: 'confirmed',
+  review: 'validated',
   primaryReference: PRIMARY_REFERENCE,
   secondaryReference: SECONDARY_REFERENCE,
   references: [PRIMARY_REFERENCE, SECONDARY_REFERENCE],
@@ -207,9 +236,12 @@ export const RECORD: RecordItem = {
   createdBy: null,
   intent: null,
   respondsTo: null,
+  validationCount: 1,
+  contestCount: 0,
+  contested: false,
 };
 
-/** A manual quantitative record still pending harmonisation and disputed. @rfc RFC-63 R8 */
+/** A manual quantitative record still pending harmonisation and contested. @rfc RFC-63 R8 */
 export const PENDING_RECORD: RecordItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d51',
   recordCode: 'TR_1',
@@ -221,7 +253,7 @@ export const PENDING_RECORD: RecordItem = {
   numericValue: null,
   quantitative: null,
   harmonisation: 'not_numeric',
-  review: 'disputed',
+  review: 'contested',
   primaryReference: PRIMARY_REFERENCE,
   secondaryReference: null,
   references: [PRIMARY_REFERENCE],
@@ -230,6 +262,9 @@ export const PENDING_RECORD: RecordItem = {
   createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e', name: 'Ada' },
   intent: null,
   respondsTo: null,
+  validationCount: 0,
+  contestCount: 1,
+  contested: true,
 };
 
 /** The detail of RECORD: raw columns from the import, no curation yet. @rfc RFC-63 R8 */
@@ -291,7 +326,7 @@ export const CONTEST_RECORD_DETAIL: RecordDetail = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d52',
   valueText: 'monoecious',
   level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious' },
-  review: 'unreviewed',
+  review: 'unvalidated',
   origin: 'manual',
   primaryReference: GRACE_PERSONAL_OBSERVATION_REFERENCE,
   secondaryReference: null,
@@ -751,6 +786,7 @@ export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
   levels: [],
   numeric: null,
   validated: false,
+  contested: false,
 };
 
 /** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
@@ -761,6 +797,7 @@ export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
   levels: null,
   numeric: null,
   validated: false,
+  contested: false,
 };
 
 /**
@@ -806,16 +843,34 @@ export const PENDING_GROUPS: PendingGroup[] = [
 /** @rfc RFC-65 R9 */
 export const MAP_RESULT: MapResult = { created: 2, skipped: 0 };
 
-/** @rfc RFC-65 R10 */
-export const DISPUTED_RECORD: DisputedRecord = {
-  ...PENDING_RECORD,
-  latestDispute: {
-    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d70',
-    actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
-    note: 'Value is not a number.',
-    createdAt: '2026-09-03T12:00:00.000Z',
-  },
-  contestedBy: [],
+/**
+ * A standing categorical contest: Grace says the species is monoecious, which
+ * created one record, and contests {@link RECORD}'s dioecious level.
+ * @rfc RFC-65 R10
+ */
+export const CONTESTED_ITEM: ContestedQueueItem = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d70',
+  species: { id: SPECIES.id, canonicalName: SPECIES.canonicalName },
+  trait: { id: SEXUAL_SYSTEM.id, key: SEXUAL_SYSTEM.key },
+  createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+  createdAt: '2026-09-03T12:00:00.000Z',
+  levels: [{ levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20', key: 'dioecious', contested: true }],
+  target: null,
+  records: [
+    {
+      ...RECORD,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d56',
+      recordCode: 'TR_7',
+      valueText: 'monoecious',
+      level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious' },
+      review: 'unvalidated',
+      origin: 'manual',
+      createdAt: '2026-09-03T12:00:00.000Z',
+      createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+      intent: 'contest',
+      validationCount: 0,
+    },
+  ],
 };
 
 /**
@@ -834,7 +889,7 @@ export const CONTESTING_CONTRIBUTION: ContributionRecord = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d54',
   trait: SEXUAL_SYSTEM,
   valueText: 'monoecious',
-  review: 'unreviewed',
+  review: 'unvalidated',
   intent: 'contest',
   respondsTo: { id: RECORD.id },
   createdAt: '2026-09-07T08:00:00.000Z',
@@ -869,6 +924,22 @@ export const GENERATED_CONTRIBUTION_ANNOTATION: ContributionAnnotation = {
 };
 
 /**
+ * A Keep-both resolution whose contest created no record, or created one the
+ * viewer cannot see: `record` is null, and the page renders the row with
+ * nothing to open (RFC-71 R3, RFC-65 R16).
+ * @rfc RFC-71 R3
+ */
+export const RESOLUTION_WITHOUT_RECORD: ContributionAnnotation = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d77',
+  kind: 'resolve',
+  note: null,
+  reference: null,
+  generated: false,
+  createdAt: '2026-09-10T11:00:00.000Z',
+  record: null,
+};
+
+/**
  * A standing with more records than any page lists: the summary counts every
  * row, the lists omit what the viewer may no longer see (RFC-71 R4).
  * @rfc RFC-71 R4
@@ -878,8 +949,6 @@ export const CONTRIBUTION_SUMMARY: ContributionSummary = {
   contests: 2,
   complements: 3,
   validations: 7,
-  disputes: 1,
-  withdrawn: 1,
 };
 
 // ---------------------------------------------------------------------------
@@ -947,7 +1016,7 @@ export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
   // float quotient rounded in the browser answers 57 and 28. The fixture is
   // chosen so an assertion can tell the two apart.
   coverage: { cells: 200, withData: 115, validated: 57, percentWithData: 58, percentValidated: 29 },
-  queues: { pendingGroups: 3, disputed: 2, contested: 1, proposals: 0 },
+  queues: { pendingGroups: 3, contested: 1, proposals: 0 },
 };
 
 /** The whole dashboard answer for a contributor with plots and no review permission. @rfc RFC-72 R1 */
@@ -976,14 +1045,12 @@ export const NO_PLOTS_DASHBOARD: Dashboard = {
   curation: null,
 };
 
-/** RFC-71 R4's six counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
+/** RFC-71 R4's four counts, all zero: a viewer with no contribution at all. @rfc RFC-73 R3 */
 export const ZERO_CONTRIBUTION_SUMMARY: ContributionSummary = {
   records: 0,
   contests: 0,
   complements: 0,
   validations: 0,
-  disputes: 0,
-  withdrawn: 0,
 };
 
 /** The dashboard answer for a brand-new contributor: the Getting started card's trigger case. @rfc RFC-73 R3 */

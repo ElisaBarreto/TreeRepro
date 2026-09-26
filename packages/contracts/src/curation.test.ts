@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   annotateRecordBodySchema,
+  contestedQueueItemSchema,
+  contestParamSchema,
   createLevelBodySchema,
   createRecordBodySchema,
+  createRecordsResultSchema,
   createReferenceBodySchema,
-  disputedRecordSchema,
-  listDisputedQuerySchema,
+  levelActionParamSchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
   resolveDoiResultSchema,
@@ -15,6 +17,9 @@ import {
   updateGenusBodySchema,
   updateReferenceBodySchema,
   updateTraitBodySchema,
+  validateLevelBodySchema,
+  validateLevelResultSchema,
+  withdrawLevelResultSchema,
 } from './curation.ts';
 import { cursorQuerySchema } from './pagination.ts';
 
@@ -30,7 +35,7 @@ const record = {
   level: { id: uuid, key: 'blue' },
   numericValue: null,
   harmonisation: 'harmonised',
-  review: 'disputed',
+  review: 'contested',
   primaryReference: null,
   secondaryReference: null,
   origin: 'manual',
@@ -38,6 +43,9 @@ const record = {
   createdBy: { id: uuid, name: 'Ada' },
   intent: null,
   respondsTo: null,
+  validationCount: 0,
+  contestCount: 0,
+  contested: false,
   recordCode: 'EB_1',
   quantitative: null,
   references: [],
@@ -47,9 +55,9 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
   const base = { speciesId: uuid, traitId: uuid, sources: { references: [{ id: uuid }] } };
   it('accepts a level or a finite number below 1e308; trims rawValue and note', () => {
     expect(
-      createRecordBodySchema.parse({ ...base, value: { levelId: uuid }, rawValue: ' Aug ' }),
+      createRecordBodySchema.parse({ ...base, value: { levelIds: [uuid] }, rawValue: ' Aug ' }),
     ).toMatchObject({
-      value: { levelId: uuid },
+      value: { levelIds: [uuid] },
       rawValue: 'Aug',
     });
     expect(
@@ -70,44 +78,81 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { levelId: uuid, quantitative: { single: 1 } },
+        value: { levelIds: [uuid], quantitative: { single: 1 } },
       }).success,
     ).toBe(false);
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { levelId: uuid },
+        value: { levelIds: [uuid] },
         note: 'x'.repeat(2001),
       }).success,
     ).toBe(false);
     expect(
-      createRecordBodySchema.safeParse({ ...base, value: { levelId: uuid }, extra: 1 }).success,
+      createRecordBodySchema.safeParse({ ...base, value: { levelIds: [uuid] }, extra: 1 }).success,
     ).toBe(false);
   });
 
-  it('refuses intent without respondsToRecordId', () => {
+  it("RFC-70 R1 takes contestedLevelIds (at most 100, distinct); the intent combination is the server's, once the trait is known", () => {
+    const q = { quantitative: { single: 1 } };
+    // A categorical contest names no responded record.
     expect(
       createRecordBodySchema.safeParse({
         ...base,
-        value: { quantitative: { single: 1 } },
+        value: { levelIds: [uuid] },
         intent: 'contest',
-      }).success,
-    ).toBe(false);
-    expect(
-      createRecordBodySchema.safeParse({
-        ...base,
-        value: { quantitative: { single: 1 } },
-        respondsToRecordId: uuid,
-      }).success,
-    ).toBe(false);
-    expect(
-      createRecordBodySchema.safeParse({
-        ...base,
-        value: { quantitative: { single: 1 } },
-        intent: 'contest',
-        respondsToRecordId: uuid,
+        contestedLevelIds: [other],
       }).success,
     ).toBe(true);
+    expect(createRecordBodySchema.safeParse({ ...base, value: q, intent: 'contest' }).success).toBe(
+      true,
+    );
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: q, contestedLevelIds: [uuid, uuid] })
+        .success,
+    ).toBe(false);
+    const many = Array.from(
+      { length: 101 },
+      (_, i) => `018f6a5e-7c3d-7a2b-9c1e-${String(i).padStart(12, '0')}`,
+    );
+    expect(
+      createRecordBodySchema.safeParse({ ...base, value: q, contestedLevelIds: many }).success,
+    ).toBe(false);
+    expect(
+      createRecordBodySchema.safeParse({
+        ...base,
+        value: q,
+        contestedLevelIds: many.slice(0, 100),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('RFC-65 R1 value.levelIds takes one to twenty distinct levels; a single levelId is gone', () => {
+    const v = (value: unknown) => createRecordBodySchema.safeParse({ ...base, value }).success;
+    expect(v({ levelIds: [uuid, other] })).toBe(true);
+    expect(v({ levelIds: [] })).toBe(false);
+    expect(v({ levelIds: [uuid, uuid] })).toBe(false);
+    expect(v({ levelId: uuid })).toBe(false);
+    const ids = Array.from(
+      { length: 21 },
+      (_, i) => `018f6a5e-7c3d-7a2b-9c1e-${String(i).padStart(12, '0')}`,
+    );
+    expect(v({ levelIds: ids })).toBe(false);
+    expect(v({ levelIds: ids.slice(0, 20) })).toBe(true);
+  });
+
+  it('RFC-70 R3 createRecordsResultSchema is { created, validated, duplicates }', () => {
+    const ref = { recordId: uuid, recordCode: 'TR_1' };
+    expect(
+      createRecordsResultSchema.safeParse({
+        created: [record],
+        validated: [ref],
+        duplicates: [ref],
+      }).success,
+    ).toBe(true);
+    expect(createRecordsResultSchema.safeParse({ created: [], duplicates: [] }).success).toBe(
+      false,
+    );
   });
 
   it('refuses 11 references; accepts { personalObservation: true }', () => {
@@ -144,35 +189,34 @@ describe('RFC-65 R1 createRecordBodySchema', () => {
   });
 });
 
-describe('RFC-65 R3 annotateRecordBodySchema', () => {
-  it('requires a note for dispute and withdraw only', () => {
+describe('RFC-65 R3, RFC-70 R4 annotateRecordBodySchema (spec R-6, R-11, R-12)', () => {
+  it('takes confirm (with an optional source) and withdraw only; no note; neutral, dispute and resolve are gone', () => {
     expect(annotateRecordBodySchema.safeParse({ kind: 'confirm' }).success).toBe(true);
-    expect(annotateRecordBodySchema.safeParse({ kind: 'neutral' }).success).toBe(true);
-    expect(annotateRecordBodySchema.safeParse({ kind: 'dispute' }).success).toBe(false);
-    expect(annotateRecordBodySchema.safeParse({ kind: 'withdraw', note: '  ' }).success).toBe(
-      false,
-    );
-    expect(
-      annotateRecordBodySchema.safeParse({ kind: 'dispute', note: 'Table 2 says otherwise' })
-        .success,
-    ).toBe(true);
-    const missing = annotateRecordBodySchema.safeParse({ kind: 'dispute' });
-    expect(missing.success ? [] : missing.error.issues.map((i) => i.path.join('.'))).toContain(
-      'note',
-    );
-  });
-
-  it('refuses reference with kind: dispute', () => {
     expect(
       annotateRecordBodySchema.safeParse({
-        kind: 'dispute',
-        note: 'Wrong',
-        reference: { id: uuid },
+        kind: 'confirm',
+        referenceSource: { doi: '10.1111/geb.13000' },
       }).success,
-    ).toBe(false);
-    expect(
-      annotateRecordBodySchema.safeParse({ kind: 'confirm', reference: { id: uuid } }).success,
     ).toBe(true);
+    expect(annotateRecordBodySchema.safeParse({ kind: 'withdraw' }).success).toBe(true);
+    for (const bad of [
+      { kind: 'neutral' },
+      { kind: 'dispute', note: 'x' },
+      { kind: 'withdraw', note: 'x' },
+      { kind: 'resolve' },
+      { kind: 'confirm', reference: { doi: '10.1111/geb.13000' } },
+    ]) {
+      expect(annotateRecordBodySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('answers path kind for resolve, neutral and dispute (Keep both moves to the contest routes)', () => {
+    for (const kind of ['resolve', 'neutral', 'dispute']) {
+      const parsed = annotateRecordBodySchema.safeParse({ kind });
+      expect(parsed.success ? [] : parsed.error.issues.map((i) => i.path.join('.'))).toEqual([
+        'kind',
+      ]);
+    }
   });
 });
 
@@ -257,50 +301,40 @@ describe('RFC-65 R8, R9 pending queue', () => {
   });
 });
 
-describe('RFC-65 R10 listDisputedQuerySchema', () => {
-  it('accepts intent: contest, accepts its absence, and rejects any other value', () => {
-    expect(listDisputedQuerySchema.safeParse({ intent: 'contest' }).success).toBe(true);
-    expect(listDisputedQuerySchema.safeParse({}).success).toBe(true);
-    expect(listDisputedQuerySchema.safeParse({ intent: 'complement' }).success).toBe(false);
-    expect(listDisputedQuerySchema.safeParse({ intent: 'none' }).success).toBe(false);
-  });
-});
-
-describe('RFC-65 R10 disputedRecordSchema contestedBy', () => {
-  const latestDispute = {
-    id: uuid,
-    actor: { id: uuid, name: 'Ada' },
-    note: 'Wrong',
+describe('RFC-65 R10 contestedQueueItemSchema', () => {
+  const item = {
+    id: other,
+    species: { id: uuid, canonicalName: 'Testus specimen' },
+    trait: { id: uuid, key: 'flower_color' },
+    createdBy: { id: uuid, name: 'Ada' },
     createdAt: '2026-09-13T00:00:00.000Z',
-  };
-  const contestingRecord = { id: other, valueText: 'red', createdBy: { id: uuid, name: 'Ada' } };
-  const withContests = {
-    ...record,
-    latestDispute,
-    contestedBy: [contestingRecord],
+    levels: [{ levelId: uuid, key: 'blue', contested: true }],
+    target: null,
+    records: [],
   };
 
-  it('parses a populated contestedBy and an empty one, and requires the field', () => {
-    expect(disputedRecordSchema.safeParse(withContests).success).toBe(true);
-    expect(disputedRecordSchema.safeParse({ ...withContests, contestedBy: [] }).success).toBe(true);
-    const { contestedBy: _contestedBy, ...missingContestedBy } = withContests;
-    expect(disputedRecordSchema.safeParse(missingContestedBy).success).toBe(false);
+  it('parses a categorical item with no record and a quantitative one with a target', () => {
+    expect(contestedQueueItemSchema.safeParse(item).success).toBe(true);
     expect(
-      disputedRecordSchema.safeParse({
-        ...withContests,
-        contestedBy: [{ id: other, valueText: 'red', createdBy: null }],
+      contestedQueueItemSchema.safeParse({
+        ...item,
+        levels: null,
+        target: record,
+        records: [record],
       }).success,
     ).toBe(true);
   });
 
-  it('rejects an unknown key in a contestedBy entry', () => {
-    const result = disputedRecordSchema.safeParse({
-      ...withContests,
-      contestedBy: [{ ...contestingRecord, extra: 1 }],
-    });
-    // zod reports unrecognized_keys at the offending object's own path.
-    const issuePaths = result.success ? [] : result.error.issues.map((i) => i.path.join('.'));
-    expect(issuePaths).toContain('contestedBy.0');
+  it('is strict: the trait ref is { id, key } and every field is required', () => {
+    expect(contestedQueueItemSchema.safeParse({ ...item, trait: record.trait }).success).toBe(
+      false,
+    );
+    const { records: _records, ...missing } = item;
+    expect(contestedQueueItemSchema.safeParse(missing).success).toBe(false);
+    expect(
+      contestedQueueItemSchema.safeParse({ ...item, levels: [{ levelId: uuid, key: 'blue' }] })
+        .success,
+    ).toBe(false);
   });
 });
 
@@ -425,8 +459,36 @@ describe('RFC-61 R10, RFC-80 R5 a book among the sources', () => {
     expect(
       annotateRecordBodySchema.safeParse({
         kind: 'confirm',
-        reference: { isbn: '9780306406157', citation },
+        referenceSource: { isbn: '9780306406157', citation },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('RFC-65 R13, R14, R16 level and contest actions', () => {
+  it('levelActionParamSchema takes three uuids; contestParamSchema one', () => {
+    expect(
+      levelActionParamSchema.safeParse({ id: uuid, traitId: uuid, levelId: other }).success,
+    ).toBe(true);
+    expect(
+      levelActionParamSchema.safeParse({ id: uuid, traitId: uuid, levelId: 'x' }).success,
+    ).toBe(false);
+    expect(contestParamSchema.safeParse({ id: uuid }).success).toBe(true);
+    expect(contestParamSchema.safeParse({ id: 'x' }).success).toBe(false);
+  });
+
+  it('validateLevelBodySchema takes an optional referenceSource and nothing else', () => {
+    expect(validateLevelBodySchema.safeParse({}).success).toBe(true);
+    expect(validateLevelBodySchema.safeParse({ referenceSource: { id: uuid } }).success).toBe(true);
+    expect(validateLevelBodySchema.safeParse({ note: 'x' }).success).toBe(false);
+  });
+
+  it('the results list record code refs; withdraw adds remaining', () => {
+    const ref = { recordId: uuid, recordCode: 'TR_1' };
+    expect(validateLevelResultSchema.safeParse({ validated: [ref] }).success).toBe(true);
+    expect(withdrawLevelResultSchema.safeParse({ withdrawn: [ref], remaining: [] }).success).toBe(
+      true,
+    );
+    expect(withdrawLevelResultSchema.safeParse({ withdrawn: [ref] }).success).toBe(false);
   });
 });

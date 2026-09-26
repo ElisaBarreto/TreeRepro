@@ -7,7 +7,7 @@ import {
   createTrait,
 } from '../../test/helpers/dataset.ts';
 import { createUser } from '../../test/helpers/users.ts';
-import { UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import { createDb } from '../db/client.ts';
 import { recordsCsv } from './export.ts';
 
@@ -35,7 +35,7 @@ describe('RFC-33 R2 recordsCsv pending record visibility', () => {
     return lines.slice(1, -1).map((line) => line.split(',').at(-1) ?? '');
   }
 
-  it('omits a non-harmonised record when includePending is false, includes it when true', async () => {
+  it('omits a non-harmonised record for a viewer without records.review, includes it for one with', async () => {
     handle = createDb(inject('databaseUrl'));
     const { db } = handle;
     const trait = await createTrait(db, { valueType: 'quantitative', unit: 'mm' });
@@ -52,10 +52,10 @@ describe('RFC-33 R2 recordsCsv pending record visibility', () => {
       createdBy: user.id,
     });
 
-    const withoutPending = await recordIds(recordsCsv(db, UNRESTRICTED));
+    const withoutPending = await recordIds(recordsCsv(db, RESTRICTED));
     expect(withoutPending).not.toContain(pending.id);
 
-    const withPending = await recordIds(recordsCsv(db, UNRESTRICTED, { includePending: true }));
+    const withPending = await recordIds(recordsCsv(db, UNRESTRICTED));
     expect(withPending).toContain(pending.id);
   });
 });

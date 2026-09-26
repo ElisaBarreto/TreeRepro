@@ -67,7 +67,7 @@ describe('RFC-72 R1, R2 GET /api/me/dashboard', () => {
         body: {
           speciesId: species.id,
           traitId: trait.id,
-          value: { levelId: trait.levels[0]?.id },
+          value: { levelIds: [trait.levels[0]?.id] },
           sources: { references: [{ id: reference.id }] },
         },
       });

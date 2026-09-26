@@ -1,14 +1,17 @@
 import type {
-  DisputedRecord,
+  ContestedQueueItem,
   MapPendingBody,
   MapResult,
   PendingGroup,
   PendingTrait,
 } from '@treerepro/contracts';
-import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, type SQL, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
+import { contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
+import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
+import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import {
   decodeCompositeCursor,
@@ -20,8 +23,9 @@ import {
   pageOf,
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
+import { contestStandingSql, contestVisibleSql, levelContestedSql } from './contests.ts';
 import { requireTrait, resolveValue } from './curation.ts';
-import { itemQuery, toItem } from './records.ts';
+import { itemQuery, recordVisible, toItem } from './records.ts';
 
 /**
  * The RFC-65 R7 pending predicate over a `trait_records` alias `r`: an
@@ -31,7 +35,8 @@ import { itemQuery, toItem } from './records.ts';
  */
 const PENDING = sql`r.harmonisation <> 'harmonised'
   and r.harmonisation in ('unknown_level', 'multi_value', 'not_numeric')
-  and not exists (select 1 from trait_records c where c.supersedes_record_id = r.id)`;
+  and not exists (select 1 from trait_records c where c.supersedes_record_id = r.id)
+  and not exists (select 1 from record_annotations pw where pw.record_id = r.id and pw.kind = 'withdraw')`;
 
 /**
  * The rows behind every pending queue: `PENDING` over a `trait_records r`
@@ -256,189 +261,134 @@ export async function mapPending(
   });
 }
 
-interface DisputeRow {
-  record_id: string;
-  annotation_id: string;
-  actor_id: string;
-  note: string | null;
-  created_at: Date | string;
-}
-
-/** No actor has withdrawn the record (RFC-63 R6). The id is wrapped as `reviewStatusSql` wraps it. */
-function notWithdrawn(recordId: SQL): SQL {
-  return sql`not exists (select 1 from record_annotations w
-    where w.record_id = ${recordId} and w.kind = 'withdraw')`;
-}
-
 /**
- * The standing disputes as a query: per record, the newest annotation among
- * the actors whose latest stance is `dispute`; excluded once withdrawn, and,
- * with `intent = 'contest'`, kept only when a contest generated that
- * standing annotation (RFC-70 R3). Starts from `record_annotations`
- * (human-scale), never scans `trait_records`. `listDisputed` appends its
- * keyset and order to it and `countDisputed` counts it, so the dashboard's
- * number and the queue it links to are the same rows by construction.
+ * The standing contests (RFC-63 R14) the viewer may see — species, trait and
+ * every level each names (RFC-33 R2) — over a `contests` table in the
+ * caller's query. The queue pages through it and the count counts it, so the
+ * tile and the page can never disagree.
  * @rfc RFC-65 R10
  * @rfc RFC-33 R2, R3
  */
-function disputedQuery(visibility: Visibility, intent?: 'contest'): SQL {
-  return sql`
-    with stances as (
-      select distinct on (a.record_id, a.actor_id) a.record_id, a.actor_id, a.id, a.kind, a.note, a.generated, a.created_at
-      from record_annotations a where a.kind <> 'withdraw'
-      order by a.record_id, a.actor_id, a.id desc),
-    standing as (
-      select distinct on (s.record_id) s.record_id, s.id as annotation_id, s.actor_id, s.note, s.generated, s.created_at
-      from stances s where s.kind = 'dispute'
-      order by s.record_id, s.id desc)
-    select d.record_id, d.annotation_id, d.actor_id, d.note, d.created_at
-    from standing d
-    join trait_records r on r.id = d.record_id
-    join species sp on sp.id = r.species_id
-    join traits tr on tr.id = r.trait_id
-    where ${notWithdrawn(sql`d.record_id`)}
-      and ${intent === 'contest' ? sql`d.generated` : sql`true`}
-      and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
-      and ${traitVisible(visibility, sql`tr.active`)}`;
+function contestedWhere(visibility: Visibility): SQL {
+  return sql`${contestStandingSql(visibility, 'contests')} and ${contestVisibleSql(visibility, contests.id)}`;
 }
 
 /**
- * How many records stand disputed, for the dashboard's `queues.disputed`
- * (RFC-72 R1) — the rows `listDisputed` pages through, counted.
- * @rfc RFC-65 R10
- * @rfc RFC-72 R1
- * @rfc RFC-33 R2, R3
- */
-export async function countDisputed(db: DbExecutor, visibility: Visibility): Promise<number> {
-  const [row] = (await db.execute(
-    sql`select count(*)::int as count from (${disputedQuery(visibility)}) disputed`,
-  )) as unknown as [{ count: number } | undefined];
-  return row?.count ?? 0;
-}
-
-/**
- * How many contests are open, for the dashboard's `queues.contested`
- * (RFC-72 R1, `docs/specs/2026-09-17-workspace-design.md` §4 R1): records with
- * `intent = 'contest'` whose responded record is not withdrawn.
- *
- * **This number and the `?intent=contest` queue it links to may legitimately
- * differ, and neither is wrong.** This counts contest *records*; that queue
- * lists their *targets* (RFC-65 R10), so a record contested twice is two
- * contests and one queue row. A contest withdrawn while another of the same
- * actor still stands also keeps counting here, because the rule conditions on
- * the responded record, while the queue drops a target once the last contest
- * against it is withdrawn and its generated dispute turns neutral (RFC-70 R5).
- * Do not "reconcile" the two by narrowing this predicate: the rule is the
- * specification, and the tile would then report something it does not name.
- * The two predicates shared with `disputedQuery` keep them in step on
- * everything the rule does hold in common.
- *
- * The leading `responds_to_record_id is not null` is redundant against the
- * check constraint `trait_records_intent_check` and deliberate, exactly as
- * `PENDING`'s redundant `<> 'harmonised'` is: `trait_records_responds_to_idx`
- * is partial on that predicate, so without stating it the planner cannot use
- * the index and every reviewer's page load scans `trait_records` — there is
- * no index on `intent`, and this runs uncached on every dashboard call.
+ * How many contests stand, for the dashboard, the health page and the digest
+ * (RFC-72 R1, RFC-52 R1, RFC-74 R3).
  * @rfc RFC-65 R10
  * @rfc RFC-72 R1
  * @rfc RFC-33 R2, R3
  */
 export async function countContested(db: DbExecutor, visibility: Visibility): Promise<number> {
-  const [row] = (await db.execute(sql`
-    select count(*)::int as count
-    from trait_records c
-    join trait_records b on b.id = c.responds_to_record_id
-    join species sp on sp.id = c.species_id
-    join traits tr on tr.id = c.trait_id
-    where c.responds_to_record_id is not null
-      and c.intent = 'contest'
-      and ${notWithdrawn(sql`b.id`)}
-      and ${speciesVisible(visibility, sql`sp.active`, sql`sp.id`)}
-      and ${traitVisible(visibility, sql`tr.active`)}`)) as unknown as [
-    { count: number } | undefined,
-  ];
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(contests)
+    .where(contestedWhere(visibility));
   return row?.count ?? 0;
 }
 
 /**
- * One page of the standing disputes, newest first. Three steps: the page of
- * dispute rows, then the record items through the shared join, the actors
- * through Drizzle so their names are decrypted (RFC-40), and the contests
- * standing behind the page's records — one query each, never one per row.
+ * One page of the standing contests, newest first (keyset on the contest id,
+ * a uuidv7). Four queries whatever the page size, never one per row: the page
+ * (the author's name through Drizzle, which decrypts it, RFC-40), the named
+ * levels with their contested flag, the created records with their targets,
+ * and the record items through the shared item join.
  * @rfc RFC-65 R10
  * @rfc RFC-33 R2, R3
  */
-export async function listDisputed(
+export async function listContested(
   db: DbExecutor,
   visibility: Visibility,
-  input: { cursor?: string; limit: number; intent?: 'contest' },
-): Promise<{ data: DisputedRecord[]; nextCursor: string | null }> {
+  input: { cursor?: string; limit: number },
+): Promise<{ data: ContestedQueueItem[]; nextCursor: string | null }> {
   const after = input.cursor ? decodeCursor(input.cursor) : null;
-  const rows = (await db.execute(sql`${disputedQuery(visibility, input.intent)}
-      and (${after}::uuid is null or d.annotation_id < ${after}::uuid)
-    order by d.annotation_id desc
-    limit ${input.limit + 1}`)) as unknown as DisputeRow[];
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.annotation_id));
+  const rows = await db
+    .select({
+      id: contests.id,
+      speciesId: contests.speciesId,
+      canonicalName: species.canonicalName,
+      traitId: contests.traitId,
+      traitKey: traits.key,
+      valueType: traits.valueType,
+      createdById: users.id,
+      createdByName: users.name,
+      createdAt: contests.createdAt,
+    })
+    .from(contests)
+    .innerJoin(species, eq(species.id, contests.speciesId))
+    .innerJoin(traits, eq(traits.id, contests.traitId))
+    .innerJoin(users, eq(users.id, contests.createdBy))
+    .where(and(contestedWhere(visibility), after === null ? undefined : lt(contests.id, after)))
+    .orderBy(desc(contests.id))
+    .limit(input.limit + 1);
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.id));
   if (page.length === 0) return { data: [], nextCursor };
-  const recordIds = page.map((r) => r.record_id);
-  const [items, actors, contests] = await Promise.all([
-    itemQuery(db).where(inArray(traitRecords.id, recordIds)),
-    db
-      .select({ id: users.id, name: users.name })
-      .from(users)
-      .where(inArray(users.id, [...new Set(page.map((r) => r.actor_id))])),
+  const ids = page.map((r) => r.id);
+
+  const [levels, created] = await Promise.all([
     db
       .select({
-        id: traitRecords.id,
-        respondsToRecordId: traitRecords.respondsToRecordId,
-        valueText: traitRecords.valueText,
-        createdById: traitRecords.createdBy,
-        createdByName: users.name,
+        contestId: contestLevels.contestId,
+        levelId: contestLevels.levelId,
+        key: traitLevels.key,
+        contested: sql<boolean>`${levelContestedSql(
+          visibility,
+          sql`${contests.speciesId}`,
+          sql`${contests.traitId}`,
+          sql`${contestLevels.levelId}`,
+        )}`,
       })
-      .from(traitRecords)
-      .leftJoin(users, eq(users.id, traitRecords.createdBy))
-      .where(
-        and(
-          inArray(traitRecords.respondsToRecordId, recordIds),
-          eq(traitRecords.intent, 'contest'),
-          notWithdrawn(sql`${traitRecords.id}`),
-        ),
-      )
-      .orderBy(desc(traitRecords.id)),
+      .from(contestLevels)
+      .innerJoin(contests, eq(contests.id, contestLevels.contestId))
+      .innerJoin(traitLevels, eq(traitLevels.id, contestLevels.levelId))
+      .where(inArray(contestLevels.contestId, ids))
+      .orderBy(traitLevels.key),
+    db
+      .select({
+        contestId: contestRecords.contestId,
+        recordId: contestRecords.recordId,
+        targetId: traitRecords.respondsToRecordId,
+      })
+      .from(contestRecords)
+      .innerJoin(traitRecords, eq(traitRecords.id, contestRecords.recordId))
+      .where(inArray(contestRecords.contestId, ids))
+      .orderBy(traitRecords.recordCode),
   ]);
+  const itemIds = [
+    ...new Set(created.flatMap((c) => (c.targetId ? [c.recordId, c.targetId] : [c.recordId]))),
+  ];
+  // Only records the viewer can see; a contest's species and trait are its
+  // records' own, and the contest filter above already checked them.
+  const items =
+    itemIds.length === 0
+      ? []
+      : await itemQuery(db, visibility).where(
+          and(inArray(traitRecords.id, itemIds), recordVisible(visibility)),
+        );
   const itemById = new Map(items.map((i) => [i.record.id, toItem(i)]));
-  const actorById = new Map(actors.map((a) => [a.id, a]));
-  // `trait_records.id` is a uuidv7, so id descending is newest first (RFC-65 R10).
-  const contestsByRecord = new Map<string, DisputedRecord['contestedBy']>();
-  for (const contest of contests) {
-    if (contest.respondsToRecordId === null) continue;
-    const standing = contestsByRecord.get(contest.respondsToRecordId) ?? [];
-    standing.push({
-      id: contest.id,
-      valueText: contest.valueText,
-      createdBy:
-        contest.createdById && contest.createdByName
-          ? { id: contest.createdById, name: contest.createdByName }
-          : null,
-    });
-    contestsByRecord.set(contest.respondsToRecordId, standing);
-  }
-  const data = page.flatMap((r) => {
-    const item = itemById.get(r.record_id);
-    const actor = actorById.get(r.actor_id);
-    if (!item || !actor) return [];
-    return [
-      {
-        ...item,
-        latestDispute: {
-          id: r.annotation_id,
-          actor,
-          note: r.note,
-          createdAt: new Date(r.created_at).toISOString(),
-        },
-        contestedBy: contestsByRecord.get(r.record_id) ?? [],
-      },
-    ];
+
+  const data = page.map((r): ContestedQueueItem => {
+    const own = created.filter((c) => c.contestId === r.id);
+    const quantitative = r.valueType === 'quantitative';
+    const targetId = own.find((c) => c.targetId !== null)?.targetId;
+    return {
+      id: r.id,
+      species: { id: r.speciesId, canonicalName: r.canonicalName },
+      trait: { id: r.traitId, key: r.traitKey },
+      createdBy: { id: r.createdById, name: r.createdByName },
+      createdAt: r.createdAt.toISOString(),
+      levels: quantitative
+        ? null
+        : levels
+            .filter((l) => l.contestId === r.id)
+            .map((l) => ({ levelId: l.levelId, key: l.key, contested: l.contested })),
+      target: quantitative && targetId ? (itemById.get(targetId) ?? null) : null,
+      records: own.flatMap((c) => {
+        const item = itemById.get(c.recordId);
+        return item ? [item] : [];
+      }),
+    };
   });
   return { data, nextCursor };
 }

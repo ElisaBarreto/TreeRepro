@@ -5,8 +5,8 @@ import { contributionSummary } from '../dataset/contributions.ts';
 import { coverageTotals } from '../dataset/coverage.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
-import { countContested, countDisputed, countPendingGroups } from '../dataset/queues.ts';
-import { itemQuery, toItem } from '../dataset/records.ts';
+import { countContested, countPendingGroups } from '../dataset/queues.ts';
+import { itemQuery, recordVisible, toItem } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
@@ -210,6 +210,7 @@ async function awaitingValidation(
         and ps.plot_id = any(${sql.param(plotIds)}::uuid[]))`,
     sql`not exists (select 1 from record_annotations a
       where a.record_id = trait_records.id and a.kind in ('confirm', 'withdraw'))`,
+    recordVisible(visibility),
   ) as SQL;
   const [rows, [total]] = await Promise.all([
     db
@@ -237,18 +238,27 @@ async function awaitingValidation(
  *
  * `inArray` does not preserve the order of the id list, so the newest-first
  * guarantee of RFC-72 R1 is re-applied here by mapping the ordered ids over a
- * map of the items, the shape `listDisputed` uses for the same reason. An id
+ * map of the items, the shape `listContested` uses for the same reason. An id
  * whose record has since gone is dropped rather than left as a hole.
  * @rfc RFC-72 R1
  * @rfc RFC-40 R1
  */
 async function hydrateAwaiting(
   db: DbExecutor,
+  visibility: Visibility,
   cached: AwaitingIds | null,
 ): Promise<Dashboard['contributor']['awaitingValidation']> {
   if (cached === null) return null;
   if (cached.recordIds.length === 0) return { count: cached.count, records: [] };
-  const items = await itemQuery(db).where(inArray(traitRecords.id, cached.recordIds));
+  // The ids are cached: a record withdrawn or hidden since then drops out.
+  const items = await itemQuery(db, visibility).where(
+    and(
+      inArray(traitRecords.id, cached.recordIds),
+      speciesVisible(visibility),
+      traitVisible(visibility),
+      recordVisible(visibility),
+    ),
+  );
   const itemById = new Map(items.map((i) => [i.record.id, toItem(i)]));
   return {
     count: cached.count,
@@ -357,10 +367,9 @@ async function curationSection(
   viewer: DashboardViewer,
 ): Promise<Dashboard['curation']> {
   if (!viewer.permissions.has('records.review')) return null;
-  const [coverage, pendingGroups, disputed, contested, proposals] = await Promise.all([
+  const [coverage, pendingGroups, contested, proposals] = await Promise.all([
     coverageTotals(ctx, visibility),
     countPendingGroups(ctx.db, visibility),
-    countDisputed(ctx.db, visibility),
     countContested(ctx.db, visibility),
     // RFC-75 R7. A proposal is about a species that does not exist yet, so
     // RFC-33 has nothing to scope this count by: every reviewer sees the same
@@ -370,7 +379,7 @@ async function curationSection(
     // for a queue whose API would answer 403 is worse than no number.
     viewer.permissions.has('taxa.manage') ? countOpenProposals(ctx.db) : 0,
   ]);
-  return { coverage, queues: { pendingGroups, disputed, contested, proposals } };
+  return { coverage, queues: { pendingGroups, contested, proposals } };
 }
 
 /**
@@ -407,7 +416,7 @@ export async function getDashboard(
       contributorSection(ctx, visibility, viewer, plotIds),
     ).then(async (entry) => ({
       ...entry.value,
-      awaitingValidation: await hydrateAwaiting(ctx.db, entry.value.awaitingValidation),
+      awaitingValidation: await hydrateAwaiting(ctx.db, visibility, entry.value.awaitingValidation),
     })),
     curationSection(ctx, visibility, viewer),
   ]);

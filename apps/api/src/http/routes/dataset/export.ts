@@ -4,7 +4,7 @@ import { recordAudit } from '../../../audit/audit.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { recordsCsv } from '../../../dataset/export.ts';
 import type { AppEnv } from '../../env.ts';
-import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
+import { requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 
 /**
@@ -20,10 +20,10 @@ export function exportRoutes(ctx: AuthContext) {
     async (c) => {
       // Resolved before the audit entry: a viewer that cannot be resolved is
       // an export that never started (RFC-66 R6).
+      // RFC-33 R2's record clause (`recordVisible`, resolved from `visibility`
+      // itself) decides which records the stream carries, `visibility.review`
+      // included, so no separate permission read is needed here.
       const visibility = await visibilityOf(ctx, c);
-      // RFC-33 R2's record clause: a non-harmonised record is visible only to
-      // a viewer holding `records.review`.
-      const includePending = currentPermissions(c).has('records.review');
       await recordAudit(ctx.db, {
         actorUserId: currentUser(c).id,
         action: 'dataset.exported',
@@ -33,7 +33,7 @@ export function exportRoutes(ctx: AuthContext) {
       c.header('Content-Type', 'text/csv; charset=utf-8');
       c.header('Content-Disposition', `attachment; filename="treerepro-records-${day}.csv"`);
       c.header('Cache-Control', 'no-store');
-      return c.body(recordsCsv(ctx.db, visibility, { includePending }));
+      return c.body(recordsCsv(ctx.db, visibility));
     },
   );
 }

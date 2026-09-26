@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ReviewBadge } from './ReviewBadge.tsx';
 
 describe('RFC-63 R6 ReviewBadge', () => {
-  it('shows the four states: confirmed green, disputed red, withdrawn struck through', () => {
+  it('shows the three states: contested red, validated green, unvalidated neutral', () => {
     render(
       <div>
         {REVIEW_STATUSES.map((status) => (
@@ -12,11 +12,8 @@ describe('RFC-63 R6 ReviewBadge', () => {
         ))}
       </div>,
     );
-    expect(screen.getByText('unreviewed').className).toContain('mist');
-    expect(screen.getByText('confirmed').className).toContain('canopy-200');
-    expect(screen.getByText('disputed').className).toContain('red');
-    const withdrawn = screen.getByText('withdrawn');
-    expect(withdrawn.className).toContain('line-through');
-    expect(withdrawn.parentElement?.className).toContain('mist');
+    expect(screen.getByText('Contested').className).toContain('red');
+    expect(screen.getByText('Validated').className).toContain('canopy-200');
+    expect(screen.getByText('Unvalidated').className).toContain('mist');
   });
 });

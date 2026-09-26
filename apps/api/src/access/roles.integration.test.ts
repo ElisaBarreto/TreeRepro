@@ -1,4 +1,4 @@
-import { PERMISSION_KEYS } from '@treerepro/contracts';
+import { ADMIN_ONLY_PERMISSIONS, PERMISSION_KEYS } from '@treerepro/contracts';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { describe, expect, inject, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
@@ -87,6 +87,26 @@ describe('RFC-31 R3, R4, R5 role services', () => {
       { path: 'permissions', message: 'users.fly' },
       { path: 'permissions', message: 'nope' },
     ]);
+  });
+
+  it('RFC-31 R15 no custom role may hold dataset.export or records.withdraw_imported', async () => {
+    const role = await createRole(ctx(), {
+      name: uniq(),
+      permissions: ['users.read'],
+      actorUserId: null,
+    });
+    for (const key of ['dataset.export', 'records.withdraw_imported']) {
+      for (const attempt of [
+        createRole(ctx(), { name: uniq(), permissions: ['users.read', key], actorUserId: null }),
+        updateRole(ctx(), { id: role.id, permissions: ['users.read', key], actorUserId: null }),
+      ]) {
+        const err = await attempt.catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(AppError);
+        expect((err as AppError).code).toBe('VALIDATION_FAILED');
+        expect((err as AppError).details).toEqual([{ path: 'permissions', message: key }]);
+      }
+    }
+    expect((await getRole(t.db, role.id))?.permissions).toEqual(['users.read']);
   });
 
   it('updates fields and permissions, audits the changed fields and invalidates every holder', async () => {
@@ -485,12 +505,12 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
 
   it('R12 updateRole adds only permissions the actor holds; a permission the actor lacks may stay or go', async () => {
     const { user: actor } = await delegator();
-    const role = await insertRole(t.db, { permissions: ['dataset.export'] });
+    const role = await insertRole(t.db, { permissions: ['health.read'] });
     expect(
       await code(
         updateRole(ctx(), {
           id: role.id,
-          permissions: ['dataset.export', 'traits.manage'],
+          permissions: ['health.read', 'traits.manage'],
           actorUserId: actor.id,
         }),
       ),
@@ -499,12 +519,12 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
       targetType: 'role',
       metadata: { reason: 'ceiling' },
     });
-    expect((await getRole(t.db, role.id))?.permissions).toEqual(['dataset.export']);
+    expect((await getRole(t.db, role.id))?.permissions).toEqual(['health.read']);
     expect(
       await code(
         updateRole(ctx(), {
           id: role.id,
-          permissions: ['dataset.export', 'users.read'],
+          permissions: ['health.read', 'users.read'],
           actorUserId: actor.id,
         }),
       ),
@@ -572,11 +592,9 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     const { user: target } = await createUser(t.db);
     await setUserRoles(ctx(), { userId: target.id, roleIds: [admin], actorUserId: null });
     expect(await userIdsWithRole(t.db, admin)).toContain(target.id);
-    const role = await createRole(ctx(), {
-      name: uniq(),
-      permissions: [...PERMISSION_KEYS],
-      actorUserId: null,
-    });
-    expect(role.permissions).toEqual([...PERMISSION_KEYS].sort());
+    // Every key a custom role may hold (R15 keeps the admin-only ones out).
+    const all = PERMISSION_KEYS.filter((k) => !ADMIN_ONLY_PERMISSIONS.includes(k));
+    const role = await createRole(ctx(), { name: uniq(), permissions: all, actorUserId: null });
+    expect(role.permissions).toEqual([...all].sort());
   });
 });

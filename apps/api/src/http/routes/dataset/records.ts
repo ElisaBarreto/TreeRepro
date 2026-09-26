@@ -1,8 +1,8 @@
 import {
   annotateRecordBodySchema,
   createRecordBodySchema,
+  cursorQuerySchema,
   idParamSchema,
-  listDisputedQuerySchema,
   listRecordsQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
@@ -11,7 +11,12 @@ import { Hono } from 'hono';
 import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { annotateRecord, createRecords } from '../../../dataset/curation.ts';
-import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
+import {
+  listContested,
+  mapPending,
+  pendingGroups,
+  pendingTraits,
+} from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
 import type { AppEnv } from '../../env.ts';
@@ -23,7 +28,7 @@ import { validate } from '../../validate.ts';
 
 /**
  * @rfc RFC-63 R8, R9
- * @rfc RFC-65 R1, R2, R3, R4
+ * @rfc RFC-65 R1, R3, R4
  * @rfc RFC-65 R7-R9
  * @rfc RFC-70 R1-R6
  * @rfc RFC-33 R2-R5
@@ -50,6 +55,7 @@ export function recordRoutes(ctx: AuthContext) {
           referenceIds,
           intent: body.intent,
           respondsToRecordId: body.respondsToRecordId,
+          contestedLevelIds: body.contestedLevelIds,
           rawValue: body.rawValue,
           note: body.note,
           secondaryReferenceId: body.secondaryReferenceId,
@@ -73,27 +79,31 @@ export function recordRoutes(ctx: AuthContext) {
       async (c) => {
         const body = c.req.valid('json');
         const actor = currentUser(c);
+        const permissions = currentPermissions(c);
         const visibility = await visibilityOf(ctx, c);
-        const referenceId = body.reference
-          ? await resolveSourceRef(
-              { db: ctx.db, doi: ctx.doi },
-              actor.id,
-              body.reference,
-              'reference',
-            )
-          : undefined;
+        const referenceId =
+          body.kind === 'confirm' && body.referenceSource
+            ? await resolveSourceRef(
+                { db: ctx.db, doi: ctx.doi },
+                actor.id,
+                body.referenceSource,
+                'referenceSource',
+              )
+            : undefined;
         const record = await annotateRecord(ctx.db, visibility, {
           recordId: c.req.valid('param').id,
           kind: body.kind,
-          note: body.note,
           referenceId,
           actorId: actor.id,
-          canWithdrawAny: currentPermissions(c).has('records.withdraw'),
-          canReview: currentPermissions(c).has('records.review'),
+          canWithdrawAny: permissions.has('records.withdraw'),
+          canWithdrawImported: permissions.has('records.withdraw_imported'),
         });
         await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
           actorId: actor.id,
         });
+        // A withdraw leaves nothing visible to answer with (RFC-33 R2, plan
+        // 13g amendment 2): `200 { data: null }` rather than a detail.
+        if (record === null) return c.json({ data: null }, 200);
         return c.json({ data: record }, 201);
       },
     )
@@ -110,6 +120,8 @@ export function recordRoutes(ctx: AuthContext) {
           referenceId: q.referenceId,
           cursor: q.cursor,
           limit: q.limit,
+          sort: q.sort,
+          order: q.order,
         });
         return c.json({ data, meta: { nextCursor } });
       },
@@ -156,14 +168,14 @@ export function recordRoutes(ctx: AuthContext) {
     .get(
       '/disputed',
       requirePermission(ctx, 'records.review'),
-      validate('query', listDisputedQuerySchema),
+      validate('query', cursorQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
-        const { data, nextCursor } = await listDisputed(ctx.db, visibility, {
+        // RFC-65 R10: the standing contests; the path predates them (Spec note 10).
+        const { data, nextCursor } = await listContested(ctx.db, visibility, {
           cursor: q.cursor,
           limit: q.limit,
-          intent: q.intent,
         });
         return c.json({ data, meta: { nextCursor } });
       },

@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
   createImportBatch,
   createRecord,
   createReference,
   createSpecies,
+  createTrait,
   createVisibilityFixture,
   levelByKey,
   traitByKey,
@@ -70,7 +71,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       level: { id: blue.id, key: 'blue' },
       numericValue: null,
       harmonisation: 'harmonised',
-      review: 'unreviewed',
+      review: 'unvalidated',
       primaryReference: {
         id: ref.id,
         citationKey: ref.citationKey,
@@ -84,6 +85,9 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       createdBy: null,
       intent: null,
       respondsTo: null,
+      validationCount: 0,
+      contestCount: 0,
+      contested: false,
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
       references: [
@@ -136,27 +140,27 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     const bob = (await createUser(t.db, { name: 'Bob' })).user;
     const status = async () => (await getRecord(t.db, UNRESTRICTED, rec.id))?.review;
 
-    expect(await status()).toBe('unreviewed');
+    expect(await status()).toBe('unvalidated');
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'confirm' });
-    expect(await status()).toBe('confirmed');
+    expect(await status()).toBe('validated');
+    // RFC-63 R6, R7: `dispute` and `neutral` rows are ignored, and a
+    // validation is never undone.
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: bob.id, kind: 'dispute', note: 'Source says purple' });
-    expect(await status()).toBe('disputed');
-    await t.db
-      .insert(recordAnnotations)
-      .values({ recordId: rec.id, actorId: bob.id, kind: 'neutral' });
-    expect(await status()).toBe('confirmed'); // Bob's latest stance is neutral; Ada still confirms
+    expect(await status()).toBe('validated');
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'neutral' });
-    expect(await status()).toBe('unreviewed');
+    expect(await status()).toBe('validated');
     await t.db
       .insert(recordAnnotations)
       .values({ recordId: rec.id, actorId: ada.id, kind: 'withdraw', note: 'Entered by mistake' });
-    expect(await status()).toBe('withdrawn');
+    // RFC-63 R6, RFC-33 R2: a withdrawn record has left the dataset — it is
+    // visible to no viewer, so it carries no review state for anyone.
+    expect(await getRecord(t.db, UNRESTRICTED, rec.id)).toBeNull();
   });
 
   it('reviewStatusSql keeps the record id qualified when called from a single-table select', async () => {
@@ -174,14 +178,15 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
     const { user } = await createUser(t.db);
     await t.db
       .insert(recordAnnotations)
-      .values({ recordId: rec.id, actorId: user.id, kind: 'withdraw', note: 'Entered by mistake' });
+      .values({ recordId: rec.id, actorId: user.id, kind: 'confirm' });
     // A bare `traitRecords.id` here (no join) is the case a caller selecting
-    // from trait_records alone hits; the helper must qualify it itself.
+    // from trait_records alone hits; the helper must qualify it itself, or
+    // it would compare the annotation's own id and answer `unvalidated`.
     const [row] = await t.db
-      .select({ review: reviewStatusSql(traitRecords.id).as('review') })
+      .select({ review: reviewStatusSql(UNRESTRICTED, traitRecords.id).as('review') })
       .from(traitRecords)
       .where(eq(traitRecords.id, rec.id));
-    expect(row?.review).toBe('withdrawn');
+    expect(row?.review).toBe('validated');
   });
 
   it('R8 detail carries raw fields, batch and annotations, no accepted history; manual records carry their author', async () => {
@@ -293,6 +298,44 @@ describe('RFC-33 R3, R4 listRecords and getRecord by viewer', () => {
   });
 });
 
+describe('RFC-70 R6 getRecord lists only visible responses and successors', () => {
+  const t = useTestDb();
+
+  it('a withdrawn quantitative contest record no longer appears in its target responses', async () => {
+    const { user } = await createUser(t.db);
+    const { user: other } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const q = (v: number, by: string, extra: object = {}) =>
+      createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        valueText: String(v),
+        numericValue: v,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: by,
+        ...extra,
+      });
+    const target = await q(1, user.id);
+    const contest = await q(2, other.id, { intent: 'contest', respondsToRecordId: target.id });
+    const successor = await q(3, other.id, { supersedesRecordId: target.id });
+    const before = await getRecord(t.db, UNRESTRICTED, target.id);
+    expect(before?.responses.map((r) => r.id)).toEqual([contest.id]);
+    expect(before?.supersededBy).toEqual([{ id: successor.id }]);
+
+    for (const recordId of [contest.id, successor.id]) {
+      await t.db
+        .insert(recordAnnotations)
+        .values({ recordId, actorId: other.id, kind: 'withdraw' });
+    }
+    const after = await getRecord(t.db, UNRESTRICTED, target.id);
+    expect(after?.responses).toEqual([]);
+    expect(after?.supersededBy).toEqual([]);
+  });
+});
+
 describe('RFC-63 R8, R9 record code, quantitative value and references (spec R-2, R-4, R-5)', () => {
   const t = useTestDb();
 
@@ -389,5 +432,376 @@ describe('RFC-63 R8, R9 record code, quantitative value and references (spec R-2
         shortCitation: null,
       },
     ]);
+  });
+});
+
+describe('RFC-63 R9 records list sort (spec §2)', () => {
+  const t = useTestDb();
+
+  it('sorts by value, references, origin and added in both orders, and pages every order with limit 1', async () => {
+    const { user } = await createUser(t.db);
+    const refZ = await createReference(t.db, { citationKey: `zeta-${Date.now()}` });
+    const refA = await createReference(t.db, { citationKey: `alpha-${Date.now()}` });
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const batch = await createImportBatch(t.db);
+    // r10 and r2 share refA (alpha); r9 and r9b share refZ (zeta) and tie on
+    // value (9) — both ties exercise the id tiebreak; r9b vs r9 also differ
+    // in origin, separating them under that sort.
+    const r10 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '10',
+      numericValue: 10,
+      primaryReferenceId: refA.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const r9 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '9',
+      numericValue: 9,
+      primaryReferenceId: refZ.id,
+      importBatchId: batch.id,
+    });
+    const r9b = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      // A distinct `valueText` only to dodge `trait_records_claim_key`
+      // (species, trait, valueText, rawValue, primaryReferenceId,
+      // secondaryReferenceId) — the sort keys below (numericValue,
+      // primaryReferenceId, origin) still tie with r9's.
+      valueText: '9b',
+      numericValue: 9,
+      primaryReferenceId: refZ.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const r2 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      primaryReferenceId: refA.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const ids = async (
+      sort?: 'value' | 'references' | 'origin' | 'added',
+      order?: 'asc' | 'desc',
+    ) =>
+      (
+        await listRecords(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          limit: 50,
+          sort,
+          order,
+        })
+      ).data.map((r) => r.id);
+
+    const expected: Record<string, string[]> = {
+      'added:desc': [r2.id, r9b.id, r9.id, r10.id],
+      'added:asc': [r10.id, r9.id, r9b.id, r2.id],
+      'value:asc': [r2.id, r9.id, r9b.id, r10.id],
+      'value:desc': [r10.id, r9b.id, r9.id, r2.id],
+      'references:asc': [r10.id, r2.id, r9.id, r9b.id],
+      'references:desc': [r9b.id, r9.id, r2.id, r10.id],
+      'origin:asc': [r9.id, r10.id, r9b.id, r2.id],
+      'origin:desc': [r2.id, r9b.id, r10.id, r9.id],
+    };
+
+    for (const [key, want] of Object.entries(expected)) {
+      const [sort, order] = key.split(':') as [
+        'value' | 'references' | 'origin' | 'added',
+        'asc' | 'desc',
+      ];
+      expect(await ids(sort, order), key).toEqual(want);
+
+      // Full paging with limit 1 returns every record exactly once, in order.
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listRecords(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          limit: 1,
+          sort,
+          order,
+          cursor,
+        });
+        seen.push(...page.data.map((r) => r.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      expect(seen, key).toEqual(want);
+    }
+  });
+
+  it('value sort orders a categorical trait by level key, with the id tiebreak', async () => {
+    const trait = await createTrait(t.db); // categorical, levels 'alpha' and 'beta' (createTrait default)
+    const alpha = trait.levels.find((l) => l.key === 'alpha');
+    const beta = trait.levels.find((l) => l.key === 'beta');
+    if (!alpha || !beta) throw new Error('createTrait: expected alpha and beta levels');
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    const a1 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'alpha',
+      levelId: alpha.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+    const a2 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      // A distinct `valueText` only to dodge `trait_records_claim_key`; the
+      // level (the sort key) still ties with a1's.
+      valueText: 'alpha (2)',
+      levelId: alpha.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: (await createUser(t.db)).user.id,
+    });
+    const b1 = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'beta',
+      levelId: beta.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+
+    const ids = async (order: 'asc' | 'desc') =>
+      (
+        await listRecords(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          limit: 50,
+          sort: 'value',
+          order,
+        })
+      ).data.map((r) => r.id);
+
+    // a1 and a2 tie on the level key ('alpha'); the id (creation order) breaks it.
+    expect(await ids('asc')).toEqual([a1.id, a2.id, b1.id]);
+    expect(await ids('desc')).toEqual([b1.id, a2.id, a1.id]);
+  });
+
+  it('value sort of a referenceId list mixes a categorical and a quantitative trait without NULL reaching the comparison', async () => {
+    const ref = await createReference(t.db);
+    const quantTrait = await createTrait(t.db, { valueType: 'quantitative' });
+    const catTrait = await createTrait(t.db);
+    const alpha = catTrait.levels.find((l) => l.key === 'alpha');
+    if (!alpha) throw new Error('createTrait: expected an alpha level');
+    const sp1 = await createSpecies(t.db);
+    const sp2 = await createSpecies(t.db);
+    const numeric = await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: quantTrait.id,
+      valueText: '5',
+      numericValue: 5,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+    const categorical = await createRecord(t.db, {
+      speciesId: sp2.id,
+      traitId: catTrait.id,
+      valueText: 'alpha',
+      levelId: alpha.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+
+    // Ascending: the categorical record's sentinel (PostgreSQL numeric
+    // Infinity) sorts after every real quantitative value.
+    const asc = await listRecords(t.db, UNRESTRICTED, {
+      referenceId: ref.id,
+      limit: 50,
+      sort: 'value',
+      order: 'asc',
+    });
+    expect(asc.data.map((r) => r.id)).toEqual([numeric.id, categorical.id]);
+
+    const desc = await listRecords(t.db, UNRESTRICTED, {
+      referenceId: ref.id,
+      limit: 50,
+      sort: 'value',
+      order: 'desc',
+    });
+    expect(desc.data.map((r) => r.id)).toEqual([categorical.id, numeric.id]);
+
+    // Full paging with limit 1 still returns both exactly once.
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listRecords(t.db, UNRESTRICTED, {
+        referenceId: ref.id,
+        limit: 1,
+        sort: 'value',
+        order: 'asc',
+        cursor,
+      });
+      seen.push(...page.data.map((r) => r.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(seen).toEqual([numeric.id, categorical.id]);
+  });
+
+  it('a cursor of another sort, or added’s plain cursor, is refused', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    for (const n of [1, 2]) {
+      await createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        valueText: String(n),
+        numericValue: n,
+        primaryReferenceId: ref.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+    }
+
+    // `added`'s plain uuid cursor decoded as a composite cursor.
+    const addedPage = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 1,
+    });
+    await expect(
+      listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'value',
+        cursor: addedPage.nextCursor ?? '',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+    // A `value` cursor decoded under `references` (same arity, tagged with
+    // the sort's own name so the mismatch is still caught).
+    const valuePage = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 1,
+      sort: 'value',
+      order: 'asc',
+    });
+    await expect(
+      listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'references',
+        order: 'asc',
+        cursor: valuePage.nextCursor ?? '',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+
+    // A `references` cursor decoded under `origin` (different arity).
+    const referencesPage = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 1,
+      sort: 'references',
+      order: 'asc',
+    });
+    await expect(
+      listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'origin',
+        order: 'asc',
+        cursor: referencesPage.nextCursor ?? '',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('order defaults to desc (controller ruling: RFC-63 R9 names one default, "added desc") for every sort', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const low = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '1',
+      numericValue: 1,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    const high = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    // No `order` given: value sort still answers descending, same as added's default.
+    const value = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 50,
+      sort: 'value',
+    });
+    expect(value.data.map((r) => r.id)).toEqual([high.id, low.id]);
+  });
+
+  it('value sort pages two values that differ only past the 15th significant digit, without dropping or repeating a row', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    // The literal numeric text lands in the query verbatim (not a bound
+    // parameter), so PostgreSQL parses it at full precision — unlike a JS
+    // `number`, which cannot represent 19 significant digits and would
+    // round both values to the same double, hiding exactly the bug this
+    // guards against (records.ts's `valueSortKey` reads PostgreSQL's exact
+    // `::text` cast, never `numericValue`'s `mode: 'number'` JS double).
+    const [lowRow] = await t.db.execute(sql`
+      insert into trait_records (species_id, trait_id, value_text, harmonisation, numeric_value, primary_reference_id, origin, created_by)
+      values (${sp.id}, ${trait.id}, 'hp-low', 'harmonised', 1.234567890123456781, ${ref.id}, 'manual', ${user.id})
+      returning id`);
+    const [highRow] = await t.db.execute(sql`
+      insert into trait_records (species_id, trait_id, value_text, harmonisation, numeric_value, primary_reference_id, origin, created_by)
+      values (${sp.id}, ${trait.id}, 'hp-high', 'harmonised', 1.234567890123456789, ${ref.id}, 'manual', ${user.id})
+      returning id`);
+    const low = (lowRow as { id: string }).id;
+    const high = (highRow as { id: string }).id;
+
+    const full = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 50,
+      sort: 'value',
+      order: 'asc',
+    });
+    expect(full.data.map((r) => r.id)).toEqual([low, high]);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listRecords(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        limit: 1,
+        sort: 'value',
+        order: 'asc',
+        cursor,
+      });
+      seen.push(...page.data.map((r) => r.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(seen).toEqual([low, high]);
   });
 });
