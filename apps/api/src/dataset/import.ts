@@ -535,7 +535,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
       // R6 number rule: length cap, pattern, then the magnitude bound on the cast.
       const asNumber = (column: string) =>
         tx`case when length(${tx(column)}) <= ${NUMBER_MAX_LENGTH} and ${tx(column)} ~ ${NUMBER_PATTERN_SQL}
-                then (case when abs(${tx(column)}::numeric) < 1e308 then ${tx(column)}::numeric end) end`;
+                then (case when abs(${tx(column)}::numeric) < ${String(NUMBER_MAX_MAGNITUDE)}::numeric then ${tx(column)}::numeric end) end`;
       // R4 staging
       await tx`
         create temporary table import_staging (
@@ -622,8 +622,10 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           value_num = ${asNumber('value')}, min_num = ${asNumber('min_text')},
           max_num = ${asNumber('max_text')}, sd_num = ${asNumber('sd_text')},
           se_num = ${asNumber('se_text')},
-          n_int = case when n_text ~ '^[0-9]{1,10}$' and n_text::bigint between 1 and 2147483647
-                       then n_text::integer end`;
+          -- the cast sits inside the regex branch: PostgreSQL does not order AND.
+          n_int = case when n_text ~ '^[0-9]{1,10}$'
+                       then (case when n_text::bigint between 1 and 2147483647
+                                  then n_text::integer end) end`;
       // R7 invalid_measurement, on rows whose trait is known; the reject insert
       // ranks it after every other reason.
       await tx`

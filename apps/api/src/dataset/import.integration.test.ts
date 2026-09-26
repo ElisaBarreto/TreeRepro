@@ -773,5 +773,42 @@ describe('RFC-64 importRecords', () => {
       });
       expect(await orderOf()).toBe('Sapindales');
     });
+
+    it('R7 invalid_measurement: the statistic columns are checked on a quantitative trait only', async () => {
+      const tag = randomBytes(4).toString('hex');
+      const n = randomInt(100_000_000, 999_999_000);
+      let next = 0;
+      const row = (cells: Partial<Record<Column, string>>) =>
+        statLine({
+          ID: `EB_${n + next++}`,
+          primary_reference: 'STATREF',
+          wcvp_species: `Statistica scopa-${tag}`,
+          final_standard_trait: 'seed_mass_dry',
+          trait_value_type: 'quantitative',
+          ...cells,
+        });
+      const categorical = { final_standard_trait: 'flower_color', trait_value_type: 'categorical' };
+      const batch = await importRecords(t.db, {
+        filePath: await writeRecords('import-stat-scope-', [
+          row({ ...categorical, harmonised_value: 'black', sd: 'abc' }),
+          row({ ...categorical, harmonised_value: 'brown', min: '20', max: '4' }),
+          row({ harmonised_value: '', sample_size: '30' }),
+          row({ harmonised_value: '1', sample_size: '9999999999' }),
+        ]),
+      });
+      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 2, rowsRejected: 2 });
+      for (const rowNo of [1, 2]) {
+        expect(await recordAt(batch.id, rowNo)).toMatchObject({
+          harmonisation: 'harmonised',
+          minValue: null,
+          maxValue: null,
+          sdValue: null,
+        });
+      }
+      expect((await rejectsOf(batch.id)).map((r) => [r.rowNo, r.reason])).toEqual([
+        [3, 'invalid_measurement'],
+        [4, 'invalid_measurement'],
+      ]);
+    });
   });
 });
