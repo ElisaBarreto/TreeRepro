@@ -1,15 +1,17 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { eq } from 'drizzle-orm';
+import { basename, join } from 'node:path';
+import { eq, sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { describe, expect, it } from 'vitest';
 import { createPlot, createSpecies } from '../../../test/helpers/dataset.ts';
 import { useTestDb } from '../../../test/helpers/db.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import { auditLog } from '../../db/schema/audit-log.ts';
-import { importRejects } from '../../db/schema/imports.ts';
+import { importBatches, importRejects } from '../../db/schema/imports.ts';
 import { plotSpecies, plots, userPlots } from '../../db/schema/plots.ts';
-import { importPlotSpecies, importPlots, importUserPlots } from './plots.ts';
+import { runSupplementaryImport } from './framework.ts';
+import { importPlotSpecies, importPlots, importUserPlots, USER_PLOTS_HEADER } from './plots.ts';
 
 async function csv(lines: string[], eol = '\n'): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'plots-import-'));
@@ -156,9 +158,9 @@ describe('RFC-68 R11 import:user-plots', () => {
     // Verify rejects do NOT persist plaintext email (RFC-40 R1)
     const unknownUserReject = rejects.find((r) => r.reason === 'unknown_user');
     expect(unknownUserReject?.rawRow.user_email).not.toContain(`unknown-email-`);
-    expect(unknownUserReject?.rawRow.user_email).toMatch(/^u\*\*\*@example\.com$/);
+    expect(unknownUserReject?.rawRow.user_email).toBe('***');
     const unknownPlotReject = rejects.find((r) => r.reason === 'unknown_plot');
-    expect(unknownPlotReject?.rawRow.user_email).not.toBe(regularUser.email);
+    expect(unknownPlotReject?.rawRow.user_email).toBe('***');
 
     // Check assignments
     const regAssignments = await t.db
@@ -173,5 +175,101 @@ describe('RFC-68 R11 import:user-plots', () => {
       .where(eq(userPlots.userId, invitedUser.id));
     expect(invAssignments).toHaveLength(1);
     expect(invAssignments[0]?.plotId).toBe(plotA.id);
+  });
+});
+
+describe('RFC-68 R11 migration 0041', () => {
+  const t = useTestDb();
+
+  it('redacts the e-mail of rejects written with the old partial mask', async () => {
+    const { user } = await createUser(t.db);
+    const plot = await createPlot(t.db);
+    const file = await csv(['user_email,plot_id', `ghost-${Date.now()}@example.com,${plot.code}`]);
+    const batch = await importUserPlots(t.db, { filePath: file, runBy: user.id });
+    await t.db
+      .update(importRejects)
+      .set({ rawRow: { user_email: 'g***@example.com', plot_id: plot.code } })
+      .where(eq(importRejects.batchId, batch.id));
+
+    const [failedBatch, otherBatch] = await t.db
+      .insert(importBatches)
+      .values([
+        {
+          fileName: 'legacy.csv',
+          fileSha256: 'x',
+          kind: 'user_plots',
+          status: 'failed',
+          error: 'missing data — COPY import_staging, line 2: "old@example.com"',
+        },
+        {
+          fileName: 'legacy.csv',
+          fileSha256: 'y',
+          kind: 'species_status',
+          status: 'failed',
+          error: 'bad — COPY import_staging, line 2: "Testus,maybe"',
+        },
+      ])
+      .returning();
+    if (!failedBatch || !otherBatch) throw new Error('batch insert returned no row');
+
+    const migration = await readFile(
+      new URL('../../../drizzle/0041_reject_email_redaction.sql', import.meta.url),
+      'utf8',
+    );
+    await t.db.execute(sql.raw(migration));
+
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.rawRow).toEqual({ user_email: '***', plot_id: plot.code });
+    const [failed] = await t.db
+      .select()
+      .from(importBatches)
+      .where(eq(importBatches.id, failedBatch.id));
+    expect(failed?.error).toBe('missing data — COPY import_staging, line 2');
+    const [other] = await t.db
+      .select()
+      .from(importBatches)
+      .where(eq(importBatches.id, otherBatch.id));
+    expect(other?.error).toBe('bad — COPY import_staging, line 2: "Testus,maybe"');
+  });
+
+  it('stores a failed batch error without the quoted row, keeping the line number', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'plots-import-')), `fail-${Date.now()}.csv`);
+    await writeFile(file, 'user_email,plot_id\nalice-copy@uni.org,X\n');
+    const failure = new postgres.PostgresError({
+      message: 'missing data for column "plot_id"',
+      where: 'COPY import_staging, line 2: "alice-copy@uni.org"',
+    } as never);
+    await expect(
+      runSupplementaryImport(t.db, {
+        kind: 'user_plots',
+        header: USER_PLOTS_HEADER,
+        filePath: file,
+        runBy: null,
+        apply: async () => {
+          throw failure;
+        },
+      }),
+    ).rejects.toThrow();
+    const [batch] = await t.db
+      .select()
+      .from(importBatches)
+      .where(eq(importBatches.fileName, basename(file)));
+    expect(batch?.error).toBe('missing data for column "plot_id" — COPY import_staging, line 2');
+  });
+
+  it('keeps a blank e-mail cell blank in the reject', async () => {
+    const plot = await createPlot(t.db);
+    const batch = await importUserPlots(t.db, {
+      filePath: await csv(['user_email,plot_id', `,${plot.code}`]),
+      runBy: null,
+    });
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.rawRow).toEqual({ user_email: '', plot_id: plot.code });
   });
 });

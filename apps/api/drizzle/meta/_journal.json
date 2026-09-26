@@ -288,6 +288,13 @@
       "when": 1790411665461,
       "tag": "0040_help_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790417111251,
+      "tag": "0041_reject_email_redaction",
+      "breakpoints": true
     }
   ]
 }

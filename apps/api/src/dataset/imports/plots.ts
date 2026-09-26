@@ -201,12 +201,7 @@ export async function importUserPlots(
         select ${batchId}, row_no, outcome,
           jsonb_build_object(
             'user_email',
-            case
-              when nullif(trim(user_email), '') is null then ''
-              when position('@' in user_email) > 1 then
-                substr(trim(user_email), 1, 1) || '***@' || split_part(trim(user_email), '@', 2)
-              else '***'
-            end,
+            case when nullif(trim(user_email), '') is null then '' else '***' end,
             'plot_id', coalesce(plot_id, '')
           )
         from import_staging where outcome <> 'apply' order by row_no`;
