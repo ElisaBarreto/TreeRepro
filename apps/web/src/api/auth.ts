@@ -18,6 +18,7 @@ import {
   signedInSchema,
   type TotpConfirmBody,
   type TotpDisableBody,
+  type TotpSetupBody,
   type TotpSetupResponse,
   totpConfirmResponseSchema,
   totpSetupResponseSchema,
@@ -97,9 +98,11 @@ export async function changePassword(currentPassword: string, newPassword: strin
 }
 
 /** @rfc RFC-23 R2 */
-export async function totpSetup(): Promise<TotpSetupResponse> {
+export async function totpSetup(password: string): Promise<TotpSetupResponse> {
+  const body: TotpSetupBody = { password };
   const { data } = await apiFetch('/auth/totp/setup', dataEnvelopeSchema(totpSetupResponseSchema), {
     method: 'POST',
+    json: body,
   });
   return data;
 }

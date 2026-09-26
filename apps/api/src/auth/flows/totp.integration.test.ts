@@ -14,7 +14,10 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
   async function enrolled() {
     const { user, email } = await createUser(t.db);
     const { cookie } = await loginAs(t, user);
-    const setup = await call(t.app, 'POST', '/api/auth/totp/setup', { cookie });
+    const setup = await call(t.app, 'POST', '/api/auth/totp/setup', {
+      cookie,
+      body: { password: DEFAULT_PASSWORD },
+    });
     const { secret } = (await setup.json()).data;
     const confirm = await call(t.app, 'POST', '/api/auth/totp/confirm', {
       cookie,
@@ -27,7 +30,10 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
   it('setup returns a secret and URI, stores the provisional secret encrypted, and refuses when enabled', async () => {
     const { user, email } = await createUser(t.db);
     const { cookie } = await loginAs(t, user);
-    const res = await call(t.app, 'POST', '/api/auth/totp/setup', { cookie });
+    const res = await call(t.app, 'POST', '/api/auth/totp/setup', {
+      cookie,
+      body: { password: DEFAULT_PASSWORD },
+    });
     expect(res.status).toBe(200);
     const { secret, otpauthUri } = (await res.json()).data;
     expect(secret).toMatch(/^[A-Z2-7]{32}$/);
@@ -35,6 +41,20 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
     expect(await t.redis.get(`totp_setup:${user.id}`)).not.toBe(secret);
     expect(await t.mfa.getSetupSecret(user.id)).toBe(secret);
     expect((await findUserById(t.db, user.id))?.totpEnabledAt).toBeNull();
+  });
+
+  it('setup needs the current password: a wrong one is 401 and stores nothing', async () => {
+    const { user } = await createUser(t.db);
+    const { cookie } = await loginAs(t, user);
+    const wrong = await call(t.app, 'POST', '/api/auth/totp/setup', {
+      cookie,
+      body: { password: 'wrong wrong wrong' },
+    });
+    expect(wrong.status).toBe(401);
+    expect((await wrong.json()).error.code).toBe('AUTH_INVALID_CREDENTIALS');
+    expect(await t.mfa.getSetupSecret(user.id)).toBeNull();
+    const missing = await call(t.app, 'POST', '/api/auth/totp/setup', { cookie, body: {} });
+    expect(missing.status).toBe(400);
   });
 
   it('confirm enables TOTP, returns ten recovery codes once and audits; wrong code or no setup is 401', async () => {
@@ -46,7 +66,12 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
     });
     expect((await noSetup.json()).error.code).toBe('AUTH_TOTP_INVALID');
     const { secret } = (
-      await (await call(t.app, 'POST', '/api/auth/totp/setup', { cookie: session.cookie })).json()
+      await (
+        await call(t.app, 'POST', '/api/auth/totp/setup', {
+          cookie: session.cookie,
+          body: { password: DEFAULT_PASSWORD },
+        })
+      ).json()
     ).data;
     const wrong = await call(t.app, 'POST', '/api/auth/totp/confirm', {
       cookie: session.cookie,
@@ -76,7 +101,10 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
       .from(totpRecoveryCodes)
       .where(eq(totpRecoveryCodes.userId, user.id));
     expect(count?.n).toBe(10);
-    const again = await call(t.app, 'POST', '/api/auth/totp/setup', { cookie: session.cookie });
+    const again = await call(t.app, 'POST', '/api/auth/totp/setup', {
+      cookie: session.cookie,
+      body: { password: DEFAULT_PASSWORD },
+    });
     expect(again.status).toBe(409);
     expect((await again.json()).error.code).toBe('AUTH_TOTP_ALREADY_ENABLED');
   });

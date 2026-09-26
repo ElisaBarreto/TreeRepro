@@ -13,7 +13,7 @@ Users may add a time-based one-time password (RFC 6238) as a second factor. Enro
 ## Rules
 
 - **R1** Secret: 20 random bytes, base32. Algorithm SHA-1, 6 digits, 30-second period. Provisioning URI `otpauth://totp/TreeRepro:<email>?secret=<base32>&issuer=TreeRepro&algorithm=SHA1&digits=6&period=30`.
-- **R2** `POST /api/auth/totp/setup` (session): 409 `AUTH_TOTP_ALREADY_ENABLED` when `totp_enabled_at` is set. Otherwise a new secret is stored encrypted (AAD `totp_setup.secret`) at Redis `totp_setup:<userId>` for 10 minutes and the response is `{ data: { secret, otpauthUri } }`. Calling setup again replaces the provisional secret.
+- **R2** `POST /api/auth/totp/setup { password }` (session): 409 `AUTH_TOTP_ALREADY_ENABLED` when `totp_enabled_at` is set; the password must verify (401 `AUTH_INVALID_CREDENTIALS`), so a hijacked or unattended session cannot enrol another authenticator and lock the owner out. Otherwise a new secret is stored encrypted (AAD `totp_setup.secret`) at Redis `totp_setup:<userId>` for 10 minutes and the response is `{ data: { secret, otpauthUri } }`. Calling setup again replaces the provisional secret.
 - **R3** `POST /api/auth/totp/confirm { code }` (session): the code must verify (R4) against the provisional secret; on success the secret is stored in `users.totp_secret`, `totp_enabled_at` is set, the provisional secret deleted, the recovery codes replaced (R5) and returned once as `{ data: { recoveryCodes } }`; audit `auth.totp.enabled`. A wrong code or no setup in progress answers 401 `AUTH_TOTP_INVALID`.
 - **R4** Verification accepts the current step and one step on each side (±30 s). Replay guard: the counter of the last accepted code is kept at Redis `totp_last:<userId>` for 90 seconds; a code whose counter is not greater than the stored one is rejected.
 - **R5** Recovery codes: ten per enablement, each 10 characters from the base32 alphabet (`a–z`, `2–7`) written `xxxxx-xxxxx`, generated with RFC-02 R13 randomness. Only the RFC-40 R5 blind index of the normalized code (lowercase, separators removed) — HMAC-SHA256 with `pii_hmac_key`, hex — is stored in `totp_recovery_codes` (`id`, `user_id`, `code_hash` unique, `used_at`, `created_at`), so a database dump cannot be brute-forced without the key; rotating `pii_hmac_key` invalidates every recovery code. A code is single-use: redemption is one `UPDATE … SET used_at … WHERE used_at IS NULL … RETURNING`.
@@ -27,6 +27,7 @@ None.
 
 ## Changelog
 
+- 2026-09-26 — R2: setup requires the current password (#191).
 - 2026-09-12 — R5: recovery codes hashed with the keyed blind index (security review).
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
