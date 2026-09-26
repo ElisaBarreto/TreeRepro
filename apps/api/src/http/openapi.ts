@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { errorEnvelopeSchema } from '@treerepro/contracts';
+import { errorEnvelopeSchema, type PermissionKey } from '@treerepro/contracts';
 import { z } from 'zod';
 import { type GuardKind, guardKind, guardPermission } from './guards.ts';
+import { KEY_REFUSED_PERMISSIONS } from './middleware/require-permission.ts';
 import { SESSION_COOKIE } from './middleware/session.ts';
 import { ROUTE_CATALOG } from './route-catalog.ts';
 import { validatorSchema } from './validate.ts';
@@ -20,14 +21,33 @@ interface JsonSchemaObject {
 }
 
 /**
- * `z.toJSONSchema` on the input side, `unrepresentable` types turned into `{}`
- * rather than thrown; the `$schema` key is dropped, it belongs on a whole
- * document, not on an embedded schema. A schema `z.toJSONSchema` still cannot
- * convert (its own bug or a construct neither option covers) falls back to
- * `{}` for that one schema, so the rest of the reference still builds.
+ * Labels of every schema `toJsonSchema` fell back to `{}` for, deduplicated.
+ * A conversion is pure — the same schema always succeeds or always fails —
+ * so this never needs clearing: it is the complete set for the process's
+ * lifetime. The RFC-82 R17 meta-test asserts it stays empty; a non-empty
+ * result means part of the generated reference silently lost its shape and
+ * the label here says which part.
  * @rfc RFC-82 R17
  */
-function toJsonSchema(schema: z.ZodType): JsonSchemaObject {
+const degraded = new Set<string>();
+
+/** @rfc RFC-82 R17 */
+export function degradedSchemas(): readonly string[] {
+  return [...degraded];
+}
+
+/**
+ * `z.toJSONSchema` on the input side, `unrepresentable` types turned into `{}`
+ * rather than thrown; the `$schema` key is dropped, it belongs on a whole
+ * document, not on an embedded schema. `label` identifies the schema for
+ * `degradedSchemas()` — a route key plus which part of it (body, query,
+ * response, …) — should the fallback below ever fire: `z.toJSONSchema` can
+ * still throw on its own bug, or a construct neither `io: 'input'` nor
+ * `unrepresentable: 'any'` covers, and documenting that one schema as an
+ * open object is better than failing the whole reference.
+ * @rfc RFC-82 R17
+ */
+function toJsonSchema(schema: z.ZodType, label: string): JsonSchemaObject {
   try {
     const json = z.toJSONSchema(schema, {
       io: 'input',
@@ -36,31 +56,40 @@ function toJsonSchema(schema: z.ZodType): JsonSchemaObject {
     delete json.$schema;
     return json;
   } catch {
-    // ponytail: a schema z.toJSONSchema cannot represent even with
-    // unrepresentable: 'any'; document it as an open object instead of
-    // failing the whole reference.
+    degraded.add(label);
     return {};
   }
 }
 
-const ERROR_SCHEMA = toJsonSchema(errorEnvelopeSchema);
+const ERROR_SCHEMA = toJsonSchema(errorEnvelopeSchema, 'errorEnvelopeSchema (default response)');
 
-function securityFor(kind: GuardKind | 'public'): Array<Record<string, never[]>> {
+/**
+ * A permission a key is refused outright (RFC-82 R6, `KEY_REFUSED_PERMISSIONS`)
+ * carries `sessionCookie` only: a key never reaches that route, whatever its
+ * owner's permissions, so documenting `bearerKey` as an option would mislead.
+ * @rfc RFC-82 R17
+ */
+function securityFor(
+  kind: GuardKind | 'public',
+  permission?: PermissionKey,
+): Array<Record<string, never[]>> {
   switch (kind) {
     case 'public':
       return [];
     case 'session':
       return [{ sessionCookie: [] }];
     case 'permission':
-      return [{ sessionCookie: [] }, { bearerKey: [] }];
+      return permission && KEY_REFUSED_PERMISSIONS.has(permission)
+        ? [{ sessionCookie: [] }]
+        : [{ sessionCookie: [] }, { bearerKey: [] }];
     case 'apiKey':
       return [{ bearerKey: [] }];
   }
 }
 
 /** One `{ name, in, required, schema }` entry per property of a `param` or `query` schema. */
-function parametersFor(target: 'param' | 'query', schema: z.ZodType): unknown[] {
-  const json = toJsonSchema(schema);
+function parametersFor(target: 'param' | 'query', schema: z.ZodType, label: string): unknown[] {
+  const json = toJsonSchema(schema, label);
   const properties = json.properties ?? {};
   const required = json.required ?? [];
   return Object.entries(properties).map(([name, propSchema]) => ({
@@ -117,10 +146,14 @@ export function buildOpenApi(routes: readonly RouteEntry[]): Record<string, unkn
       if (validated.target === 'json') {
         requestBody = {
           required: true,
-          content: { 'application/json': { schema: toJsonSchema(validated.schema) } },
+          content: {
+            'application/json': { schema: toJsonSchema(validated.schema, `${key} requestBody`) },
+          },
         };
       } else if (validated.target === 'param' || validated.target === 'query') {
-        parameters.push(...parametersFor(validated.target, validated.schema));
+        parameters.push(
+          ...parametersFor(validated.target, validated.schema, `${key} ${validated.target}`),
+        );
       }
     }
 
@@ -128,14 +161,18 @@ export function buildOpenApi(routes: readonly RouteEntry[]): Record<string, unkn
       summary: catalog.summary,
       'x-guard': kind,
       ...(permission ? { 'x-permission': permission } : {}),
-      security: securityFor(kind),
+      security: securityFor(kind, permission),
       ...(parameters.length > 0 ? { parameters } : {}),
       ...(requestBody ? { requestBody } : {}),
       responses: {
         '2XX': {
           description: 'Success',
           ...(catalog.response
-            ? { content: { 'application/json': { schema: toJsonSchema(catalog.response) } } }
+            ? {
+                content: {
+                  'application/json': { schema: toJsonSchema(catalog.response, `${key} response`) },
+                },
+              }
             : {}),
         },
         default: {

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createAdminKey } from '../../../test/helpers/api-keys.ts';
 import { call, useTestApp } from '../../../test/helpers/app.ts';
@@ -40,6 +43,23 @@ describe('RFC-82 R20 GET /api/docs and GET /api/docs/openapi.json', () => {
       const res = await call(t.app, 'GET', path, { cookie, origin: null });
       expect(res.status, path).toBe(401);
       expect((await res.json()).error.code, path).toBe('AUTH_UNAUTHENTICATED');
+    }
+  });
+
+  it('a failed guide read is not cached: the next request retries it instead of repeating the failure', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'treerepro-guide-'));
+    const guidePath = join(dir, 'guide.md');
+    try {
+      const { app } = t.build({ guidePath });
+      const { headers } = await createAdminKey(t);
+      const missing = await call(app, 'GET', '/api/docs', { headers, origin: null });
+      expect(missing.status).toBe(500);
+      writeFileSync(guidePath, 'openapi-sha256: 0\n\n# Guide\n');
+      const retried = await call(app, 'GET', '/api/docs', { headers, origin: null });
+      expect(retried.status).toBe(200);
+      expect(await retried.text()).toContain('# Guide');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

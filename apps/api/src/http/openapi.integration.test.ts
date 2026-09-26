@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
-import { buildOpenApi, openApiHash } from './openapi.ts';
+import { buildOpenApi, degradedSchemas, openApiHash } from './openapi.ts';
 import { ROUTE_CATALOG } from './route-catalog.ts';
 
 describe('RFC-82 R17 buildOpenApi', () => {
@@ -38,6 +38,13 @@ describe('RFC-82 R17 buildOpenApi', () => {
     expect(d.paths['/api/auth/me'].get.security).toEqual([{ sessionCookie: [] }]);
   });
 
+  it('a permission a key is refused (RFC-82 R6) carries sessionCookie security only', () => {
+    const invite = doc().paths['/api/admin/users'].post;
+    expect(invite['x-guard']).toBe('permission');
+    expect(invite['x-permission']).toBe('users.invite');
+    expect(invite.security).toEqual([{ sessionCookie: [] }]);
+  });
+
   it('documents the JSON body, query parameters, responses and the error body', () => {
     const d = doc();
     expect(
@@ -57,5 +64,13 @@ describe('RFC-82 R17 buildOpenApi', () => {
   it('is deterministic', () => {
     expect(openApiHash(buildOpenApi(t.app.routes))).toBe(openApiHash(buildOpenApi(t.app.routes)));
     expect(openApiHash(doc())).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('degrades no schema today', () => {
+    doc();
+    expect(
+      degradedSchemas(),
+      'a schema z.toJSONSchema could not represent fell back to {} — check the label(s) above',
+    ).toEqual([]);
   });
 });
