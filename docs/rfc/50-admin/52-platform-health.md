@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | admin |
 | Supersedes | — |
 
@@ -37,3 +37,4 @@ Web (plan 12d): route `/app/admin/health` (nav **Health**, section Admin, permis
 - 2026-09-20 — Open questions records the measurement of the activity scans against the imported dataset (about 2.8 ms each), that no index was added, and the two triggers for re-measuring (issue #116).
 - 2026-09-20 — R2 reworded: the rule is that the payload carries no personal data (no `name`, `email`, `ip`, `userAgent` key), not "counts, ids and timestamps only", which R1's shape already contradicted (`imports[].fileName`/`error`/`unknownLevels[].value`, the job `detail` field) — the contradiction CodeRabbit flagged twice on #113. The obligation on `job_runs.detail` extends to cover all of those free-text fields; `job_runs.error` stays out of it, being structural since #114. Context reworded to match. No schema or test changed.
 - 2026-09-25 — R1: `validatedCells` replaces `acceptedCells`; the queues drop `disputed` (record model revision R-1, R-9, R-11; plan 13a). `draft` until plan 13g (13e does `validatedCells`).
+- 2026-09-26 — accepted: implemented by plan 13g.

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -45,3 +45,4 @@ None.
 - 2026-09-17 — R10: `?intent=contest` filter on `GET /api/records/disputed`; disputed item gains `contestedBy` (plan 11b).
 - 2026-09-25 — Context, R1, R3, R4, R7, R9–R12 amended; R2, R5, R6 retired; R13–R15 added: validation without undo, no note, no neutral or dispute, withdrawal rights, the contested queue, level actions, Keep both (record model revision R-1, R-3, R-5–R-7, R-10–R-12; plan 13a); owner ruling: a contest states the correct levels (R3, R4, R10, R15; R16 added: contest actions; a quantitative contest has its own contest `id`, a resolved contest may be withdrawn); R10, R16: a contest naming an invisible level is invisible; R13: an invisible level answers as an unknown one. `draft` until plan 13g.
 - 2026-09-25 — R16: a resolution and a contest that created no record are stored as `contest_events` rows (RFC-63 R14) (plan 13g).
+- 2026-09-26 — accepted: implemented by plan 13g.

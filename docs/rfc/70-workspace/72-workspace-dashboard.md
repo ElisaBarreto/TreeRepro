@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | workspace |
 | Supersedes | — |
 
@@ -36,3 +36,4 @@ None.
 - 2026-09-19 — R1: `queues.proposals` is `0` unless the viewer holds `taxa.manage`. The section as a whole is still `records.review` work, but `GET /api/species/proposals` requires `taxa.manage` (RFC-75 R3), so a reviewer without it was shown a number for a queue the API answers 403 to (plan 12c, code review).
 - 2026-09-25 — R1: primary and secondary reference counts, `topTraitsWithData` replaces `topMissingTraits`, validated coverage, the queues drop `disputed`; R3: the new home text, buttons and top-traits card (record model revision R-1, R-9, R-18; plan 13a). `draft` until plan 13g (13b does `dataset`, `topTraitsWithData` and R3; 13e the coverage).
 - 2026-09-25 — R3: greeting by first name and headline on the intro card, buttons inside it (owner design review, plan 13b).
+- 2026-09-26 — accepted: implemented by plan 13g.

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | dataset |
 | Supersedes | — |
 
@@ -44,3 +44,4 @@ None.
 - 2026-09-19 — R7: `/top` ranks R6's no-filter entry rather than computing the grid uncached. Correction, not a design change: the stated reason for computing it separately — R6 keys its entry by the filters and this answer has none — did not hold, since the no-filter key exists and is precisely this scope, so every coverage page load and every mode toggle scanned a grid that was already cached beside it (plan 11c, final review).
 - 2026-09-19 — R5: the inline `byTrait` shape spells out `cells` and `withData`, which `coverageTraitRowSchema` and R5's own prose below it already carried (plan 11c, final review).
 - 2026-09-25 — R2: withdrawal decrements coverage; R5, R7: `validated` and `percentValidated` replace `accepted` and `percentAccepted`, `least_validated` replaces `least_accepted`, and R7 no longer points at the dashboard's former missing-traits list (record model revision R-1, R-13; plan 13a). `draft` until plan 13g.
+- 2026-09-26 — accepted: implemented by plan 13g.

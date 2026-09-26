@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | draft |
+| Status | accepted |
 | Category | workspace |
 | Supersedes | — |
 
@@ -31,3 +31,4 @@ None.
 - 2026-09-18 — accepted.
 - 2026-09-18 — amended: R1 no longer marks `review`/`intent` records-only, and R5 notes the cross-user summary is visibility-blind.
 - 2026-09-25 — R1's `review` takes RFC-63 R6's new states; R2 drops `isAccepted` and withdrawn records; R3 lists validations and resolutions; R4 drops `disputes`, `withdrawn` and `accepted` (record model revision R-1, R-11, R-13; plan 13a); owner ruling: a contest states the correct levels (R3: a resolution may have no record, and the filters read its contest; R4: `contests` counts contests). `draft` until plan 13g (13e drops the accepted parts).
+- 2026-09-26 — accepted: implemented by plan 13g.

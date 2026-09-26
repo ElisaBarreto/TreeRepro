@@ -8,7 +8,7 @@ TreeRepro is a collective data assembly of reproductive trait data for trees, co
 
 - **One curated dataset.** Every record belongs to a species, a trait and a bibliographic reference. Species names follow the World Checklist of Vascular Plants, and traits come from a versioned dictionary.
 - **Built for specialists.** Contributors add records, back them with a DOI or their own field observation, and confirm or contest what others have entered.
-- **Curation in the open.** Managers work the harmonisation and dispute queues, and every change can be traced back to the person who made it.
+- **Curation in the open.** Managers work the harmonisation and contested queues, and every change can be traced back to the person who made it.
 - **Find the gaps.** Search species by taxonomy, trait or field plot, and see which traits still have no data.
 - **Share the results.** Anyone with the right access can export the dataset as CSV.
 
