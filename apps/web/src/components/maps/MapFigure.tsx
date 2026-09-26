@@ -58,7 +58,12 @@ export function MapFigure({
               Close
             </button>
           </div>
-          <img src={src} alt={alt} loading="lazy" className="w-full object-contain" />
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            className="min-h-0 w-full flex-1 object-contain"
+          />
         </dialog>
       ) : null}
     </figure>

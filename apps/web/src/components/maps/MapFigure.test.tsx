@@ -66,4 +66,22 @@ describe('RFC-76 R6, R7 MapFigure', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(HTMLDialogElement.prototype.close).toHaveBeenCalledTimes(1);
   });
+
+  it('bounds the dialog image to the dialog so a short landscape viewport never clips it', async () => {
+    const user = userEvent.setup();
+    render(<MapFigure entry={ENTRY} alt="Data completeness map of Flower colour" />);
+    await user.click(
+      screen.getByRole('button', { name: 'Data completeness map of Flower colour' }),
+    );
+    const images = screen.getAllByRole('img', { name: 'Data completeness map of Flower colour' });
+    const dialogImage = images[1] as HTMLElement;
+    // `flex-1 min-h-0` inside the dialog's flex column lets the image shrink
+    // to whatever height is left under the close button, rather than the
+    // dialog's `overflow-hidden` clipping an unbounded natural height — the
+    // bug on a landscape phone (844×390), where the map's own legend sits at
+    // the bottom of the image.
+    expect(dialogImage.className).toContain('flex-1');
+    expect(dialogImage.className).toContain('min-h-0');
+    expect(dialogImage.className).toContain('object-contain');
+  });
 });
