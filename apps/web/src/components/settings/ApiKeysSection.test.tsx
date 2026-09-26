@@ -154,4 +154,11 @@ describe('RFC-82 R7 ApiKeysSection', () => {
     expect(screen.queryByText('/api/batch')).not.toBeInTheDocument();
     expect(screen.getByText('/api/records/pending')).toBeInTheDocument();
   });
+
+  it('R22 says so when the endpoint list fails to load', async () => {
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
+    me.listApiKeyEndpoints.mockRejectedValue(new Error('down'));
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
+    expect(await screen.findByText('The endpoint list could not be loaded.')).toBeInTheDocument();
+  });
 });

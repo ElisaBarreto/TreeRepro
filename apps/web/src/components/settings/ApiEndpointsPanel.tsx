@@ -56,6 +56,9 @@ export function ApiEndpointsPanel() {
           The guide and the reference answer a key only, not this session.
         </p>
       </div>
+      {endpoints.isError ? (
+        <p className="text-meta text-mist-500">The endpoint list could not be loaded.</p>
+      ) : null}
       {endpoints.data ? (
         <details className="group">
           <summary className={`${LABEL} cursor-pointer select-none`}>
