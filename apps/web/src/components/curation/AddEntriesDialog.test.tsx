@@ -307,9 +307,50 @@ describe('RFC-70 R1 AddEntriesDialog submission', () => {
       await within(dialog).findByText('This trait has no level to choose from.'),
     ).toBeInTheDocument();
   });
+
+  it('RFC-13 R6 says so when the levels could not be loaded at all', async () => {
+    dataset.fetchDictionary.mockRejectedValue(new ApiError(500, 'INTERNAL', 'boom'));
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    expect(
+      await within(dialog).findByText('Could not load the levels. Reload the page.'),
+    ).toBeInTheDocument();
+  });
+
+  it('RFC-80 R4 says why it will not send while a DOI has not resolved', async () => {
+    curation.resolveDoi.mockResolvedValue({ status: 'not_found', reference: null });
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'DOI' }), '10.1111/geb.13000');
+    await userEvent.tab();
+    expect(await within(dialog).findByText('DOI not found')).toBeInTheDocument();
+    // The button stays live: a dead control explains nothing, and the sentence
+    // is what ties the refusal to the row.
+    expect(submit(dialog)).toBeEnabled();
+    await userEvent.click(submit(dialog));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Each DOI must resolve before the record can be added.',
+    );
+    expect(curation.createRecords).not.toHaveBeenCalled();
+  });
 });
 
 describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
+  it('keeps what was already filled when the intent is changed', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING, EXISTING_DIOECIOUS]));
+    dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: CONTEST_LABEL }));
+    const hermaphrodite = await within(dialog).findByRole('checkbox', { name: 'hermaphrodite' });
+    await waitFor(() => expect(hermaphrodite).toBeChecked());
+    await userEvent.click(hermaphrodite);
+    await userEvent.click(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL }));
+    expect(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' })).not.toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeChecked();
+  });
+
   it('asks Contest or Complement first when records exist, and keeps everything else shut until answered', async () => {
     dataset.fetchRecords.mockResolvedValue(page([EXISTING]));
     mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
