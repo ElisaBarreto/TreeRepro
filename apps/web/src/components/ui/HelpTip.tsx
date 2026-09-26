@@ -9,7 +9,7 @@ export interface HelpTipProps {
   /** Route to a fuller explanation, rendered as a "Learn more" link (plan 12a). */
   learnMore?: string;
   /** A second link beside "Learn more" — the trait's maps, when it has any. @rfc RFC-76 R8 */
-  extraLink?: { to: string; label: string };
+  extraLink?: { to: string; search?: Record<string, string>; label: string };
 }
 
 /**
@@ -95,6 +95,7 @@ export function HelpTip({ label, children, learnMore, extraLink }: HelpTipProps)
           {extraLink ? (
             <Link
               to={extraLink.to}
+              search={extraLink.search}
               className="mt-2 ml-3 inline-block font-medium text-canopy-900 underline-offset-2 hover:underline"
             >
               {extraLink.label}

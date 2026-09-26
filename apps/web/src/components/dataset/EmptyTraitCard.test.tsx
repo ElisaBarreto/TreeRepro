@@ -99,7 +99,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
       expect(within(tip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
       expect(within(tip).getByRole('link', { name: 'Maps' })).toHaveAttribute(
         'href',
-        `/app/maps/${DICTIONARY_SELF_COMPATIBILITY.id}`,
+        `/app/maps?trait=${DICTIONARY_SELF_COMPATIBILITY.key}`,
       );
     });
 
@@ -112,7 +112,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
       const tip = screen.getByRole('tooltip');
       expect(within(tip).getByRole('link', { name: 'Maps' })).toHaveAttribute(
         'href',
-        `/app/maps/${SELF_COMPATIBILITY_MISSING_SUMMARY.trait.id}`,
+        `/app/maps?trait=${SELF_COMPATIBILITY_MISSING_SUMMARY.trait.key}`,
       );
       expect(within(tip).queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
     });

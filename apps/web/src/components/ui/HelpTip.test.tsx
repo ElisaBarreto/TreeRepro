@@ -144,13 +144,19 @@ describe('RFC-13 R11 HelpTip', () => {
   // "Learn more", only when the trait has any.
   it('renders extraLink beside "Learn more" when given, and neither without it', async () => {
     const withLink = renderInRouter(
-      <HelpTip learnMore="/" extraLink={{ to: '/app/maps/t1', label: 'Maps' }}>
+      <HelpTip
+        learnMore="/"
+        extraLink={{ to: '/app/maps', search: { trait: 't1' }, label: 'Maps' }}
+      >
         Explains things.
       </HelpTip>,
     );
     fireEvent.click(await screen.findByRole('button', { name: 'What does this mean?' }));
     expect(screen.getByRole('link', { name: 'Learn more' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: 'Maps' })).toHaveAttribute('href', '/app/maps/t1');
+    expect(screen.getByRole('link', { name: 'Maps' })).toHaveAttribute(
+      'href',
+      '/app/maps?trait=t1',
+    );
     withLink.unmount();
 
     render(<HelpTip>Explains things.</HelpTip>);

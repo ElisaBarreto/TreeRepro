@@ -221,7 +221,7 @@ describe('RFC-63 R10 TraitCard', () => {
       expect(within(tip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
       expect(within(tip).getByRole('link', { name: 'Maps' })).toHaveAttribute(
         'href',
-        `/app/maps/${DICTIONARY_SEXUAL_SYSTEM.id}`,
+        `/app/maps?trait=${DICTIONARY_SEXUAL_SYSTEM.key}`,
       );
     });
 
@@ -233,7 +233,7 @@ describe('RFC-63 R10 TraitCard', () => {
       const popover = screen.getByRole('tooltip');
       expect(within(popover).getByRole('link', { name: 'Maps' })).toHaveAttribute(
         'href',
-        `/app/maps/${SEXUAL_SYSTEM.id}`,
+        `/app/maps?trait=${SEXUAL_SYSTEM.key}`,
       );
       expect(within(popover).queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
     });

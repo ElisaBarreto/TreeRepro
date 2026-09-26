@@ -391,7 +391,7 @@ describe('RFC-76 R8 TraitPage maps section', () => {
     expect(img).toHaveAttribute('alt', 'Data completeness map of sexual system');
     expect(
       within(section).getByRole('link', { name: 'See all maps for this trait →' }),
-    ).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_DETAIL.id}`);
+    ).toHaveAttribute('href', `/app/maps?trait=${SEXUAL_SYSTEM_DETAIL.key}`);
   });
 
   it('shows the link alone when the trait has maps but no completeness row', async () => {
@@ -411,7 +411,7 @@ describe('RFC-76 R8 TraitPage maps section', () => {
     expect(within(section).queryByRole('img')).not.toBeInTheDocument();
     expect(
       within(section).getByRole('link', { name: 'See all maps for this trait →' }),
-    ).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_DETAIL.id}`);
+    ).toHaveAttribute('href', `/app/maps?trait=${SEXUAL_SYSTEM_DETAIL.key}`);
   });
 
   it('shows no "Maps" heading at all when the trait has no maps', async () => {

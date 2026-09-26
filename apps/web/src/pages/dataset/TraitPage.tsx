@@ -168,7 +168,7 @@ function Distribution({ trait }: { trait: TraitDetail }) {
 /**
  * The trait's own maps (RFC-76 R8), when it has any: the completeness map as
  * a thumbnail (left out when the manifest has none for this trait) and a
- * link to the trait's full maps page. A trait with no maps visible to this
+ * link to its maps on `/app/maps?trait=<key>`. A trait with no maps visible to this
  * viewer renders nothing at all — not even the heading — and a failed
  * `useMaps` query reads the same as no maps.
  * @rfc RFC-76 R8
@@ -184,12 +184,12 @@ function TraitMaps({ trait }: { trait: TraitDetail }) {
       <h2 className="font-display text-section font-semibold text-canopy-950">Maps</h2>
       {completeness ? (
         <div className="max-w-sm">
-          <MapFigure entry={completeness} alt={mapAlt('completeness', name)} size="thumb" />
+          <MapFigure entry={completeness} alt={mapAlt('completeness', name)} />
         </div>
       ) : null}
       <Link
-        to="/app/maps/$traitId"
-        params={{ traitId: trait.id }}
+        to="/app/maps"
+        search={{ trait: trait.key }}
         className="font-medium text-canopy-900 underline-offset-2 hover:underline"
       >
         See all maps for this trait →

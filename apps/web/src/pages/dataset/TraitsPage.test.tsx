@@ -179,7 +179,7 @@ describe('RFC-76 R8 TraitsPage maps link', () => {
     maps.useHasMaps.mockImplementation((traitId: string) => traitId === SEXUAL_SYSTEM_TRAIT.id);
     await openPage();
     const link = await screen.findByRole('link', { name: 'Maps of sexual system' });
-    expect(link).toHaveAttribute('href', `/app/maps/${SEXUAL_SYSTEM_TRAIT.id}`);
+    expect(link).toHaveAttribute('href', `/app/maps?trait=${SEXUAL_SYSTEM_TRAIT.key}`);
     expect(screen.queryByRole('link', { name: 'Maps of seed mass' })).not.toBeInTheDocument();
   });
 
