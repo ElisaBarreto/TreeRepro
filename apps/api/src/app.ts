@@ -18,6 +18,7 @@ import { originCheck } from './http/origin-check.ts';
 import { requestLogger } from './http/request-logger.ts';
 import { adminRoutes } from './http/routes/admin/index.ts';
 import { authRoutes } from './http/routes/auth.ts';
+import { batchRoutes } from './http/routes/batch.ts';
 import { contributionRoutes } from './http/routes/contributions.ts';
 import { coverageRoutes } from './http/routes/coverage.ts';
 import { dashboardRoutes } from './http/routes/dashboard.ts';
@@ -63,6 +64,7 @@ export const BODY_LIMIT_BYTES = 1024 * 1024;
  * @rfc RFC-22 R7
  * @rfc RFC-24 R4
  * @rfc RFC-76 R1
+ * @rfc RFC-82 R11
  */
 export function createApp(deps: AppDeps) {
   const ctx: AuthContext = {
@@ -123,6 +125,11 @@ export function createApp(deps: AppDeps) {
   // (RFC-69 R5), so they sit beside the dataset router rather than inside it.
   app.route('/coverage', coverageRoutes(ctx));
   app.route('/help', helpRoutes(ctx));
+  // RFC-82 R11: operations re-enter through the root, so every middleware runs for each.
+  app.route(
+    '/batch',
+    batchRoutes(ctx, (request) => Promise.resolve(root.fetch(request))),
+  );
   app.route('/', datasetRoutes(ctx));
 
   return root;

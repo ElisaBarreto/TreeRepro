@@ -112,6 +112,15 @@ export const requireSession: MiddlewareHandler<AppEnv> = markGuard(async (c, nex
   await next();
 }, 'session');
 
+/**
+ * @rfc RFC-32 R5
+ * @rfc RFC-82 R10
+ */
+export const requireApiKey: MiddlewareHandler<AppEnv> = markGuard(async (c, next) => {
+  if (!c.get('apiKey')) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
+  await next();
+}, 'apiKey');
+
 /** For handlers behind `requireSession`. @rfc RFC-22 R8 */
 export function currentUser(c: Context<AppEnv>): UserRow {
   const user = c.get('user');

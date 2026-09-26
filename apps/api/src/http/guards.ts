@@ -1,6 +1,6 @@
 import type { PermissionKey } from '@treerepro/contracts';
 
-export type GuardKind = 'session' | 'permission';
+export type GuardKind = 'session' | 'permission' | 'apiKey';
 
 const guards = new WeakMap<object, GuardKind>();
 const permissions = new WeakMap<object, PermissionKey>();
@@ -11,6 +11,7 @@ const permissions = new WeakMap<object, PermissionKey>();
  * visibility meta-test (RFC-33 R10) can pick the routes behind a given
  * permission.
  * @rfc RFC-02 R12
+ * @rfc RFC-32 R5
  * @rfc RFC-33 R10
  */
 export function markGuard<T extends object>(fn: T, kind: GuardKind, permission?: PermissionKey): T {
