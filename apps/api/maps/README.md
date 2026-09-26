@@ -38,13 +38,13 @@ deploy key, which is forced to `scripts/deploy.sh` and can do nothing else —
 `compose.prod.yml`:
 
 ```sh
-rsync -rtvc --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
-ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next'
+rsync -rtvc --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/ &&
+ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next' &&
 ssh <admin>@<server> '
   set -e
   rsync -rtc --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
   rsync -rtc --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
-  rsync -rtc --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+  rsync -rtc --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/
 '
 ```
 
@@ -57,7 +57,7 @@ ssh <admin>@<server> '
    on stderr) if the directory or its `manifest.csv` is missing* — a passing
    check must never wave an empty or mistargeted copy through to step 3 — 0
    otherwise. It writes nothing.
-3. Only once that check reports 0 problems, publish onto the live directory
+3. Only once that check exits 0 (the && chain above stops otherwise, and at a failed staging copy), publish onto the live directory
    in three steps, so `GET /api/maps` and `GET /api/maps/files/*` — which
    read `manifest.csv` and list the directory on every request — never see
    a manifest naming a file that isn't there yet (RFC-76 R1): first copy

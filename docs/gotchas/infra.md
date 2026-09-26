@@ -64,13 +64,13 @@ Drill: run steps 2–6 on a laptop against the dev stack (the same compose files
 **Fix:** Create the directory by hand once: `sudo mkdir -p /srv/maps` and make it readable by the container's `node` user (world-readable is simplest: `sudo chmod 755 /srv/maps` and the files under it). To publish, check the manifest against the dictionary (RFC-76 R2) *before* the maps go live — "Before publishing" — never after. The first command runs on the laptop; the other two run *on the server* (`/srv/treerepro`), logged in as an administrator with Docker access — never the CI deploy key above, which is forced to `scripts/deploy.sh` and can do nothing else. The server's own `.env` sets `COMPOSE_FILE=compose.yml:compose.prod.yml` (`scripts/deploy.sh` re-exports the same value, in case it is ever lost), so a plain `docker compose` there already picks the production overrides:
 
 ```sh
-rsync -rtvc --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/
-ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next'
+rsync -rtvc --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/ &&
+ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next' &&
 ssh <admin>@<server> '
   set -e
   rsync -rtc --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
   rsync -rtc --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
-  rsync -rtc --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after the check reports 0 problems
+  rsync -rtc --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/
 '
 ```
 
