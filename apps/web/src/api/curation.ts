@@ -26,16 +26,14 @@ import { withQuery } from './query.ts';
 
 /**
  * Query keys of the curation screens, nested under the dataset prefixes so
- * one invalidation covers both. `disputed` takes the filters (RFC-65 R10
- * amended by plan 11b: `intent`) so switching `?intent=contest` on and off
- * is its own cache entry and its own page-1 reset, the same as every other
- * filtered list in the app.
+ * one invalidation (`invalidateAfterRecordWrite`'s `['records']`) covers all
+ * of them.
  * @rfc RFC-65 R8, R10
  */
 export const curationKeys = {
   pendingTraits: ['records', 'pending', 'traits'] as const,
   pendingGroups: (traitId: string) => ['records', 'pending', 'groups', traitId] as const,
-  disputed: (params: { intent?: 'contest' }) => ['records', 'disputed', params] as const,
+  contested: ['records', 'contested'] as const,
 };
 
 /** The file download of RFC-66; a plain link, the session cookie authenticates it. @rfc RFC-66 R8 */
@@ -100,8 +98,8 @@ export async function mapPending(body: MapPendingBody): Promise<MapResult> {
     })
   ).data;
 }
-/** The standing contests (the path predates them). @rfc RFC-65 R10 */
-export function fetchDisputed(params: { cursor?: string; limit?: number }) {
+/** The open contests, newest first (the path predates them). @rfc RFC-65 R10 */
+export function fetchContested(params: { cursor?: string; limit?: number }) {
   return apiFetch(
     withQuery('/records/disputed', params),
     listEnvelopeSchema(contestedQueueItemSchema),

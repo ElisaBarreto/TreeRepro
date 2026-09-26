@@ -88,7 +88,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     to: '/app/curation/disputed',
-    label: 'Disputed',
+    label: 'Contested',
     icon: 'alert',
     permission: 'records.review',
     section: 'curation',

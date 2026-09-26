@@ -24,10 +24,6 @@ import { contributionErrorMessage } from './errors.ts';
 export function actionErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
-      case 'RECORD_WITHDRAWN':
-        return 'This record is withdrawn.';
-      case 'RECORD_NOT_WITHDRAWABLE':
-        return 'Only manual records can be withdrawn.';
       case 'RECORD_NOT_FOUND':
         return 'This record no longer exists.';
     }
