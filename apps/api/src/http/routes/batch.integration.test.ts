@@ -1,4 +1,5 @@
 import { and, eq, isNotNull, like } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { createAdminKey } from '../../../test/helpers/api-keys.ts';
 import { call, useTestApp } from '../../../test/helpers/app.ts';
@@ -10,12 +11,16 @@ import {
   createSpecies,
   createTrait,
 } from '../../../test/helpers/dataset.ts';
+import { captureLogger } from '../../../test/helpers/logger.ts';
 import { adminRoleId } from '../../../test/helpers/roles.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
+import type { AuthContext } from '../../auth/context.ts';
 import { RATE_LIMITS } from '../../auth/rate-limit.ts';
 import { traitRecords } from '../../db/schema/records.ts';
 import { families } from '../../db/schema/taxa.ts';
+import type { AppEnv } from '../env.ts';
+import { batchRoutes } from './batch.ts';
 
 const ZERO = '00000000-0000-0000-0000-000000000000';
 const rand = () => Math.random().toString(36).slice(2, 8);
@@ -118,29 +123,48 @@ describe('RFC-82 R10-R15 POST /api/batch', () => {
 
   it('R12 refuses forbidden paths per item and still runs the rest', async () => {
     const { headers } = await createAdminKey(t);
-    const refused = [
-      { method: 'GET', path: '/health' },
-      { method: 'GET', path: 'api/families' },
-      { method: 'GET', path: '//evil.test/api/families' },
-      { method: 'GET', path: '/api/../auth/me' },
-      { method: 'GET', path: '/api/%2e%2e/api/auth/me' },
-      { method: 'POST', path: '/api/batch', body: { ops: [] } },
-      { method: 'GET', path: '/api/auth/me' },
-      { method: 'GET', path: '/api/auth/m%65' },
-      { method: 'POST', path: '/api/b%61tch', body: { ops: [] } },
-      { method: 'GET', path: '/api/families/%E0%A4%A' },
-      { method: 'POST', path: '/api/me/api-keys', body: {} },
-      { method: 'DELETE', path: `/api/me/sessions/${ZERO}` },
-      { method: 'GET', path: '/api/help/some-slug' },
-      { method: 'GET', path: '/api/families', body: {} },
+    const nested = { ops: [{ method: 'GET', path: '/api/families' }] };
+    const refused: [op: object, field: string, reason: string][] = [
+      [{ method: 'GET', path: '/health' }, 'path', 'Path must start with /api/'],
+      [{ method: 'GET', path: 'api/families' }, 'path', 'Path must start with /api/'],
+      [{ method: 'GET', path: '//evil.test/api/families' }, 'path', 'Path must start with /api/'],
+      [{ method: 'GET', path: '/api/../auth/me' }, 'path', 'Path must stay under /api/'],
+      [{ method: 'GET', path: '/api/%2e%2e/api/auth/me' }, 'path', 'Account routes need a session'],
+      [
+        { method: 'POST', path: '/api/batch', body: nested },
+        'path',
+        'A batch cannot contain a batch',
+      ],
+      [{ method: 'GET', path: '/api/auth/me' }, 'path', 'Account routes need a session'],
+      [{ method: 'GET', path: '/api/auth/m%65' }, 'path', 'Account routes need a session'],
+      [
+        { method: 'POST', path: '/api/b%61tch', body: nested },
+        'path',
+        'A batch cannot contain a batch',
+      ],
+      [{ method: 'GET', path: '/api/families/%E0%A4%A' }, 'path', 'Path has a malformed escape'],
+      [
+        { method: 'POST', path: '/api/me/api-keys', body: {} },
+        'path',
+        'Account routes need a session',
+      ],
+      [
+        { method: 'DELETE', path: `/api/me/sessions/${ZERO}` },
+        'path',
+        'Account routes need a session',
+      ],
+      [{ method: 'GET', path: '/api/help/some-slug' }, 'path', 'Account routes need a session'],
+      [{ method: 'GET', path: '/api/families', body: {} }, 'body', 'A GET operation takes no body'],
     ];
-    const res = await batch(headers, [...refused, { method: 'GET', path: '/api/families' }]);
-    const { data } = await res.json();
+    const ops = [...refused.map(([op]) => op), { method: 'GET', path: '/api/families' }];
+    const { data } = await (await batch(headers, ops)).json();
     expect(data.summary).toEqual({ ok: 1, failed: refused.length });
-    for (const result of data.results.slice(0, refused.length)) {
-      expect(result.status).toBe(400);
-      expect(result.body.error.code).toBe('VALIDATION_FAILED');
-    }
+    refused.forEach(([, path, message], i) => {
+      expect(data.results[i]).toMatchObject({
+        status: 400,
+        body: { error: { code: 'VALIDATION_FAILED', details: [{ path, message }] } },
+      });
+    });
     expect(data.results.at(-1).status).toBe(200);
   });
 
@@ -192,5 +216,48 @@ describe('RFC-82 R10-R15 POST /api/batch', () => {
     ]);
     expect(fits.status).toBe(200);
     expect(await t.redis.zcard(bucket)).toBe(limit);
+  });
+
+  it('R11, R13 reports an operation whose answer cannot be read as 500 and keeps going', async () => {
+    const { logger, lines } = captureLogger();
+    const answers = [
+      () => Promise.reject(new Error('dispatch failed')),
+      async () => new Response('{ not json', { headers: { 'content-type': 'application/json' } }),
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error('stream broke'));
+            },
+          }),
+          { headers: { 'content-type': 'application/zip' } },
+        ),
+      async () => Response.json({ data: 'fine' }),
+    ];
+    const dispatch = () => (answers.shift() as () => Promise<Response>)();
+    const app = new Hono<AppEnv>()
+      .use(async (c, next) => {
+        c.set('logger', logger);
+        c.set('apiKey', { id: `key-${rand()}` });
+        await next();
+      })
+      .route('/', batchRoutes({ limiter: t.limiter } as AuthContext, dispatch));
+    const op = { method: 'GET', path: '/api/families' };
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ops: [op, op, op, op] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.summary).toEqual({ ok: 1, failed: 3 });
+    const internal = { error: { code: 'INTERNAL_ERROR', message: 'The operation failed' } };
+    expect(data.results.slice(0, 3)).toEqual(
+      [0, 1, 2].map(() => ({ ref: null, status: 500, body: internal })),
+    );
+    expect(data.results[3]).toEqual({ ref: null, status: 200, body: { data: 'fine' } });
+    expect(
+      lines.filter((l) => (l as { msg?: string }).msg === 'batch operation failed'),
+    ).toHaveLength(3);
   });
 });

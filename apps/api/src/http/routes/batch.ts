@@ -4,32 +4,29 @@ import type { AuthContext } from '../../auth/context.ts';
 import { RATE_LIMITS } from '../../auth/rate-limit.ts';
 import { batchDispatch } from '../batch-dispatch.ts';
 import type { AppEnv } from '../env.ts';
-import { errorBody, RateLimitedError } from '../errors.ts';
+import { AppError, errorBody, RateLimitedError, sanitizeError } from '../errors.ts';
 import { requireApiKey } from '../middleware/session.ts';
 import { SELF_SERVICE_ROUTES } from '../self-service-routes.ts';
 import { validate } from '../validate.ts';
 
 // Any host works: the URL only carries the path to the same application.
 const BASE = 'http://batch.internal';
-const FORWARDED = ['authorization', 'user-agent', 'x-forwarded-for'] as const;
+// `x-request-id`: `requestId()` reuses it, so each operation logs under the batch's id.
+const FORWARDED = ['authorization', 'user-agent', 'x-forwarded-for', 'x-request-id'] as const;
 
 const SELF_SERVICE = SELF_SERVICE_ROUTES.map((route) => {
   const [method, path] = route.split(' ') as [string, string];
   return { method, pattern: new RegExp(`^${path.replace(/:[^/]+/g, '[^/]+')}$`) };
 });
 
-/**
- * Why an operation may not run, or the normalised URL it runs at.
- * @rfc RFC-82 R12
- */
-export function batchRefusal(
-  op: BatchOp,
-): { reason: string; field: 'path' | 'body' } | { url: URL } {
+/** Why an operation may not run, or the normalised URL it runs at (RFC-82 R12). */
+function batchRefusal(op: BatchOp): { reason: string; field: 'path' | 'body' } | { url: URL } {
   if (!op.path.startsWith('/api/')) return { reason: 'Path must start with /api/', field: 'path' };
   // Resolves dot segments (also percent-encoded ones); what is checked is what runs.
   const url = new URL(op.path, BASE);
-  // Hono routes on the `decodeURI` form (`/api/b%61tch` reaches `/api/batch`),
-  // so that is the form checked; a malformed escape is refused outright.
+  // Checked percent-decoded (`/api/b%61tch` reaches `/api/batch`). Stricter than
+  // Hono's own routing path, which keeps `%25` literal and tolerates a malformed
+  // escape: this refuses more, never less, and a malformed escape is refused outright.
   let path: string;
   try {
     path = decodeURI(url.pathname);
@@ -70,15 +67,24 @@ async function run(
     headers.set('content-type', 'application/json');
     init.body = JSON.stringify(op.body);
   }
-  const res = await batchDispatch.run(true, () => dispatch(new Request(checked.url, init)));
-  if (/^application\/json\b/i.test(res.headers.get('content-type') ?? '')) {
-    return { ref, status: res.status, body: await res.json() };
+  try {
+    const res = await batchDispatch.run(true, () => dispatch(new Request(checked.url, init)));
+    if (/^application\/json\b/i.test(res.headers.get('content-type') ?? '')) {
+      return { ref, status: res.status, body: await res.json() };
+    }
+    // Drained, not cancelled: cancelling a `Readable.toWeb` stream (the dataset
+    // ZIP, RFC-66) before its first chunk throws an uncaught exception in Node's
+    // adapter. Draining costs what the same single call would.
+    await res.body?.pipeTo(new WritableStream());
+    return { ref, status: res.status, body: null };
+  } catch (err) {
+    // An operation that already committed keeps its result: the batch goes on (R11).
+    c.get('logger').error(
+      { err: sanitizeError(err instanceof Error ? err : new Error(String(err))) },
+      'batch operation failed',
+    );
+    return { ref, status: 500, body: errorBody('INTERNAL_ERROR', 'The operation failed') };
   }
-  // Drained, not cancelled: cancelling a `Readable.toWeb` stream (the dataset
-  // ZIP, RFC-66) before its first chunk throws an uncaught exception in Node's
-  // adapter. Draining costs what the same single call would.
-  await res.body?.pipeTo(new WritableStream());
-  return { ref, status: res.status, body: null };
 }
 
 /**
@@ -94,8 +100,9 @@ export function batchRoutes(ctx: AuthContext, dispatch: (request: Request) => Pr
     async (c) => {
       const { ops } = c.req.valid('json');
       const apiKey = c.get('apiKey');
+      if (!apiKey) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
       // `globalRateLimit` already charged this request one unit: it is the first operation.
-      if (apiKey && ops.length > 1) {
+      if (ops.length > 1) {
         const decision = await ctx.limiter.hit(
           'global:api_key',
           apiKey.id,
