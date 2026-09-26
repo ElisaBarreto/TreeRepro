@@ -60,6 +60,43 @@ describe('RFC-24 R1, R2 sliding window limiter', () => {
     expect((await limiter.hit('a', k, rule)).allowed).toBe(false);
   });
 
+  it('RFC-24 R1 a hit with a cost records that many units, or none when they do not fit', async () => {
+    const limiter = createRateLimiter(redis, () => clock.now);
+    const rule = { limit: 5, windowMs: 60_000 };
+    const k = key();
+    expect(await limiter.hit('t', k, rule, 3)).toEqual({ allowed: true, retryAfterSeconds: 0 });
+    expect(await redis.zcard(`rl:t:${k}`)).toBe(3);
+    clock.now += 1000;
+    const refused = await limiter.hit('t', k, rule, 3);
+    expect(refused.allowed).toBe(false);
+    // One unit must leave the window: the oldest, recorded 1 s ago.
+    expect(refused.retryAfterSeconds).toBe(59);
+    expect(await redis.zcard(`rl:t:${k}`)).toBe(3);
+    expect((await limiter.hit('t', k, rule, 2)).allowed).toBe(true);
+    expect(await redis.zcard(`rl:t:${k}`)).toBe(5);
+  });
+
+  it('RFC-24 R1 a refused cost waits for as many units as it lacks', async () => {
+    const limiter = createRateLimiter(redis, () => clock.now);
+    const rule = { limit: 3, windowMs: 60_000 };
+    const k = key();
+    for (let i = 0; i < 3; i++) {
+      await limiter.hit('t', k, rule);
+      clock.now += 10_000;
+    }
+    // Needs 2 free units: the second oldest (recorded 20 s ago) must leave.
+    const refused = await limiter.hit('t', k, rule, 2);
+    expect(refused).toEqual({ allowed: false, retryAfterSeconds: 40 });
+  });
+
+  it('RFC-24 R1 a cost above the limit is refused with the whole window as the wait', async () => {
+    const limiter = createRateLimiter(redis, () => clock.now);
+    expect(await limiter.hit('t', key(), { limit: 2, windowMs: 60_000 }, 3)).toEqual({
+      allowed: false,
+      retryAfterSeconds: 60,
+    });
+  });
+
   it('R3 documents the configured limits', () => {
     expect(RATE_LIMITS.globalSession).toEqual({ limit: 300, windowMs: 60_000 });
     expect(RATE_LIMITS.globalIp).toEqual({ limit: 100, windowMs: 60_000 });
