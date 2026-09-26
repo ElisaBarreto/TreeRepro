@@ -40,4 +40,18 @@ describe('RFC-82 R2, R7 API key contracts', () => {
     });
     expect(parsed.keys[0]?.state).toBe('active');
   });
+
+  it('R1 the display prefix is exactly 8 characters', () => {
+    const key = {
+      id: '0199a1b2-0000-7000-8000-000000000001',
+      name: 'laptop',
+      prefix: 'AbCdEfG',
+      createdAt: '2026-09-26T10:00:00.000Z',
+      expiresAt: '2026-12-25T10:00:00.000Z',
+      lastUsedAt: null,
+      revokedAt: null,
+      state: 'active',
+    };
+    expect(apiKeyListSchema.safeParse({ eligible: true, keys: [key] }).success).toBe(false);
+  });
 });

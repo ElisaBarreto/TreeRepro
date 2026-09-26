@@ -8,7 +8,7 @@ export const API_KEY_STATES = ['active', 'expired', 'revoked'] as const;
 export const apiKeySummarySchema = z.strictObject({
   id: z.uuid(),
   name: z.string(),
-  prefix: z.string(),
+  prefix: z.string().length(8),
   createdAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
   lastUsedAt: z.iso.datetime().nullable(),
