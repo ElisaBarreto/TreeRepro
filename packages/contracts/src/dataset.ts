@@ -490,9 +490,11 @@ export const recordDetailSchema = recordSchema.extend({
 
 /** Sortable columns of the record panel (spec §2). @rfc RFC-63 R9 */
 export const RECORD_SORTS = ['value', 'references', 'origin', 'added'] as const;
+/** @rfc RFC-63 R9 */
 export type RecordSort = (typeof RECORD_SORTS)[number];
 /** @rfc RFC-63 R9 */
 export const SORT_ORDERS = ['asc', 'desc'] as const;
+/** @rfc RFC-63 R9 */
 export type SortOrder = (typeof SORT_ORDERS)[number];
 
 /** @rfc RFC-63 R9 */

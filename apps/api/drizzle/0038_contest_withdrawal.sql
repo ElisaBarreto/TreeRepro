@@ -43,6 +43,20 @@ ALTER TABLE "contests" ADD CONSTRAINT "contests_created_by_users_id_fk" FOREIGN 
 CREATE INDEX "contest_levels_level_idx" ON "contest_levels" USING btree ("level_id");--> statement-breakpoint
 CREATE INDEX "contests_species_trait_idx" ON "contests" USING btree ("species_id","trait_id");--> statement-breakpoint
 CREATE INDEX "contests_created_by_idx" ON "contests" USING btree ("created_by","id" DESC NULLS LAST);--> statement-breakpoint
+-- The unique index below allows one withdraw annotation per record. A
+-- duplicate already in the table would fail it with Postgres' generic
+-- duplicate-key error; this raises a clear one instead. See
+-- docs/gotchas/dataset.md "Deploy precheck".
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM record_annotations WHERE kind = 'withdraw' GROUP BY record_id HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'contest_withdrawal: record(s) with duplicate withdraw annotations exist; see docs/gotchas/dataset.md "Deploy precheck"';
+  END IF;
+END;
+$$;
+--> statement-breakpoint
 CREATE UNIQUE INDEX "record_annotations_withdraw_idx" ON "record_annotations" USING btree ("record_id") WHERE "record_annotations"."kind" = 'withdraw';--> statement-breakpoint
 ALTER TABLE "trait_records" ADD CONSTRAINT "trait_records_intent_check" CHECK (("trait_records"."responds_to_record_id" is null or "trait_records"."intent" is not null)
         and ("trait_records"."intent" is distinct from 'complement' or "trait_records"."responds_to_record_id" is not null));

@@ -357,7 +357,8 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
               where cr.contest_id = k.id limit 1)) as contested,
           (select cr.record_id from contest_records cr
             join trait_records c on c.id = cr.record_id
-            where cr.contest_id = k.id order by c.record_code limit 1) as record_id
+            where cr.contest_id = k.id and ${liveSql(sql`c.id`)}
+            order by c.record_code limit 1) as record_id
         from contests k
         join species sp on sp.id = k.species_id
         join traits t on t.id = k.trait_id

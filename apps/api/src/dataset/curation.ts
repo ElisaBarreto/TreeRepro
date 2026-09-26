@@ -191,6 +191,7 @@ export interface CreateRecordsInput {
   secondaryReferenceId?: string;
 }
 
+/** @rfc RFC-70 R3 */
 export type CreateRecordsResult = ContractCreateRecordsResult;
 
 /**

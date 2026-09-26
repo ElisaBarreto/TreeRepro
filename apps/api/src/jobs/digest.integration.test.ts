@@ -64,6 +64,7 @@ const ANCHOR_DAYS = {
   exclusivityEarly: 227,
   queues: 229,
   lists: 233,
+  recordLink: 235,
   // Task 4's `runDigest` tests. Each takes its own offset for the same reason
   // as the four above, and none of them reuses one: the windows are one hour
   // either side of the anchor and the anchors are days apart.
@@ -358,6 +359,74 @@ describe('RFC-74 R3 computeDigest', () => {
       expect(digest.contests.map((c) => c.contestId)).toEqual(byIndex.slice(0, DIGEST_LIST_LIMIT));
       // The cap is on the list alone: R3's counts describe the whole window.
       expect(digest.counts).toMatchObject({ contests: 11 });
+    });
+  });
+
+  it("links to the contest's next live record once the first-created one is withdrawn, or to the species once none remain", async () => {
+    await withRollback(t.db, async (tx) => {
+      const at = anchor(ANCHOR_DAYS.recordLink);
+      const s = await scene(tx);
+      const { user: ada } = await createUser(tx, { name: 'Ada Lovelace', password: null });
+      const manual = (over: Parameters<typeof createRecord>[1]) =>
+        createRecord(tx, { ...over, createdAt: at });
+
+      // A categorical contest that created two records for `beta`: the
+      // first (lowest record_code, so "first created") is withdrawn, so the
+      // link must skip to the second, still-live one — not the species.
+      const first = await manual({
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        valueText: 'beta',
+        levelId: s.level('beta'),
+        primaryReferenceId: s.reference.id,
+        origin: 'manual',
+        createdBy: ada.id,
+        intent: 'contest',
+      });
+      const second = await manual({
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        valueText: 'beta',
+        // Distinct from `first`'s claim key (species, trait, value, raw
+        // value, references): otherwise `trait_records_claim_key` refuses it.
+        rawValue: 'a second claim',
+        levelId: s.level('beta'),
+        primaryReferenceId: s.reference.id,
+        origin: 'manual',
+        createdBy: ada.id,
+        intent: 'contest',
+      });
+      const partlyWithdrawn = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: ada.id,
+        levelIds: [s.level('alpha')],
+        recordIds: [first.id, second.id],
+        createdAt: at,
+      });
+      await createAnnotation(tx, {
+        recordId: first.id,
+        actorId: ada.id,
+        kind: 'withdraw',
+        createdAt: at,
+      });
+
+      // A record-less contest naming a level: it created nothing to begin
+      // with, so the link falls back to the species — the same fallback the
+      // fix must leave untouched.
+      const recordLess = await createContest(tx, {
+        speciesId: s.species.id,
+        traitId: s.trait.id,
+        createdBy: ada.id,
+        levelIds: [s.level('gamma')],
+        createdAt: at,
+      });
+
+      const digest = await computeDigest(tx, windowAround(at));
+      const byId = new Map(digest.contests.map((c) => [c.contestId, c]));
+
+      expect(byId.get(partlyWithdrawn.id)?.recordId).toBe(second.id);
+      expect(byId.get(recordLess.id)?.recordId).toBeNull();
     });
   });
 

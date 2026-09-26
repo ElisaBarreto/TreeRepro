@@ -355,10 +355,14 @@ export type Sources = z.infer<typeof sourcesSchema>;
 export type RecordValue = z.infer<typeof recordValueSchema>;
 export type CreateRecordBody = z.infer<typeof createRecordBodySchema>;
 export type CreateRecordsResult = z.infer<typeof createRecordsResultSchema>;
+/** @rfc RFC-70 R3 */
 export type RecordCodeRef = z.infer<typeof recordCodeRefSchema>;
 export type AnnotateRecordBody = z.infer<typeof annotateRecordBodySchema>;
+/** @rfc RFC-65 R13 */
 export type ValidateLevelBody = z.infer<typeof validateLevelBodySchema>;
+/** @rfc RFC-65 R13 */
 export type ValidateLevelResult = z.infer<typeof validateLevelResultSchema>;
+/** @rfc RFC-65 R14 */
 export type WithdrawLevelResult = z.infer<typeof withdrawLevelResultSchema>;
 export type ResolveDoiQuery = z.infer<typeof resolveDoiQuerySchema>;
 export type ResolveDoiResult = z.infer<typeof resolveDoiResultSchema>;
@@ -367,6 +371,7 @@ export type PendingGroupsQuery = z.infer<typeof pendingGroupsQuerySchema>;
 export type PendingGroup = z.infer<typeof pendingGroupSchema>;
 export type MapPendingBody = z.infer<typeof mapPendingBodySchema>;
 export type MapResult = z.infer<typeof mapResultSchema>;
+/** @rfc RFC-65 R10 */
 export type ContestedQueueItem = z.infer<typeof contestedQueueItemSchema>;
 export type FamilyBody = z.infer<typeof familyBodySchema>;
 export type CreateGenusBody = z.infer<typeof createGenusBodySchema>;

@@ -46,6 +46,7 @@ export const contests = pgTable(
   ],
 );
 
+/** @rfc RFC-63 R4, R14 */
 export type ContestRow = typeof contests.$inferSelect;
 
 /**
