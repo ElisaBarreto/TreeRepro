@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { totpCodeSchema } from './auth.ts';
+import { PERMISSION_KEYS, type PermissionKey } from './permissions.ts';
 
 /** @rfc RFC-82 R7 */
 export const API_KEY_STATES = ['active', 'expired', 'revoked'] as const;
@@ -39,3 +40,16 @@ export type ApiKeySummary = z.infer<typeof apiKeySummarySchema>;
 export type ApiKeyList = z.infer<typeof apiKeyListSchema>;
 export type CreateApiKeyBody = z.infer<typeof createApiKeyBodySchema>;
 export type CreateApiKeyResponse = z.infer<typeof createApiKeyResponseSchema>;
+
+/** One route an API key reaches; `permission` is null for an API-key route. @rfc RFC-82 R22 */
+export const apiEndpointSchema = z.strictObject({
+  method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+  path: z.string(),
+  summary: z.string(),
+  permission: z.enum(PERMISSION_KEYS as [PermissionKey, ...PermissionKey[]]).nullable(),
+});
+
+/** @rfc RFC-82 R22 */
+export const apiEndpointListSchema = z.array(apiEndpointSchema);
+
+export type ApiEndpoint = z.infer<typeof apiEndpointSchema>;

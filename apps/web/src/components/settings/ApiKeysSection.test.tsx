@@ -10,6 +10,7 @@ const me = vi.hoisted(() => ({
   listApiKeys: vi.fn(),
   createApiKey: vi.fn(),
   revokeApiKey: vi.fn(),
+  listApiKeyEndpoints: vi.fn(),
 }));
 vi.mock('../../api/me.ts', () => me);
 
@@ -26,8 +27,19 @@ const KEY = {
   state: 'active' as const,
 };
 
+const ENDPOINTS = [
+  { method: 'POST', path: '/api/batch', summary: 'Run up to 500 operations', permission: null },
+  {
+    method: 'GET',
+    path: '/api/records/pending',
+    summary: 'List pending groups',
+    permission: 'records.review',
+  },
+];
+
 beforeEach(() => {
   for (const fn of Object.values(me)) fn.mockReset();
+  me.listApiKeyEndpoints.mockResolvedValue(ENDPOINTS);
 });
 
 describe('RFC-82 R7 ApiKeysSection', () => {
@@ -123,5 +135,30 @@ describe('RFC-82 R7 ApiKeysSection', () => {
     renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
     await userEvent.click(await screen.findByRole('button', { name: 'Revoke laptop' }));
     expect(await screen.findByText('Something went wrong. Try again.')).toBeInTheDocument();
+  });
+
+  it('R22 shows how to use a key and lists the endpoints, grouped and filterable', async () => {
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [KEY] });
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
+
+    expect(await screen.findByText('Authorization: Bearer tr_live_…')).toBeInTheDocument();
+    expect(screen.getByText(window.location.origin)).toBeInTheDocument();
+    await userEvent.click(await screen.findByText('Endpoints (2)'));
+    expect(screen.getByRole('heading', { name: 'batch' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'records' })).toBeInTheDocument();
+    expect(screen.getByText('/api/records/pending')).toBeInTheDocument();
+    expect(screen.getByText('records.review')).toBeInTheDocument();
+    expect(screen.getByText('key only')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Filter endpoints'), 'pending');
+    expect(screen.queryByText('/api/batch')).not.toBeInTheDocument();
+    expect(screen.getByText('/api/records/pending')).toBeInTheDocument();
+  });
+
+  it('R22 says so when the endpoint list fails to load', async () => {
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
+    me.listApiKeyEndpoints.mockRejectedValue(new Error('down'));
+    renderWithProviders(<ApiKeysSection />, { me: ME_TOTP });
+    expect(await screen.findByText('The endpoint list could not be loaded.')).toBeInTheDocument();
   });
 });

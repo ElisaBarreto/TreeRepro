@@ -1,5 +1,7 @@
 import {
+  type ApiEndpoint,
   type ApiKeyList,
+  apiEndpointListSchema,
   apiKeyListSchema,
   type CreateApiKeyBody,
   type CreateApiKeyResponse,
@@ -42,6 +44,15 @@ export async function revokeSession(id: string): Promise<void> {
 /** @rfc RFC-82 R7 */
 export async function listApiKeys(): Promise<ApiKeyList> {
   const { data } = await apiFetch('/me/api-keys', dataEnvelopeSchema(apiKeyListSchema));
+  return data;
+}
+
+/** @rfc RFC-82 R22 */
+export async function listApiKeyEndpoints(): Promise<ApiEndpoint[]> {
+  const { data } = await apiFetch(
+    '/me/api-keys/endpoints',
+    dataEnvelopeSchema(apiEndpointListSchema),
+  );
   return data;
 }
 

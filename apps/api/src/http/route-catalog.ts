@@ -1,4 +1,5 @@
 import {
+  apiEndpointListSchema,
   apiKeyListSchema,
   auditLogEntrySchema,
   batchResponseSchema,
@@ -156,6 +157,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/me/api-keys': {
     summary: "List the caller's own API keys",
     response: dataEnvelopeSchema(apiKeyListSchema),
+  },
+  'GET /api/me/api-keys/endpoints': {
+    summary: 'List every route an API key reaches (admin system role only)',
+    response: dataEnvelopeSchema(apiEndpointListSchema),
   },
   'POST /api/me/api-keys': {
     summary: 'Create an API key for the caller',

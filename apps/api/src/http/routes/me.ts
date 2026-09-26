@@ -1,8 +1,8 @@
-import { createApiKeyBodySchema, updateMeBodySchema } from '@treerepro/contracts';
+import { type ApiEndpoint, createApiKeyBodySchema, updateMeBodySchema } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { updateOwnName } from '../../admin/users.ts';
-import { createApiKey, listApiKeys, revokeApiKey } from '../../auth/api-keys.ts';
+import { createApiKey, holdsAdminRole, listApiKeys, revokeApiKey } from '../../auth/api-keys.ts';
 import type { AuthContext } from '../../auth/context.ts';
 import { listSessions, revokeOwnSession } from '../../auth/flows/session.ts';
 import { RATE_LIMITS } from '../../auth/rate-limit.ts';
@@ -11,6 +11,7 @@ import type { AppEnv } from '../env.ts';
 import { AppError } from '../errors.ts';
 import { rateLimit } from '../middleware/rate-limit.ts';
 import { currentSession, currentUser, requireSession } from '../middleware/session.ts';
+import { keyEndpoints, type RouteEntry } from '../openapi.ts';
 import { validate } from '../validate.ts';
 
 const sessionIdParam = z.strictObject({ id: z.string().regex(/^[0-9a-f]{64}$/) });
@@ -18,9 +19,10 @@ const sessionIdParam = z.strictObject({ id: z.string().regex(/^[0-9a-f]{64}$/) }
 /**
  * @rfc RFC-22 R11
  * @rfc RFC-50 R11
- * @rfc RFC-82 R2, R6, R7
+ * @rfc RFC-82 R2, R6, R7, R22
  */
-export function meRoutes(ctx: AuthContext) {
+export function meRoutes(ctx: AuthContext, routes: () => readonly RouteEntry[]) {
+  let endpoints: ApiEndpoint[] | undefined;
   return new Hono<AppEnv>()
     .patch('/', requireSession, validate('json', updateMeBodySchema), async (c) =>
       c.json({
@@ -49,6 +51,14 @@ export function meRoutes(ctx: AuthContext) {
     .get('/api-keys', requireSession, async (c) =>
       c.json({ data: await listApiKeys(ctx, currentUser(c)) }),
     )
+    .get('/api-keys/endpoints', requireSession, async (c) => {
+      if (!(await holdsAdminRole(ctx.db, currentUser(c).id))) {
+        throw new AppError('PERMISSION_DENIED', 'Only administrators can use API keys');
+      }
+      // The mounted routes never change after start-up, so the list is built once.
+      endpoints ??= keyEndpoints(routes());
+      return c.json({ data: endpoints });
+    })
     .post(
       '/api-keys',
       requireSession,
