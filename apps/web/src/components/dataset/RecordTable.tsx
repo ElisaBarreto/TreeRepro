@@ -1,59 +1,85 @@
 import { Link } from '@tanstack/react-router';
-import type { RecordItem, ReferenceRef } from '@treerepro/contracts';
-import type { ReactNode } from 'react';
+import type { RecordItem } from '@treerepro/contracts';
+import { Fragment, type ReactNode } from 'react';
+import type { RecordSort, SortOrder } from '../../api/dataset.ts';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
-import { referenceLabel } from '../../lib/references.ts';
-import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { type LabelledReference, referenceLabel } from '../../lib/references.ts';
+import { Badge, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
-import { ReviewBadge } from './ReviewBadge.tsx';
 
 const ARTICLE_MAX = 60;
 const DASH = <span className="text-mist-500">—</span>;
+const SORT_LABELS: Record<RecordSort, string> = {
+  value: 'Value',
+  references: 'References',
+  origin: 'Origin',
+  added: 'Added',
+};
 
-// The harmonised value when there is one, else the text as it was entered.
-function valueLabel(record: RecordItem): string {
+function bound(value: number | undefined): string {
+  return value === undefined ? '…' : formatNumber(value);
+}
+
+/**
+ * How a record's value reads: its level; else its quantitative value in the
+ * trait's unit — the single value, the min–max range, the mean and the SD,
+ * with n last (R-5) — else the text as it was entered.
+ * @rfc RFC-63 R8
+ */
+export function recordValueLabel(record: RecordItem): string {
   if (record.level) return record.level.key;
-  if (record.numericValue !== null) {
-    const unit = record.trait.unit ? ` ${record.trait.unit}` : '';
-    return `${formatNumber(record.numericValue)}${unit}`;
+  const q = record.quantitative;
+  if (q) {
+    const parts = [
+      q.single === undefined ? null : formatNumber(q.single),
+      q.min === undefined && q.max === undefined ? null : `${bound(q.min)}–${bound(q.max)}`,
+      q.mean === undefined ? null : `mean ${formatNumber(q.mean)}`,
+      q.sd === undefined ? null : `SD ${formatNumber(q.sd)}`,
+    ].filter((part): part is string => part !== null);
+    if (parts.length > 0) {
+      const unit = record.trait.unit ? ` ${record.trait.unit}` : '';
+      const n = q.n === undefined ? '' : ` (n = ${q.n})`;
+      return `${parts.join(' · ')}${unit}${n}`;
+    }
   }
   return record.valueText || '(empty)';
 }
 
-// One role's article: how the reference reads (RFC-61 R4 — a personal
-// observation by its observer, never by its key) linked to the reference
-// page, cut at sixty characters with the whole label in the link's `title`;
-// a dash when the record names no article in that role.
-function ArticleCell({ reference }: { reference: ReferenceRef | null }) {
-  if (!reference) return <Td>{DASH}</Td>;
+// One reference as it reads (RFC-61 R4 — a personal observation by its
+// observer, never by its key) linked to its page, cut at sixty characters
+// with the whole label in the link's `title`.
+function ReferenceLink({ reference }: { reference: LabelledReference & { id: string } }) {
   const label = referenceLabel(reference);
   const shown = truncate(label, ARTICLE_MAX);
   return (
-    <Td>
-      <Link
-        to="/app/references/$id"
-        params={{ id: reference.id }}
-        title={shown === label ? undefined : label}
-        className="font-medium text-canopy-900 underline-offset-2 hover:underline"
-      >
-        {shown}
-      </Link>
-    </Td>
+    <Link
+      to="/app/references/$id"
+      params={{ id: reference.id }}
+      title={shown === label ? undefined : label}
+      className="font-medium text-canopy-900 underline-offset-2 hover:underline"
+    >
+      {shown}
+    </Link>
   );
 }
 
+/** The column and direction the list is ordered by, and how to change them. @rfc RFC-63 R9 */
+export interface RecordTableSort {
+  by: RecordSort;
+  order: SortOrder;
+  onSort(by: RecordSort): void;
+}
+
 /**
- * Records as rows: value, the primary and the secondary article (each linked
- * to its reference page; the same article may fill both roles), origin, the
- * two status chips and the date added. The value is a button that selects
- * the row, so every record is reachable by keyboard. Outside a species page
- * (`showSpecies`) a first column names each row's species and links to it;
- * outside a trait panel (`showTrait`) a column names the trait, so a row
- * reads on its own.
- * `extra` appends one trailing column of the caller's own: the Status
- * column of the contributions page, where every row carries its own
- * standing.
- * @rfc RFC-63 R8
+ * Records as rows: the record ID (R-2), the value — a button that selects the
+ * row, so every record is reachable by keyboard — every reference of the
+ * record joined by "; " (R-4), the import's secondary article, origin,
+ * harmonisation, the validation and contest counts with a **Contested**
+ * badge (R-9), and the date added. Withdrawn records never reach it (R-13).
+ * With `sort`, the value, references, origin and added headers sort on the
+ * server (spec §2). `showSpecies` / `showTrait` add leading columns outside a
+ * species page or trait panel; `extra` appends one column of the caller's.
+ * @rfc RFC-63 R8, R9
  * @rfc RFC-71 R2
  */
 export function RecordTable<T extends RecordItem>({
@@ -61,74 +87,106 @@ export function RecordTable<T extends RecordItem>({
   onSelect,
   showSpecies = false,
   showTrait = false,
+  sort,
   extra,
 }: {
   records: T[];
   onSelect: (record: T) => void;
   showSpecies?: boolean;
   showTrait?: boolean;
+  sort?: RecordTableSort;
   extra?: { header: string; cell: (record: T) => ReactNode };
 }) {
+  const head = (by: RecordSort) =>
+    sort ? (
+      <SortTh
+        label={SORT_LABELS[by]}
+        direction={sort.by === by ? sort.order : null}
+        onSort={() => sort.onSort(by)}
+      />
+    ) : (
+      <Th>{SORT_LABELS[by]}</Th>
+    );
   return (
     <Table>
       <Thead>
         <Tr>
           {showSpecies ? <Th>Species</Th> : null}
           {showTrait ? <Th>Trait</Th> : null}
-          <Th>Value</Th>
-          <Th>Primary article</Th>
+          <Th>ID</Th>
+          {head('value')}
+          {head('references')}
           <Th>Secondary article</Th>
-          <Th>Origin</Th>
+          {head('origin')}
           <Th>Harmonisation</Th>
-          <Th>Review</Th>
-          <Th>Added</Th>
+          <Th>Counts</Th>
+          {head('added')}
           {extra ? <Th>{extra.header}</Th> : null}
         </Tr>
       </Thead>
       <Tbody>
-        {records.map((record) => {
-          const value = valueLabel(record);
-          return (
-            <Tr key={record.id} className="transition-colors hover:bg-mist-50">
-              {showSpecies ? (
-                <Td>
-                  <Link
-                    to="/app/species/$id"
-                    params={{ id: record.species.id }}
-                    className="font-medium italic text-canopy-900 underline-offset-2 hover:underline"
-                  >
-                    {record.species.canonicalName}
-                  </Link>
-                </Td>
-              ) : null}
-              {showTrait ? <Td>{humaniseKey(record.trait.key)}</Td> : null}
+        {records.map((record) => (
+          <Tr key={record.id} className="transition-colors hover:bg-mist-50">
+            {showSpecies ? (
               <Td>
-                <span className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(record)}
-                    className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-                  >
-                    {value}
-                  </button>
+                <Link
+                  to="/app/species/$id"
+                  params={{ id: record.species.id }}
+                  className="font-medium italic text-canopy-900 underline-offset-2 hover:underline"
+                >
+                  {record.species.canonicalName}
+                </Link>
+              </Td>
+            ) : null}
+            {showTrait ? <Td>{humaniseKey(record.trait.key)}</Td> : null}
+            <Td className="whitespace-nowrap tabular-nums">{record.recordCode}</Td>
+            <Td>
+              <button
+                type="button"
+                onClick={() => onSelect(record)}
+                className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+              >
+                {recordValueLabel(record)}
+              </button>
+            </Td>
+            <Td>
+              {record.references.length === 0
+                ? DASH
+                : record.references.map((reference, index) => (
+                    <Fragment key={reference.id}>
+                      {index > 0 ? '; ' : null}
+                      <ReferenceLink reference={reference} />
+                    </Fragment>
+                  ))}
+            </Td>
+            <Td>
+              {record.secondaryReference ? (
+                <ReferenceLink reference={record.secondaryReference} />
+              ) : (
+                DASH
+              )}
+            </Td>
+            <Td>{record.origin}</Td>
+            <Td>
+              <HarmonisationBadge status={record.harmonisation} />
+            </Td>
+            <Td className="whitespace-nowrap">
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className="tabular-nums">
+                  <span aria-hidden="true">{`✓ ${record.validationCount} / ✗ ${record.contestCount}`}</span>
+                  <span className="sr-only">
+                    {` (${record.validationCount} ${record.validationCount === 1 ? 'validation' : 'validations'}, ${record.contestCount} ${record.contestCount === 1 ? 'contest' : 'contests'})`}
+                  </span>
                 </span>
-              </Td>
-              <ArticleCell reference={record.primaryReference} />
-              <ArticleCell reference={record.secondaryReference} />
-              <Td>{record.origin}</Td>
-              <Td>
-                <HarmonisationBadge status={record.harmonisation} />
-              </Td>
-              <Td>
-                <ReviewBadge status={record.review} />
-              </Td>
-              <Td className="whitespace-nowrap tabular-nums">
-                <time dateTime={record.createdAt}>{isoDate(record.createdAt)}</time>
-              </Td>
-              {extra ? <Td>{extra.cell(record)}</Td> : null}
-            </Tr>
-          );
-        })}
+                {record.contested ? <Badge tone="red">Contested</Badge> : null}
+              </span>
+            </Td>
+            <Td className="whitespace-nowrap tabular-nums">
+              <time dateTime={record.createdAt}>{isoDate(record.createdAt)}</time>
+            </Td>
+            {extra ? <Td>{extra.cell(record)}</Td> : null}
+          </Tr>
+        ))}
       </Tbody>
     </Table>
   );
