@@ -75,24 +75,25 @@ export function Dialog({ open, title, onClose, closeDisabled, children }: Dialog
         if (closeDisabled) return;
         if (event.target === ref.current) ref.current?.close();
       }}
-      className="m-auto w-[min(92vw,480px)] rounded-2xl border border-canopy-700/20 bg-white p-0 text-canopy-950 shadow-xl backdrop:bg-canopy-950/60"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(92vw,480px)] flex-col overflow-hidden rounded-2xl border border-canopy-700/20 bg-white p-0 text-canopy-950 shadow-xl backdrop:bg-canopy-950/60 open:flex"
     >
-      <div className="flex flex-col gap-5 p-6">
-        {/* Sticky, so Close stays in reach when a long dialog scrolls (RFC-13 R10). */}
-        <header className="sticky top-0 z-10 -mx-6 -mt-6 flex items-start justify-between gap-4 bg-white px-6 pt-6 pb-2">
-          <h2 id={titleId} className="font-display text-section font-semibold">
-            {title}
-          </h2>
-          <button
-            type="button"
-            onClick={() => ref.current?.close()}
-            aria-label="Close"
-            disabled={closeDisabled}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-mist-500 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Icon name="close" />
-          </button>
-        </header>
+      {/* Only the body scrolls: Close stays in reach, and the scrollbar sits
+          inside the rounded corners instead of squaring them off. */}
+      <header className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6 pb-4">
+        <h2 id={titleId} className="font-display text-section font-semibold">
+          {title}
+        </h2>
+        <button
+          type="button"
+          onClick={() => ref.current?.close()}
+          aria-label="Close"
+          disabled={closeDisabled}
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-mist-500 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Icon name="close" />
+        </button>
+      </header>
+      <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-6 pt-1 pb-6 [scrollbar-width:thin]">
         {children}
       </div>
     </dialog>,
