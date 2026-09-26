@@ -23,7 +23,7 @@ Contributors meet a vocabulary (validate, contest, complement, personal observat
   - `slug` and `anchor` are generated from the title on creation (lowercase ASCII, runs of other characters become `-`) and never change afterwards, so a copied link keeps working; a clash answers 409 `HELP_SLUG_TAKEN` or `HELP_ANCHOR_TAKEN`. A section created with no title has no anchor.
   - `position` moves the item to that 0-based place among its siblings (clamped), shifting the others; a position that moves nothing records nothing.
   - Limits: `title` 1–200 characters trimmed (a section's may be empty), `summary` up to 500, `body_html` up to 100,000; a violation answers 400 `VALIDATION_FAILED`.
-  - Each write records `help.created`, `help.updated` (`metadata.fields`) or `help.deleted` (`metadata.title`) in its transaction (RFC-41 R5), with `target_type` `help_topics` or `help_sections`.
+  - Each write records `help.created`, `help.updated` (`metadata.fields`, and `metadata.previous` with the title and summary or the title and body before the edit) or `help.deleted` (`metadata.title`, and `metadata.previous` with the deleted section, or the deleted topic with all its sections), so a bad edit or deletion can be put back in its transaction (RFC-41 R5), with `target_type` `help_topics` or `help_sections`.
 - **R7** A holder of `help.edit` sees the edit controls on the help pages: **New topic** on the index; on a topic, **Edit** (title and summary), **Delete**, and **Add section**; on each section, **Edit**, **Delete**, **Move up** and **Move down**. A section is edited with a rich-text editor (bold, italic, heading, lists, link) that can switch to its raw HTML. Deleting asks for confirmation. Nobody else sees these controls (RFC-32 R8).
 - **R8** `body_html` is sanitised by the API before it is stored (RFC-02): only an allowlist of formatting elements and attributes is kept — `script`, `style`, `iframe`, `id` and event-handler attributes and `javascript:` URLs are removed. Production's CSP renders same-origin images only. The web app renders the stored HTML as is, and a click on a link to a same-origin path navigates inside the app rather than reloading it.
 
@@ -36,4 +36,5 @@ None.
 - 2026-09-19 — created.
 - 2026-09-19 — accepted.
 - 2026-09-25 — R1 topics cover contested levels and books; R3 Getting started loses its opening sentence (record model revision R-9, R-16, R-18; plan 13a). `draft` until plan 13j (13b does R3).
+- 2026-09-26 — R6: audit entries keep the previous text (pre-PR review).
 - 2026-09-26 — R1, R2, R4, R5 amended, R6–R8 added: help content in the database, edited on the site by `help.edit` holders (issue #172, merged with plan 13j #151).

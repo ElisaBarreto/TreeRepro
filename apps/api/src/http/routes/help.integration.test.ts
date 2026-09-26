@@ -164,6 +164,7 @@ describe('RFC-73 R6–R8 help content', () => {
     });
     expect((await lastAudit(t.db, 'help.updated', { targetId: topic.id }))?.metadata).toEqual({
       fields: ['title', 'summary'],
+      previous: { title: topic.title, summary: '' },
     });
 
     const clash = await call(t.app, 'POST', '/api/help', {
@@ -198,6 +199,10 @@ describe('RFC-73 R6–R8 help content', () => {
     });
     expect(edited.status).toBe(200);
     expect((await edited.json()).data).toMatchObject({ anchor: 'how-it-works' });
+    expect((await lastAudit(t.db, 'help.updated', { targetId: first.id }))?.metadata).toEqual({
+      fields: ['title'],
+      previous: { title: 'How it works', bodyHtml: first.bodyHtml },
+    });
   });
 
   it('R6 position moves a section among its siblings', async () => {
@@ -233,11 +238,22 @@ describe('RFC-73 R6–R8 help content', () => {
     expect(delSection.status).toBe(200);
     expect((await lastAudit(t.db, 'help.deleted', { targetId: section.id }))?.metadata).toEqual({
       title: 'Gone soon',
+      previous: { anchor: 'gone-soon', title: 'Gone soon', bodyHtml: '' },
     });
 
-    await newSection(cookie, topic.id, { title: 'Cascades' });
+    await newSection(cookie, topic.id, { title: 'Cascades', bodyHtml: '<p>Kept</p>' });
     const delTopic = await call(t.app, 'DELETE', `/api/help/${topic.id}`, { cookie });
     expect(delTopic.status).toBe(200);
+    // The audit keeps the whole topic, so a deletion can be put back.
+    expect((await lastAudit(t.db, 'help.deleted', { targetId: topic.id }))?.metadata).toEqual({
+      title: topic.title,
+      previous: {
+        slug: topic.slug,
+        title: topic.title,
+        summary: '',
+        sections: [{ anchor: 'cascades', title: 'Cascades', bodyHtml: '<p>Kept</p>' }],
+      },
+    });
     const gone = await call(t.app, 'GET', `/api/help/${topic.slug}`, { cookie });
     expect(gone.status).toBe(404);
 

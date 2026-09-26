@@ -16,6 +16,31 @@ const COMMANDS: readonly { label: string; command: string; value?: string }[] = 
 ];
 
 /**
+ * Pasted HTML is only sanitised by the API on save, so before the visual area
+ * renders it, drop what could run in the editor's session: active elements,
+ * `on*` handlers and `javascript:`-style URLs. Parsed in an inert document,
+ * where nothing loads or runs.
+ */
+function inert(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  for (const el of doc.body.querySelectorAll(
+    'script,style,iframe,object,embed,link,meta,base,form,svg,math',
+  ))
+    el.remove();
+  for (const el of doc.body.querySelectorAll('*')) {
+    for (const attr of [...el.attributes]) {
+      const url = [...attr.value]
+        .filter((c) => c > ' ')
+        .join('')
+        .toLowerCase();
+      if (attr.name.startsWith('on') || /^(javascript|vbscript|data):/.test(url))
+        el.removeAttribute(attr.name);
+    }
+  }
+  return doc.body.innerHTML;
+}
+
+/**
  * The editor of a help section's body (RFC-73 R7): a visual mode with a
  * small formatting toolbar, and an HTML mode showing the markup itself.
  * `onChange` receives the HTML either way.
@@ -38,7 +63,7 @@ export function RichTextEditor({
   // the HTML mode.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refilled only on a mode switch, never per keystroke.
   useEffect(() => {
-    if (mode === 'visual' && area.current) area.current.innerHTML = value;
+    if (mode === 'visual' && area.current) area.current.innerHTML = inert(value);
   }, [mode]);
 
   function run(command: string, arg?: string) {

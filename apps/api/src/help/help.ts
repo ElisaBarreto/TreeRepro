@@ -188,7 +188,9 @@ export async function updateHelpTopic(
         .update(helpTopics)
         .set({ ...set, updatedAt: new Date() })
         .where(eq(helpTopics.id, row.id));
-      await audit(tx, input.actorId, 'help.updated', 'help_topics', row.id, { fields });
+      // The text before the edit, so a bad one can be put back (RFC-73 R6).
+      const previous = { title: row.title, summary: row.summary };
+      await audit(tx, input.actorId, 'help.updated', 'help_topics', row.id, { fields, previous });
     }
     return topicWithSections(tx, eq(helpTopics.id, row.id));
   });
@@ -201,8 +203,21 @@ export async function deleteHelpTopic(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const row = await topicRow(tx, input.id);
+    const sections = await tx
+      .select({
+        anchor: helpSections.anchor,
+        title: helpSections.title,
+        bodyHtml: helpSections.bodyHtml,
+      })
+      .from(helpSections)
+      .where(eq(helpSections.topicId, row.id))
+      .orderBy(helpSections.position);
     await tx.delete(helpTopics).where(eq(helpTopics.id, row.id));
-    await audit(tx, input.actorId, 'help.deleted', 'help_topics', row.id, { title: row.title });
+    // The whole topic, sections included, so a deletion can be put back (RFC-73 R6).
+    await audit(tx, input.actorId, 'help.deleted', 'help_topics', row.id, {
+      title: row.title,
+      previous: { slug: row.slug, title: row.title, summary: row.summary, sections },
+    });
   });
 }
 
@@ -268,7 +283,8 @@ export async function updateHelpSection(
         .update(helpSections)
         .set({ ...set, updatedAt: new Date() })
         .where(eq(helpSections.id, row.id));
-      await audit(tx, input.actorId, 'help.updated', 'help_sections', row.id, { fields });
+      const previous = { title: row.title, bodyHtml: row.bodyHtml };
+      await audit(tx, input.actorId, 'help.updated', 'help_sections', row.id, { fields, previous });
     }
     const [updated] = await tx
       .select(sectionColumns)
@@ -287,6 +303,9 @@ export async function deleteHelpSection(
   await db.transaction(async (tx) => {
     const row = await sectionRow(tx, input.id);
     await tx.delete(helpSections).where(eq(helpSections.id, row.id));
-    await audit(tx, input.actorId, 'help.deleted', 'help_sections', row.id, { title: row.title });
+    await audit(tx, input.actorId, 'help.deleted', 'help_sections', row.id, {
+      title: row.title,
+      previous: { anchor: row.anchor, title: row.title, bodyHtml: row.bodyHtml },
+    });
   });
 }
