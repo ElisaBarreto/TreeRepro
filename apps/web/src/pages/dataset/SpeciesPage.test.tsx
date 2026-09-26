@@ -8,6 +8,7 @@ import { datasetKeys } from '../../api/dataset.ts';
 import {
   CURATED_RECORD_DETAIL,
   DICTIONARY,
+  DICTIONARY_SEXUAL_SYSTEM,
   FAMILIES,
   GENERA,
   PENDING_RECORD,
@@ -53,6 +54,9 @@ const catalog = vi.hoisted(() => ({ updateSpecies: vi.fn(), addSpeciesName: vi.f
 // swap the real implementation in.
 const curation = vi.hoisted(() => ({
   createRecords: vi.fn(),
+  annotateRecord: vi.fn(),
+  validateLevel: vi.fn(),
+  resolveDoi: vi.fn(),
   invalidateAfterRecordWrite: vi.fn(
     async (_queryClient: QueryClient, _speciesId?: string): Promise<void> => undefined,
   ),
@@ -89,6 +93,9 @@ beforeEach(() => {
   dataset.fetchFamilies.mockReset().mockResolvedValue(FAMILIES);
   dataset.fetchGenera.mockReset().mockResolvedValue({ data: GENERA, meta: { nextCursor: null } });
   curation.createRecords.mockReset();
+  curation.annotateRecord.mockReset().mockResolvedValue(RECORD_DETAIL);
+  curation.validateLevel.mockReset().mockResolvedValue({ validated: [] });
+  curation.resolveDoi.mockReset();
   curation.invalidateAfterRecordWrite.mockReset().mockResolvedValue(undefined);
   catalog.updateSpecies.mockReset();
   catalog.addSpeciesName.mockReset();
@@ -510,9 +517,7 @@ describe('RFC-70 R1 Add entries from the species page', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: ADD_ENTRIES })).not.toBeInTheDocument(),
     );
-    const card = screen.getByRole('button', { name: /^sexual system/ })
-      .parentElement as HTMLElement;
-    await userEvent.click(within(card).getByRole('button', { name: /^Add value for/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add value for sexual system' }));
     // The title names the fixed trait instead of the header button's generic
     // constant: "another trait" would contradict a trait already chosen.
     const prefilled = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
@@ -522,6 +527,8 @@ describe('RFC-70 R1 Add entries from the species page', () => {
 
   it('RFC-70 R3 opens the first created record in the drawer', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
+    // The dialog reads the species' records for the trait: none, so no intent step.
+    dataset.fetchRecords.mockResolvedValue(page([]));
     curation.createRecords.mockResolvedValue({
       created: [RECORD_DETAIL],
       validated: [],
@@ -540,10 +547,9 @@ describe('RFC-70 R1 Add entries from the species page', () => {
       within(dialog).getByRole('combobox', { name: 'Trait' }),
       'sexual system',
     );
-    await userEvent.selectOptions(
-      await within(dialog).findByRole('combobox', { name: 'Level' }),
-      'dioecious',
-    );
+    const dioecious = await within(dialog).findByRole('checkbox', { name: 'dioecious' });
+    await waitFor(() => expect(dioecious).toBeEnabled());
+    await userEvent.click(dioecious);
     // No DOI: the claim is the contributor's own observation (RFC-80 R5).
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add record(s)' }));
     expect(await screen.findByRole('dialog', { name: 'Record' })).toHaveTextContent('dioecious');
@@ -706,5 +712,170 @@ describe('RFC-13 R3 SpeciesPage breadcrumb', () => {
     renderAt(`/app/species/${SPECIES.id}`);
     const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
     expect(within(trail).getByText('Species')).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+const MASS: RecordItem = {
+  ...PENDING_RECORD,
+  recordCode: 'TR_7',
+  level: null,
+  quantitative: { single: 1.5 },
+};
+const DIOECIOUS_LEVEL = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20';
+const CONTEST_LABEL = 'Contest — The existing value is wrong; mine should replace it.';
+const COMPLEMENT_LABEL =
+  'Complement — The existing value is also correct; I am adding another observation.';
+
+// A summary on the dictionary's ids, so the entry dialog opened from a level
+// finds the trait's levels: hermaphrodite and dioecious, both with records.
+const DICT_HERMAPHRODITE = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11';
+const DICT_DIOECIOUS = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e12';
+const DICTIONARY_SPECIES_TRAITS: SpeciesTraits = [
+  {
+    category: { key: 'reproductive_system', label: 'Reproductive system' },
+    traits: [
+      {
+        ...SEXUAL_SYSTEM_SUMMARY,
+        trait: DICTIONARY_SEXUAL_SYSTEM,
+        recordCount: 2,
+        levels: [
+          { levelId: DICT_HERMAPHRODITE, key: 'hermaphrodite' },
+          { levelId: DICT_DIOECIOUS, key: 'dioecious' },
+        ].map((level) => ({ ...level, count: 1, validationCount: 0, contested: false })),
+      },
+    ],
+  },
+];
+const LEVEL_RECORDS: RecordItem[] = [
+  {
+    ...RECORD,
+    trait: DICTIONARY_SEXUAL_SYSTEM,
+    level: { id: DICT_HERMAPHRODITE, key: 'hermaphrodite' },
+    valueText: 'hermaphrodite',
+  },
+  {
+    ...RECORD,
+    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e91',
+    recordCode: 'EB_2',
+    trait: DICTIONARY_SEXUAL_SYSTEM,
+    level: { id: DICT_DIOECIOUS, key: 'dioecious' },
+  },
+];
+
+describe('RFC-70 R4, R9 SpeciesPage legend and record decisions', () => {
+  it('opens with the legend of the three decisions, each word with its icon', async () => {
+    await openPage();
+    const items = within(screen.getByRole('list', { name: 'Legend' })).getAllByRole('listitem');
+    expect(items.map((item) => item.textContent?.trim())).toEqual([
+      'Validate',
+      'Contest',
+      'Complement',
+    ]);
+    for (const item of items) {
+      expect(item.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+    }
+  });
+
+  it('shows no level decisions to a reader', async () => {
+    await openPage();
+    expect(
+      screen.queryByRole('button', { name: 'Validate dioecious for sexual system' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Contest dioecious for sexual system' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('validates every record of a level from its card (R-6)', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...READER,
+      permissions: ['dataset.read', 'records.annotate'],
+    });
+    await openPage();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Validate dioecious for sexual system' }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: 'Validate dioecious' });
+    expect(
+      within(dialog).getByText('Do you confirm that this record is correct?'),
+    ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Validate' }));
+    await waitFor(() =>
+      expect(curation.validateLevel).toHaveBeenCalledWith(
+        SPECIES.id,
+        SEXUAL_SYSTEM.id,
+        DIOECIOUS_LEVEL,
+        {},
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Validate dioecious' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('contests a level from its card: Contest chosen, that level unchecked, the other checked (amendment 6)', async () => {
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
+    dataset.fetchSpeciesTraits.mockResolvedValue(DICTIONARY_SPECIES_TRAITS);
+    dataset.fetchRecords.mockResolvedValue(page(LEVEL_RECORDS));
+    await openPage();
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Contest dioecious for sexual system' }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    expect(await within(dialog).findByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
+    await waitFor(() =>
+      expect(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' })).toBeChecked(),
+    );
+    expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).not.toBeChecked();
+    expect(
+      within(dialog).queryByRole('combobox', { name: 'Responding to' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('complements a level from its card without choosing the intent (ruling 10)', async () => {
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
+    dataset.fetchSpeciesTraits.mockResolvedValue(DICTIONARY_SPECIES_TRAITS);
+    dataset.fetchRecords.mockResolvedValue(page(LEVEL_RECORDS));
+    await openPage();
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Complement dioecious for sexual system' }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    const complement = await within(dialog).findByRole('radio', { name: COMPLEMENT_LABEL });
+    expect(complement).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: CONTEST_LABEL })).not.toBeChecked();
+    await userEvent.click(complement);
+    expect(within(dialog).getByRole('combobox', { name: 'Responding to' })).toHaveValue(
+      DICT_DIOECIOUS,
+    );
+  });
+
+  it('validates one record from a quantitative trait’s panel', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...READER,
+      permissions: ['dataset.read', 'records.annotate'],
+    });
+    dataset.fetchRecords.mockResolvedValue(page([MASS]));
+    await openPage();
+    await userEvent.click(screen.getByRole('button', { name: /^seed mass/ }));
+    const panel = await screen.findByRole('dialog', { name: 'seed mass' });
+    await userEvent.click(await within(panel).findByRole('button', { name: 'Validate TR_7' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Validate TR_7' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Validate' }));
+    await waitFor(() =>
+      expect(curation.annotateRecord).toHaveBeenCalledWith(MASS.id, { kind: 'confirm' }),
+    );
+  });
+
+  it('contests one record from a quantitative trait’s panel, that record responded to', async () => {
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
+    dataset.fetchRecords.mockResolvedValue(page([MASS]));
+    await openPage();
+    await userEvent.click(screen.getByRole('button', { name: /^seed mass/ }));
+    const panel = await screen.findByRole('dialog', { name: 'seed mass' });
+    await userEvent.click(await within(panel).findByRole('button', { name: 'Contest TR_7' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Add entries for seed mass/ });
+    expect(await within(dialog).findByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
+    expect(within(dialog).getByRole('combobox', { name: 'Responding to' })).toHaveValue(MASS.id);
   });
 });

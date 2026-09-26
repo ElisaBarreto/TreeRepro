@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Species, TraitRef } from '@treerepro/contracts';
 import { type ReactNode, useState } from 'react';
+import { annotateRecord, type ValidateBody, validateLevel } from '../../api/curation.ts';
 import {
   datasetKeys,
   fetchDictionary,
@@ -9,13 +10,22 @@ import {
 } from '../../api/dataset.ts';
 import { AddNameDialog } from '../../components/catalog/AddNameDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
-import { AddEntriesDialog } from '../../components/curation/AddEntriesDialog.tsx';
+import { AddEntriesDialog, type RespondTo } from '../../components/curation/AddEntriesDialog.tsx';
+import { ValidateDialog } from '../../components/curation/ValidateDialog.tsx';
 import { EmptyTraitCard } from '../../components/dataset/EmptyTraitCard.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { TraitCard } from '../../components/dataset/TraitCard.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
-import { Alert, Badge, Button, Chip, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import {
+  Alert,
+  Badge,
+  Button,
+  Chip,
+  EmptyState,
+  Icon,
+  PageHeader,
+} from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
@@ -28,6 +38,24 @@ function taxonomyLine(species: Species): string {
   return [species.family?.name ?? 'unresolved taxonomy', species.genus?.name]
     .filter((part): part is string => part !== undefined)
     .join(' › ');
+}
+
+// The three decisions every level and quantitative record offers (RFC-70 R9);
+// the icons are decorative, the words carry them.
+function Legend() {
+  return (
+    <ul aria-label="Legend" className="flex flex-wrap gap-x-6 gap-y-1 text-body text-canopy-900">
+      <li className="inline-flex items-center gap-1.5">
+        <Icon name="thumbsUp" size={16} /> Validate
+      </li>
+      <li className="inline-flex items-center gap-1.5">
+        <Icon name="thumbsDown" size={16} /> Contest
+      </li>
+      <li className="inline-flex items-center gap-1.5">
+        <Icon name="plus" size={16} /> Complement
+      </li>
+    </ul>
+  );
 }
 
 function SpeciesHeader({
@@ -115,7 +143,15 @@ function SpeciesHeader({
  * (gbif), "Synonyms" and "Common names" (the last with a language chip per
  * name; an empty group renders nothing) (RFC-60 R4, R7), and, per category in
  * dictionary order, a card per trait with the summary the API computed
- * (RFC-63 R10). A card opens the trait's records in a panel; a row there
+ * (RFC-63 R10). A legend at the top names the three decisions (RFC-70 R9).
+ * With `records.annotate`, each level of a categorical card and each row of a
+ * quantitative panel carries Validate, which opens the validation question
+ * and validates every record of the level or the row's one record (RFC-70
+ * R4). With `records.create`, they carry Contest and Complement, which open
+ * the entry dialog: Contest already chosen, Complement with only the
+ * responded level or record set, so the user still picks the intent; the
+ * card's "+" opens it unanswered, and it asks Contest or Complement first
+ * whenever records exist (RFC-70 R9, R10). A card opens the trait's records in a panel; a row there
  * opens the record's detail in a drawer on top — the same drawer the route's
  * `record` search param opens on mount, the digest e-mail's deep link
  * (RFC-74 R5). With `records.create`, an
@@ -151,6 +187,7 @@ function SpeciesHeader({
  * @rfc RFC-63 R10
  * @rfc RFC-65 R1
  * @rfc RFC-70 R1, R3, R7
+ * @rfc RFC-70 R4, R9, R10
  * @rfc RFC-13 R11
  * @rfc RFC-74 R5
  */
@@ -172,6 +209,7 @@ export function SpeciesPage({
 }) {
   const me = useMe();
   const canAdd = hasPermission(me, 'records.create');
+  const canAnnotate = hasPermission(me, 'records.annotate');
   const canManageTaxa = hasPermission(me, 'taxa.manage');
   const species = useQuery({
     queryKey: datasetKeys.speciesDetail(id),
@@ -195,7 +233,13 @@ export function SpeciesPage({
   // during this render so a later summary cannot reopen the panel unasked.
   if (openTraitId !== null && traits.data && !openTrait) setOpenTraitId(null);
   const [openRecord, setOpenRecord] = useState<string | null>(initialRecordId ?? null);
-  const [adding, setAdding] = useState<{ trait: TraitRef | null } | null>(null);
+  const [adding, setAdding] = useState<{ trait: TraitRef | null; respondTo?: RespondTo } | null>(
+    null,
+  );
+  const [validating, setValidating] = useState<{
+    subject: string;
+    write: (body: ValidateBody) => Promise<unknown>;
+  } | null>(null);
   const [editing, setEditing] = useState(false);
   const [addingName, setAddingName] = useState(false);
   const error = species.error ?? traits.error;
@@ -233,6 +277,7 @@ export function SpeciesPage({
         <PageHeader title="Species" />
       )}
       <div className="flex flex-col gap-8">
+        {species.isSuccess ? <Legend /> : null}
         {error ? <Alert tone="error">{errorMessage(error)}</Alert> : null}
         {!error && (species.isPending || traits.isPending) ? (
           <p className="text-body text-mist-500">Loading…</p>
@@ -262,6 +307,29 @@ export function SpeciesPage({
                       dictionary={dictionary.data}
                       onOpen={() => setOpenTraitId(summary.trait.id)}
                       onAdd={canAdd ? () => setAdding({ trait: summary.trait }) : undefined}
+                      onValidateLevel={
+                        canAnnotate
+                          ? (level) =>
+                              setValidating({
+                                subject: level.key,
+                                write: (body) =>
+                                  validateLevel(id, summary.trait.id, level.levelId, body),
+                              })
+                          : undefined
+                      }
+                      onRespondLevel={
+                        canAdd
+                          ? (level, intent) =>
+                              setAdding({
+                                trait: summary.trait,
+                                // ＋ leaves the intent to the user (RFC-70 R9).
+                                respondTo:
+                                  intent === 'contest'
+                                    ? { intent, levelId: level.levelId }
+                                    : { levelId: level.levelId },
+                              })
+                          : undefined
+                      }
                     />
                   ),
                 )}
@@ -275,6 +343,27 @@ export function SpeciesPage({
           summary={openTrait}
           onClose={() => setOpenTraitId(null)}
           onSelectRecord={setOpenRecord}
+          onValidateRecord={
+            canAnnotate
+              ? (record) =>
+                  setValidating({
+                    subject: record.recordCode,
+                    write: (body) => annotateRecord(record.id, { kind: 'confirm', ...body }),
+                  })
+              : undefined
+          }
+          onRespondRecord={
+            canAdd
+              ? (record, intent) =>
+                  setAdding({
+                    trait: record.trait,
+                    respondTo:
+                      intent === 'contest'
+                        ? { intent, recordId: record.id }
+                        : { recordId: record.id },
+                  })
+              : undefined
+          }
         />
       ) : null}
       <RecordDrawer
@@ -286,6 +375,7 @@ export function SpeciesPage({
         <AddEntriesDialog
           speciesId={id}
           initialTrait={adding.trait}
+          respondTo={adding.respondTo}
           onClose={() => setAdding(null)}
           onCreated={(result) => {
             setAdding(null);
@@ -296,6 +386,14 @@ export function SpeciesPage({
             setAdding(null);
             setOpenRecord(recordId);
           }}
+        />
+      ) : null}
+      {validating ? (
+        <ValidateDialog
+          subject={validating.subject}
+          speciesId={id}
+          write={validating.write}
+          onClose={() => setValidating(null)}
         />
       ) : null}
       {editing && species.data ? (
