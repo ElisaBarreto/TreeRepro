@@ -368,10 +368,10 @@ export interface ImportInput {
 }
 
 /**
- * Ruling H: `access(W_OK)` can lie (a directory whose mode bit says writable
- * but whose filesystem refuses the write, e.g. some read-only mounts), so
- * this proves it by creating and removing a real file. Runs before any batch
- * row exists, so a refusal here leaves nothing behind.
+ * `access(W_OK)` can lie (a directory whose mode bit says writable but whose
+ * filesystem refuses the write, e.g. some read-only mounts), so this proves
+ * it by creating and removing a real file. Runs before any batch row exists,
+ * so a refusal here leaves nothing behind.
  * @rfc RFC-64 R15
  */
 async function assertSheetWritable(dir: string): Promise<void> {

@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, desc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   createAnnotation,
@@ -71,7 +71,7 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
     alice: string;
     old: Record<string, string>;
     orange: string;
-    contest: string;
+    complement: string;
     qContest: string;
     mapping: string;
     validation: string;
@@ -215,7 +215,7 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
         createdBy: fx.alice,
       })
     ).id;
-    fx.contest = (
+    fx.complement = (
       await createRecord(t.db, {
         ...manual,
         valueText: 'pink',
@@ -287,13 +287,20 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
     await admin?.close();
   });
 
-  it('R12 the total --replace is refused while a TR_ record exists, and nothing changes', async () => {
+  it('R12 the total --replace is refused while platform data (a manual record, an annotation or a contest) exists, and nothing changes', async () => {
     const before = await snapshot();
     await expect(importRecords(t.db, { filePath: fx.v2, replace: true })).rejects.toMatchObject({
       name: 'ImportRefusedError',
       reason: 'platform_records_exist',
     });
     expect(await snapshot()).toEqual(before);
+    const [batch] = await t.db
+      .select({ status: importBatches.status, error: importBatches.error })
+      .from(importBatches)
+      .orderBy(desc(importBatches.startedAt))
+      .limit(1);
+    expect(batch?.status).toBe('failed');
+    expect(batch?.error).toMatch(/platform data/i);
   });
 
   it('R15 refuses a sheet directory it cannot write, and both replacing modes at once, before any batch row', async () => {

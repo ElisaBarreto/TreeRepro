@@ -3,10 +3,14 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sql } from 'drizzle-orm';
+import { isNotNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { createAnnotation, createContest } from '../../test/helpers/dataset.ts';
+import { createUser } from '../../test/helpers/users.ts';
 import { createDb, type Db } from '../db/client.ts';
 import { runMigrations } from '../db/migrator.ts';
+import { contests } from '../db/schema/contests.ts';
+import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches, importRejects } from '../db/schema/imports.ts';
 import { recordReferences, traitRecords } from '../db/schema/records.ts';
@@ -219,5 +223,134 @@ describe('RFC-64 R12 importRecords --replace', () => {
     expect(isReplaceAllowed('production')).toBe(false);
     expect(isReplaceAllowed('development')).toBe(true);
     expect(isReplaceAllowed('test')).toBe(true);
+  });
+});
+
+/**
+ * Ruling B's check is `trait_records` (origin = 'manual') OR
+ * `record_annotations` OR `contests`; a fixture that always carries a manual
+ * record can't prove the last two branches do anything (removing either one
+ * would still refuse, on the manual-record branch alone). Each of the two
+ * describes below owns a database with no manual record at all, so only one
+ * branch is ever live.
+ * @rfc RFC-64 R12
+ */
+describe('RFC-64 R12 Ruling B: an annotation alone also refuses --replace', () => {
+  const DB_NAME = 'treerepro_reset_ruling_b_annotation_test';
+  let handle: { db: Db; close: () => Promise<void> } | undefined;
+  let admin: { db: Db; close: () => Promise<void> } | undefined;
+  const t = { db: undefined as unknown as Db };
+
+  beforeAll(async () => {
+    const superuser = inject('superuserDatabaseUrl');
+    admin = createDb(superuser, { max: 1 });
+    await admin.db.$client.unsafe(`drop database if exists ${DB_NAME}`);
+    await admin.db.$client.unsafe(`create database ${DB_NAME}`);
+    const url = new URL(superuser);
+    url.pathname = `/${DB_NAME}`;
+    await runMigrations(url.toString());
+    handle = createDb(url.toString(), { max: 2 }); // R13 reserves one for the lock
+    await seedDictionary(handle.db);
+    t.db = handle.db;
+  }, 120_000);
+
+  afterAll(async () => {
+    await handle?.close();
+    await admin?.db.$client.unsafe(`drop database if exists ${DB_NAME}`);
+    await admin?.close();
+  });
+
+  it('refuses while only a record_annotations row exists, and nothing changes', async () => {
+    await importRecords(t.db, { filePath: FIXTURE });
+    const [record] = await t.db
+      .select({ id: traitRecords.id })
+      .from(traitRecords)
+      .where(isNotNull(traitRecords.levelId))
+      .limit(1);
+    const actor = await createUser(t.db, { name: 'Annotator Only' });
+    await createAnnotation(t.db, {
+      recordId: record?.id as string,
+      actorId: actor.user.id,
+      kind: 'confirm',
+    });
+    const before = {
+      records: await t.db.select().from(traitRecords),
+      annotations: await t.db.select().from(recordAnnotations),
+    };
+    expect(before.annotations).toHaveLength(1);
+
+    await expect(importRecords(t.db, { filePath: FIXTURE, replace: true })).rejects.toMatchObject({
+      name: 'ImportRefusedError',
+      reason: 'platform_records_exist',
+    });
+
+    expect({
+      records: await t.db.select().from(traitRecords),
+      annotations: await t.db.select().from(recordAnnotations),
+    }).toEqual(before);
+  });
+});
+
+describe('RFC-64 R12 Ruling B: a contest alone also refuses --replace', () => {
+  const DB_NAME = 'treerepro_reset_ruling_b_contest_test';
+  let handle: { db: Db; close: () => Promise<void> } | undefined;
+  let admin: { db: Db; close: () => Promise<void> } | undefined;
+  const t = { db: undefined as unknown as Db };
+
+  beforeAll(async () => {
+    const superuser = inject('superuserDatabaseUrl');
+    admin = createDb(superuser, { max: 1 });
+    await admin.db.$client.unsafe(`drop database if exists ${DB_NAME}`);
+    await admin.db.$client.unsafe(`create database ${DB_NAME}`);
+    const url = new URL(superuser);
+    url.pathname = `/${DB_NAME}`;
+    await runMigrations(url.toString());
+    handle = createDb(url.toString(), { max: 2 }); // R13 reserves one for the lock
+    await seedDictionary(handle.db);
+    t.db = handle.db;
+  }, 120_000);
+
+  afterAll(async () => {
+    await handle?.close();
+    await admin?.db.$client.unsafe(`drop database if exists ${DB_NAME}`);
+    await admin?.close();
+  });
+
+  it('refuses while only a contests row exists, and nothing changes', async () => {
+    await importRecords(t.db, { filePath: FIXTURE });
+    const [record] = await t.db
+      .select({
+        speciesId: traitRecords.speciesId,
+        traitId: traitRecords.traitId,
+        levelId: traitRecords.levelId,
+      })
+      .from(traitRecords)
+      .where(isNotNull(traitRecords.levelId))
+      .limit(1);
+    const actor = await createUser(t.db, { name: 'Contester Only' });
+    // Levels only, no record: a categorical contest that created no record of
+    // its own (RFC-63 R14) is still `contests` data, with no annotation and
+    // no manual `trait_records` row anywhere.
+    await createContest(t.db, {
+      speciesId: record?.speciesId as string,
+      traitId: record?.traitId as string,
+      createdBy: actor.user.id,
+      levelIds: [record?.levelId as string],
+    });
+    const before = {
+      records: await t.db.select().from(traitRecords),
+      contests: await t.db.select().from(contests),
+    };
+    expect(before.contests).toHaveLength(1);
+
+    await expect(importRecords(t.db, { filePath: FIXTURE, replace: true })).rejects.toMatchObject({
+      name: 'ImportRefusedError',
+      reason: 'platform_records_exist',
+    });
+
+    expect({
+      records: await t.db.select().from(traitRecords),
+      contests: await t.db.select().from(contests),
+    }).toEqual(before);
   });
 });
