@@ -112,6 +112,31 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     expect(mine).toEqual([...mine].sort());
   });
 
+  it('R2 references names a repeated reference once, in its earliest slot', async () => {
+    const trait = await createTrait(t.db, { levels: ['red'] });
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db, { citationKey: `Zed_${Date.now()}` });
+    const extra = await createReference(t.db, { citationKey: `Abe_${Date.now()}` });
+    const { user } = await createUser(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'red',
+      levelId: trait.levels[0]?.id,
+      primaryReferenceId: ref.id,
+      secondaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+    await t.db.execute(sql`insert into record_references (record_id, reference_id)
+      values (${rec.id}, ${extra.id}), (${rec.id}, ${ref.id})`);
+    const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
+    const row = csv.rows.find((r) => r[3] === sp.canonicalName);
+    expect(row?.[RECORD_COLUMNS.indexOf('references')]).toBe(
+      `${ref.citationKey}; ${extra.citationKey}`,
+    );
+  });
+
   it('R2 RFC-33 R2: a viewer without records.review gets no pending record', async () => {
     const s = await exportScene(t.db);
     const csv = parseCsv(await readAll(recordsCsv(t.db, RESTRICTED, { scope: 'all' })));

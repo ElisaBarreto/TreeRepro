@@ -176,12 +176,18 @@ function visibleRecord(v: Visibility): SQL {
 /** A reference as the export prints it: its citation key, or `Personal observation`. */
 const REF_LABEL = sql`case when b.kind = 'personal_observation' then 'Personal observation' else b.citation_key end`;
 
-/** Record `r`'s references, `; `-joined: primary, secondary, then `record_references` (RFC-63 R16). */
-const REFERENCES_OF_R = sql`(select string_agg(${REF_LABEL}, '; ' order by x.pos, b.citation_key)
-  from (select r.primary_reference_id as id, 0 as pos
-        union all select r.secondary_reference_id, 1
-        union all select rr.reference_id, 2 from record_references rr where rr.record_id = r.id) x
-  join bibliographic_references b on b.id = x.id)`;
+/**
+ * Record `r`'s references, `; `-joined: primary, secondary, then
+ * `record_references` (RFC-63 R16). A reference named twice is kept once, in
+ * its earliest slot, as in the API's item.
+ */
+const REFERENCES_OF_R = sql`(select string_agg(y.label, '; ' order by y.pos, y.key)
+  from (select distinct on (x.id) ${REF_LABEL} as label, x.pos, b.citation_key as key
+    from (select r.primary_reference_id as id, 0 as pos
+          union all select r.secondary_reference_id, 1
+          union all select rr.reference_id, 2 from record_references rr where rr.record_id = r.id) x
+    join bibliographic_references b on b.id = x.id
+    order by x.id, x.pos) y)`;
 
 interface RecordRow {
   record_code: string;
