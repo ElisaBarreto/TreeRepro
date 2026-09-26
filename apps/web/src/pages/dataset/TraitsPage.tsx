@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { TRAIT_VALUE_TYPES, type Trait, type TraitValueType } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
-import { mapsByTrait, useMaps } from '../../api/maps.ts';
+import { useHasMaps } from '../../api/maps.ts';
 import { EditTraitDialog } from '../../components/catalog/EditTraitDialog.tsx';
 import { LevelsEditor } from '../../components/catalog/LevelsEditor.tsx';
 import { NewTraitDialog } from '../../components/catalog/NewTraitDialog.tsx';
@@ -293,10 +293,7 @@ function TraitRows({
   const [open, setOpen] = useState(false);
   const levelsId = useId();
   const name = humaniseKey(trait.key);
-  // A failed maps query reads the same as "no maps" (RFC-76 R8): `maps.data`
-  // is simply `undefined` until then.
-  const maps = useMaps();
-  const hasMaps = (mapsByTrait(maps.data ?? []).get(trait.id) ?? []).length > 0;
+  const hasMaps = useHasMaps(trait.id);
   return (
     <>
       <Tr>

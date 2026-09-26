@@ -1,6 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MapEntry } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DICTIONARY,
@@ -12,22 +11,21 @@ import { tipText } from '../../test/render.tsx';
 import { withRouter } from '../../test/router.tsx';
 import { EmptyTraitCard } from './EmptyTraitCard.tsx';
 
-// `EmptyTraitCard` calls `useMaps()` itself (RFC-76 R8); mocked directly, the
-// same way `MapsPage.test.tsx` does, rather than through a
-// `QueryClientProvider` this file otherwise has no need for.
-const maps = vi.hoisted(() => ({ useMaps: vi.fn() }));
+// `EmptyTraitCard` calls `useHasMaps()` itself (RFC-76 R8), which calls
+// `useMaps()` in its own module-level closure — a same-module reference
+// `vi.mock`'s replacement of an exported `useMaps` binding never reaches (the
+// same reason `MapsPage.test.tsx` mocks `useMaps` directly rather than
+// `fetchMaps`). So this file mocks `useHasMaps` itself, directly, rather
+// than through a `QueryClientProvider` it otherwise has no need for.
+const maps = vi.hoisted(() => ({ useHasMaps: vi.fn() }));
 vi.mock('../../api/maps.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/maps.ts')>()),
   ...maps,
 }));
 
-function mapsResult(data: MapEntry[]) {
-  return { data, isPending: false, isSuccess: true, isError: false, error: null };
-}
-
 beforeEach(() => {
-  maps.useMaps.mockReset();
-  maps.useMaps.mockReturnValue(mapsResult([]));
+  maps.useHasMaps.mockReset();
+  maps.useHasMaps.mockReturnValue(false);
 });
 
 describe('RFC-70 R7 EmptyTraitCard', () => {
@@ -87,17 +85,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
 
   describe('RFC-76 R8 maps link in the HelpTip', () => {
     it('adds a Maps link beside Learn more when the trait has a description and maps', async () => {
-      maps.useMaps.mockReturnValue(
-        mapsResult([
-          {
-            traitId: DICTIONARY_SELF_COMPATIBILITY.id,
-            kind: 'completeness',
-            levelId: null,
-            file: 'x.svg',
-            dataVersion: '2026-09-01',
-          },
-        ]),
-      );
+      maps.useHasMaps.mockReturnValue(true);
       render(
         withRouter(
           <EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} dictionary={DICTIONARY} />,
@@ -106,6 +94,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
       await userEvent.click(
         await screen.findByRole('button', { name: 'What does self compatibility mean?' }),
       );
+      expect(maps.useHasMaps).toHaveBeenCalledWith(DICTIONARY_SELF_COMPATIBILITY.id);
       const tip = screen.getByRole('tooltip');
       expect(within(tip).getByRole('link', { name: 'Learn more' })).toBeInTheDocument();
       expect(within(tip).getByRole('link', { name: 'Maps' })).toHaveAttribute(
@@ -115,17 +104,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
     });
 
     it('still shows the popover, holding the Maps link, for a trait with maps but no description', async () => {
-      maps.useMaps.mockReturnValue(
-        mapsResult([
-          {
-            traitId: SELF_COMPATIBILITY_MISSING_SUMMARY.trait.id,
-            kind: 'completeness',
-            levelId: null,
-            file: 'x.svg',
-            dataVersion: '2026-09-01',
-          },
-        ]),
-      );
+      maps.useHasMaps.mockReturnValue(true);
       render(withRouter(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} />));
       await userEvent.click(
         await screen.findByRole('button', { name: 'What does self compatibility mean?' }),
@@ -138,7 +117,7 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
     });
 
     it('renders no HelpTip at all for a trait with neither a description nor maps', () => {
-      maps.useMaps.mockReturnValue(mapsResult([]));
+      maps.useHasMaps.mockReturnValue(false);
       render(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} />);
       expect(screen.queryByRole('button', { name: /What does .* mean\?/ })).not.toBeInTheDocument();
     });

@@ -1,5 +1,5 @@
 import type { Dictionary, RecordIntent, TraitSummary } from '@treerepro/contracts';
-import { mapsByTrait, useMaps } from '../../api/maps.ts';
+import { useHasMaps } from '../../api/maps.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { Badge, Button, HelpTip } from '../ui/index.ts';
@@ -77,10 +77,7 @@ export function TraitCard({
   const maxCount = Math.max(0, ...levels.map((level) => level.count));
   const name = humaniseKey(trait.key);
   const tip = traitTip(dictionary, trait);
-  // A failed maps query reads the same as "no maps" (RFC-76 R8) — `maps.data`
-  // is simply `undefined` until then.
-  const maps = useMaps();
-  const hasMaps = (mapsByTrait(maps.data ?? []).get(trait.id) ?? []).length > 0;
+  const hasMaps = useHasMaps(trait.id);
 
   return (
     <CardFrame>

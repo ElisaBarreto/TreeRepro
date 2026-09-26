@@ -1,5 +1,5 @@
 import type { Dictionary, TraitSummary } from '@treerepro/contracts';
-import { mapsByTrait, useMaps } from '../../api/maps.ts';
+import { useHasMaps } from '../../api/maps.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { Button, HelpTip } from '../ui/index.ts';
@@ -32,8 +32,7 @@ export function EmptyTraitCard({
   const { trait } = summary;
   const name = humaniseKey(trait.key);
   const tip = traitTip(dictionary, trait);
-  const maps = useMaps();
-  const hasMaps = (mapsByTrait(maps.data ?? []).get(trait.id) ?? []).length > 0;
+  const hasMaps = useHasMaps(trait.id);
 
   return (
     <CardFrame>

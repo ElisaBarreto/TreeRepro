@@ -45,6 +45,18 @@ export function useMaps() {
   return useQuery({ queryKey: mapsKeys.all, queryFn: fetchMaps });
 }
 
+/**
+ * Whether a trait has any maps at all — the one check a trait card's help
+ * popover (`TraitCard`, `EmptyTraitCard`) and the traits list share, so it
+ * lives here once rather than repeated at each call site. A failed maps
+ * query reads as no maps, the same as everywhere else `useMaps` is read.
+ * @rfc RFC-76 R8
+ */
+export function useHasMaps(traitId: string): boolean {
+  const maps = useMaps();
+  return (mapsByTrait(maps.data ?? []).get(traitId) ?? []).length > 0;
+}
+
 /** How each map kind reads (RFC-76 R6, R7); the wire code stays the value. @rfc RFC-76 R1 */
 export const MAP_KIND_LABELS: Record<MapKind, string> = {
   completeness: 'Data completeness',
