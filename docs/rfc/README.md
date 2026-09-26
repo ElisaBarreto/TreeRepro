@@ -57,3 +57,4 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-76 | Trait maps | accepted |
 | RFC-80 | DOI resolution | draft |
 | RFC-81 | Taxonomy lookup | accepted |
+| RFC-82 | External API | draft |
