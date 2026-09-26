@@ -70,21 +70,18 @@ describe('RFC-72 R3 CurationCards', () => {
     }
   });
 
-  it('links the queue tiles to pending, disputed and disputed?intent=contest', async () => {
+  it('links the queue tiles to pending and contested', async () => {
     renderInRouter(<CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />);
     expect(await screen.findByRole('link', { name: /^Pending/ })).toHaveAttribute(
       'href',
       '/app/curation/pending',
     );
-    expect(screen.getByRole('link', { name: /^Disputed/ })).toHaveAttribute(
-      'href',
-      '/app/curation/disputed',
-    );
+    expect(screen.queryByRole('link', { name: /^Disputed/ })).not.toBeInTheDocument();
     const contested = hrefUrl(
       screen.getByRole('link', { name: /^Contested/ }).getAttribute('href'),
     );
     expect(contested.pathname).toBe('/app/curation/disputed');
-    expect(contested.searchParams.get('intent')).toBe('contest');
+    expect(contested.searchParams.get('intent')).toBeNull();
   });
 
   it('shows the proposals tile only when there are open proposals', async () => {
@@ -129,7 +126,7 @@ describe('RFC-72 R3 CurationCards', () => {
     );
     const queues = await screen.findByRole('list', { name: 'Curation queues' });
     const links = within(queues).getAllByRole('link');
-    expect(links).toHaveLength(4);
+    expect(links).toHaveLength(3);
     for (const link of links) expect(link).toHaveClass('flex');
   });
 
@@ -140,26 +137,24 @@ describe('RFC-72 R3 CurationCards', () => {
     expect(pending).toHaveTextContent('Start reviewing');
   });
 
-  it('reads "All clear" on a disputed or contested queue at zero, and not above it', async () => {
+  it('reads "All clear" on the contested queue at zero, and not above it', async () => {
     const first = renderInRouter(
       <CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />,
     );
-    expect(await screen.findByRole('link', { name: /^Disputed/ })).not.toHaveTextContent(
+    expect(await screen.findByRole('link', { name: /^Contested/ })).not.toHaveTextContent(
       'All clear',
     );
-    expect(screen.getByRole('link', { name: /^Contested/ })).not.toHaveTextContent('All clear');
     first.unmount();
 
     renderInRouter(
       <CurationCards
         curation={{
           ...DASHBOARD_CURATION,
-          queues: { ...DASHBOARD_CURATION.queues, disputed: 0, contested: 0 },
+          queues: { ...DASHBOARD_CURATION.queues, contested: 0 },
         }}
         canReadCoverage={false}
       />,
     );
-    expect(await screen.findByRole('link', { name: /^Disputed/ })).toHaveTextContent('All clear');
-    expect(screen.getByRole('link', { name: /^Contested/ })).toHaveTextContent('All clear');
+    expect(await screen.findByRole('link', { name: /^Contested/ })).toHaveTextContent('All clear');
   });
 });

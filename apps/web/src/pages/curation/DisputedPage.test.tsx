@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { CURATED_RECORD_DETAIL, DISPUTED_RECORD } from '../../test/dataset-fixtures.ts';
+import { CONTESTED_ITEM, CURATED_RECORD_DETAIL } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
@@ -36,26 +36,25 @@ beforeEach(() => {
   dataset.fetchRecord.mockReset().mockResolvedValue(CURATED_RECORD_DETAIL);
   curation.fetchDisputed
     .mockReset()
-    .mockResolvedValue({ data: [DISPUTED_RECORD], meta: { nextCursor: null } });
+    .mockResolvedValue({ data: [CONTESTED_ITEM], meta: { nextCursor: null } });
 });
 
 describe('RFC-65 R10 DisputedPage', () => {
-  it('lists disputed records with species, trait, value, disputer, note and date; a row opens the record drawer', async () => {
+  it('lists contests with species, trait, contested levels, author and date; a row opens its record', async () => {
     renderAt('/app/curation/disputed');
     const rows = (await screen.findAllByRole('row')).slice(1);
     expect(rows).toHaveLength(1);
     const row = rows[0] as HTMLElement;
     expect(within(row).getByRole('link', { name: /Adenanthera pavonina/ })).toHaveAttribute(
       'href',
-      `/app/species/${DISPUTED_RECORD.speciesId}`,
+      `/app/species/${CONTESTED_ITEM.species.id}`,
     );
-    expect(row).toHaveTextContent('seed mass');
+    expect(row).toHaveTextContent('sexual system');
     expect(row).toHaveTextContent('Grace');
-    expect(row).toHaveTextContent('Value is not a number.');
     expect(row).toHaveTextContent('2026-09-03');
-    await userEvent.click(within(row).getByRole('button', { name: /about two/ }));
+    await userEvent.click(within(row).getByRole('button', { name: 'dioecious' }));
     expect(await screen.findByRole('dialog', { name: 'Record' })).toBeInTheDocument();
-    expect(dataset.fetchRecord).toHaveBeenCalledWith(DISPUTED_RECORD.id);
+    expect(dataset.fetchRecord).toHaveBeenCalledWith(CONTESTED_ITEM.records[0]?.id);
   });
 
   it('shows the empty state', async () => {
@@ -86,28 +85,20 @@ describe('RFC-65 R10 DisputedPage', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 
-  it('?intent=contest (plan 11b) retitles the page and narrows the fetch', async () => {
+  it('?intent=contest (plan 11b) retitles the page; the fetch takes no intent', async () => {
     renderAt('/app/curation/disputed?intent=contest');
     expect(await screen.findByRole('heading', { name: 'Contested records' })).toBeInTheDocument();
     // The title flips, so the sentence under it must flip with it: the plain
     // queue's wording describes a dispute raised by hand.
     expect(screen.getByText(/competing value/)).toBeInTheDocument();
     expect(screen.queryByText(/wait for the disputer to step back/)).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(curation.fetchDisputed).toHaveBeenCalledWith(
-        expect.objectContaining({ intent: 'contest' }),
-      ),
-    );
+    await waitFor(() => expect(curation.fetchDisputed).toHaveBeenCalled());
+    expect(curation.fetchDisputed.mock.calls[0]?.[0]).not.toHaveProperty('intent');
   });
 
-  it('without ?intent, the page keeps its plain title, description and unfiltered fetch', async () => {
+  it('without ?intent, the page keeps its plain title and description', async () => {
     renderAt('/app/curation/disputed');
     expect(await screen.findByRole('heading', { name: 'Disputed records' })).toBeInTheDocument();
     expect(screen.getByText(/wait for the disputer to step back/i)).toBeInTheDocument();
-    await waitFor(() =>
-      expect(curation.fetchDisputed).toHaveBeenCalledWith(
-        expect.objectContaining({ intent: undefined }),
-      ),
-    );
   });
 });

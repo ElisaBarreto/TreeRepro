@@ -29,11 +29,10 @@ const ZERO: DigestCounts = {
   contests: 0,
   complements: 0,
   validations: 0,
-  disputes: 0,
   withdrawals: 0,
   proposals: 0,
   pendingGroups: 0,
-  disputedNow: 0,
+  contestedNow: 0,
 };
 
 describe('RFC-74 R2 isDigestDue', () => {
@@ -207,14 +206,13 @@ describe('RFC-74 R3, R4 hasActivity', () => {
     'contests',
     'complements',
     'validations',
-    'disputes',
     'withdrawals',
     'proposals',
   ] as const)('%s alone is activity', (key) => {
     expect(hasActivity({ ...ZERO, [key]: 1 })).toBe(true);
   });
 
-  it.each(['pendingGroups', 'disputedNow'] as const)(
+  it.each(['pendingGroups', 'contestedNow'] as const)(
     'the current queue size %s is not activity: R4 sums the window only',
     (key) => {
       expect(hasActivity({ ...ZERO, [key]: 7 })).toBe(false);
@@ -223,7 +221,7 @@ describe('RFC-74 R3, R4 hasActivity', () => {
 });
 
 describe('RFC-74 R3 list size', () => {
-  it('caps each list at ten items', () => {
+  it('caps the contest list at ten items', () => {
     expect(DIGEST_LIST_LIMIT).toBe(10);
   });
 });

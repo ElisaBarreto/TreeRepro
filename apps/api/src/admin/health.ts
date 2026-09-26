@@ -4,7 +4,7 @@ import { UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { computeCoverageTotals } from '../dataset/coverage.ts';
 import { toImportBatch } from '../dataset/import.ts';
 import { countOpenProposals, countProposalsCreated } from '../dataset/proposals.ts';
-import { countContested, countDisputed, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups } from '../dataset/queues.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { type ImportBatchRow, importBatches } from '../db/schema/imports.ts';
 import type { JobRunRow } from '../db/schema/job-runs.ts';
@@ -141,7 +141,7 @@ function started<T>(query: PromiseLike<T>): Promise<T> {
  * for the reason given there — one scope each, the same for every caller.
  *
  * Every counter is the one that already exists — `countPendingGroups`,
- * `countDisputed`, `countContested`, `countOpenProposals`,
+ * `countContested`, `countOpenProposals`,
  * `countProposalsCreated`, `computeCoverageTotals`, `latestRun`,
  * `toImportBatch` — so no number in this payload carries a second definition.
  * @rfc RFC-52 R1, R2
@@ -242,7 +242,6 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
   // `openProposalsP` below.
   const proposals7dP = started(countProposalsCreated(db, { start: start7, end }));
   const pendingGroupsP = started(countPendingGroups(db, UNRESTRICTED));
-  const disputedP = started(countDisputed(db, UNRESTRICTED));
   const contestedP = started(countContested(db, UNRESTRICTED));
   const openProposalsP = started(countOpenProposals(db));
   const digestRunP = started(latestRun(db, 'digest'));
@@ -260,7 +259,6 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
     byDayP,
     proposals7dP,
     pendingGroupsP,
-    disputedP,
     contestedP,
     openProposalsP,
     digestRunP,
@@ -276,7 +274,6 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
   const byDay = await byDayP;
   const proposals7d = await proposals7dP;
   const pendingGroups = await pendingGroupsP;
-  const disputed = await disputedP;
   const contested = await contestedP;
   const openProposals = await openProposalsP;
   const digestRun = await digestRunP;
@@ -313,7 +310,7 @@ export async function computePlatformHealth(db: DbExecutor): Promise<PlatformHea
         annotations: row.annotations,
       })),
     },
-    queues: { pendingGroups, disputed, contested, proposals: openProposals },
+    queues: { pendingGroups, contested, proposals: openProposals },
     jobs: { auditPurge: toJobRun(auditPurgeRun), digest: toJobRun(digestRun) },
     imports: importRows.map(toHealthImport),
   };

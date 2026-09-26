@@ -92,7 +92,7 @@ export const PLATFORM_HEALTH: PlatformHealth = {
     validatedCells: 900,
   },
   activity: { records7d: 42, annotations7d: 8, proposals7d: 3, byDay: byDay() },
-  queues: { pendingGroups: 4, disputed: 2, contested: 1, proposals: 5 },
+  queues: { pendingGroups: 4, contested: 1, proposals: 5 },
   jobs: { auditPurge: JOB_RUN_FAILED, digest: JOB_RUN_HEALTHY },
   imports: [HEALTH_IMPORT],
   computedAt: '2026-09-19T12:00:00.000Z',

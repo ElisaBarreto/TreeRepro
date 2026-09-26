@@ -1,10 +1,11 @@
-import type { PermissionKey } from '@treerepro/contracts';
+import { contestedQueueItemSchema, type PermissionKey } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { TestApp } from '../../../../test/helpers/app.ts';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import {
   createAnnotation,
+  createContest,
   createImportBatch,
   createRecord,
   createReference,
@@ -764,166 +765,57 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
 describe('RFC-65 R10 GET /api/records/disputed', () => {
   const t = useTestApp();
 
-  type DisputedItem = {
-    id: string;
-    contestedBy: {
-      id: string;
-      valueText: string;
-      createdBy: { id: string; name: string } | null;
-    }[];
-  };
-
-  const itemsOf = async (cookie: string, query = '') => {
-    const items: DisputedItem[] = [];
-    let cursor: string | null = null;
-    do {
-      const res = await call(
-        t.app,
-        'GET',
-        `/api/records/disputed?limit=200${query}${cursor ? `&cursor=${cursor}` : ''}`,
-        { cookie },
-      );
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      items.push(...(body.data as DisputedItem[]));
-      cursor = body.meta.nextCursor;
-    } while (cursor);
-    return items;
-  };
-
-  const idsOf = async (cookie: string, query = '') =>
-    (await itemsOf(cookie, query)).map((r) => r.id);
-
-  it('lists standing disputes newest first, drops them after a changed stance, never withdrawn records', async () => {
-    const author = await manager(t);
-    const b = await scientist(t, ['records.annotate']);
+  it('answers the standing contests as queue items, and rejects a bad cursor', async () => {
+    const reviewer = await manager(t);
     const sp1 = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['a', 'b'] });
     const ref = await createReference(t.db);
-    const mk = (i: number) =>
-      createRecord(t.db, {
-        speciesId: sp1.id,
-        traitId: trait.id,
-        valueText: ['a', 'b'][i] ?? 'a',
-        levelId: trait.levels[i]?.id,
-        primaryReferenceId: ref.id,
-        origin: 'manual',
-        createdBy: author.user.id,
-      });
-    const older = await mk(0);
-    const newer = await mk(1);
-    await createAnnotation(t.db, {
-      recordId: older.id,
-      actorId: b.user.id,
-      kind: 'dispute',
-      note: 'Older claim wrong',
-    });
-    await createAnnotation(t.db, {
-      recordId: newer.id,
-      actorId: b.user.id,
-      kind: 'dispute',
-      note: 'Newer claim wrong',
-    });
-    const ids = await idsOf(author.cookie);
-    expect(ids).toContain(newer.id);
-    expect(ids).toContain(older.id);
-    expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
-    const first = await call(t.app, 'GET', '/api/records/disputed?limit=200', {
-      cookie: author.cookie,
-    });
-    const item = (await first.json()).data.find((r: { id: string }) => r.id === newer.id);
-    expect(item).toMatchObject({
-      latestDispute: { actor: { id: b.user.id, name: 'Test User' }, note: 'Newer claim wrong' },
-    });
-    // the disputer steps back: gone
-    await createAnnotation(t.db, { recordId: newer.id, actorId: b.user.id, kind: 'neutral' });
-    expect(await idsOf(author.cookie)).not.toContain(newer.id);
-    // withdrawn records never appear
-    await createAnnotation(t.db, {
-      recordId: older.id,
-      actorId: author.user.id,
-      kind: 'withdraw',
-      note: 'Retracted',
-    });
-    expect(await idsOf(author.cookie)).not.toContain(older.id);
-    const bad = await call(t.app, 'GET', '/api/records/disputed?cursor=nope', {
-      cookie: author.cookie,
-    });
-    expect(bad.status).toBe(400);
-  });
-
-  it('carries ?intent=contest through to the queue, and rejects any other intent', async () => {
-    const author = await manager(t);
-    const contester = await scientist(t, ['records.create', 'dataset.read']);
-    const sp1 = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { levels: ['a', 'b'] });
-    const ref = await createReference(t.db);
-    const contestRef = await createReference(t.db);
-    const base = await createRecord(t.db, {
+    await createRecord(t.db, {
       speciesId: sp1.id,
       traitId: trait.id,
       valueText: 'a',
       levelId: trait.levels[0]?.id,
       primaryReferenceId: ref.id,
       origin: 'manual',
-      createdBy: author.user.id,
+      createdBy: reviewer.user.id,
     });
-    const byHand = await createRecord(t.db, {
+    const contest = await createContest(t.db, {
       speciesId: sp1.id,
       traitId: trait.id,
-      valueText: 'b',
-      levelId: trait.levels[1]?.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: author.user.id,
+      createdBy: reviewer.user.id,
+      levelIds: [trait.levels[0]?.id as string],
     });
-    await createAnnotation(t.db, {
-      recordId: byHand.id,
-      actorId: author.user.id,
-      kind: 'dispute',
-      note: 'Raised by hand, not by a contest',
-    });
-    // The legacy shape this queue reads until plan 13g Task 8: a contest
-    // record responding to its target and the dispute the create path used to
-    // generate on it. The create path writes neither any more (RFC-70 R3).
-    const contestRecord = await createRecord(t.db, {
-      speciesId: sp1.id,
-      traitId: trait.id,
-      valueText: 'b',
-      levelId: trait.levels[1]?.id,
-      primaryReferenceId: contestRef.id,
-      origin: 'manual',
-      createdBy: contester.user.id,
-      intent: 'contest',
-      respondsToRecordId: base.id,
-    });
-    await createAnnotation(t.db, {
-      recordId: base.id,
-      actorId: contester.user.id,
-      kind: 'dispute',
-      note: `Contested by record ${contestRecord.id}`,
-      generated: true,
-    });
-    const contestId = contestRecord.id;
 
-    // The filter reaches the query rather than being dropped by the handler:
-    // the hand-raised dispute is in the unfiltered queue and out of this one.
-    const generated = await itemsOf(author.cookie, '&intent=contest');
-    expect(generated.map((r) => r.id)).toContain(base.id);
-    expect(generated.map((r) => r.id)).not.toContain(byHand.id);
-    expect(await idsOf(author.cookie)).toContain(byHand.id);
-    expect(generated.find((r) => r.id === base.id)?.contestedBy).toEqual([
-      {
-        id: contestId,
-        valueText: 'b',
-        createdBy: { id: contester.user.id, name: 'Test User' },
-      },
-    ]);
-
-    const rejected = await call(t.app, 'GET', '/api/records/disputed?intent=complement', {
-      cookie: author.cookie,
+    const items: unknown[] = [];
+    let cursor: string | null = null;
+    do {
+      const res = await call(
+        t.app,
+        'GET',
+        `/api/records/disputed?limit=200${cursor ? `&cursor=${cursor}` : ''}`,
+        { cookie: reviewer.cookie },
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      items.push(...body.data);
+      cursor = body.meta.nextCursor;
+    } while (cursor);
+    const item = items
+      .map((i) => contestedQueueItemSchema.parse(i))
+      .find((i) => i.id === contest.id);
+    expect(item).toMatchObject({
+      species: { id: sp1.id },
+      trait: { id: trait.id, key: trait.key },
+      createdBy: { id: reviewer.user.id },
+      levels: [{ levelId: trait.levels[0]?.id, key: 'a', contested: true }],
+      target: null,
+      records: [],
     });
-    expect(rejected.status).toBe(400);
+
+    const bad = await call(t.app, 'GET', '/api/records/disputed?cursor=nope', {
+      cookie: reviewer.cookie,
+    });
+    expect(bad.status).toBe(400);
   });
 });
 

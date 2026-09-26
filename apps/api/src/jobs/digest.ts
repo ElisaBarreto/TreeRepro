@@ -2,8 +2,10 @@ import type { PermissionKey } from '@treerepro/contracts';
 import { and, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import { UNRESTRICTED } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
+import { contestWithdrawnSql } from '../dataset/contests.ts';
 import { countProposalsCreated } from '../dataset/proposals.ts';
-import { countDisputed, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups } from '../dataset/queues.ts';
+import { liveSql } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { rolePermissions } from '../db/schema/role-permissions.ts';
 import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
@@ -62,7 +64,7 @@ export const DIGEST_ATTEMPT_GUARD_MS = 2 * DIGEST_TICK_MS;
 /** The window of the first run ever, and of any run whose predecessor left none. @rfc RFC-74 R2 */
 const DIGEST_FIRST_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** How many contests and how many disputes the e-mail lists. @rfc RFC-74 R3 */
+/** How many contests the e-mail lists. @rfc RFC-74 R3 */
 export const DIGEST_LIST_LIMIT = 10;
 
 /** The name shown when an actor's user row carries none; a `not null` column, so defensive only. */
@@ -78,9 +80,10 @@ export interface DigestWindow {
 }
 
 /**
- * The first seven are counted over the window; `pendingGroups` and
- * `disputedNow` are the queues as they stand now (RFC-65 R8, R10), which is
- * why `hasActivity` leaves them out.
+ * The first six are counted over the window; `pendingGroups` and
+ * `contestedNow` are the queues as they stand now (RFC-65 R8, R10), which is
+ * why `hasActivity` leaves them out. `contests` counts contests (RFC-63 R14),
+ * one per contest whether or not it created a record.
  * @rfc RFC-74 R3
  */
 export interface DigestCounts {
@@ -88,21 +91,28 @@ export interface DigestCounts {
   contests: number;
   complements: number;
   validations: number;
-  disputes: number;
   withdrawals: number;
   proposals: number;
   pendingGroups: number;
-  disputedNow: number;
+  contestedNow: number;
 }
 
-/** One listed contest or dispute. No address ever appears here (R5). @rfc RFC-74 R3 */
+/**
+ * One listed contest. `contested` is the keys of the levels a categorical
+ * contest contests, joined by `, `, or the `value_text` of the record a
+ * quantitative one responds to. `recordId` is the first record the contest
+ * created (by `record_code`), which the e-mail links to; null when it created
+ * none. No address ever appears here (R5).
+ * @rfc RFC-74 R3
+ */
 export interface DigestItem {
+  contestId: string;
   speciesId: string;
   speciesName: string;
   traitKey: string;
-  valueText: string;
+  contested: string;
   actorName: string;
-  recordId: string;
+  recordId: string | null;
   createdAt: Date;
 }
 
@@ -111,7 +121,6 @@ export interface Digest {
   window: DigestWindow;
   counts: DigestCounts;
   contests: DigestItem[];
-  disputes: DigestItem[];
 }
 
 /**
@@ -257,7 +266,6 @@ export function hasActivity(counts: DigestCounts): boolean {
       counts.contests +
       counts.complements +
       counts.validations +
-      counts.disputes +
       counts.withdrawals +
       counts.proposals >
     0
@@ -272,17 +280,17 @@ interface RecordCountRow {
 
 interface AnnotationCountRow {
   validations: number;
-  disputes: number;
   withdrawals: number;
 }
 
 interface ItemRow {
-  record_id: string;
+  contest_id: string;
+  record_id: string | null;
   species_id: string;
   species_name: string;
   trait_key: string;
-  value_text: string;
-  actor_id: string | null;
+  contested: string | null;
+  actor_id: string;
   created_at: Date | string;
 }
 
@@ -308,71 +316,62 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
   const within = (column: SQL): SQL =>
     sql`${column} > ${start}::timestamptz and ${column} <= ${end}::timestamptz`;
 
-  const [
-    recordCounts,
-    annotationCounts,
-    contestRows,
-    disputeRows,
-    pendingGroups,
-    disputedNow,
-    proposals,
-  ] = await Promise.all([
-    // R3 reads `records` as "manual records created", which a contest and a
-    // complement both are: the two intents are subsets of `records`, not
-    // additions to it. R4's activity sum is a "was anything done at all"
-    // test, so counting a contest twice there changes nothing.
-    db.execute(sql`
+  // A withdrawn contest (RFC-63 R14) or record (RFC-63 R13) has left the
+  // dataset, so neither is counted nor listed; its withdrawal still counts.
+  const [recordCounts, annotationCounts, contestRows, pendingGroups, contestedNow, proposals] =
+    await Promise.all([
+      // R3 reads `records` as "manual records created", which a contest's
+      // record and a complement both are: `complements` is a subset of
+      // `records`, not an addition to it. R4's activity sum is a "was
+      // anything done at all" test, so counting one twice there changes
+      // nothing. `contests` counts contest rows, record-less ones included.
+      db.execute(sql`
         select
-          count(*) filter (where r.origin = 'manual')::int as records,
-          count(*) filter (where r.origin = 'manual' and r.intent = 'contest')::int as contests,
-          count(*) filter (where r.origin = 'manual' and r.intent = 'complement')::int as complements
-        from trait_records r
-        where ${within(sql`r.created_at`)}`) as unknown as Promise<[RecordCountRow | undefined]>,
-    db.execute(sql`
+          (select count(*)::int from trait_records r
+            where r.origin = 'manual' and ${within(sql`r.created_at`)}
+              and ${liveSql(sql`r.id`)}) as records,
+          (select count(*)::int from trait_records r
+            where r.origin = 'manual' and r.intent = 'complement' and ${within(sql`r.created_at`)}
+              and ${liveSql(sql`r.id`)}) as complements,
+          (select count(*)::int from contests k
+            where ${within(sql`k.created_at`)} and not ${contestWithdrawnSql('k')}) as contests`) as unknown as Promise<
+        [RecordCountRow | undefined]
+      >,
+      db.execute(sql`
         select
           count(*) filter (where a.kind = 'confirm')::int as validations,
-          count(*) filter (where a.kind = 'dispute' and not a.generated)::int as disputes,
           count(*) filter (where a.kind = 'withdraw')::int as withdrawals
         from record_annotations a
         where ${within(sql`a.created_at`)}`) as unknown as Promise<
-      [AnnotationCountRow | undefined]
-    >,
-    db.execute(sql`
-        select r.id as record_id, r.species_id, sp.canonical_name as species_name,
-          t.key as trait_key, r.value_text, r.created_by as actor_id, r.created_at
-        from trait_records r
-        join species sp on sp.id = r.species_id
-        join traits t on t.id = r.trait_id
-        where r.intent = 'contest' and r.origin = 'manual' and ${within(sql`r.created_at`)}
-        order by r.created_at desc, r.id desc
+        [AnnotationCountRow | undefined]
+      >,
+      db.execute(sql`
+        select k.id as contest_id, k.species_id, sp.canonical_name as species_name,
+          t.key as trait_key, k.created_by as actor_id, k.created_at,
+          coalesce(
+            (select string_agg(l.key, ', ' order by l.key) from contest_levels cl
+              join trait_levels l on l.id = cl.level_id where cl.contest_id = k.id),
+            (select target.value_text from contest_records cr
+              join trait_records c on c.id = cr.record_id
+              join trait_records target on target.id = c.responds_to_record_id
+              where cr.contest_id = k.id limit 1)) as contested,
+          (select cr.record_id from contest_records cr
+            join trait_records c on c.id = cr.record_id
+            where cr.contest_id = k.id order by c.record_code limit 1) as record_id
+        from contests k
+        join species sp on sp.id = k.species_id
+        join traits t on t.id = k.trait_id
+        where ${within(sql`k.created_at`)} and not ${contestWithdrawnSql('k')}
+        order by k.created_at desc, k.id desc
         limit ${DIGEST_LIST_LIMIT}`) as unknown as Promise<ItemRow[]>,
-    // The listed dispute describes the record it stands against, so the
-    // species, the trait and the value are the disputed record's, and the
-    // link opens that record's drawer.
-    db.execute(sql`
-        select a.record_id, r.species_id, sp.canonical_name as species_name,
-          t.key as trait_key, r.value_text, a.actor_id, a.created_at
-        from record_annotations a
-        join trait_records r on r.id = a.record_id
-        join species sp on sp.id = r.species_id
-        join traits t on t.id = r.trait_id
-        where a.kind = 'dispute' and not a.generated and ${within(sql`a.created_at`)}
-        order by a.created_at desc, a.id desc
-        limit ${DIGEST_LIST_LIMIT}`) as unknown as Promise<ItemRow[]>,
-    countPendingGroups(db, UNRESTRICTED),
-    countDisputed(db, UNRESTRICTED),
-    // RFC-75 R7: proposals created inside the window, whatever became of
-    // them since — the count describes the window, not the queue.
-    countProposalsCreated(db, window),
-  ]);
+      countPendingGroups(db, UNRESTRICTED),
+      countContested(db, UNRESTRICTED),
+      // RFC-75 R7: proposals created inside the window, whatever became of
+      // them since — the count describes the window, not the queue.
+      countProposalsCreated(db, window),
+    ]);
 
-  const actorIds = [
-    ...new Set(
-      [...contestRows, ...disputeRows]
-        .map((row) => row.actor_id)
-        .filter((id): id is string => id !== null),
-    ),
-  ];
+  const actorIds = [...new Set(contestRows.map((row) => row.actor_id))];
   const actors =
     actorIds.length === 0
       ? []
@@ -382,11 +381,12 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
           .where(inArray(users.id, actorIds));
   const nameById = new Map(actors.map((a) => [a.id, a.name]));
   const toItem = (row: ItemRow): DigestItem => ({
+    contestId: row.contest_id,
     speciesId: row.species_id,
     speciesName: row.species_name,
     traitKey: row.trait_key,
-    valueText: row.value_text,
-    actorName: (row.actor_id === null ? null : nameById.get(row.actor_id)) ?? UNKNOWN_ACTOR,
+    contested: row.contested ?? '',
+    actorName: nameById.get(row.actor_id) ?? UNKNOWN_ACTOR,
     recordId: row.record_id,
     createdAt: new Date(row.created_at),
   });
@@ -398,14 +398,12 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
       contests: recordCounts[0]?.contests ?? 0,
       complements: recordCounts[0]?.complements ?? 0,
       validations: annotationCounts[0]?.validations ?? 0,
-      disputes: annotationCounts[0]?.disputes ?? 0,
       withdrawals: annotationCounts[0]?.withdrawals ?? 0,
       proposals,
       pendingGroups,
-      disputedNow,
+      contestedNow,
     },
     contests: contestRows.map(toItem),
-    disputes: disputeRows.map(toItem),
   };
 }
 

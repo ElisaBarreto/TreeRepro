@@ -1,5 +1,11 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
+import {
+  levelVisible,
+  speciesVisible,
+  traitVisible,
+  type Visibility,
+} from '../access/visibility.ts';
+import type { contests } from '../db/schema/contests.ts';
 import { liveSql, recordVisible } from './records.ts';
 
 /*
@@ -134,4 +140,25 @@ export function contestCountSql(recordId: SQL): SQL<number> {
         or exists (select 1 from contest_records cc_c
           join trait_records cc_q on cc_q.id = cc_c.record_id
           where cc_c.contest_id = cc_k.id and cc_q.responds_to_record_id = cc_t.id)))::int`;
+}
+
+/**
+ * The contest `contestIdCol` is visible to the viewer: its species and trait
+ * are visible, and every level it names is visible too — none for a
+ * quantitative contest, which is then vacuously true (RFC-33 R2). The
+ * contested queue, its count and the contributions list all apply it.
+ * @param contestIdCol a `contests.id` reference in the caller's query
+ * @rfc RFC-65 R10, R16
+ * @rfc RFC-33 R2
+ */
+export function contestVisibleSql(v: Visibility, contestIdCol: SQL | typeof contests.id): SQL {
+  return sql`(exists (select 1 from contests cv_k
+      join species cv_s on cv_s.id = cv_k.species_id
+      join traits cv_t on cv_t.id = cv_k.trait_id
+      where cv_k.id = ${contestIdCol}
+        and ${speciesVisible(v, sql`cv_s.active`, sql`cv_s.id`)}
+        and ${traitVisible(v, sql`cv_t.active`)})
+    and not exists (select 1 from contest_levels cv_l
+      join trait_levels cv_lvl on cv_lvl.id = cv_l.level_id
+      where cv_l.contest_id = ${contestIdCol} and not ${levelVisible(v, sql`cv_lvl.active`)}))`;
 }

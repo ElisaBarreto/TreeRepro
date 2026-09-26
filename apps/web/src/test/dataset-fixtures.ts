@@ -1,10 +1,10 @@
 import type {
+  ContestedQueueItem,
   ContributionAnnotation,
   ContributionRecord,
   ContributionSummary,
   Dashboard,
   Dictionary,
-  DisputedRecord,
   Genus,
   ImportBatch,
   ImportReject,
@@ -843,16 +843,34 @@ export const PENDING_GROUPS: PendingGroup[] = [
 /** @rfc RFC-65 R9 */
 export const MAP_RESULT: MapResult = { created: 2, skipped: 0 };
 
-/** @rfc RFC-65 R10 */
-export const DISPUTED_RECORD: DisputedRecord = {
-  ...PENDING_RECORD,
-  latestDispute: {
-    id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d70',
-    actor: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
-    note: 'Value is not a number.',
-    createdAt: '2026-09-03T12:00:00.000Z',
-  },
-  contestedBy: [],
+/**
+ * A standing categorical contest: Grace says the species is monoecious, which
+ * created one record, and contests {@link RECORD}'s dioecious level.
+ * @rfc RFC-65 R10
+ */
+export const CONTESTED_ITEM: ContestedQueueItem = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d70',
+  species: { id: SPECIES.id, canonicalName: SPECIES.canonicalName },
+  trait: { id: SEXUAL_SYSTEM.id, key: SEXUAL_SYSTEM.key },
+  createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+  createdAt: '2026-09-03T12:00:00.000Z',
+  levels: [{ levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20', key: 'dioecious', contested: true }],
+  target: null,
+  records: [
+    {
+      ...RECORD,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d56',
+      recordCode: 'TR_7',
+      valueText: 'monoecious',
+      level: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21', key: 'monoecious' },
+      review: 'unvalidated',
+      origin: 'manual',
+      createdAt: '2026-09-03T12:00:00.000Z',
+      createdBy: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9f', name: 'Grace' },
+      intent: 'contest',
+      validationCount: 0,
+    },
+  ],
 };
 
 /**
@@ -998,7 +1016,7 @@ export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
   // float quotient rounded in the browser answers 57 and 28. The fixture is
   // chosen so an assertion can tell the two apart.
   coverage: { cells: 200, withData: 115, validated: 57, percentWithData: 58, percentValidated: 29 },
-  queues: { pendingGroups: 3, disputed: 2, contested: 1, proposals: 0 },
+  queues: { pendingGroups: 3, contested: 1, proposals: 0 },
 };
 
 /** The whole dashboard answer for a contributor with plots and no review permission. @rfc RFC-72 R1 */

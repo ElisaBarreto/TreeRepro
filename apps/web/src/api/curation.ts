@@ -3,9 +3,9 @@ import {
   type AnnotateRecordBody,
   type CreateRecordBody,
   type CreateRecordsResult,
+  contestedQueueItemSchema,
   createRecordsResultSchema,
   dataEnvelopeSchema,
-  disputedRecordSchema,
   listEnvelopeSchema,
   type MapPendingBody,
   type MapResult,
@@ -100,9 +100,12 @@ export async function mapPending(body: MapPendingBody): Promise<MapResult> {
     })
   ).data;
 }
-/** `intent: 'contest'` narrows the queue to disputes a contest generated. @rfc RFC-65 R10 */
-export function fetchDisputed(params: { cursor?: string; limit?: number; intent?: 'contest' }) {
-  return apiFetch(withQuery('/records/disputed', params), listEnvelopeSchema(disputedRecordSchema));
+/** The standing contests (the path predates them). @rfc RFC-65 R10 */
+export function fetchDisputed(params: { cursor?: string; limit?: number }) {
+  return apiFetch(
+    withQuery('/records/disputed', params),
+    listEnvelopeSchema(contestedQueueItemSchema),
+  );
 }
 
 /**

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'v
 import {
   addPlotSpecies,
   createAnnotation,
+  createContest,
   createPlot,
   createRecord,
   createReference,
@@ -16,7 +17,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
-import { countContested, countDisputed, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups } from '../dataset/queues.ts';
 import type { DbTransaction } from '../db/client.ts';
 import { speciesProposals } from '../db/schema/proposals.ts';
 import { species } from '../db/schema/taxa.ts';
@@ -315,6 +316,14 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
         proposedName: `Testus dashboardus ${randomBytes(6).toString('hex')}`,
         proposerId: f.manager.id,
       });
+      // RFC-72 R1: one standing contest on a plot species moves `contested` by one.
+      const contestedBefore = await countContested(tx, f.visibility);
+      await createContest(tx, {
+        speciesId: f.species.one.id,
+        traitId: f.traitA.id,
+        createdBy: f.manager.id,
+        levelIds: [f.traitA.levels[0]?.id as string],
+      });
 
       const manager: DashboardViewer = {
         id: f.manager.id,
@@ -328,8 +337,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       // no concurrent commit can falsify the comparison.
       expect(reviewed.curation?.queues).toEqual({
         pendingGroups: await countPendingGroups(tx, f.visibility),
-        disputed: await countDisputed(tx, f.visibility),
-        contested: await countContested(tx, f.visibility),
+        contested: contestedBefore + 1,
         proposals: openBefore + 1,
       });
       // The contract is strict at every nested object, so parsing a viewer who

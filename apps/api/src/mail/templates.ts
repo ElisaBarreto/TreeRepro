@@ -178,16 +178,20 @@ ${mailFallbackLink(input.link)}`,
   };
 }
 
-/** One list of the digest: a heading, one entry per item with its link, or `None.` */
+/**
+ * The digest's contest list: a heading, one entry per contest with a link —
+ * to the drawer of the record it created, or to the species page when it
+ * created none — or `None.`
+ */
 function digestSection(title: string, items: readonly DigestItem[], appOrigin: string): string[] {
   if (items.length === 0) return [title, '', 'None.', ''];
   return [
     title,
     '',
     ...items.flatMap((item) => [
-      `- ${item.speciesName} — ${item.traitKey}: ${item.valueText} (${item.actorName})`,
+      `- ${item.speciesName} — ${item.traitKey}: contests ${item.contested} (${item.actorName})`,
       // The `?record=` search param opens the record drawer on the species page.
-      `  ${appOrigin}/app/species/${item.speciesId}?record=${item.recordId}`,
+      `  ${appOrigin}/app/species/${item.speciesId}${item.recordId ? `?record=${item.recordId}` : ''}`,
     ]),
     '',
   ];
@@ -299,7 +303,7 @@ ${digestSectionHtml('Disputes', disputes, input.appOrigin)}`;
 
 /**
  * The daily digest as plain text: the window's counts, the queues as they
- * stand and the two lists, each item linking to its record drawer.
+ * stand and the newest contests, each linking to its record drawer.
  *
  * Actor names appear decrypted — every recipient holds `dataset.read` — but
  * no e-mail address ever does, neither a recipient's nor an actor's (R5).
@@ -317,7 +321,7 @@ export function digestEmail(input: {
   /** Whether this run repeats a window a previous one had already begun mailing. */
   resent?: boolean;
 }): MailContent {
-  const { counts, window, contests, disputes } = input.digest;
+  const { counts, window, contests } = input.digest;
   return {
     subject: `TreeRepro digest — ${input.date}`,
     text: [
@@ -331,17 +335,15 @@ export function digestEmail(input: {
       `Contests: ${counts.contests}`,
       `Complements: ${counts.complements}`,
       `Validations: ${counts.validations}`,
-      `Disputes: ${counts.disputes}`,
       `Withdrawals: ${counts.withdrawals}`,
       `Species proposals: ${counts.proposals}`,
       '',
       'Waiting for review right now:',
       '',
       `Pending groups: ${counts.pendingGroups}`,
-      `Disputed records: ${counts.disputedNow}`,
+      `Open contests: ${counts.contestedNow}`,
       '',
       ...digestSection('Contests', contests, input.appOrigin),
-      ...digestSection('Disputes', disputes, input.appOrigin),
       'TreeRepro',
     ].join('\n'),
     html: digestHtml({ ...input, resent: input.resent === true }),

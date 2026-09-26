@@ -347,11 +347,18 @@ export async function createContest(
     createdBy: string;
     levelIds?: string[];
     recordIds?: string[];
+    /** Overrides the default `now()`; the digest counts contests over a window (RFC-74 R3). */
+    createdAt?: Date;
   },
 ): Promise<{ id: string }> {
   const [row] = await db
     .insert(contests)
-    .values({ speciesId: input.speciesId, traitId: input.traitId, createdBy: input.createdBy })
+    .values({
+      speciesId: input.speciesId,
+      traitId: input.traitId,
+      createdBy: input.createdBy,
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+    })
     .returning({ id: contests.id });
   if (!row) throw new Error('createContest: no row');
   if (input.levelIds?.length) {

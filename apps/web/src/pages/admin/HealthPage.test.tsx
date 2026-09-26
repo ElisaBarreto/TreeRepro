@@ -123,7 +123,7 @@ describe('RFC-52 HealthPage', () => {
 
     const queues = screen.getByRole('list', { name: 'Queue totals' });
     expect(within(queues).getByText('4')).toBeInTheDocument();
-    expect(within(queues).getByText('2')).toBeInTheDocument();
+    expect(within(queues).queryByText(/Disputed/)).not.toBeInTheDocument();
     expect(within(queues).getByText('1')).toBeInTheDocument();
     expect(within(queues).getByText('5')).toBeInTheDocument();
   });

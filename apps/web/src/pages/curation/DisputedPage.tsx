@@ -8,8 +8,9 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
 /**
- * The disputed queue (RFC-65 R10): records whose review is `disputed`, newest
- * dispute first. A row opens the record drawer, whose actions resolve the dispute.
+ * The contested queue (RFC-65 R10), newest contest first; a row opens a
+ * record of the contest in the drawer. Minimal until plan 13g Task 9
+ * rebuilds this page; `?intent` now only changes the title.
  * `?intent=contest` (plan 11b) narrows the queue to disputes a contest
  * generated and gives the page its own title and description, so the link
  * the workspace dashboard's Contested tile carries lands on a page that says
@@ -20,7 +21,7 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  */
 export function DisputedPage({ search }: { search: { intent?: 'contest' } }) {
   const list = usePagedList(curationKeys.disputed(search), (cursor, limit) =>
-    fetchDisputed({ cursor, limit, intent: search.intent }),
+    fetchDisputed({ cursor, limit }),
   );
   const [open, setOpen] = useState<string | null>(null);
   return (
@@ -39,9 +40,7 @@ export function DisputedPage({ search }: { search: { intent?: 'contest' } }) {
         {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No standing disputes." />
         ) : null}
-        {list.items.length > 0 ? (
-          <DisputedTable records={list.items} onSelect={(record) => setOpen(record.id)} />
-        ) : null}
+        {list.items.length > 0 ? <DisputedTable items={list.items} onSelect={setOpen} /> : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
       <RecordDrawer recordId={open} onClose={() => setOpen(null)} onOpenRecord={setOpen} />

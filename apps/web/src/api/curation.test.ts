@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
-  DISPUTED_RECORD,
+  CONTESTED_ITEM,
   MAP_RESULT,
   PENDING_GROUPS,
   PENDING_RECORD,
@@ -85,7 +85,7 @@ describe('RFC-65 R3, RFC-70 R4 annotateRecord', () => {
 });
 
 describe('RFC-65 R8–R10 queues', () => {
-  it('pending traits, pending groups with cursor, mapping and the disputed list', async () => {
+  it('pending traits, pending groups with cursor, mapping and the contested queue', async () => {
     mockJson(200, { data: PENDING_TRAITS });
     expect(await fetchPendingTraits()).toEqual(PENDING_TRAITS);
     expect(lastRequest().url).toBe('/api/records/pending/traits');
@@ -103,12 +103,10 @@ describe('RFC-65 R8–R10 queues', () => {
     });
     expect(lastRequest().url).toBe('/api/records/pending/map');
     expect(result).toEqual(MAP_RESULT);
-    mockJson(200, { data: [DISPUTED_RECORD], meta: { nextCursor: null } });
-    const disputed = await fetchDisputed({ limit: 50 });
+    mockJson(200, { data: [CONTESTED_ITEM], meta: { nextCursor: null } });
+    const contested = await fetchDisputed({ limit: 50 });
     expect(lastRequest().url).toBe('/api/records/disputed?limit=50');
-    expect(disputed.data[0]?.latestDispute.actor.name).toBe(
-      DISPUTED_RECORD.latestDispute.actor.name,
-    );
+    expect(contested.data).toEqual([CONTESTED_ITEM]);
   });
 });
 

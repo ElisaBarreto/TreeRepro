@@ -13,6 +13,7 @@ import {
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
+import type { Visibility } from '../access/visibility.ts';
 import { contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels } from '../db/schema/dictionary.ts';
@@ -26,7 +27,7 @@ import {
   validateLevel,
   withdrawLevel,
 } from './curation.ts';
-import { listDisputed, mapPending, pendingTraits } from './queues.ts';
+import { listContested, mapPending, pendingTraits } from './queues.ts';
 import { getRecord, listRecords } from './records.ts';
 import { ensurePersonalObservation } from './references.ts';
 import { speciesTraitSummary } from './summary.ts';
@@ -71,7 +72,7 @@ describe('RFC-33 R5 createRecord and annotateRecord by viewer', () => {
 describe('RFC-33 R3 queues by viewer', () => {
   const t = useTestDb();
 
-  it('omits a pending trait and a disputed record on a hidden species from a restricted viewer', async () => {
+  it('omits a pending trait and a contest on a hidden species from a restricted viewer', async () => {
     const { user } = await createUser(t.db);
     const f = await createVisibilityFixture(t.db, user.id);
     await createRecord(t.db, {
@@ -90,7 +91,7 @@ describe('RFC-33 R3 queues by viewer', () => {
       count: 1,
     });
 
-    const disputed = await createRecord(t.db, {
+    await createRecord(t.db, {
       speciesId: f.hiddenSpecies.id,
       traitId: f.activeTrait.id,
       valueText: 'one',
@@ -100,16 +101,24 @@ describe('RFC-33 R3 queues by viewer', () => {
       origin: 'manual',
       createdBy: user.id,
     });
-    await createAnnotation(t.db, {
-      recordId: disputed.id,
-      actorId: user.id,
-      kind: 'dispute',
-      note: 'Disputed on a hidden species',
+    const contest = await createContest(t.db, {
+      speciesId: f.hiddenSpecies.id,
+      traitId: f.activeTrait.id,
+      createdBy: user.id,
+      levelIds: [f.activeTrait.levels[0]?.id as string],
     });
-    const restrictedDisputed = await listDisputed(t.db, RESTRICTED, { limit: 10 });
-    expect(restrictedDisputed.data.map((r) => r.id)).not.toContain(disputed.id);
-    const unrestrictedDisputed = await listDisputed(t.db, UNRESTRICTED, { limit: 10 });
-    expect(unrestrictedDisputed.data.map((r) => r.id)).toContain(disputed.id);
+    const everyId = async (v: Visibility) => {
+      const ids: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listContested(t.db, v, { limit: 200, cursor });
+        ids.push(...page.data.map((c) => c.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return ids;
+    };
+    expect(await everyId(RESTRICTED)).not.toContain(contest.id);
+    expect(await everyId(UNRESTRICTED)).toContain(contest.id);
   });
 });
 

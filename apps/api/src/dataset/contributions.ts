@@ -7,22 +7,17 @@ import type {
 } from '@treerepro/contracts';
 import { and, count, desc, eq, gte, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import {
-  levelVisible,
-  speciesVisible,
-  traitVisible,
-  type Visibility,
-} from '../access/visibility.ts';
+import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { contestEvents, contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
+import { contestEvents, contestRecords, contests } from '../db/schema/contests.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
-import { traitLevels, traits } from '../db/schema/dictionary.ts';
+import { traits } from '../db/schema/dictionary.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
-import { contestWithdrawnSql } from './contests.ts';
+import { contestVisibleSql, contestWithdrawnSql } from './contests.ts';
 import { itemQuery, liveSql, reviewStatusSql, toItem } from './records.ts';
 
 const annotationRefObserver = alias(users, 'annotation_ref_observer');
@@ -132,25 +127,6 @@ function firstVisibleContestRecordIdSql(
       and ${speciesVisible(v, sql`fcv_s.active`, sql`fcv_s.id`)}
       and ${traitVisible(v, sql`fcv_t.active`)}
       and ${liveSql(sql`fcv_r.id`)})`;
-}
-
-/**
- * The contest `contestIdCol` is visible to the viewer: its species and trait
- * are visible, and every level it names (RFC-63 R14's `contest_levels`) is
- * visible too — none for a quantitative contest, which is then vacuously
- * true. Mirrors the check the contested queue will apply to a contest row
- * (RFC-33 R2, R3; RFC-65 R16).
- */
-function contestVisibleSql(v: Visibility, contestIdCol: SQL | typeof contests.id): SQL {
-  return sql`(exists (select 1 from ${contests} cv_k
-      join ${species} cv_s on cv_s.id = cv_k.species_id
-      join ${traits} cv_t on cv_t.id = cv_k.trait_id
-      where cv_k.id = ${contestIdCol}
-        and ${speciesVisible(v, sql`cv_s.active`, sql`cv_s.id`)}
-        and ${traitVisible(v, sql`cv_t.active`)})
-    and not exists (select 1 from ${contestLevels} cv_l
-      join ${traitLevels} cv_lvl on cv_lvl.id = cv_l.level_id
-      where cv_l.contest_id = ${contestIdCol} and not ${levelVisible(v, sql`cv_lvl.active`)}))`;
 }
 
 /** One page of the viewer's Keep-both resolutions (RFC-71 R3, RFC-65 R16). */

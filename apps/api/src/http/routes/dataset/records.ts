@@ -1,8 +1,8 @@
 import {
   annotateRecordBodySchema,
   createRecordBodySchema,
+  cursorQuerySchema,
   idParamSchema,
-  listDisputedQuerySchema,
   listRecordsQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
@@ -11,7 +11,12 @@ import { Hono } from 'hono';
 import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { annotateRecord, createRecords } from '../../../dataset/curation.ts';
-import { listDisputed, mapPending, pendingGroups, pendingTraits } from '../../../dataset/queues.ts';
+import {
+  listContested,
+  mapPending,
+  pendingGroups,
+  pendingTraits,
+} from '../../../dataset/queues.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
 import type { AppEnv } from '../../env.ts';
@@ -163,14 +168,14 @@ export function recordRoutes(ctx: AuthContext) {
     .get(
       '/disputed',
       requirePermission(ctx, 'records.review'),
-      validate('query', listDisputedQuerySchema),
+      validate('query', cursorQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
-        const { data, nextCursor } = await listDisputed(ctx.db, visibility, {
+        // RFC-65 R10: the standing contests; the path predates them (Spec note 10).
+        const { data, nextCursor } = await listContested(ctx.db, visibility, {
           cursor: q.cursor,
           limit: q.limit,
-          intent: q.intent,
         });
         return c.json({ data, meta: { nextCursor } });
       },

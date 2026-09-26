@@ -205,7 +205,7 @@ describe('RFC-72 R1, R3 WorkspacePage', () => {
     expect(await screen.findByRole('heading', { name: 'Curation' })).toBeInTheDocument();
     const meters = screen.getAllByRole('meter');
     expect(meters).toHaveLength(2);
-    expect(screen.getByRole('link', { name: /^Disputed/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Contested/ })).toHaveAttribute(
       'href',
       '/app/curation/disputed',
     );

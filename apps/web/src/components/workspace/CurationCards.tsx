@@ -27,19 +27,9 @@ function TileBody({ label, value }: { label: string; value: number }) {
   );
 }
 
-function QueueTile({
-  label,
-  value,
-  to,
-  search,
-}: {
-  label: string;
-  value: number;
-  to: LinkProps['to'];
-  search?: LinkProps['search'];
-}) {
+function QueueTile({ label, value, to }: { label: string; value: number; to: LinkProps['to'] }) {
   return (
-    <Link to={to} search={search} className={LIGHT_TILE_CLASS}>
+    <Link to={to} className={LIGHT_TILE_CLASS}>
       <TileBody label={label} value={value} />
     </Link>
   );
@@ -101,7 +91,7 @@ function CoverageMeter({
  * The curation section: two dataset-wide coverage meters and the queue tiles
  * a reviewer works from (spec §4). Rendered only while `curation` is not null (present
  * for `records.review` viewers, RFC-72 R1) — that null check belongs to the
- * caller. Pending is the dark call to action; Disputed and Contested read
+ * caller. Pending is the dark call to action; Contested reads
  * "All clear" at zero. The proposals tile only appears once there are open
  * proposals; the coverage link only for a viewer who holds `coverage.read`.
  * @rfc RFC-72 R3
@@ -183,15 +173,7 @@ export function CurationCards({
             <PendingTile value={queues.pendingGroups} />
           </li>
           <li>
-            <QueueTile label="Disputed" value={queues.disputed} to="/app/curation/disputed" />
-          </li>
-          <li>
-            <QueueTile
-              label="Contested"
-              value={queues.contested}
-              to="/app/curation/disputed"
-              search={{ intent: 'contest' }}
-            />
+            <QueueTile label="Contested" value={queues.contested} to="/app/curation/disputed" />
           </li>
           {queues.proposals > 0 ? (
             <li>

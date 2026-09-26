@@ -96,7 +96,7 @@ const health = {
       day: `2026-09-${String(i + 1).padStart(2, '0')}`,
     })),
   },
-  queues: { pendingGroups: 3, disputed: 1, contested: 0, proposals: 4 },
+  queues: { pendingGroups: 3, contested: 0, proposals: 4 },
   jobs: { auditPurge: jobRun, digest: null },
   imports: [healthImport],
   computedAt: '2026-09-19T00:00:00.000Z',

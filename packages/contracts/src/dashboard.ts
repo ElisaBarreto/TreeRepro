@@ -48,7 +48,6 @@ export const dashboardSchema = z.strictObject({
       }),
       queues: z.strictObject({
         pendingGroups: z.number().int().nonnegative(),
-        disputed: z.number().int().nonnegative(),
         contested: z.number().int().nonnegative(),
         proposals: z.number().int().nonnegative(),
       }),
