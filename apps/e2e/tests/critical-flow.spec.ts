@@ -1,6 +1,6 @@
-import { type BrowserContext, expect, type Page, test } from '@playwright/test';
+import { type BrowserContext, expect, type Page, request, test } from '@playwright/test';
 import { type CspWatch, watchCsp } from './csp.ts';
-import { ADMIN_EMAIL, adminPassword, password } from './env.ts';
+import { ADMIN_EMAIL, adminPassword, BASE_URL, password } from './env.ts';
 import { signInAndSaveState } from './global-setup.ts';
 import { waitForLink } from './mailpit.ts';
 import { codeFor } from './totp.ts';
@@ -164,6 +164,55 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
     // up to two steps ahead of the host, not behind across a boundary
     // (irrelevant in CI, where the clock is shared).
     await signIn(page, ADMIN_EMAIL, currentPassword, codeFor(totpSecret, 1));
+  });
+
+  test('RFC-82 R1-R3 creates an API key in Settings and reads the pending queue with it', async () => {
+    await page.goto(`${BASE_URL}/app/settings`);
+    // `Section` (apps/web/src/components/ui/Section.tsx) puts its `id` prop
+    // on the heading (`<id>-heading`), not on the `<section>` itself — same
+    // as every other Settings section, reached the same way below.
+    const section = page.getByRole('region', { name: 'API keys' });
+    await section.getByLabel('Key name').fill('e2e');
+    await section.getByLabel('Current password').fill(currentPassword);
+    // The previous test claimed step 0 (enrolment) and step 1 (the sign-in
+    // right after) — both relative to *its own* clock reading, a couple of
+    // seconds ago. No offset from *this* clock reading can both clear RFC-23
+    // R4's replay guard (a counter strictly greater than the one that test
+    // claimed) and land inside RFC-23 R1's ±1-step verification window: any
+    // offset high enough to be unclaimed is also too far ahead of "now" to
+    // verify, since the two tests run less than one 30 s step apart. Waiting
+    // past the boundary *after* next guarantees "now" itself lands at least
+    // two steps beyond whatever step was current when that test claimed
+    // its own, so offset 0 (the default, as the enrolment step used) is then
+    // both fresh and in-window.
+    const stepMs = 30_000;
+    await page.waitForTimeout(stepMs - (Date.now() % stepMs) + stepMs);
+    await section.getByLabel('Verification code').fill(codeFor(totpSecret));
+    await section.getByRole('button', { name: 'Create key' }).click();
+    const secret = (await section.locator('code').textContent())?.trim();
+    expect(secret).toMatch(/^tr_live_/);
+
+    // A context with no storage state: `page.request` would ride along with
+    // the admin's session cookie, and R4 refuses a request carrying both.
+    const anonymous = await request.newContext();
+    const res = await anonymous.get(`${BASE_URL}/api/records/pending/traits`, {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    expect(res.status()).toBe(200);
+
+    // R4: the same key plus the session cookie is refused outright, not
+    // merely ignored in favour of the cookie.
+    const withCookie = await page.request.get(`${BASE_URL}/api/records/pending/traits`, {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    expect(withCookie.status()).toBe(401);
+
+    // R6: a key never reaches a self-service route, even alone.
+    const selfService = await anonymous.get(`${BASE_URL}/api/auth/me`, {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    expect(selfService.status()).toBe(401);
+    await anonymous.dispose();
   });
 
   test('RFC-31 R3, RFC-50 R3 creates the Readers role and invites B holding it', async () => {

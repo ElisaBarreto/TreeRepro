@@ -1,5 +1,6 @@
 import './zod-jitless.ts';
 
+export * from './api-keys.ts';
 export * from './audit.ts';
 export * from './auth.ts';
 export * from './contributions.ts';

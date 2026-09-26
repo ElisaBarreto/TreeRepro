@@ -1,6 +1,7 @@
 import type { SessionSummary } from '@treerepro/contracts';
 import { recordAudit } from '../../audit/audit.ts';
 import type { UserRow } from '../../db/schema/users.ts';
+import { revokeAllApiKeys } from '../api-keys.ts';
 import type { AuthContext, RequestMeta } from '../context.ts';
 import type { SessionRecord } from '../sessions.ts';
 
@@ -20,21 +21,37 @@ export async function logout(
   });
 }
 
-/** @rfc RFC-22 R9 */
+/**
+ * @rfc RFC-22 R9
+ * @rfc RFC-82 R3
+ */
 export async function logoutAll(
   ctx: AuthContext,
   input: { user: UserRow } & RequestMeta,
 ): Promise<number> {
-  const count = await ctx.sessions.revokeAll(input.user.id);
-  await recordAudit(ctx.db, {
-    actorUserId: input.user.id,
-    action: 'auth.logout_all',
-    targetType: 'user',
-    targetId: input.user.id,
-    ip: input.ip,
-    userAgent: input.userAgent,
-    metadata: { count },
+  // Database first, sessions after, as every other revoking flow: a failed
+  // commit must not leave the sessions dead and the keys alive.
+  const count = (await ctx.sessions.list(input.user.id)).length;
+  await ctx.db.transaction(async (tx) => {
+    await recordAudit(tx, {
+      actorUserId: input.user.id,
+      action: 'auth.logout_all',
+      targetType: 'user',
+      targetId: input.user.id,
+      ip: input.ip,
+      userAgent: input.userAgent,
+      metadata: { count },
+    });
+    await revokeAllApiKeys(tx, {
+      userId: input.user.id,
+      actorUserId: input.user.id,
+      reason: 'logout_all',
+      now: new Date(ctx.now()),
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
   });
+  await ctx.sessions.revokeAll(input.user.id);
   return count;
 }
 

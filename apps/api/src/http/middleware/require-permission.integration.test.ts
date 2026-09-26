@@ -21,7 +21,7 @@ describe('RFC-32 R4 requirePermission', () => {
 
   function app() {
     const a = new Hono<AppEnv>();
-    a.use(resolveSession({ sessions: t.sessions, db: t.db }));
+    a.use(resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }));
     a.get('/read', requirePermission(ctx(), 'users.read'), (c) =>
       c.json({ permissions: [...currentPermissions(c)] }),
     );

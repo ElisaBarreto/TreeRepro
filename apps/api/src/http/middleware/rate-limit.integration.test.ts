@@ -63,7 +63,7 @@ describe('RFC-24 R4, R5 rate-limit middleware', () => {
   it('R4 globalRateLimit keys by session when present, by IP otherwise, and exempts health', async () => {
     const a = new Hono<AppEnv>()
       .basePath('/api')
-      .use(resolveSession({ sessions: t.sessions, db: t.db }))
+      .use(resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }))
       .use(globalRateLimit(t.limiter))
       .get('/health', (c) => c.json({ ok: true }))
       .get('/thing', (c) => c.json({ ok: true }))

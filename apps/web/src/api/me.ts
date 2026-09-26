@@ -1,4 +1,9 @@
 import {
+  type ApiKeyList,
+  apiKeyListSchema,
+  type CreateApiKeyBody,
+  type CreateApiKeyResponse,
+  createApiKeyResponseSchema,
   dataEnvelopeSchema,
   okStatusSchema,
   type SessionSummary,
@@ -32,4 +37,24 @@ export async function listSessions(): Promise<SessionSummary[]> {
 /** @rfc RFC-22 R11 */
 export async function revokeSession(id: string): Promise<void> {
   await apiFetch(`/me/sessions/${id}`, dataEnvelopeSchema(okStatusSchema), { method: 'DELETE' });
+}
+
+/** @rfc RFC-82 R7 */
+export async function listApiKeys(): Promise<ApiKeyList> {
+  const { data } = await apiFetch('/me/api-keys', dataEnvelopeSchema(apiKeyListSchema));
+  return data;
+}
+
+/** @rfc RFC-82 R2 */
+export async function createApiKey(body: CreateApiKeyBody): Promise<CreateApiKeyResponse> {
+  const { data } = await apiFetch('/me/api-keys', dataEnvelopeSchema(createApiKeyResponseSchema), {
+    method: 'POST',
+    json: body,
+  });
+  return data;
+}
+
+/** @rfc RFC-82 R7 */
+export async function revokeApiKey(id: string): Promise<void> {
+  await apiFetch(`/me/api-keys/${id}`, dataEnvelopeSchema(okStatusSchema), { method: 'DELETE' });
 }

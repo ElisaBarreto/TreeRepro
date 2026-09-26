@@ -3,6 +3,7 @@ import { recordAudit } from '../../audit/audit.ts';
 import { totpRecoveryCodes } from '../../db/schema/totp-recovery-codes.ts';
 import type { UserRow } from '../../db/schema/users.ts';
 import { AppError } from '../../http/errors.ts';
+import { revokeAllApiKeys } from '../api-keys.ts';
 import type { AuthContext, RequestMeta } from '../context.ts';
 import { verifyPassword } from '../password.ts';
 import {
@@ -66,7 +67,10 @@ export async function confirmTotpSetup(
   return { recoveryCodes };
 }
 
-/** @rfc RFC-23 R7 */
+/**
+ * @rfc RFC-23 R7
+ * @rfc RFC-82 R3
+ */
 export async function disableTotp(
   ctx: AuthContext,
   input: { user: UserRow; password: string; code?: string; recoveryCode?: string } & RequestMeta,
@@ -106,6 +110,14 @@ export async function disableTotp(
       action: 'auth.totp.disabled',
       targetType: 'user',
       targetId: user.id,
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
+    await revokeAllApiKeys(tx, {
+      userId: user.id,
+      actorUserId: user.id,
+      reason: 'totp_disabled',
+      now,
       ip: input.ip,
       userAgent: input.userAgent,
     });

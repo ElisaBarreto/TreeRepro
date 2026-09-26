@@ -14,7 +14,7 @@ TreeRepro holds personal data of its users and scientific data whose integrity m
 
 - **R1** The backend (`apps/api`) is the only authority. The frontend is a display layer: nothing it sends is trusted, nothing it computes is used for a decision.
 - **R2** Every request body, query string and path parameter is validated by a strict Zod schema from `packages/contracts` before a handler runs. Unknown fields are rejected with 400 `VALIDATION_FAILED`. Malformed JSON is rejected with 400 `VALIDATION_INVALID_JSON`.
-- **R3** Every mutating request (POST, PUT, PATCH, DELETE) must carry an `Origin` header exactly equal to the configured `APP_ORIGIN`; otherwise the API answers 403 `SECURITY_INVALID_ORIGIN` before any handler runs. Safe methods (GET, HEAD, OPTIONS) are exempt.
+- **R3** Every mutating request (POST, PUT, PATCH, DELETE) must carry an `Origin` header exactly equal to the configured `APP_ORIGIN`; otherwise the API answers 403 `SECURITY_INVALID_ORIGIN` before any handler runs. Safe methods (GET, HEAD, OPTIONS) are exempt. Bearer-only requests are exempt (RFC-82 R5).
 - **R4** Request bodies larger than 1 MiB are rejected with 413 `REQUEST_TOO_LARGE`.
 - **R5** Every API response carries: `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`. The SPA served by Caddy in production carries a strict CSP (`default-src 'self'`, no inline scripts), HSTS, and the same three headers. In development Caddy sets no CSP because Vite injects inline scripts.
 - **R6** Secrets are read only from files under `/run/secrets` (Docker secrets; `SECRETS_DIR` overrides the directory for tests). A missing or malformed secret aborts process start. Secrets are never logged, never placed in environment variables, never returned by any endpoint. In the process every secret value (passwords, connection URLs that embed them, keys) is held in a `Secret` wrapper whose JSON, string and inspect forms are the literal `[secret]`; the value is read with `expose()` at the point of use and never stored elsewhere.
@@ -43,3 +43,4 @@ None.
 - 2026-09-12 — R12: three guard classes (RFC-32).
 - 2026-09-12 — R10: Caddy root exception removed; the web image runs as `caddy` (issue #31).
 - 2026-09-25 — R7: the proxy access log, full client IP, 30 days, URL tokens masked (issue #174).
+- 2026-09-26 — R3: a Bearer-only request is exempt from the origin check (RFC-82 R5, plan 14a).

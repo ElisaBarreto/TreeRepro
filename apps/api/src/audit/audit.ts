@@ -1,6 +1,7 @@
 import type { DbExecutor } from '../db/client.ts';
 import { auditLog } from '../db/schema/audit-log.ts';
 import { AUDIT_ACTIONS, type AuditAction } from './actions.ts';
+import { auditVia } from './via.ts';
 
 export interface AuditEntry {
   actorUserId: string | null;
@@ -78,12 +79,16 @@ export function assertSafeMetadata(value: unknown, path = ''): void {
  * Writes one audit row using the caller's executor, so it commits or rolls back
  * together with the action being recorded.
  * @rfc RFC-41 R1, R3-R5, R7-R8
+ * @rfc RFC-82 R8
  */
 export async function recordAudit(db: DbExecutor, entry: AuditEntry): Promise<{ id: string }> {
   if (!(AUDIT_ACTIONS as readonly string[]).includes(entry.action)) {
     throw new AuditActionError(entry.action);
   }
-  const metadata = entry.metadata ?? {};
+  const via = auditVia.getStore();
+  const metadata = via
+    ? { ...entry.metadata, via: 'api_key', apiKeyId: via.apiKeyId }
+    : (entry.metadata ?? {});
   assertSafeMetadata(metadata);
   const [row] = await db
     .insert(auditLog)

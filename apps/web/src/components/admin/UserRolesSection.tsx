@@ -36,6 +36,10 @@ export function UserRolesSection({ user, canEdit }: { user: User; canEdit: boole
     else checked.add(id);
     setState({ seed, checked });
   };
+  // The hint about API keys applies only to a current holder of the admin system role.
+  const holdsAdmin = (roles.data ?? []).some(
+    (r) => r.isSystem && r.name === 'admin' && user.roles.some((u) => u.id === r.id),
+  );
   const ordered = (roles.data ?? []).filter((r) => state.checked.has(r.id)).map((r) => r.id);
 
   return (
@@ -83,6 +87,11 @@ export function UserRolesSection({ user, canEdit }: { user: User; canEdit: boole
           </ul>
           {save.isSuccess ? <Alert tone="success">Roles saved.</Alert> : null}
           {save.isError ? <Alert tone="error">{userErrorMessage(save.error)}</Alert> : null}
+          {holdsAdmin ? (
+            <p className="text-meta text-mist-500">
+              Removing the admin role also revokes every API key this user holds.
+            </p>
+          ) : null}
           <div>
             <Button type="submit" pending={save.isPending} disabled={!roles.data}>
               Save roles

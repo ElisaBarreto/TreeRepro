@@ -46,14 +46,20 @@ export function rateLimit(
   };
 }
 
-/** @rfc RFC-24 R4 */
+/**
+ * @rfc RFC-24 R4
+ * @rfc RFC-82 R9
+ */
 export function globalRateLimit(limiter: RateLimiter): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (c.req.path.startsWith('/api/health')) return next();
+    const apiKey = c.get('apiKey');
     const session = c.get('session');
-    const decision = session
-      ? await limiter.hit('global:session', session.id, RATE_LIMITS.globalSession)
-      : await limiter.hit('global:ip', ipKey(c), RATE_LIMITS.globalIp);
+    const decision = apiKey
+      ? await limiter.hit('global:api_key', apiKey.id, RATE_LIMITS.apiKey)
+      : session
+        ? await limiter.hit('global:session', session.id, RATE_LIMITS.globalSession)
+        : await limiter.hit('global:ip', ipKey(c), RATE_LIMITS.globalIp);
     if (!decision.allowed) throw new RateLimitedError(decision.retryAfterSeconds);
     await next();
   };

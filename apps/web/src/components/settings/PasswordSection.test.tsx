@@ -10,11 +10,19 @@ import { PasswordSection } from './PasswordSection.tsx';
 
 const auth = vi.hoisted(() => ({ changePassword: vi.fn(), fetchMe: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
+const me = vi.hoisted(() => ({
+  listApiKeys: vi.fn(),
+  createApiKey: vi.fn(),
+  revokeApiKey: vi.fn(),
+}));
+vi.mock('../../api/me.ts', () => me);
 const OLD = 'old passphrase here';
 const NEW = 'new passphrase here!';
 
 beforeEach(() => {
   auth.changePassword.mockReset();
+  me.listApiKeys.mockReset();
+  me.listApiKeys.mockResolvedValue({ eligible: false, keys: [] });
 });
 
 async function fill(current: string, next: string, confirm: string) {
@@ -34,6 +42,25 @@ describe('RFC-21 R7 PasswordSection', () => {
     );
     expect(auth.changePassword).toHaveBeenCalledWith(OLD, NEW);
     expect(screen.getByLabelText('Current password')).toHaveValue('');
+  });
+
+  it('RFC-82 R3 does not mention API keys to a user who cannot hold one', async () => {
+    renderWithProviders(<PasswordSection />, { me: ME });
+    await waitFor(() => expect(me.listApiKeys).toHaveBeenCalled());
+    expect(screen.queryByText('This also revokes every API key you hold.')).not.toBeInTheDocument();
+  });
+
+  it('RFC-82 R3 warns that API keys are revoked and refreshes the key list on success', async () => {
+    auth.changePassword.mockResolvedValue(undefined);
+    me.listApiKeys.mockResolvedValue({ eligible: true, keys: [] });
+    renderWithProviders(<PasswordSection />, { me: ME });
+    expect(
+      await screen.findByText('This also revokes every API key you hold.'),
+    ).toBeInTheDocument();
+    const before = me.listApiKeys.mock.calls.length;
+    await fill(OLD, NEW, NEW);
+    // Invalidating the observed query refetches it.
+    await waitFor(() => expect(me.listApiKeys.mock.calls.length).toBeGreaterThan(before));
   });
 
   it('checks the confirmation locally and maps AUTH_INVALID_CREDENTIALS and AUTH_PASSWORD_WEAK', async () => {

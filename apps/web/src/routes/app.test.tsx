@@ -22,6 +22,9 @@ const me = vi.hoisted(() => ({
   updateName: vi.fn(),
   listSessions: vi.fn(),
   revokeSession: vi.fn(),
+  listApiKeys: vi.fn(),
+  createApiKey: vi.fn(),
+  revokeApiKey: vi.fn(),
 }));
 // The `/app` index route renders WorkspacePage (RFC-72), which reads the
 // dashboard query; mocked here purely so it resolves quietly and never
@@ -39,6 +42,7 @@ beforeEach(() => {
   auth.fetchMe.mockReset();
   auth.logout.mockReset();
   me.listSessions.mockReset();
+  me.listApiKeys.mockReset().mockResolvedValue({ eligible: false, keys: [] });
   dashboard.fetchDashboard.mockReset().mockResolvedValue(DASHBOARD);
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });

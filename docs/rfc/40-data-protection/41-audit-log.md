@@ -40,6 +40,8 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `auth.totp.enabled` | TOTP second factor enabled. |
 | `auth.totp.disabled` | TOTP second factor disabled. |
 | `auth.totp.recovery_used` | A recovery code was consumed to complete login. |
+| `auth.api_key.created` | API key created by its owner (RFC-82 R8). |
+| `auth.api_key.revoked` | API key revoked, by its owner or as a consequence of an account action taken by the owner or an administrator; `metadata.reason` names the action when it was not a direct revoke (RFC-82 R3, R8). |
 | `users.created` | User record created by an admin. |
 | `users.updated` | User profile fields changed. |
 | `users.roles_changed` | Roles assigned to or removed from a user. |
@@ -91,3 +93,5 @@ None.
 - 2026-09-19 — proposals.created, proposals.decided (RFC-75, plan 12c).
 - 2026-09-20 — roles.delegation_refused (RFC-31 R14, issue #118 F-02).
 - 2026-09-26 — help.created, help.updated, help.deleted (RFC-73 R6, issue #172).
+- 2026-09-26 — auth.api_key.created, auth.api_key.revoked (RFC-82 R8, plan 14a).
+- 2026-09-26 — auth.api_key.revoked: may be written by an administrator, carries `metadata.reason` (RFC-82 R3).

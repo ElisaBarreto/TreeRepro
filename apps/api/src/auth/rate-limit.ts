@@ -32,7 +32,10 @@ const TOKEN_IP_LIMIT = z.coerce
   .default(10)
   .parse(process.env.RATE_LIMIT_TOKEN_IP);
 
-/** @rfc RFC-24 R3 */
+/**
+ * @rfc RFC-24 R3
+ * @rfc RFC-82 R2, R9
+ */
 export const RATE_LIMITS = {
   globalSession: { limit: 300, windowMs: MINUTE },
   globalIp: { limit: 100, windowMs: MINUTE },
@@ -46,6 +49,10 @@ export const RATE_LIMITS = {
   // platform's behalf, so it is limited per user (RFC-81 R4), opted into
   // explicitly by that route rather than applied globally.
   taxonomyMatchUser: { limit: 30, windowMs: MINUTE },
+  // RFC-82 R9: scripts send far more than a person clicking.
+  apiKey: { limit: 3000, windowMs: 10 * MINUTE },
+  // RFC-82 R2: guards the TOTP code asked at key creation.
+  apiKeyCreate: { limit: 5, windowMs: QUARTER_HOUR },
 } as const satisfies Record<string, RateLimitRule>;
 
 // KEYS[1] = sorted set; ARGV = now(ms), window(ms), limit, member.

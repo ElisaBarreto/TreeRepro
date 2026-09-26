@@ -93,7 +93,10 @@ export function UserSessionsSection({ userId, canRevoke }: { userId: string; can
         </Table>
       ) : null}
       {canRevoke ? (
-        <div>
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-meta text-mist-500">
+            This also revokes every API key this user holds.
+          </p>
           <Button
             variant="danger"
             pending={everywhere.isPending}

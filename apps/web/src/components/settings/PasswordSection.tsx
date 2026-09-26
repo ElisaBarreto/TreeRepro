@@ -1,10 +1,11 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useId, useRef, useState } from 'react';
 import { changePassword } from '../../api/auth.ts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../../lib/errors.ts';
 import { PASSWORD_HINT } from '../auth/PasswordFields.tsx';
 import { Alert, Button, Field, Input, Section } from '../ui/index.ts';
+import { API_KEYS_QUERY_KEY, RevokesApiKeysNote } from './ApiKeysSection.tsx';
 
 /** @rfc RFC-13 R6 */
 export function passwordErrorMessage(error: unknown): string {
@@ -27,6 +28,7 @@ export function passwordErrorMessage(error: unknown): string {
 export function PasswordSection() {
   const ids = { current: useId(), next: useId(), confirm: useId() };
   const formRef = useRef<HTMLFormElement>(null);
+  const queryClient = useQueryClient();
   const [done, setDone] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const change = useMutation({
@@ -38,6 +40,8 @@ export function PasswordSection() {
     onSuccess: () => {
       setDone(true);
       formRef.current?.reset();
+      // The change revoked every API key (RFC-82 R3).
+      void queryClient.invalidateQueries({ queryKey: API_KEYS_QUERY_KEY });
     },
     onError: (error) => {
       if (isValidationError(error)) {
@@ -74,6 +78,7 @@ export function PasswordSection() {
   return (
     <Section id="password" title="Password" description="Changing it signs out every other device.">
       <form ref={formRef} onSubmit={submit} className="flex max-w-md flex-col gap-4" noValidate>
+        <RevokesApiKeysNote />
         <Field id={ids.current} label="Current password" error={errors.currentPassword}>
           <Input
             id={ids.current}

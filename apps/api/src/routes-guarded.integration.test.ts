@@ -1,9 +1,13 @@
+import type { PermissionKey } from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../test/helpers/app.ts';
 import { adminRoleId } from '../test/helpers/roles.ts';
 import { loginAs } from '../test/helpers/session.ts';
 import { createUser } from '../test/helpers/users.ts';
-import { guardKind } from './http/guards.ts';
+import { generateApiKey } from './auth/api-keys.ts';
+import { hashToken } from './auth/tokens.ts';
+import { apiKeys } from './db/schema/api-keys.ts';
+import { guardKind, guardPermission } from './http/guards.ts';
 import { PUBLIC_ROUTES } from './http/public-routes.ts';
 import { SELF_SERVICE_ROUTES } from './http/self-service-routes.ts';
 
@@ -72,6 +76,9 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'POST /api/auth/totp/disable',
         'GET /api/me/sessions',
         'DELETE /api/me/sessions/:id',
+        'GET /api/me/api-keys',
+        'POST /api/me/api-keys',
+        'DELETE /api/me/api-keys/:id',
         'PATCH /api/me',
         'GET /api/me/contributions',
         'GET /api/me/contributions/summary',
@@ -215,6 +222,7 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       'PUT /api/admin/users/:id/plots',
       'POST /api/admin/roles',
       'PATCH /api/admin/roles/:id',
+      'POST /api/me/api-keys',
       'POST /api/records',
       'POST /api/records/pending/map',
       'POST /api/records/:id/annotations',
@@ -271,6 +279,79 @@ describe('RFC-01 R6 negative sweep over every route', () => {
       });
       expect(allowed.status, key).not.toBe(403);
     }
+  });
+
+  async function adminKey(): Promise<Record<string, string>> {
+    const { user } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const raw = generateApiKey();
+    await t.db.insert(apiKeys).values({
+      userId: user.id,
+      name: 'sweep',
+      keyHash: hashToken(raw),
+      keyPrefix: raw.slice(8, 16),
+      expiresAt: new Date(t.clock.now + 86_400_000),
+    });
+    return { authorization: `Bearer ${raw}` };
+  }
+
+  it('RFC-82 R6 every self-service route answers 401 AUTH_UNAUTHENTICATED to a valid admin key', async () => {
+    const headers = await adminKey();
+    for (const key of SELF_SERVICE_ROUTES) {
+      const [method, path] = key.split(' ') as [string, string];
+      const res = await call(t.app, method, concrete(path), {
+        body: method === 'GET' ? undefined : {},
+        headers,
+        origin: null,
+      });
+      expect(res.status, key).toBe(401);
+      expect((await res.json()).error.code, key).toBe('AUTH_UNAUTHENTICATED');
+    }
+  });
+
+  it('RFC-82 R3, R6 every permission-guarded route admits a valid admin key, except identity, role and session management', async () => {
+    const blocked: PermissionKey[] = [
+      'users.invite',
+      'users.update',
+      'users.suspend',
+      'users.delete',
+      'roles.manage',
+      'sessions.revoke',
+    ];
+    const headers = await adminKey();
+    const refused: string[] = [];
+    for (const [key, entries] of endpoints(t.app.routes as RouteEntry[])) {
+      if (PUBLIC_ROUTES.includes(key) || SELF_SERVICE_ROUTES.includes(key)) continue;
+      const permission = entries.map((e) => guardPermission(e.handler)).find(Boolean);
+      const [method, path] = key.split(' ') as [string, string];
+      const res = await call(t.app, method, concrete(path), {
+        body: method === 'GET' ? undefined : {},
+        headers,
+        origin: null,
+      });
+      if (permission && blocked.includes(permission)) {
+        refused.push(key);
+        expect(res.status, key).toBe(403);
+        expect((await res.json()).error.code, key).toBe('PERMISSION_DENIED');
+      } else {
+        expect(res.status, key).not.toBe(401);
+        expect(res.status, key).not.toBe(403);
+      }
+    }
+    expect(refused.sort()).toEqual(
+      [
+        'POST /api/admin/users',
+        'PATCH /api/admin/users/:id',
+        'PUT /api/admin/users/:id/plots',
+        'POST /api/admin/users/:id/suspend',
+        'POST /api/admin/users/:id/reactivate',
+        'POST /api/admin/users/:id/resend-invite',
+        'DELETE /api/admin/users/:id/sessions',
+        'DELETE /api/admin/users/:id/sessions/:sessionId',
+        'POST /api/admin/roles',
+        'PATCH /api/admin/roles/:id',
+        'DELETE /api/admin/roles/:id',
+      ].sort(),
+    );
   });
 
   it('a non-JSON body answers 400 on a public route', async () => {

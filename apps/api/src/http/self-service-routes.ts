@@ -4,6 +4,7 @@
  * @rfc RFC-32 R5
  * @rfc RFC-50 R11
  * @rfc RFC-73 R6
+ * @rfc RFC-82 R6
  */
 export const SELF_SERVICE_ROUTES: readonly string[] = [
   'POST /api/auth/logout',
@@ -16,6 +17,9 @@ export const SELF_SERVICE_ROUTES: readonly string[] = [
   'POST /api/auth/totp/disable',
   'GET /api/me/sessions',
   'DELETE /api/me/sessions/:id',
+  'GET /api/me/api-keys',
+  'POST /api/me/api-keys',
+  'DELETE /api/me/api-keys/:id',
   'GET /api/help',
   'GET /api/help/:slug',
 ];
