@@ -42,7 +42,10 @@ rsync -rt --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/     # only after
    directory, `/srv/maps.next`, never the live `/srv/maps`.
 2. Validate the staged directory against R1 and the trait dictionary in the
    database (RFC-76 R2); exits 1 and prints one line per problem if any row
-   is wrong, 0 otherwise. It writes nothing.
+   is wrong, *and exits 1 (with `no manifest.csv in <dir>` on stderr) if the
+   directory or its `manifest.csv` is missing* — a passing check must never
+   wave an empty or mistargeted copy through to the next step's
+   `rsync --delete` — 0 otherwise. It writes nothing.
 3. Only once that check reports 0 problems, sync the staged directory onto
    the live one.
 

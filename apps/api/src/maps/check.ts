@@ -83,3 +83,18 @@ export async function checkMaps(db: DbExecutor, dir: string): Promise<CheckMapsR
   }
   return { shown, problems };
 }
+
+/**
+ * The exit code `check:maps` reports: 1 when the directory has no manifest
+ * at all, even if `checkMaps` itself found nothing wrong with it — a
+ * publishing gate must not wave an empty or mistargeted staging copy
+ * through, since the next step (`rsync --delete` into the live directory)
+ * would then delete every map — or when `checkMaps` found any problem; 0
+ * otherwise. `hasManifest` is the caller's own check (`../maps/manifest.ts`);
+ * the API route itself still reads a missing manifest as no maps (R1), so
+ * this distinction belongs to `check:maps` alone.
+ * @rfc RFC-76 R2
+ */
+export function checkMapsExitCode(hasManifest: boolean, result: CheckMapsResult): number {
+  return !hasManifest || result.problems.length > 0 ? 1 : 0;
+}
