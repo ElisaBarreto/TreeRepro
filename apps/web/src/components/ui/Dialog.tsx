@@ -78,7 +78,8 @@ export function Dialog({ open, title, onClose, closeDisabled, children }: Dialog
       className="m-auto w-[min(92vw,480px)] rounded-2xl border border-canopy-700/20 bg-white p-0 text-canopy-950 shadow-xl backdrop:bg-canopy-950/60"
     >
       <div className="flex flex-col gap-5 p-6">
-        <header className="flex items-start justify-between gap-4">
+        {/* Sticky, so Close stays in reach when a long dialog scrolls (RFC-13 R10). */}
+        <header className="sticky top-0 z-10 -mx-6 -mt-6 flex items-start justify-between gap-4 bg-white px-6 pt-6 pb-2">
           <h2 id={titleId} className="font-display text-section font-semibold">
             {title}
           </h2>
