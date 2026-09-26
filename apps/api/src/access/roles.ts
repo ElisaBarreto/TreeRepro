@@ -7,6 +7,7 @@ import {
 } from '@treerepro/contracts';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { recordAudit } from '../audit/audit.ts';
+import { revokeAllApiKeys } from '../auth/api-keys.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { rolePermissions } from '../db/schema/role-permissions.ts';
@@ -425,7 +426,10 @@ export async function assertNotLastAdmin(db: DbExecutor, userId: string): Promis
   }
 }
 
-/** @rfc RFC-31 R6, R7, R12, R13, R14 */
+/**
+ * @rfc RFC-31 R6, R7, R12, R13, R14
+ * @rfc RFC-82 R3
+ */
 export async function setUserRoles(
   ctx: AccessContext,
   input: { userId: string; roleIds: string[]; actorUserId: string | null },
@@ -463,7 +467,16 @@ export async function setUserRoles(
         admin,
         actorUserId: input.actorUserId,
       });
-      if (admin && removed.includes(admin.id)) await assertNotLastAdmin(tx, input.userId);
+      if (admin && removed.includes(admin.id)) {
+        await assertNotLastAdmin(tx, input.userId);
+        // Keys are revoked, not just dormant: a later grant must revive none (RFC-82 R3).
+        await revokeAllApiKeys(tx, {
+          userId: input.userId,
+          actorUserId: input.actorUserId,
+          reason: 'admin_role_removed',
+          now,
+        });
+      }
       if (removed.length > 0)
         await tx
           .delete(userRoles)

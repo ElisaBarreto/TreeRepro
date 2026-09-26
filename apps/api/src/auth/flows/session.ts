@@ -29,7 +29,9 @@ export async function logoutAll(
   ctx: AuthContext,
   input: { user: UserRow } & RequestMeta,
 ): Promise<number> {
-  const count = await ctx.sessions.revokeAll(input.user.id);
+  // Database first, sessions after, as every other revoking flow: a failed
+  // commit must not leave the sessions dead and the keys alive.
+  const count = (await ctx.sessions.list(input.user.id)).length;
   await ctx.db.transaction(async (tx) => {
     await recordAudit(tx, {
       actorUserId: input.user.id,
@@ -49,6 +51,7 @@ export async function logoutAll(
       userAgent: input.userAgent,
     });
   });
+  await ctx.sessions.revokeAll(input.user.id);
   return count;
 }
 

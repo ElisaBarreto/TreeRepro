@@ -1,5 +1,6 @@
 import type { SessionSummary } from '@treerepro/contracts';
 import { recordAudit } from '../audit/audit.ts';
+import { revokeAllApiKeys } from '../auth/api-keys.ts';
 import type { AuthContext } from '../auth/context.ts';
 import { listSessions } from '../auth/flows/session.ts';
 import { findUserById } from '../auth/users.ts';
@@ -42,21 +43,37 @@ export async function revokeUserSession(
   return true;
 }
 
-/** @rfc RFC-50 R9 */
+/**
+ * @rfc RFC-50 R9
+ * @rfc RFC-82 R3
+ */
 export async function revokeAllUserSessions(
   ctx: AuthContext,
   input: AdminActor & { userId: string },
 ): Promise<number> {
   await requireUser(ctx, input.userId);
-  const count = await ctx.sessions.revokeAll(input.userId);
-  await recordAudit(ctx.db, {
-    actorUserId: input.actorUserId,
-    action: 'sessions.revoked',
-    targetType: 'user',
-    targetId: input.userId,
-    ip: input.ip,
-    userAgent: input.userAgent,
-    metadata: { count },
+  // Database first, sessions after, as every other revoking flow: a failed
+  // commit must not leave the sessions dead and the keys alive.
+  const count = (await ctx.sessions.list(input.userId)).length;
+  await ctx.db.transaction(async (tx) => {
+    await recordAudit(tx, {
+      actorUserId: input.actorUserId,
+      action: 'sessions.revoked',
+      targetType: 'user',
+      targetId: input.userId,
+      ip: input.ip,
+      userAgent: input.userAgent,
+      metadata: { count },
+    });
+    await revokeAllApiKeys(tx, {
+      userId: input.userId,
+      actorUserId: input.actorUserId,
+      reason: 'sessions_revoked',
+      now: new Date(ctx.now()),
+      ip: input.ip,
+      userAgent: input.userAgent,
+    });
   });
+  await ctx.sessions.revokeAll(input.userId);
   return count;
 }

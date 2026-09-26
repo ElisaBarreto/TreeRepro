@@ -5,7 +5,8 @@ import { lastAudit } from '../../test/helpers/audit.ts';
 import { adminRoleId, systemRoleId } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser, DEFAULT_PASSWORD } from '../../test/helpers/users.ts';
-import { reactivateUser, suspendUser } from '../admin/users.ts';
+import { revokeAllUserSessions } from '../admin/sessions.ts';
+import { reactivateUser, suspendUser, updateUser } from '../admin/users.ts';
 import { apiKeys } from '../db/schema/api-keys.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { users } from '../db/schema/users.ts';
@@ -122,6 +123,35 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
     ).rejects.toMatchObject({ code: 'AUTH_TOTP_INVALID' });
   });
 
+  it('R2 refuses when the password changed or the user was suspended after the request loaded them', async () => {
+    const { user, secret } = await admin();
+    await t.db.update(users).set({ passwordHash: 'changed' }).where(eq(users.id, user.id));
+    await expect(
+      createApiKey(ctxOf(t), {
+        user,
+        name: 'stale',
+        password: DEFAULT_PASSWORD,
+        code: code(secret),
+        ...META,
+      }),
+    ).rejects.toMatchObject({ code: 'AUTH_INVALID_CREDENTIALS' });
+
+    const other = await admin();
+    await t.db.update(users).set({ status: 'suspended' }).where(eq(users.id, other.user.id));
+    await expect(
+      createApiKey(ctxOf(t), {
+        user: other.user,
+        name: 'stale',
+        password: DEFAULT_PASSWORD,
+        code: code(other.secret),
+        ...META,
+      }),
+    ).rejects.toMatchObject({ code: 'AUTH_UNAUTHENTICATED' });
+    for (const u of [user, other.user]) {
+      expect(await t.db.select().from(apiKeys).where(eq(apiKeys.userId, u.id))).toEqual([]);
+    }
+  });
+
   it('R3 resolves a usable key and refuses revoked, expired, suspended and demoted owners', async () => {
     const { user, secret } = await admin();
     const deps = { db: t.db, now: () => t.clock.now };
@@ -165,12 +195,21 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
     await revokeApiKey(ctxOf(t), { user, id: revoked.id, ...META });
     expect(await findUsableKey(deps, revoked.secret)).toBeNull();
 
+    // The role is read on every request: a row removed behind the service's
+    // back already refuses the key.
     await t.db.delete(userRoles).where(eq(userRoles.userId, user.id));
     expect(await findUsableKey(deps, ok.secret)).toBeNull();
     await t.db.insert(userRoles).values({ userId: user.id, roleId: await adminRoleId(t.db) });
-    expect(await findUsableKey(deps, ok.secret)).not.toBeNull();
 
     await t.db.update(users).set({ status: 'suspended' }).where(eq(users.id, user.id));
+    expect(await findUsableKey(deps, ok.secret)).toBeNull();
+    await t.db.update(users).set({ status: 'active' }).where(eq(users.id, user.id));
+    expect(await findUsableKey(deps, ok.secret)).not.toBeNull();
+
+    // A demotion through the service revokes the key, so a new grant revives nothing.
+    const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    await updateUser(ctxOf(t), { actorUserId: actor.id, id: user.id, roleIds: [], ...META });
+    await t.db.insert(userRoles).values({ userId: user.id, roleId: await adminRoleId(t.db) });
     expect(await findUsableKey(deps, ok.secret)).toBeNull();
   });
 
@@ -319,6 +358,32 @@ describe('RFC-82 R3 account-recovery actions revoke every active key', () => {
     const { user, keys } = await adminWithKeys();
     await logoutAll(ctxOf(t), { user, ...META });
     await expectRevoked(keys, user.id, 'logout_all');
+  });
+
+  it('admin role removed', async () => {
+    const { user, keys } = await adminWithKeys();
+    const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const manager = await systemRoleId(t.db, 'manager');
+    await updateUser(ctxOf(t), { actorUserId: actor.id, id: user.id, roleIds: [manager], ...META });
+    await expectRevoked(keys, actor.id, 'admin_role_removed');
+  });
+
+  it('a role change that keeps the admin role revokes nothing', async () => {
+    const { user, keys } = await adminWithKeys();
+    const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const roleIds = [await adminRoleId(t.db), await systemRoleId(t.db, 'manager')];
+    await updateUser(ctxOf(t), { actorUserId: actor.id, id: user.id, roleIds, ...META });
+    for (const key of keys) {
+      const [row] = await t.db.select().from(apiKeys).where(eq(apiKeys.id, key.id));
+      expect(row?.revokedAt).toBeNull();
+    }
+  });
+
+  it("an administrator revoking all of the user's sessions", async () => {
+    const { user, keys } = await adminWithKeys();
+    const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    await revokeAllUserSessions(ctxOf(t), { actorUserId: actor.id, userId: user.id, ...META });
+    await expectRevoked(keys, actor.id, 'sessions_revoked');
   });
 
   it('suspension, and reactivation brings no key back', async () => {

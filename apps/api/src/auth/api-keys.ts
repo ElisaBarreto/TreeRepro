@@ -117,6 +117,16 @@ export async function createApiKey(
   const secret = generateApiKey();
   const now = new Date(ctx.now());
   const row = await ctx.db.transaction(async (tx) => {
+    // Re-read under the row lock the revoking flows take: a password reset or
+    // a suspension that committed while the password was being verified must
+    // not be followed by a key that outlives it (RFC-82 R3).
+    const [locked] = await tx.select().from(users).where(eq(users.id, user.id)).for('update');
+    if (locked?.status !== 'active') {
+      throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
+    }
+    if (locked.passwordHash !== user.passwordHash) {
+      throw new AppError('AUTH_INVALID_CREDENTIALS', 'Password is incorrect');
+    }
     const [inserted] = await tx
       .insert(apiKeys)
       .values({
@@ -162,6 +172,9 @@ export async function revokeApiKey(
 ): Promise<void> {
   const now = new Date(ctx.now());
   await ctx.db.transaction(async (tx) => {
+    // Users row first, as suspendUser and createApiKey lock it, so the lock
+    // order is the same everywhere and the two cannot deadlock.
+    await tx.select({ id: users.id }).from(users).where(eq(users.id, input.user.id)).for('update');
     const [row] = await tx
       .update(apiKeys)
       .set({ revokedAt: now })
@@ -192,7 +205,9 @@ export type ApiKeyRevocationReason =
   | 'password_change'
   | 'totp_disabled'
   | 'logout_all'
-  | 'user_suspended';
+  | 'user_suspended'
+  | 'admin_role_removed'
+  | 'sessions_revoked';
 
 /**
  * Revokes every active key of `userId` inside the caller's transaction, one
@@ -203,10 +218,11 @@ export async function revokeAllApiKeys(
   tx: DbExecutor,
   input: {
     userId: string;
-    actorUserId: string;
+    /** Null for a CLI actor (RFC-41). */
+    actorUserId: string | null;
     reason: ApiKeyRevocationReason;
     now: Date;
-  } & RequestMeta,
+  } & Partial<RequestMeta>,
 ): Promise<void> {
   const rows = await tx
     .update(apiKeys)
