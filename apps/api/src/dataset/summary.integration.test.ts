@@ -168,6 +168,87 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     );
   });
 
+  it('RFC-63 R10 leaves records whose unit needs checking out of min, max, mean and count', async () => {
+    const { user } = await createUser(t.db);
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const ref = await createReference(t.db);
+    const manual = {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      primaryReferenceId: ref.id,
+      origin: 'manual' as const,
+      createdBy: user.id,
+    };
+    await createRecord(t.db, {
+      ...manual,
+      valueText: '10',
+      numericValue: 10,
+      unitStatus: 'converted_or_already_target',
+    });
+    await createRecord(t.db, {
+      ...manual,
+      valueText: '1000',
+      numericValue: 1000,
+      unitStatus: 'needs_unit_check',
+    });
+    await createRecord(t.db, {
+      ...manual,
+      valueText: 'min=4',
+      minValue: 4,
+      unitStatus: 'unit_missing',
+    });
+
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
+    expect(petalSummary?.numeric).toEqual({ min: 4, max: 10, mean: 10, count: 2 });
+    expect(petalSummary?.recordCount).toBe(3);
+  });
+
+  it('RFC-63 R10 never lets sd or se move min or max', async () => {
+    const { user } = await createUser(t.db);
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const ref = await createReference(t.db);
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      valueText: '10',
+      numericValue: 10,
+      sdValue: 50,
+      seValue: 70,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
+    expect(petalSummary?.numeric).toEqual({ min: 10, max: 10, mean: 10, count: 1 });
+  });
+
+  it('RFC-63 R10 answers a null numeric spread when the only harmonised record needs a unit check', async () => {
+    const { user } = await createUser(t.db);
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const ref = await createReference(t.db);
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      valueText: '1000',
+      numericValue: 1000,
+      unitStatus: 'needs_unit_check',
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: user.id,
+    });
+
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
+    expect(petalSummary?.numeric).toBeNull();
+    expect(petalSummary?.recordCount).toBe(1);
+  });
+
   it('RFC-33 R3 omits the inactive trait and answers null for the hidden species to a restricted viewer', async () => {
     const { user } = await createUser(t.db);
     const f = await createVisibilityFixture(t.db, user.id);

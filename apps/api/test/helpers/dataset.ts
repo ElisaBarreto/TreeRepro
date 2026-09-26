@@ -6,7 +6,9 @@ import type {
   NameSource,
   NameType,
   RecordIntent,
+  Statistic,
   TraitValueType,
+  UnitStatus,
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../../src/db/client.ts';
@@ -164,7 +166,10 @@ type RecordBase = {
   maxValue?: number;
   meanValue?: number;
   sdValue?: number;
+  seValue?: number;
   n?: number;
+  statistic?: Statistic;
+  unitStatus?: UnitStatus;
   harmonisation?: HarmonisationStatus;
   rawValue?: string;
   primaryReferenceId?: string | null;
@@ -206,7 +211,10 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
       maxValue: input.maxValue ?? null,
       meanValue: input.meanValue ?? null,
       sdValue: input.sdValue ?? null,
+      seValue: input.seValue ?? null,
       n: input.n ?? null,
+      statistic: input.statistic ?? null,
+      unitStatus: input.unitStatus ?? null,
       harmonisation,
       rawValue: input.rawValue ?? null,
       primaryReferenceId: input.primaryReferenceId ?? null,

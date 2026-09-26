@@ -71,10 +71,14 @@ export async function speciesTraitSummary(
         count(*) filter (where r.harmonisation = 'multi_value')::int as multi_value,
         count(*) filter (where r.harmonisation = 'not_numeric')::int as not_numeric,
         count(*) filter (where r.harmonisation = 'empty')::int as empty,
-        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as numeric_min,
-        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as numeric_max,
-        avg(coalesce(r.numeric_value, r.mean_value))::float8 as numeric_mean,
-        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value) is not null)::int as numeric_count,
+        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value))
+          filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_min,
+        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value))
+          filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_max,
+        avg(coalesce(r.numeric_value, r.mean_value))
+          filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_mean,
+        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value) is not null
+          and r.unit_status is distinct from 'needs_unit_check')::int as numeric_count,
         bool_or(${recordContestedSql(visibility, sql`r.id`)}) as contested
       from trait_records r
       join traits t on t.id = r.trait_id

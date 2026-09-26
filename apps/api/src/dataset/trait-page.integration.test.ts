@@ -44,6 +44,7 @@ async function record(
     valueText: string;
     levelId?: string;
     numericValue?: number;
+    unitStatus?: 'converted_or_already_target' | 'unit_missing' | 'needs_unit_check';
     harmonisation?: 'harmonised' | 'not_numeric' | 'unknown_level';
     referenceId: string;
   },
@@ -54,6 +55,7 @@ async function record(
     valueText: input.valueText,
     levelId: input.levelId,
     numericValue: input.numericValue,
+    unitStatus: input.unitStatus,
     harmonisation: input.harmonisation,
     primaryReferenceId: input.referenceId,
     origin: 'manual',
@@ -334,6 +336,39 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
+  it('RFC-62 R7 leaves a record whose unit needs checking out of min, median and max', async () => {
+    const { user } = await createUser(t.db);
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const [one, two] = await Promise.all([createSpecies(t.db), createSpecies(t.db)]);
+    await record(t.db, {
+      actor: user,
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      referenceId: reference.id,
+    });
+    await record(t.db, {
+      actor: user,
+      speciesId: two.id,
+      traitId: trait.id,
+      valueText: '1000',
+      numericValue: 1000,
+      unitStatus: 'needs_unit_check',
+      referenceId: reference.id,
+    });
+
+    try {
+      const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
+      expect(detail?.distribution).toEqual({
+        numeric: { min: 2, median: 2, max: 2, speciesCount: 1 },
+      });
+    } finally {
+      await forgetCached(redis, ...cacheKeys(trait.id));
+    }
+  });
+
   it('answers a null numeric spread while no record of a quantitative trait is harmonised', async () => {
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
     try {
@@ -559,6 +594,40 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       recordCount: 2,
       validated: false,
       summary: { numeric: { min: 2, max: 7 } },
+    });
+  });
+
+  it('RFC-62 R8 leaves a record whose unit needs checking out of a species numeric summary', async () => {
+    const { user } = await createUser(t.db);
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const one = await createSpecies(t.db);
+    await record(t.db, {
+      actor: user,
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      referenceId: reference.id,
+    });
+    await record(t.db, {
+      actor: user,
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: '1000',
+      numericValue: 1000,
+      unitStatus: 'needs_unit_check',
+      referenceId: reference.id,
+    });
+
+    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+      mode: 'with',
+      limit: 50,
+    });
+    expect(data[0]).toMatchObject({
+      id: one.id,
+      recordCount: 2,
+      summary: { numeric: { min: 2, max: 2 } },
     });
   });
 

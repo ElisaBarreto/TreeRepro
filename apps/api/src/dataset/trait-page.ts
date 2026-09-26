@@ -62,6 +62,7 @@ async function computeDistribution(
       where r.trait_id = ${traitId}::uuid
         and r.harmonisation = 'harmonised'
         and r.numeric_value is not null
+        and r.unit_status is distinct from 'needs_unit_check'
         and ${liveSql(sql`r.id`)}
         and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
     `)) as unknown as NumericRow[];
@@ -248,8 +249,8 @@ async function enrich(
     const [rows, result] = await Promise.all([
       db.execute(sql`
         select r.species_id, count(*)::int as record_count,
-          min(r.numeric_value)::float8 as numeric_min,
-          max(r.numeric_value)::float8 as numeric_max
+          min(r.numeric_value) filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_min,
+          max(r.numeric_value) filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_max
         from trait_records r
         where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
           and ${liveSql(sql`r.id`)}
