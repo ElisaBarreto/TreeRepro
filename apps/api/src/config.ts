@@ -1,8 +1,18 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { inspect } from 'node:util';
 import { z } from 'zod';
 import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
+
+// `apps/api/maps/`, next to `src/` in development and to `dist/` in the
+// image (same directory `defaultMapsDir()` in `./maps/manifest.ts` gives).
+// Computed here, not imported from there, so loading this module — the
+// migrator loads it too, for `loadMigratorConfig` — never pulls in the
+// import pipeline `./maps/manifest.ts` depends on for CSV parsing.
+function defaultMapsDir(): string {
+  return fileURLToPath(new URL('../maps', import.meta.url));
+}
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -69,6 +79,10 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v?.trim() || undefined),
+  // RFC-76 R1: the trait maps directory, private and mounted read-only
+  // (`/maps` in the container); default is the repository directory used in
+  // development and tests, which never carries the image files themselves.
+  MAPS_DIR: z.string().min(1).default(defaultMapsDir()),
 });
 
 const migratorEnvSchema = z.object({
@@ -134,6 +148,8 @@ export interface AppConfig {
   inviteContactEmail?: string;
   /** `WCVP_GBIF_DATASET_KEY`; unset disables the WCVP source. @rfc RFC-81 R1 */
   wcvpGbifDatasetKey?: string;
+  /** `MAPS_DIR`; private, mounted read-only in production. @rfc RFC-76 R1 */
+  mapsDir: string;
 }
 
 export interface MigratorConfig {
@@ -255,6 +271,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     doiContactEmail: e.DOI_CONTACT_EMAIL,
     inviteContactEmail: e.INVITE_CONTACT_EMAIL,
     wcvpGbifDatasetKey: e.WCVP_GBIF_DATASET_KEY,
+    mapsDir: e.MAPS_DIR,
   };
 }
 

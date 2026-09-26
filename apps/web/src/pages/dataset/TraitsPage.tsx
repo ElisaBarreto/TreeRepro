@@ -309,8 +309,8 @@ function TraitRows({
             {trait.active ? null : <Badge>inactive</Badge>}
             {hasMaps ? (
               <Link
-                to="/app/maps/$traitId"
-                params={{ traitId: trait.id }}
+                to="/app/maps"
+                search={{ trait: trait.key }}
                 aria-label={`Maps of ${name}`}
                 className="inline-flex size-7 items-center justify-center rounded-full text-mist-400 transition-colors hover:bg-mist-50 hover:text-canopy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
               >

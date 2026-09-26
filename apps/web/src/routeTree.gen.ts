@@ -32,7 +32,6 @@ import { Route as AppHelpTopicRouteImport } from './routes/app/help/$topic'
 import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
 import { Route as AppImportsIdRouteImport } from './routes/app/imports/$id'
 import { Route as AppMapsIndexRouteImport } from './routes/app/maps/index'
-import { Route as AppMapsTraitIdRouteImport } from './routes/app/maps/$traitId'
 import { Route as AppReferencesIndexRouteImport } from './routes/app/references/index'
 import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
@@ -159,11 +158,6 @@ const AppMapsIndexRoute = AppMapsIndexRouteImport.update({
   path: '/maps/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppMapsTraitIdRoute = AppMapsTraitIdRouteImport.update({
-  id: '/maps/$traitId',
-  path: '/maps/$traitId',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppReferencesIndexRoute = AppReferencesIndexRouteImport.update({
   id: '/references/',
   path: '/references/',
@@ -236,7 +230,6 @@ export interface FileRoutesByFullPath {
   '/app/curation/proposals': typeof AppCurationProposalsRoute
   '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
-  '/app/maps/$traitId': typeof AppMapsTraitIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
   '/app/traits/$id': typeof AppTraitsIdRoute
@@ -270,7 +263,6 @@ export interface FileRoutesByTo {
   '/app/curation/proposals': typeof AppCurationProposalsRoute
   '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
-  '/app/maps/$traitId': typeof AppMapsTraitIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
   '/app/traits/$id': typeof AppTraitsIdRoute
@@ -307,7 +299,6 @@ export interface FileRoutesById {
   '/app/curation/proposals': typeof AppCurationProposalsRoute
   '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
-  '/app/maps/$traitId': typeof AppMapsTraitIdRoute
   '/app/references/$id': typeof AppReferencesIdRoute
   '/app/species/$id': typeof AppSpeciesIdRoute
   '/app/traits/$id': typeof AppTraitsIdRoute
@@ -345,7 +336,6 @@ export interface FileRouteTypes {
     | '/app/curation/proposals'
     | '/app/help/$topic'
     | '/app/imports/$id'
-    | '/app/maps/$traitId'
     | '/app/references/$id'
     | '/app/species/$id'
     | '/app/traits/$id'
@@ -379,7 +369,6 @@ export interface FileRouteTypes {
     | '/app/curation/proposals'
     | '/app/help/$topic'
     | '/app/imports/$id'
-    | '/app/maps/$traitId'
     | '/app/references/$id'
     | '/app/species/$id'
     | '/app/traits/$id'
@@ -415,7 +404,6 @@ export interface FileRouteTypes {
     | '/app/curation/proposals'
     | '/app/help/$topic'
     | '/app/imports/$id'
-    | '/app/maps/$traitId'
     | '/app/references/$id'
     | '/app/species/$id'
     | '/app/traits/$id'
@@ -602,13 +590,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMapsIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/maps/$traitId': {
-      id: '/app/maps/$traitId'
-      path: '/maps/$traitId'
-      fullPath: '/app/maps/$traitId'
-      preLoaderRoute: typeof AppMapsTraitIdRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/app/references/': {
       id: '/app/references/'
       path: '/references'
@@ -732,7 +713,6 @@ interface AppRouteChildren {
   AppCurationPendingRoute: typeof AppCurationPendingRoute
   AppCurationProposalsRoute: typeof AppCurationProposalsRoute
   AppHelpTopicRoute: typeof AppHelpTopicRoute
-  AppMapsTraitIdRoute: typeof AppMapsTraitIdRoute
   AppReferencesIdRoute: typeof AppReferencesIdRoute
   AppSpeciesIdRoute: typeof AppSpeciesIdRoute
   AppTraitsIdRoute: typeof AppTraitsIdRoute
@@ -755,7 +735,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppCurationPendingRoute: AppCurationPendingRoute,
   AppCurationProposalsRoute: AppCurationProposalsRoute,
   AppHelpTopicRoute: AppHelpTopicRoute,
-  AppMapsTraitIdRoute: AppMapsTraitIdRoute,
   AppReferencesIdRoute: AppReferencesIdRoute,
   AppSpeciesIdRoute: AppSpeciesIdRoute,
   AppTraitsIdRoute: AppTraitsIdRoute,

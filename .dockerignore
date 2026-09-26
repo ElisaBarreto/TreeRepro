@@ -9,3 +9,8 @@ node_modules
 infra/secrets
 .env
 .env.*
+
+# trait map images: private research output, never enter the build context (RFC-76 R1)
+apps/api/maps/*
+!apps/api/maps/README.md
+!apps/api/maps/manifest.csv

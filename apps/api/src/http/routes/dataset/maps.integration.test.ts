@@ -207,6 +207,17 @@ describe('RFC-76 R4, R5 trait maps', () => {
     }
   });
 
+  it('R1 a missing maps directory means no maps, never an error', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'maps-'));
+    const missing = join(dir, 'does-not-exist');
+    const { app } = t.build({ mapsDir: missing });
+    const { cookie } = await viewer();
+    expect(await list(app, cookie)).toEqual([]);
+    const res = await call(app, 'GET', '/api/maps/files/x.svg', { cookie });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe('MAP_NOT_FOUND');
+  });
+
   it('R4, R5 need a session and dataset.read', async () => {
     const { app } = t.build({ mapsDir: await mapsDir([], {}) });
     const { cookie } = await viewer([]);

@@ -89,7 +89,9 @@ services:
   api:
     image: treerepro-api
     restart: unless-stopped
-    environment: *api-env
+    # Trait maps are private (RFC-76 R1): mounted read-only, never in the image.
+    environment: { <<: *api-env, MAPS_DIR: /maps }
+    volumes: ["${MAPS_HOST_DIR:-./apps/api/maps}:/maps:ro"]
     secrets: [db_app_password, redis_password, pii_encryption_key_v1, pii_hmac_key, session_secret, smtp_password]
     depends_on:
       migrate:

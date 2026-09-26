@@ -1,8 +1,17 @@
-import { readdir, readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
-import { parseCsvLine } from '../dataset/import.ts';
-import { dictionaryPath } from '../dataset/seed.ts';
-import { defaultMapsDir, KIND_FITS, parseManifest, readManifest } from './manifest.ts';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { hasManifest, parseManifest, readManifest } from './manifest.ts';
+
+// Only `readdir` is wrapped, so a test can make one call answer a directory
+// listing from before a file landed — the retry this file tests for
+// (RFC-76 R1) — while every other fs call (including `readManifest`'s own
+// `readFile`) keeps its real behaviour.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, readdir: vi.fn(actual.readdir) };
+});
 
 const HEADER = 'trait_key,map_kind,level_key,file,data_version';
 const files = new Set(['a.svg', 'b.webp', 'c.svg']);
@@ -66,37 +75,79 @@ describe('parseManifest (RFC-76 R1)', () => {
   });
 });
 
-describe('the committed manifest agrees with the dictionary (RFC-76 R2)', () => {
-  it('names dictionary traits, fitting kinds and existing levels', async () => {
-    const rows = await readManifest(defaultMapsDir());
-    const [, ...lines] = (await readFile(dictionaryPath(), 'utf8')).trim().split(/\r?\n/);
-    // header: final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels[,active]
-    const dict = new Map(
-      lines.map((l) => {
-        const f = parseCsvLine(l);
-        return [
-          f[0],
-          { valueType: f[2], levels: new Set((f[5] ?? '').split(';').filter(Boolean)) },
-        ];
-      }),
-    );
-    for (const row of rows) {
-      const trait = dict.get(row.traitKey);
-      expect(trait, `line ${row.line}: unknown trait ${row.traitKey}`).toBeDefined();
-      const fits = KIND_FITS[row.kind];
-      if (fits !== 'any')
-        expect(trait?.valueType, `line ${row.line}: ${row.kind} on ${trait?.valueType}`).toBe(fits);
-      if (row.levelKey)
-        expect(
-          trait?.levels.has(row.levelKey),
-          `line ${row.line}: unknown level ${row.levelKey}`,
-        ).toBe(true);
-    }
+describe('readManifest (RFC-76 R1)', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = undefined;
   });
 
-  it('lists every image in the directory (no orphan files)', async () => {
-    const listed = new Set((await readManifest(defaultMapsDir())).map((r) => r.file));
-    const images = (await readdir(defaultMapsDir())).filter((f) => /\.(svg|webp)$/i.test(f));
-    expect(images.filter((f) => !listed.has(f))).toEqual([]);
+  it('answers no maps for a directory that does not exist', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-missing-'));
+    const missing = join(dir, 'does-not-exist');
+    expect(await readManifest(missing)).toEqual([]);
+  });
+
+  it('answers no maps for a directory with no manifest.csv', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-empty-'));
+    expect(await readManifest(dir)).toEqual([]);
+  });
+
+  it('retries once when a listed file is not yet in the directory listing, and succeeds if it has landed by then', async () => {
+    // Simulates a request racing the publisher mid-way through the
+    // documented publish order (README.md "Publishing"): the manifest
+    // already names a.svg, but this read's own `readdir` snapshot is from
+    // just before the file's own copy landed.
+    dir = await mkdtemp(join(tmpdir(), 'maps-race-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\nx,mean,,a.svg,2026-09-01\n`);
+    vi.mocked(readdir).mockImplementationOnce(async () => []);
+    await writeFile(join(dir, 'a.svg'), '');
+
+    const rows = await readManifest(dir);
+
+    expect(rows).toHaveLength(1);
+    expect(vi.mocked(readdir)).toHaveBeenCalledTimes(2);
+  });
+
+  it('still throws, after the one retry, when the listed file never appears', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-missing-file-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\nx,mean,,zzz.svg,2026-09-01\n`);
+
+    await expect(readManifest(dir)).rejects.toThrow(/line 2.*not found/);
+  });
+
+  it('does not retry a manifest problem other than a missing file', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-bad-kind-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\nx,median,,a.svg,2026-09-01\n`);
+    await writeFile(join(dir, 'a.svg'), '');
+    vi.mocked(readdir).mockClear();
+
+    await expect(readManifest(dir)).rejects.toThrow(/unknown map_kind/);
+
+    expect(vi.mocked(readdir)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('hasManifest (RFC-76 R1)', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('is false for a directory that does not exist', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-missing-'));
+    expect(await hasManifest(join(dir, 'does-not-exist'))).toBe(false);
+  });
+
+  it('is false for a directory with no manifest.csv', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-empty-'));
+    expect(await hasManifest(dir)).toBe(false);
+  });
+
+  it('is true once manifest.csv is written, even header-only', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-present-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\n`);
+    expect(await hasManifest(dir)).toBe(true);
   });
 });

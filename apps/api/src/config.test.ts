@@ -14,6 +14,7 @@ import {
   readSecret,
   Secret,
 } from './config.ts';
+import { defaultMapsDir } from './maps/manifest.ts';
 
 const hex = () => randomBytes(32).toString('hex');
 
@@ -309,5 +310,19 @@ describe('RFC-81 R1 WCVP_GBIF_DATASET_KEY', () => {
         .wcvpGbifDatasetKey,
     ).toBe('f382f0ce-323a-4091-bb9f-add557f3a9a2');
     expect(loadConfig(env({ WCVP_GBIF_DATASET_KEY: '   ' })).wcvpGbifDatasetKey).toBeUndefined();
+  });
+});
+
+describe('RFC-76 R1 MAPS_DIR', () => {
+  it('defaults to apps/api/maps, the same directory manifest.ts computes on its own', () => {
+    // config.ts inlines this path rather than importing manifest.ts's
+    // `defaultMapsDir()`, so the migrator does not load the import
+    // pipeline that module depends on for CSV parsing; the two must still
+    // agree on the directory.
+    expect(loadConfig(env()).mapsDir).toBe(defaultMapsDir());
+  });
+
+  it('is overridden by MAPS_DIR', () => {
+    expect(loadConfig(env({ MAPS_DIR: '/maps' })).mapsDir).toBe('/maps');
   });
 });

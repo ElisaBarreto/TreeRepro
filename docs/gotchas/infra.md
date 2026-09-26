@@ -57,3 +57,32 @@ Drill: run steps 2–6 on a laptop against the dev stack (the same compose files
 **Symptom:** An SSH brute-force, a fail2ban ban or a blocked origin probe from three weeks ago is no longer on the server.
 **Cause:** The Hostinger image caps the journal at 7 days (`MaxRetentionSec=7day` in `/etc/systemd/journald.conf`), and Ubuntu's logrotate keeps 4 weekly files of `fail2ban.log`, `ufw.log` and `auth.log` — 28 days at the worst moment.
 **Fix:** `infra/host/journald-treerepro.conf` as `/etc/systemd/journald.conf.d/treerepro.conf` (35 days and a 3 GB cap instead of 1 GB, so size never trims before age; `systemctl restart systemd-journald`), and `rotate 5` instead of `rotate 4` in `/etc/logrotate.d/fail2ban`, `/etc/logrotate.d/ufw` and `/etc/logrotate.d/rsyslog` (`sed -i 's/^\(\s*\)rotate 4$/\1rotate 5/'` on the three). Where to look: bans in `/var/log/fail2ban.log`, SSH in `/var/log/auth.log`, firewall drops in `/var/log/ufw.log` (`[UFW BLOCK]` from ufw, `[UFW CF-BLOCK]` from the Cloudflare origin filter, rate-limited to 10 lines a minute), everything in `journalctl`.
+
+## Trait maps (private)
+**Symptom:** `/srv/maps` does not exist on a fresh server, or a backup restore does not bring the trait maps back.
+**Cause:** The maps are private research output (RFC-76 R1): never committed, and deliberately left out of the backup — the owner regenerates them from the R pipeline rather than storing a second private copy.
+**Fix:** Create the directory by hand once: `sudo mkdir -p /srv/maps` and make it readable by the container's `node` user (world-readable is simplest: `sudo chmod 755 /srv/maps` and the files under it). To publish, check the manifest against the dictionary (RFC-76 R2) *before* the maps go live — "Before publishing" — never after. The first command runs on the laptop; the other two run *on the server* (`/srv/treerepro`), logged in as an administrator with Docker access — never the CI deploy key above, which is forced to `scripts/deploy.sh` and can do nothing else. The server's own `.env` sets `COMPOSE_FILE=compose.yml:compose.prod.yml` (`scripts/deploy.sh` re-exports the same value, in case it is ever lost), so a plain `docker compose` there already picks the production overrides:
+
+```sh
+rsync -rtvc --delete --chmod=D755,F644 Maps/Platform/ <server>:/srv/maps.next/ &&
+ssh <admin>@<server> 'cd /srv/treerepro && docker compose run --rm --no-deps -v /srv/maps.next:/maps-next:ro api node dist/cli/check-maps.js --dir /maps-next' &&
+ssh <admin>@<server> '
+  set -e
+  rsync -rtc --chmod=D755,F644 --exclude manifest.csv /srv/maps.next/ /srv/maps/
+  rsync -rtc --chmod=D755,F644 /srv/maps.next/manifest.csv /srv/maps/manifest.csv
+  rsync -rtc --delete --chmod=D755,F644 /srv/maps.next/ /srv/maps/
+'
+```
+
+The publish step is three `rsync` calls, not one, so a request never catches
+`manifest.csv` naming a file that isn't there yet (RFC-76 R1): copy every
+new/changed image first (no `--delete`, `manifest.csv` excluded, so the old
+manifest's files stay all present); then `manifest.csv` alone (`rsync`'s
+temp-file-and-rename is atomic on the same filesystem, so a concurrent read
+never sees a half-written file — and the new manifest now names only files
+the first step already copied); only then the full synced copy with
+`--delete`, which just removes what the new manifest no longer lists.
+`readManifest` also retries once on a "file not found" outright, for
+whatever this order doesn't cover (RFC-76 R1).
+
+Never swap the two directories with `mv`: `compose.prod.yml` binds `/srv/maps:/maps:ro` into `api` by inode, so a running container keeps the old directory open no matter what the name `/srv/maps` points to afterwards — only copying into the same inode (`rsync` onto the existing directory, as above) is visible to it. `--chmod=D755,F644` keeps every directory and file readable by the container's `node` user regardless of the umask on the machine running `rsync`. No restart needed either way: the API reads the directory on every request.

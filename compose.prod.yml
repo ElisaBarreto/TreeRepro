@@ -30,6 +30,10 @@ services:
       SMTP_SECURE: ${SMTP_SECURE:?set SMTP_SECURE in .env}
       SMTP_USER: ${SMTP_USER:?set SMTP_USER in .env}
       SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM in .env}
+    # Production trait maps live on the server, not in the checkout
+    # (docs/gotchas/infra.md "Trait maps (private)"); compose merges by
+    # target path, replacing compose.yml's dev bind.
+    volumes: ["/srv/maps:/maps:ro"]
 
   backup:
     build:
