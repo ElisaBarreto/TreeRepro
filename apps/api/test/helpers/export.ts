@@ -47,7 +47,7 @@ function parseLine(line: string): string[] {
 
 /** One export CSV: BOM flag, the header line, and the data rows (the fixtures hold no line breaks). */
 export function parseCsv(text: string): { bom: boolean; header: string; rows: string[][] } {
-  const bom = text.startsWith('﻿');
+  const bom = text.startsWith('\uFEFF');
   const lines = (bom ? text.slice(1) : text).split('\r\n');
   if (lines.at(-1) !== '') throw new Error('the CSV does not end with CRLF');
   return { bom, header: lines[0] ?? '', rows: lines.slice(1, -1).map(parseLine) };

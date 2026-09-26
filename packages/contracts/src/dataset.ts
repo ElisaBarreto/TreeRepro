@@ -610,8 +610,11 @@ export const listImportsQuerySchema = cursorQuerySchema.extend({
 });
 
 /** `all` is the whole dataset (the default); `platform` keeps the `TR_` records. @rfc RFC-66 R9 */
+export const EXPORT_SCOPES = ['all', 'platform'] as const;
+
+/** @rfc RFC-66 R9 */
 export const exportDatasetQuerySchema = z.strictObject({
-  scope: z.enum(['all', 'platform']).optional(),
+  scope: z.enum(EXPORT_SCOPES).optional(),
 });
 
 export type TaxonRef = z.infer<typeof taxonRefSchema>;

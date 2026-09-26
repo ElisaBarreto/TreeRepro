@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import type { RecordOrigin } from '@treerepro/contracts';
+import type { EXPORT_SCOPES, RecordOrigin } from '@treerepro/contracts';
 import { type SQL, sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { ZipFile } from 'yazl';
@@ -76,7 +76,7 @@ export function csvRow(fields: ReadonlyArray<string | number | null | undefined>
 }
 
 /** `all` is the whole dataset; `platform` keeps the `TR_` records of records.csv. @rfc RFC-66 R9 */
-export type ExportScope = 'all' | 'platform';
+export type ExportScope = (typeof EXPORT_SCOPES)[number];
 
 /**
  * `batch` is injectable so tests can force several small batches instead of
@@ -131,7 +131,7 @@ function csvStream<Row extends object>(
   let inflight: Promise<IteratorResult<Row[]>> | null = null;
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(encoder.encode(`﻿${csvRow(header)}`));
+      controller.enqueue(encoder.encode(`\uFEFF${csvRow(header)}`));
     },
     async pull(controller) {
       inflight = batches.next();
