@@ -240,10 +240,11 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
       headers: { authorization: `Bearer ${apiSecret}` },
     });
     expect(guide.status()).toBe(200);
-    expect(await guide.text()).toMatch(/^openapi-sha256: [0-9a-f]{64}\n/);
+    expect(await guide.text()).toMatch(/^openapi-sha256: [0-9a-f]{64}\r?\n/);
     const reference = await anonymous.get(`${BASE_URL}/api/docs/openapi.json`, {
       headers: { authorization: `Bearer ${apiSecret}` },
     });
+    expect(reference.status()).toBe(200);
     expect((await reference.json()).paths['/api/batch']).toBeDefined();
     await anonymous.dispose();
 
