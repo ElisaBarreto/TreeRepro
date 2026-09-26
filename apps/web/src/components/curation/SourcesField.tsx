@@ -25,7 +25,9 @@ export interface SourcesFieldProps {
   /**
    * One optional supporting reference (Validate, spec §2): a single row, no
    * "Add another reference", and none of the personal-observation wording —
-   * a blank row here means "no reference", not own field work.
+   * a blank row here means "no reference", not own field work. Since the
+   * caller sends only that one row, "Add a book (ISBN)" replaces the DOI row
+   * rather than joining it, and removing the book restores the blank DOI row.
    */
   single?: boolean;
 }
@@ -285,7 +287,11 @@ export function SourcesField({
               onChange={(next) =>
                 onChange({ ...value, books: books.map((b, i) => (i === index ? next : b)) })
               }
-              onRemove={() => onChange({ ...value, books: books.filter((_, i) => i !== index) })}
+              onRemove={() =>
+                single
+                  ? onChange({ dois: [''], books: [] })
+                  : onChange({ ...value, books: books.filter((_, i) => i !== index) })
+              }
               errors={bookErrors(index)}
             />
           );
@@ -305,7 +311,14 @@ export function SourcesField({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => onChange({ ...value, books: [...books, { isbn: '', citation: '' }] })}
+            onClick={() =>
+              // Single mode holds one source row: a book replaces the DOI
+              // row rather than joining it, so `sourcesToBody` never returns
+              // two references for a dialog that only sends the first.
+              single
+                ? onChange({ dois: [], books: [{ isbn: '', citation: '' }] })
+                : onChange({ ...value, books: [...books, { isbn: '', citation: '' }] })
+            }
           >
             Add a book (ISBN)
           </Button>

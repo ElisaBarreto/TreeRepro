@@ -340,4 +340,36 @@ describe('RFC-70 R4 SourcesField single', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/own field work/)).not.toBeInTheDocument();
   });
+
+  function SingleHarness() {
+    const [value, setValue] = useState<SourcesValue>(EMPTY_SOURCES);
+    return (
+      <SourcesField value={value} onChange={setValue} errors={{}} onValidity={vi.fn()} single />
+    );
+  }
+
+  it('a book replaces the DOI row, so single mode never holds both at once', async () => {
+    render(<SingleHarness />);
+    expect(screen.getByRole('textbox', { name: 'DOI' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    expect(screen.queryByRole('textbox', { name: /doi/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'ISBN' })).toBeInTheDocument();
+    expect(
+      sourcesToBody({ dois: [], books: [{ isbn: '0-306-40615-2', citation: 'Doe' }] }),
+    ).toEqual({ references: [{ isbn: '0-306-40615-2', citation: 'Doe' }] });
+  });
+
+  it('the book button disappears once one book row exists', async () => {
+    render(<SingleHarness />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    expect(screen.queryByRole('button', { name: 'Add a book (ISBN)' })).not.toBeInTheDocument();
+  });
+
+  it('restores the blank DOI row once the lone book is removed', async () => {
+    render(<SingleHarness />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('textbox', { name: 'DOI' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'ISBN' })).not.toBeInTheDocument();
+  });
 });
