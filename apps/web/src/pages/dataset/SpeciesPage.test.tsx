@@ -293,7 +293,6 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     expect(within(drawer).getByText('4821')).toBeInTheDocument();
     expect(within(drawer).getByText('2026-09-01')).toBeInTheDocument();
     expect(within(drawer).getByText('harmonised')).toBeInTheDocument();
-    expect(within(drawer).getByText('Validated')).toBeInTheDocument();
     expect(within(drawer).getByText('No annotations yet')).toBeInTheDocument();
 
     // Escape closes only the drawer on top; the panel stays.

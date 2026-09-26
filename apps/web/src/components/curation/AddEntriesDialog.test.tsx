@@ -478,6 +478,8 @@ describe('RFC-70 R3 AddEntriesDialog result (R-7)', () => {
       'EB_3 matches an existing record — counted as your validation.',
       'TR_4 is already your own record — nothing was added.',
     ]);
+    // A partial success is not a failure: nothing is announced as an error.
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
     expect(onCreated).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole('button', { name: 'EB_3' }));
     expect(onOpenRecord).toHaveBeenCalledWith(EXISTING.id);
