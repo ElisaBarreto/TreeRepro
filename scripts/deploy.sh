@@ -40,6 +40,9 @@ main() {
       redis-cli --no-auth-warning --scan --pattern "$p" | xargs -r redis-cli --no-auth-warning del >/dev/null
     done'
   docker image prune -f >/dev/null
+  # Every build adds BuildKit cache that image prune never touches (7 GB in the first
+  # two days of auto-deploy); cap it so the disk does not fill, keeping fast rebuilds.
+  docker builder prune -f --max-used-space 3gb >/dev/null
   echo "deployed $sha"
 }
 
