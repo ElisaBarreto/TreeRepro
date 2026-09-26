@@ -1,7 +1,7 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   createAnnotation,
@@ -19,6 +19,7 @@ import { speciesTraitCoverage } from '../db/schema/coverage.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
 import { importBatches } from '../db/schema/imports.ts';
 import { traitRecords } from '../db/schema/records.ts';
+import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { IMPORT_COLUMNS, importRecords } from './import.ts';
@@ -66,6 +67,7 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
     bad: string;
     speciesId: string;
     traitId: string;
+    qTraitId: string;
     relA: string;
     relB: string;
     alice: string;
@@ -141,6 +143,17 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
     };
   }
 
+  /** The one sheet a run wrote into `dir`, parsed (no field of the fixture holds a comma). */
+  async function sheet(dir: string) {
+    const names = await readdir(dir);
+    const text = await readFile(join(dir, names[0] as string), 'utf8');
+    const [header, ...rows] = text
+      .replace(/^\uFEFF/, '')
+      .split('\r\n')
+      .filter(Boolean);
+    return { names, header, rows: rows.map((r) => r.split(',')) };
+  }
+
   beforeAll(async () => {
     const superuser = inject('superuserDatabaseUrl');
     admin = createDb(superuser, { max: 1 });
@@ -186,6 +199,7 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
     const trait = await traitByKey(t.db, 'flower_color');
     fx.traitId = trait.id;
     const q = await traitByKey(t.db, 'diaspore_length');
+    fx.qTraitId = q.id;
     const [sp] = await t.db
       .select({ id: species.id })
       .from(species)
@@ -326,5 +340,193 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
       }),
     ).rejects.toMatchObject({ reason: 'replace_not_allowed' });
     expect((await t.db.select({ id: importBatches.id }).from(importBatches)).length).toBe(batches);
+  });
+
+  it('R15 replaces the EB_ records, keeps the platform, re-links by record_code, writes the sheet, recomputes the counters', async () => {
+    const before = await snapshot();
+    const platformBefore = await t.db
+      .select()
+      .from(traitRecords)
+      .where(eq(traitRecords.origin, 'manual'))
+      .orderBy(asc(traitRecords.id));
+    const annotationsBefore = await t.db
+      .select()
+      .from(recordAnnotations)
+      .orderBy(asc(recordAnnotations.id));
+    const sheetDir = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+
+    const batch = await importRecords(t.db, { filePath: fx.v2, replaceImported: { sheetDir } });
+
+    expect(batch).toMatchObject({
+      status: 'completed',
+      rowsTotal: 5,
+      rowsInserted: 5,
+      rowsRejected: 0,
+      rowsAlreadyImported: 0,
+    });
+    const [stored] = await t.db
+      .select({ mode: importBatches.mode })
+      .from(importBatches)
+      .where(eq(importBatches.id, batch.id));
+    expect(stored?.mode).toBe('replace');
+
+    // EB_: exactly the new file; EB_2 is gone; the kept codes are new rows.
+    const eb = await importedByCode();
+    expect(Object.keys(eb).sort()).toEqual(['EB_1', 'EB_3', 'EB_4', 'EB_5', 'EB_6']);
+    for (const code of ['EB_1', 'EB_3', 'EB_5', 'EB_6']) expect(eb[code]).not.toBe(fx.old[code]);
+
+    // TR_: every record kept with the same id and code; only the links moved.
+    const platformAfter = await t.db
+      .select()
+      .from(traitRecords)
+      .where(eq(traitRecords.origin, 'manual'))
+      .orderBy(asc(traitRecords.id));
+    const unlinked = (r: (typeof platformBefore)[number]) => ({
+      ...r,
+      intent: null,
+      respondsToRecordId: null,
+      supersedesRecordId: null,
+    });
+    expect(platformAfter.map(unlinked)).toEqual(platformBefore.map(unlinked));
+    const after = new Map(platformAfter.map((r) => [r.id, r]));
+    expect(after.get(fx.orange)).toEqual(platformBefore.find((r) => r.id === fx.orange));
+    // The complement's EB_2 is gone: it is now an independent record.
+    expect(after.get(fx.complement)).toMatchObject({ intent: null, respondsToRecordId: null });
+    // The quantitative contest follows EB_6 to its new row.
+    expect(after.get(fx.qContest)).toMatchObject({
+      intent: 'contest',
+      respondsToRecordId: eb.EB_6,
+    });
+    // The harmonisation follows EB_5 to its new row.
+    expect(after.get(fx.mapping)?.supersedesRecordId).toBe(eb.EB_5);
+
+    // Annotations: same id, actor, kind, note, reference, generated, created_at; new record.
+    const annotationsAfter = await t.db
+      .select()
+      .from(recordAnnotations)
+      .orderBy(asc(recordAnnotations.id));
+    expect(annotationsAfter).toEqual(
+      annotationsBefore.map((a) => ({
+        ...a,
+        recordId: a.id === fx.validation ? eb.EB_1 : eb.EB_3,
+      })),
+    );
+    // EB_3 is still withdrawn.
+    expect(annotationsAfter.find((a) => a.id === fx.withdrawal)).toMatchObject({
+      recordId: eb.EB_3,
+      kind: 'withdraw',
+    });
+
+    // The contest tables are untouched (RFC-63 R4): the quantitative
+    // contest's rows and the categorical contest alike; every append-only
+    // trigger is back on.
+    const whole = await snapshot();
+    expect({
+      contests: whole.contests,
+      contestLevels: whole.contestLevels,
+      contestRecords: whole.contestRecords,
+      contestEvents: whole.contestEvents,
+      triggers: whole.triggers,
+    }).toEqual({
+      contests: before.contests,
+      contestLevels: before.contestLevels,
+      contestRecords: before.contestRecords,
+      contestEvents: before.contestEvents,
+      triggers: before.triggers,
+    });
+
+    // Counters, by hand. flower_color's live records: EB_1, EB_4, EB_5
+    // (unknown_level, so not harmonised), orange, the complement and the
+    // harmonisation; EB_3 is withdrawn. diaspore_length's: EB_6 and the
+    // contest, both harmonised. REL_A is primary for EB_1, EB_4, EB_5, the
+    // harmonisation (flower_color) and EB_6 (diaspore_length); REL_B for
+    // orange, the complement (flower_color) and the contest (diaspore_length).
+    // The validation's reference is not a usage.
+    const cell = async (traitId: string) =>
+      (
+        await t.db
+          .select({
+            recordCount: speciesTraitCoverage.recordCount,
+            harmonisedCount: speciesTraitCoverage.harmonisedCount,
+          })
+          .from(speciesTraitCoverage)
+          .where(
+            and(
+              eq(speciesTraitCoverage.speciesId, fx.speciesId),
+              eq(speciesTraitCoverage.traitId, traitId),
+            ),
+          )
+      )[0];
+    expect(await cell(fx.traitId)).toEqual({ recordCount: 6, harmonisedCount: 5 });
+    expect(await cell(fx.qTraitId)).toEqual({ recordCount: 2, harmonisedCount: 2 });
+    const [sp] = await t.db
+      .select({ traitCount: species.traitCount })
+      .from(species)
+      .where(eq(species.id, fx.speciesId));
+    expect(sp?.traitCount).toBe(2);
+    const usage = async (id: string) => {
+      const [ref] = await t.db
+        .select({
+          primary: bibliographicReferences.primaryCount,
+          secondary: bibliographicReferences.secondaryCount,
+        })
+        .from(bibliographicReferences)
+        .where(eq(bibliographicReferences.id, id));
+      const byTrait = await t.db
+        .select({ traitId: referenceTraits.traitId, n: referenceTraits.recordCount })
+        .from(referenceTraits)
+        .where(eq(referenceTraits.referenceId, id));
+      const n = (traitId: string) => byTrait.find((b) => b.traitId === traitId)?.n ?? null;
+      return { ...ref, flower: n(fx.traitId), diaspore: n(fx.qTraitId), traits: byTrait.length };
+    };
+    expect(await usage(fx.relA)).toEqual({
+      primary: 5,
+      secondary: 0,
+      flower: 4,
+      diaspore: 1,
+      traits: 2,
+    });
+    expect(await usage(fx.relB)).toEqual({
+      primary: 3,
+      secondary: 0,
+      flower: 2,
+      diaspore: 1,
+      traits: 2,
+    });
+    // And the whole coverage table equals a from-scratch count of live records.
+    const [drift] = await t.db.execute(sql`
+      with want as (
+        select r.species_id, r.trait_id, count(*)::int as n,
+          (count(*) filter (where r.harmonisation = 'harmonised'))::int as h
+        from trait_records r
+        where not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
+        group by 1, 2),
+      have as (
+        select species_id, trait_id, record_count as n, harmonised_count as h from species_trait_coverage)
+      select (select count(*) from (
+        (select * from want except select * from have)
+        union all
+        (select * from have except select * from want)) d)::int as rows`);
+    expect(drift).toEqual({ rows: 0 });
+
+    // The sheet: final, one file, statuses known; no row for the categorical contest.
+    const codeOf = async (id: string) =>
+      (
+        await t.db
+          .select({ code: traitRecords.recordCode })
+          .from(traitRecords)
+          .where(eq(traitRecords.id, id))
+      )[0]?.code;
+    const s = await sheet(sheetDir);
+    expect(s.names).toEqual([`replace-${batch.id}-annotations.csv`]);
+    expect(s.header).toBe('record_code,kind,user_name,date,reference,contest_record_code,status');
+    const iso = expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(s.rows).toEqual([
+      ['EB_1', 'validation', 'Alice Relink', iso, 'REL_B', '', 'relinked'],
+      ['EB_2', 'complement', 'Bob Relink', iso, 'REL_B', await codeOf(fx.complement), 'orphan'],
+      ['EB_3', 'withdraw', 'Carol Relink', iso, '', '', 'relinked'],
+      ['EB_5', 'harmonisation', 'Alice Relink', iso, 'REL_A', await codeOf(fx.mapping), 'relinked'],
+      ['EB_6', 'contest', 'Bob Relink', iso, 'REL_B', await codeOf(fx.qContest), 'relinked'],
+    ]);
   });
 });

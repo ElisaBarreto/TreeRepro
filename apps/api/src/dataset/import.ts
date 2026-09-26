@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { open, stat, unlink } from 'node:fs/promises';
+import { open, rm, stat, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import {
   type HarmonisationStatus,
@@ -28,6 +28,12 @@ import {
   isUuid,
   pageOf,
 } from '../http/cursor.ts';
+import {
+  type DetachedImported,
+  detachImported,
+  publishSheet,
+  relinkImported,
+} from './replace-imported.ts';
 import { isReplaceAllowed, resetDataset } from './reset.ts';
 
 /**
@@ -455,7 +461,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
 async function runImport(db: Db, input: ImportInput, fileSha256: string): Promise<ImportBatch> {
   // Inside R13's lock: two runs of the same file would otherwise both pass
   // this check before either had written its batch row.
-  if (!input.force && !input.replace) {
+  if (!input.force && !input.replace && !input.replaceImported) {
     const [done] = await db
       .select({ id: importBatches.id })
       .from(importBatches)
@@ -475,11 +481,14 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
       fileName: basename(input.filePath),
       fileSha256,
       runBy: input.runBy ?? null,
-      mode: input.replace ? 'replace' : 'append',
+      mode: input.replace || input.replaceImported ? 'replace' : 'append',
     })
     .returning({ id: importBatches.id });
   if (!batch) throw new Error('importRecords: batch insert returned no row');
 
+  // R15: set inside the transaction below; the cast keeps TypeScript from
+  // narrowing it to `null` across the callback.
+  let detached = null as DetachedImported | null;
   const sql = db.$client;
   try {
     await sql.begin(async (tx) => {
@@ -503,6 +512,11 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         // Empty what earlier imports loaded, inside this transaction, so a
         // failure below rolls the wipe back and leaves the old dataset in place.
         await resetDataset(tx, batch.id);
+      }
+      // R15: stash and detach what users produced, write the pending sheet,
+      // delete the EB_ records. The file below then loads into their place.
+      if (input.replaceImported) {
+        detached = await detachImported(tx, batch.id, input.replaceImported.sheetDir);
       }
       // R4 staging
       await tx`
@@ -756,6 +770,10 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         order by count desc, t.key, r.value_text
         limit 30`) as { trait: string; value: string; count: number }[];
 
+      // R15: re-link by record_code, restore the triggers, recompute the
+      // counters, write the final sheet beside the pending one.
+      if (detached) await relinkImported(tx, detached);
+
       // Recorded in the same transaction as everything above: a crash between
       // COMMIT and a separate post-commit UPDATE could otherwise leave a
       // fully-imported batch stuck at `running`/`failed` forever.
@@ -775,6 +793,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         where id = ${batch.id}`;
     });
   } catch (err) {
+    // R15: the final sheet never outlives a rollback; the pending one stays.
+    if (detached) await rm(`${detached.path}.tmp`, { force: true }).catch(() => undefined);
     // R9: the transaction rolled back; keep the batch as the record of the
     // failure. If even this update fails, don't let that secondary error
     // mask the original one — attach it as `cause` and keep throwing `err`.
@@ -788,6 +808,9 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
     }
     throw err;
   }
+  // R15 (Ruling G): the batch is committed, so a failed rename is not a
+  // failed run; the CLI finds the leftover `.tmp` and says so.
+  if (detached) await publishSheet(detached).catch(() => undefined);
   const result = await getImportBatch(db, batch.id);
   if (!result) throw new Error('importRecords: batch vanished');
   return result;
