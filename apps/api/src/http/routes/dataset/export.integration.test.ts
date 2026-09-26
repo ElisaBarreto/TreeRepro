@@ -1,185 +1,97 @@
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
 import {
   addPlotSpecies,
   assignPlots,
-  createAnnotation,
-  createFamily,
-  createGenus,
+  createImportBatch,
   createPlot,
   createRecord,
   createReference,
   createSpecies,
-  createTrait,
   createVisibilityFixture,
 } from '../../../../test/helpers/dataset.ts';
+import { exportScene, parseCsv, unzip } from '../../../../test/helpers/export.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
-import { traitLevels } from '../../../db/schema/dictionary.ts';
 
-/** RFC 4180 line → fields (quotes doubled inside quoted fields). */
-function parseLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (quoted) {
-      if (ch === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else if (ch === '"') quoted = false;
-      else cur += ch;
-    } else if (ch === '"') quoted = true;
-    else if (ch === ',') {
-      out.push(cur);
-      cur = '';
-    } else cur += ch;
-  }
-  out.push(cur);
-  return out;
-}
-
-describe('RFC-66 R8 GET /api/export/records.csv', () => {
+describe('RFC-66 GET /api/export/dataset.zip', () => {
   const t = useTestApp();
 
-  it('streams one CSV row per visible non-withdrawn record, ordered, quoted, with a BOM, and audits the download', async () => {
+  it('R1, R4, R6 streams the ZIP with its headers, audits the download, and names no e-mail', async () => {
+    const role = await createRole(t.db, { permissions: ['dataset.export', 'records.review'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, user);
+    const s = await exportScene(t.db);
+
+    const res = await call(t.app, 'GET', '/api/export/dataset.zip', { cookie });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/zip');
+    expect(res.headers.get('content-disposition')).toMatch(
+      /^attachment; filename="treerepro-dataset-\d{4}-\d{2}-\d{2}\.zip"$/,
+    );
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const files = await unzip(await res.arrayBuffer());
+    expect([...files.keys()]).toEqual(['records.csv', 'annotations.csv']);
+    const codes = parseCsv(files.get('records.csv') ?? '').rows.map((r) => r[0]);
+    expect(codes).toContain(s.code.r1);
+    expect(codes).toContain(s.code.p); // records.review: pending included (spec R-14)
+    expect(codes).not.toContain(s.code.w); // withdrawn (spec R-13)
+    const annotations = parseCsv(files.get('annotations.csv') ?? '');
+    expect(annotations.rows.map((r) => r[0])).toContain(s.code.r1);
+    expect(files.get('annotations.csv')).not.toContain(s.val1Email);
+    const audit = await lastAudit(t.db, 'dataset.exported', { actorUserId: user.id });
+    expect(audit?.metadata).toEqual({ format: 'zip', scope: 'all' });
+  });
+
+  it('R9 ?scope=platform names the platform file, audits the scope, and leaves the EB_ records out', async () => {
     const role = await createRole(t.db, { permissions: ['dataset.export'] });
     const { user } = await createUser(t.db, { roles: [role.id] });
     const { cookie } = await loginAs(t, user);
-    const family = await createFamily(t.db, {
-      name: `Aaaceae-${Math.random().toString(16).slice(2)}`,
-    });
-    const genus = await createGenus(t.db, { familyId: family.id });
-    const spA = await createSpecies(t.db, { genusId: genus.id });
-    const spB = await createSpecies(t.db);
-    const cat = await createTrait(t.db, { levels: ['red'] });
-    const quant = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
-    const ref = await createReference(t.db, {
-      citationKey: `Smith, J. "et al." ${Math.random().toString(16).slice(2)}`,
-    });
-    const mk = (
-      speciesId: string,
-      traitId: string,
-      v: { levelId?: string; numericValue?: number; valueText: string },
-    ) =>
-      createRecord(t.db, {
-        speciesId,
-        traitId,
-        primaryReferenceId: ref.id,
-        origin: 'manual',
-        createdBy: user.id,
-        ...v,
-      });
-    const a1 = await mk(spA.id, cat.id, { levelId: cat.levels[0]?.id, valueText: 'red' });
-    const a2 = await mk(spA.id, quant.id, { numericValue: 12.5, valueText: '12.5' });
-    const b1 = await mk(spB.id, quant.id, { numericValue: 2, valueText: '2' });
-    const gone = await mk(spB.id, cat.id, { levelId: cat.levels[0]?.id, valueText: 'red' });
-    await createAnnotation(t.db, { recordId: gone.id, actorId: user.id, kind: 'withdraw' });
+    const s = await exportScene(t.db);
+    const batch = await createImportBatch(t.db);
+    const importedRef = await createReference(t.db);
+    const eb = `EB_7${Math.floor(Math.random() * 1e12)}`;
+    await t.db.execute(sql`
+      insert into trait_records (record_code, species_id, trait_id, level_id, value_text,
+        harmonisation, origin, import_batch_id, import_row_no, primary_reference_id)
+      values (${eb}, ${s.sp.id}, ${s.cat.id}, ${s.red}, 'red', 'harmonised', 'import',
+        ${batch.id}, 1, ${importedRef.id})`);
 
-    const res = await call(t.app, 'GET', '/api/export/records.csv', { cookie });
+    const res = await call(t.app, 'GET', '/api/export/dataset.zip?scope=platform', { cookie });
     expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
     expect(res.headers.get('content-disposition')).toMatch(
-      /^attachment; filename="treerepro-records-\d{4}-\d{2}-\d{2}\.csv"$/,
+      /^attachment; filename="treerepro-platform-\d{4}-\d{2}-\d{2}\.zip"$/,
     );
-    expect(res.headers.get('cache-control')).toBe('no-store');
-    // `Response.text()` strips a leading BOM; read the raw bytes (RFC-66 R4).
-    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
-    expect(text.startsWith('\uFEFF')).toBe(true);
-    const lines = text.slice(1).split('\r\n');
-    expect(lines[0]).toBe(
-      'family,genus,species,name_source,category,trait,value,unit,level,numeric_value,raw_value,primary_reference,secondary_reference,origin,intent,created_at,record_id',
-    );
-    expect(lines[lines.length - 1]).toBe('');
-    const rows = lines.slice(1, -1).map(parseLine);
-    const byRecord = new Map(rows.map((r) => [r[16], r]));
-    expect(byRecord.get(a1.id)).toEqual([
-      family.name,
-      genus.name,
-      spA.canonicalName,
-      'wcvp',
-      expect.any(String),
-      cat.key,
-      'red',
-      '',
-      'red',
-      '',
-      '',
-      ref.citationKey,
-      '',
-      'manual',
-      '',
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-      a1.id,
-    ]);
-    expect(byRecord.get(a2.id)?.slice(6, 10)).toEqual(['12.5', 'mm', '', '12.5']);
-    expect(byRecord.get(b1.id)?.[0]).toBe(''); // no family
-    expect(byRecord.has(gone.id)).toBe(false); // withdrawn
-    // Order: spA (family Aaaceae…) before spB (no family, nulls last); within spA by trait key.
-    const mine = rows.filter((r) => [a1.id, a2.id, b1.id].includes(r[16] ?? '')).map((r) => r[16]);
-    expect(mine.indexOf(a1.id)).toBeLessThan(mine.indexOf(b1.id));
-    expect(mine.indexOf(a2.id)).toBeLessThan(mine.indexOf(b1.id));
-    expect([...mine].slice(0, 2)).toEqual(cat.key < quant.key ? [a1.id, a2.id] : [a2.id, a1.id]);
+    const files = await unzip(await res.arrayBuffer());
+    const codes = parseCsv(files.get('records.csv') ?? '').rows.map((r) => r[0]);
+    expect(codes).toContain(s.code.r1);
+    expect(codes.some((c) => c?.startsWith('EB_'))).toBe(false);
     const audit = await lastAudit(t.db, 'dataset.exported', { actorUserId: user.id });
-    expect(audit?.metadata).toEqual({ format: 'csv', scope: 'all' });
+    expect(audit?.metadata).toEqual({ format: 'zip', scope: 'platform' });
   });
 
-  it('omits a row whose categorical level is invisible to the viewer', async () => {
-    const unrestrictedRole = await createRole(t.db, {
-      permissions: ['dataset.export', 'dataset.read_inactive'],
-    });
-    const restrictedRole = await createRole(t.db, { permissions: ['dataset.export'] });
-    const { user: manager } = await createUser(t.db, { roles: [unrestrictedRole.id] });
-    const { user: contributor } = await createUser(t.db, { roles: [restrictedRole.id] });
-    const sp = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { levels: ['seen'] });
-    const ref = await createReference(t.db);
-    const record = await createRecord(t.db, {
-      speciesId: sp.id,
-      traitId: trait.id,
-      valueText: 'seen',
-      levelId: trait.levels[0]?.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: manager.id,
-    });
-    // Deactivate the level: invisible to a viewer without dataset.read_inactive.
-    await t.db
-      .update(traitLevels)
-      .set({ active: false })
-      .where(eq(traitLevels.id, trait.levels[0]?.id as string));
-
-    const recordIds = async (cookie: string) => {
-      const res = await call(t.app, 'GET', '/api/export/records.csv', { cookie });
-      expect(res.status).toBe(200);
-      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
-      return text
-        .slice(1)
-        .split('\r\n')
-        .slice(1, -1)
-        .map((line) => parseLine(line)[16]);
-    };
-
-    const m = await recordIds((await loginAs(t, manager)).cookie);
-    expect(m).toContain(record.id);
-
-    const c = await recordIds((await loginAs(t, contributor)).cookie);
-    expect(c).not.toContain(record.id);
+  it('R7 an unknown scope is a 400 VALIDATION_FAILED naming scope', async () => {
+    const role = await createRole(t.db, { permissions: ['dataset.export'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    const { cookie } = await loginAs(t, user);
+    const res = await call(t.app, 'GET', '/api/export/dataset.zip?scope=bogus', { cookie });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_FAILED');
+    expect(body.error.details.map((d: { path: string }) => d.path)).toEqual(['scope']);
   });
 
-  it('RFC-33 R9 two viewers: a plot-bound viewer without dataset.read_inactive gets only the visible rows, an unrestricted viewer gets every row', async () => {
-    const unrestrictedRole = await createRole(t.db, {
-      permissions: ['dataset.export', 'dataset.read_inactive'],
+  it('RFC-33 R9, RFC-66 R2 a plot-bound viewer without records.review gets only the visible, harmonised rows', async () => {
+    const managerRole = await createRole(t.db, {
+      permissions: ['dataset.export', 'dataset.read_inactive', 'records.review'],
     });
-    const restrictedRole = await createRole(t.db, { permissions: ['dataset.export'] });
-    const { user: manager } = await createUser(t.db, { roles: [unrestrictedRole.id] });
-    const { user: contributor } = await createUser(t.db, { roles: [restrictedRole.id] });
+    const contributorRole = await createRole(t.db, { permissions: ['dataset.export'] });
+    const { user: manager } = await createUser(t.db, { roles: [managerRole.id] });
+    const { user: contributor } = await createUser(t.db, { roles: [contributorRole.id] });
     const f = await createVisibilityFixture(t.db, manager.id);
-    // A fourth row: an active species on an active trait, outside the contributor's plot.
     const outsideSpecies = await createSpecies(t.db);
     const outsidePlot = await createRecord(t.db, {
       speciesId: outsideSpecies.id,
@@ -190,69 +102,50 @@ describe('RFC-66 R8 GET /api/export/records.csv', () => {
       origin: 'manual',
       createdBy: manager.id,
     });
+    const pending = await createRecord(t.db, {
+      speciesId: f.shownSpecies.id,
+      traitId: f.activeTrait.id,
+      valueText: 'uno',
+      primaryReferenceId: f.reference.id,
+      origin: 'manual',
+      createdBy: manager.id,
+    });
     const plot = await createPlot(t.db);
     await addPlotSpecies(t.db, plot.id, [f.shownSpecies.id, f.hiddenSpecies.id]);
     await assignPlots(t.db, contributor.id, [plot.id], true);
-    const recordIds = async (cookie: string) => {
-      const res = await call(t.app, 'GET', '/api/export/records.csv', { cookie });
+    const ids = [
+      f.onHiddenSpecies.id,
+      f.onInactiveTrait.id,
+      f.visible.id,
+      outsidePlot.id,
+      pending.id,
+    ];
+    const codes = await t.db.execute<{ id: string; record_code: string }>(
+      sql`select id, record_code from trait_records where id in ${ids}`,
+    );
+    const codeOf = new Map(codes.map((r) => [r.id, r.record_code]));
+    const exported = async (cookie: string) => {
+      const res = await call(t.app, 'GET', '/api/export/dataset.zip', { cookie });
       expect(res.status).toBe(200);
-      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
-      return text
-        .slice(1)
-        .split('\r\n')
-        .slice(1, -1)
-        .map((line) => parseLine(line)[16]);
-    };
-    const all = [f.onHiddenSpecies.id, f.onInactiveTrait.id, f.visible.id, outsidePlot.id];
-
-    const m = await recordIds((await loginAs(t, manager)).cookie);
-    expect(all.filter((id) => m.includes(id))).toEqual(all);
-
-    const c = await recordIds((await loginAs(t, contributor)).cookie);
-    expect(all.filter((id) => c.includes(id))).toEqual([f.visible.id]);
-  });
-
-  it('RFC-33 R2 a dataset.export holder without records.review does not get a pending record row; one with records.review does', async () => {
-    const reviewerRole = await createRole(t.db, {
-      permissions: ['dataset.export', 'records.review'],
-    });
-    const exporterRole = await createRole(t.db, { permissions: ['dataset.export'] });
-    const { user: reviewer } = await createUser(t.db, { roles: [reviewerRole.id] });
-    const { user: exporter } = await createUser(t.db, { roles: [exporterRole.id] });
-    const sp = await createSpecies(t.db);
-    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
-    const ref = await createReference(t.db);
-    const pending = await createRecord(t.db, {
-      speciesId: sp.id,
-      traitId: trait.id,
-      valueText: 'not a number',
-      harmonisation: 'not_numeric',
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: reviewer.id,
-    });
-
-    const recordIds = async (cookie: string) => {
-      const res = await call(t.app, 'GET', '/api/export/records.csv', { cookie });
-      expect(res.status).toBe(200);
-      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(await res.arrayBuffer());
-      return text
-        .slice(1)
-        .split('\r\n')
-        .slice(1, -1)
-        .map((line) => parseLine(line)[16]);
+      const files = await unzip(await res.arrayBuffer());
+      const got = new Set(parseCsv(files.get('records.csv') ?? '').rows.map((r) => r[0]));
+      return ids.filter((id) => got.has(codeOf.get(id) ?? ''));
     };
 
-    const withoutReview = await recordIds((await loginAs(t, exporter)).cookie);
-    expect(withoutReview).not.toContain(pending.id);
-
-    const withReview = await recordIds((await loginAs(t, reviewer)).cookie);
-    expect(withReview).toContain(pending.id);
+    expect(await exported((await loginAs(t, manager)).cookie)).toEqual(ids);
+    expect(await exported((await loginAs(t, contributor)).cookie)).toEqual([f.visible.id]);
   });
 
   it('R7 an unauthenticated request keeps the JSON error envelope', async () => {
-    const res = await call(t.app, 'GET', '/api/export/records.csv');
+    const res = await call(t.app, 'GET', '/api/export/dataset.zip');
     expect(res.status).toBe(401);
     expect((await res.json()).error.code).toBe('AUTH_UNAUTHENTICATED');
+  });
+
+  it('R1 without dataset.export the answer is 403', async () => {
+    const { user } = await createUser(t.db);
+    const { cookie } = await loginAs(t, user);
+    const res = await call(t.app, 'GET', '/api/export/dataset.zip', { cookie });
+    expect(res.status).toBe(403);
   });
 });
