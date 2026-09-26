@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@treerepro/config": "workspace:*",
-    "@types/node": "24.13.4",
+    "@types/node": "26.6.2",
     "typescript": "7.0.2",
     "vitest": "5.0.1"
   }
