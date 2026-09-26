@@ -5,40 +5,40 @@ diaspore_length,dispersal,quantitative,mm,Diaspore or dispersal-unit length.,
 diaspore_thickness_heigth,dispersal,quantitative,mm,Diaspore or dispersal-unit thickness/height; spelling follows the reviewed TRY fine-trait audit label.,
 diaspore_type,dispersal,categorical,,Diaspore or dispersal-unit type.,cone;dispersal_unit;floret;fruit;fruit_part;infrutescence;seed;spore;vegetative_propagule;whole plant
 diaspore_width,dispersal,quantitative,mm,Diaspore or dispersal-unit width.,
-dispersal_broad_mode,dispersal,categorical,,"Derived broad dispersal category for dispersal_mode records: biotic, abiotic, or autochorous.",abiotic;autochorous;biotic
+dispersal_broad_mode,dispersal,categorical,,"Derived broad dispersal category for dispersal_mode records: biotic, abiotic, or autochorous.",abiotic;autochorous;biotic;unspecialized
 dispersal_distance,dispersal,quantitative,m,Continuous seed or fruit dispersal distance.,
 dispersal_distance_class,dispersal,categorical,,Categorical or ordinal class describing seed or fruit dispersal distance.,1;2;3;4;5;6;7
 dispersal_distance_max,dispersal,quantitative,m,"Maximum seed, fruit, or diaspore dispersal distance.",
 dispersal_kernel,dispersal,quantitative,,"Dispersal-kernel category, function, parameter, or summary descriptor.",
-dispersal_mechanism,dispersal,categorical,,"Derived dispersal mechanism for dispersal_mode records, describing how the propagule is moved.",active_transport;ballistic;external_attachment;gravity;ingestion;water;wind
-dispersal_vector,dispersal,categorical,,"Derived dispersal vector for dispersal_mode records, describing the dispersing agent when identifiable.",ant;bat;bird;fish;gravity;mammal_unspecified;nonflying_mammal;plant_self;water;wind
+dispersal_mechanism,dispersal,categorical,,"Derived dispersal mechanism for dispersal_mode records, describing how the propagule is moved.",active_transport;ballistic;external_attachment;gravity;herpochory;ingestion;self;unspecialized;water;wind
+dispersal_vector,dispersal,categorical,,"Derived dispersal vector for dispersal_mode records, describing the dispersing agent when identifiable.",amphibian;ant;artiodactyla;ballistic;bat;bear;bird;cervidae;civet;crustaceae;fish;gravity;insect;invertebrate;lizard;mammal_unspecified;monkey;nonflying_mammal;plant_self;primate;procyonid;reptile;rodent;self;tortoise;turtle;unspecialized;vertebrate_unspecified;water;wind;zoochory_unspecified
 disperser_group,dispersal,categorical,,"Animal disperser group, such as bird, bat, mammal, ant, fish, reptile, or invertebrate.",ant;bat;bird;fish;hummingbird;invertebrate;mammal;primate;reptile;rodent;ungulate
-pollination_mode,pollination,categorical,,"Broad pollination mode, scored as biotic or abiotic.",abiotic;biotic
+pollination_mode,pollination,categorical,,"Broad pollination mode, scored as biotic or abiotic.",abiotic;biotic;self
 pollination_syndrome,pollination,categorical,,"Pollination syndrome, such as anemophily, entomophily, ornithophily, chiropterophily, hydrophily, autophily, or zoophily.",ambophily;anemophily;autophily;chiropterophily;entomophily;generalist;hydrophily;ornithophily;zoophily
-pollinator_group,pollination,categorical,,"Pollinator group, such as bee, bird, bat, fly, moth, butterfly, beetle, ant, or wasp.",ant;bat;bee;beetle;bird;butterfly;fly;generalist;hummingbird;insect_unspecified;moth;self;vertebrate_unspecified;wasp;water;wind
-maturation_age,reproduction,quantitative,,Maturation age,
-maturation_size,reproduction,quantitative,,Plant size or age at reproductive maturity.,
-self_compatibility,reproduction,categorical,,"Categorical self-compatibility state, such as self-compatible, self-incompatible, or mixed/partial.",mixed_or_partial;self_compatible;self_incompatible
+pollinator_group,pollination,categorical,,"Pollinator group, such as bee, bird, bat, fly, lepidoptera, beetle, ant, or wasp.",ant;bat;bee;beetle;bird;bumblebee;fly;generalist;homoptera;hummingbird;insect_unspecified;lepidoptera;lizard;mammal;rodent;self;slug;spider;thrips;thysanoptera;vertebrate_unspecified;wasp;water;wind
+maturation_age,reproduction,quantitative,months,Maturation age,
+maturation_size,reproduction,quantitative,m,Plant size or age at reproductive maturity.,
+self_compatibility,reproduction,categorical,,"Categorical self-compatibility state, such as self-compatible, self-incompatible, or mixed/partial.",mixed_or_partial;normally_cross;self_compatible;self_incompatible;selfing_never;selfing_often;selfing_rare;selfing_when_outcrossing_fails
 self_incompatibility_index,reproduction,quantitative,index,"Numeric self-compatibility, self-incompatibility, or autofertility index; paired category/context should indicate fruit set, seed set, total, or similar basis.",
-sexual_system,reproduction,categorical,,"Plant sexual system, such as hermaphroditic, monoecious, dioecious, gynodioecious, androdioecious, or unisexual.",androdioecious;cosexual;dioecious;gynodioecious;hermaphroditic;monoecious;polygamodioecious;unisexual;unisexual_flower
+sexual_system,reproduction,categorical,,"Plant sexual system, such as hermaphroditic, monoecious, dioecious, gynodioecious, androdioecious, or unisexual.",androdioecious;andromonoecious;cosexual;dioecious;gynodioecious;gynomonoecious;hermaphroditic;monoecious;pistillate;polygamodioecious;polygamous;staminate;unisexual;unisexual_flower
 fruit_dehiscence,fruit,categorical,,"Fruit dehiscence category, such as dehiscent or indehiscent.",dehiscent;indehiscent;mixed_or_variable
 fruit_development_time,fruit,quantitative,days,Time required for fruit development or maturation.,
 fruit_diameter,fruit,quantitative,mm,Fruit diameter.,
 fruit_dry_mass,fruit,quantitative,g,Fruit dry mass or dry weight.,
 fruit_length,fruit,quantitative,mm,Fruit length.,
-fruit_mass,fruit,quantitative,g,Fruit mass or weight.,
+fruit_mass,fruit,quantitative,g,Fruit fresh mass or fruit mass when fresh/dry basis is unspecified.,
 fruit_number,fruit,quantitative,count,"Fruit number or count; source context should indicate per plant, per infructescence, or other denominator.",
 fruit_proportion_lipids,fruit,quantitative,percent_or_proportion,Fruit lipid content expressed as a proportion or percentage.,
 fruit_size,fruit,quantitative,mm,General fruit size measurement when the dimension is not more specifically identified.,
 fruit_specific_energy_content,fruit,quantitative,kJ/g,Fruit energy content per unit mass.,
 fruit_total_energy_content,fruit,quantitative,kJ,Total energetic content of a fruit.,
-fruit_type,fruit,categorical,,"Fruit type, morphology, or dryness/fleshiness class.",achene;berry;capsule;caryopsis;drupe;dry;fleshy;follicle;legume;lomentum;nut;pod;pome;samara;schizocarp;schz;siliqua;silique;syconium;syncarp;utricle
+fruit_type,fruit,categorical,,"Fruit type, morphology, or dryness/fleshiness class.",achene;berry;capsule;caryopsis;drupe;dry;fleshy;follicle;legume;lomentum;nut;plumed;pod;pome;samara;schizocarp;schz;siliqua;silique;syconium;syncarp;utricle
 fruit_water_content,fruit,quantitative,percent_or_proportion,Fruit water content expressed as a proportion or percentage.,
 fruit_width,fruit,quantitative,mm,Fruit width.,
 fruiting_duration,fruit,quantitative,days,Duration of the fruiting period.,
-fruiting_end,fruit,quantitative,days,"End timing of fruiting, usually as date, month, day-of-year, or phenological code.",
-fruiting_start,fruit,quantitative,days,"Start timing of fruiting, usually as date, month, day-of-year, or phenological code.",
-fruit_color,fruit_color,categorical,,Fruit color name or categorical fruit color class.,black;blue;brown;cream;dark_blue;dark_brown;dark_gray;dark_green;dark_orange;dark_pink;dark_purple;dark_red;dark_white;dark_yellow;gray;green;light_blue;light_brown;light_cream;light_gray;light_green;light_orange;light_pink;light_purple;light_red;light_yellow;multicolor;orange;pink;purple;red;white;yellow
+fruiting_end,fruit,quantitative,month,"End timing of fruiting, usually as date, month, day-of-year, or phenological code.",
+fruiting_start,fruit,quantitative,month,"Start timing of fruiting, usually as date, month, day-of-year, or phenological code.",
+fruit_color,fruit_color,categorical,,Fruit color name or categorical fruit color class.,black;blue;brown;cream;dark_blue;dark_brown;dark_gray;dark_green;dark_orange;dark_pink;dark_purple;dark_red;dark_yellow;gray;green;light_blue;light_brown;light_gray;light_green;light_orange;light_pink;light_purple;light_red;light_yellow;multicolor;orange;pink;purple;red;white;yellow
 fruit_color_RBG,fruit_color,quantitative,,Fruit color RGB value as reported by the source.,
 fruit_color_blue,fruit_color,quantitative,,Fruit color blue-channel value.,
 fruit_color_brightness,fruit_color,quantitative,,"Fruit color brightness, lightness, value, or luminance.",
@@ -49,13 +49,14 @@ fruit_color_red,fruit_color,quantitative,,Fruit color red-channel value.,
 fruit_color_saturation,fruit_color,quantitative,,Fruit color saturation or chroma-like quantitative value.,
 fruit_seed_color,fruit_color,categorical,,Combined fruit/seed or diaspore color category when the source does not separate fruit and seed color.,black;blue;brown;cream;dark_blue;dark_brown;dark_gray;dark_green;dark_orange;dark_pink;dark_purple;dark_red;dark_yellow;gray;green;light_blue;light_brown;light_gray;light_green;light_orange;light_pink;light_purple;light_red;light_yellow;multicolor;orange;pink;purple;red;straw;white;yellow
 fruit_seed_conspicuousness,fruit_color,categorical,,"Conspicuousness category or score for fruit, seed, or diaspore display.",conspicuous;unconspicuous
-seed_color,seed,categorical,,Seed color name or categorical seed color class.,black;blue;brown;cream;dark_blue;dark_brown;dark_cream;dark_gray;dark_green;dark_orange;dark_pink;dark_purple;dark_red;dark_white;dark_yellow;gray;green;grey;light_blue;light_brown;light_gray;light_green;light_orange;light_pink;light_purple;light_red;light_yellow;multicolor;orange;pink;purple;red;straw;white;yellow
+seed_color,seed,categorical,,Seed color name or categorical seed color class.,black;blue;brown;cream;dark_blue;dark_brown;dark_gray;dark_green;dark_orange;dark_pink;dark_purple;dark_red;dark_yellow;gray;green;light_blue;light_brown;light_gray;light_green;light_orange;light_pink;light_purple;light_red;light_yellow;multicolor;orange;pink;purple;red;straw;white;yellow
 seed_diameter,seed,quantitative,mm,Seed diameter.,
 seed_height,seed,quantitative,mm,Seed height or thickness.,
 seed_length,seed,quantitative,mm,Seed length.,
-seed_mass,seed,quantitative,mg,Seed mass or weight.,
+seed_mass,seed,quantitative,mg,Seed fresh mass or seed mass when fresh/dry basis is unspecified.,
 seed_mass_dry,seed,quantitative,mg,Seed dry mass or dry weight.,
 seed_number,seed,quantitative,count,"Seed number or count; source context should indicate per fruit, per plant, or other denominator.",
+seed_output,seed,quantitative,count,"Seed output or seed production expressed as seeds per individual plant; source context should indicate whether this is annual, total, typical range, or another basis.",
 seed_size,seed,quantitative,mm,General seed size measurement when the dimension is not more specifically identified.,
 seed_width,seed,quantitative,mm,Seed width.,
 corolla_area,flower,quantitative,mm2,Corolla area.,
@@ -63,7 +64,7 @@ corolla_length,flower,quantitative,mm,Corolla length.,
 corolla_width,flower,quantitative,mm,Corolla width.,
 floral_depth,flower,quantitative,mm,Floral depth or access depth measurement.,
 floral_longevity,flower,quantitative,days,Duration of individual flower function or opening.,
-floral_reward,flower,categorical,,"Floral reward category, such as nectar, pollen, oil, resin, or no reward.",brood;concealed;deceit;exposed;floral tissues;floral_tissue;fragrance;nectar;no_nectar;none;oil;partly exposed;pollen;resin;reward_present;scent
+floral_reward,flower,categorical,,"Floral reward category, such as nectar, pollen, oil, resin, or no reward.",brood;concealed;deceit;exposed;floral_tissue;food;fragrance;nectar;no_nectar;none;oil;partly exposed;pollen;reproduction;resin;reward_present;scent
 floral_symmetry,flower,categorical,,Floral symmetry category.,actinomorphic;asymmetric;bilateral;radial;wind;zygomorphic
 flower_diameter,flower,quantitative,mm,Flower diameter.,
 flower_number,flower,quantitative,count,"Flower number or count; source context should indicate per plant, per inflorescence, or other denominator.",
@@ -79,7 +80,7 @@ petal_length,flower,quantitative,mm,Petal length.,
 petal_width,flower,quantitative,mm,Petal width.,
 tube_length,flower,quantitative,mm,Floral tube length.,
 tube_width,flower,quantitative,mm,Floral tube width.,
-flower_color,flower_color,categorical,,"Flower, corolla, or petal color name or categorical color class.",black;blue;brown;corolla_absent;cream;dark_blue;dark_brown;dark_gray;dark_green;dark_orange;dark_pink;dark_purple;dark_red;dark_white;dark_yellow;gray;green;light_blue;light_brown;light_cream;light_gray;light_green;light_orange;light_pink;light_purple;light_red;light_yellow;multicolor;orange;pink;purple;red;white;yellow
+flower_color,flower_color,categorical,,"Flower, corolla, or petal color name or categorical color class.",black;blue;brown;corolla_absent;cream;dark_blue;dark_brown;dark_gray;dark_green;dark_orange;dark_pink;dark_purple;dark_red;dark_yellow;gray;green;light_blue;light_brown;light_gray;light_green;light_orange;light_pink;light_purple;light_red;light_yellow;multicolor;orange;pink;purpe;purple;red;white;yellow
 flower_color_UV_reflectance,flower_color,quantitative,,Flower ultraviolet reflectance value or score.,
 flower_color_blue,flower_color,quantitative,,Flower color blue-channel value.,
 flower_color_brightness,flower_color,quantitative,,"Flower color brightness, lightness, value, or luminance.",
@@ -91,7 +92,5 @@ flower_color_saturation,flower_color,quantitative,,Flower color saturation or ch
 growth_form,plant_form,categorical,,"Plant habit or growth form, such as tree, shrub, herb, climber/liana, palm, epiphyte, graminoid, or succulent.",aquatic;climber_liana;epiphyte;fern;graminoid;herb;orchid;palm;parasite;shrub;subshrub;succulent;tree;woody
 lifespan,plant_form,categorical,,"Life span or life-cycle category, such as annual, biennial, perennial, or woody/herbaceous duration classes.",annual;biennial;perennial;short_lived_perennial;woody_perennial
 plant_height,plant_form,quantitative,m,Plant height.,
-sample_size,metadata_or_context,quantitative,count,"Number of sampled records, individuals, species, or observations associated with a trait value.",
-longevity,demography,quantitative,days,Plant longevity or maximum lifespan as a quantitative value.,
+longevity,demography,quantitative,years,Plant longevity or maximum lifespan as a quantitative value.,
 mycorrhizal,root,categorical,,Mycorrhizal association or mycorrhizal type.,arbuscular;ectomycorrhiza;ericoid_mycorrhiza;facultatively_arbuscular;mycorrhizal;nonmycorrhizal;orchid_mycorrhiza;uncertain
-sample_size_column,structural,quantitative,count,Structural column containing sample size for paired long-format trait values.,
