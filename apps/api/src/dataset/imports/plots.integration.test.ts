@@ -1,7 +1,7 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createPlot, createSpecies } from '../../../test/helpers/dataset.ts';
 import { useTestDb } from '../../../test/helpers/db.ts';
@@ -156,9 +156,9 @@ describe('RFC-68 R11 import:user-plots', () => {
     // Verify rejects do NOT persist plaintext email (RFC-40 R1)
     const unknownUserReject = rejects.find((r) => r.reason === 'unknown_user');
     expect(unknownUserReject?.rawRow.user_email).not.toContain(`unknown-email-`);
-    expect(unknownUserReject?.rawRow.user_email).toMatch(/^u\*\*\*@example\.com$/);
+    expect(unknownUserReject?.rawRow.user_email).toBe('***');
     const unknownPlotReject = rejects.find((r) => r.reason === 'unknown_plot');
-    expect(unknownPlotReject?.rawRow.user_email).not.toBe(regularUser.email);
+    expect(unknownPlotReject?.rawRow.user_email).toBe('***');
 
     // Check assignments
     const regAssignments = await t.db
@@ -173,5 +173,32 @@ describe('RFC-68 R11 import:user-plots', () => {
       .where(eq(userPlots.userId, invitedUser.id));
     expect(invAssignments).toHaveLength(1);
     expect(invAssignments[0]?.plotId).toBe(plotA.id);
+  });
+});
+
+describe('RFC-68 R11 migration 0041', () => {
+  const t = useTestDb();
+
+  it('redacts the e-mail of rejects written with the old partial mask', async () => {
+    const { user } = await createUser(t.db);
+    const plot = await createPlot(t.db);
+    const file = await csv(['user_email,plot_id', `ghost-${Date.now()}@example.com,${plot.code}`]);
+    const batch = await importUserPlots(t.db, { filePath: file, runBy: user.id });
+    await t.db
+      .update(importRejects)
+      .set({ rawRow: { user_email: 'g***@example.com', plot_id: plot.code } })
+      .where(eq(importRejects.batchId, batch.id));
+
+    const migration = await readFile(
+      new URL('../../../drizzle/0041_reject_email_redaction.sql', import.meta.url),
+      'utf8',
+    );
+    await t.db.execute(sql.raw(migration));
+
+    const [reject] = await t.db
+      .select()
+      .from(importRejects)
+      .where(eq(importRejects.batchId, batch.id));
+    expect(reject?.rawRow).toEqual({ user_email: '***', plot_id: plot.code });
   });
 });
