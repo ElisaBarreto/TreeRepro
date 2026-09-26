@@ -17,7 +17,9 @@ const CONTROL =
  * open while `index` names one of `items` — the selected trait's maps in
  * page order — closed while it is `null`. Left/Right (or the ← / → buttons)
  * step to the previous/next map, wrapping; Escape closes it natively. It
- * heads the map with the same text the page does and repeats its alt text.
+ * heads the map with the same text the page does and repeats its alt text
+ * for sighted users, `aria-hidden` so a screen reader — already given that
+ * text as the image's own alt — does not hear it twice.
  * @rfc RFC-76 R7
  */
 export function MapViewer({
@@ -72,7 +74,9 @@ export function MapViewer({
               <h2 className="font-display text-section font-semibold text-canopy-950">
                 {item.heading}
               </h2>
-              <p className="text-meta text-mist-500">{item.alt}</p>
+              <p aria-hidden="true" className="text-meta text-mist-500">
+                {item.alt}
+              </p>
             </div>
             <div className="flex items-center gap-1">
               {items.length > 1 ? (

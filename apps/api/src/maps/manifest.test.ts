@@ -1,8 +1,8 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseManifest, readManifest } from './manifest.ts';
+import { hasManifest, parseManifest, readManifest } from './manifest.ts';
 
 const HEADER = 'trait_key,map_kind,level_key,file,data_version';
 const files = new Set(['a.svg', 'b.webp', 'c.svg']);
@@ -82,5 +82,29 @@ describe('readManifest (RFC-76 R1)', () => {
   it('answers no maps for a directory with no manifest.csv', async () => {
     dir = await mkdtemp(join(tmpdir(), 'maps-empty-'));
     expect(await readManifest(dir)).toEqual([]);
+  });
+});
+
+describe('hasManifest (RFC-76 R1)', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it('is false for a directory that does not exist', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-missing-'));
+    expect(await hasManifest(join(dir, 'does-not-exist'))).toBe(false);
+  });
+
+  it('is false for a directory with no manifest.csv', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-empty-'));
+    expect(await hasManifest(dir)).toBe(false);
+  });
+
+  it('is true once manifest.csv is written, even header-only', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-present-'));
+    await writeFile(join(dir, 'manifest.csv'), `${HEADER}\n`);
+    expect(await hasManifest(dir)).toBe(true);
   });
 });

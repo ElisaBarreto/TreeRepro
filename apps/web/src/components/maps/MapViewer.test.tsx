@@ -26,6 +26,15 @@ describe('RFC-76 R7 MapViewer', () => {
     expect(within(dialog).getByText('Data completeness map of x')).toBeInTheDocument();
   });
 
+  it('hides the repeated alt text from screen readers, it is already the image alt', () => {
+    render(<MapViewer items={ITEMS} index={0} onIndexChange={vi.fn()} onClose={vi.fn()} />);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Data completeness map of x')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+  });
+
   it('bounds the image to the dialog so a short landscape viewport never clips it', () => {
     render(<MapViewer items={ITEMS} index={0} onIndexChange={vi.fn()} onClose={vi.fn()} />);
     const image = within(screen.getByRole('dialog')).getByRole('img');

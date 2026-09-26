@@ -13,10 +13,10 @@ test.describe('RFC-76 R6 trait maps (issue #197)', () => {
       await page.goto('/app');
       await page.getByRole('link', { name: 'Maps' }).click();
       await expect(page).toHaveURL('/app/maps');
-      // MapsPage.tsx: `dictionary.isSuccess && maps.isSuccess && categories
-      // .length === 0` renders `<EmptyState title="No maps yet." />`; the
-      // production manifest (`apps/api/maps/manifest.csv`) ships with no
-      // rows, so every category is empty of maps.
+      // MapsPage.tsx: `succeeded && !category` renders `<EmptyState
+      // title="No maps yet." />`; `scripts/e2e.sh` points MAPS_DIR
+      // (MAPS_HOST_DIR) at an empty directory for this stack, so the
+      // manifest has no rows and every category is empty of maps.
       await expect(page.getByText('No maps yet.')).toBeVisible();
     } finally {
       await admin.close();

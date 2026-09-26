@@ -25,6 +25,13 @@ results="$root/apps/e2e/test-results"
 secrets_dir="$(mktemp -d)"
 export E2E_SECRETS_DIR="$secrets_dir"
 
+# RFC-76 R1: an empty directory, never the repo's apps/api/maps (which a
+# developer may have populated with local maps to try the page) — the maps
+# suite asserts "No maps yet.", which local maps would break.
+maps_dir="$secrets_dir/maps"
+mkdir -p "$maps_dir"
+export MAPS_HOST_DIR="$maps_dir"
+
 compose() {
   docker compose -p "$project" -f "$root/compose.yml" -f "$root/compose.e2e.yml" "$@"
 }

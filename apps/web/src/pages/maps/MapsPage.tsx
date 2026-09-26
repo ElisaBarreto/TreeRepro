@@ -200,7 +200,6 @@ function TraitButtons({
           type="button"
           id={traitButtonId(t.key)}
           aria-pressed={t.id === selected.id}
-          tabIndex={t.id === selected.id ? 0 : -1}
           className={TOGGLE_BUTTON}
           onClick={() => onSelect(t.key)}
           onKeyDown={(event) => onKeyDown(event, index)}

@@ -38,14 +38,15 @@ describe('RFC-76 R6, R7 MapFigure', () => {
     expect(document.querySelector('dialog')).not.toBeInTheDocument();
   });
 
-  it('with onOpen wraps the image in a button that calls it', async () => {
+  it('with onOpen wraps the image in a button that calls it, named that it opens the full size', async () => {
     const onOpen = vi.fn();
     render(
       <MapFigure entry={ENTRY} alt="Data completeness map of Flower colour" onOpen={onOpen} />,
     );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Data completeness map of Flower colour' }),
-    );
+    const button = screen.getByRole('button', {
+      name: 'Data completeness map of Flower colour, open full size',
+    });
+    await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });

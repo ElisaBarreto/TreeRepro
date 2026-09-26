@@ -191,6 +191,14 @@ describe('RFC-76 R6 MapsPage', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'flower colour' })).toBeInTheDocument();
   });
 
+  it('a trait from another category than the one given wins: its own category and itself', async () => {
+    await openPage('/app/maps?category=seed&trait=flower_colour');
+    const list = await tabs();
+    expect(list[1]).toHaveAttribute('aria-selected', 'true');
+    expect(traitButtons('Flower')[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('heading', { level: 3, name: 'flower colour' })).toBeInTheDocument();
+  });
+
   it('an unknown category and trait fall back to the defaults', async () => {
     await openPage('/app/maps?category=nope&trait=nope');
     const list = await tabs();
@@ -328,7 +336,9 @@ describe('RFC-76 R7 MapsPage keyboard', () => {
     const { router } = await openPage();
     await tabs();
     await user.click(traitButtons('Seed')[0] as HTMLElement);
-    expect(traitButtons('Seed').map((b) => b.tabIndex)).toEqual([0, -1]);
+    // Every trait button stays tabbable (no roving tabIndex); only Tab order
+    // is native, arrow keys still move selection and focus among them.
+    expect(traitButtons('Seed').map((b) => b.tabIndex)).toEqual([0, 0]);
 
     await user.keyboard('{ArrowRight}');
     await waitFor(() => expect(traitButtons('Seed')[1]).toHaveFocus());
@@ -348,7 +358,9 @@ describe('RFC-76 R7 MapsPage keyboard', () => {
     const user = userEvent.setup();
     await openPage();
     await tabs();
-    await user.click(screen.getByRole('button', { name: 'Data completeness map of seed mass' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Data completeness map of seed mass, open full size' }),
+    );
     const dialog = screen.getByRole('dialog');
     const shown = () => within(dialog).getByRole('img');
     expect(within(dialog).getByRole('heading', { name: 'Data completeness' })).toBeInTheDocument();
@@ -375,7 +387,11 @@ describe('RFC-76 R7 MapsPage keyboard', () => {
     const user = userEvent.setup();
     await openPage('/app/maps?category=flower');
     await tabs();
-    await user.click(screen.getByRole('button', { name: 'Prevalence map of flower colour: blue' }));
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Prevalence map of flower colour: blue, open full size',
+      }),
+    );
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('heading', { name: 'blue' })).toBeInTheDocument();
     await user.keyboard('{ArrowRight}');

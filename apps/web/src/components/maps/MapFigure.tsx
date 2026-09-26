@@ -38,6 +38,7 @@ export function MapFigure({
       {onOpen ? (
         <button
           type="button"
+          aria-label={`${alt}, open full size`}
           className={`${frame} w-full cursor-zoom-in focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500`}
           onClick={onOpen}
         >

@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MAP_KINDS, type MapKind, type TraitValueType } from '@treerepro/contracts';
@@ -126,6 +126,22 @@ export async function readManifest(dir: string): Promise<ManifestRow[]> {
     throw err;
   }
   return parseManifest(text, new Set(entries));
+}
+
+/**
+ * Whether `<dir>/manifest.csv` exists. A missing manifest means no maps (R1),
+ * not an error; this lets a caller such as `check-maps` still say so, since
+ * `readManifest` folds that case into an empty row list indistinguishable
+ * from a header-only manifest.
+ * @rfc RFC-76 R1
+ */
+export async function hasManifest(dir: string): Promise<boolean> {
+  try {
+    await access(join(dir, 'manifest.csv'));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

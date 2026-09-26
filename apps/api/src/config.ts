@@ -1,9 +1,18 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { inspect } from 'node:util';
 import { z } from 'zod';
-import { defaultMapsDir } from './maps/manifest.ts';
 import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
+
+// `apps/api/maps/`, next to `src/` in development and to `dist/` in the
+// image (same directory `defaultMapsDir()` in `./maps/manifest.ts` gives).
+// Computed here, not imported from there, so loading this module — the
+// migrator loads it too, for `loadMigratorConfig` — never pulls in the
+// import pipeline `./maps/manifest.ts` depends on for CSV parsing.
+function defaultMapsDir(): string {
+  return fileURLToPath(new URL('../maps', import.meta.url));
+}
 
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];

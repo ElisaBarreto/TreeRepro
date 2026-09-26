@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import { loadConfig } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { checkMaps } from '../maps/check.ts';
+import { hasManifest } from '../maps/manifest.ts';
 
 const USAGE = 'usage: check-maps [--dir <dir>]\n';
 
@@ -21,6 +22,7 @@ try {
 
 const config = loadConfig();
 const dir = values.dir ?? config.mapsDir;
+if (!(await hasManifest(dir))) process.stderr.write(`no manifest.csv in ${dir}\n`);
 const { db, close } = createDb(config.db.url.expose(), { max: 1 });
 
 let exitCode = 0;
