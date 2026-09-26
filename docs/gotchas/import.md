@@ -120,5 +120,105 @@
    Expected: `1 <N> 0 0 t`, where `<N>` equals `inserted` in step 4's `Rows:` line.
 8. **Start the API:** `docker compose up -d api`, then `docker compose ps` shows it healthy.
 
-After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`: once any `TR_` record exists (a manual record created after this reimport), the total `--replace` is refused (RFC-64 R12).
+After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`: once any platform data exists — a `TR_` record, an annotation or a contest created after this reimport — the total `--replace` is refused (RFC-64 R12).
+
+## Replacing the imported records while keeping the platform (`--replace-imported`, RFC-64 R15)
+
+**Symptom:** A corrected compilation of the source file arrives after users have started working. The file keeps the `ID` column (`EB_<n>`) and may change, drop or add rows. `--replace` is out of the question: it deletes every platform record, and RFC-64 R12 refuses it anyway once one exists.
+
+**Cause:** Imported records are append-only (RFC-63 R4), and users' validations, withdrawals, contests and harmonisations point at them by id. Swapping the file means deleting the `EB_` rows and re-attaching all of that to the new rows by `record_code`. RFC-64 R15 does this in one transaction, as `treerepro_migrator`.
+
+**Fix:** Run it on the production host, from the checkout. Put the new file at `/srv/imports/sample_data.csv`; its first line ends `"harmonised_value","ID"` (quoted; the unnamed first column is R's row number, as in the section above).
+
+1. **Sheet directory.** The sheet names users (personal data), so the directory is private to the `api` image's user (`node`, uid 1000):
+   ```sh
+   sudo install -d -m 700 -o 1000 -g 1000 /srv/imports/replace-sheets
+   head -1 /srv/imports/sample_data.csv | tr -d '\r' | grep -c '"harmonised_value","ID"$'   # → 1
+   ```
+2. **Back up**, as in the section above:
+   ```sh
+   docker compose run --rm --no-deps --entrypoint /usr/local/bin/backup.sh backup
+   ```
+   It prints `backup written: /backups/treerepro-<stamp>.sql.age`. Note the stamp. Restoring it is "Restoring a backup" in `docs/gotchas/infra.md`.
+3. **Stop the API.** The run locks `trait_records` and `record_annotations` for its whole length (minutes on the full dataset), and nobody should be working meanwhile:
+   ```sh
+   docker compose stop api
+   ```
+4. **Dry checks.** Note the eight numbers: platform records, their annotations, annotations of imported records, responses to imported records, harmonisations of imported records, and the three contest tables (untouched by R15; step 6 checks they stay that way):
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -v ON_ERROR_STOP=1 -At -F ' ' -c \
+     "select (select count(*) from trait_records where origin = 'manual'),
+             (select count(*) from record_annotations a join trait_records r on r.id = a.record_id where r.origin = 'manual'),
+             (select count(*) from record_annotations a join trait_records r on r.id = a.record_id where r.origin = 'import'),
+             (select count(*) from trait_records k join trait_records t on t.id = k.responds_to_record_id where t.origin = 'import'),
+             (select count(*) from trait_records k join trait_records t on t.id = k.supersedes_record_id where t.origin = 'import'),
+             (select count(*) from contests), (select count(*) from contest_records), (select count(*) from contest_events)"
+   ```
+   The sheet will have (3rd + 4th + 5th) rows. Then list the harmonisations that have no primary reference of their own. The run refuses to orphan one of those, so each code this prints must be an `ID` of the new file:
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
+     "select distinct regexp_replace(t.record_code, '[a-z]+$', '') from trait_records k join trait_records t on t.id = k.supersedes_record_id
+      where t.origin = 'import' and k.primary_reference_id is null order by 1" > /tmp/needed-ids.txt
+   awk -F, 'NR>1 { v=$NF; gsub(/["\r]/, "", v); print v }' /srv/imports/sample_data.csv | sort -u > /tmp/file-ids.txt
+   sort -u /tmp/needed-ids.txt | comm -23 - /tmp/file-ids.txt   # must print nothing
+   ```
+   `ID` is the file's last column and never holds a comma; earlier fields may be quoted and hold one, which reading only the last field tolerates. If the check prints codes, stop: bring the API back (`docker compose up -d api`) and take the codes to the owner. The run would roll back anyway, naming them.
+5. **Replace.** A one-off container of the `api` image, with the migrator secret mounted, the files read-only and the sheet directory writable. `NODE_ENV` stays `production`: RFC-64 R15 is allowed there, and the migrator secret is its gate.
+   ```sh
+   docker compose run --rm --no-deps \
+     -v "$PWD/infra/secrets/db_migrator_password:/run/secrets/db_migrator_password:ro" \
+     -v /srv/imports:/imports:ro \
+     -v /srv/imports/replace-sheets:/sheets \
+     api node dist/cli/import-records.js --file /imports/sample_data.csv \
+       --replace-imported --annotation-sheet /sheets --run-by <owner e-mail>
+   ```
+   The report must read `Mode: replace-imported …`, `Batch <id> completed …` and `Annotation sheet: /sheets/replace-<id>-annotations.csv`.
+
+   The sheet is written at that final name first (every row `pending`), and the run's own final version is renamed over it only after COMMIT. If that rename fails, the batch is still committed (nothing is rolled back for it): the CLI then prints `batch <id> committed; final sheet left at <path>.tmp — rename it by hand` to stderr and still exits 0. Rename `/sheets/replace-<id>-annotations.csv.tmp` over the pending file by hand and continue at step 6 — do not re-run the import.
+
+   On an actual failure the command exits 1 with `Import failed: …`, and nothing in the database changed; the sheet directory then holds the pre-wipe copy, every row `pending`. Before retrying anything, check the batch's real status — a `0` exit is not the only way to tell a completed run from a failed one, and the CLI's own exit code is what a wrapping script sees, not what the database recorded:
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
+     "select status, error from import_batches order by started_at desc limit 1"
+   ```
+   Retry only a batch this shows `failed`; a `completed` one (even with a leftover `.tmp`) must not be re-run — go to step 7 and then step 9 instead.
+6. **Post-checks.**
+   - Re-run the first query of step 4. Its first two numbers (platform records, their annotations) and the three contest-table counts (6th–8th) must be unchanged.
+   - The sheet: no `pending` row and no `.tmp` file; the row count as expected; how many rows were re-linked and how many orphaned:
+     ```sh
+     ls /srv/imports/replace-sheets
+     f=/srv/imports/replace-sheets/replace-<id>-annotations.csv
+     grep -c ',pending'$'\r''$' "$f"                              # → 0
+     tail -n +2 "$f" | wc -l                                       # → 3rd + 4th + 5th number of step 4
+     grep -c ',relinked'$'\r''$' "$f"; grep -c ',orphan'$'\r''$' "$f"
+     ```
+     If the orphan count is not what the owner accepts, restore the step 2 backup now, before step 9 starts the API: nobody has worked since, so nothing is lost.
+   - The codes and the counters. The expected answer is `0 t`:
+     ```sh
+     docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
+       "select (select count(*) from trait_records where origin = 'import' and record_code !~ '^EB_[0-9]+([a-z]+)?\$'),
+               (select coalesce(sum(primary_count), 0) from bibliographic_references) =
+               (select count(*) from trait_records r where r.primary_reference_id is not null
+                  and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw'))
+               + (select count(*) from record_references rr join trait_records r on r.id = rr.record_id
+                  where not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw'))"
+     ```
+7. **Check the triggers are back on** (`O` = enabled):
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
+     "select tgname, tgenabled from pg_trigger where tgname in ('trait_records_append_only', 'trait_records_no_truncate', 'record_annotations_append_only', 'record_annotations_no_truncate') order by 1"
+   ```
+8. **Reclaim the space** the deleted rows left. This runs outside any transaction, and a few minutes is normal:
+   ```sh
+   docker compose exec -T postgres psql -U postgres -d treerepro -c 'vacuum (analyze) trait_records, record_annotations'
+   ```
+9. **Start the API:** run `docker compose up -d api`, then `docker compose ps` shows it healthy.
+10. **The sheet.** Hand it to the owner. The `orphan` rows are the work whose record the new file dropped:
+    - validations and withdrawals: removed;
+    - contests: now independent records;
+    - harmonisations: now records of their own.
+
+    It names users, so it stays in the `700` directory and is deleted once the owner has reviewed it.
+
+Nothing else needs reloading: species, taxa, references, plots, plot species, user plots, synonyms and proposals were never touched, and the file adds whatever is missing.
 
