@@ -21,6 +21,8 @@ export const AUDIT_ACTIONS = [
   'auth.totp.enabled',
   'auth.totp.disabled',
   'auth.totp.recovery_used',
+  'auth.api_key.created',
+  'auth.api_key.revoked',
   'users.created',
   'users.updated',
   'users.roles_changed',
