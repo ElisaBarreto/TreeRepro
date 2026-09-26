@@ -77,6 +77,59 @@ describe('RFC-73 R6–R8 help content', () => {
     );
   });
 
+  // Plan 13j: the seed describes the revised record model (spec R-1, R-3, R-4,
+  // R-11, R-13, §2), and every anchor a HelpTip or a help page links to exists.
+  it('R2 the seed uses the revised record model and keeps the linked anchors (plan 13j)', async () => {
+    const { cookie } = await signedIn();
+    const retired = [
+      /accepted value/i,
+      /Add different record/,
+      /\bNeutral\b/,
+      /✓ Validate/,
+      /one record per reference/i,
+      /struck through/i,
+    ];
+    const linked: Record<string, string[]> = {
+      workflow: ['validate', 'different', 'contest', 'complement', 'withdraw', 'review'],
+      vocabulary: ['descriptions'],
+      references: ['doi', 'book'],
+      faq: ['download'],
+      contact: ['what-to-send'],
+    };
+    const slugs = [
+      'getting-started',
+      'workflow',
+      'vocabulary',
+      'references',
+      'scope',
+      'contributions',
+      'faq',
+      'contact',
+    ];
+    const topics = new Map<string, Topic>();
+    for (const slug of slugs) topics.set(slug, await read(cookie, slug));
+    for (const [slug, topic] of topics) {
+      const text = [topic.summary, ...topic.sections.flatMap((s) => [s.title, s.bodyHtml])].join(
+        '\n',
+      );
+      for (const word of retired) expect(text, `${slug} still says ${word}`).not.toMatch(word);
+      expect(
+        topic.sections.map((s) => s.anchor),
+        slug,
+      ).toEqual(expect.arrayContaining(linked[slug] ?? []));
+      // Links between help pages land on a seeded topic and section.
+      for (const [, to, anchor] of text.matchAll(/href="\/app\/help\/([a-z-]+)(?:#([a-z-]+))?"/g)) {
+        const target = topics.get(to as string);
+        expect(target, `${slug} links to unknown topic ${to}`).toBeDefined();
+        if (anchor)
+          expect(
+            target?.sections.map((s) => s.anchor),
+            `${slug} → ${to}#${anchor}`,
+          ).toContain(anchor);
+      }
+    }
+  });
+
   it('R6 an unknown slug answers 404 HELP_TOPIC_NOT_FOUND', async () => {
     const { cookie } = await signedIn();
     const res = await call(t.app, 'GET', '/api/help/no-such-topic', { cookie });
