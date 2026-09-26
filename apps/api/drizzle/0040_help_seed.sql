@@ -1,56 +1,57 @@
--- RFC-73 R2: seeds the help topics from the former TSX modules
--- (apps/web/src/content/help/*.tsx). Afterwards the database is the only
--- source and the admin edits the pages on the site (RFC-73 R7).
+-- RFC-73 R2: seeds the help topics with the owner's text, revised for the
+-- record model of plans 13a–13i (plan 13j). Afterwards the database is the
+-- only source and the admin edits the pages on the site (RFC-73 R7).
 INSERT INTO help_topics (slug, title, summary, position) VALUES
   ('getting-started', $h$Getting started$h$, $h$What TreeRepro is, and what to do in your first ten minutes.$h$, 0);
 --> statement-breakpoint
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  ('what', $h$What TreeRepro is$h$, $h$<p>TreeRepro is a collective assembly of reproductive trait data for trees: traits of flowers, fruits and seeds. Its core data comes from open-source papers and data repositories, and it is shared with a community of specialist scientists who fill the gaps and check what is already there.</p>
-<p>Every value in the dataset is a <strong>record</strong>: one species, one trait, one value, and the reference it comes from. Records are never edited and never overwritten. You add to them, you agree with them, or you disagree with them, and each of those leaves your name on what you did. The admin then decides which record is the <strong>accepted value</strong> for that species and trait.</p>$h$, 0),
-  ('first-steps', $h$Your first ten minutes$h$, $h$<ol><li>Read <a href="/app/help/workflow">Workflow</a>. It is short, and it is what every other screen assumes you know.</li>
-<li>Open <strong>Species</strong> in the sidebar. If plots have been assigned to you, the list starts with the species of your plots; see <a href="/app/help/scope">Scope</a> for how to widen it.</li>
-<li>Open a species, find a trait you know well, and open one of its records. If the value is right, press <strong>✓ Validate</strong>. That is a real contribution: it tells the managers the value has been checked by someone who knows the species.</li>
-<li>Find a trait with no record yet and press <strong>Add the first entry</strong>. Give the value and the DOI of the paper it comes from, or leave the DOI blank if it is your own field observation.</li>
-<li>Open <strong>My contributions</strong> to see everything you have recorded and annotated in one place.</li>
+  ('what', $h$What TreeRepro is$h$, $h$<p>TreeRepro is a collective assembly of reproductive trait data for trees, covering flowers, fruits and seeds. Its core data comes from open-source papers and data repositories, and it is shared with a community of specialists who fill the gaps and validate or contest what is already there.</p>
+<p>Every value in the dataset is a <strong>record</strong>: one species, one trait, one value, the references it comes from, and a record ID — <code>EB_</code> and a number for records from the compiled dataset, <code>TR_</code> and a number for records entered here, with a letter added when one entry gave several levels. Records are never edited. You add to them, validate them or contest them, and each of those carries your name. TreeRepro keeps every claim side by side and never picks one; what it shows is how much agreement each has.</p>
+<p>Whenever you can, give a reference for what you enter: a DOI, or a book’s ISBN.</p>$h$, 0),
+  ('first-steps', $h$Your first ten minutes$h$, $h$<ol><li>Read <a href="/app/help/workflow">Workflow</a>. It is short, and every other screen assumes you know it.</li>
+<li>Open <strong>Species</strong> in the sidebar. If plots have been assigned to you, the list starts with the species of your plots; see <a href="/app/help/scope">Scope</a>.</li>
+<li>Open a species and find a trait you know well. If a value is right, press the thumbs-up button next to it, <strong>Validate</strong>. That is a real contribution: it tells everyone the value has been checked by someone who knows the species. If the value is wrong, press the thumbs-down, <strong>Contest</strong>; if another value is also true, press the plus, <strong>Complement</strong>. The legend at the top of the page names the three.</li>
+<li>Tick <strong>Show traits with no data</strong>, pick a trait with no record yet and press <strong>Add the first entry</strong>. Give the value and its reference, or none if it is your own field observation.</li>
+<li>Or browse by trait: <strong>Traits</strong> in the sidebar lists every trait, and a trait’s page shows every species with records for it.</li>
+<li>Open <strong>My contributions</strong> to see everything you have entered and validated, in one place.</li>
 </ol>$h$, 1),
-  ('contact', $h$Where to ask$h$, $h$<p>If a species, a trait or a level you need is missing, or something here does not match what you see on screen, write to the project. <a href="/app/help/contact">Contact</a> has the address and what to put in the message.</p>$h$, 2)
+  ('contact', $h$Questions or suggestions$h$, $h$<p>If a species, a trait or a level you need is missing, or something here does not match what you see on screen, write to us. <a href="/app/help/contact">Contact</a> has the address.</p>$h$, 2)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'getting-started';
 --> statement-breakpoint
 INSERT INTO help_topics (slug, title, summary, position) VALUES
-  ('workflow', $h$Workflow$h$, $h$Validate, add a different record, contest, complement, withdraw — and what happens next.$h$, 1);
+  ('workflow', $h$Workflow$h$, $h$Add records, validate, contest, complement, withdraw — and what happens next.$h$, 1);
 --> statement-breakpoint
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  (NULL, $h$$h$, $h$<p>A record is never edited and never deleted. Everything below adds something next to it: an annotation that says what you think of it, or a new record of your own. That is what makes the dataset auditable — a value can always be traced to the person and the reference it came from.</p>$h$, 0),
-  ('validate', $h$Validate$h$, $h$<p><strong>✓ Validate</strong> says: I agree with this value as it stands. Nothing about the record changes — not the value, not its reference, not who created it. What is written is a confirmation carrying your name and the moment you gave it, attached to the record.</p>
-<p>You may attach a supporting DOI under <strong>Add a supporting DOI (optional)</strong>: the paper that makes you confident. It is checked against the DOI registry like any other reference, so wait for the check before pressing the button. Leaving it blank is perfectly normal.</p>
-<p>You can validate a record once. Afterwards the button is out of reach and the record says “You validated this record”. Someone else validating the same record is a separate confirmation; yours is not replaced.</p>$h$, 1),
-  ('different', $h$Add a different record$h$, $h$<p><strong>+ Add different record</strong> is what you press when the value should be something else, or when you have a second value from another source. It does not change the record you are looking at: a different value is always a new record of its own, with its own reference and your name on it.</p>
-<p>The form asks three things, in this order:</p>
-<ul><li>What your value means about the existing one — <strong>contest</strong> or <strong>complement</strong>. The rest of the form stays disabled until you answer, because the same value means two different things.</li>
-<li>The value itself: a level for a categorical trait, a number for a quantitative one.</li>
-<li>Its sources: one DOI per row, up to ten, or every row blank for your own observation. See <a href="/app/help/references">References</a>.</li>
+  (NULL, $h$$h$, $h$<p>A record is never edited. Everything below adds something next to it, either a validation or a record of your own, so every value can be traced to the person and the reference it came from.</p>
+<p>On a species page, each level of a categorical trait carries three buttons: thumbs up for <strong>Validate</strong>, thumbs down for <strong>Contest</strong> and a plus for <strong>Complement</strong>. The legend at the top of the page names them. For a quantitative trait, open its card: each record in the list carries the same three buttons. An opened record shows them too, written out, under <strong>Actions</strong>.</p>$h$, 0),
+  ('different', $h$Adding a record$h$, $h$<p><strong>Contest</strong>, <strong>Complement</strong>, the <strong>+</strong> on a trait card, <strong>Add the first entry</strong> and <strong>Add entries for another trait</strong> all open the same form. It asks three things, in this order:</p>
+<ol><li>If the species already has records for the trait, <strong>What does your value mean?</strong> — whether your entry <strong>contests</strong> or <strong>complements</strong> them, and, unless it is a contest on a categorical trait, which existing value it is <strong>Responding to</strong>. Nothing else in the form can be filled in until you answer, because the same value means something different in each case. <strong>Contest</strong> opens the form with Contest already chosen; the other entry points leave the choice to you.</li>
+<li>The value. For a categorical trait, tick one level or several; each new level becomes a record of its own. For a quantitative trait, give the numbers your source reports: a single value, min, max, mean, SD and n, at least one of the first four; see <a href="/app/help/vocabulary#units">Units and numbers</a>.</li>
+<li>Its references: one or more DOIs or books, up to ten, or none for your own observation. Every record the form creates carries all of them. See <a href="/app/help/references">References</a>.</li>
+</ol>
+<p>On a categorical trait that already has records, the form then spells out what it will do with each level — for example “Validate red · Contest blue · Add green” — and asks you to tick <strong>Confirm</strong> before <strong>Add record(s)</strong> sends it.</p>
+<p>If your entry matches a record that is already there (the same level, or the same numbers in all six fields), no second record is created. Your entry counts as a validation of the existing record, and the form says so: “matches an existing record — counted as your validation”. If the matching record is your own, the form only reports it: “already your own record — nothing was added”.</p>$h$, 1),
+  ('validate', $h$Validate$h$, $h$<p><strong>Validate</strong> says: I agree with this value as it stands. It asks “Do you confirm that this record is correct?” and, when you confirm, adds your name to the record as a validation. The record itself does not change. On a categorical trait, validating a level validates every record of that level.</p>
+<p>You may add a supporting reference, a DOI or a book’s ISBN, for the source that makes you confident. Without one, your validation rests on your own knowledge, which is perfectly normal.</p>
+<p>You cannot validate your own records, so the button is not offered on them. Each person counts once per record: once you have validated a record, it says “You validated this record”. A validation cannot be undone.</p>$h$, 2),
+  ('contest', $h$Contest$h$, $h$<p><strong>Contest</strong> says: this value is wrong.</p>
+<p>On a categorical trait, a contest states which levels are right: the levels you tick. Existing levels you tick count as your validations, new levels become records of your own, and the existing levels you leave unticked are contested. Pressing <strong>Contest</strong> next to a level opens the form with every other existing level already ticked, so only that level is contested; change the ticks if you disagree with more, and check the <strong>Confirm</strong> line before sending. If a species has red, blue and orange and you contest “blue”, red and orange are validated and blue is contested; giving only green instead would add a green record and contest all three. A contest must leave at least one existing level unticked; otherwise it is a complement.</p>
+<p>On a quantitative trait you contest one record, with a value that differs from it in at least one of the six fields, and your value becomes a record of its own.</p>
+<p>Either way, the level or record you contested is marked <strong>Contested</strong> for everyone until a manager reviews it. To take a contest back, withdraw the record it added. A categorical contest that added no record can only be withdrawn by a manager, so write to us.</p>$h$, 3),
+  ('complement', $h$Complement$h$, $h$<p><strong>Complement</strong> says: this value is also correct, and I am adding another. A species can have more than one dispersal mode, biotic and abiotic for example. If only one is recorded, complement it with the other: both records are true and both belong in the dataset. On a quantitative trait, a complement adds another measurement, which helps capture variation within the species. A complement contests nothing.</p>$h$, 4),
+  ('withdraw', $h$Withdraw$h$, $h$<p><strong>Withdraw</strong> takes a record back when you entered the wrong species, misread a table, or changed your mind. You can withdraw your own records at any time: open the record, press <strong>Withdraw</strong> under <strong>Actions</strong> and confirm. You do not have to write a note.</p>
+<p>A withdrawn record leaves the dataset. For every viewer, it disappears from every list, count and export. Managers can also withdraw records entered by others. Only the admin can withdraw a record imported from the compiled dataset.</p>$h$, 5),
+  ('review', $h$What managers do next$h$, $h$<p>Open contests go to the managers’ <strong>Contested</strong> queue. The responsible team reviews the original records, may contact the people who entered them, and settles each contest in one of two ways:</p>
+<ul><li>by withdrawing one side: the contest with <strong>Withdraw contest</strong>, which takes out every record it added; a contested level with its own withdraw button (<strong>Withdraw “blue”</strong>, say); or a contested quantitative record with <strong>Withdraw record</strong>;</li>
+<li>or with <strong>Keep both</strong>, when both values turn out to be true.</li>
 </ul>
-<p>One record is created per reference you give. If a claim identical to one of them already exists, it is not created twice: the form names the existing record instead and links to it.</p>$h$, 2),
-  ('contest', $h$Contest$h$, $h$<p><strong>Contest</strong> means: the existing value is wrong; mine should replace it. Your value must differ from the one you are contesting — a contest that repeats the same value is refused.</p>
-<p>Creating it raises a <strong>dispute</strong> on the record you answered, automatically and in the same step. The dispute is marked as automatic, names your contesting record, and puts the contested record in the managers’ Disputed queue. You do not have to write anything else; the value and the reference you gave are the argument.</p>
-<p>To take a contest back, withdraw your contesting record. Once you have no other standing contest of that record, the dispute you raised is lifted automatically, with a neutral annotation saying the contest was withdrawn. Contesting the same record from several references raises one dispute, and it stands until the last of those records is withdrawn.</p>$h$, 3),
-  ('complement', $h$Complement$h$, $h$<p><strong>Complement</strong> means: the existing value is also correct; I am adding another observation. A species can flower in two seasons and disperse in two modes; both records are true and both belong in the dataset.</p>
-<p>A complement raises no dispute and changes nothing about the record it answers. It may even carry the same value, as long as it comes from another reference — that is a second, independent source for the same claim. Withdrawing a complement has no side effect.</p>$h$, 4),
-  ('withdraw', $h$Withdraw$h$, $h$<p><strong>Withdraw</strong> takes one of your own records out of consideration: you entered the wrong species, misread a table, or changed your mind. It asks for a note saying why, and that note stays on the record.</p>
-<ul><li>Only records entered by hand can be withdrawn; imported rows cannot.</li>
-<li>Only their author can withdraw them, or someone holding the withdrawal permission for the whole dataset.</li>
-<li>A record that is currently the accepted value cannot be withdrawn. Ask the admin to change the accepted value first.</li>
-</ul>
-<p>A withdrawn record stays visible, marked withdrawn and struck through, and takes no further actions. Nothing is erased — see <a href="/app/help/contributions">Contributions</a>.</p>$h$, 5),
-  ('review', $h$What managers and the admin do next$h$, $h$<p>For every species and trait, the admin may mark one record as the <strong>accepted value</strong>: the single value the project stands behind, and the one the export carries. Managers run the queues below, but the manager role does not carry the permission to set or clear an accepted value. Only a record with a value the dictionary understands can be accepted, and the decision can be changed or cleared later. The species page shows the accepted value next to the trait.</p>
-<p>Records under a standing dispute — yours included — go to the managers’ <strong>Disputed</strong> queue. A row there is the disputed record: its species, its trait, its own value, who disputed it, their note and the date. When a contest raised the dispute, that note is written for you and names the contesting record by its id. The competing value is not in the row: open the record from its value, then open any record in the drawer’s <strong>Responses</strong> list. A record leaves that queue once the admin settles the accepted value for its species and trait: it may still read <em>disputed</em> on the species page while no longer waiting in the queue.</p>
-<p>A separate <strong>Pending</strong> queue is where imported values the dictionary cannot read are mapped by hand — a categorical value matching no level, one cell holding several values at once, or a quantitative cell that is not a number.</p>
-<p>None of this is instant. A validation or a contest may sit unreviewed for a while; it is recorded from the moment you press the button, and it is visible on <strong>My contributions</strong> straight away.</p>$h$, 6)
+<p>Either way the <strong>Contested</strong> mark clears. A manager cannot withdraw imported records; when some are left, the page says so, and an admin can withdraw them or the contest can end with <strong>Keep both</strong>. In a separate <strong>Pending</strong> queue, managers map by hand the imported values that the dictionary cannot read.</p>
+<p>None of this is instant. What you do is recorded the moment you press the button, though, and it shows on <strong>My contributions</strong> straight away.</p>$h$, 6)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'workflow';
 --> statement-breakpoint
@@ -60,48 +61,49 @@ INSERT INTO help_topics (slug, title, summary, position) VALUES
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  ('traits', $h$Traits and categories$h$, $h$<p>A <strong>trait</strong> is one property of a species that can be recorded: seed mass, dispersal mode, flowering season. Every trait belongs to a broad <strong>category</strong> — the grouping the Traits page and the entry form use to keep the list navigable.</p>
-<p>Each trait has one of two value types, fixed when it is created:</p>
-<ul><li><strong>Categorical</strong> — the value is one of a fixed list of levels.</li>
-<li><strong>Quantitative</strong> — the value is a number, in the trait’s own unit.</li>
+  ('traits', $h$Traits and categories$h$, $h$<p>A <strong>trait</strong> is one property of a species that can be recorded, such as seed mass, dispersal mode or pollination mode. Every trait belongs to a broad <strong>category</strong> such as flowers, fruits or pollination.</p>
+<p>Each trait is one of two kinds:</p>
+<ul><li><strong>Categorical</strong>: the value is one of a fixed list of levels.</li>
+<li><strong>Quantitative</strong>: the value is a number, in the trait’s own unit.</li>
 </ul>
-<p>The whole list lives on the <strong>Traits</strong> page, category by category, with the number of species that have data for each trait. Open a trait to see the rest: how its records are distributed, and the species that are still missing it.</p>$h$, 0),
-  ('levels', $h$Levels$h$, $h$<p>The allowed values of a categorical trait are its <strong>levels</strong>. You choose one from a list; there is no free-text box, and that is deliberate. Two people writing “animal-dispersed” and “zoochory” mean the same thing, but nothing can count them together, compare them across references or export them as one value. A level is a shared identifier, so a record from a 1974 monograph and one you enter today line up.</p>
-<p>A level is never renamed away from under a record and never deleted; a level that falls out of use is retired instead, and records already pointing at it keep their value.</p>
-<p><strong>If the level you need is not in the list</strong>, do not force the nearest one and do not put the real value in a note. Write to the admin with the trait, the level you need and a reference that uses it; the dictionary is maintained centrally, so a level can only be added there. <a href="/app/help/contact">Contact</a> has the address.</p>$h$, 1),
-  ('units', $h$Units and numbers$h$, $h$<p>A quantitative trait has one standard unit, shown in brackets after its name — for example <em>Seed mass (mg)</em>. Every record of that trait is stored in that unit, so a value you read in grams has to be converted before you enter it. The unit is never part of what you type: put <em>1200</em> in the box, not <em>1200 mg</em>.</p>
-<p>Write a decimal point, not a comma, and no thousands separators. The form takes one number and nothing else — there is no free-text box beside it — so a range has nowhere to go: enter the single figure your source gives for the species, the one you would defend. If the source gives a range and no representative value, it is better to leave the trait empty than to invent a midpoint. A second figure from a second paper is a separate record: add it as a <a href="/app/help/workflow#complement">complement</a>.</p>
-<p>A unit is fixed once the trait exists, because changing it would silently change the meaning of every number already stored. If a trait’s unit looks wrong, write to the admin rather than converting your value to fit it.</p>$h$, 2),
-  ('descriptions', $h$Descriptions$h$, $h$<p>The small <strong>?</strong> next to a trait’s name shows that trait’s description from the dictionary: what exactly is being measured, and how. It is the same description wherever the trait appears — on a species page, on a trait card, in the entry form — because it comes from the dictionary, not from the screen you are on.</p>
-<p>Read it before entering a value, especially for traits whose name is used differently between literatures. If a description is missing, ambiguous or wrong, that is worth reporting: it affects every record of that trait.</p>$h$, 3)
+<p>The <strong>Traits</strong> page lists them all, category by category, with the number of species that have data for each. Open a trait to see how its records are distributed and which species are still missing it.</p>$h$, 0),
+  ('levels', $h$Levels$h$, $h$<p>The allowed values of a categorical trait are its <strong>levels</strong>. You tick them in a list. There is no free-text box, so records from different sources line up and can be counted together. You may tick several levels in one entry, and each becomes a record of its own.</p>
+<p>If the level you need is not in the list, do not force the nearest one. Write to us with the trait, the level you need and a reference that uses it. <a href="/app/help/contact">Contact</a> has the address.</p>$h$, 1),
+  ('units', $h$Units and numbers$h$, $h$<p>A quantitative trait has one standard unit, shown in brackets after its name, for example <em>Seed mass (mg)</em>. Every record of that trait is stored in that unit, so convert a value you read in grams before you enter it, and leave the unit out of the box: type <em>1200</em>, not <em>1200 mg</em>. Write a decimal point, not a comma, and no thousands separators.</p>
+<p>A quantitative record takes up to six numbers. Enter the ones your source reports:</p>
+<ul><li>a <strong>Single value</strong>;</li>
+<li>a minimum and a maximum (<strong>Min</strong>, <strong>Max</strong>);</li>
+<li>a mean, its standard deviation and the sample size (<strong>Mean</strong>, <strong>SD</strong>, <strong>n</strong>).</li>
+</ul>
+<p>You must give at least one of the single value, min, max or mean. The min cannot exceed the max, the SD cannot be negative, and n is a whole number of at least 1. If a source gives only a range, enter it as a min and a max; you do not need to invent a midpoint.</p>
+<p>On a species page, the trait card summarises these numbers as min · mean · max. It shows the smallest and the largest value across the species’ records, and the mean of their single values. Where a record has no single value, its mean is used instead.</p>$h$, 2),
+  ('descriptions', $h$Descriptions$h$, $h$<p>The <strong>?</strong> next to a trait’s name shows its description: what exactly is measured, and how. Read it before you enter a value, especially for a trait whose name is used differently in different literatures. If a description is missing, ambiguous or wrong, please tell us, because it affects every record of that trait.</p>$h$, 3)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'vocabulary';
 --> statement-breakpoint
 INSERT INTO help_topics (slug, title, summary, position) VALUES
-  ('references', $h$References$h$, $h$DOIs, your own observations, and how several sources become several records.$h$, 3);
+  ('references', $h$References$h$, $h$DOIs, books, your own observations, and several references on one record.$h$, 3);
 --> statement-breakpoint
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  (NULL, $h$$h$, $h$<p>Every record names where its value comes from. There are exactly two answers: a published work, identified by its DOI, or your own observation. There is no third option and no “see note” — an unsourced value cannot be checked by anyone else.</p>$h$, 0),
-  ('doi', $h$DOIs$h$, $h$<p>A DOI looks like <code>10.1234/abcd.5678</code>: the registrant prefix, a slash, and the publisher’s own suffix. You can paste it in any form you have it — bare, as <code>doi:10.1234/abcd.5678</code>, or as the full <code>https://doi.org/…</code> link from your browser. It is normalised and stored in one canonical form, so the same paper is one reference however it was typed.</p>
-<p>When you leave the DOI box, TreeRepro checks it against the DOI registry. The line under the field says what came back, in these words:</p>
-<ul><li><strong>Checking…</strong> — the request is out. Wait for it; the form will not submit a DOI nobody has answered for.</li>
-<li><strong>Resolved: …</strong> — the DOI is real, and the rest of the line is the work it names. This is the answer you want. It reads the same whether the work is already in the project’s reference list or brand new here; a new one is added automatically, with its title, authors, year and journal, when your record is saved.</li>
-<li><strong>DOI not found</strong> — the registry does not know it. Check it against the paper itself.</li>
-<li><strong>Malformed DOI</strong> — it is not shaped like a DOI at all. The usual causes are a missing digit, a stray space, or a page URL copied instead of the DOI.</li>
-<li><strong>Could not check the DOI — try again</strong> — the registry could not be reached. This says nothing about your DOI. Click into the field and out of it again and the check runs once more.</li>
+  (NULL, $h$$h$, $h$<p>Every record names where its value comes from. There are three possible answers: a published work identified by its DOI, a book identified by its ISBN, or your own observation.</p>$h$, 0),
+  ('doi', $h$DOIs$h$, $h$<p>A DOI looks like <code>10.1234/abcd.5678</code>: the registrant prefix, a slash, and the publisher’s own suffix. Paste it in whatever form you have it: bare, as <code>doi:10.1234/abcd.5678</code>, or as the full <code>https://doi.org/…</code> link.</p>
+<p>When you leave the DOI box, TreeRepro checks it against the DOI registry. The line under the field shows the result:</p>
+<ul><li><strong>Checking…</strong>: the check is running. Wait for it to finish.</li>
+<li><strong>Resolved: …</strong>: the DOI is real, and the rest of the line names the work.</li>
+<li><strong>DOI not found</strong>: the registry does not know it. Check the DOI against the paper itself.</li>
+<li><strong>Malformed DOI</strong>: it is not shaped like a DOI. The usual causes are a missing digit, a stray space, or a page URL copied instead of the DOI.</li>
+<li><strong>Could not check the DOI — try again</strong>: the registry could not be reached. This says nothing about your DOI. Click into the field and out again to run the check once more. If it keeps failing, let us know.</li>
 </ul>
-<p>The last three block the form: the API would refuse the record anyway. Only <strong>Resolved</strong> lets it through.</p>$h$, 1),
-  ('personal-observation', $h$Personal observation$h$, $h$<p>Leave the DOI blank when the value comes from your own field work or your expert knowledge rather than from a publication. That is a legitimate source here, and the whole reason the dataset is shared with specialists.</p>
-<p>It is recorded as <strong>your</strong> personal observation, a reference of its own that belongs to you. It is not a blank field: it says whose observation it is. For the same reason, nobody else can cite your personal observation as their source — if they observed the same thing, they record their own.</p>
-<p>If the value comes from a paper you did not read and cannot cite, it is neither: find the DOI, or leave the trait to someone who can.</p>$h$, 2),
-  ('several', $h$Several references$h$, $h$<p>One claim may rest on several papers. Add a row per DOI, up to ten. What is created is <strong>one record per reference</strong>, all carrying the same value — so a trait supported by three papers reads as three records, and the reference list shows each of them being used.</p>
-<p>If one of those claims already exists — the same species, trait, value and reference — it is not duplicated. The form tells you which ones already existed and links to them; the rest are created as usual.</p>
-<p>Do not mix a DOI and a personal observation in one submission. Either the value is from the literature, in which case give the DOIs, or it is yours, in which case leave every row blank.</p>$h$, 3),
-  ('bibliography', $h$Where references come from$h$, $h$<p>The <strong>References</strong> page in the sidebar lists the <em>publications</em> the records cite — most used first, with how many records name each one as a primary and as a secondary source. Each has its own page: its metadata, its DOI link, and the traits it has been used for.</p>
-<p>Personal observations are not in that list: it is the project’s bibliography, and an observation is not a publication. They appear against the records that rest on them — on the species page and on <strong>My contributions</strong>, a record sourced that way reads “Personal observation” with the observer’s name where a citation would be.</p>
-<p>You never have to add a publication there yourself. Giving a DOI on a record is what creates it, with the metadata fetched from the registry.</p>$h$, 4)
+<p>Only <strong>Resolved</strong> lets the form through.</p>$h$, 1),
+  ('book', $h$Books$h$, $h$<p>For a book, click <strong>Add a book (ISBN)</strong> and fill in its <strong>ISBN</strong> (ISBN-10 or ISBN-13, with or without hyphens) and its <strong>Citation</strong>: authors, year and title. TreeRepro checks the ISBN’s check digit but does not look the book up online, so type the citation yourself. The same ISBN, however it is typed, is always the same book.</p>$h$, 2),
+  ('personal-observation', $h$Personal observation$h$, $h$<p>Give no reference — leave the DOI blank and add no book — when the value comes from your own field work or expert knowledge rather than from a publication. The form then says <em>This will be recorded as your personal observation</em>. That is a legitimate source here, and it is the reason the dataset is shared with specialists.</p>
+<p>The value is recorded as <strong>your</strong> personal observation, a reference of its own that says whose observation it is. Nobody else can cite it as their source. If someone else observed the same thing, they record their own observation.</p>$h$, 3),
+  ('several', $h$Several references$h$, $h$<p>A value may rest on several sources. Use <strong>Add another reference</strong> for each further DOI and <strong>Add a book (ISBN)</strong> for each book, up to ten rows in all. All of them belong to the record the form creates, or to each record if you ticked several levels, and each one counts as used.</p>
+<p>A personal observation cannot be mixed with other references. If the value comes from the literature, give its references. If it is your own, give none.</p>$h$, 4),
+  ('bibliography', $h$Where references come from$h$, $h$<p>The <strong>References</strong> page in the sidebar lists the publications and books that the records cite, most used first, with how many records name each one as a primary and as a secondary source. Each has its own page showing its details and the traits it has been used for. Personal observations are not listed there. On a record, they read “Personal observation” with the observer’s name.</p>
+<p>You never have to add a reference to that page yourself. Giving a DOI or an ISBN on a record creates it.</p>$h$, 5)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'references';
 --> statement-breakpoint
@@ -111,46 +113,35 @@ INSERT INTO help_topics (slug, title, summary, position) VALUES
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  ('plots', $h$Plots$h$, $h$<p>A <strong>plot</strong> is a field site: a code, a name, and often coordinates, a country and a biome. Species belong to plots, and contributors are assigned to the plots they work on. That is how the project knows who to ask about which species.</p>
-<p>Your own plots are on the workspace home page, under <strong>Your scope</strong>, each with the number of species it holds. If that card is not there, no plot has been assigned to you yet, and you simply see the whole dataset instead.</p>
-<p>Plot assignments are managed centrally; there is no self-service. If you are working on a site that is not listed against your name, ask the admin to assign it.</p>$h$, 0),
-  ('outside', $h$Showing species outside your plots$h$, $h$<p>When you have plots, the <strong>Species</strong> page starts with their species only — the ones you are most likely to know. Managers and admins are the exception: they start with the whole dataset even when plots are assigned to them. The filters carry a <strong>Show species outside my plots</strong> checkbox: tick it to search the whole dataset, untick it to come back to your own sites. The choice is kept in the address bar, so a link you copy carries the same list the other person will see.</p>
-<p>Some contributors are <em>restricted</em> to their assigned plots by the admin. Then the checkbox is not offered, and species outside those plots are not listed, not searchable and not reachable by a direct link. Counts shown on a trait or a reference still cover the whole dataset, so they may be larger than what you can list — that is expected, not a bug.</p>$h$, 1),
-  ('inactive', $h$Inactive species and traits$h$, $h$<p>Nothing scientific is deleted here. A species, a trait or a level that should no longer be used is marked <strong>inactive</strong>: it stops being offered for new records, and records already pointing at it keep their value and stay readable.</p>
-<p>Most contributors never see inactive rows — they are simply filtered out. Managers and admins see them marked <em>inactive</em>, and the species list has an Active/Inactive filter for them.</p>$h$, 2),
-  ('missing-species', $h$Why a species you know is missing$h$, $h$<p>It is usually one of three things:</p>
+  ('plots', $h$Plots$h$, $h$<p>Species belong to <strong>plots</strong>, which are field sites, and contributors are assigned to the plots they work on. That is how the project knows whom to ask about which species.</p>
+<p>Your plots are on the workspace home page under <strong>Your scope</strong>, each with the number of species it holds. If that card is not there, no plot has been assigned to you and you see the whole dataset. To be assigned to a plot, write to us.</p>$h$, 0),
+  ('outside', $h$Showing species outside your plots$h$, $h$<p>When you have plots, the <strong>Species</strong> page starts with their species only. Tick <strong>Show species outside my plots</strong> to search the whole dataset. Managers and admins start with the whole dataset and can untick it to come back to their plots. Contributors who are restricted to their plots do not have that checkbox. Counts on a trait or a reference cover the whole dataset, so they can be larger than what you can list.</p>$h$, 1),
+  ('inactive', $h$Inactive species and traits$h$, $h$<p>Nothing scientific is deleted. A species, trait or level that should no longer be used is marked <strong>inactive</strong>. It is no longer offered for new records, and records that already point at it keep their value. Most contributors never see inactive rows. Managers and admins see them marked <em>inactive</em>, and the species list gives them a <strong>Status</strong> filter to show active or inactive species.</p>$h$, 2),
+  ('missing-species', $h$Why a species you know is missing$h$, $h$<p>There are usually three possible reasons:</p>
 <ul><li>It is outside your plots. Tick <strong>Show species outside my plots</strong> and search again.</li>
-<li>It is there under another name. A species is filed under its accepted name, but the search also matches synonyms and common names and tells you which name it matched, so search for the name you know — and if that fails, for the genus alone.</li>
-<li>It is genuinely not in the dataset yet.</li>
+<li>It is filed under another name. Each species is filed under its accepted name in the World Checklist of Vascular Plants (WCVP), but the search also matches synonyms and common names and tells you which name it matched. Search for the name you know. If that finds nothing, search for the genus alone.</li>
+<li>It is not in the dataset yet.</li>
 </ul>
-<p>In the last case, you can ask for it. Search the <a href="/app/species">Species</a> page for the name: when nothing matches it, the empty state offers <strong>Propose this species</strong>, which sends the name and an optional note — where you saw it, the authority — to the reviewers. They check it against GBIF and, when configured, the World Checklist of Vascular Plants before deciding, and the answer shows on the <strong>Proposals</strong> tab of <a href="/app/contributions">My contributions</a>: approved, with a link to the new species, or rejected with a note saying why.</p>
-<p>If that button is not offered to you, proposing is not part of your role. Write to the admin instead, with the species name, the authority, and a plot if it belongs to one. <a href="/app/help/contact">Contact</a> has the address.</p>$h$, 3)
+<p>In the last case, search the <a href="/app/species">Species</a> page for the name. When nothing matches, press <strong>Propose this species</strong> to send it to the reviewers. Their answer appears on the <strong>Proposals</strong> tab of <a href="/app/contributions">My contributions</a>. If you do not see that button, write to us with the species name, its authority and its plot, if it has one. <a href="/app/help/contact">Contact</a> has the address.</p>$h$, 3)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'scope';
 --> statement-breakpoint
 INSERT INTO help_topics (slug, title, summary, position) VALUES
-  ('contributions', $h$Contributions$h$, $h$Your own records and annotations in one place, and what their statuses mean.$h$, 5);
+  ('contributions', $h$Contributions$h$, $h$Your own records and annotations in one place, and what Contested means.$h$, 5);
 --> statement-breakpoint
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  ('page', $h$The My contributions page$h$, $h$<p><strong>My contributions</strong> in the sidebar gathers everything you have done, instead of making you remember which species pages you came from. It has two tabs:</p>
-<ul><li><strong>Records</strong> — the records you entered, newest first, with their value, their reference, their status, whether the record is the current accepted value, and how many records answer it.</li>
-<li><strong>Annotations</strong> — your validations, disputes and withdrawals, each shown with the record it is about. Annotations the system raised on your behalf — the dispute a contest creates, and the neutral that lifts it again — are marked <em>automatic</em>.</li>
+  ('page', $h$The My contributions page$h$, $h$<p><strong>My contributions</strong> in the sidebar gathers everything you have done:</p>
+<ul><li><strong>Records</strong>: the records you entered, newest first, with their value, their references, their ✓ and ✗ counts, whether they are contested, and whether they contest or complement another record.</li>
+<li><strong>Annotations</strong>: your validations, each shown with the record it is about. A manager also finds here every contest they settled with <strong>Keep both</strong>.</li>
+<li><strong>Proposals</strong>: the species you proposed and the reviewers’ answers, if your role lets you propose species.</li>
 </ul>
-<p>Both tabs filter by trait, species, status, intent and date range, and the filters are in the address bar, so a view is a link. Above them, a row of counts summarises your standing: records entered, contests, complements, validations given, disputes raised, records withdrawn and records that are the current accepted value.</p>
-<p>Those counts are about everything you have done, including work on species you can no longer list — if your plot assignment changed, a record of yours may be counted but not shown. The numbers stay true rather than shrinking.</p>$h$, 0),
-  ('statuses', $h$Statuses$h$, $h$<p>Every record carries one review status, worked out from its annotations:</p>
-<ul><li><strong>unreviewed</strong> — nobody’s standing position on it is a validation or a dispute. A new record starts here, and so does a record whose dispute was lifted, carrying its annotations with it — unless somebody’s validation still stands, which makes it confirmed instead.</li>
-<li><strong>confirmed</strong> — somebody’s latest word on it is a validation. The axis is read per person, so a neutral from someone else does not take your validation back.</li>
-<li><strong>disputed</strong> — somebody’s standing position on it is a dispute, whether written by a manager or raised automatically by a contest. It outranks a validation, and it puts the record in the managers’ Disputed queue until the admin settles the accepted value for that species and trait.</li>
-<li><strong>withdrawn</strong> — a withdrawal exists. This wins over everything else: a withdrawn record is out, whatever was said about it before.</li>
-</ul>
-<p><strong>accepted</strong> is not one of these. It is a separate mark, made by the admin, for the one record that is the project’s current value for a species and trait — so a record can be confirmed and accepted, or accepted and later disputed. See <a href="/app/help/workflow">Workflow</a>.</p>$h$, 1),
-  ('withdraw', $h$Withdrawing$h$, $h$<p>Withdraw a record from its own drawer: open it from this page or from the species page, and press <strong>Withdraw</strong>. It asks for a note saying why, which stays attached to the record.</p>
-<p>You can withdraw records you entered by hand. Imported rows cannot be withdrawn, and neither can a record that is currently the accepted value — ask the admin to change the accepted value first.</p>
-<p>Withdrawing a record that <em>contested</em> another one also lifts the dispute it raised, provided you have no other standing contest of that record. Withdrawing a complement has no side effect.</p>
-<p>Nothing disappears. A withdrawn record stays in your list, struck through, with its note — the point is that the dataset shows what was claimed and that it was taken back, not that it never happened.</p>$h$, 2)
+<p>You can filter the Records and Annotations lists by trait, species, review (contested, validated or unvalidated), intent (contest, complement or none) and the date the record was added. The filters are kept in the address bar, so a filtered view is a link you can share. Above the tabs, a row of counts summarises your work: the <strong>Records</strong> you entered, the <strong>Contests</strong> and <strong>Complements</strong> you made, and the <strong>Validations</strong> you gave.</p>$h$, 0),
+  ('statuses', $h$Statuses$h$, $h$<p>There is one status, <strong>Contested</strong>. A level of a categorical trait, or a record of a quantitative one, is contested while a contest against it is open, meaning the contest has been neither withdrawn nor settled by a manager. A trait is contested for a species when any of its levels or records is. Everyone sees the mark, and ticking <strong>Contested only</strong> on the <strong>Species</strong> page lists only the species that carry it.</p>
+<p>Otherwise a record has no status, only counts: ✓ for the people who validated it and ✗ for the people who contested it, each person counted once. TreeRepro never picks a winning value. A trait counts as <strong>validated</strong> for a species once at least one of its records has a validation.</p>
+<p>A contest stops counting when a record on either side is withdrawn, or when a manager chooses <strong>Keep both</strong>. See <a href="/app/help/workflow#review">Workflow</a>.</p>$h$, 1),
+  ('withdraw', $h$Withdrawing$h$, $h$<p>To withdraw one of your records, open it from this page, press <strong>Withdraw</strong> and confirm. A withdrawn record leaves the dataset and disappears from this page as well. <a href="/app/help/workflow#withdraw">Workflow</a> explains who can withdraw what.</p>$h$, 2)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'contributions';
 --> statement-breakpoint
@@ -160,16 +151,14 @@ INSERT INTO help_topics (slug, title, summary, position) VALUES
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  ('edit', $h$Can I edit a record?$h$, $h$<p>No, and nobody can. Records are only ever added, never changed. It is what makes a value traceable: the record you read today says exactly what its reference said, with the name of whoever entered it.</p>
-<p>If a value is wrong, add a different record contesting it — that is the button for it. If the mistake is in a record of your own, withdraw it and enter a new one; the withdrawal asks you to say why, which is far more useful to the next reader than a silent correction. Both are in <a href="/app/help/workflow">Workflow</a>.</p>$h$, 0),
-  ('names', $h$Who sees my name?$h$, $h$<p>Signed-in scientists with access to the dataset. Your name is shown next to the records you enter and the annotations you leave, on the species pages, in the curation queues and on your contributions page. Managers can also open your contributions page by name.</p>
-<p>That is deliberate: a contribution is attributed work, and a contest with nobody’s name on it would be worth much less. What is <em>not</em> shown is your e-mail address beside your records, and the CSV export carries no column naming a person at all.</p>
+  ('edit', $h$Can I edit a record?$h$, $h$<p>No, and nobody else can either. Records are only ever added, never changed. That is what makes a value traceable: the record you read today says exactly what its reference said, with the name of the person who entered it.</p>
+<p>If a value is wrong, contest it with <strong>Contest</strong>. If the mistake is in one of your own records, withdraw it and enter a new one. Both are explained in <a href="/app/help/workflow">Workflow</a>.</p>$h$, 0),
+  ('names', $h$Who sees my name?$h$, $h$<p>Signed-in scientists with access to the dataset. Your name appears next to the records you enter and the validations you give, on the species pages, in the curation queues and on your contributions page. Managers can also open your contributions page. The export, which only the admin can download, names the people who validated and contested each record. Your e-mail address is never shown next to your records or included in the export.</p>
 <p>Nothing here is public. Everything is behind sign-in.</p>$h$, 1),
-  ('download', $h$Can I download the data?$h$, $h$<p>There is an export of the accepted values as CSV — one row per species and trait, with the value, the unit, the references and the date it was accepted. It is offered on the Species page to accounts that hold the export permission, which most contributor accounts do not.</p>
-<p>If you need the data for an analysis, ask. Say what you need it for and which traits or species you need; the admin exports it. <a href="/app/help/contact">Contact</a> has the address.</p>$h$, 2),
-  ('disagree', $h$What if two people disagree?$h$, $h$<p>That is an ordinary and useful state, not a problem to avoid. The second person adds their own record and marks it a <strong>contest</strong>; the first record is automatically disputed and goes to the managers’ Disputed queue. That queue lists the disputed record — its value, who disputed it, and an automatic note naming the record that contests it. Opening the record shows the contesting records under <strong>Responses</strong>, and opening one of those shows its value and its reference.</p>
-<p>The admin then decides which record is the accepted value for that species and trait. Both records stay in the dataset with their references — the disagreement is recorded, not resolved by deletion. If you decide the other value was right after all, withdraw your contest and the dispute lifts itself.</p>
-<p>If both values are true — a species that flowers twice a year, a trait that varies between sites — the answer is a <strong>complement</strong>, not a contest. No dispute is raised.</p>$h$, 3)
+  ('download', $h$Can I download the data?$h$, $h$<p>Only the admin can download the dataset, from the Species page. <strong>Export dataset (ZIP)</strong> holds every record; <strong>Export platform contributions (ZIP)</strong> holds only the records entered on the platform. Each ZIP has two CSV files: one with the records and one with every validation and contest.</p>
+<p>If you need data for an analysis, write to us and say what it is for and which traits or species you need. <a href="/app/help/contact">Contact</a> has the address.</p>$h$, 2),
+  ('disagree', $h$What if two people disagree?$h$, $h$<p>That is an ordinary and useful situation. The second person presses <strong>Contest</strong> and enters their value. The contested value is marked <strong>Contested</strong> and goes to the managers’ <strong>Contested</strong> queue. The responsible team reviews the original records and may contact the people who entered them. Then they either withdraw one side or keep both. Nothing is settled by editing. If you decide the other value was right after all, withdraw your contest.</p>
+<p>If both values are true, for example a species with two dispersal modes or a trait that varies between sites, use <strong>Complement</strong> instead of a contest.</p>$h$, 3)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'faq';
 --> statement-breakpoint
@@ -179,22 +168,22 @@ INSERT INTO help_topics (slug, title, summary, position) VALUES
 INSERT INTO help_sections (topic_id, anchor, title, body_html, position)
 SELECT t.id, s.anchor, s.title, s.body_html, s.position
 FROM help_topics t, (VALUES
-  (NULL, $h$$h$, $h$<p>Write to <a href="mailto:elisabpereira@gmail.com">elisabpereira@gmail.com</a>, the project’s contact address. A person reads it, so plain English is fine and there is no form to fill in.</p>
-<p>Things only the admin can do, and which are therefore worth writing about:</p>
+  (NULL, $h$$h$, $h$<p>Write to <a href="mailto:elisabpereira@gmail.com">elisabpereira@gmail.com</a> with any question, suggestion or comment about TreeRepro. A person reads every message, and there is no form to fill in.</p>
+<p>Some things only the admin can do, so they are worth writing about:</p>
 <ul><li>adding a species, a trait or a level that is missing;</li>
 <li>correcting a trait’s description or unit;</li>
-<li>setting, changing or clearing the accepted value for a species and trait — including freeing a record you need to withdraw;</li>
-<li>assigning you to a field plot, or changing the plots you are assigned to;</li>
+<li>correcting or adding to these help pages;</li>
+<li>assigning you to a plot, or changing your plots;</li>
+<li>withdrawing a record imported from the compiled dataset;</li>
 <li>exporting data for an analysis;</li>
 <li>anything that looks like a bug: a page that fails, a number that cannot be right.</li>
 </ul>$h$, 0),
-  ('what-to-send', $h$What to include$h$, $h$<p>A short message that answers these saves a round trip:</p>
-<ul><li><strong>Where you were.</strong> The address of the page from your browser — it names the species, the trait or the record, so nothing has to be guessed.</li>
-<li><strong>What you expected, and what happened instead.</strong> One sentence each.</li>
-<li><strong>The names in full.</strong> The species with its authority, the trait as the dictionary spells it, the level you were looking for.</li>
-<li><strong>The reference,</strong> as a DOI, if the message is about a source or a value taken from one.</li>
-<li><strong>When it happened,</strong> if it is about something that failed. A date and a rough time are enough to find it in the logs.</li>
+  ('what-to-send', $h$What to include$h$, $h$<ul><li><strong>Where you were:</strong> the page address from your browser, or the record’s ID (<code>EB_…</code> or <code>TR_…</code>, shown as <strong>Record ID</strong> when you open a record).</li>
+<li><strong>What you expected, and what happened instead:</strong> one sentence each.</li>
+<li><strong>The names in full:</strong> the species with its authority, the trait and the level.</li>
+<li><strong>The reference,</strong> as a DOI or ISBN, if the message is about a source or a value taken from one.</li>
+<li><strong>When it happened,</strong> if something failed. A date and a rough time are enough.</li>
 </ul>
-<p>Please do not send passwords or one-time codes. Nobody on the project will ever ask you for them.</p>$h$, 1)
+<p>Never send passwords or one-time codes. Nobody on the project will ever ask for them.</p>$h$, 1)
 ) AS s(anchor, title, body_html, position)
 WHERE t.slug = 'contact';
