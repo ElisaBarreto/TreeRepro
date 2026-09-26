@@ -22,7 +22,16 @@ export interface SourcesFieldProps {
   errors: Record<string, string>;
   /** Told whether the sources are ready to submit; a pending or failed check is not. */
   onValidity(ready: boolean): void;
+  /**
+   * One optional supporting reference (Validate, spec §2): a single row, no
+   * "Add another reference", and none of the personal-observation wording —
+   * a blank row here means "no reference", not own field work.
+   */
+  single?: boolean;
 }
+
+/** The value a form starts from: one blank row. @rfc RFC-70 R1 */
+export const EMPTY_SOURCES: SourcesValue = { dois: [''] };
 
 const MAX_ROWS = 10;
 const IDLE: DoiCheck = { status: 'idle' };
@@ -155,7 +164,13 @@ function BookRow({
  * @rfc RFC-80 R4
  * @rfc RFC-61 R10
  */
-export function SourcesField({ value, onChange, errors, onValidity }: SourcesFieldProps) {
+export function SourcesField({
+  value,
+  onChange,
+  errors,
+  onValidity,
+  single = false,
+}: SourcesFieldProps) {
   const baseId = useId();
   const [checks, setChecks] = useState<ReadonlyMap<string, DoiCheck>>(() => new Map());
   // One request per distinct value, even for two rows blurred in the same tick.
@@ -228,12 +243,14 @@ export function SourcesField({ value, onChange, errors, onValidity }: SourcesFie
     // The hint describes the rows as a group: it is about having no DOI at
     // all, which is a property of the field, not of any one row — hence the
     // fieldset it describes, rather than a hint repeated on every row.
-    <fieldset className="flex flex-col gap-4" aria-describedby={hintId}>
+    <fieldset className="flex flex-col gap-4" aria-describedby={single ? undefined : hintId}>
       <legend className="sr-only">Sources</legend>
-      <p id={hintId} className="flex items-start gap-1.5 text-meta text-mist-500">
-        <span>{HINT}</span>
-        <HelpTip learnMore={helpHref('references', 'doi')}>{HINT}</HelpTip>
-      </p>
+      {single ? null : (
+        <p id={hintId} className="flex items-start gap-1.5 text-meta text-mist-500">
+          <span>{HINT}</span>
+          <HelpTip learnMore={helpHref('references', 'doi')}>{HINT}</HelpTip>
+        </p>
+      )}
       <div className="flex flex-col gap-4">
         {rows.map((doi, index) => {
           const rowId = `${baseId}-${index}`;
@@ -274,15 +291,17 @@ export function SourcesField({ value, onChange, errors, onValidity }: SourcesFie
           );
         })}
       </div>
-      {rows.length + books.length < MAX_ROWS ? (
+      {(single ? books.length === 0 : rows.length + books.length < MAX_ROWS) ? (
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onChange({ ...value, dois: [...rows, ''] })}
-          >
-            Add another reference
-          </Button>
+          {single ? null : (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onChange({ ...value, dois: [...rows, ''] })}
+            >
+              Add another reference
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -292,7 +311,7 @@ export function SourcesField({ value, onChange, errors, onValidity }: SourcesFie
           </Button>
         </div>
       ) : null}
-      {dois.every((doi) => doi === '') && !books.some(bookFilled) ? (
+      {!single && dois.every((doi) => doi === '') && !books.some(bookFilled) ? (
         <p className="text-meta text-mist-500">
           This will be recorded as your personal observation
         </p>

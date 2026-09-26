@@ -81,6 +81,14 @@ describe('RFC-63 R9 fetchRecords', () => {
     await fetchRecords({ speciesId: SPECIES.id, traitId: GENUS.id });
     expect(lastRequest().url).toBe(`/api/records?speciesId=${SPECIES.id}&traitId=${GENUS.id}`);
   });
+
+  it('sends the sort column and its order', async () => {
+    mockJson(200, { data: [], meta: { nextCursor: null } });
+    await fetchRecords({ speciesId: SPECIES.id, traitId: GENUS.id, sort: 'value', order: 'asc' });
+    expect(lastRequest().url).toBe(
+      `/api/records?speciesId=${SPECIES.id}&traitId=${GENUS.id}&sort=value&order=asc`,
+    );
+  });
 });
 
 describe('RFC-60 R8 fetchFamilies and fetchGenera', () => {

@@ -25,6 +25,7 @@ import {
   mapPending,
   resolveContest,
   resolveDoi,
+  validateLevel,
   withdrawContest,
   withdrawLevel,
 } from './curation.ts';
@@ -152,5 +153,27 @@ describe('RFC-65 R16 contest actions', () => {
     await expect(withdrawContest(RECORD.id)).resolves.toBeUndefined();
     expect(lastRequest().url).toBe(`/api/contests/${RECORD.id}/withdraw`);
     expect(lastRequest().init?.method).toBe('POST');
+  });
+});
+
+describe('RFC-70 R4 validateLevel', () => {
+  const LEVEL_ID = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20';
+
+  it('posts the optional supporting reference to the level route', async () => {
+    mockJson(201, { data: { validated: [] } });
+    await validateLevel(SPECIES.id, SEXUAL_SYSTEM.id, LEVEL_ID, {
+      referenceSource: { doi: '10.1111/geb.13000' },
+    });
+    expect(lastRequest().url).toBe(
+      `/api/species/${SPECIES.id}/traits/${SEXUAL_SYSTEM.id}/levels/${LEVEL_ID}/validate`,
+    );
+    expect(lastRequest().init?.method).toBe('POST');
+    expect(body()).toEqual({ referenceSource: { doi: '10.1111/geb.13000' } });
+  });
+
+  it('sends an empty body when there is no supporting reference', async () => {
+    mockJson(201, { data: { validated: [] } });
+    await validateLevel(SPECIES.id, SEXUAL_SYSTEM.id, LEVEL_ID, {});
+    expect(body()).toEqual({});
   });
 });

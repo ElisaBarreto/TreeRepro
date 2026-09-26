@@ -10,11 +10,13 @@ import {
   type ListEnvelope,
   listEnvelopeSchema,
   type RecordDetail,
+  type RecordSort,
   type ReferenceDetail,
   recordDetailSchema,
   recordSchema,
   referenceDetailSchema,
   referenceSchema,
+  type SortOrder,
   type Species,
   type SpeciesSort,
   type SpeciesStatus,
@@ -33,6 +35,13 @@ import {
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import { type QueryParams as Params, withQuery } from './query.ts';
+
+/**
+ * `RecordSort` is a sortable column of the records list; `SortOrder` the
+ * direction it orders by (spec §2).
+ * @rfc RFC-63 R9
+ */
+export type { RecordSort, SortOrder } from '@treerepro/contracts';
 
 /** One page of a list, as `listEnvelopeSchema` parses it. @rfc RFC-11 R2 */
 export type Page<T> = ListEnvelope<T>;
@@ -111,11 +120,17 @@ export async function fetchSpeciesTraits(
     )
   ).data;
 }
-/** @rfc RFC-63 R9 */
+/**
+ * `sort` and `order` pick the column and direction the API orders by (spec
+ * §2; the API validates them and defaults to `added desc`).
+ * @rfc RFC-63 R9
+ */
 export function fetchRecords(params: {
   speciesId?: string;
   traitId?: string;
   referenceId?: string;
+  sort?: RecordSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }) {

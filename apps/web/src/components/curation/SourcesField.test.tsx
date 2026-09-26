@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import { REFERENCE } from '../../test/dataset-fixtures.ts';
-import { SourcesField, type SourcesValue, sourcesToBody } from './SourcesField.tsx';
+import { EMPTY_SOURCES, SourcesField, type SourcesValue, sourcesToBody } from './SourcesField.tsx';
 
 const curation = vi.hoisted(() => ({ resolveDoi: vi.fn() }));
 vi.mock('../../api/curation.ts', async (importOriginal) => ({
@@ -319,5 +319,25 @@ describe('RFC-70 R1 sourcesToBody', () => {
     expect(sourcesToBody({ dois: [''], books: [{ isbn: '', citation: '' }] })).toEqual({
       personalObservation: true,
     });
+  });
+});
+
+describe('RFC-70 R4 SourcesField single', () => {
+  it('offers one optional row, without the personal-observation wording', () => {
+    render(
+      <SourcesField
+        value={EMPTY_SOURCES}
+        onChange={vi.fn()}
+        errors={{}}
+        onValidity={vi.fn()}
+        single
+      />,
+    );
+    expect(screen.getAllByRole('textbox', { name: /doi/i })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Add another reference' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('This will be recorded as your personal observation'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/own field work/)).not.toBeInTheDocument();
   });
 });
