@@ -14,6 +14,7 @@
     "db:migrate": "node --conditions=development src/db/migrate.ts",
     "seed:admin": "node --conditions=development src/cli/seed-admin.ts",
     "seed:traits": "node --conditions=development src/cli/seed-traits.ts",
+    "check:maps": "node --conditions=development src/cli/check-maps.ts",
     "import:records": "node --conditions=development src/cli/import-records.ts",
     "import:species-status": "node --conditions=development src/cli/import-species-status.ts",
     "import:plots": "node --conditions=development src/cli/import-plots.ts",

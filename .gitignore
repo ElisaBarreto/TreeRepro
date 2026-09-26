@@ -47,3 +47,7 @@ CLAUDE.local.md
 
 # local datasets (large; never committed)
 data/
+
+# trait map images: private research output, never committed (RFC-76 R1)
+apps/api/maps/*.svg
+apps/api/maps/*.webp

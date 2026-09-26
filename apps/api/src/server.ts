@@ -60,6 +60,7 @@ const app = createApp({
   permissionCache,
   doi,
   taxonomy,
+  mapsDir: config.mapsDir,
 });
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, (info) => {

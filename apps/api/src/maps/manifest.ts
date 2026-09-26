@@ -109,14 +109,22 @@ export function parseManifest(text: string, filesPresent: ReadonlySet<string>): 
 
 /**
  * Reads `<dir>/manifest.csv` and the directory listing, then validates the manifest
- * against it (RFC-76 R1).
+ * against it (RFC-76 R1). A missing directory or a missing `manifest.csv` means no
+ * maps, never an error; any other read error still throws.
  * @rfc RFC-76 R1
  */
 export async function readManifest(dir: string): Promise<ManifestRow[]> {
-  const [text, entries] = await Promise.all([
-    readFile(join(dir, 'manifest.csv'), 'utf8'),
-    readdir(dir),
-  ]);
+  let text: string;
+  let entries: string[];
+  try {
+    [text, entries] = await Promise.all([
+      readFile(join(dir, 'manifest.csv'), 'utf8'),
+      readdir(dir),
+    ]);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
   return parseManifest(text, new Set(entries));
 }
 

@@ -1,8 +1,8 @@
-import { readdir, readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
-import { parseCsvLine } from '../dataset/import.ts';
-import { dictionaryPath } from '../dataset/seed.ts';
-import { defaultMapsDir, KIND_FITS, parseManifest, readManifest } from './manifest.ts';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { parseManifest, readManifest } from './manifest.ts';
 
 const HEADER = 'trait_key,map_kind,level_key,file,data_version';
 const files = new Set(['a.svg', 'b.webp', 'c.svg']);
@@ -66,37 +66,21 @@ describe('parseManifest (RFC-76 R1)', () => {
   });
 });
 
-describe('the committed manifest agrees with the dictionary (RFC-76 R2)', () => {
-  it('names dictionary traits, fitting kinds and existing levels', async () => {
-    const rows = await readManifest(defaultMapsDir());
-    const [, ...lines] = (await readFile(dictionaryPath(), 'utf8')).trim().split(/\r?\n/);
-    // header: final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels[,active]
-    const dict = new Map(
-      lines.map((l) => {
-        const f = parseCsvLine(l);
-        return [
-          f[0],
-          { valueType: f[2], levels: new Set((f[5] ?? '').split(';').filter(Boolean)) },
-        ];
-      }),
-    );
-    for (const row of rows) {
-      const trait = dict.get(row.traitKey);
-      expect(trait, `line ${row.line}: unknown trait ${row.traitKey}`).toBeDefined();
-      const fits = KIND_FITS[row.kind];
-      if (fits !== 'any')
-        expect(trait?.valueType, `line ${row.line}: ${row.kind} on ${trait?.valueType}`).toBe(fits);
-      if (row.levelKey)
-        expect(
-          trait?.levels.has(row.levelKey),
-          `line ${row.line}: unknown level ${row.levelKey}`,
-        ).toBe(true);
-    }
+describe('readManifest (RFC-76 R1)', () => {
+  let dir: string | undefined;
+  afterEach(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = undefined;
   });
 
-  it('lists every image in the directory (no orphan files)', async () => {
-    const listed = new Set((await readManifest(defaultMapsDir())).map((r) => r.file));
-    const images = (await readdir(defaultMapsDir())).filter((f) => /\.(svg|webp)$/i.test(f));
-    expect(images.filter((f) => !listed.has(f))).toEqual([]);
+  it('answers no maps for a directory that does not exist', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-missing-'));
+    const missing = join(dir, 'does-not-exist');
+    expect(await readManifest(missing)).toEqual([]);
+  });
+
+  it('answers no maps for a directory with no manifest.csv', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'maps-empty-'));
+    expect(await readManifest(dir)).toEqual([]);
   });
 });
