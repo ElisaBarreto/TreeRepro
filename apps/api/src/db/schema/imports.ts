@@ -63,7 +63,14 @@ export const importRejects = pgTable(
     rawRow: jsonb('raw_row').$type<Record<string, string>>().notNull(),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
-  (t) => [index('import_rejects_batch_row_idx').on(t.batchId, t.rowNo)],
+  (t) => [
+    index('import_rejects_batch_row_idx').on(t.batchId, t.rowNo),
+    /** RFC-64 R7: the reason names one of the platform's reject kinds. */
+    check(
+      'import_rejects_reason_check',
+      sql`${t.reason} in ('no_species_name', 'unknown_trait', 'no_reference', 'unknown_species', 'unknown_plot', 'unknown_user', 'unknown_reference', 'doi_taken', 'invalid_value', 'invalid_record_id', 'duplicate_record_id', 'invalid_measurement')`,
+    ),
+  ],
 );
 
 export type ImportBatchRow = typeof importBatches.$inferSelect;

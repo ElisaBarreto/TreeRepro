@@ -24,6 +24,24 @@ export const HARMONISATION_STATUSES = [
 ] as const;
 export type HarmonisationStatus = (typeof HARMONISATION_STATUSES)[number];
 
+/**
+ * Labels `numeric_value` of a quantitative record; never set for a
+ * categorical one. `derived_midpoint` is a midpoint of `min_value` and
+ * `max_value` computed upstream of the import.
+ * @rfc RFC-63 R15
+ */
+export const STATISTICS = ['single_or_unspecified', 'mean', 'median', 'derived_midpoint'] as const;
+export type Statistic = (typeof STATISTICS)[number];
+
+/** Import provenance for a record's unit conversion. @rfc RFC-63 R1 */
+export const UNIT_STATUSES = [
+  'converted_or_already_target',
+  'unit_missing',
+  'needs_unit_check',
+  'not_applicable',
+] as const;
+export type UnitStatus = (typeof UNIT_STATUSES)[number];
+
 /** @rfc RFC-63 R1 */
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
@@ -62,6 +80,7 @@ export const IMPORT_REJECT_REASONS = [
   'invalid_value',
   'invalid_record_id',
   'duplicate_record_id',
+  'invalid_measurement',
 ] as const;
 export type ImportRejectReason = (typeof IMPORT_REJECT_REASONS)[number];
 

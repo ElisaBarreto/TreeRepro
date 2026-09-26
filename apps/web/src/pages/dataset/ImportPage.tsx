@@ -24,6 +24,7 @@ const REASONS: Record<ImportRejectReason, string> = {
   invalid_value: 'Invalid value',
   invalid_record_id: 'Missing or malformed ID',
   duplicate_record_id: 'ID already used',
+  invalid_measurement: 'Invalid measurement',
 };
 
 // The columns of the import file in file order (RFC-64 R2). A raw row is a

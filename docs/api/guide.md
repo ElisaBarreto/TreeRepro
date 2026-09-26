@@ -1,4 +1,4 @@
-openapi-sha256: d52998a814de5eb20488e9fd968a291c789a5bd93c5ae71e203c4561929d5f93
+openapi-sha256: 21e694d59a675fe2eeb210fc476a88aff6de9c32335a19693b8c65036b9af06a
 
 # TreeRepro API guide
 
@@ -396,6 +396,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-09-27 — `import_rejects.reason` gains `invalid_measurement` (a compiled-dataset row with a malformed statistic, spread or unit status; issue #223). (openapi 21e694d59a67)
 - 2026-09-26 — `GET /api/me/api-keys/endpoints` (session only, admin system role): the routes a key reaches, shown in Settings › API keys (issue #221). (openapi d52998a814de)
 - 2026-09-26 — "A batch that takes too long": a batch outliving the proxy timeout answers 524 while its operations keep committing; batches of writes stay at 100 operations, and a script re-reads the state instead of resending. The examples map in batches of 100 and stop on an answer that is not JSON (issue #219). (openapi 03bc32d24279)
 - 2026-09-26 — First version: API keys (14a), batch (14b), this guide and the generated reference (14c). (openapi 03bc32d24279)
