@@ -25,6 +25,8 @@ export interface AuthContext {
   /** @rfc RFC-81 R1 */
   taxonomy: TaxonomyClient;
   appOrigin: string;
+  /** The directory holding `manifest.csv` and the map files. @rfc RFC-76 R1 */
+  mapsDir: string;
   /** Who the invitation names for a new one (RFC-20 R4). */
   inviteContactEmail?: string | undefined;
   now: () => number;

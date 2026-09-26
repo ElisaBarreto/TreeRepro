@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, inject } from 'vitest';
 import { createPermissionCache, type PermissionCache } from '../../src/access/permissions.ts';
 import { type App, type AppDeps, createApp } from '../../src/app.ts';
@@ -15,6 +16,8 @@ import { fakeTaxonomyClient } from './taxonomy.ts';
 
 export const TEST_ORIGIN = 'http://localhost';
 export const TEST_SESSION_SECRET = Buffer.alloc(32, 3);
+/** One manifest row naming trait `map_fixture` (RFC-76). */
+export const TEST_MAPS_DIR = fileURLToPath(new URL('../fixtures/maps', import.meta.url));
 
 export interface TestApp {
   readonly app: App;
@@ -73,6 +76,7 @@ export function useTestApp(): TestApp {
       breachChecker: { isBreached: async (p) => breached.has(p) },
       permissionCache,
       now: () => clock.now,
+      mapsDir: TEST_MAPS_DIR,
       ...overrides,
     };
     return { app: createApp(deps), deps, lines, sessions, mfa, limiter, permissionCache, taxonomy };
@@ -177,6 +181,7 @@ export function ctxOf(t: TestApp): AuthContext {
     doi: t.doi,
     taxonomy: t.taxonomy,
     appOrigin: TEST_ORIGIN,
+    mapsDir: TEST_MAPS_DIR,
     now: () => t.clock.now,
   };
 }

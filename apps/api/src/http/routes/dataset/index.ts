@@ -4,6 +4,7 @@ import type { AppEnv } from '../../env.ts';
 import { contestRoutes } from './contests.ts';
 import { exportRoutes } from './export.ts';
 import { importRoutes } from './imports.ts';
+import { mapRoutes } from './maps.ts';
 import { plotRoutes } from './plots.ts';
 import { recordRoutes } from './records.ts';
 import { referenceRoutes } from './references.ts';
@@ -22,6 +23,7 @@ import { traitRoutes } from './traits.ts';
  * @rfc RFC-65 R16
  * @rfc RFC-66 R1
  * @rfc RFC-67 R3-R5
+ * @rfc RFC-76 R4, R5
  * @rfc RFC-81 R4
  */
 export function datasetRoutes(ctx: AuthContext) {
@@ -34,6 +36,7 @@ export function datasetRoutes(ctx: AuthContext) {
     .route('/records', recordRoutes(ctx))
     .route('/contests', contestRoutes(ctx))
     .route('/traits', traitRoutes(ctx))
+    .route('/maps', mapRoutes(ctx))
     .route('/imports', importRoutes(ctx))
     .route('/export', exportRoutes(ctx))
     .route('/taxonomy', taxonomyRoutes(ctx));
