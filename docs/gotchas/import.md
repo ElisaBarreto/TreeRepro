@@ -120,7 +120,7 @@
    Expected: `1 <N> 0 0 t`, where `<N>` equals `inserted` in step 4's `Rows:` line.
 8. **Start the API:** `docker compose up -d api`, then `docker compose ps` shows it healthy.
 
-After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`: once any `TR_` record exists (a manual record created after this reimport), the total `--replace` is refused (RFC-64 R12).
+After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`: once any platform data exists — a `TR_` record, an annotation or a contest created after this reimport — the total `--replace` is refused (RFC-64 R12).
 
 ## Replacing the imported records while keeping the platform (`--replace-imported`, RFC-64 R15)
 
@@ -192,6 +192,7 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
      tail -n +2 "$f" | wc -l                                       # → 3rd + 4th + 5th number of step 4
      grep -c ',relinked'$'\r''$' "$f"; grep -c ',orphan'$'\r''$' "$f"
      ```
+     If the orphan count is not what the owner accepts, restore the step 2 backup now, before step 9 starts the API: nobody has worked since, so nothing is lost.
    - The codes and the counters. The expected answer is `0 t`:
      ```sh
      docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \

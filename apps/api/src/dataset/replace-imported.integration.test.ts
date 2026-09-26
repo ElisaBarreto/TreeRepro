@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
@@ -519,6 +519,8 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
       )[0]?.code;
     const s = await sheet(sheetDir);
     expect(s.names).toEqual([`replace-${batch.id}-annotations.csv`]);
+    // The sheet names users (RFC-40): owner-only, after the rename too.
+    expect((await stat(join(sheetDir, s.names[0] as string))).mode & 0o777).toBe(0o600);
     expect(s.header).toBe('record_code,kind,user_name,date,reference,contest_record_code,status');
     const iso = expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     expect(s.rows).toEqual([
@@ -544,6 +546,7 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
     const s = await sheet(sheetDir);
     expect(s.names).toHaveLength(1); // no .tmp left behind
     expect(s.names[0]).toMatch(/^replace-[0-9a-f-]{36}-annotations\.csv$/);
+    expect((await stat(join(sheetDir, s.names[0] as string))).mode & 0o777).toBe(0o600);
     // The complement orphaned by the previous run is independent now, so it
     // has no row.
     expect(s.rows.map((r) => [r[0], r[1], r[6]])).toEqual([
