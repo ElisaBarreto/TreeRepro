@@ -1,5 +1,6 @@
 import type { PermissionKey } from '@treerepro/contracts';
 
+/** @rfc RFC-32 R5 */
 export type GuardKind = 'session' | 'permission' | 'apiKey';
 
 const guards = new WeakMap<object, GuardKind>();

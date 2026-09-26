@@ -216,6 +216,7 @@ describe('RFC-01 R6 negative sweep over every route', () => {
   it('every route with a body schema rejects an unknown field with 400 VALIDATION_FAILED', async () => {
     const admin = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
     const { cookie } = await loginAs(t, admin.user);
+    // `POST /api/batch` needs a key; its unknown-field case is in batch.integration.test.ts.
     const withBody = [
       'POST /api/auth/login',
       'POST /api/auth/login/totp',
