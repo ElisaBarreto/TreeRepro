@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { helpHref } from '../../content/help/index.ts';
+import { helpHref } from '../../content/help/href.ts';
 import { HelpTip } from './HelpTip.tsx';
 
 // `learnMore` renders a router `Link`, so only the tests that use it mount

@@ -111,8 +111,14 @@
        the top of the viewport. */
     @apply mt-9 mb-3 scroll-mt-6 font-display text-section font-semibold text-canopy-950;
   }
-  .prose-treerepro > :first-child {
+  /* Help sections wrap their h2 in a <section>, so the reset reaches into
+     the first one too. */
+  .prose-treerepro > :first-child,
+  .prose-treerepro > section:first-child > h2:first-child {
     @apply mt-0;
+  }
+  .prose-treerepro h3 {
+    @apply mt-6 mb-2 font-display text-body font-semibold text-canopy-950;
   }
   .prose-treerepro p {
     @apply mb-4;

@@ -24,6 +24,7 @@ import { dashboardRoutes } from './http/routes/dashboard.ts';
 import { datasetRoutes } from './http/routes/dataset/index.ts';
 import { myProposalRoutes } from './http/routes/dataset/proposals.ts';
 import { type HealthChecks, healthRoutes } from './http/routes/health.ts';
+import { helpRoutes } from './http/routes/help.ts';
 import { meRoutes } from './http/routes/me.ts';
 import type { DoiClient } from './integrations/doi.ts';
 import type { TaxonomyClient } from './integrations/taxonomy.ts';
@@ -114,6 +115,7 @@ export function createApp(deps: AppDeps) {
   // The coverage metrics read the dataset but carry their own permission
   // (RFC-69 R5), so they sit beside the dataset router rather than inside it.
   app.route('/coverage', coverageRoutes(ctx));
+  app.route('/help', helpRoutes(ctx));
   app.route('/', datasetRoutes(ctx));
 
   return root;

@@ -53,6 +53,7 @@ describe('RFC-30 R1, R2 groupPermissions', () => {
       'contributions',
       'coverage',
       'health',
+      'help',
     ]);
     const visibleKeys = groups.flatMap((g) => g.entries.map((e) => e.key));
     expect(visibleKeys).not.toContain('users.delete');

@@ -274,6 +274,20 @@
       "when": 1790382470302,
       "tag": "0038_contest_withdrawal",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790411664690,
+      "tag": "0039_help_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790411665461,
+      "tag": "0040_help_seed",
+      "breakpoints": true
     }
   ]
 }
