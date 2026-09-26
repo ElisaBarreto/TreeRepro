@@ -1,15 +1,18 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { RecordItem, SpeciesTraits } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import {
-  CURATED_RECORD_DETAIL,
   DICTIONARY,
+  DICTIONARY_SEED_MASS,
   DICTIONARY_SEXUAL_SYSTEM,
+  PENDING_RECORD,
+  RECORD,
   RECORD_DETAIL,
   SPECIES,
 } from '../../test/dataset-fixtures.ts';
-import { ME } from '../../test/fixtures.ts';
+import { ME, USER } from '../../test/fixtures.ts';
 import { renderWithProviders } from '../../test/render.tsx';
 import { withRouter } from '../../test/router.tsx';
 import { AddEntriesDialog } from './AddEntriesDialog.tsx';
@@ -19,7 +22,11 @@ const curation = vi.hoisted(() => ({
   resolveDoi: vi.fn(),
   invalidateAfterRecordWrite: vi.fn(async () => undefined),
 }));
-const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn() }));
+const dataset = vi.hoisted(() => ({
+  fetchDictionary: vi.fn(),
+  fetchRecords: vi.fn(),
+  fetchSpeciesTraits: vi.fn(),
+}));
 vi.mock('../../api/curation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/curation.ts')>()),
   ...curation,
@@ -31,29 +38,92 @@ vi.mock('../../api/dataset.ts', async (importOriginal) => ({
 
 const TITLE = 'Add entries for another trait';
 const SEED_MASS = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e02';
+const HERMAPHRODITE = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11';
 const DIOECIOUS = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e12';
-const DOI = '10.1111/geb.13000';
-const RESOLVED = {
-  status: 'resolvable',
-  reference: null,
-  preview: { title: 'Seed size', authors: 'Moles, A.', year: 2023, journal: 'GEB' },
+const CONTEST_LABEL = 'Contest — The existing value is wrong; mine should replace it.';
+const COMPLEMENT_LABEL =
+  'Complement — The existing value is also correct; I am adding another observation.';
+const page = (data: RecordItem[]) => ({ data, meta: { nextCursor: null } });
+const CREATED = {
+  created: [{ ...RECORD_DETAIL, recordCode: 'TR_9' }],
+  validated: [],
+  duplicates: [],
 };
-const CREATED = { created: [RECORD_DETAIL], validated: [], duplicates: [] };
+
+// A record the species already has for the dictionary's sexual system.
+const EXISTING: RecordItem = {
+  ...RECORD,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e90',
+  recordCode: 'EB_3',
+  trait: DICTIONARY_SEXUAL_SYSTEM,
+  level: { id: HERMAPHRODITE, key: 'hermaphrodite' },
+};
+// Another, of the other active level.
+const EXISTING_DIOECIOUS: RecordItem = {
+  ...EXISTING,
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e91',
+  recordCode: 'EB_4',
+  level: { id: DIOECIOUS, key: 'dioecious' },
+};
+// One it already has for the dictionary's seed mass.
+const EXISTING_MASS: RecordItem = {
+  ...PENDING_RECORD,
+  recordCode: 'TR_4',
+  trait: DICTIONARY_SEED_MASS,
+  level: null,
+  quantitative: { single: 1.25 },
+};
+
+// The species' summary: the levels with visible records, which make E
+// (RFC-63 R14) once the inactive ones are dropped.
+function summary(levels: { levelId: string; key: string }[]): SpeciesTraits {
+  return [
+    {
+      category: { key: 'reproductive_system', label: 'Reproductive system' },
+      traits: [
+        {
+          trait: DICTIONARY_SEXUAL_SYSTEM,
+          recordCount: levels.length,
+          harmonisationCounts: {
+            harmonised: levels.length,
+            unknownLevel: 0,
+            multiValue: 0,
+            notNumeric: 0,
+            empty: 0,
+          },
+          levels: levels.map((level) => ({
+            ...level,
+            count: 1,
+            validationCount: 0,
+            contested: false,
+          })),
+          numeric: null,
+          validated: false,
+          contested: false,
+        },
+      ],
+    },
+  ];
+}
+const BOTH = summary([
+  { levelId: HERMAPHRODITE, key: 'hermaphrodite' },
+  { levelId: DIOECIOUS, key: 'dioecious' },
+]);
+const CONFIRM_CONTEST = 'Confirm: Validate dioecious · Contest hermaphrodite';
 
 beforeEach(() => {
   curation.createRecords.mockReset();
   curation.resolveDoi.mockReset();
   curation.invalidateAfterRecordWrite.mockClear();
   dataset.fetchDictionary.mockReset().mockResolvedValue(DICTIONARY);
+  dataset.fetchRecords.mockReset().mockResolvedValue(page([]));
+  dataset.fetchSpeciesTraits.mockReset().mockResolvedValue([]);
 });
 
 function mount(props: Partial<Parameters<typeof AddEntriesDialog>[0]> = {}) {
   const onCreated = vi.fn();
   const onOpenRecord = vi.fn();
   const onClose = vi.fn();
-  // Through a router: the trait tip carries a "Learn more" link into the
-  // vocabulary topic (RFC-73 R4), and a router `Link` needs one. Every test
-  // here already awaits the dialog, which is when the router has mounted.
   renderWithProviders(
     withRouter(
       <AddEntriesDialog
@@ -76,7 +146,6 @@ const traitSelect = (dialog: HTMLElement) =>
 const submit = (dialog: HTMLElement) =>
   within(dialog).getByRole('button', { name: 'Add record(s)' });
 
-/** Waits for the dictionary, then picks a category and one of its traits. */
 async function openWith(categoryKey: string, traitId: string): Promise<HTMLElement> {
   const dialog = await screen.findByRole('dialog', { name: TITLE });
   await within(dialog).findByRole('option', { name: 'Seed' });
@@ -85,46 +154,47 @@ async function openWith(categoryKey: string, traitId: string): Promise<HTMLEleme
   return dialog;
 }
 
-describe('RFC-70 R1 AddEntriesDialog', () => {
-  it('RFC-70 R1 fills the trait select with the active traits of the chosen category only', async () => {
+/** A fixed-trait dialog whose record fields are open (no existing record). */
+async function openFixed(title = 'Add entries for sexual system') {
+  const dialog = await screen.findByRole('dialog', { name: title });
+  await waitFor(() => expect(submit(dialog)).toBeEnabled());
+  return dialog;
+}
+
+describe('RFC-70 R1 AddEntriesDialog trait choice', () => {
+  it('fills the trait select with the active traits of the chosen category only', async () => {
     mount();
     const dialog = await screen.findByRole('dialog', { name: TITLE });
     await within(dialog).findByRole('option', { name: 'Seed' });
     expect(traitSelect(dialog)).toBeDisabled();
     await userEvent.selectOptions(categorySelect(dialog), 'seed');
     const trait = traitSelect(dialog);
-    expect(trait).toBeEnabled();
-    // The unit rides on the option; seed_colour is inactive and is not offered.
     expect(within(trait).getByRole('option', { name: 'seed mass (mg)' })).toBeInTheDocument();
     expect(within(trait).queryByRole('option', { name: /seed colour/ })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('option', { name: 'sexual system' })).not.toBeInTheDocument();
   });
 
-  it('RFC-70 R1 clears the trait and the value when the category changes', async () => {
+  it('clears the trait and the value when the category changes', async () => {
     mount();
     const dialog = await openWith('seed', SEED_MASS);
-    await userEvent.type(
-      await within(dialog).findByRole('spinbutton', { name: /number/i }),
-      '12.5',
-    );
+    const single = await within(dialog).findByRole('spinbutton', { name: 'Single value (mg)' });
+    await waitFor(() => expect(single).toBeEnabled());
+    await userEvent.type(single, '12.5');
     await userEvent.selectOptions(categorySelect(dialog), 'reproductive_system');
     expect(traitSelect(dialog)).toHaveValue('');
     expect(within(dialog).queryByRole('spinbutton')).not.toBeInTheDocument();
-    // Back to the same trait: the number it had is gone, not remembered.
     await userEvent.selectOptions(categorySelect(dialog), 'seed');
     await userEvent.selectOptions(traitSelect(dialog), SEED_MASS);
-    expect(await within(dialog).findByRole('spinbutton', { name: /number/i })).toHaveValue(null);
+    expect(
+      await within(dialog).findByRole('spinbutton', { name: 'Single value (mg)' }),
+    ).toHaveValue(null);
   });
 
-  it('RFC-70 R1 fixes the trait when it was opened from a trait card, without the selects, and names it in the title', async () => {
+  it('fixes the trait when opened from a card, without the selects, and names it in the title', async () => {
     mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
-    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
-    expect(within(dialog).queryByRole('combobox', { name: 'Broad trait category' })).toBeNull();
+    const dialog = await openFixed();
     expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).toBeNull();
-    expect(
-      await within(dialog).findByText('Reproductive system › sexual system'),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByRole('combobox', { name: 'Level' })).toBeInTheDocument();
+    expect(within(dialog).getByText('Reproductive system › sexual system')).toBeInTheDocument();
+    expect(within(dialog).getByRole('group', { name: 'Levels' })).toBeInTheDocument();
   });
 
   it('RFC-13 R11 explains the chosen trait from the dictionary', async () => {
@@ -135,51 +205,48 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     );
     expect(within(dialog).getByRole('tooltip')).toHaveTextContent('Dry mass of one seed.');
   });
+});
 
-  it('RFC-70 R1 sends the claim with the DOI that resolved', async () => {
-    curation.resolveDoi.mockResolvedValue(RESOLVED);
+describe('RFC-70 R1 AddEntriesDialog submission', () => {
+  it('R-3 sends every ticked level with no DOI as a personal observation', async () => {
     curation.createRecords.mockResolvedValue(CREATED);
-    const { onCreated } = mount();
-    const dialog = await openWith('reproductive_system', DICTIONARY_SEXUAL_SYSTEM.id);
-    await userEvent.selectOptions(
-      await within(dialog).findByRole('combobox', { name: 'Level' }),
-      DIOECIOUS,
-    );
-    await userEvent.type(within(dialog).getByRole('textbox', { name: 'DOI' }), DOI);
-    await userEvent.tab();
-    expect(await within(dialog).findByText('Resolved: Seed size (2023)')).toBeInTheDocument();
-    await userEvent.click(submit(dialog));
-    await waitFor(() => expect(curation.createRecords).toHaveBeenCalledTimes(1));
-    expect(curation.createRecords.mock.calls[0]?.[0]).toEqual({
+    const { onCreated } = mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    expect(dataset.fetchRecords).toHaveBeenCalledWith({
       speciesId: SPECIES.id,
       traitId: DICTIONARY_SEXUAL_SYSTEM.id,
-      value: { levelIds: [DIOECIOUS] },
-      sources: { references: [{ doi: DOI }] },
+      limit: 200,
     });
-    expect(curation.invalidateAfterRecordWrite).toHaveBeenCalled();
+    // No existing record: no intent step.
+    expect(within(dialog).queryByRole('group', { name: 'What does your value mean?' })).toBeNull();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    expect(within(dialog).getByText(`Recorded as ${USER.name}`)).toBeInTheDocument();
+    await userEvent.click(submit(dialog));
+    await waitFor(() =>
+      expect(curation.createRecords).toHaveBeenCalledWith({
+        speciesId: SPECIES.id,
+        traitId: DICTIONARY_SEXUAL_SYSTEM.id,
+        value: { levelIds: [HERMAPHRODITE, DIOECIOUS] },
+        sources: { personalObservation: true },
+      }),
+    );
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(CREATED));
   });
 
-  it('RFC-80 R5 sends a claim with no DOI as a personal observation', async () => {
+  it('R-5 sends only the quantitative fields that were filled', async () => {
     curation.createRecords.mockResolvedValue(CREATED);
-    mount();
-    const dialog = await openWith('seed', SEED_MASS);
-    await userEvent.type(
-      await within(dialog).findByRole('spinbutton', { name: /number/i }),
-      '12.5',
-    );
-    expect(
-      within(dialog).getByText('This will be recorded as your personal observation'),
-    ).toBeInTheDocument();
+    mount({ initialTrait: DICTIONARY_SEED_MASS });
+    const dialog = await openFixed('Add entries for seed mass (mg)');
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'Min (mg)' }), '0.5');
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'Max (mg)' }), '3');
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'n' }), '12');
     await userEvent.click(submit(dialog));
-    await waitFor(() => expect(curation.createRecords).toHaveBeenCalledTimes(1));
-    expect(curation.createRecords.mock.calls[0]?.[0]).toEqual({
-      speciesId: SPECIES.id,
-      traitId: SEED_MASS,
-      value: { quantitative: { single: 12.5 } },
-      sources: { personalObservation: true },
-    });
-    expect(curation.resolveDoi).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(curation.createRecords).toHaveBeenCalledWith(
+        expect.objectContaining({ value: { quantitative: { min: 0.5, max: 3, n: 12 } } }),
+      ),
+    );
   });
 
   it('RFC-13 R6 asks for the category, the trait and the value before sending anything', async () => {
@@ -188,118 +255,52 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     await userEvent.click(submit(dialog));
     expect(within(dialog).getByText('Choose a broad trait category.')).toBeInTheDocument();
     expect(within(dialog).getByText('Choose a trait.')).toBeInTheDocument();
-    await userEvent.selectOptions(categorySelect(dialog), 'reproductive_system');
-    await userEvent.selectOptions(traitSelect(dialog), DICTIONARY_SEXUAL_SYSTEM.id);
-    await userEvent.click(submit(dialog));
-    expect(within(dialog).getByText('Choose a level.')).toBeInTheDocument();
     expect(curation.createRecords).not.toHaveBeenCalled();
   });
 
-  it('RFC-13 R6 asks for a number before sending a quantitative claim with none, and clears the message once one is typed', async () => {
-    mount();
-    const dialog = await openWith('seed', SEED_MASS);
+  it('RFC-13 R6 asks for at least one level, and clears the message once one is ticked', async () => {
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
     await userEvent.click(submit(dialog));
-    expect(within(dialog).getByText('Enter a number.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Choose at least one level.')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    expect(within(dialog).queryByText('Choose at least one level.')).not.toBeInTheDocument();
     expect(curation.createRecords).not.toHaveBeenCalled();
-
-    const number = await within(dialog).findByRole('spinbutton', { name: /number/i });
-    await userEvent.type(number, '12.5');
-    expect(within(dialog).queryByText('Enter a number.')).not.toBeInTheDocument();
-    expect(number).not.toHaveAttribute('aria-invalid', 'true');
   });
 
-  it('RFC-13 R6 clears "Choose a level." once a level is chosen, before any submit', async () => {
-    mount();
-    const dialog = await openWith('reproductive_system', DICTIONARY_SEXUAL_SYSTEM.id);
+  it('RFC-13 R6 asks for one of single, min, max or mean before sending a quantitative claim', async () => {
+    mount({ initialTrait: DICTIONARY_SEED_MASS });
+    const dialog = await openFixed('Add entries for seed mass (mg)');
+    await userEvent.type(within(dialog).getByRole('spinbutton', { name: 'SD (mg)' }), '1');
     await userEvent.click(submit(dialog));
-    expect(within(dialog).getByText('Choose a level.')).toBeInTheDocument();
-
-    const level = await within(dialog).findByRole('combobox', { name: 'Level' });
-    await userEvent.selectOptions(level, DIOECIOUS);
-    expect(within(dialog).queryByText('Choose a level.')).not.toBeInTheDocument();
-    expect(level).not.toHaveAttribute('aria-invalid', 'true');
-  });
-
-  it('RFC-70 R1 clears "Choose a trait." once a trait is chosen, before any submit', async () => {
-    mount();
-    const dialog = await screen.findByRole('dialog', { name: TITLE });
-    await within(dialog).findByRole('option', { name: 'Seed' });
-    await userEvent.selectOptions(categorySelect(dialog), 'reproductive_system');
-    await userEvent.click(submit(dialog));
-    expect(within(dialog).getByText('Choose a trait.')).toBeInTheDocument();
-    await userEvent.selectOptions(traitSelect(dialog), DICTIONARY_SEXUAL_SYSTEM.id);
-    expect(within(dialog).queryByText('Choose a trait.')).not.toBeInTheDocument();
-    expect(traitSelect(dialog)).not.toHaveAttribute('aria-invalid', 'true');
-  });
-
-  it('RFC-80 R4 refuses to send while a DOI has not resolved', async () => {
-    curation.resolveDoi.mockResolvedValue({ status: 'not_found', reference: null });
-    mount();
-    const dialog = await openWith('seed', SEED_MASS);
-    await userEvent.type(
-      await within(dialog).findByRole('spinbutton', { name: /number/i }),
-      '12.5',
-    );
-    await userEvent.type(within(dialog).getByRole('textbox', { name: 'DOI' }), DOI);
-    await userEvent.tab();
-    expect(await within(dialog).findByText('DOI not found')).toBeInTheDocument();
-    await userEvent.click(submit(dialog));
-    expect(within(dialog).getByRole('alert')).toHaveTextContent(
-      'Each DOI must resolve before the record can be added.',
-    );
+    expect(
+      within(dialog).getByText('Enter at least one of single, min, max or mean.'),
+    ).toBeInTheDocument();
     expect(curation.createRecords).not.toHaveBeenCalled();
   });
 
   it('RFC-13 R6 shows an API field error under the field its path names', async () => {
     curation.createRecords.mockRejectedValue(
       new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
-        { path: 'sources.references.0.doi', message: 'This DOI is already listed.' },
+        { path: 'value.quantitative.single', message: 'Number is out of range' },
         { path: 'traitId', message: 'Trait is inactive' },
       ]),
     );
-    curation.resolveDoi.mockResolvedValue(RESOLVED);
-    mount();
-    const dialog = await openWith('seed', SEED_MASS);
+    mount({ initialTrait: DICTIONARY_SEED_MASS });
+    const dialog = await openFixed('Add entries for seed mass (mg)');
     await userEvent.type(
-      await within(dialog).findByRole('spinbutton', { name: /number/i }),
-      '12.5',
+      within(dialog).getByRole('spinbutton', { name: 'Single value (mg)' }),
+      '1',
     );
-    await userEvent.type(within(dialog).getByRole('textbox', { name: 'DOI' }), DOI);
-    await userEvent.tab();
-    expect(await within(dialog).findByText('Resolved: Seed size (2023)')).toBeInTheDocument();
     await userEvent.click(submit(dialog));
-    expect(await within(dialog).findByText('This DOI is already listed.')).toBeInTheDocument();
-    expect(within(dialog).getByRole('textbox', { name: 'DOI' })).toHaveAccessibleDescription(
-      expect.stringContaining('This DOI is already listed.'),
-    );
-    expect(traitSelect(dialog)).toHaveAccessibleDescription(
-      expect.stringContaining('Trait is inactive'),
-    );
+    expect(
+      await within(dialog).findByRole('spinbutton', { name: 'Single value (mg)' }),
+    ).toHaveAccessibleDescription(expect.stringContaining('Number is out of range'));
+    expect((await within(dialog).findByText('Trait is inactive')).tagName).toBe('P');
   });
 
-  it('RFC-13 R6 shows a traitId API error under the fixed-trait paragraph, not a select', async () => {
-    curation.createRecords.mockRejectedValue(
-      new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
-        { path: 'traitId', message: 'Trait is inactive' },
-      ]),
-    );
-    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
-    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
-    await userEvent.selectOptions(
-      await within(dialog).findByRole('combobox', { name: 'Level' }),
-      DIOECIOUS,
-    );
-    expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
-    await userEvent.click(submit(dialog));
-    const message = await within(dialog).findByText('Trait is inactive');
-    expect(message.tagName).toBe('P');
-    expect(within(dialog).queryByRole('combobox', { name: 'Trait' })).not.toBeInTheDocument();
-  });
-
-  it('RFC-13 R6 says a fixed trait has no level to choose from, rather than an empty select', async () => {
-    // The dictionary loaded without the trait — inactive, or outside the
-    // viewer's visibility — so the fixed-trait branch has no levels to offer.
-    dataset.fetchDictionary.mockReset().mockResolvedValue([]);
+  it('RFC-13 R6 says a fixed trait has no level to choose from', async () => {
+    dataset.fetchDictionary.mockResolvedValue([]);
     mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
     expect(
@@ -307,8 +308,8 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     ).toBeInTheDocument();
   });
 
-  it('RFC-13 R6 says so when the levels of a fixed trait could not be loaded at all', async () => {
-    dataset.fetchDictionary.mockReset().mockRejectedValue(new ApiError(500, 'INTERNAL', 'boom'));
+  it('RFC-13 R6 says so when the levels could not be loaded at all', async () => {
+    dataset.fetchDictionary.mockRejectedValue(new ApiError(500, 'INTERNAL', 'boom'));
     mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
     expect(
@@ -316,58 +317,300 @@ describe('RFC-70 R1 AddEntriesDialog', () => {
     ).toBeInTheDocument();
   });
 
-  it('RFC-13 R6 hints that the dictionary failed to load, under the category field', async () => {
-    dataset.fetchDictionary.mockReset().mockRejectedValue(new Error('network down'));
-    mount();
-    const dialog = await screen.findByRole('dialog', { name: TITLE });
-    expect(await within(dialog).findByText('Could not load the dictionary.')).toBeInTheDocument();
-  });
-
-  it('RFC-70 R3 stays open and names the claim that already existed when only some records were created', async () => {
-    curation.createRecords.mockResolvedValue({
-      created: [RECORD_DETAIL],
-      validated: [],
-      duplicates: [{ recordId: CURATED_RECORD_DETAIL.id, recordCode: 'TR_9' }],
-    });
-    const { onCreated, onOpenRecord } = mount();
-    const dialog = await openWith('seed', SEED_MASS);
-    await userEvent.type(
-      await within(dialog).findByRole('spinbutton', { name: /number/i }),
-      '12.5',
-    );
+  it('RFC-80 R4 says why it will not send while a DOI has not resolved', async () => {
+    curation.resolveDoi.mockResolvedValue({ status: 'not_found', reference: null });
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    await userEvent.type(within(dialog).getByRole('textbox', { name: 'DOI' }), '10.1111/geb.13000');
+    await userEvent.tab();
+    expect(await within(dialog).findByText('DOI not found')).toBeInTheDocument();
+    // The button stays live: a dead control explains nothing, and the sentence
+    // is what ties the refusal to the row.
+    expect(submit(dialog)).toBeEnabled();
     await userEvent.click(submit(dialog));
-    const note = await within(dialog).findByText(/One of these claims already existed/);
-    expect(note).toHaveTextContent('Added 1 record. One of these claims already existed.');
-    // The answer is not a plain success: the dialog does not close on its own.
-    expect(onCreated).not.toHaveBeenCalled();
-    await userEvent.click(within(note).getByRole('button', { name: 'Open existing record' }));
-    expect(onOpenRecord).toHaveBeenCalledWith(CURATED_RECORD_DETAIL.id);
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Each DOI must resolve before the record can be added.',
+    );
+    expect(curation.createRecords).not.toHaveBeenCalled();
   });
 
-  it('RFC-70 R3 a matched level says it counted as a validation', async () => {
-    curation.createRecords.mockResolvedValue({
-      created: [],
-      validated: [{ recordId: CURATED_RECORD_DETAIL.id, recordCode: 'TR_9' }],
-      duplicates: [],
-    });
-    const { onCreated, onOpenRecord } = mount();
-    const dialog = await openWith('reproductive_system', DICTIONARY_SEXUAL_SYSTEM.id);
+  it('RFC-80 R4 drops the not-resolved alert once the DOI resolves', async () => {
+    curation.resolveDoi
+      .mockResolvedValueOnce({ status: 'not_found', reference: null })
+      .mockResolvedValue({
+        status: 'resolvable',
+        reference: null,
+        preview: { title: 'Seed size', authors: 'Moles, A.', year: 2023, journal: 'GEB' },
+      });
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    const doi = within(dialog).getByRole('textbox', { name: 'DOI' });
+    await userEvent.type(doi, '10.1111/geb.13000x');
+    await userEvent.tab();
+    await within(dialog).findByText('DOI not found');
+    await userEvent.click(submit(dialog));
+    const notReady = 'Each DOI must resolve before the record can be added.';
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(notReady);
+    await userEvent.clear(doi);
+    await userEvent.type(doi, '10.1111/geb.13000');
+    await userEvent.tab();
+    expect(await within(dialog).findByText('Resolved: Seed size (2023)')).toBeInTheDocument();
+    expect(within(dialog).queryByText(notReady)).not.toBeInTheDocument();
+  });
+});
+
+describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
+  it('keeps what was already filled when the intent is changed', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING, EXISTING_DIOECIOUS]));
+    dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: CONTEST_LABEL }));
+    const hermaphrodite = await within(dialog).findByRole('checkbox', { name: 'hermaphrodite' });
+    await waitFor(() => expect(hermaphrodite).toBeChecked());
+    await userEvent.click(hermaphrodite);
+    await userEvent.click(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL }));
+    expect(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' })).not.toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeChecked();
+  });
+
+  it('asks Contest or Complement first when records exist, and keeps everything else shut until answered', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING]));
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    const intent = await within(dialog).findByRole('group', { name: 'What does your value mean?' });
+    expect(
+      within(intent).getByText(
+        'This species already has records for this trait. Say first what your value means, and which value it answers.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeDisabled();
+    expect(submit(dialog)).toBeDisabled();
+
+    await userEvent.click(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL }));
+    expect(submit(dialog)).toBeDisabled();
     await userEvent.selectOptions(
-      await within(dialog).findByRole('combobox', { name: 'Level' }),
-      DIOECIOUS,
+      within(dialog).getByRole('combobox', { name: 'Responding to' }),
+      'hermaphrodite',
     );
-    await userEvent.click(submit(dialog));
-    const note = await within(dialog).findByText(
-      /Matches an existing record — counted as your validation\./,
-    );
-    expect(onCreated).not.toHaveBeenCalled();
-    await userEvent.click(within(note).getByRole('button', { name: 'Open existing record' }));
-    expect(onOpenRecord).toHaveBeenCalledWith(CURATED_RECORD_DETAIL.id);
+    expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeEnabled();
+    expect(submit(dialog)).toBeEnabled();
   });
 
-  it('RFC-70 R1 names the contributor the records are recorded as', async () => {
-    mount();
-    const dialog = await screen.findByRole('dialog', { name: TITLE });
-    expect(within(dialog).getByText('Recorded as Ada')).toBeInTheDocument();
+  it('RFC-70 R9 comes from a level with Contest chosen, that level unchecked and the other levels with records checked', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING, EXISTING_DIOECIOUS]));
+    dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
+    curation.createRecords.mockResolvedValue(CREATED);
+    mount({
+      initialTrait: DICTIONARY_SEXUAL_SYSTEM,
+      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    const confirm = await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST });
+    expect(within(dialog).getByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' })).not.toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeChecked();
+    // A categorical contest responds to no record (RFC-70 R1).
+    expect(within(dialog).queryByRole('combobox', { name: 'Responding to' })).toBeNull();
+    expect(submit(dialog)).toBeDisabled();
+    await userEvent.click(confirm);
+    expect(submit(dialog)).toBeEnabled();
+    await userEvent.click(submit(dialog));
+    await waitFor(() =>
+      expect(curation.createRecords).toHaveBeenCalledWith({
+        speciesId: SPECIES.id,
+        traitId: DICTIONARY_SEXUAL_SYSTEM.id,
+        value: { levelIds: [DIOECIOUS] },
+        sources: { personalObservation: true },
+        intent: 'contest',
+        contestedLevelIds: [HERMAPHRODITE],
+      }),
+    );
+  });
+
+  it('RFC-70 R10 asks for the confirmation again once the levels change', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING, EXISTING_DIOECIOUS]));
+    dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
+    mount({
+      initialTrait: DICTIONARY_SEXUAL_SYSTEM,
+      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    expect(within(dialog).getByRole('checkbox', { name: CONFIRM_CONTEST })).not.toBeChecked();
+    expect(submit(dialog)).toBeDisabled();
+  });
+
+  it('RFC-70 R10 a contest that contests no level cannot be sent', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING]));
+    dataset.fetchSpeciesTraits.mockResolvedValue(
+      summary([{ levelId: HERMAPHRODITE, key: 'hermaphrodite' }]),
+    );
+    mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: CONTEST_LABEL }));
+    // Contest checks every level of E, so nothing is left to contest.
+    expect(
+      await within(dialog).findByText(
+        'A contest must contest at least one level; this is a complement',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: /^Confirm: / }));
+    expect(submit(dialog)).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL }));
+    expect(
+      within(dialog).queryByText('A contest must contest at least one level; this is a complement'),
+    ).toBeNull();
+  });
+
+  it('RFC-70 R10 a 400 on contestedLevelIds reloads the levels and asks for the confirmation again', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING, EXISTING_DIOECIOUS]));
+    dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
+    curation.createRecords.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'contestedLevelIds', message: 'The contested levels changed; reload them' },
+      ]),
+    );
+    mount({
+      initialTrait: DICTIONARY_SEXUAL_SYSTEM,
+      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST }));
+    const loads = dataset.fetchSpeciesTraits.mock.calls.length;
+    const dictionaryLoads = dataset.fetchDictionary.mock.calls.length;
+    await userEvent.click(submit(dialog));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'The contested levels changed; reload them',
+    );
+    await waitFor(() =>
+      expect(dataset.fetchSpeciesTraits.mock.calls.length).toBeGreaterThan(loads),
+    );
+    await waitFor(() =>
+      expect(dataset.fetchDictionary.mock.calls.length).toBeGreaterThan(dictionaryLoads),
+    );
+    expect(within(dialog).getByRole('checkbox', { name: CONFIRM_CONTEST })).not.toBeChecked();
+    expect(submit(dialog)).toBeDisabled();
+  });
+
+  it('comes pre-answered from a quantitative row, naming the record by its ID', async () => {
+    // A second record with a mean, an SD and an n but no single value: its
+    // option reads as the record table's value column does (RFC-63 R8).
+    const summarised: RecordItem = {
+      ...EXISTING_MASS,
+      id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e92',
+      recordCode: 'TR_8',
+      quantitative: { mean: 1.25, sd: 0.2, n: 4 },
+    };
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING_MASS, summarised]));
+    curation.createRecords.mockResolvedValue(CREATED);
+    mount({
+      initialTrait: DICTIONARY_SEED_MASS,
+      respondTo: { recordId: EXISTING_MASS.id },
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for seed mass (mg)' });
+    // ＋ sets the responded record; the choice of intent stays the user's (RFC-70 R9).
+    const complement = await within(dialog).findByRole('radio', { name: COMPLEMENT_LABEL });
+    expect(complement).not.toBeChecked();
+    expect(submit(dialog)).toBeDisabled();
+    await userEvent.click(complement);
+    await waitFor(() => expect(submit(dialog)).toBeEnabled());
+    const target = within(dialog).getByRole('combobox', { name: 'Responding to' });
+    expect(target).toHaveValue(EXISTING_MASS.id);
+    expect(within(target).getByRole('option', { name: 'TR_4 · 1.25 mg' })).toBeInTheDocument();
+    expect(
+      within(target).getByRole('option', { name: 'TR_8 · mean 1.25 · SD 0.2 mg (n = 4)' }),
+    ).toBeInTheDocument();
+    await userEvent.type(
+      within(dialog).getByRole('spinbutton', { name: 'Single value (mg)' }),
+      '2',
+    );
+    await userEvent.click(submit(dialog));
+    await waitFor(() =>
+      expect(curation.createRecords).toHaveBeenCalledWith(
+        expect.objectContaining({ intent: 'complement', respondsToRecordId: EXISTING_MASS.id }),
+      ),
+    );
+  });
+});
+
+describe('RFC-70 R3 AddEntriesDialog result (R-7)', () => {
+  it('stays open and names what was added, what counted as a validation and what was a duplicate', async () => {
+    curation.createRecords.mockResolvedValue({
+      created: [{ ...RECORD_DETAIL, recordCode: 'TR_9' }],
+      validated: [{ recordId: EXISTING.id, recordCode: 'EB_3' }],
+      duplicates: [{ recordId: EXISTING_MASS.id, recordCode: 'TR_4' }],
+    });
+    const { onCreated, onOpenRecord } = mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    await userEvent.click(submit(dialog));
+    const items = await within(dialog).findAllByRole('listitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'TR_9 was added.',
+      'EB_3 matches an existing record — counted as your validation.',
+      'TR_4 is already your own record — nothing was added.',
+    ]);
+    // A partial success is not a failure: nothing is announced as an error.
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    expect(onCreated).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'EB_3' }));
+    expect(onOpenRecord).toHaveBeenCalledWith(EXISTING.id);
+  });
+
+  it("RFC-70 R2 shows a refusal of the responded record in the API's own words", async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING_MASS]));
+    curation.createRecords.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'respondsToRecordId', message: 'The responded record is of another trait' },
+      ]),
+    );
+    mount({ initialTrait: DICTIONARY_SEED_MASS, respondTo: { recordId: EXISTING_MASS.id } });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for seed mass (mg)' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: COMPLEMENT_LABEL }));
+    await userEvent.type(
+      within(dialog).getByRole('spinbutton', { name: 'Single value (mg)' }),
+      '2',
+    );
+    await userEvent.click(submit(dialog));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'The responded record is of another trait',
+    );
+  });
+
+  it('hands an answer that is not a contest up even when it names nothing', async () => {
+    const EMPTY = { created: [], validated: [], duplicates: [] };
+    curation.createRecords.mockResolvedValue(EMPTY);
+    const { onCreated } = mount({ initialTrait: DICTIONARY_SEXUAL_SYSTEM });
+    const dialog = await openFixed();
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
+    await userEvent.click(submit(dialog));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(EMPTY));
+    expect(within(dialog).queryByRole('list')).toBeNull();
+  });
+
+  it('says a contest that created nothing was recorded, instead of closing silently', async () => {
+    dataset.fetchRecords.mockResolvedValue(page([EXISTING, EXISTING_DIOECIOUS]));
+    dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
+    curation.createRecords.mockResolvedValue({ created: [], validated: [], duplicates: [] });
+    const { onCreated, onClose } = mount({
+      initialTrait: DICTIONARY_SEXUAL_SYSTEM,
+      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST }));
+    await userEvent.click(submit(dialog));
+    expect(await within(dialog).findByRole('listitem')).toHaveTextContent(
+      'Your contest of hermaphrodite was recorded.',
+    );
+    expect(onCreated).not.toHaveBeenCalled();
+    // The footer's Close, after the header's ×.
+    const close = within(dialog).getAllByRole('button', { name: 'Close' }).at(-1);
+    await userEvent.click(close as HTMLElement);
+    expect(onClose).toHaveBeenCalled();
   });
 });

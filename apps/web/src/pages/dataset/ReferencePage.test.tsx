@@ -52,7 +52,12 @@ const SMITH = {
   shortCitation: REFERENCE.shortCitation,
 };
 // The records of this page name Smith2001 as primary or secondary source.
-const PRIMARY: RecordItem = { ...RECORD, primaryReference: SMITH, secondaryReference: null };
+const PRIMARY: RecordItem = {
+  ...RECORD,
+  primaryReference: SMITH,
+  secondaryReference: null,
+  references: [SMITH],
+};
 const SECONDARY: RecordItem = { ...PENDING_RECORD, secondaryReference: SMITH };
 const BARE: ReferenceDetail = {
   ...REFERENCE_DETAIL,
@@ -269,11 +274,12 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     const headers = within(rows[0] as HTMLElement)
       .getAllByRole('columnheader')
       .map((th) => th.textContent);
-    expect(headers.slice(0, 5)).toEqual([
+    expect(headers.slice(0, 6)).toEqual([
       'Species',
       'Trait',
+      'ID',
       'Value',
-      'Primary article',
+      'References',
       'Secondary article',
     ]);
     const species = within(rows[1] as HTMLElement).getByRole('link', {
@@ -283,17 +289,16 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     const first = within(rows[1] as HTMLElement).getAllByRole('cell');
     expect(first[1]).toHaveTextContent('sexual system');
     expect(
-      within(first[3] as HTMLElement).getByRole('link', { name: 'Smith2001' }),
+      within(first[4] as HTMLElement).getByRole('link', { name: 'Smith2001' }),
     ).toHaveAttribute('href', `/app/references/${REFERENCE.id}`);
-    expect(first[4]).toHaveTextContent(/^—$/);
+    expect(first[5]).toHaveTextContent(/^—$/);
     expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('Validated')).toBeInTheDocument();
     const second = within(rows[2] as HTMLElement).getAllByRole('cell');
     expect(second[1]).toHaveTextContent('seed mass');
     expect(
-      within(second[3] as HTMLElement).getByRole('link', { name: 'Renner2014' }),
+      within(second[4] as HTMLElement).getByRole('link', { name: 'Renner2014' }),
     ).toBeVisible();
-    expect(within(second[4] as HTMLElement).getByRole('link', { name: 'Smith2001' })).toBeVisible();
+    expect(within(second[5] as HTMLElement).getByRole('link', { name: 'Smith2001' })).toBeVisible();
     expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText('Contested')).toBeInTheDocument();
     const pagination = screen.getByRole('navigation', { name: 'Pagination' });

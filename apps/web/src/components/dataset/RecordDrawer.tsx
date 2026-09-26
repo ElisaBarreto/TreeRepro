@@ -16,7 +16,6 @@ import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
 import { DrawerSection } from './DrawerSection.tsx';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
-import { ReviewBadge } from './ReviewBadge.tsx';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -135,6 +134,7 @@ function RecordBody({
         </p>
         <Definitions
           rows={[
+            { label: 'Record ID', value: record.recordCode },
             { label: 'Value', value: record.valueText || DASH },
             ...(record.level ? [{ label: 'Level', value: record.level.key }] : []),
             ...(record.numericValue !== null
@@ -150,7 +150,7 @@ function RecordBody({
         />
         <div className="flex flex-wrap items-center gap-2">
           <HarmonisationBadge status={record.harmonisation} />
-          <ReviewBadge status={record.review} />
+          {record.contested ? <Badge tone="red">Contested</Badge> : null}
           {record.intent && record.respondsTo ? (
             <Badge tone={INTENT_TONES[record.intent]}>
               <RecordLink
@@ -297,8 +297,10 @@ function RecordLoader({
 }
 
 /**
- * One record in full (RFC-63 R8): its value and both status chips, the
- * curation actions the session may take on it, the references it comes
+ * One record in full (RFC-63 R8): its record ID, its value, the
+ * harmonisation chip and the **Contested** badge (R-2, R-9), the curation
+ * actions the session may take on it (a withdrawal closes it, the record
+ * having left the dataset, R-13), the references it comes
  * from, where it came from (an import batch and row, or the person who
  * entered it), the harmonisation link to the pending record it resolves or
  * the records that resolve it (buttons when `onOpenRecord` is given, plain

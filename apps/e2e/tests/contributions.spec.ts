@@ -36,11 +36,10 @@ async function create<T>(admin: BrowserContext, path: string, body: unknown): Pr
 
 /**
  * The trait card's own button, the one that opens the trait's records. The
- * `?` beside it ("What does <trait> mean?") and the `+` ("Add value for
- * <trait>") carry the trait's name too, so the name alone matches three
- * buttons; only the card's own starts with it. The key this file creates is
- * letters, digits and underscores, so nothing in it is a regular-expression
- * metacharacter.
+ * `?` ("What does <trait> mean?"), the `+` ("Add value for <trait>") and the
+ * level buttons ("Validate <level> for <trait>") carry the name too, but only
+ * the card's own starts with it. The key this file creates is letters, digits
+ * and underscores, so nothing in it is a regular-expression metacharacter.
  */
 function traitCard(page: Page, name: string) {
   return page.getByRole('button', { name: new RegExp(`^${name}`) });
@@ -112,7 +111,10 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await panel.getByRole('button', { name: seededLevel.key, exact: true }).click();
 
       const drawer = page.getByRole('dialog', { name: 'Record', exact: true });
-      await drawer.getByRole('button', { name: '✓ Validate', exact: true }).click();
+      await drawer.getByRole('button', { name: 'Validate', exact: true }).click();
+      const confirmation = page.getByRole('dialog', { name: /^Validate / });
+      await confirmation.getByRole('button', { name: 'Validate', exact: true }).click();
+      await expect(confirmation).toBeHidden();
       // RFC-70 R4: the confirmation is attached to the record.
       await expect(drawer.getByText('You validated this record')).toBeVisible();
 
@@ -120,17 +122,23 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       // contest writes nothing on the record it contests, so the contributor
       // ends this step with one manual record (the contest) and one
       // `confirm` annotation (the validation). ─────────────────────────────
-      await drawer.getByRole('button', { name: '+ Add different record', exact: true }).click();
-      const contest = page.getByRole('dialog', {
-        name: `Add a different record for ${traitName} of ${speciesName}`,
-      });
-      await contest
-        .getByRole('radio', {
+      await drawer.getByRole('button', { name: 'Contest', exact: true }).click();
+      const contest = page.getByRole('dialog', { name: `Add entries for ${traitName}` });
+      await expect(
+        contest.getByRole('radio', {
           name: 'Contest — The existing value is wrong; mine should replace it.',
-        })
-        .check();
-      await contest.getByLabel('Level').selectOption({ label: contestedLevel.key });
-      await contest.getByRole('button', { name: 'Add record', exact: true }).click();
+        }),
+      ).toBeChecked();
+      await contest.getByRole('checkbox', { name: contestedLevel.key }).check();
+      // Every categorical entry with a non-empty E shows what it will do per
+      // level behind a required confirmation (RFC-70 R10): E is the seeded
+      // level alone here (the contested level has no record yet).
+      const confirmContest = contest.getByRole('checkbox', {
+        name: `Confirm: Contest ${seededLevel.key} · Add ${contestedLevel.key}`,
+      });
+      await expect(confirmContest).toBeVisible();
+      await confirmContest.check();
+      await contest.getByRole('button', { name: 'Add record(s)', exact: true }).click();
       await expect(contest).toBeHidden();
 
       // ── …and both show up on My contributions (RFC-71) ───────────────────

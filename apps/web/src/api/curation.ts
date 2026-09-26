@@ -17,6 +17,8 @@ import {
   type ResolveDoiResult,
   recordDetailSchema,
   resolveDoiResultSchema,
+  type ValidateLevelBody,
+  validateLevelResultSchema,
   type WithdrawLevelResult,
   withdrawLevelResultSchema,
 } from '@treerepro/contracts';
@@ -79,6 +81,27 @@ export async function annotateRecord(
     )
   ).data;
 }
+/** What a validation sends: at most one supporting reference (spec §2, R-6). @rfc RFC-70 R4 */
+export type ValidateBody = ValidateLevelBody;
+
+/**
+ * Validates every visible record of one level of a species × trait (spec
+ * §2): the API writes one `confirm` per record, skipping what R-6 forbids.
+ * @rfc RFC-70 R4
+ */
+export async function validateLevel(
+  speciesId: string,
+  traitId: string,
+  levelId: string,
+  body: ValidateBody,
+): Promise<void> {
+  await apiFetch(
+    `/species/${speciesId}/traits/${traitId}/levels/${levelId}/validate`,
+    dataEnvelopeSchema(validateLevelResultSchema),
+    { method: 'POST', json: body },
+  );
+}
+
 /** @rfc RFC-65 R8 */
 export async function fetchPendingTraits(): Promise<PendingTrait[]> {
   return (

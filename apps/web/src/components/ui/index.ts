@@ -32,6 +32,6 @@ export type { SectionProps } from './Section.tsx';
 export { Section } from './Section.tsx';
 export type { SelectProps } from './Select.tsx';
 export { Select } from './Select.tsx';
-export { Table, Tbody, Td, Th, Thead, Tr } from './Table.tsx';
+export { SortTh, Table, Tbody, Td, Th, Thead, Tr } from './Table.tsx';
 export type { TextareaProps } from './Textarea.tsx';
 export { Textarea } from './Textarea.tsx';

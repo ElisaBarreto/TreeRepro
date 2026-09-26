@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
 import { REFERENCE } from '../../test/dataset-fixtures.ts';
-import { SourcesField, type SourcesValue, sourcesToBody } from './SourcesField.tsx';
+import { EMPTY_SOURCES, SourcesField, type SourcesValue, sourcesToBody } from './SourcesField.tsx';
 
 const curation = vi.hoisted(() => ({ resolveDoi: vi.fn() }));
 vi.mock('../../api/curation.ts', async (importOriginal) => ({
@@ -319,5 +319,57 @@ describe('RFC-70 R1 sourcesToBody', () => {
     expect(sourcesToBody({ dois: [''], books: [{ isbn: '', citation: '' }] })).toEqual({
       personalObservation: true,
     });
+  });
+});
+
+describe('RFC-70 R4 SourcesField single', () => {
+  it('offers one optional row, without the personal-observation wording', () => {
+    render(
+      <SourcesField
+        value={EMPTY_SOURCES}
+        onChange={vi.fn()}
+        errors={{}}
+        onValidity={vi.fn()}
+        single
+      />,
+    );
+    expect(screen.getAllByRole('textbox', { name: /doi/i })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Add another reference' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('This will be recorded as your personal observation'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/own field work/)).not.toBeInTheDocument();
+  });
+
+  function SingleHarness() {
+    const [value, setValue] = useState<SourcesValue>(EMPTY_SOURCES);
+    return (
+      <SourcesField value={value} onChange={setValue} errors={{}} onValidity={vi.fn()} single />
+    );
+  }
+
+  it('a book replaces the DOI row, so single mode never holds both at once', async () => {
+    render(<SingleHarness />);
+    expect(screen.getByRole('textbox', { name: 'DOI' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    expect(screen.queryByRole('textbox', { name: /doi/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'ISBN' })).toBeInTheDocument();
+    expect(
+      sourcesToBody({ dois: [], books: [{ isbn: '0-306-40615-2', citation: 'Doe' }] }),
+    ).toEqual({ references: [{ isbn: '0-306-40615-2', citation: 'Doe' }] });
+  });
+
+  it('the book button disappears once one book row exists', async () => {
+    render(<SingleHarness />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    expect(screen.queryByRole('button', { name: 'Add a book (ISBN)' })).not.toBeInTheDocument();
+  });
+
+  it('restores the blank DOI row once the lone book is removed', async () => {
+    render(<SingleHarness />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('textbox', { name: 'DOI' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'ISBN' })).not.toBeInTheDocument();
   });
 });

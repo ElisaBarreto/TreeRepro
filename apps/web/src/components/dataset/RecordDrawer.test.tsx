@@ -6,7 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MeResponse } from '@treerepro/contracts';
 import type { ReactElement } from 'react';
@@ -26,6 +26,14 @@ const dataset = vi.hoisted(() => ({ fetchRecord: vi.fn() }));
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
+}));
+const curation = vi.hoisted(() => ({
+  annotateRecord: vi.fn(),
+  invalidateAfterRecordWrite: vi.fn(async () => undefined),
+}));
+vi.mock('../../api/curation.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/curation.ts')>()),
+  ...curation,
 }));
 
 beforeEach(() => dataset.fetchRecord.mockReset());
@@ -73,7 +81,7 @@ describe('RFC-65 R3 RecordDrawer actions section', () => {
     await screen.findByText('Dioecious');
     const heading = screen.getByRole('heading', { name: 'Actions' });
     expect(heading.parentElement).toContainElement(
-      screen.getByRole('button', { name: '✓ Validate' }),
+      screen.getByRole('button', { name: 'Validate' }),
     );
   });
 });
@@ -246,5 +254,44 @@ describe('RFC-61 R4 RecordDrawer references', () => {
     expect(GRACE_PERSONAL_OBSERVATION_REFERENCE.citationKey).toBe(
       `personal-observation:${CONTEST_RECORD_DETAIL.createdBy?.id}`,
     );
+  });
+});
+
+describe('spec §2 RecordDrawer record ID and contested flag', () => {
+  it('names the record by its ID and flags it Contested (R-2, R-9)', async () => {
+    dataset.fetchRecord.mockResolvedValue({
+      ...RECORD_DETAIL,
+      recordCode: 'EB_42',
+      contested: true,
+    });
+    renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, {
+      ...ME,
+      permissions: ['dataset.read'],
+    });
+    expect(await screen.findByText('Record ID')).toBeInTheDocument();
+    expect(screen.getByText('Record ID').nextElementSibling).toHaveTextContent('EB_42');
+    expect(screen.getByText('Contested')).toBeInTheDocument();
+  });
+});
+
+describe('R-13 RecordDrawer withdrawal', () => {
+  it('closes once the author confirmed the withdrawal: the record has left the dataset', async () => {
+    const mine = {
+      ...RECORD_DETAIL,
+      origin: 'manual' as const,
+      createdBy: { id: ME.user.id, name: ME.user.name },
+    };
+    dataset.fetchRecord.mockResolvedValue(mine);
+    curation.annotateRecord.mockResolvedValue(null);
+    const onClose = vi.fn();
+    renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={onClose} />, {
+      ...ME,
+      permissions: ['dataset.read', 'records.annotate'],
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Withdraw' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Withdraw this record?' });
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Withdraw' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(curation.annotateRecord).toHaveBeenCalledWith(RECORD_DETAIL.id, { kind: 'withdraw' });
   });
 });

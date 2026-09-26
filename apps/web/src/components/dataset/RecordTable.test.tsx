@@ -17,9 +17,9 @@ import {
   RECORD,
   SECONDARY_REFERENCE,
 } from '../../test/dataset-fixtures.ts';
-import { RecordTable } from './RecordTable.tsx';
+import { RecordTable, recordValueLabel } from './RecordTable.tsx';
 
-// The article and species columns are router `Link`s, so the table mounts
+// The reference and species columns are router `Link`s, so the table mounts
 // inside a minimal router whose only page is the table itself.
 function renderInRouter(ui: ReactElement) {
   const rootRoute = createRootRoute();
@@ -37,124 +37,135 @@ function renderInRouter(ui: ReactElement) {
 
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell');
 
+// An imported categorical record with two references, validated twice and
+// contested once.
+const ROW: RecordItem = {
+  ...RECORD,
+  recordCode: 'EB_1',
+  references: [PRIMARY_REFERENCE, PERSONAL_OBSERVATION_REFERENCE],
+  secondaryReference: SECONDARY_REFERENCE,
+  validationCount: 2,
+  contestCount: 1,
+  contested: true,
+};
+// A manual quantitative record with a summary instead of a single value.
+const MEASURED: RecordItem = {
+  ...PENDING_RECORD,
+  recordCode: 'TR_7',
+  level: null,
+  quantitative: { min: 0.5, max: 3, mean: 1.2, sd: 0.4, n: 12 },
+  references: [PRIMARY_REFERENCE],
+  secondaryReference: null,
+  validationCount: 0,
+  contestCount: 0,
+  contested: false,
+};
+
 describe('RFC-63 R8 RecordTable', () => {
-  it('lists value, both articles, origin, both chips and the date; the value selects the row', async () => {
+  it('lists ID, value, references, secondary article, origin, harmonisation, counts and date; no review column', async () => {
     const onSelect = vi.fn();
-    renderInRouter(<RecordTable records={[RECORD, PENDING_RECORD]} onSelect={onSelect} />);
+    renderInRouter(<RecordTable records={[ROW, MEASURED]} onSelect={onSelect} />);
     const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
     expect(headers).toEqual([
+      'ID',
       'Value',
-      'Primary article',
+      'References',
       'Secondary article',
       'Origin',
       'Harmonisation',
-      'Review',
+      'Counts',
       'Added',
     ]);
     const rows = screen.getAllByRole('row');
-    expect(rows).toHaveLength(3);
     const first = cells(rows[1] as HTMLElement);
-    const primary = within(first[1] as HTMLElement).getByRole('link', { name: 'Renner2014' });
-    expect(primary).toHaveAttribute('href', `/app/references/${PRIMARY_REFERENCE.id}`);
-    expect(primary).not.toHaveAttribute('title');
-    const secondary = within(first[2] as HTMLElement).getByRole('link', { name: 'TRY-6.0' });
-    expect(secondary).toHaveAttribute('href', `/app/references/${SECONDARY_REFERENCE.id}`);
-    expect(rows[1]).toHaveTextContent('import');
-    expect(within(rows[1] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('Validated')).toBeInTheDocument();
-    expect(rows[1]).toHaveTextContent('2026-09-01');
-
-    // PENDING_RECORD has no secondary article.
-    const second = cells(rows[2] as HTMLElement);
+    expect(first[0]).toHaveTextContent('EB_1');
+    // R-4: every reference of the record, joined by "; ".
+    expect(first[2]).toHaveTextContent('Renner2014; Personal observation (Ada)');
     expect(
-      within(second[1] as HTMLElement).getByRole('link', { name: 'Renner2014' }),
-    ).toBeVisible();
-    expect(second[2]).toHaveTextContent(/^—$/);
-    expect(within(second[2] as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
-    expect(rows[2]).toHaveTextContent('manual');
-    expect(within(rows[2] as HTMLElement).getByText('not a number')).toBeInTheDocument();
-    expect(screen.queryByText('sexual system')).not.toBeInTheDocument();
+      within(first[2] as HTMLElement).getByRole('link', { name: 'Renner2014' }),
+    ).toHaveAttribute('href', `/app/references/${PRIMARY_REFERENCE.id}`);
+    expect(within(first[3] as HTMLElement).getByRole('link', { name: 'TRY-6.0' })).toBeVisible();
+    expect(first[4]).toHaveTextContent('import');
+    expect(within(first[5] as HTMLElement).getByText('harmonised')).toBeInTheDocument();
+    expect(first[6]).toHaveTextContent('✓ 2 / ✗ 1');
+    expect(within(first[6] as HTMLElement).getByText('Contested')).toBeInTheDocument();
+    expect(first[7]).toHaveTextContent('2026-09-01');
+    expect(screen.queryByText('confirmed')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'about two' }));
-    expect(onSelect).toHaveBeenCalledWith(PENDING_RECORD);
+    const second = cells(rows[2] as HTMLElement);
+    expect(second[3]).toHaveTextContent(/^—$/);
+    expect(second[6]).toHaveTextContent('✓ 0 / ✗ 0');
+    expect(within(second[6] as HTMLElement).queryByText('Contested')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: '0.5–3 · mean 1.2 · SD 0.4 mg (n = 12)' }),
+    );
+    expect(onSelect).toHaveBeenCalledWith(MEASURED);
   });
 
-  it('shows the same article in both columns when a record names it in both roles, and a dash for a missing primary', async () => {
-    const same: RecordItem = { ...RECORD, secondaryReference: RECORD.primaryReference };
-    const secondaryOnly: RecordItem = {
-      ...PENDING_RECORD,
-      primaryReference: null,
-      secondaryReference: SECONDARY_REFERENCE,
-    };
-    renderInRouter(<RecordTable records={[same, secondaryOnly]} onSelect={vi.fn()} />);
+  it('reads a quantitative record by its single value, and a record with nothing harmonised by its text', () => {
+    expect(recordValueLabel({ ...MEASURED, quantitative: { single: 1.5 } })).toBe('1.5 mg');
+    expect(recordValueLabel({ ...MEASURED, quantitative: { max: 3 } })).toBe('…–3 mg');
+    expect(recordValueLabel({ ...MEASURED, quantitative: null })).toBe('about two');
+    expect(recordValueLabel(ROW)).toBe('dioecious');
+  });
+
+  it('says so with a dash when a record lists no reference', async () => {
+    renderInRouter(<RecordTable records={[{ ...MEASURED, references: [] }]} onSelect={vi.fn()} />);
     const rows = await screen.findAllByRole('row');
-    const both = cells(rows[1] as HTMLElement);
-    for (const cell of [both[1], both[2]]) {
-      expect(within(cell as HTMLElement).getByRole('link', { name: 'Renner2014' })).toHaveAttribute(
-        'href',
-        `/app/references/${PRIMARY_REFERENCE.id}`,
-      );
-    }
-    const only = cells(rows[2] as HTMLElement);
-    expect(only[1]).toHaveTextContent(/^—$/);
-    expect(within(only[2] as HTMLElement).getByRole('link', { name: 'TRY-6.0' })).toBeVisible();
+    expect(cells(rows[1] as HTMLElement)[2]).toHaveTextContent(/^—$/);
   });
 
-  it('cuts a long citation key at sixty characters and keeps it whole in the link title', async () => {
+  it('cuts a long reference label at sixty characters and keeps it whole in the link title', async () => {
     const longKey = `Smith, J.; Doe, A. (2001). ${'x'.repeat(60)}`;
     const long: RecordItem = {
-      ...RECORD,
-      primaryReference: {
-        id: PRIMARY_REFERENCE.id,
-        citationKey: longKey,
-        kind: 'publication',
-        observer: null,
-        shortCitation: null,
-      },
+      ...ROW,
+      references: [{ ...PRIMARY_REFERENCE, citationKey: longKey }],
     };
     renderInRouter(<RecordTable records={[long]} onSelect={vi.fn()} />);
     const rows = await screen.findAllByRole('row');
-    const link = within(cells(rows[1] as HTMLElement)[1] as HTMLElement).getByRole('link');
+    const link = within(cells(rows[1] as HTMLElement)[2] as HTMLElement).getByRole('link');
     expect(link).toHaveTextContent(`${longKey.slice(0, 59)}…`);
     expect(link).toHaveAttribute('title', longKey);
   });
 
   it('with showSpecies and showTrait, leading columns name the species (as a link) and the trait', async () => {
-    const onSelect = vi.fn();
     renderInRouter(
-      <RecordTable records={[RECORD, PENDING_RECORD]} onSelect={onSelect} showSpecies showTrait />,
+      <RecordTable records={[ROW, MEASURED]} onSelect={vi.fn()} showSpecies showTrait />,
     );
     const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
-    expect(headers).toEqual([
-      'Species',
-      'Trait',
-      'Value',
-      'Primary article',
-      'Secondary article',
-      'Origin',
-      'Harmonisation',
-      'Review',
-      'Added',
-    ]);
+    expect(headers.slice(0, 4)).toEqual(['Species', 'Trait', 'ID', 'Value']);
     const links = screen.getAllByRole('link', { name: 'Adenanthera pavonina' });
     expect(links).toHaveLength(2);
-    expect(links[0]).toHaveAttribute('href', `/app/species/${RECORD.species.id}`);
+    expect(links[0]).toHaveAttribute('href', `/app/species/${ROW.species.id}`);
     expect(links[0]).toHaveClass('italic');
     const rows = screen.getAllByRole('row');
-    const firstCells = cells(rows[1] as HTMLElement);
-    expect(firstCells[0]).toContainElement(links[0] as HTMLElement);
-    expect(firstCells[1]).toHaveTextContent('sexual system');
+    expect(cells(rows[1] as HTMLElement)[1]).toHaveTextContent('sexual system');
     expect(cells(rows[2] as HTMLElement)[1]).toHaveTextContent('seed mass');
-
-    await userEvent.click(screen.getByRole('button', { name: 'dioecious' }));
-    expect(onSelect).toHaveBeenCalledWith(RECORD);
   });
 
-  it('shows the trait column alone when only showTrait is set', async () => {
-    renderInRouter(<RecordTable records={[RECORD]} onSelect={vi.fn()} showTrait />);
-    const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
-    expect(headers.slice(0, 2)).toEqual(['Trait', 'Value']);
-    expect(screen.queryByRole('link', { name: 'Adenanthera pavonina' })).not.toBeInTheDocument();
+  it('spec §2 sorts on value, references, origin and added only, and says which is active', async () => {
+    const onSort = vi.fn();
+    renderInRouter(
+      <RecordTable
+        records={[ROW]}
+        onSelect={vi.fn()}
+        sort={{ by: 'added', order: 'desc', onSort }}
+      />,
+    );
+    expect(await screen.findByRole('columnheader', { name: 'Added' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+    expect(screen.getByRole('columnheader', { name: 'Value' })).toHaveAttribute(
+      'aria-sort',
+      'none',
+    );
+    for (const name of ['ID', 'Secondary article', 'Harmonisation', 'Counts']) {
+      expect(screen.getByRole('columnheader', { name })).not.toHaveAttribute('aria-sort');
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'References' }));
+    expect(onSort).toHaveBeenCalledWith('references');
   });
 });
 
@@ -162,39 +173,21 @@ describe('RFC-71 R2 RecordTable extra column', () => {
   it("appends one column of the caller's own, cell by row", async () => {
     renderInRouter(
       <RecordTable
-        records={[RECORD, PENDING_RECORD]}
+        records={[ROW, MEASURED]}
         onSelect={vi.fn()}
-        extra={{
-          header: 'Status',
-          cell: (record) => (record.review === 'contested' ? 'contested' : 'quiet'),
-        }}
+        extra={{ header: 'Status', cell: (record) => (record.contested ? 'contested' : 'quiet') }}
       />,
     );
     const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
     expect(headers.at(-1)).toBe('Status');
     const rows = screen.getAllByRole('row');
-    expect(cells(rows[1] as HTMLElement).at(-1)).toHaveTextContent('quiet');
-    expect(cells(rows[2] as HTMLElement).at(-1)).toHaveTextContent('contested');
+    expect(cells(rows[1] as HTMLElement).at(-1)).toHaveTextContent('contested');
+    expect(cells(rows[2] as HTMLElement).at(-1)).toHaveTextContent('quiet');
   });
 
   it('adds no column when the caller passes none', async () => {
-    renderInRouter(<RecordTable records={[RECORD]} onSelect={vi.fn()} />);
+    renderInRouter(<RecordTable records={[ROW]} onSelect={vi.fn()} />);
     const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
     expect(headers.at(-1)).toBe('Added');
-  });
-});
-
-describe('RFC-61 R4 RecordTable references', () => {
-  it('names a personal observation instead of showing its key', async () => {
-    renderInRouter(
-      <RecordTable
-        records={[{ ...RECORD, primaryReference: PERSONAL_OBSERVATION_REFERENCE }]}
-        onSelect={vi.fn()}
-      />,
-    );
-    expect(
-      await screen.findByRole('link', { name: 'Personal observation (Ada)' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(PERSONAL_OBSERVATION_REFERENCE.citationKey)).not.toBeInTheDocument();
   });
 });
