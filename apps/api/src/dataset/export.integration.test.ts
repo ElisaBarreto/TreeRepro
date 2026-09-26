@@ -290,13 +290,15 @@ describe('RFC-66 R5 connection safety', () => {
     const sp = await createSpecies(db);
     const ref = await createReference(db);
     const { user } = await createUser(db);
-    // Enough rows that the cursor is still open when the client goes away:
-    // the pipe's buffers and deflate hold far less than 20 000 rows.
+    // Enough rows, at a small batch, that the cursor is still mid-fetch (far
+    // from exhausted) when the client goes away after a single read: without
+    // the fix, the pooled connection never comes back and `select 1` below
+    // times out; with it, cancelling is immediate regardless of row count.
     await db.execute(sql`
       insert into trait_records (species_id, trait_id, value_text, numeric_value, harmonisation,
         origin, created_by, primary_reference_id)
       select ${sp.id}, ${trait.id}, g::text, g, 'harmonised', 'manual', ${user.id}, ${ref.id}
-      from generate_series(1, 200000) g`);
+      from generate_series(1, 50000) g`);
 
     const reader = datasetZip(db, UNRESTRICTED, {
       scope: 'all',
