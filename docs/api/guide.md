@@ -1,4 +1,4 @@
-openapi-sha256: 21e694d59a675fe2eeb210fc476a88aff6de9c32335a19693b8c65036b9af06a
+openapi-sha256: 69a604fefeb1bbdc50ae731dccc96e0e241008acb07f3deed0d3f4ae44773918
 
 # TreeRepro API guide
 
@@ -134,6 +134,18 @@ Response, either way:
 ```
 
 `created` is the number of records made; `skipped` counts records that already had an equivalent, current value.
+
+## Reading records
+
+A record of `GET /api/records` and `GET /api/records/:id` (RFC-63 R8) carries, beside its value:
+
+- `quantitative: { single, min, max, mean, sd, se, n } | null` — each key present only when set; null for a categorical record. `sd` and `se` are spreads (standard deviation, standard error), never values of the trait: do not average them with the others. `se` is filled only by the import; a manual record never has one.
+- `statistic` — what `single` is: `mean`, `median`, `derived_midpoint` (a midpoint of `min` and `max` computed before the import) or `single_or_unspecified`; null for a categorical record or an unlabelled value (RFC-63 R15).
+- `unitStatus` — how the import handled the unit: `converted_or_already_target`, `unit_missing` (the unit was assumed), `needs_unit_check` (the conversion is not confirmed) or `not_applicable`; null when absent. Treat a `needs_unit_check` value with care: the trait summaries leave it out (RFC-63 R10).
+
+The detail (`GET /api/records/:id`) adds the import provenance, each null when absent: `sourceFolder`, `sourceFile`, `taxonomicStatus` (how the row's species name matched: exact match, resolved synonym, fuzzy match…) and `foldedRecordCodes` (the codes an import row folded together).
+
+A species' `family` on `GET /api/species/:id` carries its `order` (null when unknown); the list items of `GET /api/species` do not (RFC-60 R7).
 
 ## Batch
 
@@ -396,6 +408,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-09-27 — Records carry `statistic`, `unitStatus`, `quantitative.se` and their import provenance; a species' family carries its `order` (issue #223). (openapi 69a604fefeb1)
 - 2026-09-27 — `import_rejects.reason` gains `invalid_measurement` (a compiled-dataset row with a malformed statistic, spread or unit status; issue #223). (openapi 21e694d59a67)
 - 2026-09-26 — `GET /api/me/api-keys/endpoints` (session only, admin system role): the routes a key reaches, shown in Settings › API keys (issue #221). (openapi d52998a814de)
 - 2026-09-26 — "A batch that takes too long": a batch outliving the proxy timeout answers 524 while its operations keep committing; batches of writes stay at 100 operations, and a script re-reads the state instead of resending. The examples map in batches of 100 and stop on an answer that is not JSON (issue #219). (openapi 03bc32d24279)

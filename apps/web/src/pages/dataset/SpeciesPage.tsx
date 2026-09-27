@@ -33,9 +33,14 @@ function errorMessage(error: unknown): string {
   return detailErrorMessage(error, 'SPECIES_NOT_FOUND', 'This species does not exist.');
 }
 
-// Family › Genus; a missing family (or both) reads as RFC-60 R3's term.
+// Order › Family › Genus (the order only when the family has one, RFC-60
+// R1); a missing family (or both) reads as RFC-60 R3's term.
 function taxonomyLine(species: Species): string {
-  return [species.family?.name ?? 'unresolved taxonomy', species.genus?.name]
+  return [
+    species.family?.order ?? undefined,
+    species.family?.name ?? 'unresolved taxonomy',
+    species.genus?.name,
+  ]
     .filter((part): part is string => part !== undefined)
     .join(' › ');
 }

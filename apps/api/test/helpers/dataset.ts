@@ -179,7 +179,16 @@ type RecordBase = {
   createdAt?: Date;
 };
 type RecordOrigin =
-  | { origin?: 'import'; importBatchId: string; importRowNo?: number }
+  | {
+      origin?: 'import';
+      importBatchId: string;
+      importRowNo?: number;
+      /** Import provenance (RFC-63 R1). */
+      sourceFolder?: string;
+      sourceFile?: string;
+      taxonomicStatus?: string;
+      foldedRecordCodes?: string[];
+    }
   | {
       origin: 'manual';
       createdBy: string;
@@ -233,6 +242,10 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
             origin: 'import' as const,
             importBatchId: input.importBatchId,
             importRowNo: input.importRowNo ?? ++rowCounter,
+            sourceFolder: input.sourceFolder ?? null,
+            sourceFile: input.sourceFile ?? null,
+            taxonomicStatus: input.taxonomicStatus ?? null,
+            foldedRecordCodes: input.foldedRecordCodes ?? null,
           }),
     })
     .returning({ id: traitRecords.id });
