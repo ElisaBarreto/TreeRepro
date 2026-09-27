@@ -126,6 +126,8 @@ describe('RFC-63 R8 recordSchema', () => {
       contested: false,
       recordCode: 'EB_1',
       quantitative: null,
+      statistic: null,
+      unitStatus: null,
       references: [],
     };
     expect(recordSchema.parse(record)).toEqual(record);
