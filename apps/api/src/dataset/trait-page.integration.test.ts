@@ -44,6 +44,9 @@ async function record(
     valueText: string;
     levelId?: string;
     numericValue?: number;
+    minValue?: number;
+    maxValue?: number;
+    meanValue?: number;
     unitStatus?: 'converted_or_already_target' | 'unit_missing' | 'needs_unit_check';
     harmonisation?: 'harmonised' | 'not_numeric' | 'unknown_level';
     referenceId: string;
@@ -55,6 +58,9 @@ async function record(
     valueText: input.valueText,
     levelId: input.levelId,
     numericValue: input.numericValue,
+    minValue: input.minValue,
+    maxValue: input.maxValue,
+    meanValue: input.meanValue,
     unitStatus: input.unitStatus,
     harmonisation: input.harmonisation,
     primaryReferenceId: input.referenceId,
@@ -369,6 +375,52 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
+  it('RFC-62 R7 counts a bound-only or mean-only record: bounds widen min and max, only central values enter the median', async () => {
+    const { user } = await createUser(t.db);
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const [one, two, three] = await Promise.all([
+      createSpecies(t.db),
+      createSpecies(t.db),
+      createSpecies(t.db),
+    ]);
+    await record(t.db, {
+      actor: user,
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      referenceId: reference.id,
+    });
+    // A published range with no value (an imported bound-only row).
+    await record(t.db, {
+      actor: user,
+      speciesId: two.id,
+      traitId: trait.id,
+      valueText: 'min=0.5;max=9',
+      minValue: 0.5,
+      maxValue: 9,
+      referenceId: reference.id,
+    });
+    await record(t.db, {
+      actor: user,
+      speciesId: three.id,
+      traitId: trait.id,
+      valueText: 'mean=4',
+      meanValue: 4,
+      referenceId: reference.id,
+    });
+
+    try {
+      const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
+      expect(detail?.distribution).toEqual({
+        numeric: { min: 0.5, median: 3, max: 9, speciesCount: 3 },
+      });
+    } finally {
+      await forgetCached(redis, ...cacheKeys(trait.id));
+    }
+  });
+
   it('answers a null numeric spread while no record of a quantitative trait is harmonised', async () => {
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
     try {
@@ -628,6 +680,32 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       id: one.id,
       recordCount: 2,
       summary: { numeric: { min: 2, max: 2 } },
+    });
+  });
+
+  it('RFC-62 R8 summarises a species whose only record is a range with no value', async () => {
+    const { user } = await createUser(t.db);
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const one = await createSpecies(t.db);
+    await record(t.db, {
+      actor: user,
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: 'min=0.8;max=4',
+      minValue: 0.8,
+      maxValue: 4,
+      referenceId: reference.id,
+    });
+
+    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+      mode: 'with',
+      limit: 50,
+    });
+    expect(data[0]).toMatchObject({
+      id: one.id,
+      recordCount: 1,
+      summary: { numeric: { min: 0.8, max: 4 } },
     });
   });
 
