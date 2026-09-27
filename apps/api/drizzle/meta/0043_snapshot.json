@@ -1,5 +1,5 @@
 {
-  "id": "f6306c8a-9321-4542-b327-c1a979b93e5f",
+  "id": "2903b281-0499-47c2-bfcd-ceb4a4a7ba7e",
   "prevId": "fc785191-aa8c-4e3a-ba02-986295340a25",
   "version": "7",
   "dialect": "postgresql",
@@ -2905,6 +2905,7 @@
             "species_id",
             "trait_id",
             "value_text",
+            "statistic",
             "raw_value",
             "primary_reference_id",
             "secondary_reference_id"
@@ -2956,6 +2957,10 @@
         "trait_records_statistic_quantitative_check": {
           "name": "trait_records_statistic_quantitative_check",
           "value": "\"trait_records\".\"statistic\" is null or \"trait_records\".\"level_id\" is null"
+        },
+        "trait_records_statistic_value_check": {
+          "name": "trait_records_statistic_value_check",
+          "value": "\"trait_records\".\"statistic\" is null or \"trait_records\".\"numeric_value\" is not null"
         }
       },
       "isRLSEnabled": false

@@ -521,6 +521,7 @@ export async function createRecords(
         select r.id, r.record_code, r.created_by from trait_records r
         where r.species_id = ${input.speciesId}::uuid and r.trait_id = ${input.traitId}::uuid
           and r.value_text = ${valueText}
+          and r.statistic is null
           and r.raw_value is not distinct from ${input.rawValue ?? null}::text
           and r.primary_reference_id = ${primaryReferenceId}::uuid
           and r.secondary_reference_id is not distinct from ${input.secondaryReferenceId ?? null}::uuid

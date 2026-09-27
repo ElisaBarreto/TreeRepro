@@ -823,10 +823,12 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             q.numeric_value, q.min_value, q.max_value, q.sd_value, q.se_value, q.n, q.statistic
           from parts p
           -- R6: the statistic columns belong to a quantitative trait; a
-          -- categorical row ignores them.
+          -- categorical row ignores them. The label names the value, so a
+          -- row without one stores none (RFC-63 R15).
           left join lateral (
             select p.value_num as numeric_value, p.min_num as min_value, p.max_num as max_value,
-              p.sd_num as sd_value, p.se_num as se_value, p.n_int as n, p.stat as statistic
+              p.sd_num as sd_value, p.se_num as se_value, p.n_int as n,
+              case when p.value_num is not null then p.stat end as statistic
           ) q on p.value_type = 'quantitative'
           join species sp on sp.canonical_name = p.species_name
           left join bibliographic_references pr on pr.citation_key = p.primary_key

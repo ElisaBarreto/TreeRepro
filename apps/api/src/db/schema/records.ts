@@ -114,6 +114,7 @@ export const traitRecords = pgTable(
         t.speciesId,
         t.traitId,
         t.valueText,
+        t.statistic,
         t.rawValue,
         t.primaryReferenceId,
         t.secondaryReferenceId,
@@ -188,6 +189,11 @@ export const traitRecords = pgTable(
     check(
       'trait_records_statistic_quantitative_check',
       sql`${t.statistic} is null or ${t.levelId} is null`,
+    ),
+    /** RFC-63 R15: statistic labels a value, so it needs numeric_value. */
+    check(
+      'trait_records_statistic_value_check',
+      sql`${t.statistic} is null or ${t.numericValue} is not null`,
     ),
   ],
 );
