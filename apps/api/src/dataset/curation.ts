@@ -256,7 +256,7 @@ interface CodeRow {
  * The records an entry matches (RFC-70 R3): the visible records of the
  * species × trait on the same level, or — quantitative — with the six fields
  * all identical (`is not distinct from`, so an absent field matches only an
- * absent one).
+ * absent one) and no mean, median or midpoint label on the record.
  */
 async function matchingRecords(
   tx: DbExecutor,
@@ -270,6 +270,7 @@ async function matchingRecords(
     q === null
       ? sql`r.level_id = ${value.levelId}::uuid`
       : sql`r.level_id is null
+          and (r.statistic is null or r.statistic = 'single_or_unspecified')
           and r.numeric_value is not distinct from ${num(q.single)}
           and r.min_value is not distinct from ${num(q.min)}
           and r.max_value is not distinct from ${num(q.max)}
