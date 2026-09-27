@@ -16,6 +16,7 @@ import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
 import { DrawerSection } from './DrawerSection.tsx';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
+import { statisticLabel, unitCaveat } from './RecordTable.tsx';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -53,6 +54,30 @@ const RAW_COLUMNS: ReadonlyArray<{
   { key: 'originalSpeciesName', label: 'Original species name' },
   { key: 'secondarySourceSpeciesName', label: 'Secondary source species name' },
   { key: 'rawCategory', label: 'Raw category' },
+];
+
+// The quantitative fields beyond the single value (shown as Number), each
+// only when present (RFC-63 R8, R15).
+const SPREAD_FIELDS: ReadonlyArray<{
+  key: 'min' | 'max' | 'mean' | 'sd' | 'se' | 'n';
+  label: string;
+}> = [
+  { key: 'min', label: 'Min' },
+  { key: 'max', label: 'Max' },
+  { key: 'mean', label: 'Mean' },
+  { key: 'sd', label: 'SD' },
+  { key: 'se', label: 'SE' },
+  { key: 'n', label: 'n' },
+];
+
+// An imported row's own provenance columns (RFC-63 R1), each only when present.
+const PROVENANCE_FIELDS: ReadonlyArray<{
+  key: 'sourceFolder' | 'sourceFile' | 'taxonomicStatus';
+  label: string;
+}> = [
+  { key: 'sourceFolder', label: 'Source folder' },
+  { key: 'sourceFile', label: 'Source file' },
+  { key: 'taxonomicStatus', label: 'Name match' },
 ];
 
 function errorMessage(error: unknown): string {
@@ -145,7 +170,17 @@ function RecordBody({
                   },
                 ]
               : []),
+            ...(record.statistic && statisticLabel(record.statistic)
+              ? [{ label: 'Statistic', value: statisticLabel(record.statistic) }]
+              : []),
+            ...SPREAD_FIELDS.flatMap(({ key, label }) => {
+              const v = record.quantitative?.[key];
+              return v === undefined ? [] : [{ label, value: formatNumber(v) }];
+            }),
             ...(unit ? [{ label: 'Unit', value: unit }] : []),
+            ...(unitCaveat(record.unitStatus)
+              ? [{ label: 'Unit status', value: unitCaveat(record.unitStatus) }]
+              : []),
           ]}
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -195,6 +230,12 @@ function RecordBody({
                     value: record.importBatch ? isoDate(record.importBatch.startedAt) : DASH,
                   },
                   { label: 'Row', value: record.importRowNo ?? DASH },
+                  ...PROVENANCE_FIELDS.flatMap(({ key, label }) =>
+                    record[key] ? [{ label, value: record[key] }] : [],
+                  ),
+                  ...(record.foldedRecordCodes?.length
+                    ? [{ label: 'Folded records', value: record.foldedRecordCodes.join(', ') }]
+                    : []),
                 ]
               : [
                   { label: 'Origin', value: 'manual' },

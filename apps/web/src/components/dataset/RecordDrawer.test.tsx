@@ -295,3 +295,59 @@ describe('R-13 RecordDrawer withdrawal', () => {
     expect(curation.annotateRecord).toHaveBeenCalledWith(RECORD_DETAIL.id, { kind: 'withdraw' });
   });
 });
+
+describe('RFC-63 R8 RecordDrawer statistic, spread, unit status and provenance (issue #223)', () => {
+  const LABELS = [
+    'Statistic',
+    'Min',
+    'Max',
+    'SD',
+    'SE',
+    'n',
+    'Unit status',
+    'Source folder',
+    'Source file',
+    'Name match',
+    'Folded records',
+  ];
+
+  it('shows each new row when present', async () => {
+    dataset.fetchRecord.mockResolvedValue({
+      ...RECORD_DETAIL,
+      level: null,
+      valueText: '9.3',
+      numericValue: 9.3,
+      statistic: 'mean',
+      unitStatus: 'needs_unit_check',
+      quantitative: { single: 9.3, min: 6.2, max: 18.8, sd: 0.5, se: 0.1, n: 30 },
+      sourceFolder: 'GIFT',
+      sourceFile: 'a.csv',
+      taxonomicStatus: 'resolved synonym',
+      foldedRecordCodes: ['EB_1', 'EB_2'],
+    });
+    renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, ME);
+    await screen.findByText('GIFT');
+    const value = (label: string) =>
+      screen.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
+    expect(value('Statistic')).toBe('mean');
+    expect(value('Min')).toBe('6.2');
+    expect(value('Max')).toBe('18.8');
+    expect(value('SD')).toBe('0.5');
+    expect(value('SE')).toBe('0.1');
+    expect(value('n')).toBe('30');
+    expect(value('Unit status')).toBe('unit not checked');
+    expect(value('Source folder')).toBe('GIFT');
+    expect(value('Source file')).toBe('a.csv');
+    expect(value('Name match')).toBe('resolved synonym');
+    expect(value('Folded records')).toBe('EB_1, EB_2');
+  });
+
+  it('shows none of them when absent', async () => {
+    dataset.fetchRecord.mockResolvedValue(RECORD_DETAIL);
+    renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, ME);
+    await screen.findByText('Dioecious');
+    for (const label of LABELS) {
+      expect(screen.queryByText(label, { selector: 'dt' })).not.toBeInTheDocument();
+    }
+  });
+});

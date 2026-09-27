@@ -57,11 +57,14 @@
 
 ## Replacing the imported data with the ID-carrying file (spec 2026-09-25 §5)
 
-**Symptom:** After the record-schema migration (0035 at the time of writing; check `apps/api/drizzle/`) every existing record has a `record_code` of `EB_LEGACY_<n>`, and the owner has the new source file, `sample_data.csv`, whose header is quoted, starts with an unnamed column (`""`, R's row numbers) and ends in `"ID"`.
+**Symptom:** After the record-schema migration (0035 at the time of writing; check `apps/api/drizzle/`) every existing record has a `record_code` of `EB_LEGACY_<n>`, and the owner has the new source file, `sample_data.csv`, whose header is quoted, starts with an unnamed column (`""`, R's row numbers) and ends in `"ID"`. That was the historic 17-column file of the first run; the importer now refuses it (`header_mismatch`, RFC-64 R2), so a total replace today loads a 28-column release, `ID` first ("The 28-column file (issue #223)" below).
 
 **Cause:** The `ID` column did not exist when the data was loaded; the migration only makes `record_code NOT NULL` possible. The owner decided to replace everything earlier imports loaded with the new file (RFC-64 R12). `--replace` is refused in production twice — by `isReplaceAllowed` and by the missing migrator secret in the `api` container — and this procedure is the one sanctioned exception (RFC-64 R12). It is safe only while nothing but imported data would be lost, so it stops unless manual records, annotations and `record_references` are all zero.
 
-**Fix:** Run on the production host, from the checkout, with the new file at `/srv/imports/sample_data.csv` (its header is quoted; the first line ends `"harmonised_value","ID"`, after the unnamed `""` first column of R row numbers, which the importer reads and ignores) and the supplementary files beside it.
+**Fix:** Run on the production host, from the checkout, with the new file at `/srv/imports/sample_data.csv` — a 28-column release (RFC-64 R2), never the historic 17-column file — and the supplementary files beside it. Before anything else, check that its whole first line, with double quotes and a trailing CR stripped, is exactly the 28-column header (the owner's export writes it unquoted; a quoted header passes too, as the importer parses the line as CSV; the importer would refuse anything else only after the API is down):
+   ```sh
+   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '"\r')" = 'ID,primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value,statistic,sample_size,source_folder,file_name,wcvp_taxonomic_status,taxon_order,unit_harmonisation_status,min,max,sd,se,statistic_record_codes' ] && echo header ok   # → header ok
+   ```
 
 1. **Back up** (a `pg_dump` by the read-only `treerepro_backup` role, `age`-encrypted into the `backups` volume):
    ```sh
@@ -128,12 +131,12 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
 
 **Cause:** Imported records are append-only (RFC-63 R4), and users' validations, withdrawals, contests and harmonisations point at them by id. Swapping the file means deleting the `EB_` rows and re-attaching all of that to the new rows by `record_code`. RFC-64 R15 does this in one transaction, as `treerepro_migrator`.
 
-**Fix:** Run it on the production host, from the checkout. Put the new file at `/srv/imports/sample_data.csv`; its first line ends `"harmonised_value","ID"` (quoted; the unnamed first column is R's row number, as in the section above).
+**Fix:** Run it on the production host, from the checkout. Put the new file at `/srv/imports/sample_data.csv`: a 28-column release (RFC-64 R2, "The 28-column file" below) whose whole first line is exactly the 28-column header (`ID` first, no unnamed row-number column; quoted or not — step 1 strips quotes and a trailing CR, then compares the whole line).
 
 1. **Sheet directory.** The sheet names users (personal data), so the directory is private to the `api` image's user (`node`, uid 1000):
    ```sh
    sudo install -d -m 700 -o 1000 -g 1000 /srv/imports/replace-sheets
-   head -1 /srv/imports/sample_data.csv | tr -d '\r' | grep -c '"harmonised_value","ID"$'   # → 1
+   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '"\r')" = 'ID,primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value,statistic,sample_size,source_folder,file_name,wcvp_taxonomic_status,taxon_order,unit_harmonisation_status,min,max,sd,se,statistic_record_codes' ] && echo header ok   # → header ok
    ```
 2. **Back up**, as in the section above:
    ```sh
@@ -159,10 +162,12 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
    docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
      "select distinct regexp_replace(t.record_code, '[a-z]+$', '') from trait_records k join trait_records t on t.id = k.supersedes_record_id
       where t.origin = 'import' and k.primary_reference_id is null order by 1" > /tmp/needed-ids.txt
-   awk -F, 'NR>1 { v=$NF; gsub(/["\r]/, "", v); print v }' /srv/imports/sample_data.csv | sort -u > /tmp/file-ids.txt
+   awk -F, 'NR>1 { v=$1; gsub(/["\r]/, "", v); print v
+                   n=split($NF, f, ";"); for (i=1; i<=n; i++) { c=f[i]; gsub(/[" \r]/, "", c); if (c != "") print c } }' \
+     /srv/imports/sample_data.csv | sort -u > /tmp/file-ids.txt
    sort -u /tmp/needed-ids.txt | comm -23 - /tmp/file-ids.txt   # must print nothing
    ```
-   `ID` is the file's last column and never holds a comma; earlier fields may be quoted and hold one, which reading only the last field tolerates. If the check prints codes, stop: bring the API back (`docker compose up -d api`) and take the codes to the owner. The run would roll back anyway, naming them.
+   `ID` is the file's first column and `statistic_record_codes` its last; neither ever holds a comma (the folded codes are `EB_<n>` joined by `;`), while the fields between may be quoted and hold one, which reading only the first and last fields tolerates. A code found only in some row's `statistic_record_codes` is not missing: that row folded it, and the run re-links the harmonisation to the row that lists it (RFC-64 R15 step 4, the smallest such `ID` when several do). If the check prints codes, stop: bring the API back (`docker compose up -d api`) and take the codes to the owner. The run would roll back anyway, naming them.
 5. **Replace.** A one-off container of the `api` image, with the migrator secret mounted, the files read-only and the sheet directory writable. `NODE_ENV` stays `production`: RFC-64 R15 is allowed there, and the migrator secret is its gate.
    ```sh
    docker compose run --rm --no-deps \
@@ -222,3 +227,8 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
 
 Nothing else needs reloading: species, taxa, references, plots, plot species, user plots, synonyms and proposals were never touched, and the file adds whatever is missing.
 
+## The 28-column file (issue #223)
+
+**Symptom:** An older export — the 17-column file with R's unnamed row-number column first and `ID` last, or a 16-column file with no `ID` at all — is refused with `header_mismatch`, and rows that used to load now land in the batch report as `invalid_measurement`.
+**Cause:** RFC-64 R2 now takes exactly the owner's 28 columns, `ID` first. `statistic` says what `harmonised_value` is (`single_or_unspecified`, `mean`, `median` or `derived_midpoint`), never `min`/`max`/`sd`/`se`/`n` as the pre-2026-09-27 exports used it. The statistic columns `min`, `max`, `sd`, `se` and `sample_size` fill `min_value`, `max_value`, `sd_value`, `se_value` and `n` on a quantitative trait only, and are ignored on a categorical one (design D4). A malformed combination — a bad number, a negative spread, `min > max`, a spread with no value or bound, an unknown statistic or unit status, a folded code that is not `EB_<n>` — would break a `trait_records` CHECK and abort the whole transaction, so RFC-64 R7 rejects it first as `invalid_measurement`.
+**Fix:** Import only a 28-column release; an old export is not converted. Read the `invalid_measurement` rows in the batch report (Import page or `import_rejects.raw_row`, which holds all 28 columns) and fix them upstream.

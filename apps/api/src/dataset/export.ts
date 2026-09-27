@@ -18,6 +18,7 @@ import { recordVisible } from './records.ts';
 /** @rfc RFC-66 R2 */
 export const RECORD_COLUMNS = [
   'record_code',
+  'order',
   'family',
   'genus',
   'species',
@@ -31,7 +32,10 @@ export const RECORD_COLUMNS = [
   'value_max',
   'value_mean',
   'value_sd',
+  'value_se',
   'value_n',
+  'statistic',
+  'unit_status',
   'raw_value',
   'references',
   'origin',
@@ -40,6 +44,10 @@ export const RECORD_COLUMNS = [
   'contested',
   'n_validations',
   'n_contests',
+  'source_folder',
+  'source_file',
+  'taxonomic_status',
+  'folded_record_codes',
   'created_at',
 ] as const;
 
@@ -198,6 +206,7 @@ export const REFERENCES_OF_R = sql`(select string_agg(y.label, '; ' order by y.p
 
 interface RecordRow {
   record_code: string;
+  order: string | null;
   family: string | null;
   genus: string | null;
   species: string;
@@ -211,7 +220,10 @@ interface RecordRow {
   value_max: string | null;
   value_mean: string | null;
   value_sd: string | null;
+  value_se: string | null;
   value_n: number | null;
+  statistic: string | null;
+  unit_status: string | null;
   raw_value: string | null;
   refs: string | null;
   origin: string;
@@ -220,6 +232,10 @@ interface RecordRow {
   contested: boolean;
   n_validations: number;
   n_contests: number;
+  source_folder: string | null;
+  source_file: string | null;
+  taxonomic_status: string | null;
+  folded_record_codes: string | null;
   created_at: Date;
 }
 
@@ -227,9 +243,13 @@ interface RecordRow {
  * `records.csv`: every record visible to the viewer, pending ones (for a
  * reviewer) with their raw value; `platform` keeps the `TR_` records.
  * `contested` and `n_contests` are RFC-63 R14's, `n_validations` counts
- * distinct validators (RFC-63 R8).
+ * distinct validators (RFC-63 R8). `order` is the species' family's
+ * `order_name` (RFC-60 R1); `value_se`, `statistic`, `unit_status`,
+ * `source_folder`, `source_file`, `taxonomic_status` and
+ * `folded_record_codes` are the record's stored provenance (RFC-63 R1, R15).
  * @rfc RFC-66 R2, R3, R4, R5, R9
  * @rfc RFC-33 R2, R3
+ * @rfc RFC-60 R1
  */
 export function recordsCsv(
   db: Db,
@@ -237,11 +257,13 @@ export function recordsCsv(
   options: ExportOptions,
 ): ReadableStream<Uint8Array> {
   const query = sql`
-    select r.record_code, f.name as family, g.name as genus, s.canonical_name as species, s.name_source,
+    select r.record_code, f.order_name as "order", f.name as family, g.name as genus,
+      s.canonical_name as species, s.name_source,
       c.key as category, t.key as trait, t.unit, l.key as level,
       r.numeric_value::text as value_single, r.min_value::text as value_min,
       r.max_value::text as value_max, r.mean_value::text as value_mean,
-      r.sd_value::text as value_sd, r.n as value_n,
+      r.sd_value::text as value_sd, r.se_value::text as value_se, r.n as value_n,
+      r.statistic, r.unit_status,
       coalesce(r.raw_value, case when r.harmonisation <> 'harmonised' then r.value_text end) as raw_value,
       ${REFERENCES_OF_R} as refs,
       r.origin, r.intent,
@@ -250,6 +272,8 @@ export function recordsCsv(
       (select count(distinct a.actor_id) from record_annotations a
         where a.record_id = r.id and a.kind = 'confirm')::int as n_validations,
       ${contestCountSql(sql`r.id`)} as n_contests,
+      r.source_folder, r.source_file, r.taxonomic_status,
+      array_to_string(r.folded_record_codes, '; ') as folded_record_codes,
       r.created_at
     from trait_records r
     join species s on s.id = r.species_id
@@ -268,6 +292,7 @@ export function recordsCsv(
     (r) =>
       csvRow([
         r.record_code,
+        r.order,
         r.family,
         r.genus,
         r.species,
@@ -281,7 +306,10 @@ export function recordsCsv(
         r.value_max,
         r.value_mean,
         r.value_sd,
+        r.value_se,
         r.value_n,
+        r.statistic,
+        r.unit_status,
         r.raw_value,
         r.refs,
         r.origin,
@@ -290,6 +318,10 @@ export function recordsCsv(
         r.contested ? 'true' : 'false',
         r.n_validations,
         r.n_contests,
+        r.source_folder,
+        r.source_file,
+        r.taxonomic_status,
+        r.folded_record_codes,
         new Date(r.created_at).toISOString(),
       ]),
     options.batch ?? BATCH,

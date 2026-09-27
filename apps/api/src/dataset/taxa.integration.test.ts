@@ -19,7 +19,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
-import { species } from '../db/schema/taxa.ts';
+import { families, species } from '../db/schema/taxa.ts';
 import { encodeCompositeCursor } from '../http/cursor.ts';
 import { speciesTraitSummary } from './summary.ts';
 import { getSpecies, likePattern, listFamilies, listGenera, searchSpecies } from './taxa.ts';
@@ -353,6 +353,28 @@ describe('RFC-60 R7 getSpecies', () => {
         gbifUsageKey: null,
       },
     ]);
+  });
+
+  it("R7 the detail's family carries its order (null when unset); the list item's does not", async () => {
+    const k = tag();
+    const family = await createFamily(t.db);
+    await t.db.update(families).set({ orderName: 'Rosales' }).where(eq(families.id, family.id));
+    const genus = await createGenus(t.db, { familyId: family.id });
+    const sp = await createSpecies(t.db, { canonicalName: `Ordered sp-${k}`, genusId: genus.id });
+    const found = await getSpecies(t.db, UNRESTRICTED, sp.id);
+    expect(found?.family).toEqual({ id: family.id, name: family.name, order: 'Rosales' });
+
+    const bare = await createFamily(t.db);
+    const bareGenus = await createGenus(t.db, { familyId: bare.id });
+    const bareSp = await createSpecies(t.db, { genusId: bareGenus.id });
+    expect((await getSpecies(t.db, UNRESTRICTED, bareSp.id))?.family).toEqual({
+      id: bare.id,
+      name: bare.name,
+      order: null,
+    });
+
+    const listed = await searchSpecies(t.db, UNRESTRICTED, { q: `Ordered sp-${k}`, limit: 10 });
+    expect(listed.data[0]?.family).toEqual({ id: family.id, name: family.name });
   });
 
   it('adds names, counts and the unresolved flag; unknown id is null', async () => {

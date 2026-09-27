@@ -296,6 +296,9 @@ describe('RFC-01 R6 negative sweep over every route', () => {
         cookie: adminCookie,
       });
       expect(allowed.status, key).not.toBe(403);
+      // An unread streamed answer (the dataset ZIP) holds its cursor's pooled
+      // connection, so `afterAll`'s pool close would wait on it for ever.
+      await allowed.body?.cancel();
     }
   });
 
@@ -359,6 +362,7 @@ describe('RFC-01 R6 negative sweep over every route', () => {
         expect(res.status, key).not.toBe(401);
         expect(res.status, key).not.toBe(403);
       }
+      if (!res.bodyUsed) await res.body?.cancel();
     }
     expect(refused.sort()).toEqual(
       [

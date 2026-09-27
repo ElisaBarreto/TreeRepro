@@ -99,6 +99,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
       .getAllByRole('term')
       .map((term) => term.textContent);
     expect(columns).toEqual([
+      'ID',
       'primary_reference',
       'secondary_reference',
       'wcvp_species',
@@ -114,13 +115,26 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
       'original_value_clean',
       'trait_value_type',
       'harmonised_value',
+      'statistic',
+      'sample_size',
+      'source_folder',
+      'file_name',
+      'wcvp_taxonomic_status',
+      'taxon_order',
+      'unit_harmonisation_status',
+      'min',
+      'max',
+      'sd',
+      'se',
+      'statistic_record_codes',
     ]);
     const values = within(details as HTMLElement)
       .getAllByRole('definition')
       .map((d) => d.textContent);
-    expect(values[0]).toBe('Smith2001');
-    expect(values[1]).toBe('—');
-    expect(values[10]).toBe('flower_hue');
+    expect(values[0]).toBe('EB_12');
+    expect(values[1]).toBe('Smith2001');
+    expect(values[2]).toBe('—');
+    expect(values[11]).toBe('flower_hue');
     const pagination = within(rejected as HTMLElement).getByRole('navigation', {
       name: 'Pagination',
     });

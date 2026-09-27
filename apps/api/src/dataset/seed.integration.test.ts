@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
@@ -86,6 +86,36 @@ describe('RFC-62 R2 seedDictionary', () => {
     expect(flowerColor?.description).not.toBe('CHANGED DESCRIPTION');
     const again = await seedDictionary(t.db, file);
     expect(again).toEqual({ categories: 0, traits: 0, levels: 0 });
+  });
+
+  it('RFC-62 R2 skips a row whose broad_category is taxonomy, reference or record', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'seed-'));
+    const key = `zz_seed_trait_${Math.random().toString(16).slice(2)}`;
+    const category = `zz_seed_category_${Math.random().toString(16).slice(2)}`;
+    const file = join(dir, 'dict.csv');
+    await writeFile(
+      file,
+      [
+        'final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels',
+        'statistic,record,text,,What the value is.,',
+        'wcvp_family,taxonomy,text,,The plant family.,',
+        'primary_reference,reference,text,,The primary citation.,',
+        `${key},${category},categorical,,A real trait,a;b`,
+        '',
+      ].join('\n'),
+    );
+    const report = await seedDictionary(t.db, file);
+    expect(report).toEqual({ categories: 1, traits: 1, levels: 2 });
+    const categories = await t.db
+      .select({ key: traitCategories.key })
+      .from(traitCategories)
+      .where(inArray(traitCategories.key, ['taxonomy', 'reference', 'record']));
+    expect(categories).toEqual([]);
+    expect(await t.db.select().from(traits).where(eq(traits.key, 'statistic'))).toEqual([]);
+    expect(await t.db.select().from(traits).where(eq(traits.key, 'wcvp_family'))).toEqual([]);
+    expect(await t.db.select().from(traits).where(eq(traits.key, 'primary_reference'))).toEqual([]);
+    const [row] = await t.db.select().from(traits).where(eq(traits.key, key));
+    expect(row).toMatchObject({ categoryKey: category });
   });
 
   it('RFC-62 R2 stores active=false from an optional seventh column; six-column files still load', async () => {

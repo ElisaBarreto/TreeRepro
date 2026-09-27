@@ -6,7 +6,9 @@ import type {
   NameSource,
   NameType,
   RecordIntent,
+  Statistic,
   TraitValueType,
+  UnitStatus,
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../../src/db/client.ts';
@@ -28,11 +30,14 @@ import { users } from '../../src/db/schema/users.ts';
 const suffix = () => randomBytes(4).toString('hex');
 
 /** Names are random so parallel test files never collide on the unique indexes. */
-export async function createFamily(db: DbExecutor, options: { name?: string } = {}) {
+export async function createFamily(
+  db: DbExecutor,
+  options: { name?: string; orderName?: string } = {},
+) {
   const [row] = await db
     .insert(families)
-    .values({ name: options.name ?? `Testaceae-${suffix()}` })
-    .returning({ id: families.id, name: families.name });
+    .values({ name: options.name ?? `Testaceae-${suffix()}`, orderName: options.orderName ?? null })
+    .returning({ id: families.id, name: families.name, orderName: families.orderName });
   if (!row) throw new Error('createFamily: no row');
   return row;
 }
@@ -164,7 +169,10 @@ type RecordBase = {
   maxValue?: number;
   meanValue?: number;
   sdValue?: number;
+  seValue?: number;
   n?: number;
+  statistic?: Statistic;
+  unitStatus?: UnitStatus;
   harmonisation?: HarmonisationStatus;
   rawValue?: string;
   primaryReferenceId?: string | null;
@@ -174,7 +182,16 @@ type RecordBase = {
   createdAt?: Date;
 };
 type RecordOrigin =
-  | { origin?: 'import'; importBatchId: string; importRowNo?: number }
+  | {
+      origin?: 'import';
+      importBatchId: string;
+      importRowNo?: number;
+      /** Import provenance (RFC-63 R1). */
+      sourceFolder?: string;
+      sourceFile?: string;
+      taxonomicStatus?: string;
+      foldedRecordCodes?: string[];
+    }
   | {
       origin: 'manual';
       createdBy: string;
@@ -206,7 +223,10 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
       maxValue: input.maxValue ?? null,
       meanValue: input.meanValue ?? null,
       sdValue: input.sdValue ?? null,
+      seValue: input.seValue ?? null,
       n: input.n ?? null,
+      statistic: input.statistic ?? null,
+      unitStatus: input.unitStatus ?? null,
       harmonisation,
       rawValue: input.rawValue ?? null,
       primaryReferenceId: input.primaryReferenceId ?? null,
@@ -225,6 +245,10 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
             origin: 'import' as const,
             importBatchId: input.importBatchId,
             importRowNo: input.importRowNo ?? ++rowCounter,
+            sourceFolder: input.sourceFolder ?? null,
+            sourceFile: input.sourceFile ?? null,
+            taxonomicStatus: input.taxonomicStatus ?? null,
+            foldedRecordCodes: input.foldedRecordCodes ?? null,
           }),
     })
     .returning({ id: traitRecords.id });

@@ -27,7 +27,12 @@ import { seedDictionary } from './seed.ts';
 
 const SPECIES = 'Fixturia relinka';
 
-/** One import line: `ID`, a trait value of SPECIES, its citation keys. Defaults to a categorical `flower_color` value. */
+/**
+ * One import line: `ID`, a trait value of SPECIES, its citation keys.
+ * Defaults to a categorical `flower_color` value. `extra` overrides or adds
+ * any other column by name, e.g. `statistic`, `min`, `max` or
+ * `statistic_record_codes` (RFC-64 R15 step 4).
+ */
 function line(
   id: string,
   value: string,
@@ -35,6 +40,7 @@ function line(
   secondary = '',
   trait = 'flower_color',
   type: 'categorical' | 'quantitative' = 'categorical',
+  extra: Partial<Record<(typeof IMPORT_COLUMNS)[number], string>> = {},
 ): string {
   const cells: Partial<Record<(typeof IMPORT_COLUMNS)[number], string>> = {
     ID: id,
@@ -46,6 +52,7 @@ function line(
     final_standard_trait: trait,
     trait_value_type: type,
     harmonised_value: value,
+    ...extra,
   };
   return IMPORT_COLUMNS.map((c) => cells[c] ?? '').join(',');
 }
@@ -660,5 +667,206 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
       ['complement', 'orphan'],
       ['harmonisation', 'orphan'],
     ]);
+  });
+
+  it('D11 re-links to the record a folded code was merged into, once record_code matching found nothing', async () => {
+    // EB_9's manual harmonisation has no primary reference of its own (fixture
+    // of the "refuses to orphan" test above): every later replace file in
+    // this database must still carry EB_9, or the run throws.
+    const dana = (await createUser(t.db, { name: 'Dana Fold' })).user.id;
+
+    // Case A: EB_12 folds into EB_10, a record of the same species and
+    // trait, so both the annotation and the quantitative contest follow it.
+    const firstA = join(fx.dir, 'fold-a1.csv');
+    await writeFile(
+      firstA,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_10', '5', 'REL_A', '', 'diaspore_length', 'quantitative'),
+        line('EB_12', '4', 'REL_A', '', 'diaspore_length', 'quantitative'),
+        line('EB_13', 'red'),
+      ),
+    );
+    await importRecords(t.db, { filePath: firstA });
+    const before = await importedByCode();
+    const eb12 = before.EB_12 as string;
+    const eb13 = before.EB_13 as string;
+
+    const validation12 = (
+      await createAnnotation(t.db, { recordId: eb12, actorId: dana, kind: 'confirm' })
+    ).id;
+    const validation13 = (
+      await createAnnotation(t.db, { recordId: eb13, actorId: dana, kind: 'confirm' })
+    ).id;
+    const contestRecord = (
+      await createRecord(t.db, {
+        speciesId: fx.speciesId,
+        traitId: fx.qTraitId,
+        origin: 'manual',
+        valueText: '6',
+        numericValue: 6,
+        primaryReferenceId: fx.relB,
+        createdBy: dana,
+        intent: 'contest',
+        respondsToRecordId: eb12,
+      })
+    ).id;
+    await createContest(t.db, {
+      speciesId: fx.speciesId,
+      traitId: fx.qTraitId,
+      createdBy: dana,
+      recordIds: [contestRecord],
+    });
+
+    const secondA = join(fx.dir, 'fold-a2.csv');
+    await writeFile(
+      secondA,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_10', '12', 'REL_A', '', 'diaspore_length', 'quantitative', {
+          statistic: 'derived_midpoint',
+          min: '4',
+          max: '20',
+          statistic_record_codes: 'EB_12',
+        }),
+        line('EB_13', 'red'),
+      ),
+    );
+    const sheetDirA = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+    await importRecords(t.db, { filePath: secondA, replaceImported: { sheetDir: sheetDirA } });
+
+    const afterA = await importedByCode();
+    const [ann12] = await t.db
+      .select({ recordId: recordAnnotations.recordId })
+      .from(recordAnnotations)
+      .where(eq(recordAnnotations.id, validation12));
+    expect(ann12?.recordId).toBe(afterA.EB_10);
+    const [ann13] = await t.db
+      .select({ recordId: recordAnnotations.recordId })
+      .from(recordAnnotations)
+      .where(eq(recordAnnotations.id, validation13));
+    expect(ann13?.recordId).toBe(afterA.EB_13);
+    const [contestAfter] = await t.db
+      .select({ respondsTo: traitRecords.respondsToRecordId, intent: traitRecords.intent })
+      .from(traitRecords)
+      .where(eq(traitRecords.id, contestRecord));
+    expect(contestAfter).toMatchObject({ respondsTo: afterA.EB_10, intent: 'contest' });
+
+    const sA = await sheet(sheetDirA);
+    expect(sA.rows.filter((r) => r[0] === 'EB_12').map((r) => [r[1], r[6]])).toEqual([
+      ['validation', 'relinked'],
+      ['contest', 'relinked'],
+    ]);
+    expect(sA.rows.filter((r) => r[0] === 'EB_13').map((r) => [r[1], r[6]])).toEqual([
+      ['validation', 'relinked'],
+    ]);
+
+    // Case B: EB_20 folds into EB_21, a record of a *different* trait. The
+    // annotation (no species or trait rule) still follows it, but the
+    // quantitative contest is left orphan (RFC-63 R2).
+    const firstB = join(fx.dir, 'fold-b1.csv');
+    await writeFile(
+      firstB,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_20', '8', 'REL_A', '', 'diaspore_length', 'quantitative'),
+      ),
+    );
+    await importRecords(t.db, { filePath: firstB });
+    const eb20 = (await importedByCode()).EB_20 as string;
+    const validation20 = (
+      await createAnnotation(t.db, { recordId: eb20, actorId: dana, kind: 'confirm' })
+    ).id;
+    const contestRecordB = (
+      await createRecord(t.db, {
+        speciesId: fx.speciesId,
+        traitId: fx.qTraitId,
+        origin: 'manual',
+        valueText: '9',
+        numericValue: 9,
+        primaryReferenceId: fx.relB,
+        createdBy: dana,
+        intent: 'contest',
+        respondsToRecordId: eb20,
+      })
+    ).id;
+    await createContest(t.db, {
+      speciesId: fx.speciesId,
+      traitId: fx.qTraitId,
+      createdBy: dana,
+      recordIds: [contestRecordB],
+    });
+
+    const secondB = join(fx.dir, 'fold-b2.csv');
+    await writeFile(
+      secondB,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_21', 'red', 'REL_A', '', 'flower_color', 'categorical', {
+          statistic_record_codes: 'EB_20',
+        }),
+      ),
+    );
+    const sheetDirB = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+    await importRecords(t.db, { filePath: secondB, replaceImported: { sheetDir: sheetDirB } });
+
+    const afterB = await importedByCode();
+    const [ann20] = await t.db
+      .select({ recordId: recordAnnotations.recordId })
+      .from(recordAnnotations)
+      .where(eq(recordAnnotations.id, validation20));
+    expect(ann20?.recordId).toBe(afterB.EB_21);
+    const [contestAfterB] = await t.db
+      .select({ respondsTo: traitRecords.respondsToRecordId, intent: traitRecords.intent })
+      .from(traitRecords)
+      .where(eq(traitRecords.id, contestRecordB));
+    expect(contestAfterB).toMatchObject({ respondsTo: null, intent: null });
+
+    const sB = await sheet(sheetDirB);
+    expect(sB.rows.filter((r) => r[0] === 'EB_20').map((r) => [r[1], r[6]])).toEqual([
+      ['validation', 'relinked'],
+      ['contest', 'orphan'],
+    ]);
+  });
+
+  it('D11 a folded code listed by two new records goes to the smallest record_code in (length, text) order', async () => {
+    const erin = (await createUser(t.db, { name: 'Erin Tie' })).user.id;
+    const first = join(fx.dir, 'tie-1.csv');
+    await writeFile(
+      first,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_40', '3', 'REL_A', '', 'diaspore_length', 'quantitative'),
+      ),
+    );
+    await importRecords(t.db, { filePath: first });
+    const eb40 = (await importedByCode()).EB_40 as string;
+    const validation = (
+      await createAnnotation(t.db, { recordId: eb40, actorId: erin, kind: 'confirm' })
+    ).id;
+
+    // `EB_100` sorts before `EB_99` as text, after it by length first.
+    const second = join(fx.dir, 'tie-2.csv');
+    await writeFile(
+      second,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_100', '3', 'REL_A', '', 'diaspore_length', 'quantitative', {
+          statistic_record_codes: 'EB_40',
+        }),
+        line('EB_99', '4', 'REL_A', '', 'diaspore_length', 'quantitative', {
+          statistic_record_codes: 'EB_40',
+        }),
+      ),
+    );
+    const sheetDir = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+    await importRecords(t.db, { filePath: second, replaceImported: { sheetDir } });
+
+    const after = await importedByCode();
+    const [ann] = await t.db
+      .select({ recordId: recordAnnotations.recordId })
+      .from(recordAnnotations)
+      .where(eq(recordAnnotations.id, validation));
+    expect(ann?.recordId).toBe(after.EB_99);
   });
 });

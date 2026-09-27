@@ -16,7 +16,7 @@ import {
 installFetchMock();
 
 const { names: _names, plots: _plots, recordCount: _recordCount, ...listFields } = SPECIES;
-const SPECIES_ITEM: SpeciesListItem = { ...listFields, traitRecordCount: null };
+const SPECIES_ITEM: SpeciesListItem = { ...listFields, family: FAMILY, traitRecordCount: null };
 
 describe('RFC-60 R6 searchSpecies', () => {
   it('serialises the filters and sends unresolved only when true', async () => {

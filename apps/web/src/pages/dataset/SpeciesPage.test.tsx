@@ -10,6 +10,7 @@ import {
   DICTIONARY,
   DICTIONARY_SEXUAL_SYSTEM,
   FAMILIES,
+  FAMILY,
   GENERA,
   PENDING_RECORD,
   PRIMARY_REFERENCE,
@@ -150,6 +151,13 @@ describe('RFC-60 R7 SpeciesPage header', () => {
     expect(screen.getByText('12 records · 3 traits')).toBeInTheDocument();
     expect(dataset.fetchSpecies).toHaveBeenCalledWith(SPECIES.id);
     expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: false });
+  });
+
+  it("RFC-60 R7 leads the line with the family's order when it has one (issue #223)", async () => {
+    const ordered = { ...SPECIES, family: { ...FAMILY, order: 'Fabales' } };
+    dataset.fetchSpecies.mockResolvedValue(ordered);
+    await openPage(ordered);
+    expect(screen.getByText('Fabales › Fabaceae › Adenanthera')).toBeInTheDocument();
   });
 
   it('flags an unresolved taxon and says so when family and genus are unknown', async () => {

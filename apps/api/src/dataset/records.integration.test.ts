@@ -90,6 +90,8 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       contested: false,
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
+      statistic: null,
+      unitStatus: null,
       references: [
         {
           id: ref.id,
@@ -803,5 +805,78 @@ describe('RFC-63 R9 records list sort (spec §2)', () => {
       cursor = page.nextCursor ?? undefined;
     } while (cursor);
     expect(seen).toEqual([low, high]);
+  });
+});
+
+describe('RFC-63 R8 statistic, unit status, se and import provenance (issue #223)', () => {
+  const t = useTestDb();
+
+  it('the item carries statistic, unitStatus and quantitative.se; the detail adds the provenance', async () => {
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '9.3',
+      numericValue: 9.3,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      statistic: 'mean',
+      unitStatus: 'needs_unit_check',
+      seValue: 0.1,
+      sourceFolder: 'GIFT',
+      sourceFile: 'a.csv',
+      taxonomicStatus: 'resolved synonym',
+      foldedRecordCodes: ['EB_1'],
+    });
+
+    const list = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 10,
+    });
+    expect(list.data[0]).toMatchObject({
+      statistic: 'mean',
+      unitStatus: 'needs_unit_check',
+      quantitative: { single: 9.3, se: 0.1 },
+    });
+
+    const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
+    expect(detail).toMatchObject({
+      statistic: 'mean',
+      unitStatus: 'needs_unit_check',
+      sourceFolder: 'GIFT',
+      sourceFile: 'a.csv',
+      taxonomicStatus: 'resolved synonym',
+      foldedRecordCodes: ['EB_1'],
+    });
+  });
+
+  it('a record without them answers null for each, and no se key', async () => {
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '2',
+      numericValue: 2,
+      primaryReferenceId: ref.id,
+      origin: 'manual',
+      createdBy: (await createUser(t.db)).user.id,
+    });
+    const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
+    expect(detail).toMatchObject({
+      statistic: null,
+      unitStatus: null,
+      quantitative: { single: 2 },
+      sourceFolder: null,
+      sourceFile: null,
+      taxonomicStatus: null,
+      foldedRecordCodes: null,
+    });
+    expect(detail?.quantitative).not.toHaveProperty('se');
   });
 });

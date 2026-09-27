@@ -141,8 +141,9 @@ function Distribution({ trait }: { trait: TraitDetail }) {
                 <Chip>
                   {figure.label}{' '}
                   <span className="ml-1.5 font-semibold">
-                    {formatNumber(figure.value)}
-                    {unit === null ? '' : ` ${unit}`}
+                    {figure.value === null
+                      ? '—'
+                      : `${formatNumber(figure.value)}${unit === null ? '' : ` ${unit}`}`}
                   </span>
                 </Chip>
               </li>

@@ -24,6 +24,26 @@ export const HARMONISATION_STATUSES = [
 ] as const;
 export type HarmonisationStatus = (typeof HARMONISATION_STATUSES)[number];
 
+/**
+ * Labels `numeric_value` of a quantitative record; never set for a
+ * categorical one. `derived_midpoint` is a midpoint of `min_value` and
+ * `max_value` computed upstream of the import.
+ * @rfc RFC-63 R15
+ */
+export const STATISTICS = ['single_or_unspecified', 'mean', 'median', 'derived_midpoint'] as const;
+/** A record's statistic label. @rfc RFC-63 R15 */
+export type Statistic = (typeof STATISTICS)[number];
+
+/** Import provenance for a record's unit conversion. @rfc RFC-63 R1 */
+export const UNIT_STATUSES = [
+  'converted_or_already_target',
+  'unit_missing',
+  'needs_unit_check',
+  'not_applicable',
+] as const;
+/** A record's unit harmonisation status. @rfc RFC-63 R1 */
+export type UnitStatus = (typeof UNIT_STATUSES)[number];
+
 /** @rfc RFC-63 R1 */
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
@@ -62,6 +82,7 @@ export const IMPORT_REJECT_REASONS = [
   'invalid_value',
   'invalid_record_id',
   'duplicate_record_id',
+  'invalid_measurement',
 ] as const;
 export type ImportRejectReason = (typeof IMPORT_REJECT_REASONS)[number];
 
@@ -171,10 +192,12 @@ export const speciesNameSchema = z.strictObject({
  * `traitRecordCount` is omitted: it answers "how many records for the one
  * filtered trait", which only makes sense on the list (RFC-60 R6); the
  * detail route takes no `traitId` and keeps only `traitCount` (inherited).
- * @rfc RFC-60 R7
+ * @rfc RFC-60 R1, R7
  * @rfc RFC-67 R8
  */
 export const speciesSchema = speciesListItemSchema.omit({ traitRecordCount: true }).extend({
+  /** The family gains its `order` (`families.order_name`, null when unset). @rfc RFC-60 R1, R7 */
+  family: taxonRefSchema.extend({ order: z.string().nullable() }).nullable(),
   names: z.array(speciesNameSchema),
   plots: z.array(plotRefSchema),
   recordCount: z.number().int().nonnegative(),
@@ -336,7 +359,7 @@ export const traitDetailSchema = traitSchema.extend({
       numeric: z
         .strictObject({
           min: z.number(),
-          median: z.number(),
+          median: z.number().nullable(),
           max: z.number(),
           speciesCount: z.number().int(),
         })
@@ -394,7 +417,9 @@ export const numericValueSchema = z
 /**
  * A quantitative claim (spec R-5): `single` is the stored `numeric_value`;
  * at least one of single, min, max and mean; `min ≤ max`; `sd ≥ 0`; `n` an
- * integer ≥ 1. The manual input and the record item's `quantitative` share it.
+ * integer ≥ 1. The manual input; the record item's `quantitative` extends it
+ * with `se` ({@link recordQuantitativeSchema}), which a manual record never
+ * takes.
  * @rfc RFC-65 R1
  * @rfc RFC-63 R15
  */
@@ -422,6 +447,15 @@ export const quantitativeValueSchema = z
   });
 
 /**
+ * A record item's `quantitative`: the manual shape plus `se`, which only the
+ * import fills. `sd` and `se` are spreads, never values of the trait.
+ * @rfc RFC-63 R8, R15
+ */
+export const recordQuantitativeSchema = quantitativeValueSchema.safeExtend({
+  se: z.number().nonnegative().optional(),
+});
+
+/**
  * `validationCount` counts distinct `confirm` actors, `contestCount` distinct
  * authors of the contests not withdrawn that name the record's level or
  * respond to it; `contested` follows RFC-63 R14 for the viewer.
@@ -436,7 +470,11 @@ export const recordSchema = z.strictObject({
   valueText: z.string(),
   level: z.strictObject({ id: z.uuid(), key: z.string() }).nullable(),
   numericValue: z.number().nullable(),
-  quantitative: quantitativeValueSchema.nullable(),
+  quantitative: recordQuantitativeSchema.nullable(),
+  /** What `quantitative.single` is; null for a categorical record or an unlabelled value. @rfc RFC-63 R8, R15 */
+  statistic: z.enum(STATISTICS).nullable(),
+  /** Import provenance of the unit conversion; null when absent. @rfc RFC-63 R1, R8 */
+  unitStatus: z.enum(UNIT_STATUSES).nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
   review: z.enum(REVIEW_STATUSES),
   primaryReference: referenceRefSchema.nullable(),
@@ -475,6 +513,11 @@ export const recordDetailSchema = recordSchema.extend({
     .strictObject({ id: z.uuid(), fileName: z.string(), startedAt: z.iso.datetime() })
     .nullable(),
   importRowNo: z.number().int().nullable(),
+  /** Import provenance, copied from the row's own columns (RFC-64 R2). @rfc RFC-63 R1, R8 */
+  sourceFolder: z.string().nullable(),
+  sourceFile: z.string().nullable(),
+  taxonomicStatus: z.string().nullable(),
+  foldedRecordCodes: z.array(z.string()).nullable(),
   annotations: z.array(annotationSchema),
   supersedes: z.strictObject({ id: z.uuid() }).nullable(),
   supersededBy: z.array(z.strictObject({ id: z.uuid() })),

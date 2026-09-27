@@ -1,5 +1,4 @@
 import {
-  type QuantitativeValue,
   RECORD_ORIGINS,
   type RecordDetail,
   type RecordItem,
@@ -28,6 +27,8 @@ import {
   pageOf,
 } from '../http/cursor.ts';
 import { contestCountSql, recordContestedSql, recordFullyVisible } from './contests.ts';
+
+type RecordQuantitative = NonNullable<RecordItem['quantitative']>;
 
 const primaryRef = alias(bibliographicReferences, 'primary_ref');
 const secondaryRef = alias(bibliographicReferences, 'secondary_ref');
@@ -67,20 +68,22 @@ const extraReferencesSql = sql<ExtraReference[]>`(select coalesce(jsonb_agg(json
 const VALUE_SORT_KEY_SQL = sql`coalesce(${traitRecords.numericValue}, ${traitRecords.meanValue}, ${traitRecords.minValue}, ${traitRecords.maxValue}, 'Infinity'::numeric)`;
 
 /**
- * The single/min/max/mean/sd/n fields of a record as one object (spec R-5),
- * or null when none is set — a purely categorical or level-based record.
+ * The single/min/max/mean/sd/se/n fields of a record as one object (spec R-5,
+ * RFC-63 R8), or null when none is set — a purely categorical or level-based
+ * record.
  */
-function quantitativeOf(rec: typeof traitRecords.$inferSelect): QuantitativeValue | null {
+function quantitativeOf(rec: typeof traitRecords.$inferSelect): RecordQuantitative | null {
   const fields = {
     single: rec.numericValue,
     min: rec.minValue,
     max: rec.maxValue,
     mean: rec.meanValue,
     sd: rec.sdValue,
+    se: rec.seValue,
     n: rec.n,
   };
   const given = Object.entries(fields).filter(([, v]) => v !== null);
-  return given.length > 0 ? (Object.fromEntries(given) as QuantitativeValue) : null;
+  return given.length > 0 ? (Object.fromEntries(given) as RecordQuantitative) : null;
 }
 
 /**
@@ -259,6 +262,8 @@ export function toItem(r: ItemRow): RecordItem {
     level: rec.levelId && r.levelKey ? { id: rec.levelId, key: r.levelKey } : null,
     numericValue: rec.numericValue,
     quantitative: quantitativeOf(rec),
+    statistic: rec.statistic ?? null,
+    unitStatus: rec.unitStatus ?? null,
     harmonisation: rec.harmonisation,
     review: r.review,
     primaryReference,
@@ -611,6 +616,10 @@ export async function getRecord(
       ? { id: b.id, fileName: b.fileName, startedAt: b.startedAt.toISOString() }
       : null,
     importRowNo: rec.importRowNo,
+    sourceFolder: rec.sourceFolder,
+    sourceFile: rec.sourceFile,
+    taxonomicStatus: rec.taxonomicStatus,
+    foldedRecordCodes: rec.foldedRecordCodes,
     annotations: annotations.map((a) => ({
       id: a.id,
       kind: a.kind,

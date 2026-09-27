@@ -14,7 +14,7 @@ import { randomIsbn } from '../../../test/helpers/isbn.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import { recordAnnotations } from './curation.ts';
 import { traitCategories, traitLevels, traits } from './dictionary.ts';
-import { importBatches } from './imports.ts';
+import { importBatches, importRejects } from './imports.ts';
 import { plotSpecies, plots, userPlots } from './plots.ts';
 import { type NewTraitRecordRow, recordReferences, traitRecords } from './records.ts';
 import { referenceTraits } from './reference-traits.ts';
@@ -130,6 +130,16 @@ describe('RFC-60 R1 taxonomy tables', () => {
       expect(sp1?.active).toBe(true);
     });
   });
+
+  it('R1 families.order_name accepts a normalised order name (issue #223)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const [family] = await tx
+        .insert(families)
+        .values({ name: `Fam-${rand()}`, orderName: 'Rosales' })
+        .returning();
+      expect(family?.orderName).toBe('Rosales');
+    });
+  });
 });
 
 describe('RFC-68 R1 import batch kind', () => {
@@ -160,6 +170,30 @@ describe('RFC-68 R1 import batch kind', () => {
       select data_type, is_nullable, column_default from information_schema.columns
       where table_name = 'import_batches' and column_name = 'rows_already_imported'`);
     expect(col).toEqual({ data_type: 'bigint', is_nullable: 'NO', column_default: '0' });
+  });
+});
+
+describe('RFC-64 R7 import_rejects reason (issue #223)', () => {
+  const t = useTestDb();
+
+  it('accepts invalid_measurement and rejects an unknown reason', async () => {
+    await withRollback(t.db, async (tx) => {
+      const batch = await createImportBatch(tx);
+      const [row] = await tx
+        .insert(importRejects)
+        .values({ batchId: batch.id, rowNo: 1, reason: 'invalid_measurement', rawRow: {} })
+        .returning();
+      expect(row?.reason).toBe('invalid_measurement');
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp
+              .insert(importRejects)
+              .values({ batchId: batch.id, rowNo: 2, reason: 'nope' as never, rawRow: {} }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23514', constraint_name: 'import_rejects_reason_check' });
+    });
   });
 });
 
@@ -381,6 +415,37 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
       ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
       // a different raw value is a different claim
       await tx.insert(traitRecords).values({ ...claim, importRowNo: 3, rawValue: 'Blueish' });
+    });
+  });
+
+  it('R3 statistic is part of the claim: a mean and a median of one number are two claims', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'petal_length');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const claim = {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: '9.3',
+        numericValue: 9.3,
+        harmonisation: 'harmonised' as const,
+        origin: 'import' as const,
+        importBatchId: batch.id,
+        importRowNo: 1,
+        primaryReferenceId: ref.id,
+        statistic: 'mean' as const,
+      };
+      await tx.insert(traitRecords).values(claim);
+      await tx.insert(traitRecords).values({ ...claim, importRowNo: 2, statistic: 'median' });
+      await tx.insert(traitRecords).values({ ...claim, importRowNo: 3, statistic: null });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({ ...claim, importRowNo: 4, statistic: null }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
     });
   });
 
@@ -909,6 +974,40 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
           levelId: blue.id,
           minValue: 1,
         },
+        // RFC-63 R15, issue #223: se_value >= 0.
+        { valueText: 'mean=3;se=-1', harmonisation: 'harmonised', meanValue: 3, seValue: -1 },
+        // RFC-63 R2, issue #223: a level excludes se_value too.
+        {
+          valueText: 'blue',
+          harmonisation: 'harmonised',
+          traitId: colour.id,
+          levelId: blue.id,
+          seValue: 1,
+        },
+        // RFC-63 R15, issue #223: statistic is set only for a quantitative record.
+        {
+          valueText: 'blue',
+          harmonisation: 'harmonised',
+          traitId: colour.id,
+          levelId: blue.id,
+          statistic: 'mean',
+        },
+        // RFC-63 R15, issue #223: statistic takes only the four labelled values.
+        {
+          valueText: '9.3',
+          harmonisation: 'harmonised',
+          numericValue: 9.3,
+          statistic: 'min' as never,
+        },
+        // RFC-63 R15, issue #223: statistic labels a value, so it needs numeric_value.
+        { valueText: 'min=4', harmonisation: 'harmonised', minValue: 4, statistic: 'mean' },
+        // RFC-63 R1, issue #223: unit_status takes only the four labelled values.
+        {
+          valueText: '9.3',
+          harmonisation: 'harmonised',
+          numericValue: 9.3,
+          unitStatus: 'nope' as never,
+        },
       ];
       for (const row of refused) {
         await expect(
@@ -932,6 +1031,38 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
         })
         .returning();
       expect(ok).toMatchObject({ minValue: 2, maxValue: 8, n: 3, numericValue: null });
+    });
+  });
+
+  it('statistic, se_value, unit_status and folded_record_codes round-trip (RFC-63 R1, R15; issue #223)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const petal = await traitByKey(tx, 'petal_length');
+      const ref = await createReference(tx);
+      const { user } = await createUser(tx);
+      const [row] = await tx
+        .insert(traitRecords)
+        .values({
+          speciesId: sp1.id,
+          traitId: petal.id,
+          origin: 'manual',
+          createdBy: user.id,
+          primaryReferenceId: ref.id,
+          valueText: 'single=9.3;se=0.1',
+          harmonisation: 'harmonised',
+          numericValue: 9.3,
+          statistic: 'mean',
+          seValue: 0.1,
+          unitStatus: 'unit_missing',
+          foldedRecordCodes: ['EB_1', 'EB_2'],
+        })
+        .returning();
+      expect(row).toMatchObject({
+        statistic: 'mean',
+        seValue: 0.1,
+        unitStatus: 'unit_missing',
+        foldedRecordCodes: ['EB_1', 'EB_2'],
+      });
     });
   });
 });

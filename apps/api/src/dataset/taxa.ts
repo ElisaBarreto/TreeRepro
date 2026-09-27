@@ -429,7 +429,7 @@ export async function searchSpecies(
 }
 
 /**
- * @rfc RFC-60 R3, R7
+ * @rfc RFC-60 R1, R3, R7
  * @rfc RFC-33 R2, R4
  * @rfc RFC-67 R8
  */
@@ -440,7 +440,7 @@ export async function getSpecies(
   opts: { viewerPlotIds?: string[]; allPlots?: boolean } = {},
 ): Promise<Species | null> {
   const [row] = await db
-    .select(speciesColumns)
+    .select({ ...speciesColumns, familyOrder: families.orderName })
     .from(species)
     .leftJoin(genera, eq(genera.id, species.genusId))
     .leftJoin(families, eq(families.id, genera.familyId))
@@ -511,6 +511,7 @@ export async function getSpecies(
   );
   return {
     ...listItem,
+    family: listItem.family ? { ...listItem.family, order: row.familyOrder } : null,
     plots: speciesPlots,
     names: names.map((n) => ({
       name: n.name,

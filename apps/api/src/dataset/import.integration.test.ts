@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, sql as dsql, eq, inArray } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
@@ -228,10 +228,8 @@ describe('RFC-64 importRecords', () => {
       final_standard_trait: 'not_a_trait',
       wcvp_species: 'Fixturia alba',
     });
-    // spec R-2: the 15 known columns and ID; the unnamed row-number column is not kept.
-    expect(Object.keys(rejects[0]?.raw ?? {}).sort()).toEqual(
-      IMPORT_COLUMNS.filter((c) => c !== '').sort(),
-    );
+    // R2, R7: every column of the file, ID included.
+    expect(Object.keys(rejects[0]?.raw ?? {}).sort()).toEqual([...IMPORT_COLUMNS].sort());
     expect(rejects[0]?.raw).toMatchObject({ ID: 'EB_12' });
 
     // R10 report
@@ -341,7 +339,7 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'overflow.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // A well-formed row (17 fields, passes COPY and R7's checks) whose
+    // A well-formed row (28 fields, passes COPY and R7's checks) whose
     // reference is too large — and incompressible, so TOAST can't shrink it
     // under the limit — to fit a btree index entry. The bibliographic
     // references insert runs after the species catalog insert, so its
@@ -352,7 +350,7 @@ describe('RFC-64 importRecords', () => {
     const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\n1,${hugeRef},${hugeRef},Overflowia numerica,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1,${freshId()}\n`,
+      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(12)}\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -370,14 +368,14 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'broken.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // 18 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // 29 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
     // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
     // in import.ts); either the driver recovers on its own with the real
     // PostgresError, or the idle guard aborts it — both are acceptable here,
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
-      `${header}\n1,Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,t,flower_color,flower_color,x,categorical,x,${freshId()},EXTRA\n`,
+      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(12)},EXTRA\n`,
     );
     await expect(
       importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
@@ -403,25 +401,9 @@ describe('RFC-64 importRecords', () => {
     // whitespace-collapsing normalisation as `species_name`, not on the raw
     // column — otherwise this row would wrongly get `name_source = 'wcvp'`
     // while `species_name` itself already fell through to `gbif_species`.
-    const row = [
-      '1',
-      '',
-      '',
-      '"\t"',
-      '',
-      '',
-      gbifName,
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      freshId(),
-    ].join(',');
+    const row = IMPORT_COLUMNS.map((c) =>
+      c === 'ID' ? freshId() : c === 'wcvp_species' ? '"\t"' : c === 'gbif_species' ? gbifName : '',
+    ).join(',');
     await writeFile(file, `${header}\n${row}\n`);
     await importRecords(t.db, { filePath: file });
     const [created] = await t.db.select().from(species).where(eq(species.canonicalName, gbifName));
@@ -635,5 +617,232 @@ describe('RFC-64 importRecords', () => {
     expect((await rejectsOf(again.id)).map((r) => [r.rowNo, r.reason])).toEqual([
       [2, 'duplicate_record_id'],
     ]);
+  });
+
+  describe('RFC-64 R6 statistics', () => {
+    type Column = (typeof IMPORT_COLUMNS)[number];
+    /** One records-file line keyed by column name, joined in file order; a cell with a comma is quoted. */
+    const statLine = (cells: Partial<Record<Column, string>>) =>
+      IMPORT_COLUMNS.map((c) => {
+        const v = cells[c] ?? '';
+        return v.includes(',') ? `"${v}"` : v;
+      }).join(',');
+
+    it('R2, R5-R7 reads statistic, range, spread, sample size, unit status, provenance and order', async () => {
+      const tag = randomBytes(4).toString('hex');
+      const family = `Statisticaceae${tag}`;
+      const name = `Statistica mensura-${tag}`;
+      const n = randomInt(100_000_000, 999_999_000);
+      let next = 0;
+      const base = (cells: Partial<Record<Column, string>>) =>
+        statLine({
+          ID: `EB_${n + next++}`,
+          primary_reference: 'STATREF',
+          wcvp_species: name,
+          wcvp_family: family,
+          final_standard_trait: 'seed_mass_dry',
+          trait_value_type: 'quantitative',
+          ...cells,
+        });
+      const lines = [
+        // 1 A
+        base({
+          harmonised_value: '9.3',
+          statistic: 'mean',
+          min: '6.2',
+          max: '18.8',
+          sd: '0.5',
+          se: '0.1',
+          sample_size: '30',
+          unit_harmonisation_status: 'converted_or_already_target',
+          source_folder: 'GIFT',
+          file_name: 'seeds.csv',
+          wcvp_taxonomic_status: 'exact',
+          taxon_order: 'Sapindales',
+          statistic_record_codes: 'EB_900001; EB_900002',
+        }),
+        // 2 B
+        base({ harmonised_value: '', min: '4' }),
+        // 3 C
+        base({ harmonised_value: '2.4', statistic: 'derived_midpoint', min: '0.8', max: '4.0' }),
+        // 4 D
+        base({ harmonised_value: '5', statistic: 'single_or_unspecified' }),
+        // 5 E
+        base({
+          final_standard_trait: 'flower_color',
+          trait_value_type: 'categorical',
+          harmonised_value: 'black;brown',
+          min: '3',
+          unit_harmonisation_status: 'not_applicable',
+          source_folder: 'X',
+        }),
+        // 6-15 rejects
+        base({ harmonised_value: '1', statistic: 'min' }),
+        base({ harmonised_value: '1', min: '20', max: '4' }),
+        base({ harmonised_value: '1', sd: '1,5' }),
+        base({ harmonised_value: '1', sd: '-1' }),
+        base({ harmonised_value: '1', sample_size: '0' }),
+        base({ harmonised_value: '1', sample_size: '2.5' }),
+        base({ harmonised_value: 'abc', sd: '1' }),
+        base({ harmonised_value: '', sd: '1' }),
+        base({ harmonised_value: '1', unit_harmonisation_status: 'weird' }),
+        base({ harmonised_value: '1', statistic_record_codes: 'EB_1;TR_2' }),
+        // 16 unknown trait outranks invalid_measurement
+        base({ harmonised_value: '1', final_standard_trait: 'not_a_trait', statistic: 'min' }),
+        // 17 a later row of the family with another order does not change it
+        base({ harmonised_value: '7', taxon_order: 'Fabales' }),
+      ];
+      const batch = await importRecords(t.db, {
+        filePath: await writeRecords('import-stat-', lines),
+      });
+      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 17, rowsRejected: 11 });
+
+      expect(await recordAt(batch.id, 1)).toMatchObject({
+        harmonisation: 'harmonised',
+        numericValue: 9.3,
+        statistic: 'mean',
+        minValue: 6.2,
+        maxValue: 18.8,
+        sdValue: 0.5,
+        seValue: 0.1,
+        n: 30,
+        meanValue: null,
+        valueText: 'single=9.3;min=6.2;max=18.8;sd=0.5;se=0.1;n=30',
+        unitStatus: 'converted_or_already_target',
+        sourceFolder: 'GIFT',
+        sourceFile: 'seeds.csv',
+        taxonomicStatus: 'exact',
+        foldedRecordCodes: ['EB_900001', 'EB_900002'],
+      });
+      expect(await recordAt(batch.id, 2)).toMatchObject({
+        harmonisation: 'harmonised',
+        numericValue: null,
+        minValue: 4,
+        valueText: 'min=4',
+        statistic: null,
+        foldedRecordCodes: null,
+      });
+      const [{ max }] = (await t.db.execute(
+        dsql`select ('4.0'::numeric)::text as max`,
+      )) as unknown as [{ max: string }];
+      expect(await recordAt(batch.id, 3)).toMatchObject({
+        harmonisation: 'harmonised',
+        statistic: 'derived_midpoint',
+        valueText: `single=2.4;min=0.8;max=${max}`,
+      });
+      expect(await recordAt(batch.id, 4)).toMatchObject({
+        harmonisation: 'harmonised',
+        numericValue: 5,
+        statistic: 'single_or_unspecified',
+        valueText: '5',
+      });
+      const parts = await recordsAt(batch.id, 5);
+      expect(parts).toHaveLength(2);
+      for (const part of parts) {
+        expect(part).toMatchObject({
+          harmonisation: 'harmonised',
+          minValue: null,
+          statistic: null,
+          unitStatus: 'not_applicable',
+          sourceFolder: 'X',
+        });
+      }
+
+      const rejects = await rejectsOf(batch.id);
+      expect(rejects.map((r) => [r.rowNo, r.reason])).toEqual([
+        ...[6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((row) => [row, 'invalid_measurement']),
+        [16, 'unknown_trait'],
+      ]);
+      for (const reject of rejects) {
+        expect(Object.keys(reject.raw ?? {}).sort()).toEqual([...IMPORT_COLUMNS].sort());
+      }
+      expect(rejects[2]?.raw).toMatchObject({ sd: '1,5', harmonised_value: '1' });
+      expect((await batchReport(t.db, batch.id)).rejectReasons).toMatchObject({
+        invalid_measurement: 10,
+        unknown_trait: 1,
+      });
+
+      // R5: the first non-empty taxon_order fills a null order_name; a set one is never changed.
+      const orderOf = async () =>
+        (await t.db.select().from(families).where(eq(families.name, family)))[0]?.orderName;
+      expect(await orderOf()).toBe('Sapindales');
+      await importRecords(t.db, {
+        filePath: await writeRecords('import-stat2-', [
+          base({ harmonised_value: '8', taxon_order: 'Malvales' }),
+        ]),
+      });
+      expect(await orderOf()).toBe('Sapindales');
+    });
+
+    it('RFC-63 R3, R15: statistic is part of the claim and labels only a stored value', async () => {
+      const tag = randomBytes(4).toString('hex');
+      const n = randomInt(100_000_000, 999_999_000);
+      let next = 0;
+      const row = (cells: Partial<Record<Column, string>>) =>
+        statLine({
+          ID: `EB_${n + next++}`,
+          primary_reference: 'STATREF',
+          wcvp_species: `Statistica gemella-${tag}`,
+          final_standard_trait: 'seed_mass_dry',
+          trait_value_type: 'quantitative',
+          original_value_clean: '9.3',
+          ...cells,
+        });
+      const batch = await importRecords(t.db, {
+        filePath: await writeRecords('import-stat-claim-', [
+          row({ harmonised_value: '9.3', statistic: 'mean' }),
+          row({ harmonised_value: '9.3', statistic: 'single_or_unspecified' }),
+          row({ harmonised_value: '', min: '4', statistic: 'derived_midpoint' }),
+        ]),
+      });
+      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 3, rowsDuplicate: 0 });
+      expect(await recordAt(batch.id, 1)).toMatchObject({ statistic: 'mean', valueText: '9.3' });
+      expect(await recordAt(batch.id, 2)).toMatchObject({
+        statistic: 'single_or_unspecified',
+        valueText: '9.3',
+      });
+      expect(await recordAt(batch.id, 3)).toMatchObject({
+        numericValue: null,
+        minValue: 4,
+        statistic: null,
+      });
+    });
+
+    it('R7 invalid_measurement: the statistic columns are checked on a quantitative trait only', async () => {
+      const tag = randomBytes(4).toString('hex');
+      const n = randomInt(100_000_000, 999_999_000);
+      let next = 0;
+      const row = (cells: Partial<Record<Column, string>>) =>
+        statLine({
+          ID: `EB_${n + next++}`,
+          primary_reference: 'STATREF',
+          wcvp_species: `Statistica scopa-${tag}`,
+          final_standard_trait: 'seed_mass_dry',
+          trait_value_type: 'quantitative',
+          ...cells,
+        });
+      const categorical = { final_standard_trait: 'flower_color', trait_value_type: 'categorical' };
+      const batch = await importRecords(t.db, {
+        filePath: await writeRecords('import-stat-scope-', [
+          row({ ...categorical, harmonised_value: 'black', sd: 'abc' }),
+          row({ ...categorical, harmonised_value: 'brown', min: '20', max: '4' }),
+          row({ harmonised_value: '', sample_size: '30' }),
+          row({ harmonised_value: '1', sample_size: '9999999999' }),
+        ]),
+      });
+      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 2, rowsRejected: 2 });
+      for (const rowNo of [1, 2]) {
+        expect(await recordAt(batch.id, rowNo)).toMatchObject({
+          harmonisation: 'harmonised',
+          minValue: null,
+          maxValue: null,
+          sdValue: null,
+        });
+      }
+      expect((await rejectsOf(batch.id)).map((r) => [r.rowNo, r.reason])).toEqual([
+        [3, 'invalid_measurement'],
+        [4, 'invalid_measurement'],
+      ]);
+    });
   });
 });

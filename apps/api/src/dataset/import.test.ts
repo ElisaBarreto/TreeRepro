@@ -38,21 +38,29 @@ describe('RFC-64 R2 header validation', () => {
     }
   });
 
-  it('spec R-2 the header is the unnamed row-number column, the 15 known columns, then ID', () => {
-    expect(IMPORT_COLUMNS).toHaveLength(17);
-    expect(IMPORT_COLUMNS[0]).toBe('');
-    expect(IMPORT_COLUMNS[1]).toBe('primary_reference');
-    expect(IMPORT_COLUMNS[15]).toBe('harmonised_value');
-    expect(IMPORT_COLUMNS[16]).toBe('ID');
+  it('R2 the header is the 28 columns of the compiled dataset, ID first', () => {
+    expect(IMPORT_COLUMNS.join(',')).toBe(
+      'ID,primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value,statistic,sample_size,source_folder,file_name,wcvp_taxonomic_status,taxon_order,unit_harmonisation_status,min,max,sd,se,statistic_record_codes',
+    );
   });
 
-  it("accepts the owner's quoted header and refuses one without ID or without the unnamed column", () => {
+  it("R2 accepts the owner's quoted header and refuses the old 17-column one and one without ID", () => {
     const quoted = IMPORT_COLUMNS.map((c) => `"${c}"`).join(',');
     expect(() => validateHeader(quoted)).not.toThrow();
     expect(headerMatches(quoted)).toBe(true);
-    expect(headerMatches(IMPORT_COLUMNS.slice(0, 16).join(','))).toBe(false);
-    expect(headerMatches(IMPORT_COLUMNS.slice(1).join(','))).toBe(false);
-    expect(() => validateHeader(IMPORT_COLUMNS.slice(1).join(','))).toThrow(ImportRefusedError);
+    expect(headerMatches(IMPORT_COLUMNS.join(','))).toBe(true);
+    const old = [
+      '',
+      ...IMPORT_COLUMNS.slice(1, IMPORT_COLUMNS.indexOf('harmonised_value') + 1),
+      'ID',
+    ];
+    expect(old).toHaveLength(17);
+    expect(headerMatches(old.join(','))).toBe(false);
+    expect(headerMatches(['', ...IMPORT_COLUMNS].join(','))).toBe(false);
+    const noId = IMPORT_COLUMNS.filter((c) => c !== 'ID');
+    expect(noId).toHaveLength(27);
+    expect(headerMatches(noId.join(','))).toBe(false);
+    expect(() => validateHeader(noId.join(','))).toThrow(ImportRefusedError);
   });
 });
 

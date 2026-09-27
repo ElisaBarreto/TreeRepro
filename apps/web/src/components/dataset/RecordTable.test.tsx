@@ -110,6 +110,49 @@ describe('RFC-63 R8 RecordTable', () => {
     expect(recordValueLabel(ROW)).toBe('dioecious');
   });
 
+  it('RFC-63 R8 labels the statistic next to the single value and reads SE after SD (issue #223)', () => {
+    const label = recordValueLabel({
+      ...MEASURED,
+      statistic: 'mean',
+      quantitative: { single: 9.3, min: 6.2, max: 18.8, sd: 0.5, se: 0.1, n: 30 },
+    });
+    expect(label).toBe('9.3 (mean) · 6.2–18.8 · SD 0.5 · SE 0.1 mg (n = 30)');
+    expect(
+      recordValueLabel({ ...MEASURED, statistic: 'median', quantitative: { single: 2 } }),
+    ).toBe('2 (median) mg');
+    expect(
+      recordValueLabel({ ...MEASURED, statistic: 'derived_midpoint', quantitative: { single: 2 } }),
+    ).toBe('2 (midpoint) mg');
+    expect(
+      recordValueLabel({
+        ...MEASURED,
+        statistic: 'single_or_unspecified',
+        quantitative: { single: 2 },
+      }),
+    ).toBe('2 mg');
+  });
+
+  it('RFC-63 R8 marks a unit that needs checking or was assumed, and says nothing otherwise', async () => {
+    renderInRouter(
+      <RecordTable
+        records={[
+          { ...MEASURED, id: `${MEASURED.id.slice(0, -1)}1`, unitStatus: 'needs_unit_check' },
+          { ...MEASURED, id: `${MEASURED.id.slice(0, -1)}2`, unitStatus: 'unit_missing' },
+          {
+            ...MEASURED,
+            id: `${MEASURED.id.slice(0, -1)}3`,
+            unitStatus: 'converted_or_already_target',
+          },
+        ]}
+        onSelect={vi.fn()}
+      />,
+    );
+    const rows = await screen.findAllByRole('row');
+    expect(cells(rows[1] as HTMLElement)[1]).toHaveTextContent('unit not checked');
+    expect(cells(rows[2] as HTMLElement)[1]).toHaveTextContent('unit assumed');
+    expect(cells(rows[3] as HTMLElement)[1]).not.toHaveTextContent(/unit (not checked|assumed)/);
+  });
+
   it('says so with a dash when a record lists no reference', async () => {
     renderInRouter(<RecordTable records={[{ ...MEASURED, references: [] }]} onSelect={vi.fn()} />);
     const rows = await screen.findAllByRole('row');

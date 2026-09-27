@@ -22,6 +22,8 @@ export const families = pgTable(
   {
     id: uuid('id').primaryKey().default(sql`uuidv7()`),
     name: text('name').notNull(),
+    /** Taxonomic order, filled by the import for a family whose value is still null (RFC-64 R5). */
+    orderName: text('order_name'),
     createdAt: ts('created_at').notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => users.id),
   },

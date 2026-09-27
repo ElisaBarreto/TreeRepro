@@ -85,7 +85,10 @@ export async function codeOf(db: Db, id: string): Promise<string> {
  * Every test owns its data.
  */
 export async function exportScene(db: Db) {
-  const family = await createFamily(db, { name: `Aaaceae-${Math.random().toString(16).slice(2)}` });
+  const family = await createFamily(db, {
+    name: `Aaaceae-${Math.random().toString(16).slice(2)}`,
+    orderName: 'Testales',
+  });
   const genus = await createGenus(db, { familyId: family.id });
   const sp = await createSpecies(db, { genusId: genus.id });
   const cat = await createTrait(db, { levels: ['red', 'blue'] });
