@@ -1021,6 +1021,48 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
   });
 });
 
+describe('RFC-70 R3 createRecords: a manual single value matches only a single or unspecified record (issue #223)', () => {
+  const t = useTestDb();
+
+  async function entryAgainst(statistic: 'mean' | 'single_or_unspecified') {
+    const { user: me } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const theirRef = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const batch = await createImportBatch(t.db);
+    const imported = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '5',
+      numericValue: 5,
+      statistic,
+      primaryReferenceId: theirRef.id,
+      importBatchId: batch.id,
+    });
+    const out = await createRecords(t.db, UNRESTRICTED, {
+      actorId: me.id,
+      speciesId: sp.id,
+      traitId: trait.id,
+      value: { quantitative: { single: 5 } },
+      referenceIds: [ref.id],
+    });
+    return { imported, out };
+  }
+
+  it('an imported mean of the same number is a different claim: the entry creates its own record', async () => {
+    const { out } = await entryAgainst('mean');
+    expect(out.validated).toEqual([]);
+    expect(out.created).toHaveLength(1);
+  });
+
+  it('an imported single or unspecified value of the same number becomes a validation', async () => {
+    const { imported, out } = await entryAgainst('single_or_unspecified');
+    expect(out.created).toEqual([]);
+    expect(out.validated.map((v) => v.recordId)).toEqual([imported.id]);
+  });
+});
+
 describe('RFC-70 R3 createRecords: a secondary reference named among the sources still supports the validation', () => {
   const t = useTestDb();
 
