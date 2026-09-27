@@ -828,4 +828,45 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
       ['contest', 'orphan'],
     ]);
   });
+
+  it('D11 a folded code listed by two new records goes to the smallest record_code in (length, text) order', async () => {
+    const erin = (await createUser(t.db, { name: 'Erin Tie' })).user.id;
+    const first = join(fx.dir, 'tie-1.csv');
+    await writeFile(
+      first,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_40', '3', 'REL_A', '', 'diaspore_length', 'quantitative'),
+      ),
+    );
+    await importRecords(t.db, { filePath: first });
+    const eb40 = (await importedByCode()).EB_40 as string;
+    const validation = (
+      await createAnnotation(t.db, { recordId: eb40, actorId: erin, kind: 'confirm' })
+    ).id;
+
+    // `EB_100` sorts before `EB_99` as text, after it by length first.
+    const second = join(fx.dir, 'tie-2.csv');
+    await writeFile(
+      second,
+      csv(
+        line('EB_9', 'greyish', '', 'REL_S'),
+        line('EB_100', '3', 'REL_A', '', 'diaspore_length', 'quantitative', {
+          statistic_record_codes: 'EB_40',
+        }),
+        line('EB_99', '4', 'REL_A', '', 'diaspore_length', 'quantitative', {
+          statistic_record_codes: 'EB_40',
+        }),
+      ),
+    );
+    const sheetDir = await mkdtemp(join(tmpdir(), 'replace-sheet-'));
+    await importRecords(t.db, { filePath: second, replaceImported: { sheetDir } });
+
+    const after = await importedByCode();
+    const [ann] = await t.db
+      .select({ recordId: recordAnnotations.recordId })
+      .from(recordAnnotations)
+      .where(eq(recordAnnotations.id, validation));
+    expect(ann?.recordId).toBe(after.EB_99);
+  });
 });
