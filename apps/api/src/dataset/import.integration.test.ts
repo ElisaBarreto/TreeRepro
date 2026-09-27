@@ -774,6 +774,40 @@ describe('RFC-64 importRecords', () => {
       expect(await orderOf()).toBe('Sapindales');
     });
 
+    it('RFC-63 R3, R15: statistic is part of the claim and labels only a stored value', async () => {
+      const tag = randomBytes(4).toString('hex');
+      const n = randomInt(100_000_000, 999_999_000);
+      let next = 0;
+      const row = (cells: Partial<Record<Column, string>>) =>
+        statLine({
+          ID: `EB_${n + next++}`,
+          primary_reference: 'STATREF',
+          wcvp_species: `Statistica gemella-${tag}`,
+          final_standard_trait: 'seed_mass_dry',
+          trait_value_type: 'quantitative',
+          original_value_clean: '9.3',
+          ...cells,
+        });
+      const batch = await importRecords(t.db, {
+        filePath: await writeRecords('import-stat-claim-', [
+          row({ harmonised_value: '9.3', statistic: 'mean' }),
+          row({ harmonised_value: '9.3', statistic: 'single_or_unspecified' }),
+          row({ harmonised_value: '', min: '4', statistic: 'derived_midpoint' }),
+        ]),
+      });
+      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 3, rowsDuplicate: 0 });
+      expect(await recordAt(batch.id, 1)).toMatchObject({ statistic: 'mean', valueText: '9.3' });
+      expect(await recordAt(batch.id, 2)).toMatchObject({
+        statistic: 'single_or_unspecified',
+        valueText: '9.3',
+      });
+      expect(await recordAt(batch.id, 3)).toMatchObject({
+        numericValue: null,
+        minValue: 4,
+        statistic: null,
+      });
+    });
+
     it('R7 invalid_measurement: the statistic columns are checked on a quantitative trait only', async () => {
       const tag = randomBytes(4).toString('hex');
       const n = randomInt(100_000_000, 999_999_000);

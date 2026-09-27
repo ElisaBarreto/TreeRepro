@@ -418,6 +418,37 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
     });
   });
 
+  it('R3 statistic is part of the claim: a mean and a median of one number are two claims', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const trait = await traitByKey(tx, 'petal_length');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const claim = {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: '9.3',
+        numericValue: 9.3,
+        harmonisation: 'harmonised' as const,
+        origin: 'import' as const,
+        importBatchId: batch.id,
+        importRowNo: 1,
+        primaryReferenceId: ref.id,
+        statistic: 'mean' as const,
+      };
+      await tx.insert(traitRecords).values(claim);
+      await tx.insert(traitRecords).values({ ...claim, importRowNo: 2, statistic: 'median' });
+      await tx.insert(traitRecords).values({ ...claim, importRowNo: 3, statistic: null });
+      await expect(
+        unwrapDbError(
+          tx.transaction((sp) =>
+            sp.insert(traitRecords).values({ ...claim, importRowNo: 4, statistic: null }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
+    });
+  });
+
   it('R1, R2 supersedes_record_id: a manual record may inherit references from the pending record it supersedes; imports never supersede', async () => {
     await withRollback(t.db, async (tx) => {
       const sp1 = await createSpecies(tx);
@@ -968,6 +999,8 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
           numericValue: 9.3,
           statistic: 'min' as never,
         },
+        // RFC-63 R15, issue #223: statistic labels a value, so it needs numeric_value.
+        { valueText: 'min=4', harmonisation: 'harmonised', minValue: 4, statistic: 'mean' },
         // RFC-63 R1, issue #223: unit_status takes only the four labelled values.
         {
           valueText: '9.3',
@@ -1015,9 +1048,9 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
           origin: 'manual',
           createdBy: user.id,
           primaryReferenceId: ref.id,
-          valueText: 'mean=9.3;se=0.1',
+          valueText: 'single=9.3;se=0.1',
           harmonisation: 'harmonised',
-          meanValue: 9.3,
+          numericValue: 9.3,
           statistic: 'mean',
           seValue: 0.1,
           unitStatus: 'unit_missing',
