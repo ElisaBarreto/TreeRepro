@@ -61,9 +61,9 @@
 
 **Cause:** The `ID` column did not exist when the data was loaded; the migration only makes `record_code NOT NULL` possible. The owner decided to replace everything earlier imports loaded with the new file (RFC-64 R12). `--replace` is refused in production twice — by `isReplaceAllowed` and by the missing migrator secret in the `api` container — and this procedure is the one sanctioned exception (RFC-64 R12). It is safe only while nothing but imported data would be lost, so it stops unless manual records, annotations and `record_references` are all zero.
 
-**Fix:** Run on the production host, from the checkout, with the new file at `/srv/imports/sample_data.csv` — a 28-column release (RFC-64 R2), never the historic 17-column file — and the supplementary files beside it. Before anything else, check that its whole first line is exactly the 28-column header (quoted, as R writes it; the importer would refuse anything else only after the API is down):
+**Fix:** Run on the production host, from the checkout, with the new file at `/srv/imports/sample_data.csv` — a 28-column release (RFC-64 R2), never the historic 17-column file — and the supplementary files beside it. Before anything else, check that its whole first line, with double quotes and a trailing CR stripped, is exactly the 28-column header (the owner's export writes it unquoted; a quoted header passes too, as the importer parses the line as CSV; the importer would refuse anything else only after the API is down):
    ```sh
-   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '\r')" = '"ID","primary_reference","secondary_reference","wcvp_species","wcvp_genus","wcvp_family","gbif_species","gbif_usage_key","original_species_name","secondary_source_species_name","original_trait_name","final_standard_trait","broad_category","original_value_clean","trait_value_type","harmonised_value","statistic","sample_size","source_folder","file_name","wcvp_taxonomic_status","taxon_order","unit_harmonisation_status","min","max","sd","se","statistic_record_codes"' ] && echo header ok   # → header ok
+   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '"\r')" = 'ID,primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value,statistic,sample_size,source_folder,file_name,wcvp_taxonomic_status,taxon_order,unit_harmonisation_status,min,max,sd,se,statistic_record_codes' ] && echo header ok   # → header ok
    ```
 
 1. **Back up** (a `pg_dump` by the read-only `treerepro_backup` role, `age`-encrypted into the `backups` volume):
@@ -131,12 +131,12 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
 
 **Cause:** Imported records are append-only (RFC-63 R4), and users' validations, withdrawals, contests and harmonisations point at them by id. Swapping the file means deleting the `EB_` rows and re-attaching all of that to the new rows by `record_code`. RFC-64 R15 does this in one transaction, as `treerepro_migrator`.
 
-**Fix:** Run it on the production host, from the checkout. Put the new file at `/srv/imports/sample_data.csv`: a 28-column release (RFC-64 R2, "The 28-column file" below) whose whole first line is exactly the 28-column header (quoted, `ID` first, no unnamed row-number column; step 1 compares it).
+**Fix:** Run it on the production host, from the checkout. Put the new file at `/srv/imports/sample_data.csv`: a 28-column release (RFC-64 R2, "The 28-column file" below) whose whole first line is exactly the 28-column header (`ID` first, no unnamed row-number column; quoted or not — step 1 strips quotes and a trailing CR, then compares the whole line).
 
 1. **Sheet directory.** The sheet names users (personal data), so the directory is private to the `api` image's user (`node`, uid 1000):
    ```sh
    sudo install -d -m 700 -o 1000 -g 1000 /srv/imports/replace-sheets
-   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '\r')" = '"ID","primary_reference","secondary_reference","wcvp_species","wcvp_genus","wcvp_family","gbif_species","gbif_usage_key","original_species_name","secondary_source_species_name","original_trait_name","final_standard_trait","broad_category","original_value_clean","trait_value_type","harmonised_value","statistic","sample_size","source_folder","file_name","wcvp_taxonomic_status","taxon_order","unit_harmonisation_status","min","max","sd","se","statistic_record_codes"' ] && echo header ok   # → header ok
+   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '"\r')" = 'ID,primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value,statistic,sample_size,source_folder,file_name,wcvp_taxonomic_status,taxon_order,unit_harmonisation_status,min,max,sd,se,statistic_record_codes' ] && echo header ok   # → header ok
    ```
 2. **Back up**, as in the section above:
    ```sh
