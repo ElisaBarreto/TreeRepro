@@ -31,6 +31,7 @@ export type HarmonisationStatus = (typeof HARMONISATION_STATUSES)[number];
  * @rfc RFC-63 R15
  */
 export const STATISTICS = ['single_or_unspecified', 'mean', 'median', 'derived_midpoint'] as const;
+/** A record's statistic label. @rfc RFC-63 R15 */
 export type Statistic = (typeof STATISTICS)[number];
 
 /** Import provenance for a record's unit conversion. @rfc RFC-63 R1 */
@@ -40,6 +41,7 @@ export const UNIT_STATUSES = [
   'needs_unit_check',
   'not_applicable',
 ] as const;
+/** A record's unit harmonisation status. @rfc RFC-63 R1 */
 export type UnitStatus = (typeof UNIT_STATUSES)[number];
 
 /** @rfc RFC-63 R1 */
