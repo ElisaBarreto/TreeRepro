@@ -30,11 +30,14 @@ import { users } from '../../src/db/schema/users.ts';
 const suffix = () => randomBytes(4).toString('hex');
 
 /** Names are random so parallel test files never collide on the unique indexes. */
-export async function createFamily(db: DbExecutor, options: { name?: string } = {}) {
+export async function createFamily(
+  db: DbExecutor,
+  options: { name?: string; orderName?: string } = {},
+) {
   const [row] = await db
     .insert(families)
-    .values({ name: options.name ?? `Testaceae-${suffix()}` })
-    .returning({ id: families.id, name: families.name });
+    .values({ name: options.name ?? `Testaceae-${suffix()}`, orderName: options.orderName ?? null })
+    .returning({ id: families.id, name: families.name, orderName: families.orderName });
   if (!row) throw new Error('createFamily: no row');
   return row;
 }

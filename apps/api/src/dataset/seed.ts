@@ -57,7 +57,9 @@ async function hasActiveColumn(csvPath: string): Promise<boolean> {
  * Inserts the categories, traits and levels the database lacks; never updates.
  * Postgres parses the CSV (COPY into a temporary table), so no CSV parser is
  * needed in Node beyond reading the header line to detect the optional
- * `active` column.
+ * `active` column. A row whose trimmed `broad_category` is `taxonomy`,
+ * `reference` or `record` is skipped: these describe columns of the compiled
+ * dataset file, not traits.
  * @rfc RFC-62 R2
  */
 export async function seedDictionary(
@@ -112,6 +114,7 @@ export async function seedDictionary(
              min(row_no)::int
       from dictionary_staging
       where trim(broad_category) <> ''
+        and lower(trim(broad_category)) not in ('taxonomy', 'reference', 'record')
       group by trim(broad_category)
       on conflict (key) do nothing`;
     const traits = await tx`
@@ -121,6 +124,7 @@ export async function seedDictionary(
              coalesce(case lower(trim(active)) when 'true' then true when 'false' then false end, true)
       from dictionary_staging
       where trim(final_standard_trait) <> ''
+        and lower(trim(broad_category)) not in ('taxonomy', 'reference', 'record')
       order by row_no
       on conflict (key) do nothing`;
     const levels = await tx`
@@ -130,6 +134,7 @@ export async function seedDictionary(
       join traits t on t.key = trim(s.final_standard_trait)
       cross join lateral unnest(string_to_array(s.harmonised_levels, ';')) with ordinality as l(key, ord)
       where coalesce(s.harmonised_levels, '') <> '' and trim(l.key) <> ''
+        and lower(trim(s.broad_category)) not in ('taxonomy', 'reference', 'record')
       order by s.row_no, l.ord
       on conflict (trait_id, lower(key)) do nothing`;
     return { categories: categories.count, traits: traits.count, levels: levels.count };

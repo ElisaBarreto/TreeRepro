@@ -3,6 +3,8 @@ import { afterAll, describe, expect, inject, it } from 'vitest';
 import {
   createAnnotation,
   createContest,
+  createFamily,
+  createGenus,
   createImportBatch,
   createRecord,
   createReference,
@@ -10,7 +12,7 @@ import {
   createTrait,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
-import { exportScene, parseCsv, readAll, unzip } from '../../test/helpers/export.ts';
+import { codeOf, exportScene, parseCsv, readAll, unzip } from '../../test/helpers/export.ts';
 import { TEST_HMAC_KEY, TEST_KEYRING } from '../../test/helpers/pii.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
@@ -50,6 +52,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     const byCode = new Map(csv.rows.map((r) => [r[0], r]));
     expect(byCode.get(s.code.r1)).toEqual([
       s.code.r1,
+      'Testales',
       s.family.name,
       s.genus.name,
       s.sp.canonicalName,
@@ -65,6 +68,9 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '',
       '',
       '',
+      '',
+      '',
+      '',
       `${s.ref1.citationKey}; ${s.ref2.citationKey}`,
       'manual',
       '',
@@ -73,17 +79,21 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '2',
       // k4 (Val Two, red) is withdrawn and does not count.
       '1',
+      '',
+      '',
+      '',
+      '',
       expect.stringMatching(ISO),
     ]);
     // RFC-63 R14: a categorical contest applies to every record of the level it names.
-    expect(byCode.get(s.code.r1b)?.slice(20, 23)).toEqual(['true', '0', '1']);
+    expect(byCode.get(s.code.r1b)?.slice(24, 27)).toEqual(['true', '0', '1']);
     // k2 created no record and still contests blue.
-    expect(byCode.get(s.code.r2)?.slice(20, 23)).toEqual(['true', '0', '1']);
+    expect(byCode.get(s.code.r2)?.slice(24, 27)).toEqual(['true', '0', '1']);
     // c1 is a blue record of k1: no responds_to, and itself on a level k2 contests.
-    expect(byCode.get(s.code.c1)?.slice(8, 9)).toEqual(['blue']);
-    expect(byCode.get(s.code.c1)?.slice(18, 23)).toEqual(['contest', '', 'true', '0', '1']);
+    expect(byCode.get(s.code.c1)?.slice(9, 10)).toEqual(['blue']);
+    expect(byCode.get(s.code.c1)?.slice(22, 27)).toEqual(['contest', '', 'true', '0', '1']);
     // Six quantitative fields; a resolved contest no longer flags, but still counts.
-    expect(byCode.get(s.code.r3)?.slice(7, 16)).toEqual([
+    expect(byCode.get(s.code.r3)?.slice(8, 20)).toEqual([
       'mm',
       '',
       '12.5',
@@ -91,14 +101,29 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '20',
       '10',
       '2.5',
+      '',
       '8',
       '',
+      '',
+      '',
     ]);
-    expect(byCode.get(s.code.r3)?.slice(20, 23)).toEqual(['false', '0', '1']);
-    expect(byCode.get(s.code.c2)?.slice(9, 10)).toEqual(['99']);
-    expect(byCode.get(s.code.c2)?.slice(18, 23)).toEqual(['contest', s.code.r3, 'false', '0', '0']);
+    expect(byCode.get(s.code.r3)?.slice(24, 27)).toEqual(['false', '0', '1']);
+    expect(byCode.get(s.code.c2)?.slice(10, 11)).toEqual(['99']);
+    expect(byCode.get(s.code.c2)?.slice(22, 27)).toEqual(['contest', s.code.r3, 'false', '0', '0']);
     // Pending shown to a reviewer, with its raw value.
-    expect(byCode.get(s.code.p)?.slice(8, 16)).toEqual(['', '', '', '', '', '', '', 'reddish']);
+    expect(byCode.get(s.code.p)?.slice(9, 20)).toEqual([
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      'reddish',
+    ]);
     // Withdrawn records leave the file (RFC-63 R13).
     expect(byCode.has(s.code.w)).toBe(false);
     expect(byCode.has(s.code.c1w)).toBe(false);
@@ -107,7 +132,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
   it('R3 records.csv orders one species by trait key, then record_code', async () => {
     const s = await exportScene(t.db);
     const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
-    const mine = csv.rows.filter((r) => r[3] === s.sp.canonicalName).map((r) => `${r[6]} ${r[0]}`);
+    const mine = csv.rows.filter((r) => r[4] === s.sp.canonicalName).map((r) => `${r[7]} ${r[0]}`);
     expect(mine).toHaveLength(7);
     expect(mine).toEqual([...mine].sort());
   });
@@ -131,10 +156,46 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     await t.db.execute(sql`insert into record_references (record_id, reference_id)
       values (${rec.id}, ${extra.id}), (${rec.id}, ${ref.id})`);
     const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
-    const row = csv.rows.find((r) => r[3] === sp.canonicalName);
+    const row = csv.rows.find((r) => r[4] === sp.canonicalName);
     expect(row?.[RECORD_COLUMNS.indexOf('references')]).toBe(
       `${ref.citationKey}; ${extra.citationKey}`,
     );
+  });
+
+  it('R2 exports order, value_se, statistic, unit_status and import provenance', async () => {
+    const family = await createFamily(t.db, { orderName: 'Fabales' });
+    const genus = await createGenus(t.db, { familyId: family.id });
+    const sp = await createSpecies(t.db, { genusId: genus.id });
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: '9.3',
+      numericValue: 9.3,
+      seValue: 0.1,
+      statistic: 'mean',
+      unitStatus: 'needs_unit_check',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+      sourceFolder: 'GIFT',
+      sourceFile: 'a.csv',
+      taxonomicStatus: 'resolved synonym',
+      foldedRecordCodes: ['EB_1', 'EB_2'],
+    });
+    const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
+    const code = await codeOf(t.db, rec.id);
+    const row = csv.rows.find((r) => r[0] === code);
+    const at = (name: (typeof RECORD_COLUMNS)[number]) => row?.[RECORD_COLUMNS.indexOf(name)];
+    expect(at('order')).toBe('Fabales');
+    expect(at('value_se')).toBe('0.1');
+    expect(at('statistic')).toBe('mean');
+    expect(at('unit_status')).toBe('needs_unit_check');
+    expect(at('source_folder')).toBe('GIFT');
+    expect(at('source_file')).toBe('a.csv');
+    expect(at('taxonomic_status')).toBe('resolved synonym');
+    expect(at('folded_record_codes')).toBe('EB_1; EB_2');
   });
 
   it('R2 RFC-33 R2: a viewer without records.review gets no pending record', async () => {
