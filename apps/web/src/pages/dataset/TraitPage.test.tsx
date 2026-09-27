@@ -178,6 +178,19 @@ describe('RFC-62 R7 TraitPage distribution', () => {
     expect(screen.getByText(/^Counted at 2026-09-18 08:00 UTC/)).toBeInTheDocument();
   });
 
+  it('RFC-62 R7 shows a dash, never a bound, when no record holds a central value', async () => {
+    await openPage({
+      ...SEED_MASS_DETAIL,
+      distribution: { numeric: { min: 0.5, median: null, max: 3, speciesCount: 2 } },
+    });
+    const spread = screen.getByRole('list', { name: 'Numeric distribution' });
+    expect(
+      within(spread)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['min 0.5 mg', 'median —', 'max 3 mg']);
+  });
+
   it('says so instead when no record has been harmonised yet, whatever the value type', async () => {
     const quantitative = await openPage(SEED_LENGTH_DETAIL);
     expect(screen.getByText('No harmonised records yet.')).toBeInTheDocument();

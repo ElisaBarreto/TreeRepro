@@ -1,4 +1,4 @@
-openapi-sha256: 69a604fefeb1bbdc50ae731dccc96e0e241008acb07f3deed0d3f4ae44773918
+openapi-sha256: 18ecf9f3175bf4bd84149da651f9d930a30b1dcb4f9a36eda58a52c526be373c
 
 # TreeRepro API guide
 
@@ -408,6 +408,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-09-27 — The trait page's median is null when no record of the trait holds a central value (issue #225). (openapi 18ecf9f3175b)
 - 2026-09-27 — Records carry `statistic`, `unitStatus`, `quantitative.se` and their import provenance; a species' family carries its `order`. `records.csv` in `GET /api/export/dataset.zip` changes columns (RFC-66 R2): `order` before `family`, `value_se` after `value_sd`, `statistic` and `unit_status` after `value_n`, and `source_folder`, `source_file`, `taxonomic_status`, `folded_record_codes` before `created_at` — a script reading it by position must read it by header name instead (issue #223). (openapi 69a604fefeb1)
 - 2026-09-27 — `import_rejects.reason` gains `invalid_measurement` (a compiled-dataset row with a malformed statistic, spread or unit status; issue #223). (openapi 21e694d59a67)
 - 2026-09-26 — `GET /api/me/api-keys/endpoints` (session only, admin system role): the routes a key reaches, shown in Settings › API keys (issue #221). (openapi d52998a814de)

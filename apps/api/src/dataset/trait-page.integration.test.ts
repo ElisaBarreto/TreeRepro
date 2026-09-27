@@ -421,6 +421,40 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
+  it('RFC-62 R7 answers a null median when every record of the trait holds only a range', async () => {
+    const { user } = await createUser(t.db);
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const [one, two] = await Promise.all([createSpecies(t.db), createSpecies(t.db)]);
+    await record(t.db, {
+      actor: user,
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: 'min=0.5;max=9',
+      minValue: 0.5,
+      maxValue: 9,
+      referenceId: reference.id,
+    });
+    await record(t.db, {
+      actor: user,
+      speciesId: two.id,
+      traitId: trait.id,
+      valueText: 'min=2;max=12',
+      minValue: 2,
+      maxValue: 12,
+      referenceId: reference.id,
+    });
+
+    try {
+      const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
+      expect(detail?.distribution).toEqual({
+        numeric: { min: 0.5, median: null, max: 12, speciesCount: 2 },
+      });
+    } finally {
+      await forgetCached(redis, ...cacheKeys(trait.id));
+    }
+  });
+
   it('answers a null numeric spread while no record of a quantitative trait is harmonised', async () => {
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
     try {

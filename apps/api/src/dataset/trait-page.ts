@@ -42,7 +42,8 @@ interface NumericRow {
  * The level or numeric spread of one trait over the whole dataset: harmonised
  * records only, species counted distinct, levels with the most species first.
  * Min and max span every single, min, max and mean value; the median is over
- * central values (single, else mean), never a bound (RFC-63 R10).
+ * central values (single, else mean), never a bound, and null when no record
+ * has one (RFC-63 R10, RFC-62 R7).
  * Plot-blind like every other number of the trait header — see
  * {@link globalSpeciesVisible}.
  */
@@ -74,7 +75,7 @@ async function computeDistribution(
     return {
       numeric: {
         min: row.min,
-        median: row.median ?? row.min,
+        median: row.median,
         max: row.max,
         speciesCount: row.species_count,
       },

@@ -359,7 +359,7 @@ export const traitDetailSchema = traitSchema.extend({
       numeric: z
         .strictObject({
           min: z.number(),
-          median: z.number(),
+          median: z.number().nullable(),
           max: z.number(),
           speciesCount: z.number().int(),
         })
