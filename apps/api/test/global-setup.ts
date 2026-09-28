@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
@@ -46,12 +47,18 @@ const ROLES_SCRIPT = fileURLToPath(
   new URL('../../../infra/postgres/init/01-roles.sh', import.meta.url),
 );
 
-// The same images, tags and digests as compose.yml (RFC-02 R11; refresh them
-// together, docs/gotchas/docker.md "Base images are pinned by tag and digest").
-const POSTGRES_IMAGE =
-  'postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2';
-const REDIS_IMAGE =
-  'redis:8.10-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576';
+// The same images, tags and digests as compose.yml (RFC-02 R11), read from it so
+// a Dependabot digest bump there reaches the tests too.
+const COMPOSE = readFileSync(new URL('../../../compose.yml', import.meta.url), 'utf8');
+
+function composeImage(name: string): string {
+  const image = COMPOSE.match(new RegExp(`image: (${name}:\\S+@sha256:[0-9a-f]{64})`))?.[1];
+  if (!image) throw new Error(`no pinned ${name} image in compose.yml`);
+  return image;
+}
+
+const POSTGRES_IMAGE = composeImage('postgres');
+const REDIS_IMAGE = composeImage('redis');
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const [postgres, redis] = await Promise.all([
