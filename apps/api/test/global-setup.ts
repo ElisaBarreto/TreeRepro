@@ -52,7 +52,7 @@ const ROLES_SCRIPT = fileURLToPath(
 const COMPOSE = readFileSync(new URL('../../../compose.yml', import.meta.url), 'utf8');
 
 function composeImage(name: string): string {
-  const image = COMPOSE.match(new RegExp(`image: (${name}:\\S+@sha256:[0-9a-f]{64})`))?.[1];
+  const image = COMPOSE.match(new RegExp(`^\\s*image: (${name}:\\S+@sha256:[0-9a-f]{64})\\s*$`, 'm'))?.[1];
   if (!image) throw new Error(`no pinned ${name} image in compose.yml`);
   return image;
 }
