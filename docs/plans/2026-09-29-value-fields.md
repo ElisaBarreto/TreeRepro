@@ -8,9 +8,9 @@
 
 | Sub-issue | Scope | Depends on |
 |---|---|---|
-| A — Value fields and the 30-column import | D1–D6, D9 | — |
-| B — A continuous value is always a new record | D7 | — |
-| C — Summaries: a mean per field, per species first | D8 | A (`median_value`) |
+| #232 — Value fields and the 30-column import | D1–D6, D9 | — |
+| #233 — A continuous value is always a new record | D7 | — |
+| #234 — Summaries: a mean per field, per species first | D8 | #232 (`median_value`) |
 
 Then the owner reloads the imported records from a release in the new layout (D10).
 
