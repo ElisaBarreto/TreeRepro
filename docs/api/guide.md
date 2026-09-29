@@ -408,6 +408,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-09-29 — `POST /api/records`: a quantitative value is never matched to an existing record. It creates a record unless the same value, raw value and references are already recorded (reported in `duplicates`), and a quantitative contest always creates the record it contests with; `validated` is filled only by categorical levels. Confirm a quantitative record with a `confirm` annotation (issue #233). (openapi 18ecf9f3175b)
 - 2026-09-27 — The trait page's median is null when no record of the trait holds a central value (issue #225). (openapi 18ecf9f3175b)
 - 2026-09-27 — Records carry `statistic`, `unitStatus`, `quantitative.se` and their import provenance; a species' family carries its `order`. `records.csv` in `GET /api/export/dataset.zip` changes columns (RFC-66 R2): `order` before `family`, `value_se` after `value_sd`, `statistic` and `unit_status` after `value_n`, and `source_folder`, `source_file`, `taxonomic_status`, `folded_record_codes` before `created_at` — a script reading it by position must read it by header name instead (issue #223). (openapi 69a604fefeb1)
 - 2026-09-27 — `import_rejects.reason` gains `invalid_measurement` (a compiled-dataset row with a malformed statistic, spread or unit status; issue #223). (openapi 21e694d59a67)

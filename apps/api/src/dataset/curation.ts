@@ -253,34 +253,21 @@ interface CodeRow {
 }
 
 /**
- * The records an entry matches (RFC-70 R3): the visible records of the
- * species × trait on the same level, or — quantitative — with the six fields
- * all identical (`is not distinct from`, so an absent field matches only an
- * absent one) and no mean, median or midpoint label on the record.
+ * The records a categorical entry matches (RFC-70 R3): the visible records
+ * of the species × trait on the same level. A quantitative entry is never
+ * matched.
  */
 async function matchingRecords(
   tx: DbExecutor,
   visibility: Visibility,
   input: CreateRecordsInput,
-  value: ResolvedValue,
+  levelId: string,
 ): Promise<CodeRow[]> {
-  const q = value.quantitative;
-  const num = (v: number | undefined) => (v === undefined ? sql`null` : sql`${String(v)}::numeric`);
-  const same =
-    q === null
-      ? sql`r.level_id = ${value.levelId}::uuid`
-      : sql`r.level_id is null
-          and (r.statistic is null or r.statistic = 'single_or_unspecified')
-          and r.numeric_value is not distinct from ${num(q.single)}
-          and r.min_value is not distinct from ${num(q.min)}
-          and r.max_value is not distinct from ${num(q.max)}
-          and r.mean_value is not distinct from ${num(q.mean)}
-          and r.sd_value is not distinct from ${num(q.sd)}
-          and r.n is not distinct from ${q.n ?? null}::int`;
   return (await tx.execute(sql`
     select r.id, r.record_code, r.created_by from trait_records r
     where r.species_id = ${input.speciesId}::uuid and r.trait_id = ${input.traitId}::uuid
-      and ${same} and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
+      and r.level_id = ${levelId}::uuid
+      and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
     order by r.id`)) as unknown as CodeRow[];
 }
 
@@ -314,14 +301,15 @@ async function levelsWithVisibleRecords(
  * - a categorical contest computes E and S, and refuses an empty E \ S (400
  *   path `intent`) or a `contestedLevelIds` other than E \ S (400 path
  *   `contestedLevelIds`) before writing anything;
- * - each entry that matches visible records validates every one the actor
+ * - each level that matches visible records validates every one the actor
  *   did not create and reports the actor's own as duplicates (RFC-65 R13);
+ *   a quantitative entry is never matched;
  * - the rest are inserted under one code number (RFC-63 R12); a claim-key
  *   collision creates nothing and is a duplicate only when the colliding
  *   record is visible (RFC-33 R4);
  * - a contest is stored with the levels it contests and the records it
  *   created, even none (RFC-63 R14) — except a quantitative contest whose
- *   value matched, which contests nothing.
+ *   value collided, which contests nothing.
  * @rfc RFC-70 R1, R2, R3
  * @rfc RFC-65 R1
  * @rfc RFC-63 R3, R12, R14, R16
@@ -458,7 +446,8 @@ export async function createRecords(
     const duplicates: RecordCodeRef[] = [];
     const toCreate: ResolvedValue[] = [];
     for (const value of values) {
-      const matches = await matchingRecords(tx, visibility, input, value);
+      const matches =
+        value.levelId === null ? [] : await matchingRecords(tx, visibility, input, value.levelId);
       if (matches.length === 0) {
         toCreate.push(value);
         continue;
@@ -530,7 +519,7 @@ export async function createRecords(
       if (colliding) duplicates.push({ recordId: colliding.id, recordCode: colliding.record_code });
     }
 
-    // A quantitative contest that matched or collided contests nothing.
+    // A quantitative contest that collided contests nothing.
     if (isContest && (categorical || createdIds.length > 0)) {
       const [contest] = await tx
         .insert(contests)
