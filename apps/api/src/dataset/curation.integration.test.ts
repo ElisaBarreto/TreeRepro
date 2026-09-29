@@ -992,6 +992,31 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
   });
 
+
+  it('RFC-70 R2 a quantitative contest differs from a target that also holds a median or an SE (issue #232)', async () => {
+    const f = await setup();
+    const qt = await createTrait(t.db, { valueType: 'quantitative' });
+    const target = await createRecord(t.db, {
+      speciesId: f.sp.id,
+      traitId: qt.id,
+      valueText: 'min=1;max=3;median=2;se=0.1',
+      minValue: 1,
+      maxValue: 3,
+      medianValue: 2,
+      seValue: 0.1,
+      primaryReferenceId: f.ref2.id,
+      origin: 'manual',
+      createdBy: f.other.id,
+    });
+    const result = await createRecords(t.db, UNRESTRICTED, {
+      ...f.input([]),
+      traitId: qt.id,
+      value: { quantitative: { min: 1, max: 3 } },
+      intent: 'contest',
+      respondsToRecordId: target.id,
+    });
+    expect(result.created[0]).toMatchObject({ intent: 'contest', respondsTo: { id: target.id } });
+  });
   it('RFC-70 R2 a complement responds to a visible record of the same species and trait; matching still applies', async () => {
     const f = await setup();
     const otherTrait = await createTrait(t.db, { levels: ['red'] });

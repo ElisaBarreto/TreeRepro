@@ -374,7 +374,9 @@ export async function createRecords(
           minValue: traitRecords.minValue,
           maxValue: traitRecords.maxValue,
           meanValue: traitRecords.meanValue,
+          medianValue: traitRecords.medianValue,
           sdValue: traitRecords.sdValue,
+          seValue: traitRecords.seValue,
           n: traitRecords.n,
         })
         .from(traitRecords)
@@ -405,7 +407,10 @@ export async function createRecords(
           same(q.max, target.maxValue) &&
           same(q.mean, target.meanValue) &&
           same(q.sd, target.sdValue) &&
-          same(q.n, target.n)
+          same(q.n, target.n) &&
+          // A manual value never holds a median or an SE (RFC-63 R15).
+          target.medianValue === null &&
+          target.seValue === null
         ) {
           throw validation('value', 'A contest carries a different value');
         }
