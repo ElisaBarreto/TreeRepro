@@ -106,6 +106,8 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
       'wcvp_genus',
       'wcvp_family',
       'gbif_species',
+      'gbif_genus',
+      'gbif_family',
       'gbif_usage_key',
       'original_species_name',
       'secondary_source_species_name',
@@ -120,13 +122,13 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
       'source_folder',
       'file_name',
       'wcvp_taxonomic_status',
+      'gbif_order',
       'taxon_order',
       'unit_harmonisation_status',
       'min',
       'max',
       'sd',
       'se',
-      'statistic_record_codes',
     ]);
     const values = within(details as HTMLElement)
       .getAllByRole('definition')
@@ -134,7 +136,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
     expect(values[0]).toBe('EB_12');
     expect(values[1]).toBe('Smith2001');
     expect(values[2]).toBe('—');
-    expect(values[11]).toBe('flower_hue');
+    expect(values[13]).toBe('flower_hue');
     const pagination = within(rejected as HTMLElement).getByRole('navigation', {
       name: 'Pagination',
     });

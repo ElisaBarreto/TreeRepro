@@ -83,6 +83,8 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '',
       '',
       '',
+      '',
+      '',
       expect.stringMatching(ISO),
     ]);
     // RFC-63 R14: a categorical contest applies to every record of the level it names.
@@ -92,18 +94,19 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     // c1 is a blue record of k1: no responds_to, and itself on a level k2 contests.
     expect(byCode.get(s.code.c1)?.slice(9, 10)).toEqual(['blue']);
     expect(byCode.get(s.code.c1)?.slice(22, 27)).toEqual(['contest', '', 'true', '0', '1']);
-    // Six quantitative fields; a resolved contest no longer flags, but still counts.
+    // Six quantitative fields in single, mean, median, min, max, sd, se, n
+    // order; a resolved contest no longer flags, but still counts.
     expect(byCode.get(s.code.r3)?.slice(8, 20)).toEqual([
       'mm',
       '',
       '12.5',
+      '10',
+      '',
       '1',
       '20',
-      '10',
       '2.5',
       '',
       '8',
-      '',
       '',
       '',
     ]);
@@ -162,7 +165,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     );
   });
 
-  it('R2 exports order, value_se, statistic, unit_status and import provenance', async () => {
+  it('R2 exports order, the value fields, unit_status and import provenance', async () => {
     const family = await createFamily(t.db, { orderName: 'Fabales' });
     const genus = await createGenus(t.db, { familyId: family.id });
     const sp = await createSpecies(t.db, { genusId: genus.id });
@@ -172,30 +175,37 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     const rec = await createRecord(t.db, {
       speciesId: sp.id,
       traitId: trait.id,
-      valueText: '9.3',
-      numericValue: 9.3,
+      valueText: 'mean=9.3;median=9;se=0.1',
+      meanValue: 9.3,
+      medianValue: 9,
       seValue: 0.1,
-      statistic: 'mean',
       unitStatus: 'needs_unit_check',
       primaryReferenceId: ref.id,
       importBatchId: batch.id,
       sourceFolder: 'GIFT',
       sourceFile: 'a.csv',
       taxonomicStatus: 'resolved synonym',
-      foldedRecordCodes: ['EB_1', 'EB_2'],
+      gbifGenus: 'Inga',
+      gbifFamily: 'Fabaceae',
+      taxonOrder: 'Fabales (source)',
     });
     const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
     const code = await codeOf(t.db, rec.id);
     const row = csv.rows.find((r) => r[0] === code);
     const at = (name: (typeof RECORD_COLUMNS)[number]) => row?.[RECORD_COLUMNS.indexOf(name)];
+    expect(row).toHaveLength(RECORD_COLUMNS.length);
     expect(at('order')).toBe('Fabales');
+    expect(at('value_single')).toBe('');
+    expect(at('value_mean')).toBe('9.3');
+    expect(at('value_median')).toBe('9');
     expect(at('value_se')).toBe('0.1');
-    expect(at('statistic')).toBe('mean');
     expect(at('unit_status')).toBe('needs_unit_check');
     expect(at('source_folder')).toBe('GIFT');
     expect(at('source_file')).toBe('a.csv');
     expect(at('taxonomic_status')).toBe('resolved synonym');
-    expect(at('folded_record_codes')).toBe('EB_1; EB_2');
+    expect(at('gbif_genus')).toBe('Inga');
+    expect(at('gbif_family')).toBe('Fabaceae');
+    expect(at('taxon_order')).toBe('Fabales (source)');
   });
 
   it('R2 RFC-33 R2: a viewer without records.review gets no pending record', async () => {

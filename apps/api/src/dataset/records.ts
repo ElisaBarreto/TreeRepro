@@ -57,7 +57,7 @@ const extraReferencesSql = sql<ExtraReference[]>`(select coalesce(jsonb_agg(json
   where rr.record_id = ${traitRecords.id})`;
 
 /**
- * The `value` sort's numeric key (RFC-63 R9): the single/mean/min/max fields
+ * The `value` sort's numeric key (RFC-63 R9): the single/mean/median/min/max fields
  * coalesced, or PostgreSQL's numeric `Infinity` — never a real record's
  * value — for a categorical or still-unharmonised record (see
  * {@link SORT_KEYS}'s doc comment for why). Read back through
@@ -65,10 +65,10 @@ const extraReferencesSql = sql<ExtraReference[]>`(select coalesce(jsonb_agg(json
  * `numericValue`'s `mode: 'number'` JS double, which would round a
  * high-precision value before it went into the cursor.
  */
-const VALUE_SORT_KEY_SQL = sql`coalesce(${traitRecords.numericValue}, ${traitRecords.meanValue}, ${traitRecords.minValue}, ${traitRecords.maxValue}, 'Infinity'::numeric)`;
+const VALUE_SORT_KEY_SQL = sql`coalesce(${traitRecords.numericValue}, ${traitRecords.meanValue}, ${traitRecords.medianValue}, ${traitRecords.minValue}, ${traitRecords.maxValue}, 'Infinity'::numeric)`;
 
 /**
- * The single/min/max/mean/sd/se/n fields of a record as one object (spec R-5,
+ * The single/min/max/mean/median/sd/se/n fields of a record as one object (spec R-5,
  * RFC-63 R8), or null when none is set — a purely categorical or level-based
  * record.
  */
@@ -78,6 +78,7 @@ function quantitativeOf(rec: typeof traitRecords.$inferSelect): RecordQuantitati
     min: rec.minValue,
     max: rec.maxValue,
     mean: rec.meanValue,
+    median: rec.medianValue,
     sd: rec.sdValue,
     se: rec.seValue,
     n: rec.n,
@@ -262,7 +263,6 @@ export function toItem(r: ItemRow): RecordItem {
     level: rec.levelId && r.levelKey ? { id: rec.levelId, key: r.levelKey } : null,
     numericValue: rec.numericValue,
     quantitative: quantitativeOf(rec),
-    statistic: rec.statistic ?? null,
     unitStatus: rec.unitStatus ?? null,
     harmonisation: rec.harmonisation,
     review: r.review,
@@ -619,7 +619,9 @@ export async function getRecord(
     sourceFolder: rec.sourceFolder,
     sourceFile: rec.sourceFile,
     taxonomicStatus: rec.taxonomicStatus,
-    foldedRecordCodes: rec.foldedRecordCodes,
+    gbifGenus: rec.gbifGenus,
+    gbifFamily: rec.gbifFamily,
+    taxonOrder: rec.taxonOrder,
     annotations: annotations.map((a) => ({
       id: a.id,
       kind: a.kind,

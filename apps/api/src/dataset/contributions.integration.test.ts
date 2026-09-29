@@ -127,7 +127,6 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       contested: false,
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
-      statistic: null,
       unitStatus: null,
       references: [expect.objectContaining({ id: reference.id })],
       responseCount: 0,

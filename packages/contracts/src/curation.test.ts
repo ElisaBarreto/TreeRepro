@@ -48,7 +48,6 @@ const record = {
   contested: false,
   recordCode: 'EB_1',
   quantitative: null,
-  statistic: null,
   unitStatus: null,
   references: [],
 };

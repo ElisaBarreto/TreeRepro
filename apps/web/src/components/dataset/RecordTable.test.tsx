@@ -110,26 +110,17 @@ describe('RFC-63 R8 RecordTable', () => {
     expect(recordValueLabel(ROW)).toBe('dioecious');
   });
 
-  it('RFC-63 R8 labels the statistic next to the single value and reads SE after SD (issue #223)', () => {
-    const label = recordValueLabel({
-      ...MEASURED,
-      statistic: 'mean',
-      quantitative: { single: 9.3, min: 6.2, max: 18.8, sd: 0.5, se: 0.1, n: 30 },
-    });
-    expect(label).toBe('9.3 (mean) · 6.2–18.8 · SD 0.5 · SE 0.1 mg (n = 30)');
-    expect(
-      recordValueLabel({ ...MEASURED, statistic: 'median', quantitative: { single: 2 } }),
-    ).toBe('2 (median) mg');
-    expect(
-      recordValueLabel({ ...MEASURED, statistic: 'derived_midpoint', quantitative: { single: 2 } }),
-    ).toBe('2 (midpoint) mg');
+  it('RFC-63 R8, R15 names each field, the median after the mean, SE after SD (issues #223, #232)', () => {
     expect(
       recordValueLabel({
         ...MEASURED,
-        statistic: 'single_or_unspecified',
-        quantitative: { single: 2 },
+        quantitative: { single: 9.3, min: 6.2, max: 18.8, sd: 0.5, se: 0.1, n: 30 },
       }),
-    ).toBe('2 mg');
+    ).toBe('9.3 · 6.2–18.8 · SD 0.5 · SE 0.1 mg (n = 30)');
+    expect(recordValueLabel({ ...MEASURED, quantitative: { median: 2 } })).toBe('median 2 mg');
+    expect(recordValueLabel({ ...MEASURED, quantitative: { mean: 4, median: 3, se: 0.2 } })).toBe(
+      'mean 4 · median 3 · SE 0.2 mg',
+    );
   });
 
   it('RFC-63 R8 marks a unit that needs checking or was assumed, and says nothing otherwise', async () => {

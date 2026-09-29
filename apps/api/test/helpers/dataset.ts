@@ -6,7 +6,6 @@ import type {
   NameSource,
   NameType,
   RecordIntent,
-  Statistic,
   TraitValueType,
   UnitStatus,
 } from '@treerepro/contracts';
@@ -168,10 +167,10 @@ type RecordBase = {
   minValue?: number;
   maxValue?: number;
   meanValue?: number;
+  medianValue?: number;
   sdValue?: number;
   seValue?: number;
   n?: number;
-  statistic?: Statistic;
   unitStatus?: UnitStatus;
   harmonisation?: HarmonisationStatus;
   rawValue?: string;
@@ -190,7 +189,9 @@ type RecordOrigin =
       sourceFolder?: string;
       sourceFile?: string;
       taxonomicStatus?: string;
-      foldedRecordCodes?: string[];
+      gbifGenus?: string;
+      gbifFamily?: string;
+      taxonOrder?: string;
     }
   | {
       origin: 'manual';
@@ -203,9 +204,15 @@ type RecordOrigin =
 
 let rowCounter = 0;
 
-/** Inserts one record; `harmonisation` defaults to `harmonised` when a level or one of single/min/max/mean is given, else `unknown_level`. */
+/** Inserts one record; `harmonisation` defaults to `harmonised` when a level or one of single/min/max/mean/median is given, else `unknown_level`. */
 export async function createRecord(db: DbExecutor, input: RecordBase & RecordOrigin) {
-  const quantitative = [input.numericValue, input.minValue, input.maxValue, input.meanValue];
+  const quantitative = [
+    input.numericValue,
+    input.minValue,
+    input.maxValue,
+    input.meanValue,
+    input.medianValue,
+  ];
   const harmonisation =
     input.harmonisation ??
     (input.levelId !== undefined || quantitative.some((v) => v !== undefined)
@@ -222,10 +229,10 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
       minValue: input.minValue ?? null,
       maxValue: input.maxValue ?? null,
       meanValue: input.meanValue ?? null,
+      medianValue: input.medianValue ?? null,
       sdValue: input.sdValue ?? null,
       seValue: input.seValue ?? null,
       n: input.n ?? null,
-      statistic: input.statistic ?? null,
       unitStatus: input.unitStatus ?? null,
       harmonisation,
       rawValue: input.rawValue ?? null,
@@ -248,7 +255,9 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
             sourceFolder: input.sourceFolder ?? null,
             sourceFile: input.sourceFile ?? null,
             taxonomicStatus: input.taxonomicStatus ?? null,
-            foldedRecordCodes: input.foldedRecordCodes ?? null,
+            gbifGenus: input.gbifGenus ?? null,
+            gbifFamily: input.gbifFamily ?? null,
+            taxonOrder: input.taxonOrder ?? null,
           }),
     })
     .returning({ id: traitRecords.id });

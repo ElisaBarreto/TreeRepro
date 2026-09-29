@@ -1,4 +1,4 @@
-openapi-sha256: 18ecf9f3175bf4bd84149da651f9d930a30b1dcb4f9a36eda58a52c526be373c
+openapi-sha256: c7d4f8ea30f05790697e04b5645db4705e9c331eca02181a3ed9345a93a2817b
 
 # TreeRepro API guide
 
@@ -139,11 +139,10 @@ Response, either way:
 
 A record of `GET /api/records` and `GET /api/records/:id` (RFC-63 R8) carries, beside its value:
 
-- `quantitative: { single, min, max, mean, sd, se, n } | null` — each key present only when set; null for a categorical record. `sd` and `se` are spreads (standard deviation, standard error), never values of the trait: do not average them with the others. `se` is filled only by the import; a manual record never has one.
-- `statistic` — what `single` is: `mean`, `median`, `derived_midpoint` (a midpoint of `min` and `max` computed before the import) or `single_or_unspecified`; null for a categorical record or an unlabelled value (RFC-63 R15).
+- `quantitative: { single, min, max, mean, median, sd, se, n } | null` — each key present only when set; null for a categorical record. Each quantity has its own field and the platform never derives one from another: a mean is `mean`, a median `median`, never `single` (RFC-63 R15). `sd` and `se` are spreads (standard deviation, standard error), never values of the trait: do not average them with the others. `median` and `se` are filled only by the import; a manual record never has them.
 - `unitStatus` — how the import handled the unit: `converted_or_already_target`, `unit_missing` (the unit was assumed), `needs_unit_check` (the conversion is not confirmed) or `not_applicable`; null when absent. Treat a `needs_unit_check` value with care: the trait summaries leave it out (RFC-63 R10).
 
-The detail (`GET /api/records/:id`) adds the import provenance, each null when absent: `sourceFolder`, `sourceFile`, `taxonomicStatus` (how the row's species name matched: exact match, resolved synonym, fuzzy match…) and `foldedRecordCodes` (the codes an import row folded together).
+The detail (`GET /api/records/:id`) adds the import provenance, each null when absent: `sourceFolder`, `sourceFile`, `taxonomicStatus` (how the row's species name matched: exact match, resolved synonym, fuzzy match…), `gbifGenus` and `gbifFamily` (the genus and family the GBIF backbone accepts) and `taxonOrder` (the order the source reported). The platform's own taxonomy stays the one of RFC-60.
 
 A species' `family` on `GET /api/species/:id` carries its `order` (null when unknown); the list items of `GET /api/species` do not (RFC-60 R7).
 
@@ -408,6 +407,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-09-29 — One field per quantity (RFC-63 R15): records lose `statistic` and gain `quantitative.median` — a mean or a median is no longer a labelled `single`; the record detail loses `foldedRecordCodes` and gains `gbifGenus`, `gbifFamily` and `taxonOrder`; the `value` sort, the species' trait summaries and the trait page count the median. `records.csv` in `GET /api/export/dataset.zip` changes columns (RFC-66 R2): the value columns reorder to `value_single, value_mean, value_median, value_min, value_max, value_sd, value_se, value_n` (`value_median` is new), `statistic` and `folded_record_codes` are gone, and `gbif_genus`, `gbif_family`, `taxon_order` follow `taxonomic_status` — read it by header name, not by position (issue #232). (openapi c7d4f8ea30f0)
 - 2026-09-29 — `POST /api/records`: a quantitative value is never matched to an existing record. It creates a record unless the claim key already holds it — the same value, `rawValue`, first source (the primary reference) and `secondaryReferenceId`; further sources do not count (reported in `duplicates`), and a quantitative contest always creates the record it contests with; `validated` is filled only by categorical levels. Confirm a quantitative record with a `confirm` annotation (issue #233). (openapi 18ecf9f3175b)
 - 2026-09-27 — The trait page's median is null when no record of the trait holds a central value (issue #225). (openapi 18ecf9f3175b)
 - 2026-09-27 — Records carry `statistic`, `unitStatus`, `quantitative.se` and their import provenance; a species' family carries its `order`. `records.csv` in `GET /api/export/dataset.zip` changes columns (RFC-66 R2): `order` before `family`, `value_se` after `value_sd`, `statistic` and `unit_status` after `value_n`, and `source_folder`, `source_file`, `taxonomic_status`, `folded_record_codes` before `created_at` — a script reading it by position must read it by header name instead (issue #223). (openapi 69a604fefeb1)

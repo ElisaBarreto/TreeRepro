@@ -12,7 +12,7 @@ describe('RFC-66 R4 csvRow', () => {
 });
 
 describe('RFC-66 R2 column lists', () => {
-  it('records.csv names the 32 columns of RFC-66 R2 in order', () => {
+  it('records.csv names the 34 columns of RFC-66 R2 in order', () => {
     expect([...RECORD_COLUMNS]).toEqual([
       'record_code',
       'order',
@@ -25,13 +25,13 @@ describe('RFC-66 R2 column lists', () => {
       'unit',
       'level',
       'value_single',
+      'value_mean',
+      'value_median',
       'value_min',
       'value_max',
-      'value_mean',
       'value_sd',
       'value_se',
       'value_n',
-      'statistic',
       'unit_status',
       'raw_value',
       'references',
@@ -44,7 +44,9 @@ describe('RFC-66 R2 column lists', () => {
       'source_folder',
       'source_file',
       'taxonomic_status',
-      'folded_record_codes',
+      'gbif_genus',
+      'gbif_family',
+      'taxon_order',
       'created_at',
     ]);
   });

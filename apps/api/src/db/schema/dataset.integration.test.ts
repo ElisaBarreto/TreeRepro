@@ -418,7 +418,7 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
     });
   });
 
-  it('R3 statistic is part of the claim: a mean and a median of one number are two claims', async () => {
+  it('R3 each quantity has its own field: a single, a mean and a median of one number are three claims (issue #232)', async () => {
     await withRollback(t.db, async (tx) => {
       const sp1 = await createSpecies(tx);
       const trait = await traitByKey(tx, 'petal_length');
@@ -427,22 +427,26 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
       const claim = {
         speciesId: sp1.id,
         traitId: trait.id,
-        valueText: '9.3',
-        numericValue: 9.3,
         harmonisation: 'harmonised' as const,
         origin: 'import' as const,
         importBatchId: batch.id,
-        importRowNo: 1,
         primaryReferenceId: ref.id,
-        statistic: 'mean' as const,
       };
-      await tx.insert(traitRecords).values(claim);
-      await tx.insert(traitRecords).values({ ...claim, importRowNo: 2, statistic: 'median' });
-      await tx.insert(traitRecords).values({ ...claim, importRowNo: 3, statistic: null });
+      await tx
+        .insert(traitRecords)
+        .values({ ...claim, importRowNo: 1, valueText: '5', numericValue: 5 });
+      await tx
+        .insert(traitRecords)
+        .values({ ...claim, importRowNo: 2, valueText: 'mean=5', meanValue: 5 });
+      await tx
+        .insert(traitRecords)
+        .values({ ...claim, importRowNo: 3, valueText: 'median=5', medianValue: 5 });
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
-            sp.insert(traitRecords).values({ ...claim, importRowNo: 4, statistic: null }),
+            sp
+              .insert(traitRecords)
+              .values({ ...claim, importRowNo: 4, valueText: 'median=5', medianValue: 5 }),
           ),
         ),
       ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
@@ -946,7 +950,7 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
     expect(row).toEqual({ a: 'a', z: 'z', aa: 'aa', ab: 'ab', zz: 'zz', aaa: 'aaa' });
   });
 
-  it('harmonised needs one of single/min/max/mean; min ≤ max; sd ≥ 0; n ≥ 1; never with a level; implies harmonised', async () => {
+  it('harmonised needs one of single/min/max/mean/median; min ≤ max; sd ≥ 0; n ≥ 1; never with a level; implies harmonised', async () => {
     await withRollback(t.db, async (tx) => {
       const sp1 = await createSpecies(tx);
       const petal = await traitByKey(tx, 'petal_length');
@@ -984,23 +988,16 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
           levelId: blue.id,
           seValue: 1,
         },
-        // RFC-63 R15, issue #223: statistic is set only for a quantitative record.
+        // RFC-63 R2, issue #232: a level excludes median_value too.
         {
           valueText: 'blue',
           harmonisation: 'harmonised',
           traitId: colour.id,
           levelId: blue.id,
-          statistic: 'mean',
+          medianValue: 1,
         },
-        // RFC-63 R15, issue #223: statistic takes only the four labelled values.
-        {
-          valueText: '9.3',
-          harmonisation: 'harmonised',
-          numericValue: 9.3,
-          statistic: 'min' as never,
-        },
-        // RFC-63 R15, issue #223: statistic labels a value, so it needs numeric_value.
-        { valueText: 'min=4', harmonisation: 'harmonised', minValue: 4, statistic: 'mean' },
+        // RFC-63 R2, issue #232: a median implies harmonised.
+        { valueText: 'median=1', harmonisation: 'not_numeric', medianValue: 1 },
         // RFC-63 R1, issue #223: unit_status takes only the four labelled values.
         {
           valueText: '9.3',
@@ -1031,38 +1028,55 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
         })
         .returning();
       expect(ok).toMatchObject({ minValue: 2, maxValue: 8, n: 3, numericValue: null });
+      // RFC-63 R5, issue #232: a median alone is a harmonised value.
+      const [median] = await tx
+        .insert(traitRecords)
+        .values({ ...base, valueText: 'median=4', harmonisation: 'harmonised', medianValue: 4 })
+        .returning();
+      expect(median).toMatchObject({ medianValue: 4, numericValue: null, meanValue: null });
     });
   });
 
-  it('statistic, se_value, unit_status and folded_record_codes round-trip (RFC-63 R1, R15; issue #223)', async () => {
+  it('median_value, se_value, unit_status and the GBIF provenance round-trip; statistic and folded_record_codes are gone (RFC-63 R1, R15; issue #232)', async () => {
     await withRollback(t.db, async (tx) => {
       const sp1 = await createSpecies(tx);
       const petal = await traitByKey(tx, 'petal_length');
       const ref = await createReference(tx);
-      const { user } = await createUser(tx);
+      const batch = await createImportBatch(tx);
       const [row] = await tx
         .insert(traitRecords)
         .values({
           speciesId: sp1.id,
           traitId: petal.id,
-          origin: 'manual',
-          createdBy: user.id,
+          origin: 'import',
+          importBatchId: batch.id,
+          importRowNo: 1,
           primaryReferenceId: ref.id,
-          valueText: 'single=9.3;se=0.1',
+          valueText: 'median=9.3;se=0.1',
           harmonisation: 'harmonised',
-          numericValue: 9.3,
-          statistic: 'mean',
+          medianValue: 9.3,
           seValue: 0.1,
           unitStatus: 'unit_missing',
-          foldedRecordCodes: ['EB_1', 'EB_2'],
+          gbifGenus: 'Petalia',
+          gbifFamily: 'Petaliaceae',
+          taxonOrder: 'Petalales',
         })
         .returning();
       expect(row).toMatchObject({
-        statistic: 'mean',
+        medianValue: 9.3,
         seValue: 0.1,
         unitStatus: 'unit_missing',
-        foldedRecordCodes: ['EB_1', 'EB_2'],
+        gbifGenus: 'Petalia',
+        gbifFamily: 'Petaliaceae',
+        taxonOrder: 'Petalales',
       });
+      const gone = await tx.execute(sql`
+        select column_name from information_schema.columns
+        where table_name = 'trait_records' and column_name in ('statistic', 'folded_record_codes')
+        union all
+        select conname from pg_constraint
+        where conrelid = 'trait_records'::regclass and conname like 'trait_records_statistic%'`);
+      expect([...gone]).toEqual([]);
     });
   });
 });

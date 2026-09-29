@@ -147,6 +147,29 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     expect(numeric).toEqual({ min: 2, max: 8, mean: 4.5, count: 3 });
   });
 
+  it('RFC-63 R10 numeric: a median counts in the extremes and as the central value after single and mean (issue #232)', async () => {
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const ref = await createReference(t.db);
+    const imported = {
+      speciesId: sp1.id,
+      traitId: petal.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    };
+    await createRecord(t.db, { ...imported, valueText: '5', numericValue: 5 });
+    await createRecord(t.db, { ...imported, valueText: 'median=20', medianValue: 20 });
+    await createRecord(t.db, {
+      ...imported,
+      valueText: 'mean=2;median=100',
+      meanValue: 2,
+      medianValue: 100,
+    });
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
+    expect(numeric).toEqual({ min: 2, max: 100, mean: 9, count: 3 });
+  });
+
   it('spec R-5 mean is null when no record has a single value or a mean', async () => {
     const { user } = await createUser(t.db);
     const sp1 = await createSpecies(t.db);

@@ -28,13 +28,13 @@ export const RECORD_COLUMNS = [
   'unit',
   'level',
   'value_single',
+  'value_mean',
+  'value_median',
   'value_min',
   'value_max',
-  'value_mean',
   'value_sd',
   'value_se',
   'value_n',
-  'statistic',
   'unit_status',
   'raw_value',
   'references',
@@ -47,7 +47,9 @@ export const RECORD_COLUMNS = [
   'source_folder',
   'source_file',
   'taxonomic_status',
-  'folded_record_codes',
+  'gbif_genus',
+  'gbif_family',
+  'taxon_order',
   'created_at',
 ] as const;
 
@@ -216,13 +218,13 @@ interface RecordRow {
   unit: string | null;
   level: string | null;
   value_single: string | null;
+  value_mean: string | null;
+  value_median: string | null;
   value_min: string | null;
   value_max: string | null;
-  value_mean: string | null;
   value_sd: string | null;
   value_se: string | null;
   value_n: number | null;
-  statistic: string | null;
   unit_status: string | null;
   raw_value: string | null;
   refs: string | null;
@@ -235,7 +237,9 @@ interface RecordRow {
   source_folder: string | null;
   source_file: string | null;
   taxonomic_status: string | null;
-  folded_record_codes: string | null;
+  gbif_genus: string | null;
+  gbif_family: string | null;
+  taxon_order: string | null;
   created_at: Date;
 }
 
@@ -244,9 +248,10 @@ interface RecordRow {
  * reviewer) with their raw value; `platform` keeps the `TR_` records.
  * `contested` and `n_contests` are RFC-63 R14's, `n_validations` counts
  * distinct validators (RFC-63 R8). `order` is the species' family's
- * `order_name` (RFC-60 R1); `value_se`, `statistic`, `unit_status`,
- * `source_folder`, `source_file`, `taxonomic_status` and
- * `folded_record_codes` are the record's stored provenance (RFC-63 R1, R15).
+ * `order_name` (RFC-60 R1); each value column is one stored field (RFC-63
+ * R15); `unit_status`, `source_folder`, `source_file`, `taxonomic_status`,
+ * `gbif_genus`, `gbif_family` and `taxon_order` are the record's stored
+ * provenance (RFC-63 R1).
  * @rfc RFC-66 R2, R3, R4, R5, R9
  * @rfc RFC-33 R2, R3
  * @rfc RFC-60 R1
@@ -260,10 +265,11 @@ export function recordsCsv(
     select r.record_code, f.order_name as "order", f.name as family, g.name as genus,
       s.canonical_name as species, s.name_source,
       c.key as category, t.key as trait, t.unit, l.key as level,
-      r.numeric_value::text as value_single, r.min_value::text as value_min,
-      r.max_value::text as value_max, r.mean_value::text as value_mean,
+      r.numeric_value::text as value_single, r.mean_value::text as value_mean,
+      r.median_value::text as value_median, r.min_value::text as value_min,
+      r.max_value::text as value_max,
       r.sd_value::text as value_sd, r.se_value::text as value_se, r.n as value_n,
-      r.statistic, r.unit_status,
+      r.unit_status,
       coalesce(r.raw_value, case when r.harmonisation <> 'harmonised' then r.value_text end) as raw_value,
       ${REFERENCES_OF_R} as refs,
       r.origin, r.intent,
@@ -273,7 +279,7 @@ export function recordsCsv(
         where a.record_id = r.id and a.kind = 'confirm')::int as n_validations,
       ${contestCountSql(sql`r.id`)} as n_contests,
       r.source_folder, r.source_file, r.taxonomic_status,
-      array_to_string(r.folded_record_codes, '; ') as folded_record_codes,
+      r.gbif_genus, r.gbif_family, r.taxon_order,
       r.created_at
     from trait_records r
     join species s on s.id = r.species_id
@@ -302,13 +308,13 @@ export function recordsCsv(
         r.unit,
         r.level,
         r.value_single,
+        r.value_mean,
+        r.value_median,
         r.value_min,
         r.value_max,
-        r.value_mean,
         r.value_sd,
         r.value_se,
         r.value_n,
-        r.statistic,
         r.unit_status,
         r.raw_value,
         r.refs,
@@ -321,7 +327,9 @@ export function recordsCsv(
         r.source_folder,
         r.source_file,
         r.taxonomic_status,
-        r.folded_record_codes,
+        r.gbif_genus,
+        r.gbif_family,
+        r.taxon_order,
         new Date(r.created_at).toISOString(),
       ]),
     options.batch ?? BATCH,

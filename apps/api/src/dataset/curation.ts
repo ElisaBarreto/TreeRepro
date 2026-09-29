@@ -131,8 +131,9 @@ export async function resolveValue(
  * The `value_text` of a quantitative claim (RFC-63 R15): the single value as
  * PostgreSQL prints `numeric` (`1e3` → `1000`) when it is the only field;
  * otherwise every given field as `<name>=<value>`, `;`-joined in the order
- * single, min, max, mean, sd, n — so claims differing in any of the six
- * fields differ in the claim key (RFC-63 R3).
+ * single, min, max, mean, median, sd, se, n — the import's order; a manual
+ * claim never has median or se — so claims differing in any field differ in
+ * the claim key (RFC-63 R3).
  * @rfc RFC-63 R3, R15
  * @rfc RFC-65 R1
  */
@@ -373,7 +374,9 @@ export async function createRecords(
           minValue: traitRecords.minValue,
           maxValue: traitRecords.maxValue,
           meanValue: traitRecords.meanValue,
+          medianValue: traitRecords.medianValue,
           sdValue: traitRecords.sdValue,
+          seValue: traitRecords.seValue,
           n: traitRecords.n,
         })
         .from(traitRecords)
@@ -404,7 +407,10 @@ export async function createRecords(
           same(q.max, target.maxValue) &&
           same(q.mean, target.meanValue) &&
           same(q.sd, target.sdValue) &&
-          same(q.n, target.n)
+          same(q.n, target.n) &&
+          // A manual value never holds a median or an SE (RFC-63 R15).
+          target.medianValue === null &&
+          target.seValue === null
         ) {
           throw validation('value', 'A contest carries a different value');
         }
@@ -511,7 +517,6 @@ export async function createRecords(
         select r.id, r.record_code, r.created_by from trait_records r
         where r.species_id = ${input.speciesId}::uuid and r.trait_id = ${input.traitId}::uuid
           and r.value_text = ${valueText}
-          and r.statistic is null
           and r.raw_value is not distinct from ${input.rawValue ?? null}::text
           and r.primary_reference_id = ${primaryReferenceId}::uuid
           and r.secondary_reference_id is not distinct from ${input.secondaryReferenceId ?? null}::uuid

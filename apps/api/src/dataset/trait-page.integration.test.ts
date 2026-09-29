@@ -4,6 +4,7 @@ import {
   addPlotSpecies,
   createAnnotation,
   createGenus,
+  createImportBatch,
   createPlot,
   createRecord,
   createReference,
@@ -421,6 +422,51 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
+  it('RFC-62 R7 counts a median-only record: it widens min and max and is the central value after single and mean (issue #232)', async () => {
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const batch = await createImportBatch(t.db);
+    const [one, two, three] = await Promise.all([
+      createSpecies(t.db),
+      createSpecies(t.db),
+      createSpecies(t.db),
+    ]);
+    const imported = {
+      traitId: trait.id,
+      primaryReferenceId: reference.id,
+      importBatchId: batch.id,
+    };
+    await createRecord(t.db, {
+      ...imported,
+      speciesId: one.id,
+      valueText: 'median=30',
+      medianValue: 30,
+    });
+    await createRecord(t.db, {
+      ...imported,
+      speciesId: two.id,
+      valueText: 'median=0.1',
+      medianValue: 0.1,
+    });
+    // A mean wins over the median as the central value; the median still bounds max.
+    await createRecord(t.db, {
+      ...imported,
+      speciesId: three.id,
+      valueText: 'mean=4;median=50',
+      meanValue: 4,
+      medianValue: 50,
+    });
+
+    try {
+      const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
+      expect(detail?.distribution).toEqual({
+        numeric: { min: 0.1, median: 4, max: 50, speciesCount: 3 },
+      });
+    } finally {
+      await forgetCached(redis, ...cacheKeys(trait.id));
+    }
+  });
+
   it('RFC-62 R7 answers a null median when every record of the trait holds only a range', async () => {
     const { user } = await createUser(t.db);
     const reference = await createReference(t.db);
@@ -741,6 +787,26 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       recordCount: 1,
       summary: { numeric: { min: 0.8, max: 4 } },
     });
+  });
+
+  it('RFC-62 R8 summarises a species whose only record is a median (issue #232)', async () => {
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const one = await createSpecies(t.db);
+    await createRecord(t.db, {
+      speciesId: one.id,
+      traitId: trait.id,
+      valueText: 'median=6',
+      medianValue: 6,
+      primaryReferenceId: reference.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    });
+
+    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+      mode: 'with',
+      limit: 50,
+    });
+    expect(data[0]).toMatchObject({ id: one.id, summary: { numeric: { min: 6, max: 6 } } });
   });
 
   it('missing: the species with no record on the trait, with nothing to count or summarise', async () => {

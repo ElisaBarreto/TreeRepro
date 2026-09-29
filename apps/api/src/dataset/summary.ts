@@ -43,8 +43,8 @@ interface LevelAggregate {
  * numeric spread, and whether any record is validated or contested.
  * `null` when the species itself is invisible to `visibility`.
  * The numeric spread follows spec R-5: the smallest and largest of single,
- * min, max and mean, and the mean of each record's single value or, without
- * one, its mean.
+ * min, max, mean and median, and the mean of each record's single value or,
+ * without one, its mean, else its median.
  * @rfc RFC-63 R10
  * @rfc RFC-70 R7
  * @rfc RFC-33 R2, R3
@@ -71,13 +71,13 @@ export async function speciesTraitSummary(
         count(*) filter (where r.harmonisation = 'multi_value')::int as multi_value,
         count(*) filter (where r.harmonisation = 'not_numeric')::int as not_numeric,
         count(*) filter (where r.harmonisation = 'empty')::int as empty,
-        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value))
+        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
           filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_min,
-        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value))
+        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
           filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_max,
-        avg(coalesce(r.numeric_value, r.mean_value))
+        avg(coalesce(r.numeric_value, r.mean_value, r.median_value))
           filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_mean,
-        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value) is not null
+        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
           and r.unit_status is distinct from 'needs_unit_check')::int as numeric_count,
         bool_or(${recordContestedSql(visibility, sql`r.id`)}) as contested
       from trait_records r

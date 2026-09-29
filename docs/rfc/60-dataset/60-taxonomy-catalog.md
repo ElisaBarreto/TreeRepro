@@ -13,7 +13,7 @@ Every trait record (RFC-63) belongs to a species. Species names in the compiled 
 ## Rules
 
 - **R1** Tables (ids `uuid` default `uuidv7()`, `created_at timestamptz` default `now()`, `created_by uuid` referencing `users` and null for rows created by the import):
-  - `families(id, name text unique, order_name text null, created_at, created_by)`. `order_name` is normalised per R2 like every other name; it is filled by the import for a family whose value is still null (RFC-64 R5).
+  - `families(id, name text unique, order_name text null, created_at, created_by)`. `order_name` is normalised per R2 like every other name; it is filled by the import, from the GBIF backbone's order, for a family whose value is still null (RFC-64 R5).
   - `genera(id, family_id uuid null references families restrict, name text unique, created_at, created_by)`
   - `species(id, genus_id uuid null references genera restrict, canonical_name text unique, name_source text in ('wcvp', 'gbif', 'original'), active boolean not null default true, trait_count integer not null default 0, created_at, created_by)`
   - `species_names(id, species_id uuid references species restrict, name text, name_type text not null default 'gbif' check in ('gbif', 'synonym', 'common'), language char(2) null, source text not null default 'gbif', gbif_usage_key text null, created_at; unique (species_id, name); check ((name_type = 'common') = (language is not null)); check (gbif_usage_key is null or name_type = 'gbif'))`. `source` was constrained to `'gbif'` and becomes free text 1–200 characters naming the provider (`gbif`, `WCVP`, `Flora e Funga do Brasil`, a DOI…). Migration (`species_names`): drop the old check on `source`, add the `name_type` and `language` columns and the two new checks; existing rows keep `name_type = 'gbif'`, `source = 'gbif'`. `gbif_usage_key` is 1–64 characters when present.
@@ -48,3 +48,4 @@ Merging two species rows (synonyms discovered later) and WCVP/GBIF lookups when 
 - 2026-09-25 — R6: `contested` filter for every viewer, `unknownLevels` and `unresolved` for `records.review` only, `unresolvedTaxon` null for other viewers (record model revision R-14, R-15; plan 13a). `draft` until plan 13g.
 - 2026-09-26 — accepted: implemented by plan 13g.
 - 2026-09-27 — R1: `families.order_name`, filled by the import for a family whose value is null; R7: the species detail's `family` gains `order` (issue #223).
+- 2026-09-29 — R1: the import fills `order_name` from `gbif_order` (issue #232).
