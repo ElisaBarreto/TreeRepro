@@ -436,7 +436,7 @@ export function AddEntriesDialog({
             {answered.duplicates.map((match) => (
               <li key={`duplicate-${match.recordId}`}>
                 <CodeButton id={match.recordId} code={match.recordCode} onOpen={onOpenRecord} /> is
-                already your own record — nothing was added.
+                already recorded — nothing was added.
               </li>
             ))}
             {sentContest ? <li>{`Your contest of ${sentContest} was recorded.`}</li> : null}

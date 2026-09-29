@@ -911,7 +911,7 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     }
   });
 
-  it('RFC-70 R2, R3 a quantitative contest: a different value creates and stores it; the same value as its target is 400; a value matching another record validates it and stores nothing', async () => {
+  it('RFC-70 R2, R3 a quantitative contest: a different value creates and stores it; the same value as its target is 400; a value equal to another record creates and stores it too (issue #233)', async () => {
     const f = await setup();
     const qt = await createTrait(t.db, { valueType: 'quantitative' });
     const q = { single: 2, min: 1, max: 3, mean: 2, sd: 0.5, n: 4 };
@@ -942,26 +942,42 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
       details: [{ path: 'value', message: 'A contest carries a different value' }],
     });
 
-    const matched = await createRecords(t.db, UNRESTRICTED, qInput({ ...q, n: 9 }, contest));
-    expect(matched).toEqual({
-      created: [],
-      validated: [{ recordId: another?.id, recordCode: another?.recordCode }],
-      duplicates: [],
-    });
-    expect(await contestsOf(f.sp.id, qt.id)).toEqual([]);
+    const equal = await createRecords(t.db, UNRESTRICTED, qInput({ ...q, n: 9 }, contest));
+    expect(equal.validated).toEqual([]);
+    expect(equal.duplicates).toEqual([]);
+    expect(equal.created[0]).toMatchObject({ intent: 'contest', respondsTo: { id: target?.id } });
+    expect(equal.created[0]?.id).not.toBe(another?.id);
 
     const created = await createRecords(t.db, UNRESTRICTED, qInput({ ...q, sd: 0.7 }, contest));
     expect(created.created[0]).toMatchObject({ intent: 'contest', respondsTo: { id: target?.id } });
-    expect(await contestsOf(f.sp.id, qt.id)).toEqual([
-      { createdBy: f.me.id, levelIds: [], recordIds: [created.created[0]?.id] },
-    ]);
+    const stored = await contestsOf(f.sp.id, qt.id);
+    expect(stored).toHaveLength(2);
+    expect(stored).toEqual(
+      expect.arrayContaining([
+        { createdBy: f.me.id, levelIds: [], recordIds: [equal.created[0]?.id] },
+        { createdBy: f.me.id, levelIds: [], recordIds: [created.created[0]?.id] },
+      ]),
+    );
+
+    // The same contest again collides with the claim key: a duplicate, and
+    // no contest is stored.
+    const again = await createRecords(t.db, UNRESTRICTED, qInput({ ...q, sd: 0.7 }, contest));
+    expect(again).toEqual({
+      created: [],
+      validated: [],
+      duplicates: [
+        { recordId: created.created[0]?.id, recordCode: created.created[0]?.recordCode },
+      ],
+    });
+    expect(await contestsOf(f.sp.id, qt.id)).toHaveLength(2);
     const contested = await getRecord(t.db, UNRESTRICTED, target?.id as string);
     expect(contested?.contested).toBe(true);
     expect(contested?.annotations).toEqual([]);
 
-    // Any one field differing creates; all six identical is a validation.
+    // All six identical under another reference is a new record too.
     const same = await createRecords(t.db, UNRESTRICTED, qInput(q));
-    expect(same.validated.map((v) => v.recordId)).toEqual([target?.id]);
+    expect(same.validated).toEqual([]);
+    expect(same.created).toHaveLength(1);
     const other = await createRecords(t.db, UNRESTRICTED, qInput({ ...q, mean: 2.5 }));
     expect(other.created).toHaveLength(1);
 
@@ -1021,10 +1037,10 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
   });
 });
 
-describe('RFC-70 R3 createRecords: a manual single value matches only a single or unspecified record (issue #223)', () => {
+describe('RFC-70 R3 createRecords: a quantitative entry is never matched (issue #233)', () => {
   const t = useTestDb();
 
-  async function entryAgainst(statistic: 'mean' | 'single_or_unspecified') {
+  async function entry() {
     const { user: me } = await createUser(t.db);
     const ref = await createReference(t.db);
     const theirRef = await createReference(t.db);
@@ -1036,30 +1052,35 @@ describe('RFC-70 R3 createRecords: a manual single value matches only a single o
       traitId: trait.id,
       valueText: '5',
       numericValue: 5,
-      statistic,
       primaryReferenceId: theirRef.id,
       importBatchId: batch.id,
     });
-    const out = await createRecords(t.db, UNRESTRICTED, {
+    const input = {
       actorId: me.id,
       speciesId: sp.id,
       traitId: trait.id,
       value: { quantitative: { single: 5 } },
       referenceIds: [ref.id],
-    });
-    return { imported, out };
+    };
+    return { imported, input, out: await createRecords(t.db, UNRESTRICTED, input) };
   }
 
-  it('an imported mean of the same number is a different claim: the entry creates its own record', async () => {
-    const { out } = await entryAgainst('mean');
+  it('the same number as an existing record creates a record and validates nothing', async () => {
+    const { imported, out } = await entry();
     expect(out.validated).toEqual([]);
+    expect(out.duplicates).toEqual([]);
     expect(out.created).toHaveLength(1);
+    expect(out.created[0]?.id).not.toBe(imported.id);
   });
 
-  it('an imported single or unspecified value of the same number becomes a validation', async () => {
-    const { imported, out } = await entryAgainst('single_or_unspecified');
-    expect(out.created).toEqual([]);
-    expect(out.validated.map((v) => v.recordId)).toEqual([imported.id]);
+  it('an identical claim (same value and references) collides with the claim key and is a duplicate', async () => {
+    const { input, out } = await entry();
+    const again = await createRecords(t.db, UNRESTRICTED, input);
+    expect(again).toEqual({
+      created: [],
+      validated: [],
+      duplicates: [{ recordId: out.created[0]?.id, recordCode: out.created[0]?.recordCode }],
+    });
   });
 });
 

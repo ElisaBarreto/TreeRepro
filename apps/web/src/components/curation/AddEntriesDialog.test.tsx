@@ -553,7 +553,7 @@ describe('RFC-70 R3 AddEntriesDialog result (R-7)', () => {
     expect(items.map((item) => item.textContent)).toEqual([
       'TR_9 was added.',
       'EB_3 matches an existing record — counted as your validation.',
-      'TR_4 is already your own record — nothing was added.',
+      'TR_4 is already recorded — nothing was added.',
     ]);
     // A partial success is not a failure: nothing is announced as an error.
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
