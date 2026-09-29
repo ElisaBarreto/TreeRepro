@@ -14,5 +14,5 @@
 ## Unchanged
 
 - The API shape: `{ created, validated, duplicates }`; `validated` is empty for a quantitative entry. The route catalog and `docs/api/guide.md` describe neither the matching nor the answer's fields, so they do not change; the guide's changelog records the behaviour change (CLAUDE.md rule 10).
-- The claim key has no author column: an identical claim is the same value, raw value and references. A personal observation reference belongs to one observer (RFC-61 R7), so two contributors' observations never collide.
+- The claim key has no author column: an identical claim is the same value, raw value, primary reference (the first source) and secondary reference; further references (`record_references`) do not count. A personal observation reference belongs to one observer (RFC-61 R7), so two contributors' observations never collide.
 - Categorical entries.
