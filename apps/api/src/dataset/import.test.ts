@@ -61,7 +61,9 @@ describe('RFC-64 R2 header validation', () => {
     expect(headerMatches(IMPORT_COLUMNS.join(','))).toBe(true);
     const old = [
       '',
-      ...IMPORT_COLUMNS.slice(1, IMPORT_COLUMNS.indexOf('harmonised_value') + 1),
+      ...IMPORT_COLUMNS.slice(1, IMPORT_COLUMNS.indexOf('harmonised_value') + 1).filter(
+        (c) => c !== 'gbif_genus' && c !== 'gbif_family',
+      ),
       'ID',
     ];
     expect(old).toHaveLength(17);

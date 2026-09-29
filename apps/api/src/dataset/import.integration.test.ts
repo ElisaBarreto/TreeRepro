@@ -350,7 +350,7 @@ describe('RFC-64 importRecords', () => {
     const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(14)}\n`,
+      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(12)}\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -375,7 +375,7 @@ describe('RFC-64 importRecords', () => {
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
-      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(14)},EXTRA\n`,
+      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(12)},EXTRA\n`,
     );
     await expect(
       importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
