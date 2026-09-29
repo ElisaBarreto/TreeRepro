@@ -12,6 +12,11 @@ updates:
       timezone: America/Sao_Paulo
     cooldown:
       default-days: 7
+    # @types/node follows the runtime major (package.json engines, .node-version);
+    # moving to a new Node major is a deliberate change, like the base images below.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         update-types: [minor, patch]

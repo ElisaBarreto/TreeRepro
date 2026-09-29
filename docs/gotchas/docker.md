@@ -23,7 +23,7 @@
 ## Base images are pinned by tag and digest
 **Symptom:** A build or `docker compose pull` fails with `manifest ... not found` or a digest mismatch after a base image was bumped, or a `FROM`/`image:` line lacks `@sha256:…`.
 **Cause:** RFC-02 R11 pins every base image by tag *and* digest (`postgres:18.6-alpine@sha256:…`); the digest is the multi-arch index digest and changes with every rebuild of the upstream tag, so a version bump must refresh it.
-**Fix:** For each image run `docker buildx imagetools inspect <image:tag> --format '{{json .Manifest.Digest}}'` and replace the `@sha256:…` suffix on every `FROM` in `infra/docker/*.Dockerfile`, every `image:` in `compose*.yml` (node, postgres, redis, caddy, mailpit) and the two testcontainers images in `apps/api/test/global-setup.ts` (postgres, redis). Keep the tag next to the digest so the version stays readable. The CI image builds fail on a stale digest.
+**Fix:** For each image run `docker buildx imagetools inspect <image:tag> --format '{{json .Manifest.Digest}}'` and replace the `@sha256:…` suffix on every `FROM` in `infra/docker/*.Dockerfile`, every `image:` in `compose*.yml` (postgres, redis, caddy, mailpit); the testcontainers in `apps/api/test/global-setup.ts` read postgres and redis from `compose.yml`. Keep the tag next to the digest so the version stays readable. The CI image builds fail on a stale digest.
 
 ## Bumping pnpm
 **Symptom:** A Dockerfile build fails with `Internal Error: Mismatch hashes` from corepack, or `pnpm --version` inside a container differs from `packageManager` in `package.json`.
