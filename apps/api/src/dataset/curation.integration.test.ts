@@ -992,7 +992,6 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     ).rejects.toMatchObject({ code: 'RECORD_NOT_FOUND' });
   });
 
-
   it('RFC-70 R2 a quantitative contest differs from a target that also holds a median or an SE (issue #232)', async () => {
     const f = await setup();
     const qt = await createTrait(t.db, { valueType: 'quantitative' });
