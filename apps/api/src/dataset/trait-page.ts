@@ -16,7 +16,7 @@ import { getTrait, requireTrait } from './dictionary.ts';
 import { liveSql } from './records.ts';
 import { searchSpecies } from './taxa.ts';
 
-/** A record whose unit needs checking stays out of every numeric summary (RFC-62 R8). */
+/** A record whose unit needs checking stays out of every numeric summary (RFC-62 R7, R8). */
 const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
 
 /** How long a trait's distribution stays cached (RFC-62 R7). */
