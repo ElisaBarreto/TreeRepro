@@ -8,6 +8,9 @@ import { validatedPairsSql } from './coverage.ts';
 import { dictionaryCategories } from './dictionary.ts';
 import { recordVisible } from './records.ts';
 
+/** A record whose unit needs checking stays out of the numeric summary (RFC-63 R10). */
+const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
+
 interface TraitAggregate {
   trait_id: string;
   trait_key: string;
@@ -21,9 +24,11 @@ interface TraitAggregate {
   multi_value: number;
   not_numeric: number;
   empty: number;
-  numeric_min: number | null;
-  numeric_mean: number | null;
-  numeric_max: number | null;
+  mean_single: number | null;
+  mean_mean: number | null;
+  mean_median: number | null;
+  mean_min: number | null;
+  mean_max: number | null;
   numeric_count: number;
   contested: boolean;
 }
@@ -42,9 +47,8 @@ interface LevelAggregate {
  * level distribution (each level with its validators and contested flag) or
  * numeric spread, and whether any record is validated or contested.
  * `null` when the species itself is invisible to `visibility`.
- * The numeric spread follows spec R-5: the smallest and largest of single,
- * min, max, mean and median, and the mean of each record's single value or,
- * without one, its mean, else its median.
+ * The numeric summary is the mean of each value field on its own, never
+ * pooled, over the records whose unit needs no checking.
  * @rfc RFC-63 R10
  * @rfc RFC-70 R7
  * @rfc RFC-33 R2, R3
@@ -71,14 +75,13 @@ export async function speciesTraitSummary(
         count(*) filter (where r.harmonisation = 'multi_value')::int as multi_value,
         count(*) filter (where r.harmonisation = 'not_numeric')::int as not_numeric,
         count(*) filter (where r.harmonisation = 'empty')::int as empty,
-        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
-          filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_min,
-        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
-          filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_max,
-        avg(coalesce(r.numeric_value, r.mean_value, r.median_value))
-          filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_mean,
+        avg(r.numeric_value) filter (where ${unitChecked})::float8 as mean_single,
+        avg(r.mean_value) filter (where ${unitChecked})::float8 as mean_mean,
+        avg(r.median_value) filter (where ${unitChecked})::float8 as mean_median,
+        avg(r.min_value) filter (where ${unitChecked})::float8 as mean_min,
+        avg(r.max_value) filter (where ${unitChecked})::float8 as mean_max,
         count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
-          and r.unit_status is distinct from 'needs_unit_check')::int as numeric_count,
+          and ${unitChecked})::int as numeric_count,
         bool_or(${recordContestedSql(visibility, sql`r.id`)}) as contested
       from trait_records r
       join traits t on t.id = r.trait_id
@@ -145,15 +148,15 @@ export async function speciesTraitSummary(
       },
       levels: quantitative ? null : (levelsByTrait.get(trait.id) ?? []),
       numeric:
-        quantitative &&
-        row !== undefined &&
-        row.numeric_count > 0 &&
-        row.numeric_min !== null &&
-        row.numeric_max !== null
+        quantitative && row !== undefined && row.numeric_count > 0
           ? {
-              min: row.numeric_min,
-              max: row.numeric_max,
-              mean: row.numeric_mean,
+              means: {
+                single: row.mean_single,
+                mean: row.mean_mean,
+                median: row.mean_median,
+                min: row.mean_min,
+                max: row.mean_max,
+              },
               count: row.numeric_count,
             }
           : null,

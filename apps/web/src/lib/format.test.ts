@@ -1,12 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import {
   articleKind,
+  fieldMeanParts,
   formatDateTime,
   formatNumber,
   humaniseKey,
   isoDate,
   truncate,
 } from './format.ts';
+
+describe('RFC-62 R7, R8, RFC-63 R10 fieldMeanParts (issue #234)', () => {
+  it('names each field that has a mean, in record order, with the unit', () => {
+    expect(fieldMeanParts({ single: 1, mean: 9.25, median: 8, min: 6.2, max: 18.8 }, 'mg')).toEqual(
+      [
+        { label: 'mean of single values', value: '1 mg' },
+        { label: 'mean of means', value: '9.25 mg' },
+        { label: 'mean of medians', value: '8 mg' },
+        { label: 'mean of min', value: '6.2 mg' },
+        { label: 'mean of max', value: '18.8 mg' },
+      ],
+    );
+  });
+
+  it('leaves out a field no record holds, and the unit when the trait has none', () => {
+    expect(
+      fieldMeanParts({ single: null, mean: null, median: null, min: 2, max: 8 }, null),
+    ).toEqual([
+      { label: 'mean of min', value: '2' },
+      { label: 'mean of max', value: '8' },
+    ]);
+  });
+});
 
 describe('RFC-13 R9 format helpers', () => {
   it('humaniseKey replaces every underscore with a space', () => {

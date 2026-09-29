@@ -1,13 +1,13 @@
 import { Link } from '@tanstack/react-router';
 import type { TraitSpeciesItem, TraitSpeciesMode } from '@treerepro/contracts';
-import { formatNumber, humaniseKey } from '../../lib/format.ts';
+import { fieldMeansText, formatNumber, humaniseKey } from '../../lib/format.ts';
 import { Badge, ButtonLink, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 const LINK = 'font-medium italic text-canopy-900 underline-offset-2 hover:underline';
 
 // The species' own records on this trait in one line: the levels it has
-// values on with their counts, or the span its numbers cover.
+// values on with their counts, or the mean of each of its value fields.
 function summaryText(item: TraitSpeciesItem, unit: string | null): string | null {
   if (item.summary === null) return null;
   if ('levels' in item.summary) {
@@ -15,9 +15,7 @@ function summaryText(item: TraitSpeciesItem, unit: string | null): string | null
       .map((level) => `${humaniseKey(level.key)} ${formatNumber(level.count)}`)
       .join(' · ');
   }
-  const { min, max } = item.summary.numeric;
-  const span = `${formatNumber(min)} – ${formatNumber(max)}`;
-  return unit === null ? span : `${span} ${unit}`;
+  return fieldMeansText(item.summary.numeric.means, unit);
 }
 
 /**

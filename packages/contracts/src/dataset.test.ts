@@ -181,7 +181,10 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
               empty: 0,
             },
             levels: null,
-            numeric: { min: 1.5, max: 2.5, mean: 2, count: 2 },
+            numeric: {
+              means: { single: 2, mean: null, median: null, min: 1.5, max: 2.5 },
+              count: 2,
+            },
             validated: true,
             contested: false,
           },
@@ -194,10 +197,27 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
       speciesTraitsSchema.safeParse([
         {
           category: { key: 'flower_color', label: 'Flower color' },
-          traits: [{ ...quantitativeTrait, numeric: { min: 1, max: 3, mean: null, count: 1 } }],
+          traits: [
+            {
+              ...quantitativeTrait,
+              numeric: {
+                means: { single: null, mean: null, median: null, min: 1, max: 3 },
+                count: 1,
+              },
+            },
+          ],
         },
       ]).success,
     ).toBe(true);
+    // RFC-63 R10 (issue #234): the old pooled shape is gone.
+    expect(
+      speciesTraitsSchema.safeParse([
+        {
+          category: { key: 'flower_color', label: 'Flower color' },
+          traits: [{ ...quantitativeTrait, numeric: { min: 1, max: 3, mean: null, count: 1 } }],
+        },
+      ]).success,
+    ).toBe(false);
   });
 });
 
@@ -544,9 +564,21 @@ describe('RFC-62 R7 traitDetailSchema distribution union', () => {
   it('accepts a quantitative distribution (numeric, possibly null)', () => {
     const detail = {
       ...DETAIL_BASE,
-      distribution: { numeric: { min: 0.5, median: 1.25, max: 3, speciesCount: 3 } },
+      distribution: {
+        numeric: {
+          means: { single: 1.25, mean: 2, median: null, min: 0.5, max: 3 },
+          speciesCount: 3,
+        },
+      },
     };
     expect(traitDetailSchema.parse(detail)).toEqual(detail);
+    // RFC-62 R7 (issue #234): the min / median / max shape is gone.
+    expect(
+      traitDetailSchema.safeParse({
+        ...DETAIL_BASE,
+        distribution: { numeric: { min: 0.5, median: 1.25, max: 3, speciesCount: 3 } },
+      }).success,
+    ).toBe(false);
     expect(
       traitDetailSchema.safeParse({ ...DETAIL_BASE, distribution: { numeric: null } }).success,
     ).toBe(true);
@@ -660,13 +692,19 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
       ...ITEM_BASE,
       recordCount: 1,
       validated: false,
-      summary: { numeric: { min: 1, max: 3 } },
+      summary: {
+        numeric: { means: { single: 2, mean: null, median: null, min: 1, max: 3 } },
+      },
     };
     expect(traitSpeciesItemSchema.parse(numericItem)).toEqual(numericItem);
     expect(
+      traitSpeciesItemSchema.safeParse({ ...numericItem, summary: { numeric: { min: 1, max: 3 } } })
+        .success,
+    ).toBe(false);
+    expect(
       traitSpeciesItemSchema.safeParse({
         ...numericItem,
-        summary: { levels: [], numeric: { min: 1, max: 3 } },
+        summary: { levels: [], ...numericItem.summary },
       }).success,
     ).toBe(false);
     expect(traitSpeciesItemSchema.safeParse({ ...numericItem, recordCount: -1 }).success).toBe(

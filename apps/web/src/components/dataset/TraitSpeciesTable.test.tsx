@@ -74,15 +74,19 @@ describe('RFC-62 R8 TraitSpeciesTable in `with` mode', () => {
     expect(row).toHaveLength(3);
   });
 
-  it('takes the numeric summary from the trait unit, and reads the span bare without one', async () => {
+  it('RFC-62 R8 names each field mean with the trait unit, and reads it bare without one (issue #234)', async () => {
     const first = await renderTable([TRAIT_SPECIES_UNDECIDED], 'with', 'mg');
-    expect(cells(first.rows[1] as HTMLElement)[2]).toHaveTextContent('0.5 – 3 mg');
+    expect(cells(first.rows[1] as HTMLElement)[2]).toHaveTextContent(
+      'mean of min 0.5 mg · mean of max 3 mg',
+    );
     first.unmount();
 
     const second = await renderTable([TRAIT_SPECIES_UNDECIDED], 'with');
     // The count and the summary are stacked spans, so the cell's own text is
-    // the two run together: one record, spanning 0.5 to 3 of nothing named.
-    expect(cells(second.rows[1] as HTMLElement)[2]?.textContent).toBe('10.5 – 3');
+    // the two run together: one record, then its means in nothing named.
+    expect(cells(second.rows[1] as HTMLElement)[2]?.textContent).toBe(
+      '1mean of min 0.5 · mean of max 3',
+    );
   });
 
   it('counts and summaries are nullable on their own: neither hides the other', async () => {
