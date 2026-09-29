@@ -12,6 +12,7 @@ import {
   listTraitsQuerySchema,
   NAME_TYPES,
   quantitativeValueSchema,
+  recordQuantitativeSchema,
   REVIEW_STATUSES,
   recordDetailSchema,
   recordSchema,
@@ -126,7 +127,6 @@ describe('RFC-63 R8 recordSchema', () => {
       contested: false,
       recordCode: 'EB_1',
       quantitative: null,
-      statistic: null,
       unitStatus: null,
       references: [],
     };
@@ -134,6 +134,7 @@ describe('RFC-63 R8 recordSchema', () => {
     expect(recordSchema.safeParse({ ...record, extra: true }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, harmonisation: 'weird' }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, species: undefined }).success).toBe(false);
+    expect(recordSchema.safeParse({ ...record, statistic: 'mean' }).success).toBe(false);
   });
 
   it('enumerations match the RFC', () => {
@@ -612,6 +613,13 @@ describe('RFC-63 R8 recordDetailSchema (spec R-1)', () => {
   it('carries no accepted history', () => {
     expect(Object.keys(recordDetailSchema.shape)).not.toContain('acceptedHistory');
   });
+
+  it('carries the GBIF genus, family and source order, and no folded codes or statistic', () => {
+    const keys = Object.keys(recordDetailSchema.shape);
+    expect(keys).toEqual(expect.arrayContaining(['gbifGenus', 'gbifFamily', 'taxonOrder']));
+    expect(keys).not.toContain('foldedRecordCodes');
+    expect(keys).not.toContain('statistic');
+  });
 });
 
 describe('RFC-62 R8 traitSpeciesItemSchema', () => {
@@ -716,6 +724,23 @@ describe('RFC-65 R1 quantitativeValueSchema (spec R-5)', () => {
     expect(quantitativeValueSchema.safeParse({ single: 1e308 }).success).toBe(false);
     expect(quantitativeValueSchema.safeParse({ single: Number.NaN }).success).toBe(false);
     expect(quantitativeValueSchema.safeParse({ single: 1, median: 2 }).success).toBe(false);
+  });
+});
+
+describe('RFC-63 R8, R15 recordQuantitativeSchema', () => {
+  it('takes a median and se, alone or with the other fields', () => {
+    expect(recordQuantitativeSchema.parse({ median: 5 })).toEqual({ median: 5 });
+    expect(recordQuantitativeSchema.parse({ mean: 5, median: 4, se: 0.2, n: 3 })).toEqual({
+      mean: 5,
+      median: 4,
+      se: 0.2,
+      n: 3,
+    });
+  });
+
+  it('needs one of single, mean, median, min, max', () => {
+    expect(recordQuantitativeSchema.safeParse({ se: 1, n: 3 }).success).toBe(false);
+    expect(recordQuantitativeSchema.safeParse({ min: 5, max: 2 }).success).toBe(false);
   });
 });
 

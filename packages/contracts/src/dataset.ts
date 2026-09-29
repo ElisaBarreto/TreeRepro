@@ -24,16 +24,6 @@ export const HARMONISATION_STATUSES = [
 ] as const;
 export type HarmonisationStatus = (typeof HARMONISATION_STATUSES)[number];
 
-/**
- * Labels `numeric_value` of a quantitative record; never set for a
- * categorical one. `derived_midpoint` is a midpoint of `min_value` and
- * `max_value` computed upstream of the import.
- * @rfc RFC-63 R15
- */
-export const STATISTICS = ['single_or_unspecified', 'mean', 'median', 'derived_midpoint'] as const;
-/** A record's statistic label. @rfc RFC-63 R15 */
-export type Statistic = (typeof STATISTICS)[number];
-
 /** Import provenance for a record's unit conversion. @rfc RFC-63 R1 */
 export const UNIT_STATUSES = [
   'converted_or_already_target',
@@ -417,9 +407,9 @@ export const numericValueSchema = z
 /**
  * A quantitative claim (spec R-5): `single` is the stored `numeric_value`;
  * at least one of single, min, max and mean; `min ≤ max`; `sd ≥ 0`; `n` an
- * integer ≥ 1. The manual input; the record item's `quantitative` extends it
- * with `se` ({@link recordQuantitativeSchema}), which a manual record never
- * takes.
+ * integer ≥ 1. The manual input; the record item's `quantitative`
+ * ({@link recordQuantitativeSchema}) adds `median` and `se`, which a manual
+ * record never takes.
  * @rfc RFC-65 R1
  * @rfc RFC-63 R15
  */
@@ -447,13 +437,36 @@ export const quantitativeValueSchema = z
   });
 
 /**
- * A record item's `quantitative`: the manual shape plus `se`, which only the
- * import fills. `sd` and `se` are spreads, never values of the trait.
+ * A record item's `quantitative`: one field per quantity, the manual six plus
+ * `median` and `se`, which only the import fills. At least one of single,
+ * mean, median, min and max. `sd` and `se` are spreads, never values of the
+ * trait.
  * @rfc RFC-63 R8, R15
  */
-export const recordQuantitativeSchema = quantitativeValueSchema.safeExtend({
-  se: z.number().nonnegative().optional(),
-});
+export const recordQuantitativeSchema = z
+  .strictObject({
+    single: numericValueSchema.optional(),
+    min: numericValueSchema.optional(),
+    max: numericValueSchema.optional(),
+    mean: numericValueSchema.optional(),
+    median: numericValueSchema.optional(),
+    sd: numericValueSchema.nonnegative().optional(),
+    se: numericValueSchema.nonnegative().optional(),
+    n: z.number().int().min(1).max(2147483647).optional(),
+  })
+  .refine(
+    (q) =>
+      q.single !== undefined ||
+      q.mean !== undefined ||
+      q.median !== undefined ||
+      q.min !== undefined ||
+      q.max !== undefined,
+    { path: ['single'], message: 'Give at least one of single, mean, median, min or max' },
+  )
+  .refine((q) => q.min === undefined || q.max === undefined || q.min <= q.max, {
+    path: ['min'],
+    message: 'min must not exceed max',
+  });
 
 /**
  * `validationCount` counts distinct `confirm` actors, `contestCount` distinct
@@ -471,8 +484,6 @@ export const recordSchema = z.strictObject({
   level: z.strictObject({ id: z.uuid(), key: z.string() }).nullable(),
   numericValue: z.number().nullable(),
   quantitative: recordQuantitativeSchema.nullable(),
-  /** What `quantitative.single` is; null for a categorical record or an unlabelled value. @rfc RFC-63 R8, R15 */
-  statistic: z.enum(STATISTICS).nullable(),
   /** Import provenance of the unit conversion; null when absent. @rfc RFC-63 R1, R8 */
   unitStatus: z.enum(UNIT_STATUSES).nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
@@ -517,7 +528,9 @@ export const recordDetailSchema = recordSchema.extend({
   sourceFolder: z.string().nullable(),
   sourceFile: z.string().nullable(),
   taxonomicStatus: z.string().nullable(),
-  foldedRecordCodes: z.array(z.string()).nullable(),
+  gbifGenus: z.string().nullable(),
+  gbifFamily: z.string().nullable(),
+  taxonOrder: z.string().nullable(),
   annotations: z.array(annotationSchema),
   supersedes: z.strictObject({ id: z.uuid() }).nullable(),
   supersededBy: z.array(z.strictObject({ id: z.uuid() })),
