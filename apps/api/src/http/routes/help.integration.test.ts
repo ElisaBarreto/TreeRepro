@@ -88,6 +88,9 @@ describe('RFC-73 R6–R8 help content', () => {
       /✓ Validate/,
       /one record per reference/i,
       /struck through/i,
+      // Issue #237: a quantitative value never matches an existing record.
+      /same numbers in all six fields/,
+      /already your own record/,
     ];
     const linked: Record<string, string[]> = {
       workflow: ['validate', 'different', 'contest', 'complement', 'withdraw', 'review'],
