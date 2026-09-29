@@ -2,7 +2,6 @@ import {
   HARMONISATION_STATUSES,
   RECORD_INTENTS,
   RECORD_ORIGINS,
-  STATISTICS,
   UNIT_STATUSES,
 } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
@@ -57,12 +56,12 @@ export const traitRecords = pgTable(
     minValue: numeric('min_value', { mode: 'number' }),
     maxValue: numeric('max_value', { mode: 'number' }),
     meanValue: numeric('mean_value', { mode: 'number' }),
+    /** The median, import-only (RFC-63 R1, R15). */
+    medianValue: numeric('median_value', { mode: 'number' }),
     sdValue: numeric('sd_value', { mode: 'number' }),
     /** Standard error of `numeric_value`, import-only (RFC-63 R1, R15). */
     seValue: numeric('se_value', { mode: 'number' }),
     n: integer('n'),
-    /** Labels `numeric_value` for a quantitative record; null for a categorical one (RFC-63 R15). */
-    statistic: text('statistic', { enum: STATISTICS }),
     valueText: text('value_text').notNull(),
     harmonisation: text('harmonisation', { enum: HARMONISATION_STATUSES }).notNull(),
     rawValue: text('raw_value'),
@@ -88,8 +87,10 @@ export const traitRecords = pgTable(
     sourceFile: text('source_file'),
     /** Free text naming how the row's species name matched (RFC-63 R1). */
     taxonomicStatus: text('taxonomic_status'),
-    /** The codes an import row folds together, used by RFC-64 R15's re-link fallback. */
-    foldedRecordCodes: text('folded_record_codes').array(),
+    /** The genus and family the GBIF backbone accepts, and the order the source reported (RFC-63 R1). */
+    gbifGenus: text('gbif_genus'),
+    gbifFamily: text('gbif_family'),
+    taxonOrder: text('taxon_order'),
     createdBy: uuid('created_by').references(() => users.id),
     note: text('note'),
     /** The pending record this row harmonises (RFC-65 R7); null for every other row. */
@@ -114,7 +115,6 @@ export const traitRecords = pgTable(
         t.speciesId,
         t.traitId,
         t.valueText,
-        t.statistic,
         t.rawValue,
         t.primaryReferenceId,
         t.secondaryReferenceId,
@@ -157,15 +157,15 @@ export const traitRecords = pgTable(
     check(
       'trait_records_harmonised_check',
       sql`${t.harmonisation} <> 'harmonised' or ${t.levelId} is not null
-        or coalesce(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}) is not null`,
+        or coalesce(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}, ${t.medianValue}) is not null`,
     ),
     check(
       'trait_records_one_value_check',
-      sql`${t.levelId} is null or num_nonnulls(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}, ${t.sdValue}, ${t.seValue}, ${t.n}) = 0`,
+      sql`${t.levelId} is null or num_nonnulls(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}, ${t.medianValue}, ${t.sdValue}, ${t.seValue}, ${t.n}) = 0`,
     ),
     check(
       'trait_records_value_requires_harmonised_check',
-      sql`(${t.levelId} is null and num_nonnulls(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}, ${t.sdValue}, ${t.seValue}, ${t.n}) = 0)
+      sql`(${t.levelId} is null and num_nonnulls(${t.numericValue}, ${t.minValue}, ${t.maxValue}, ${t.meanValue}, ${t.medianValue}, ${t.sdValue}, ${t.seValue}, ${t.n}) = 0)
         or ${t.harmonisation} = 'harmonised'`,
     ),
     check(
@@ -175,25 +175,10 @@ export const traitRecords = pgTable(
     ),
     /** RFC-63 R15: se_value is never negative. */
     check('trait_records_se_check', sql`${t.seValue} is null or ${t.seValue} >= 0`),
-    /** RFC-63 R15: statistic takes only the four labelled values. */
-    check(
-      'trait_records_statistic_check',
-      sql`${t.statistic} is null or ${t.statistic} in ('single_or_unspecified', 'mean', 'median', 'derived_midpoint')`,
-    ),
     /** RFC-63 R1: unit_status takes only the four labelled values. */
     check(
       'trait_records_unit_status_check',
       sql`${t.unitStatus} is null or ${t.unitStatus} in ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable')`,
-    ),
-    /** RFC-63 R15: statistic is set only for a quantitative record. */
-    check(
-      'trait_records_statistic_quantitative_check',
-      sql`${t.statistic} is null or ${t.levelId} is null`,
-    ),
-    /** RFC-63 R15: statistic labels a value, so it needs numeric_value. */
-    check(
-      'trait_records_statistic_value_check',
-      sql`${t.statistic} is null or ${t.numericValue} is not null`,
     ),
   ],
 );
