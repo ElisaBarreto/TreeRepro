@@ -1,0 +1,10 @@
+-- Issue #237: the Workflow help still said a quantitative entry matching an
+-- existing record counts as a validation (RFC-70 R3, amended by #233). Only
+-- the seeded paragraph is replaced; a section already edited on the site
+-- (RFC-73 R5) no longer holds it and is left alone.
+UPDATE "help_sections" SET
+  "body_html" = replace("body_html", $old$<p>If your entry matches a record that is already there (the same level, or the same numbers in all six fields), no second record is created. Your entry counts as a validation of the existing record, and the form says so: “matches an existing record — counted as your validation”. If the matching record is your own, the form only reports it: “already your own record — nothing was added”.</p>$old$, $new$<p>On a categorical trait, ticking a level that already has records creates no second record. Each record of that level made by someone else counts your entry as a validation, and the form says so: “matches an existing record — counted as your validation”; a record of that level that is your own is only reported: “already recorded — nothing was added”. A quantitative value always becomes a record of its own, even when it equals a value already there; to agree with an existing value without a measurement of your own, <a href="/app/help/workflow#validate">validate</a> it instead. The one exception is a claim already recorded: the same value under the same first reference and the same secondary reference (further references do not count) adds nothing, and the form reports it the same way.</p>$new$),
+  "updated_at" = now()
+WHERE "anchor" = 'different'
+  AND "topic_id" = (SELECT "id" FROM "help_topics" WHERE "slug" = 'workflow')
+  AND strpos("body_html", $old$<p>If your entry matches a record that is already there (the same level, or the same numbers in all six fields), no second record is created. Your entry counts as a validation of the existing record, and the form says so: “matches an existing record — counted as your validation”. If the matching record is your own, the form only reports it: “already your own record — nothing was added”.</p>$old$) > 0;
