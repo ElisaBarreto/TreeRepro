@@ -16,7 +16,7 @@ import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
 import { DrawerSection } from './DrawerSection.tsx';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
-import { statisticLabel, unitCaveat } from './RecordTable.tsx';
+import { unitCaveat } from './RecordTable.tsx';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -56,15 +56,16 @@ const RAW_COLUMNS: ReadonlyArray<{
   { key: 'rawCategory', label: 'Raw category' },
 ];
 
-// The quantitative fields beyond the single value (shown as Number), each
+// The quantitative fields beyond the single value, each by its name and
 // only when present (RFC-63 R8, R15).
 const SPREAD_FIELDS: ReadonlyArray<{
-  key: 'min' | 'max' | 'mean' | 'sd' | 'se' | 'n';
+  key: 'min' | 'max' | 'mean' | 'median' | 'sd' | 'se' | 'n';
   label: string;
 }> = [
   { key: 'min', label: 'Min' },
   { key: 'max', label: 'Max' },
   { key: 'mean', label: 'Mean' },
+  { key: 'median', label: 'Median' },
   { key: 'sd', label: 'SD' },
   { key: 'se', label: 'SE' },
   { key: 'n', label: 'n' },
@@ -72,12 +73,21 @@ const SPREAD_FIELDS: ReadonlyArray<{
 
 // An imported row's own provenance columns (RFC-63 R1), each only when present.
 const PROVENANCE_FIELDS: ReadonlyArray<{
-  key: 'sourceFolder' | 'sourceFile' | 'taxonomicStatus';
+  key:
+    | 'sourceFolder'
+    | 'sourceFile'
+    | 'taxonomicStatus'
+    | 'gbifGenus'
+    | 'gbifFamily'
+    | 'taxonOrder';
   label: string;
 }> = [
   { key: 'sourceFolder', label: 'Source folder' },
   { key: 'sourceFile', label: 'Source file' },
   { key: 'taxonomicStatus', label: 'Name match' },
+  { key: 'gbifGenus', label: 'GBIF genus' },
+  { key: 'gbifFamily', label: 'GBIF family' },
+  { key: 'taxonOrder', label: 'Taxon order (source)' },
 ];
 
 function errorMessage(error: unknown): string {
@@ -165,13 +175,10 @@ function RecordBody({
             ...(record.numericValue !== null
               ? [
                   {
-                    label: 'Number',
+                    label: 'Single value',
                     value: `${formatNumber(record.numericValue)}${unit ? ` ${unit}` : ''}`,
                   },
                 ]
-              : []),
-            ...(record.statistic && statisticLabel(record.statistic)
-              ? [{ label: 'Statistic', value: statisticLabel(record.statistic) }]
               : []),
             ...SPREAD_FIELDS.flatMap(({ key, label }) => {
               const v = record.quantitative?.[key];
@@ -233,9 +240,6 @@ function RecordBody({
                   ...PROVENANCE_FIELDS.flatMap(({ key, label }) =>
                     record[key] ? [{ label, value: record[key] }] : [],
                   ),
-                  ...(record.foldedRecordCodes?.length
-                    ? [{ label: 'Folded records', value: record.foldedRecordCodes.join(', ') }]
-                    : []),
                 ]
               : [
                   { label: 'Origin', value: 'manual' },

@@ -1,19 +1,11 @@
 import { Link } from '@tanstack/react-router';
 import type { RecordItem } from '@treerepro/contracts';
-import { formatNumber, humaniseKey } from '../../lib/format.ts';
+import { humaniseKey } from '../../lib/format.ts';
 import { referenceLabel } from '../../lib/references.ts';
+import { recordValueLabel } from '../dataset/RecordTable.tsx';
 import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
-
-function valueLabel(record: RecordItem): string {
-  if (record.level) return record.level.key;
-  if (record.numericValue !== null) {
-    const unit = record.trait.unit ? ` ${record.trait.unit}` : '';
-    return `${formatNumber(record.numericValue)}${unit}`;
-  }
-  return record.valueText || '(empty)';
-}
 
 function SourceCell({ record }: { record: RecordItem }) {
   const reference = record.primaryReference ?? record.secondaryReference;
@@ -73,7 +65,7 @@ export function AwaitingTable({
                 onClick={() => onSelect(record)}
                 className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
               >
-                {valueLabel(record)}
+                {recordValueLabel(record)}
               </button>
             </Td>
             <SourceCell record={record} />

@@ -296,9 +296,11 @@ describe('R-13 RecordDrawer withdrawal', () => {
   });
 });
 
-describe('RFC-63 R8 RecordDrawer statistic, spread, unit status and provenance (issue #223)', () => {
+describe('RFC-63 R8 RecordDrawer value fields, unit status and provenance (issues #223, #232)', () => {
   const LABELS = [
-    'Statistic',
+    'Single value',
+    'Mean',
+    'Median',
     'Min',
     'Max',
     'SD',
@@ -308,28 +310,42 @@ describe('RFC-63 R8 RecordDrawer statistic, spread, unit status and provenance (
     'Source folder',
     'Source file',
     'Name match',
-    'Folded records',
+    'GBIF genus',
+    'GBIF family',
+    'Taxon order (source)',
   ];
 
-  it('shows each new row when present', async () => {
+  it('shows each field by its name when present, and no statistic or folded records', async () => {
     dataset.fetchRecord.mockResolvedValue({
       ...RECORD_DETAIL,
       level: null,
-      valueText: '9.3',
+      valueText: '9.3;min=6.2;max=18.8;mean=9;median=8.5;sd=0.5;se=0.1;n=30',
       numericValue: 9.3,
-      statistic: 'mean',
       unitStatus: 'needs_unit_check',
-      quantitative: { single: 9.3, min: 6.2, max: 18.8, sd: 0.5, se: 0.1, n: 30 },
+      quantitative: {
+        single: 9.3,
+        mean: 9,
+        median: 8.5,
+        min: 6.2,
+        max: 18.8,
+        sd: 0.5,
+        se: 0.1,
+        n: 30,
+      },
       sourceFolder: 'GIFT',
       sourceFile: 'a.csv',
       taxonomicStatus: 'resolved synonym',
-      foldedRecordCodes: ['EB_1', 'EB_2'],
+      gbifGenus: 'Inga',
+      gbifFamily: 'Fabaceae',
+      taxonOrder: 'Fabales',
     });
     renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, ME);
     await screen.findByText('GIFT');
     const value = (label: string) =>
       screen.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
-    expect(value('Statistic')).toBe('mean');
+    expect(value('Single value')).toBe('9.3');
+    expect(value('Mean')).toBe('9');
+    expect(value('Median')).toBe('8.5');
     expect(value('Min')).toBe('6.2');
     expect(value('Max')).toBe('18.8');
     expect(value('SD')).toBe('0.5');
@@ -339,7 +355,11 @@ describe('RFC-63 R8 RecordDrawer statistic, spread, unit status and provenance (
     expect(value('Source folder')).toBe('GIFT');
     expect(value('Source file')).toBe('a.csv');
     expect(value('Name match')).toBe('resolved synonym');
-    expect(value('Folded records')).toBe('EB_1, EB_2');
+    expect(value('GBIF genus')).toBe('Inga');
+    expect(value('GBIF family')).toBe('Fabaceae');
+    expect(value('Taxon order (source)')).toBe('Fabales');
+    expect(screen.queryByText('Statistic', { selector: 'dt' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Folded records', { selector: 'dt' })).not.toBeInTheDocument();
   });
 
   it('shows none of them when absent', async () => {

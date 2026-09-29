@@ -46,6 +46,20 @@ describe('RFC-72 R3 AwaitingTable', () => {
     expect(onSelect).toHaveBeenCalledWith(RECORD);
   });
 
+  it('RFC-63 R8 names a mean or median value rather than printing its value text (issue #232)', async () => {
+    const median = {
+      ...PENDING_RECORD,
+      valueText: 'median=3',
+      harmonisation: 'harmonised' as const,
+      quantitative: { median: 3 },
+    };
+    renderInRouter(<AwaitingTable records={[median]} onSelect={vi.fn()} />);
+    const body = (await rows()).slice(1);
+    expect(
+      within(body[0] as HTMLElement).getByRole('button', { name: 'median 3 mg' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders a dash when a record carries no reference in either role', async () => {
     const noSource = { ...PENDING_RECORD, primaryReference: null, secondaryReference: null };
     renderInRouter(<AwaitingTable records={[noSource]} onSelect={vi.fn()} />);

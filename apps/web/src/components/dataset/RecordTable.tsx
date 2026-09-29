@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import type { RecordItem, Statistic, UnitStatus } from '@treerepro/contracts';
+import type { RecordItem, UnitStatus } from '@treerepro/contracts';
 import { Fragment, type ReactNode } from 'react';
 import type { RecordSort, SortOrder } from '../../api/dataset.ts';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
@@ -20,19 +20,6 @@ function bound(value: number | undefined): string {
   return value === undefined ? '…' : formatNumber(value);
 }
 
-// What the single value is (RFC-63 R15); an unlabelled value says nothing.
-const STATISTIC_LABELS: Record<Statistic, string | null> = {
-  single_or_unspecified: null,
-  mean: 'mean',
-  median: 'median',
-  derived_midpoint: 'midpoint',
-};
-
-/** The statistic's short label, or null when it adds nothing. @rfc RFC-63 R8, R15 */
-export function statisticLabel(statistic: Statistic | null): string | null {
-  return statistic ? STATISTIC_LABELS[statistic] : null;
-}
-
 const UNIT_CAVEATS: Partial<Record<UnitStatus, string>> = {
   needs_unit_check: 'unit not checked',
   unit_missing: 'unit assumed',
@@ -45,20 +32,20 @@ export function unitCaveat(status: UnitStatus | null): string | null {
 
 /**
  * How a record's value reads: its level; else its quantitative value in the
- * trait's unit — the single value with its statistic, the min–max range, the
- * mean, the SD and the SE, with n last (R-5) — else the text as it was
- * entered.
- * @rfc RFC-63 R8
+ * trait's unit, each field by its name — the single value bare, the min–max
+ * range, the mean, the median, the SD and the SE, with n last (R-5) — else
+ * the text as it was entered.
+ * @rfc RFC-63 R8, R15
  */
 export function recordValueLabel(record: RecordItem): string {
   if (record.level) return record.level.key;
   const q = record.quantitative;
   if (q) {
-    const stat = statisticLabel(record.statistic);
     const parts = [
-      q.single === undefined ? null : `${formatNumber(q.single)}${stat ? ` (${stat})` : ''}`,
+      q.single === undefined ? null : formatNumber(q.single),
       q.min === undefined && q.max === undefined ? null : `${bound(q.min)}–${bound(q.max)}`,
       q.mean === undefined ? null : `mean ${formatNumber(q.mean)}`,
+      q.median === undefined ? null : `median ${formatNumber(q.median)}`,
       q.sd === undefined ? null : `SD ${formatNumber(q.sd)}`,
       q.se === undefined ? null : `SE ${formatNumber(q.se)}`,
     ].filter((part): part is string => part !== null);
