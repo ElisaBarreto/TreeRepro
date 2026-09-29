@@ -15,6 +15,7 @@ import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import { Alert, Badge, Chip, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import {
+  fieldMeanParts,
   formatDateTime,
   formatNumber,
   humaniseKey,
@@ -99,7 +100,8 @@ function Facts({ trait }: { trait: TraitDetail }) {
 
 /**
  * How the trait's harmonised records fall: one chip per level for a
- * categorical trait, the numeric spread for a quantitative one. Both shapes
+ * categorical trait, the mean of each value field for a quantitative one —
+ * averaged per species first, which the section says (RFC-62 R7). Both shapes
  * can be empty — a categorical trait with no harmonised record has no level
  * to show, a quantitative one answers `numeric: null` — and then the section
  * says so rather than printing zeros, and says nothing about when a summary
@@ -132,25 +134,17 @@ function Distribution({ trait }: { trait: TraitDetail }) {
       ) : distribution.numeric !== null ? (
         <>
           <ul aria-label="Numeric distribution" className="flex flex-wrap gap-2">
-            {[
-              { label: 'min', value: distribution.numeric.min },
-              { label: 'median', value: distribution.numeric.median },
-              { label: 'max', value: distribution.numeric.max },
-            ].map((figure) => (
+            {fieldMeanParts(distribution.numeric.means, unit).map((figure) => (
               <li key={figure.label}>
                 <Chip>
-                  {figure.label}{' '}
-                  <span className="ml-1.5 font-semibold">
-                    {figure.value === null
-                      ? '—'
-                      : `${formatNumber(figure.value)}${unit === null ? '' : ` ${unit}`}`}
-                  </span>
+                  {figure.label} <span className="ml-1.5 font-semibold">{figure.value}</span>
                 </Chip>
               </li>
             ))}
           </ul>
           <p className="text-meta text-mist-500">
-            Across {species(distribution.numeric.speciesCount)} with harmonised records.
+            Each species is averaged first, so every species weighs the same. Across{' '}
+            {species(distribution.numeric.speciesCount)} with harmonised records.
           </p>
         </>
       ) : (

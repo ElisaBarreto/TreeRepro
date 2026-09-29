@@ -8,7 +8,7 @@ import { traitTip } from './trait-tip.ts';
 
 /**
  * A trait `includeMissing` added: it has no record at all, so there is
- * nothing to open — no bars, no min · median · max, no accepted value, just
+ * nothing to open — no bars, no means, no accepted value, just
  * the name, the `?` that explains it ({@link traitTip}) and, for
  * `records.create`, a way to start one. A zero-count categorical trait
  * answers `levels: []`, never `null` (RFC-63 R10 amended by RFC-70 R7); this

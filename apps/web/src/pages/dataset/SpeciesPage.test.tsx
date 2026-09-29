@@ -224,7 +224,9 @@ describe('RFC-63 R10 SpeciesPage trait sections', () => {
     expect(cards[0]).toHaveTextContent('2 pending');
     expect(cards[1]).toHaveTextContent(/^pollination mode/);
     expect(cards[2]).toHaveTextContent(/^seed mass/);
-    expect(cards[2]).toHaveTextContent('0.5 · 1.25 · 3 mg');
+    expect(cards[2]).toHaveTextContent(
+      'mean of single values 1.25 mg · mean of min 0.5 mg · mean of max 3 mg',
+    );
   });
 });
 

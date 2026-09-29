@@ -1,7 +1,7 @@
 import type { Dictionary, RecordIntent, TraitSummary } from '@treerepro/contracts';
 import { useHasMaps } from '../../api/maps.ts';
 import { helpHref } from '../../content/help/href.ts';
-import { formatNumber, humaniseKey } from '../../lib/format.ts';
+import { fieldMeansText, humaniseKey } from '../../lib/format.ts';
 import { Badge, Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
 import { traitTip } from './trait-tip.ts';
@@ -39,8 +39,8 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
  * One trait of a species. The card itself is a button that opens the trait's
  * records, naming the trait, its unit and record count, what still waits for
  * harmonisation, a **Contested** badge while any of its levels or records is
- * contested (R-9), and — for a measurement — min · mean · max (R-5, the mean
- * a dash when no record has a single value or a mean). Below it, outside the
+ * contested (R-9), and — for a measurement — the mean of each value field
+ * that has one (RFC-63 R10). Below it, outside the
  * button so no control nests in another, a categorical trait lists **every**
  * level the species has (spec §2; no cap): its record count, its validations
  * (✓ n), a bar scaled against the most frequent level, its own **Contested**
@@ -101,13 +101,8 @@ export function TraitCard({
             </span>
           </span>
           {numeric ? (
-            <span className="flex flex-col">
-              <span className="text-label uppercase tracking-[0.06em] text-mist-500">
-                min · mean · max
-              </span>
-              <span className="text-body tabular-nums text-canopy-900">
-                {`${formatNumber(numeric.min)} · ${numeric.mean === null ? '—' : formatNumber(numeric.mean)} · ${formatNumber(numeric.max)}${trait.unit ? ` ${trait.unit}` : ''}`}
-              </span>
+            <span className="text-body tabular-nums text-canopy-900">
+              {fieldMeansText(numeric.means, trait.unit)}
             </span>
           ) : null}
         </button>

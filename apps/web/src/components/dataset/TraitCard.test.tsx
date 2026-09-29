@@ -139,28 +139,33 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(screen.queryByRole('button', { name: /^Contest / })).not.toBeInTheDocument();
   });
 
-  it('shows min · mean · max with the unit for a quantitative trait, and no level list', () => {
-    render(
-      <TraitCard
-        summary={{ ...SEED_MASS_SUMMARY, numeric: { min: 0.5, max: 3, mean: 1.25, count: 3 } }}
-        onOpen={() => {}}
-      />,
-    );
+  it('RFC-63 R10 shows the mean of each field with the unit for a quantitative trait, and no level list (issue #234)', () => {
+    render(<TraitCard summary={SEED_MASS_SUMMARY} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: /seed mass/ });
-    expect(card).toHaveTextContent('min · mean · max');
-    expect(within(card).getByText('0.5 · 1.25 · 3 mg')).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        'mean of single values 1.25 mg · mean of min 0.5 mg · mean of max 3 mg',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
-  it('spec R-5 shows a dash for the mean when no record has a single value or a mean', () => {
+  it('RFC-63 R10 shows only the fields that have a mean: a range-only trait reads min and max (issue #234)', () => {
     render(
       <TraitCard
-        summary={{ ...SEED_MASS_SUMMARY, numeric: { min: 2, max: 8, mean: null, count: 1 } }}
+        summary={{
+          ...SEED_MASS_SUMMARY,
+          numeric: {
+            means: { single: null, mean: null, median: null, min: 2, max: 8 },
+            count: 1,
+          },
+        }}
         onOpen={() => {}}
       />,
     );
     const card = screen.getByRole('button', { name: /seed mass/ });
-    expect(within(card).getByText('2 · — · 8 mg')).toBeInTheDocument();
+    expect(within(card).getByText('mean of min 2 mg · mean of max 8 mg')).toBeInTheDocument();
+    expect(card).not.toHaveTextContent('single');
   });
 
   it('says "1 record" for a single record and calls onOpen when clicked', async () => {

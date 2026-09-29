@@ -1,4 +1,4 @@
-import type { NameSource, NameType, TraitValueType } from '@treerepro/contracts';
+import type { FieldMeans, NameSource, NameType, TraitValueType } from '@treerepro/contracts';
 
 /** How each species name source reads (RFC-60 R3); the wire code stays the value. @rfc RFC-13 R9 */
 export const NAME_SOURCE_LABELS: Record<NameSource, string> = {
@@ -62,6 +62,44 @@ export function formatNumber(value: number): string {
     return value.toLocaleString('en-GB', { maximumSignificantDigits: 3 });
   }
   return value.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+}
+
+// Record order and names, as `recordValueLabel` reads a record's fields.
+const FIELD_MEAN_LABELS: [keyof FieldMeans, string][] = [
+  ['single', 'mean of single values'],
+  ['mean', 'mean of means'],
+  ['median', 'mean of medians'],
+  ['min', 'mean of min'],
+  ['max', 'mean of max'],
+];
+
+/**
+ * The field means that have a value, each named and carrying the trait's
+ * unit; a field no record holds is left out rather than dashed.
+ * @rfc RFC-62 R7, R8
+ * @rfc RFC-63 R10
+ */
+export function fieldMeanParts(
+  means: FieldMeans,
+  unit: string | null,
+): { label: string; value: string }[] {
+  return FIELD_MEAN_LABELS.flatMap(([field, label]) => {
+    const value = means[field];
+    return value === null
+      ? []
+      : [{ label, value: `${formatNumber(value)}${unit ? ` ${unit}` : ''}` }];
+  });
+}
+
+/**
+ * One line of field means: `mean of min 6.2 mg · mean of max 18.8 mg`.
+ * @rfc RFC-62 R8
+ * @rfc RFC-63 R10
+ */
+export function fieldMeansText(means: FieldMeans, unit: string | null): string {
+  return fieldMeanParts(means, unit)
+    .map((part) => `${part.label} ${part.value}`)
+    .join(' · ');
 }
 
 /** Cuts a string to `max` characters, ending with an ellipsis. @rfc RFC-13 R9 */

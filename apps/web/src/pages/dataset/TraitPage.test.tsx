@@ -164,31 +164,40 @@ describe('RFC-62 R7 TraitPage distribution', () => {
     );
   });
 
-  it('shows min, median and max with the unit for a quantitative trait', async () => {
+  it('RFC-62 R7 shows the mean of each field with the unit, and says the means are per species (issue #234)', async () => {
     await openPage(SEED_MASS_DETAIL);
     const spread = screen.getByRole('list', { name: 'Numeric distribution' });
     expect(
       within(spread)
         .getAllByRole('listitem')
         .map((item) => item.textContent),
-    ).toEqual(['min 0.5 mg', 'median 1.25 mg', 'max 3 mg']);
-    expect(screen.getByText('Across 3 species with harmonised records.')).toBeInTheDocument();
+    ).toEqual(['mean of single values 1.25 mg', 'mean of min 0.5 mg', 'mean of max 3 mg']);
+    expect(
+      screen.getByText(
+        'Each species is averaged first, so every species weighs the same. Across 3 species with harmonised records.',
+      ),
+    ).toBeInTheDocument();
     // RFC-62 R7 caches the summary for ten minutes, so the page says when it
     // was counted — wherever there is something counted.
     expect(screen.getByText(/^Counted at 2026-09-18 08:00 UTC/)).toBeInTheDocument();
   });
 
-  it('RFC-62 R7 shows a dash, never a bound, when no record holds a central value', async () => {
+  it('RFC-62 R7 shows only the fields that have a mean: a range-only trait reads min and max (issue #234)', async () => {
     await openPage({
       ...SEED_MASS_DETAIL,
-      distribution: { numeric: { min: 0.5, median: null, max: 3, speciesCount: 2 } },
+      distribution: {
+        numeric: {
+          means: { single: null, mean: null, median: null, min: 0.5, max: 3 },
+          speciesCount: 2,
+        },
+      },
     });
     const spread = screen.getByRole('list', { name: 'Numeric distribution' });
     expect(
       within(spread)
         .getAllByRole('listitem')
         .map((item) => item.textContent),
-    ).toEqual(['min 0.5 mg', 'median —', 'max 3 mg']);
+    ).toEqual(['mean of min 0.5 mg', 'mean of max 3 mg']);
   });
 
   it('says so instead when no record has been harmonised yet, whatever the value type', async () => {
@@ -242,13 +251,13 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     expect(cells[2]).toHaveTextContent('dioecious 3 · hermaphrodite 1');
   });
 
-  it('prints a numeric summary with the unit', async () => {
+  it('prints the species field means with the unit (issue #234)', async () => {
     dataset.fetchTraitSpecies.mockResolvedValue(page([TRAIT_SPECIES_UNDECIDED]));
     await openPage(SEED_MASS_DETAIL);
     const cells = within((await screen.findAllByRole('row'))[1] as HTMLElement).getAllByRole(
       'cell',
     );
-    expect(cells[2]).toHaveTextContent('0.5 – 3 mg');
+    expect(cells[2]).toHaveTextContent('mean of min 0.5 mg · mean of max 3 mg');
   });
 
   it('counts and summaries are independent: no count still shows the summary, no summary just the count', async () => {
