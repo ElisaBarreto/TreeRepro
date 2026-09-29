@@ -206,7 +206,13 @@ let rowCounter = 0;
 
 /** Inserts one record; `harmonisation` defaults to `harmonised` when a level or one of single/min/max/mean/median is given, else `unknown_level`. */
 export async function createRecord(db: DbExecutor, input: RecordBase & RecordOrigin) {
-  const quantitative = [input.numericValue, input.minValue, input.maxValue, input.meanValue, input.medianValue];
+  const quantitative = [
+    input.numericValue,
+    input.minValue,
+    input.maxValue,
+    input.meanValue,
+    input.medianValue,
+  ];
   const harmonisation =
     input.harmonisation ??
     (input.levelId !== undefined || quantitative.some((v) => v !== undefined)

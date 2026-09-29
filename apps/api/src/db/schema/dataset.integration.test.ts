@@ -432,7 +432,9 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
         importBatchId: batch.id,
         primaryReferenceId: ref.id,
       };
-      await tx.insert(traitRecords).values({ ...claim, importRowNo: 1, valueText: '5', numericValue: 5 });
+      await tx
+        .insert(traitRecords)
+        .values({ ...claim, importRowNo: 1, valueText: '5', numericValue: 5 });
       await tx
         .insert(traitRecords)
         .values({ ...claim, importRowNo: 2, valueText: 'mean=5', meanValue: 5 });
