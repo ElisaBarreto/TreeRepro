@@ -134,6 +134,41 @@ describe('RFC-63 R3, R15 migration 0044 moves labelled values into their own fie
       min: '1',
       max: '5',
     });
+    // A bounded midpoint whose cleared form would repeat a bound-only claim of
+    // the same source keeps its number as a single value.
+    await seed('EB_8', {
+      statistic: null,
+      numeric: null,
+      valueText: 'min=10;max=20',
+      raw: '10-20',
+      min: '10',
+      max: '20',
+    });
+    await seed('EB_9', {
+      statistic: 'derived_midpoint',
+      numeric: '15',
+      valueText: 'single=15;min=10;max=20',
+      raw: '10-20',
+      min: '10',
+      max: '20',
+    });
+    // Two midpoints of the same bounds: the smallest id is cleared, the other keeps its number.
+    await seed('EB_10', {
+      statistic: 'derived_midpoint',
+      numeric: '35',
+      valueText: 'single=35;min=30;max=40',
+      raw: '30-40',
+      min: '30',
+      max: '40',
+    });
+    await seed('EB_11', {
+      statistic: 'derived_midpoint',
+      numeric: '36',
+      valueText: 'single=36;min=30;max=40',
+      raw: '30-40',
+      min: '30',
+      max: '40',
+    });
     const filenode = async () =>
       (
         await client.unsafe<{ f: string }[]>(
@@ -152,7 +187,7 @@ describe('RFC-63 R3, R15 migration 0044 moves labelled values into their own fie
       select record_code as code, value_text as text, numeric_value::text as single,
         mean_value::text as mean, median_value::text as median,
         min_value::text as min, max_value::text as max
-      from trait_records order by record_code`);
+      from trait_records order by length(record_code), record_code`);
     expect(rows).toEqual([
       {
         code: 'EB_1',
@@ -200,6 +235,42 @@ describe('RFC-63 R3, R15 migration 0044 moves labelled values into their own fie
         median: null,
         min: '1',
         max: '5',
+      },
+      {
+        code: 'EB_8',
+        text: 'min=10;max=20',
+        single: null,
+        mean: null,
+        median: null,
+        min: '10',
+        max: '20',
+      },
+      {
+        code: 'EB_9',
+        text: 'single=15;min=10;max=20',
+        single: '15',
+        mean: null,
+        median: null,
+        min: '10',
+        max: '20',
+      },
+      {
+        code: 'EB_10',
+        text: 'min=30;max=40',
+        single: null,
+        mean: null,
+        median: null,
+        min: '30',
+        max: '40',
+      },
+      {
+        code: 'EB_11',
+        text: 'single=36;min=30;max=40',
+        single: '36',
+        mean: null,
+        median: null,
+        min: '30',
+        max: '40',
       },
     ]);
     const [{ key }] = (await client.unsafe(`
