@@ -323,6 +323,22 @@ export const dictionarySchema = z.array(
 );
 
 /**
+ * A quantitative summary: the mean of each value field on its own — `single`
+ * is the stored `numeric_value` — or `null` when no record holds the field.
+ * The fields are never pooled, and sd, se and n never enter.
+ * @rfc RFC-62 R7, R8
+ * @rfc RFC-63 R10
+ */
+export const fieldMeansSchema = z.strictObject({
+  single: z.number().nullable(),
+  mean: z.number().nullable(),
+  median: z.number().nullable(),
+  min: z.number().nullable(),
+  max: z.number().nullable(),
+});
+export type FieldMeans = z.infer<typeof fieldMeansSchema>;
+
+/**
  * `GET /api/traits/:id`: the trait entry plus its category, the species
  * counted with and without a value, the count of species with a validated
  * record, and the distribution over harmonised records — `levels` for a
@@ -347,12 +363,7 @@ export const traitDetailSchema = traitSchema.extend({
     }),
     z.strictObject({
       numeric: z
-        .strictObject({
-          min: z.number(),
-          median: z.number().nullable(),
-          max: z.number(),
-          speciesCount: z.number().int(),
-        })
+        .strictObject({ means: fieldMeansSchema, speciesCount: z.number().int().nonnegative() })
         .nullable(),
     }),
   ]),
@@ -390,7 +401,7 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
       z.strictObject({
         levels: z.array(z.strictObject({ key: z.string(), count: z.number().int().nonnegative() })),
       }),
-      z.strictObject({ numeric: z.strictObject({ min: z.number(), max: z.number() }) }),
+      z.strictObject({ numeric: z.strictObject({ means: fieldMeansSchema }) }),
     ])
     .nullable(),
 });
@@ -596,12 +607,7 @@ export const traitSummarySchema = z.strictObject({
     )
     .nullable(),
   numeric: z
-    .strictObject({
-      min: z.number(),
-      max: z.number(),
-      mean: z.number().nullable(),
-      count: z.number().int().nonnegative(),
-    })
+    .strictObject({ means: fieldMeansSchema, count: z.number().int().nonnegative() })
     .nullable(),
   /** At least one of the species' records on the trait is validated (spec R-1). */
   validated: z.boolean(),

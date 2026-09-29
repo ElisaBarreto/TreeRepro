@@ -1,4 +1,5 @@
 import type {
+  FieldMeans,
   SpeciesScope,
   TraitDetail,
   TraitSpeciesItem,
@@ -15,12 +16,15 @@ import { getTrait, requireTrait } from './dictionary.ts';
 import { liveSql } from './records.ts';
 import { searchSpecies } from './taxa.ts';
 
+/** A record whose unit needs checking stays out of every numeric summary (RFC-62 R8). */
+const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
+
 /** How long a trait's distribution stays cached (RFC-62 R7). */
 const DISTRIBUTION_TTL_SECONDS = 600;
 
 /** One cache entry per trait and viewer class (RFC-62 R7). */
 const distributionKey = (traitId: string, visibility: Visibility) =>
-  `trait:${traitId}:distribution:${visibility.inactive ? 'u' : 'r'}`;
+  `trait:${traitId}:distribution:v2:${visibility.inactive ? 'u' : 'r'}`;
 
 type Distribution = TraitDetail['distribution'];
 
@@ -31,19 +35,33 @@ interface LevelRow {
   record_count: number;
 }
 
-interface NumericRow {
-  min: number | null;
+/** The five field means of RFC-62 R7, R8 and RFC-63 R10, as SQL returns them. */
+interface FieldMeansRow {
+  single: number | null;
+  mean: number | null;
   median: number | null;
+  min: number | null;
   max: number | null;
+}
+
+interface NumericRow extends FieldMeansRow {
   species_count: number;
 }
+
+const fieldMeansOf = (r: FieldMeansRow): FieldMeans => ({
+  single: r.single,
+  mean: r.mean,
+  median: r.median,
+  min: r.min,
+  max: r.max,
+});
 
 /**
  * The level or numeric spread of one trait over the whole dataset: harmonised
  * records only, species counted distinct, levels with the most species first.
- * Min and max span every single, min, max, mean and median value; the median
- * is over central values (single, else mean, else median), never a bound,
- * and null when no record has one (RFC-63 R10, RFC-62 R7).
+ * A quantitative trait answers the mean of each value field on its own,
+ * taken per species first so every species weighs the same; a species
+ * without the field stays out of that mean (RFC-62 R7).
  * Plot-blind like every other number of the trait header — see
  * {@link globalSpeciesVisible}.
  */
@@ -55,31 +73,26 @@ async function computeDistribution(
 ): Promise<Distribution> {
   if (valueType === 'quantitative') {
     const [row] = (await db.execute(sql`
-      select
-        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))::float8 as min,
-        (percentile_cont(0.5) within group (order by coalesce(r.numeric_value, r.mean_value, r.median_value)))::float8 as median,
-        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))::float8 as max,
-        count(distinct r.species_id)::int as species_count
-      from trait_records r
-      join species s on s.id = r.species_id
-      where r.trait_id = ${traitId}::uuid
-        and r.harmonisation = 'harmonised'
-        and coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
-        and r.unit_status is distinct from 'needs_unit_check'
-        and ${liveSql(sql`r.id`)}
-        and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+      with per_species as (
+        select avg(r.numeric_value) as single, avg(r.mean_value) as mean,
+          avg(r.median_value) as median, avg(r.min_value) as min, avg(r.max_value) as max
+        from trait_records r
+        join species s on s.id = r.species_id
+        where r.trait_id = ${traitId}::uuid
+          and r.harmonisation = 'harmonised'
+          and coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
+          and ${unitChecked}
+          and ${liveSql(sql`r.id`)}
+          and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+        group by r.species_id
+      )
+      select avg(single)::float8 as single, avg(mean)::float8 as mean,
+        avg(median)::float8 as median, avg(min)::float8 as min, avg(max)::float8 as max,
+        count(*)::int as species_count
+      from per_species
     `)) as unknown as NumericRow[];
-    if (!row || row.species_count === 0 || row.min === null || row.max === null) {
-      return { numeric: null };
-    }
-    return {
-      numeric: {
-        min: row.min,
-        median: row.median,
-        max: row.max,
-        speciesCount: row.species_count,
-      },
-    };
+    if (!row || row.species_count === 0) return { numeric: null };
+    return { numeric: { means: fieldMeansOf(row), speciesCount: row.species_count } };
   }
   // An inactive level is invisible to a restricted viewer (RFC-33 R2), so its
   // records leave that viewer's distribution with it; the two viewer classes
@@ -207,11 +220,9 @@ interface SpeciesLevelRow {
   count: number;
 }
 
-interface SpeciesNumericRow {
+interface SpeciesNumericRow extends FieldMeansRow {
   species_id: string;
   record_count: number;
-  numeric_min: number | null;
-  numeric_max: number | null;
 }
 
 type Summary = TraitSpeciesItem['summary'];
@@ -252,10 +263,11 @@ async function enrich(
     const [rows, result] = await Promise.all([
       db.execute(sql`
         select r.species_id, count(*)::int as record_count,
-          min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
-            filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_min,
-          max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
-            filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_max
+          avg(r.numeric_value) filter (where ${unitChecked})::float8 as single,
+          avg(r.mean_value) filter (where ${unitChecked})::float8 as mean,
+          avg(r.median_value) filter (where ${unitChecked})::float8 as median,
+          avg(r.min_value) filter (where ${unitChecked})::float8 as min,
+          avg(r.max_value) filter (where ${unitChecked})::float8 as max
         from trait_records r
         where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
           and ${liveSql(sql`r.id`)}
@@ -268,9 +280,9 @@ async function enrich(
       recordCount.set(r.species_id, r.record_count);
       summary.set(
         r.species_id,
-        r.numeric_min === null || r.numeric_max === null
+        [r.single, r.mean, r.median, r.min, r.max].every((v) => v === null)
           ? null
-          : { numeric: { min: r.numeric_min, max: r.numeric_max } },
+          : { numeric: { means: fieldMeansOf(r) } },
       );
     }
   } else {

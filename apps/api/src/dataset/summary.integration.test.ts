@@ -108,7 +108,16 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       recordCount: 4,
       harmonisationCounts: { harmonised: 3, notNumeric: 1 },
       levels: null,
-      numeric: { min: 1, max: 4, mean: expect.closeTo(7 / 3, 10), count: 3 },
+      numeric: {
+        means: {
+          single: expect.closeTo(7 / 3, 10),
+          mean: null,
+          median: null,
+          min: null,
+          max: null,
+        },
+        count: 3,
+      },
       validated: false,
     });
     // A withdrawn record is no longer a validated one (spec R-1).
@@ -121,7 +130,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     );
   });
 
-  it('spec R-5 numeric: extremes over single/min/max/mean; mean of each single, else the record mean', async () => {
+  it('RFC-63 R10 numeric: a mean per field, never pooled across fields (issue #234)', async () => {
     const { user } = await createUser(t.db);
     const sp1 = await createSpecies(t.db);
     const petal = await traitByKey(t.db, 'petal_length');
@@ -144,10 +153,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
-    expect(numeric).toEqual({ min: 2, max: 8, mean: 4.5, count: 3 });
+    expect(numeric).toEqual({
+      means: { single: 5, mean: 4, median: null, min: 2, max: 8 },
+      count: 3,
+    });
   });
 
-  it('RFC-63 R10 numeric: a median counts in the extremes and as the central value after single and mean (issue #232)', async () => {
+  it('RFC-63 R10 numeric: the median is its own field, averaged over the records that hold one (issues #232, #234)', async () => {
     const sp1 = await createSpecies(t.db);
     const petal = await traitByKey(t.db, 'petal_length');
     const ref = await createReference(t.db);
@@ -167,10 +179,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
-    expect(numeric).toEqual({ min: 2, max: 100, mean: 9, count: 3 });
+    expect(numeric).toEqual({
+      means: { single: 5, mean: 2, median: 60, min: null, max: null },
+      count: 3,
+    });
   });
 
-  it('spec R-5 mean is null when no record has a single value or a mean', async () => {
+  it('RFC-63 R10 a field no record holds is null: a range-only trait has only min and max', async () => {
     const { user } = await createUser(t.db);
     const sp1 = await createSpecies(t.db);
     const petal = await traitByKey(t.db, 'petal_length');
@@ -187,11 +202,11 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     expect(summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric).toEqual(
-      { min: 1, max: 3, mean: null, count: 1 },
+      { means: { single: null, mean: null, median: null, min: 1, max: 3 }, count: 1 },
     );
   });
 
-  it('RFC-63 R10 leaves records whose unit needs checking out of min, max, mean and count', async () => {
+  it('RFC-63 R10 leaves records whose unit needs checking out of every mean and the count', async () => {
     const { user } = await createUser(t.db);
     const sp1 = await createSpecies(t.db);
     const petal = await traitByKey(t.db, 'petal_length');
@@ -224,11 +239,14 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
 
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
-    expect(petalSummary?.numeric).toEqual({ min: 4, max: 10, mean: 10, count: 2 });
+    expect(petalSummary?.numeric).toEqual({
+      means: { single: 10, mean: null, median: null, min: 4, max: null },
+      count: 2,
+    });
     expect(petalSummary?.recordCount).toBe(3);
   });
 
-  it('RFC-63 R10 never lets sd or se move min or max', async () => {
+  it('RFC-63 R10 never lets sd, se or n enter a mean', async () => {
     const { user } = await createUser(t.db);
     const sp1 = await createSpecies(t.db);
     const petal = await traitByKey(t.db, 'petal_length');
@@ -240,6 +258,7 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       numericValue: 10,
       sdValue: 50,
       seValue: 70,
+      n: 30,
       primaryReferenceId: ref.id,
       origin: 'manual',
       createdBy: user.id,
@@ -247,7 +266,10 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
 
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
-    expect(petalSummary?.numeric).toEqual({ min: 10, max: 10, mean: 10, count: 1 });
+    expect(petalSummary?.numeric).toEqual({
+      means: { single: 10, mean: null, median: null, min: null, max: null },
+      count: 1,
+    });
   });
 
   it('RFC-63 R10 answers a null numeric spread when the only harmonised record needs a unit check', async () => {
