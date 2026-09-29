@@ -1,4 +1,4 @@
-openapi-sha256: c7d4f8ea30f05790697e04b5645db4705e9c331eca02181a3ed9345a93a2817b
+openapi-sha256: b251c2842ec6aef8723dcb1514d8893bc3575e95ec499a8e807f7673e2167ca2
 
 # TreeRepro API guide
 
@@ -141,6 +141,8 @@ A record of `GET /api/records` and `GET /api/records/:id` (RFC-63 R8) carries, b
 
 - `quantitative: { single, min, max, mean, median, sd, se, n } | null` — each key present only when set; null for a categorical record. Each quantity has its own field and the platform never derives one from another: a mean is `mean`, a median `median`, never `single` (RFC-63 R15). `sd` and `se` are spreads (standard deviation, standard error), never values of the trait: do not average them with the others. `median` and `se` are filled only by the import; a manual record never has them.
 - `unitStatus` — how the import handled the unit: `converted_or_already_target`, `unit_missing` (the unit was assumed), `needs_unit_check` (the conversion is not confirmed) or `not_applicable`; null when absent. Treat a `needs_unit_check` value with care: the trait summaries leave it out (RFC-63 R10).
+
+The quantitative summaries never pool the fields: each is a mean of one field (`single`, `mean`, `median`, `min`, `max`), `null` when no record holds it, over the records whose `unitStatus` is not `needs_unit_check`; `sd`, `se` and `n` never enter. `GET /api/species/:id/traits` gives `numeric: { means, count }` (RFC-63 R10) and `GET /api/traits/:id/species` `summary: { numeric: { means } }` (RFC-62 R8), both over the species' records. `GET /api/traits/:id` gives `distribution.numeric: { means, speciesCount }` (RFC-62 R7), each mean taken per species first so every species weighs the same: a species with single values 1 and 3 and another with 10 give a `single` of 6, not 4.67.
 
 The detail (`GET /api/records/:id`) adds the import provenance, each null when absent: `sourceFolder`, `sourceFile`, `taxonomicStatus` (how the row's species name matched: exact match, resolved synonym, fuzzy match…), `gbifGenus` and `gbifFamily` (the genus and family the GBIF backbone accepts) and `taxonOrder` (the order the source reported). The platform's own taxonomy stays the one of RFC-60.
 
@@ -407,6 +409,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-09-29 — Every quantitative summary is a mean per field (`means: { single, mean, median, min, max }`), never pooled: `GET /api/traits/:id` answers `distribution.numeric: { means, speciesCount }`, averaged per species first, instead of `{ min, median, max, speciesCount }`; `GET /api/traits/:id/species` answers `summary.numeric: { means }` instead of `{ min, max }`; `GET /api/species/:id/traits` answers `numeric: { means, count }` instead of `{ min, max, mean, count }` (issue #234). (openapi b251c2842ec6)
 - 2026-09-29 — One field per quantity (RFC-63 R15): records lose `statistic` and gain `quantitative.median` — a mean or a median is no longer a labelled `single`; the record detail loses `foldedRecordCodes` and gains `gbifGenus`, `gbifFamily` and `taxonOrder`; the `value` sort, the species' trait summaries and the trait page count the median. `records.csv` in `GET /api/export/dataset.zip` changes columns (RFC-66 R2): the value columns reorder to `value_single, value_mean, value_median, value_min, value_max, value_sd, value_se, value_n` (`value_median` is new), `statistic` and `folded_record_codes` are gone, and `gbif_genus`, `gbif_family`, `taxon_order` follow `taxonomic_status` — read it by header name, not by position (issue #232). (openapi c7d4f8ea30f0)
 - 2026-09-29 — `POST /api/records`: a quantitative value is never matched to an existing record. It creates a record unless the claim key already holds it — the same value, `rawValue`, first source (the primary reference) and `secondaryReferenceId`; further sources do not count (reported in `duplicates`), and a quantitative contest always creates the record it contests with; `validated` is filled only by categorical levels. Confirm a quantitative record with a `confirm` annotation (issue #233). (openapi 18ecf9f3175b)
 - 2026-09-27 — The trait page's median is null when no record of the trait holds a central value (issue #225). (openapi 18ecf9f3175b)
