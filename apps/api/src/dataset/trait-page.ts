@@ -41,9 +41,9 @@ interface NumericRow {
 /**
  * The level or numeric spread of one trait over the whole dataset: harmonised
  * records only, species counted distinct, levels with the most species first.
- * Min and max span every single, min, max and mean value; the median is over
- * central values (single, else mean), never a bound, and null when no record
- * has one (RFC-63 R10, RFC-62 R7).
+ * Min and max span every single, min, max, mean and median value; the median
+ * is over central values (single, else mean, else median), never a bound,
+ * and null when no record has one (RFC-63 R10, RFC-62 R7).
  * Plot-blind like every other number of the trait header — see
  * {@link globalSpeciesVisible}.
  */
@@ -56,15 +56,15 @@ async function computeDistribution(
   if (valueType === 'quantitative') {
     const [row] = (await db.execute(sql`
       select
-        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as min,
-        (percentile_cont(0.5) within group (order by coalesce(r.numeric_value, r.mean_value)))::float8 as median,
-        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value))::float8 as max,
+        min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))::float8 as min,
+        (percentile_cont(0.5) within group (order by coalesce(r.numeric_value, r.mean_value, r.median_value)))::float8 as median,
+        max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))::float8 as max,
         count(distinct r.species_id)::int as species_count
       from trait_records r
       join species s on s.id = r.species_id
       where r.trait_id = ${traitId}::uuid
         and r.harmonisation = 'harmonised'
-        and coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value) is not null
+        and coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
         and r.unit_status is distinct from 'needs_unit_check'
         and ${liveSql(sql`r.id`)}
         and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
@@ -252,9 +252,9 @@ async function enrich(
     const [rows, result] = await Promise.all([
       db.execute(sql`
         select r.species_id, count(*)::int as record_count,
-          min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value))
+          min(least(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
             filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_min,
-          max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value))
+          max(greatest(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value))
             filter (where r.unit_status is distinct from 'needs_unit_check')::float8 as numeric_max
         from trait_records r
         where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])

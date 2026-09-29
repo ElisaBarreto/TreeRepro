@@ -90,7 +90,6 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       contested: false,
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
-      statistic: null,
       unitStatus: null,
       references: [
         {
@@ -808,10 +807,10 @@ describe('RFC-63 R9 records list sort (spec §2)', () => {
   });
 });
 
-describe('RFC-63 R8 statistic, unit status, se and import provenance (issue #223)', () => {
+describe('RFC-63 R8 unit status, median, se and import provenance (issues #223, #232)', () => {
   const t = useTestDb();
 
-  it('the item carries statistic, unitStatus and quantitative.se; the detail adds the provenance', async () => {
+  it('the item carries unitStatus and quantitative.median/se, no statistic; the detail adds the provenance', async () => {
     const trait = await createTrait(t.db, { valueType: 'quantitative' });
     const sp = await createSpecies(t.db);
     const ref = await createReference(t.db);
@@ -819,17 +818,18 @@ describe('RFC-63 R8 statistic, unit status, se and import provenance (issue #223
     const rec = await createRecord(t.db, {
       speciesId: sp.id,
       traitId: trait.id,
-      valueText: '9.3',
-      numericValue: 9.3,
+      valueText: 'median=9.3;se=0.1',
+      medianValue: 9.3,
       primaryReferenceId: ref.id,
       importBatchId: batch.id,
-      statistic: 'mean',
       unitStatus: 'needs_unit_check',
       seValue: 0.1,
       sourceFolder: 'GIFT',
       sourceFile: 'a.csv',
       taxonomicStatus: 'resolved synonym',
-      foldedRecordCodes: ['EB_1'],
+      gbifGenus: 'Testus',
+      gbifFamily: 'Testaceae',
+      taxonOrder: 'Testales',
     });
 
     const list = await listRecords(t.db, UNRESTRICTED, {
@@ -838,23 +838,26 @@ describe('RFC-63 R8 statistic, unit status, se and import provenance (issue #223
       limit: 10,
     });
     expect(list.data[0]).toMatchObject({
-      statistic: 'mean',
       unitStatus: 'needs_unit_check',
-      quantitative: { single: 9.3, se: 0.1 },
+      numericValue: null,
+      quantitative: { median: 9.3, se: 0.1 },
     });
+    expect(list.data[0]).not.toHaveProperty('statistic');
 
     const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
     expect(detail).toMatchObject({
-      statistic: 'mean',
       unitStatus: 'needs_unit_check',
       sourceFolder: 'GIFT',
       sourceFile: 'a.csv',
       taxonomicStatus: 'resolved synonym',
-      foldedRecordCodes: ['EB_1'],
+      gbifGenus: 'Testus',
+      gbifFamily: 'Testaceae',
+      taxonOrder: 'Testales',
     });
+    expect(detail).not.toHaveProperty('foldedRecordCodes');
   });
 
-  it('a record without them answers null for each, and no se key', async () => {
+  it('a record without them answers null for each, and no se or median key', async () => {
     const trait = await createTrait(t.db, { valueType: 'quantitative' });
     const sp = await createSpecies(t.db);
     const ref = await createReference(t.db);
@@ -869,14 +872,51 @@ describe('RFC-63 R8 statistic, unit status, se and import provenance (issue #223
     });
     const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
     expect(detail).toMatchObject({
-      statistic: null,
       unitStatus: null,
       quantitative: { single: 2 },
       sourceFolder: null,
       sourceFile: null,
       taxonomicStatus: null,
-      foldedRecordCodes: null,
+      gbifGenus: null,
+      gbifFamily: null,
+      taxonOrder: null,
     });
     expect(detail?.quantitative).not.toHaveProperty('se');
+    expect(detail?.quantitative).not.toHaveProperty('median');
+  });
+
+  it('value sort keys a median-only record on its median, after single and mean', async () => {
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const base = {
+      speciesId: sp.id,
+      traitId: trait.id,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    };
+    const median3 = await createRecord(t.db, { ...base, valueText: 'median=3', medianValue: 3 });
+    const mean2 = await createRecord(t.db, {
+      ...base,
+      valueText: 'mean=2;median=9',
+      meanValue: 2,
+      medianValue: 9,
+    });
+    const median1 = await createRecord(t.db, {
+      ...base,
+      valueText: 'median=1;min=0;max=10',
+      medianValue: 1,
+      minValue: 0,
+      maxValue: 10,
+    });
+    const list = await listRecords(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 10,
+      sort: 'value',
+      order: 'asc',
+    });
+    expect(list.data.map((r) => r.id)).toEqual([median1.id, mean2.id, median3.id]);
   });
 });
