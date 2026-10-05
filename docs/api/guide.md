@@ -1,4 +1,4 @@
-openapi-sha256: b251c2842ec6aef8723dcb1514d8893bc3575e95ec499a8e807f7673e2167ca2
+openapi-sha256: 3fcd29503338b20fc4ae170698d1ae9ca3c15564497229aa3bc95953f3f24d32
 
 # TreeRepro API guide
 
@@ -409,6 +409,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-10-05 — `GET /api/species/:id/traits` takes `missingOnly=true` and answers only the traits with no visible record for the species (empty summaries, categories without one left out); the previous `includeMissing`, which added them to the traits with records, is gone and now answers 400 (RFC-70 R7, issue #248). (openapi 3fcd29503338)
 - 2026-09-29 — Every quantitative summary is a mean per field (`means: { single, mean, median, min, max }`), never pooled: `GET /api/traits/:id` answers `distribution.numeric: { means, speciesCount }`, averaged per species first, instead of `{ min, median, max, speciesCount }`; `GET /api/traits/:id/species` answers `summary.numeric: { means }` instead of `{ min, max }`; `GET /api/species/:id/traits` answers `numeric: { means, count }` instead of `{ min, max, mean, count }` (issue #234). (openapi b251c2842ec6)
 - 2026-09-29 — One field per quantity (RFC-63 R15): records lose `statistic` and gain `quantitative.median` — a mean or a median is no longer a labelled `single`; the record detail loses `foldedRecordCodes` and gains `gbifGenus`, `gbifFamily` and `taxonOrder`; the `value` sort, the species' trait summaries and the trait page count the median. `records.csv` in `GET /api/export/dataset.zip` changes columns (RFC-66 R2): the value columns reorder to `value_single, value_mean, value_median, value_min, value_max, value_sd, value_se, value_n` (`value_median` is new), `statistic` and `folded_record_codes` are gone, and `gbif_genus`, `gbif_family`, `taxon_order` follow `taxonomic_status` — read it by header name, not by position (issue #232). (openapi c7d4f8ea30f0)
 - 2026-09-29 — `POST /api/records`: a quantitative value is never matched to an existing record. It creates a record unless the claim key already holds it — the same value, `rawValue`, first source (the primary reference) and `secondaryReferenceId`; further sources do not count (reported in `duplicates`), and a quantitative contest always creates the record it contests with; `validated` is filled only by categorical levels. Confirm a quantitative record with a `confirm` annotation (issue #233). (openapi 18ecf9f3175b)

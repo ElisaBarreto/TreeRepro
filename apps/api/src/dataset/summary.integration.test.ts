@@ -304,13 +304,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     expect(unrestricted?.flatMap((c) => c.traits)).toHaveLength(2);
   });
 
-  it('RFC-70 R7 includeMissing lists every visible trait, with empty summaries for missing ones', async () => {
+  it('RFC-70 R7 missingOnly lists only the visible traits with no record, as empty summaries', async () => {
     const { user } = await createUser(t.db);
     // The fixture already carries one visible record on the active trait of
     // the shown species, and one on its inactive trait.
     const f = await createVisibilityFixture(t.db, user.id);
 
-    // Without `includeMissing` only the traits with records show up: both of
+    // Without `missingOnly` only the traits with records show up: both of
     // the fixture's traits to an unrestricted viewer, the active one alone to
     // a restricted one (RFC-33 R3).
     const defaultSum = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id);
@@ -325,29 +325,34 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       f.activeTrait.id,
     ]);
 
-    // `includeMissing` walks the whole dictionary instead, so every trait the
-    // viewer may see appears, with an empty summary when it has no record.
+    // `missingOnly` walks the whole dictionary instead and keeps only the
+    // traits the viewer may see that have no visible record for the species.
     const restricted = await speciesTraitSummary(t.db, RESTRICTED, f.shownSpecies.id, {
-      includeMissing: true,
+      missingOnly: true,
     });
     const restrictedTraits = restricted?.flatMap((c) => c.traits) ?? [];
     const restrictedIds = restrictedTraits.map((x) => x.trait.id);
-    expect(restrictedIds).toContain(f.activeTrait.id);
+    // The active trait has a record: it is not missing, so it is left out.
+    expect(restrictedIds).not.toContain(f.activeTrait.id);
     // RFC-33 R3: the inactive trait stays hidden from a restricted viewer.
     expect(restrictedIds).not.toContain(f.inactiveTrait.id);
-    expect(restrictedIds.length).toBeGreaterThan(1);
-    expect(restrictedTraits.find((x) => x.trait.id === f.activeTrait.id)?.recordCount).toBe(1);
-    // Dictionary order: categories keep the order `getDictionary` answers in.
+    expect(restrictedIds.length).toBeGreaterThan(0);
+    expect(restrictedTraits.every((x) => x.recordCount === 0)).toBe(true);
+    // Dictionary order, and no empty category.
     expect(restricted?.map((c) => c.category.key)).toEqual([
       ...new Set(restricted?.map((c) => c.category.key)),
     ]);
+    expect(restricted?.every((c) => c.traits.length > 0)).toBe(true);
 
     const unrestricted = await speciesTraitSummary(t.db, UNRESTRICTED, f.shownSpecies.id, {
-      includeMissing: true,
+      missingOnly: true,
     });
     const unrestrictedTraits = unrestricted?.flatMap((c) => c.traits) ?? [];
-    expect(unrestrictedTraits.map((x) => x.trait.id)).toContain(f.inactiveTrait.id);
-    expect(unrestrictedTraits.find((x) => x.trait.id === f.activeTrait.id)?.recordCount).toBe(1);
+    const unrestrictedIds = unrestrictedTraits.map((x) => x.trait.id);
+    // Both fixture traits carry a record visible to this viewer.
+    expect(unrestrictedIds).not.toContain(f.activeTrait.id);
+    expect(unrestrictedIds).not.toContain(f.inactiveTrait.id);
+    expect(unrestricted?.every((c) => c.traits.length > 0)).toBe(true);
 
     // A trait the species has no record for: zeroed counts, not
     // validated, and — being categorical — an empty level distribution rather

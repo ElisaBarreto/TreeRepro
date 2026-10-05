@@ -3,7 +3,7 @@ import { uuidParam } from '../../../lib/search-params.ts';
 import { SpeciesPage } from '../../../pages/dataset/SpeciesPage.tsx';
 
 /**
- * `?missing=true` shows every active trait with no record yet (RFC-70 R7).
+ * `?missing=true` shows only the active traits with no record yet (RFC-70 R7).
  * `?record=<uuid>` is the digest e-mail's deep link (RFC-74 R5): it opens
  * the record drawer on mount, exactly like clicking the row would.
  */

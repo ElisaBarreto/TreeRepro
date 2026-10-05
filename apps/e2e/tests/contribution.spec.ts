@@ -193,7 +193,7 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
       // ── …and records the first entry for a trait with no data ────────────
       await expect(traitCard(page, recordedName)).toBeVisible();
       await expect(page.getByText(untouchedName)).toHaveCount(0);
-      await page.getByRole('checkbox', { name: 'Show traits with no data' }).check();
+      await page.getByRole('checkbox', { name: 'Show only traits with no data' }).check();
 
       const emptyCard = page.locator('div').filter({ hasText: untouchedName }).last();
       await expect(emptyCard.getByText('No records yet')).toBeVisible();
@@ -211,6 +211,9 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
       await expect(drawer.getByText(/^TR_\d+[a-z]*$/)).toBeVisible();
       await drawer.getByRole('button', { name: 'Close' }).click();
 
+      // RFC-70 R7: the trait now has data, so it left the filtered list; it
+      // comes back once the filter is off.
+      await page.getByRole('checkbox', { name: 'Show only traits with no data' }).uncheck();
       await expect(traitCard(page, untouchedName)).toContainText('1 record');
     } finally {
       await contributor.context.close();

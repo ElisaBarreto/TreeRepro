@@ -85,6 +85,21 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
       recordCount: 1,
       validated: false,
     });
+    // RFC-70 R7: `missingOnly` leaves out the trait the species has data on;
+    // the retired `includeMissing` is refused, not silently reinterpreted.
+    const onlyMissing = await call(t.app, 'GET', `/api/species/${sp1.id}/traits?missingOnly=true`, {
+      cookie,
+    });
+    expect(onlyMissing.status).toBe(200);
+    const onlyMissingKeys = (await onlyMissing.json()).data.flatMap(
+      (c: { traits: { trait: { key: string } }[] }) => c.traits.map((x) => x.trait.key),
+    );
+    expect(onlyMissingKeys).not.toContain('flower_color');
+    expect(onlyMissingKeys.length).toBeGreaterThan(0);
+    const retired = await call(t.app, 'GET', `/api/species/${sp1.id}/traits?includeMissing=true`, {
+      cookie,
+    });
+    expect(retired.status).toBe(400);
     const noSpecies = await call(
       t.app,
       'GET',

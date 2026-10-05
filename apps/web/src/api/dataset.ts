@@ -50,11 +50,12 @@ export type Page<T> = ListEnvelope<T>;
 export const datasetKeys = {
   species: (params: Params) => ['species', params] as const,
   speciesDetail: (id: string) => ['species', id] as const,
-  // `includeMissing` is part of the key: the two responses (with and without
-  // the zero-count traits) must never share a cache entry, or flipping the
-  // "Show traits with no data" checkbox would show stale data (RFC-70 R7).
-  speciesTraits: (id: string, includeMissing: boolean) =>
-    ['species', id, 'traits', includeMissing] as const,
+  // `missingOnly` is part of the key: the two responses (every trait with
+  // data, or only the ones without) must never share a cache entry, or
+  // flipping the "Show only traits with no data" checkbox would show stale
+  // data (RFC-70 R7).
+  speciesTraits: (id: string, missingOnly: boolean) =>
+    ['species', id, 'traits', missingOnly] as const,
   records: (params: Params) => ['records', params] as const,
   record: (id: string) => ['records', id] as const,
   // The filters are part of the key: a filtered dictionary and the whole
@@ -103,19 +104,19 @@ export async function fetchSpecies(id: string): Promise<Species> {
   return (await apiFetch(`/species/${id}`, dataEnvelopeSchema(speciesSchema))).data;
 }
 /**
- * `includeMissing` adds every visible active trait with no record yet, as a
- * zero-count entry (RFC-70 R7); the flag is left off the query string
+ * `missingOnly` answers only the visible traits with no record yet, as
+ * zero-count entries (RFC-70 R7); the flag is left off the query string
  * entirely when it is not requested, so the request is unchanged from before.
  * @rfc RFC-63 R10
  * @rfc RFC-70 R7
  */
 export async function fetchSpeciesTraits(
   id: string,
-  options?: { includeMissing?: boolean },
+  options?: { missingOnly?: boolean },
 ): Promise<SpeciesTraits> {
   return (
     await apiFetch(
-      withQuery(`/species/${id}/traits`, { includeMissing: options?.includeMissing }),
+      withQuery(`/species/${id}/traits`, { missingOnly: options?.missingOnly }),
       dataEnvelopeSchema(speciesTraitsSchema),
     )
   ).data;

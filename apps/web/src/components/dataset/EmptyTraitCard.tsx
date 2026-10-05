@@ -7,7 +7,7 @@ import { CardFrame } from './CardFrame.tsx';
 import { traitTip } from './trait-tip.ts';
 
 /**
- * A trait `includeMissing` added: it has no record at all, so there is
+ * A trait `missingOnly` listed: it has no record at all, so there is
  * nothing to open — no bars, no means, no accepted value, just
  * the name, the `?` that explains it ({@link traitTip}) and, for
  * `records.create`, a way to start one. A zero-count categorical trait

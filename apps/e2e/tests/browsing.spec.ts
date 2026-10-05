@@ -330,7 +330,7 @@ test.describe('RFC-62 R5, R7, R8 trait page and its two species tabs (plan 10c)'
       await expect(page.getByRole('heading', { level: 1 })).toContainText(missingName);
       // RFC-70 R7: the search param is the checkbox, so the page opens on the
       // traits this species has no record for — this one included.
-      await expect(page.getByLabel('Show traits with no data')).toBeChecked();
+      await expect(page.getByLabel('Show only traits with no data')).toBeChecked();
     } finally {
       await admin.close();
     }

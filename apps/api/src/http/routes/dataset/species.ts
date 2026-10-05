@@ -124,7 +124,7 @@ export function speciesRoutes(ctx: AuthContext) {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
         const summary = await speciesTraitSummary(ctx.db, visibility, id, {
-          includeMissing: q.includeMissing === 'true',
+          missingOnly: q.missingOnly === 'true',
         });
         if (!summary) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
         return c.json({ data: summary });

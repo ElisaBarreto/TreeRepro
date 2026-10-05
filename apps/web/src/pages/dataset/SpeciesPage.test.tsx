@@ -21,7 +21,7 @@ import {
   SEXUAL_SYSTEM_SUMMARY,
   SPECIES,
   SPECIES_TRAITS,
-  SPECIES_TRAITS_WITH_MISSING,
+  SPECIES_TRAITS_MISSING_ONLY,
   SPECIES_WITH_NAME_GROUPS,
   SPECIES_WITH_SYNONYM_ONLY,
   UNRESOLVED_SPECIES,
@@ -150,7 +150,7 @@ describe('RFC-60 R7 SpeciesPage header', () => {
     expect(screen.getByText('Adenanthera gersenii')).toBeInTheDocument();
     expect(screen.getByText('12 records · 3 traits')).toBeInTheDocument();
     expect(dataset.fetchSpecies).toHaveBeenCalledWith(SPECIES.id);
-    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: false });
+    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { missingOnly: false });
   });
 
   it("RFC-60 R7 leads the line with the family's order when it has one (issue #223)", async () => {
@@ -398,7 +398,7 @@ describe('RFC-74 R5 ?record= opens the drawer on mount', () => {
     // Nothing visibly breaks when it does not — the drawer is seeded state and
     // stays open — but the link an operator copies out of the address bar
     // stops opening the record after a single toggle.
-    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_MISSING_ONLY);
     const { router } = renderAt(`/app/species/${SPECIES.id}?record=${RECORD.id}`);
     const drawer = await screen.findByRole('dialog', { name: 'Record' });
     await userEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
@@ -406,7 +406,7 @@ describe('RFC-74 R5 ?record= opens the drawer on mount', () => {
       expect(screen.queryByRole('dialog', { name: 'Record' })).not.toBeInTheDocument(),
     );
 
-    const box = screen.getByRole('checkbox', { name: 'Show traits with no data' });
+    const box = screen.getByRole('checkbox', { name: 'Show only traits with no data' });
     await userEvent.click(box);
     await waitFor(() =>
       expect(router.state.location.search).toEqual({ missing: true, record: RECORD.id }),
@@ -579,22 +579,24 @@ describe('RFC-70 R1 Add entries from the species page', () => {
   });
 });
 
-// SPECIES_TRAITS_WITH_MISSING adds two zero-count traits, one card each.
+// SPECIES_TRAITS_MISSING_ONLY holds two zero-count traits, one card each.
 const MISSING_TRAITS = 2;
 
 describe('RFC-70 R7 species page missing toggle', () => {
   it('the checkbox is unchecked by default and the query asks for no missing traits', async () => {
     await openPage();
-    expect(screen.getByRole('checkbox', { name: 'Show traits with no data' })).not.toBeChecked();
-    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: false });
+    expect(
+      screen.getByRole('checkbox', { name: 'Show only traits with no data' }),
+    ).not.toBeChecked();
+    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { missingOnly: false });
   });
 
-  it('?missing=true checks the box and asks fetchSpeciesTraits for includeMissing', async () => {
-    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+  it('?missing=true checks the box and asks fetchSpeciesTraits for missingOnly', async () => {
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_MISSING_ONLY);
     renderAt(`/app/species/${SPECIES.id}?missing=true`);
     await screen.findByText('Adenanthera pavonina');
-    expect(screen.getByRole('checkbox', { name: 'Show traits with no data' })).toBeChecked();
-    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { includeMissing: true });
+    expect(screen.getByRole('checkbox', { name: 'Show only traits with no data' })).toBeChecked();
+    expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, { missingOnly: true });
     // The zero-count traits come from walking DICTIONARY, so their sections
     // are DICTIONARY's own categories, not the ones SPECIES_TRAITS uses for
     // traits that already have records.
@@ -602,22 +604,29 @@ describe('RFC-70 R7 species page missing toggle', () => {
     expect(sections.map((h) => h.textContent)).toEqual(['Reproductive system', 'Seed']);
   });
 
-  it('checking the box navigates to ?missing=true and refetches with includeMissing', async () => {
+  it('with the box checked and no trait missing, says every trait has data', async () => {
+    dataset.fetchSpeciesTraits.mockResolvedValue([]);
+    renderAt(`/app/species/${SPECIES.id}?missing=true`);
+    expect(await screen.findByText('Every trait has data for this species.')).toBeInTheDocument();
+    expect(screen.queryByText('No trait records for this species yet.')).not.toBeInTheDocument();
+  });
+
+  it('checking the box navigates to ?missing=true and refetches with missingOnly', async () => {
     const { router } = await openPage();
-    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Show traits with no data' }));
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_MISSING_ONLY);
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Show only traits with no data' }));
     await waitFor(() =>
       expect(dataset.fetchSpeciesTraits).toHaveBeenCalledWith(SPECIES.id, {
-        includeMissing: true,
+        missingOnly: true,
       }),
     );
-    expect(screen.getByRole('checkbox', { name: 'Show traits with no data' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Show only traits with no data' })).toBeChecked();
     expect(router.state.location.search).toEqual({ missing: true });
   });
 
   it('a zero-count trait renders as EmptyTraitCard with "No records yet"; with records.create, "Add the first entry" opens the dialog with the trait fixed', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
-    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_MISSING_ONLY);
     renderAt(`/app/species/${SPECIES.id}?missing=true`);
     await screen.findByText('Adenanthera pavonina');
     expect(screen.getAllByText('No records yet')).toHaveLength(MISSING_TRAITS);
@@ -630,7 +639,7 @@ describe('RFC-70 R7 species page missing toggle', () => {
   });
 
   it('hides "Add the first entry" without records.create', async () => {
-    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_WITH_MISSING);
+    dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS_MISSING_ONLY);
     renderAt(`/app/species/${SPECIES.id}?missing=true`);
     await screen.findByText('Adenanthera pavonina');
     expect(screen.getAllByText('No records yet')).toHaveLength(MISSING_TRAITS);
