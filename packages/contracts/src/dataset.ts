@@ -506,7 +506,7 @@ export const recordSchema = z.strictObject({
   quantitative: recordQuantitativeSchema.nullable(),
   /** Import provenance of the unit conversion; null when absent. @rfc RFC-63 R1, R8 */
   unitStatus: z.enum(UNIT_STATUSES).nullable(),
-  /** The record's own unit; null when it is the trait's standard unit. @rfc RFC-63 R1, R8 */
+  /** The record's own unit as imported (it may equal the trait's); null when the source gave none, meaning the trait's standard unit. @rfc RFC-63 R1, R8 */
   unit: z.string().nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
   review: z.enum(REVIEW_STATUSES),
