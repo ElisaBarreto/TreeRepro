@@ -339,7 +339,7 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'overflow.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // A well-formed row (30 fields, passes COPY and R7's checks) whose
+    // A well-formed row (35 fields, passes COPY and R7's checks) whose
     // reference is too large — and incompressible, so TOAST can't shrink it
     // under the limit — to fit a btree index entry. The bibliographic
     // references insert runs after the species catalog insert, so its
@@ -350,7 +350,7 @@ describe('RFC-64 importRecords', () => {
     const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(12)}\n`,
+      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(17)}\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -368,14 +368,14 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'broken.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // 31 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // 36 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
     // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
     // in import.ts); either the driver recovers on its own with the real
     // PostgresError, or the idle guard aborts it — both are acceptable here,
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
-      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(12)},EXTRA\n`,
+      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(17)},EXTRA\n`,
     );
     await expect(
       importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
@@ -628,7 +628,7 @@ describe('RFC-64 importRecords', () => {
         return v.includes(',') ? `"${v}"` : v;
       }).join(',');
 
-    it('R2, R5-R7 routes the value by its statistic and reads range, spread, sample size, unit status, provenance and order', async () => {
+    it('R2, R5-R7 reads the value, the statistic columns, range, spread, sample size, unit, provenance and order', async () => {
       const tag = randomBytes(4).toString('hex');
       const family = `Statisticaceae${tag}`;
       const name = `Statistica mensura-${tag}`;
@@ -644,16 +644,20 @@ describe('RFC-64 importRecords', () => {
           trait_value_type: 'quantitative',
           ...cells,
         });
+      const categorical = { final_standard_trait: 'flower_color', trait_value_type: 'categorical' };
       const lines = [
-        // 1 A: a mean with its range and spread; taxon_order is only provenance
+        // 1 A: a mean from its own column with its range and spread;
+        // taxon_order, unit, summary_source and records_behind_row are only provenance
         base({
-          harmonised_value: '9.3',
-          statistic: 'mean',
+          harmonised_value: '',
+          mean: '9.3',
           min: '6.2',
           max: '18.8',
           sd: '0.5',
           se: '0.1',
           sample_size: '30',
+          summary_source: 'reported_by_study',
+          unit: 'mg / seed',
           unit_harmonisation_status: 'converted_or_already_target',
           source_folder: 'GIFT',
           file_name: 'seeds.csv',
@@ -661,26 +665,33 @@ describe('RFC-64 importRecords', () => {
           gbif_genus: 'Statistica',
           gbif_family: 'Statisticaceae',
           taxon_order: 'Rosales',
+          records_behind_row: '4',
         }),
         // 2 B: a bound alone, no midpoint computed
         base({ harmonised_value: '', min: '4', max: '8', gbif_order: 'Sapindales' }),
-        // 3 C: a median alone
-        base({ harmonised_value: '7', statistic: 'median' }),
-        // 4 D
+        // 3 C: a median alone, with a spread around it
+        base({ median: '7', se: '0.2' }),
+        // 4 D: harmonised_value is the single value, whatever else the row holds
         base({ harmonised_value: '5', statistic: 'single_or_unspecified' }),
-        // 5 E: every split part keeps the row's provenance
+        // 5 E: every split part keeps the row's provenance; a categorical row
+        // ignores the statistic columns
         base({
-          final_standard_trait: 'flower_color',
-          trait_value_type: 'categorical',
+          ...categorical,
           harmonised_value: 'black;brown',
           min: '3',
+          mean: 'abc',
           unit_harmonisation_status: 'not_applicable',
           source_folder: 'X',
           gbif_genus: 'Statistica',
           gbif_family: 'Statisticaceae',
           taxon_order: 'Rosales',
+          unit: 'RHS colour chart',
+          summary_source: 'derived_from_records',
+          records_behind_row: '2',
         }),
-        // 6-15 rejects
+        // 6 F: a measurement and the study's mean and median on one row
+        base({ harmonised_value: '5', mean: '6', median: '5.5' }),
+        // 7-25 rejects
         base({ harmonised_value: '1', statistic: 'min' }),
         base({ harmonised_value: '1', min: '20', max: '4' }),
         base({ harmonised_value: '1', sd: '1,5' }),
@@ -691,15 +702,28 @@ describe('RFC-64 importRecords', () => {
         base({ harmonised_value: '', sd: '1' }),
         base({ harmonised_value: '1', unit_harmonisation_status: 'weird' }),
         base({ harmonised_value: '2.4', statistic: 'derived_midpoint', min: '0.8', max: '4.0' }),
-        // 16 unknown trait outranks invalid_measurement
+        // 17, 18: mean and median have their own columns now
+        base({ harmonised_value: '5', statistic: 'mean' }),
+        base({ harmonised_value: '5', statistic: 'median' }),
+        // 19, 20: mean and median follow the number rule
+        base({ harmonised_value: '1', mean: '1,5' }),
+        base({ median: 'abc' }),
+        // 21: a value that is not a number beside a mean
+        base({ harmonised_value: 'abc', mean: '2' }),
+        // 22, 23: summary_source and records_behind_row are checked on every row
+        base({ ...categorical, harmonised_value: 'white', summary_source: 'weird' }),
+        base({ ...categorical, harmonised_value: 'white', records_behind_row: '0' }),
+        base({ harmonised_value: '1', records_behind_row: '2.5' }),
+        base({ harmonised_value: '1', records_behind_row: '9999999999' }),
+        // 26 unknown trait outranks invalid_measurement
         base({ harmonised_value: '1', final_standard_trait: 'not_a_trait', statistic: 'min' }),
-        // 17 a later row of the family with another order does not change it
+        // 27 a later row of the family with another order does not change it
         base({ harmonised_value: '7', gbif_order: 'Fabales' }),
       ];
       const batch = await importRecords(t.db, {
         filePath: await writeRecords('import-stat-', lines),
       });
-      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 17, rowsRejected: 11 });
+      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 27, rowsRejected: 20 });
 
       expect(await recordAt(batch.id, 1)).toMatchObject({
         harmonisation: 'harmonised',
@@ -719,6 +743,9 @@ describe('RFC-64 importRecords', () => {
         gbifGenus: 'Statistica',
         gbifFamily: 'Statisticaceae',
         taxonOrder: 'Rosales',
+        unit: 'mg / seed',
+        summarySource: 'reported_by_study',
+        recordsBehindRow: 4,
       });
       expect(await recordAt(batch.id, 2)).toMatchObject({
         harmonisation: 'harmonised',
@@ -731,13 +758,17 @@ describe('RFC-64 importRecords', () => {
         gbifGenus: null,
         gbifFamily: null,
         taxonOrder: null,
+        unit: null,
+        summarySource: null,
+        recordsBehindRow: null,
       });
       expect(await recordAt(batch.id, 3)).toMatchObject({
         harmonisation: 'harmonised',
         numericValue: null,
         meanValue: null,
         medianValue: 7,
-        valueText: 'median=7',
+        seValue: 0.2,
+        valueText: 'median=7;se=0.2',
       });
       expect(await recordAt(batch.id, 4)).toMatchObject({
         harmonisation: 'harmonised',
@@ -752,26 +783,39 @@ describe('RFC-64 importRecords', () => {
         expect(part).toMatchObject({
           harmonisation: 'harmonised',
           minValue: null,
+          meanValue: null,
           unitStatus: 'not_applicable',
           sourceFolder: 'X',
           gbifGenus: 'Statistica',
           gbifFamily: 'Statisticaceae',
           taxonOrder: 'Rosales',
+          unit: 'RHS colour chart',
+          summarySource: 'derived_from_records',
+          recordsBehindRow: 2,
         });
       }
+      expect(await recordAt(batch.id, 6)).toMatchObject({
+        harmonisation: 'harmonised',
+        numericValue: 5,
+        meanValue: 6,
+        medianValue: 5.5,
+        valueText: 'single=5;mean=6;median=5.5',
+      });
 
       const rejects = await rejectsOf(batch.id);
       expect(rejects.map((r) => [r.rowNo, r.reason])).toEqual([
-        ...[6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((row) => [row, 'invalid_measurement']),
-        [16, 'unknown_trait'],
+        ...Array.from({ length: 19 }, (_, i) => [i + 7, 'invalid_measurement']),
+        [26, 'unknown_trait'],
       ]);
       for (const reject of rejects) {
         expect(Object.keys(reject.raw ?? {}).sort()).toEqual([...IMPORT_COLUMNS].sort());
       }
       expect(rejects[2]?.raw).toMatchObject({ sd: '1,5', harmonised_value: '1' });
       expect(rejects[9]?.raw).toMatchObject({ statistic: 'derived_midpoint' });
+      expect(rejects[12]?.raw).toMatchObject({ mean: '1,5' });
+      expect(rejects[15]?.raw).toMatchObject({ summary_source: 'weird' });
       expect((await batchReport(t.db, batch.id)).rejectReasons).toMatchObject({
-        invalid_measurement: 10,
+        invalid_measurement: 19,
         unknown_trait: 1,
       });
 
@@ -805,16 +849,18 @@ describe('RFC-64 importRecords', () => {
       const batch = await importRecords(t.db, {
         filePath: await writeRecords('import-stat-claim-', [
           row({ harmonised_value: '5', statistic: 'single_or_unspecified' }),
-          row({ harmonised_value: '5', statistic: 'mean' }),
-          row({ harmonised_value: '5', statistic: 'median' }),
+          row({ mean: '5' }),
+          row({ median: '5' }),
           // an empty statistic is a single value: the same claim as row 1
           row({ harmonised_value: '5' }),
           // RFC-63 R15 order: single, min, max, mean, median, sd, se, n
           row({ harmonised_value: '9.3', min: '6.2', max: '18.8' }),
-          row({ harmonised_value: '4', statistic: 'median', sd: '1', sample_size: '3' }),
+          row({ median: '4', sd: '1', sample_size: '3' }),
+          // unit, summary_source and records_behind_row stay out of the claim
+          row({ harmonised_value: '5', unit: 'g', summary_source: 'reported_by_study' }),
         ]),
       });
-      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 5, rowsDuplicate: 1 });
+      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 5, rowsDuplicate: 2 });
       expect(await recordAt(batch.id, 1)).toMatchObject({ numericValue: 5, valueText: '5' });
       expect(await recordAt(batch.id, 2)).toMatchObject({ meanValue: 5, valueText: 'mean=5' });
       expect(await recordAt(batch.id, 3)).toMatchObject({ medianValue: 5, valueText: 'median=5' });
@@ -823,6 +869,7 @@ describe('RFC-64 importRecords', () => {
         valueText: 'single=9.3;min=6.2;max=18.8',
       });
       expect(await recordAt(batch.id, 6)).toMatchObject({ valueText: 'median=4;sd=1;n=3' });
+      expect(await recordAt(batch.id, 7)).toBeUndefined();
     });
 
     it('R7 invalid_measurement: the statistic columns are checked on a quantitative trait only', async () => {
@@ -843,22 +890,25 @@ describe('RFC-64 importRecords', () => {
         filePath: await writeRecords('import-stat-scope-', [
           row({ ...categorical, harmonised_value: 'black', sd: 'abc' }),
           row({ ...categorical, harmonised_value: 'brown', min: '20', max: '4' }),
+          row({ ...categorical, harmonised_value: 'blue', mean: 'abc', median: '-1,2' }),
           row({ harmonised_value: '', sample_size: '30' }),
           row({ harmonised_value: '1', sample_size: '9999999999' }),
         ]),
       });
-      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 2, rowsRejected: 2 });
-      for (const rowNo of [1, 2]) {
+      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 3, rowsRejected: 2 });
+      for (const rowNo of [1, 2, 3]) {
         expect(await recordAt(batch.id, rowNo)).toMatchObject({
           harmonisation: 'harmonised',
           minValue: null,
           maxValue: null,
+          meanValue: null,
+          medianValue: null,
           sdValue: null,
         });
       }
       expect((await rejectsOf(batch.id)).map((r) => [r.rowNo, r.reason])).toEqual([
-        [3, 'invalid_measurement'],
         [4, 'invalid_measurement'],
+        [5, 'invalid_measurement'],
       ]);
     });
   });
