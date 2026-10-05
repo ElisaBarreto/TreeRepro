@@ -600,12 +600,18 @@ export function AddEntriesDialog({
             </p>
           ) : null}
           {confirmText ? (
-            <label className="flex items-start gap-2 text-body text-canopy-950">
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-[10px] border-2 px-4 py-3 text-body font-semibold ${
+                confirmed
+                  ? 'border-canopy-600 bg-canopy-200/40 text-canopy-950'
+                  : 'border-pollen-500 bg-pollen-300/25 text-bark-700'
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={confirmed}
                 onChange={(event) => setConfirmedText(event.target.checked ? confirmText : null)}
-                className="mt-1 size-4 accent-canopy-700"
+                className="mt-0.5 size-5 shrink-0 accent-canopy-700"
               />
               {`Confirm: ${confirmText}`}
             </label>
