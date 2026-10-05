@@ -185,6 +185,44 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
   });
 
+  it('RFC-63 R10 numeric: a study summary repeated on its measurement records counts once (issue #257)', async () => {
+    const sp1 = await createSpecies(t.db);
+    const petal = await traitByKey(t.db, 'petal_length');
+    const [studyA, studyB] = [await createReference(t.db), await createReference(t.db)];
+    const importBatchId = (await createImportBatch(t.db)).id;
+    const imported = { speciesId: sp1.id, traitId: petal.id, importBatchId };
+    // Study A: three measurements, each row repeating the study's summary.
+    for (const v of [10, 11, 12]) {
+      await createRecord(t.db, {
+        ...imported,
+        primaryReferenceId: studyA.id,
+        valueText: `single=${v};min=10;max=14;mean=12;median=11`,
+        numericValue: v,
+        meanValue: 12,
+        medianValue: 11,
+        minValue: 10,
+        maxValue: 14,
+      });
+    }
+    // Study B: the same mean as A, through another reference — it counts on its own.
+    await createRecord(t.db, {
+      ...imported,
+      primaryReferenceId: studyB.id,
+      valueText: 'min=18;max=22;mean=20;median=19',
+      meanValue: 20,
+      medianValue: 19,
+      minValue: 18,
+      maxValue: 22,
+    });
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
+    // mean (12 + 20) / 2 = 16, not (12 + 12 + 12 + 20) / 4 = 14; single keeps every measurement.
+    expect(numeric).toEqual({
+      means: { single: 11, mean: 16, median: 15, min: 14, max: 18 },
+      count: 4,
+    });
+  });
+
   it('RFC-63 R10 a field no record holds is null: a range-only trait has only min and max', async () => {
     const { user } = await createUser(t.db);
     const sp1 = await createSpecies(t.db);

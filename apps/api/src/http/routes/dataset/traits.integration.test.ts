@@ -277,7 +277,7 @@ describe('RFC-62 R7, R8 GET /api/traits/:id and /api/traits/:id/species', () => 
       const invisible = await call(t.app, 'GET', `/api/traits/${retired.id}`, { cookie });
       expect(invisible.status).toBe(404);
     } finally {
-      await t.redis.del(`trait:${own.id}:distribution:v2:u`, `trait:${own.id}:distribution:v2:r`);
+      await t.redis.del(`trait:${own.id}:distribution:v3:u`, `trait:${own.id}:distribution:v3:r`);
     }
   });
 

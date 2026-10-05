@@ -1,5 +1,5 @@
 import type { SpeciesTraits, TraitSummary } from '@treerepro/contracts';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { species } from '../db/schema/taxa.ts';
@@ -10,6 +10,31 @@ import { recordVisible } from './records.ts';
 
 /** A record whose unit needs checking stays out of the numeric summary (RFC-63 R10). */
 const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
+
+/** A study summary's field repeated on its records: kept on the first, nulled on the rest. */
+const once = (field: string) =>
+  sql.raw(`case when row_number() over (partition by r.species_id, r.trait_id,
+    r.primary_reference_id, r.secondary_reference_id, r.${field},
+    r.unit_status is distinct from 'needs_unit_check' order by r.id) = 1
+    then r.${field} end as ${field}_once`);
+
+/**
+ * The `trait_records` matching `where` (written against alias `r`), as alias
+ * `r` with `mean_value_once`, `median_value_once`, `min_value_once` and
+ * `max_value_once` beside every column: the field on the first record of
+ * each species, trait, (primary reference, secondary reference, value) and
+ * unit-check class, null on the others, so a study's summary repeated on
+ * each of its measurement rows enters a mean once. `where` must hold every
+ * per-record filter of the summary, so a filtered-out record never takes
+ * the place of a counted one.
+ * @rfc RFC-63 R10
+ * @rfc RFC-62 R7, R8
+ */
+export function summaryRecordsSql(where: SQL): SQL {
+  return sql`(select r.*, ${once('mean_value')}, ${once('median_value')},
+      ${once('min_value')}, ${once('max_value')}
+    from trait_records r where ${where}) r`;
+}
 
 interface TraitAggregate {
   trait_id: string;
@@ -48,7 +73,8 @@ interface LevelAggregate {
  * numeric spread, and whether any record is validated or contested.
  * `null` when the species itself is invisible to `visibility`.
  * The numeric summary is the mean of each value field on its own, never
- * pooled, over the records whose unit needs no checking.
+ * pooled, over the records whose unit needs no checking; a summary field
+ * repeated by one study counts once ({@link summaryRecordsSql}).
  * @rfc RFC-63 R10
  * @rfc RFC-70 R7
  * @rfc RFC-33 R2, R3
@@ -76,21 +102,22 @@ export async function speciesTraitSummary(
         count(*) filter (where r.harmonisation = 'not_numeric')::int as not_numeric,
         count(*) filter (where r.harmonisation = 'empty')::int as empty,
         avg(r.numeric_value) filter (where ${unitChecked})::float8 as mean_single,
-        avg(r.mean_value) filter (where ${unitChecked})::float8 as mean_mean,
-        avg(r.median_value) filter (where ${unitChecked})::float8 as mean_median,
-        avg(r.min_value) filter (where ${unitChecked})::float8 as mean_min,
-        avg(r.max_value) filter (where ${unitChecked})::float8 as mean_max,
+        avg(r.mean_value_once) filter (where ${unitChecked})::float8 as mean_mean,
+        avg(r.median_value_once) filter (where ${unitChecked})::float8 as mean_median,
+        avg(r.min_value_once) filter (where ${unitChecked})::float8 as mean_min,
+        avg(r.max_value_once) filter (where ${unitChecked})::float8 as mean_max,
         count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
           and ${unitChecked})::int as numeric_count,
         bool_or(${recordContestedSql(visibility, sql`r.id`)}) as contested
-      from trait_records r
+      from ${summaryRecordsSql(
+        sql`r.species_id = ${speciesId}
+          and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}`,
+      )}
       join traits t on t.id = r.trait_id
       join trait_categories c on c.key = t.category_key
       join species s on s.id = r.species_id
-      where r.species_id = ${speciesId}
-        and ${traitVisible(visibility, sql`t.active`)}
+      where ${traitVisible(visibility, sql`t.active`)}
         and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
-        and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
     db.execute(sql`
