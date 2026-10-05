@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isNotNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { createAnnotation, createContest } from '../../test/helpers/dataset.ts';
+import {
+  createAnnotation,
+  createContest,
+  createRecord,
+  createReference,
+} from '../../test/helpers/dataset.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { createDb, type Db } from '../db/client.ts';
 import { runMigrations } from '../db/migrator.ts';
@@ -352,5 +357,97 @@ describe('RFC-64 R12 Ruling B: a contest alone also refuses --replace', () => {
       records: await t.db.select().from(traitRecords),
       contests: await t.db.select().from(contests),
     }).toEqual(before);
+  });
+});
+
+describe('RFC-64 R12 --discard-platform: the test-phase replace also discards platform data', () => {
+  const DB_NAME = 'treerepro_reset_discard_platform_test';
+  let handle: { db: Db; close: () => Promise<void> } | undefined;
+  let admin: { db: Db; close: () => Promise<void> } | undefined;
+  const t = { db: undefined as unknown as Db };
+
+  beforeAll(async () => {
+    const superuser = inject('superuserDatabaseUrl');
+    admin = createDb(superuser, { max: 1 });
+    await admin.db.$client.unsafe(`drop database if exists ${DB_NAME}`);
+    await admin.db.$client.unsafe(`create database ${DB_NAME}`);
+    const url = new URL(superuser);
+    url.pathname = `/${DB_NAME}`;
+    await runMigrations(url.toString());
+    handle = createDb(url.toString(), { max: 2 }); // R13 reserves one for the lock
+    await seedDictionary(handle.db);
+    t.db = handle.db;
+
+    // A manual record, an annotation and a contest: every branch of the check.
+    await importRecords(t.db, { filePath: FIXTURE });
+    const [record] = await t.db
+      .select({
+        id: traitRecords.id,
+        speciesId: traitRecords.speciesId,
+        traitId: traitRecords.traitId,
+        levelId: traitRecords.levelId,
+      })
+      .from(traitRecords)
+      .where(isNotNull(traitRecords.levelId))
+      .limit(1);
+    const actor = await createUser(t.db, { name: 'Test Phase Contributor' });
+    await createRecord(t.db, {
+      speciesId: record?.speciesId as string,
+      traitId: record?.traitId as string,
+      levelId: record?.levelId as string,
+      valueText: 'test',
+      primaryReferenceId: (await createReference(t.db)).id,
+      origin: 'manual',
+      createdBy: actor.user.id,
+    });
+    await createAnnotation(t.db, {
+      recordId: record?.id as string,
+      actorId: actor.user.id,
+      kind: 'confirm',
+    });
+    await createContest(t.db, {
+      speciesId: record?.speciesId as string,
+      traitId: record?.traitId as string,
+      createdBy: actor.user.id,
+      levelIds: [record?.levelId as string],
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    await handle?.close();
+    await admin?.db.$client.unsafe(`drop database if exists ${DB_NAME}`);
+    await admin?.close();
+  });
+
+  it('refuses the flag without replace at the import boundary, before any batch row', async () => {
+    const batches = (await t.db.select().from(importBatches)).length;
+    await expect(
+      importRecords(t.db, { filePath: FIXTURE, force: true, discardPlatform: true }),
+    ).rejects.toMatchObject({ name: 'ImportRefusedError', reason: 'replace_not_allowed' });
+    expect((await t.db.select().from(importBatches)).length).toBe(batches);
+  });
+
+  it('without the flag, --replace is still refused', async () => {
+    await expect(importRecords(t.db, { filePath: FIXTURE, replace: true })).rejects.toMatchObject({
+      name: 'ImportRefusedError',
+      reason: 'platform_records_exist',
+    });
+    expect(await t.db.select().from(contests)).toHaveLength(1);
+  });
+
+  it('with the flag, wipes the platform data and loads the file', async () => {
+    const batch = await importRecords(t.db, {
+      filePath: FIXTURE,
+      replace: true,
+      discardPlatform: true,
+    });
+    expect(batch.status).toBe('completed');
+    const records = await t.db.select().from(traitRecords);
+    expect(records.length).toBeGreaterThan(0);
+    expect(records.every((r) => r.origin === 'import' && r.importBatchId === batch.id)).toBe(true);
+    expect(await t.db.select().from(recordAnnotations)).toEqual([]);
+    expect(await t.db.select().from(contests)).toEqual([]);
+    const batches = await t.db.select().from(importBatches);
+    expect(batches.map((b) => [b.id, b.mode])).toEqual([[batch.id, 'replace']]);
   });
 });
