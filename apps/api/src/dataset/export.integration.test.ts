@@ -85,6 +85,8 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '',
       '',
       '',
+      '',
+      '',
       expect.stringMatching(ISO),
     ]);
     // RFC-63 R14: a categorical contest applies to every record of the level it names.
@@ -206,6 +208,44 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     expect(at('gbif_genus')).toBe('Inga');
     expect(at('gbif_family')).toBe('Fabaceae');
     expect(at('taxon_order')).toBe('Fabales (source)');
+    expect(at('summary_source')).toBe('');
+    expect(at('records_behind_row')).toBe('');
+  });
+
+  it('R2 unit is the record unit, else the trait unit; summary_source and records_behind_row are the stored provenance (issue #256)', async () => {
+    const sp = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const base = {
+      speciesId: sp.id,
+      traitId: trait.id,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    };
+    const own = await createRecord(t.db, {
+      ...base,
+      valueText: 'mean=4',
+      meanValue: 4,
+      unit: 'cm',
+      summarySource: 'derived_from_records',
+      recordsBehindRow: 3,
+    });
+    const plain = await createRecord(t.db, { ...base, valueText: '5', numericValue: 5 });
+    const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
+    const rowOf = async (id: string) => {
+      const code = await codeOf(t.db, id);
+      const row = csv.rows.find((r) => r[0] === code);
+      return (name: (typeof RECORD_COLUMNS)[number]) => row?.[RECORD_COLUMNS.indexOf(name)];
+    };
+    const a = await rowOf(own.id);
+    expect(a('unit')).toBe('cm');
+    expect(a('summary_source')).toBe('derived_from_records');
+    expect(a('records_behind_row')).toBe('3');
+    const b = await rowOf(plain.id);
+    expect(b('unit')).toBe('mm');
+    expect(b('summary_source')).toBe('');
+    expect(b('records_behind_row')).toBe('');
   });
 
   it('R2 RFC-33 R2: a viewer without records.review gets no pending record', async () => {

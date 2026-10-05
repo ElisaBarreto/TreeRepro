@@ -123,6 +123,15 @@ describe('RFC-63 R8 RecordTable', () => {
     );
   });
 
+  it("RFC-63 R8 reads a value in the record's own unit, falling back to the trait's (issue #256)", () => {
+    expect(recordValueLabel({ ...MEASURED, unit: 'g', quantitative: { mean: 4 } })).toBe(
+      'mean 4 g',
+    );
+    expect(recordValueLabel({ ...MEASURED, unit: null, quantitative: { mean: 4 } })).toBe(
+      'mean 4 mg',
+    );
+  });
+
   it('RFC-63 R8 marks a unit that needs checking or was assumed, and says nothing otherwise', async () => {
     renderInRouter(
       <RecordTable

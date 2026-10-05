@@ -296,7 +296,7 @@ describe('R-13 RecordDrawer withdrawal', () => {
   });
 });
 
-describe('RFC-63 R8 RecordDrawer value fields, unit status and provenance (issues #223, #232)', () => {
+describe('RFC-63 R8 RecordDrawer value fields, unit, unit status and provenance (issues #223, #232, #256)', () => {
   const LABELS = [
     'Single value',
     'Mean',
@@ -313,6 +313,8 @@ describe('RFC-63 R8 RecordDrawer value fields, unit status and provenance (issue
     'GBIF genus',
     'GBIF family',
     'Taxon order (source)',
+    'Summary source',
+    'Records behind row',
   ];
 
   it('shows each field by its name when present, and no statistic or folded records', async () => {
@@ -338,12 +340,17 @@ describe('RFC-63 R8 RecordDrawer value fields, unit status and provenance (issue
       gbifGenus: 'Inga',
       gbifFamily: 'Fabaceae',
       taxonOrder: 'Fabales',
+      unit: 'g',
+      summarySource: 'reported_and_derived',
+      recordsBehindRow: 3,
     });
     renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, ME);
     await screen.findByText('GIFT');
     const value = (label: string) =>
       screen.getByText(label, { selector: 'dt' }).nextElementSibling?.textContent;
-    expect(value('Single value')).toBe('9.3');
+    // issue #256: the record's own unit, not the trait's.
+    expect(value('Single value')).toBe('9.3 g');
+    expect(value('Unit')).toBe('g');
     expect(value('Mean')).toBe('9');
     expect(value('Median')).toBe('8.5');
     expect(value('Min')).toBe('6.2');
@@ -358,6 +365,8 @@ describe('RFC-63 R8 RecordDrawer value fields, unit status and provenance (issue
     expect(value('GBIF genus')).toBe('Inga');
     expect(value('GBIF family')).toBe('Fabaceae');
     expect(value('Taxon order (source)')).toBe('Fabales');
+    expect(value('Summary source')).toBe('reported_and_derived');
+    expect(value('Records behind row')).toBe('3');
     expect(screen.queryByText('Statistic', { selector: 'dt' })).not.toBeInTheDocument();
     expect(screen.queryByText('Folded records', { selector: 'dt' })).not.toBeInTheDocument();
   });

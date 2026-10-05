@@ -34,6 +34,15 @@ export const UNIT_STATUSES = [
 /** A record's unit harmonisation status. @rfc RFC-63 R1 */
 export type UnitStatus = (typeof UNIT_STATUSES)[number];
 
+/** Import provenance: whether a record's statistics were reported by its study or derived from its measurements. @rfc RFC-63 R1 */
+export const SUMMARY_SOURCES = [
+  'reported_by_study',
+  'derived_from_records',
+  'reported_and_derived',
+] as const;
+/** A record's summary source. @rfc RFC-63 R1 */
+export type SummarySource = (typeof SUMMARY_SOURCES)[number];
+
 /** @rfc RFC-63 R1 */
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
@@ -497,6 +506,8 @@ export const recordSchema = z.strictObject({
   quantitative: recordQuantitativeSchema.nullable(),
   /** Import provenance of the unit conversion; null when absent. @rfc RFC-63 R1, R8 */
   unitStatus: z.enum(UNIT_STATUSES).nullable(),
+  /** The record's own unit as imported (it may equal the trait's); null when the source gave none, meaning the trait's standard unit. @rfc RFC-63 R1, R8 */
+  unit: z.string().nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
   review: z.enum(REVIEW_STATUSES),
   primaryReference: referenceRefSchema.nullable(),
@@ -542,6 +553,8 @@ export const recordDetailSchema = recordSchema.extend({
   gbifGenus: z.string().nullable(),
   gbifFamily: z.string().nullable(),
   taxonOrder: z.string().nullable(),
+  summarySource: z.enum(SUMMARY_SOURCES).nullable(),
+  recordsBehindRow: z.number().int().positive().nullable(),
   annotations: z.array(annotationSchema),
   supersedes: z.strictObject({ id: z.uuid() }).nullable(),
   supersededBy: z.array(z.strictObject({ id: z.uuid() })),

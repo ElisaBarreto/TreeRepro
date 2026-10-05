@@ -6,6 +6,7 @@ import type {
   NameSource,
   NameType,
   RecordIntent,
+  SummarySource,
   TraitValueType,
   UnitStatus,
 } from '@treerepro/contracts';
@@ -192,6 +193,9 @@ type RecordOrigin =
       gbifGenus?: string;
       gbifFamily?: string;
       taxonOrder?: string;
+      unit?: string;
+      summarySource?: SummarySource;
+      recordsBehindRow?: number;
     }
   | {
       origin: 'manual';
@@ -258,6 +262,9 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
             gbifGenus: input.gbifGenus ?? null,
             gbifFamily: input.gbifFamily ?? null,
             taxonOrder: input.taxonOrder ?? null,
+            unit: input.unit ?? null,
+            summarySource: input.summarySource ?? null,
+            recordsBehindRow: input.recordsBehindRow ?? null,
           }),
     })
     .returning({ id: traitRecords.id });

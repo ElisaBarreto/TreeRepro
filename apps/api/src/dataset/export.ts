@@ -50,6 +50,8 @@ export const RECORD_COLUMNS = [
   'gbif_genus',
   'gbif_family',
   'taxon_order',
+  'summary_source',
+  'records_behind_row',
   'created_at',
 ] as const;
 
@@ -240,6 +242,8 @@ interface RecordRow {
   gbif_genus: string | null;
   gbif_family: string | null;
   taxon_order: string | null;
+  summary_source: string | null;
+  records_behind_row: number | null;
   created_at: Date;
 }
 
@@ -248,10 +252,11 @@ interface RecordRow {
  * reviewer) with their raw value; `platform` keeps the `TR_` records.
  * `contested` and `n_contests` are RFC-63 R14's, `n_validations` counts
  * distinct validators (RFC-63 R8). `order` is the species' family's
- * `order_name` (RFC-60 R1); each value column is one stored field (RFC-63
- * R15); `unit_status`, `source_folder`, `source_file`, `taxonomic_status`,
- * `gbif_genus`, `gbif_family` and `taxon_order` are the record's stored
- * provenance (RFC-63 R1).
+ * `order_name` (RFC-60 R1); `unit` is the record's own unit, else the trait's;
+ * each value column is one stored field (RFC-63 R15); `unit_status`,
+ * `source_folder`, `source_file`, `taxonomic_status`, `gbif_genus`,
+ * `gbif_family`, `taxon_order`, `summary_source` and `records_behind_row` are
+ * the record's stored provenance (RFC-63 R1).
  * @rfc RFC-66 R2, R3, R4, R5, R9
  * @rfc RFC-33 R2, R3
  * @rfc RFC-60 R1
@@ -264,7 +269,7 @@ export function recordsCsv(
   const query = sql`
     select r.record_code, f.order_name as "order", f.name as family, g.name as genus,
       s.canonical_name as species, s.name_source,
-      c.key as category, t.key as trait, t.unit, l.key as level,
+      c.key as category, t.key as trait, coalesce(r.unit, t.unit) as unit, l.key as level,
       r.numeric_value::text as value_single, r.mean_value::text as value_mean,
       r.median_value::text as value_median, r.min_value::text as value_min,
       r.max_value::text as value_max,
@@ -279,7 +284,7 @@ export function recordsCsv(
         where a.record_id = r.id and a.kind = 'confirm')::int as n_validations,
       ${contestCountSql(sql`r.id`)} as n_contests,
       r.source_folder, r.source_file, r.taxonomic_status,
-      r.gbif_genus, r.gbif_family, r.taxon_order,
+      r.gbif_genus, r.gbif_family, r.taxon_order, r.summary_source, r.records_behind_row,
       r.created_at
     from trait_records r
     join species s on s.id = r.species_id
@@ -330,6 +335,8 @@ export function recordsCsv(
         r.gbif_genus,
         r.gbif_family,
         r.taxon_order,
+        r.summary_source,
+        r.records_behind_row,
         new Date(r.created_at).toISOString(),
       ]),
     options.batch ?? BATCH,

@@ -1005,6 +1005,15 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
           numericValue: 9.3,
           unitStatus: 'nope' as never,
         },
+        // RFC-63 R1, issue #256: summary_source takes only the three labelled values.
+        {
+          valueText: '9.3',
+          harmonisation: 'harmonised',
+          numericValue: 9.3,
+          summarySource: 'nope' as never,
+        },
+        // RFC-63 R1, issue #256: records_behind_row is at least 1.
+        { valueText: '9.3', harmonisation: 'harmonised', numericValue: 9.3, recordsBehindRow: 0 },
       ];
       for (const row of refused) {
         await expect(
@@ -1034,6 +1043,45 @@ describe('RFC-63 R12, R15 record code and quantitative fields (spec R-2, R-5)', 
         .values({ ...base, valueText: 'median=4', harmonisation: 'harmonised', medianValue: 4 })
         .returning();
       expect(median).toMatchObject({ medianValue: 4, numericValue: null, meanValue: null });
+    });
+  });
+
+  it('unit, summary_source and records_behind_row round-trip and are nullable (RFC-63 R1; issue #256)', async () => {
+    await withRollback(t.db, async (tx) => {
+      const sp1 = await createSpecies(tx);
+      const petal = await traitByKey(tx, 'petal_length');
+      const ref = await createReference(tx);
+      const batch = await createImportBatch(tx);
+      const base = {
+        speciesId: sp1.id,
+        traitId: petal.id,
+        origin: 'import' as const,
+        importBatchId: batch.id,
+        primaryReferenceId: ref.id,
+        harmonisation: 'harmonised' as const,
+      };
+      const [row] = await tx
+        .insert(traitRecords)
+        .values({
+          ...base,
+          importRowNo: 1,
+          valueText: 'mean=9.3',
+          meanValue: 9.3,
+          unit: 'RHS colour chart',
+          summarySource: 'derived_from_records',
+          recordsBehindRow: 12,
+        })
+        .returning();
+      expect(row).toMatchObject({
+        unit: 'RHS colour chart',
+        summarySource: 'derived_from_records',
+        recordsBehindRow: 12,
+      });
+      const [bare] = await tx
+        .insert(traitRecords)
+        .values({ ...base, importRowNo: 2, valueText: '4', numericValue: 4 })
+        .returning();
+      expect(bare).toMatchObject({ unit: null, summarySource: null, recordsBehindRow: null });
     });
   });
 

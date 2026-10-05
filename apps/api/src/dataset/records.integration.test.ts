@@ -91,6 +91,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       recordCode: expect.stringMatching(/^TR_\d+$/),
       quantitative: null,
       unitStatus: null,
+      unit: null,
       references: [
         {
           id: ref.id,
@@ -807,7 +808,7 @@ describe('RFC-63 R9 records list sort (spec §2)', () => {
   });
 });
 
-describe('RFC-63 R8 unit status, median, se and import provenance (issues #223, #232)', () => {
+describe('RFC-63 R8 unit status, unit, median, se and import provenance (issues #223, #232, #256)', () => {
   const t = useTestDb();
 
   it('the item carries unitStatus and quantitative.median/se, no statistic; the detail adds the provenance', async () => {
@@ -830,6 +831,9 @@ describe('RFC-63 R8 unit status, median, se and import provenance (issues #223, 
       gbifGenus: 'Testus',
       gbifFamily: 'Testaceae',
       taxonOrder: 'Testales',
+      unit: 'RHS colour chart',
+      summarySource: 'reported_and_derived',
+      recordsBehindRow: 7,
     });
 
     const list = await listRecords(t.db, UNRESTRICTED, {
@@ -839,9 +843,11 @@ describe('RFC-63 R8 unit status, median, se and import provenance (issues #223, 
     });
     expect(list.data[0]).toMatchObject({
       unitStatus: 'needs_unit_check',
+      unit: 'RHS colour chart',
       numericValue: null,
       quantitative: { median: 9.3, se: 0.1 },
     });
+    expect(list.data[0]).not.toHaveProperty('summarySource');
     expect(list.data[0]).not.toHaveProperty('statistic');
 
     const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
@@ -853,6 +859,9 @@ describe('RFC-63 R8 unit status, median, se and import provenance (issues #223, 
       gbifGenus: 'Testus',
       gbifFamily: 'Testaceae',
       taxonOrder: 'Testales',
+      unit: 'RHS colour chart',
+      summarySource: 'reported_and_derived',
+      recordsBehindRow: 7,
     });
     expect(detail).not.toHaveProperty('foldedRecordCodes');
   });
@@ -880,6 +889,9 @@ describe('RFC-63 R8 unit status, median, se and import provenance (issues #223, 
       gbifGenus: null,
       gbifFamily: null,
       taxonOrder: null,
+      unit: null,
+      summarySource: null,
+      recordsBehindRow: null,
     });
     expect(detail?.quantitative).not.toHaveProperty('se');
     expect(detail?.quantitative).not.toHaveProperty('median');

@@ -264,6 +264,7 @@ export function toItem(r: ItemRow): RecordItem {
     numericValue: rec.numericValue,
     quantitative: quantitativeOf(rec),
     unitStatus: rec.unitStatus ?? null,
+    unit: rec.unit ?? null,
     harmonisation: rec.harmonisation,
     review: r.review,
     primaryReference,
@@ -622,6 +623,8 @@ export async function getRecord(
     gbifGenus: rec.gbifGenus,
     gbifFamily: rec.gbifFamily,
     taxonOrder: rec.taxonOrder,
+    summarySource: rec.summarySource,
+    recordsBehindRow: rec.recordsBehindRow,
     annotations: annotations.map((a) => ({
       id: a.id,
       kind: a.kind,

@@ -26,6 +26,7 @@ const record = {
   recordCode: 'EB_1',
   quantitative: null,
   unitStatus: null,
+  unit: null,
   references: [],
 };
 

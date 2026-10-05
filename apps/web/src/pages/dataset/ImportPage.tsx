@@ -27,7 +27,7 @@ const REASONS: Record<ImportRejectReason, string> = {
   invalid_measurement: 'Invalid measurement',
 };
 
-// The 30 columns of the import file in file order (RFC-64 R2). A raw row is a
+// The 35 columns of the import file in file order (RFC-64 R2). A raw row is a
 // JSON object, whose keys come back in no useful order, so the list is
 // rendered in this order; any other key the API sends follows.
 const RAW_ROW_COLUMNS = [
@@ -50,17 +50,22 @@ const RAW_ROW_COLUMNS = [
   'trait_value_type',
   'harmonised_value',
   'statistic',
+  'mean',
+  'median',
+  'min',
+  'max',
+  'sd',
+  'se',
   'sample_size',
+  'summary_source',
+  'unit',
+  'unit_harmonisation_status',
   'source_folder',
   'file_name',
   'wcvp_taxonomic_status',
   'gbif_order',
   'taxon_order',
-  'unit_harmonisation_status',
-  'min',
-  'max',
-  'sd',
-  'se',
+  'records_behind_row',
 ];
 
 function orderedColumns(rawRow: Record<string, string>): string[] {

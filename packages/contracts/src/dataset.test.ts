@@ -20,6 +20,7 @@ import {
   referenceRefSchema,
   referenceSchema,
   SPECIES_SORTS,
+  SUMMARY_SOURCES,
   speciesListItemSchema,
   speciesNameSchema,
   speciesTraitsSchema,
@@ -128,6 +129,7 @@ describe('RFC-63 R8 recordSchema', () => {
       recordCode: 'EB_1',
       quantitative: null,
       unitStatus: null,
+      unit: null,
       references: [],
     };
     expect(recordSchema.parse(record)).toEqual(record);
@@ -651,6 +653,18 @@ describe('RFC-63 R8 recordDetailSchema (spec R-1)', () => {
     expect(keys).toEqual(expect.arrayContaining(['gbifGenus', 'gbifFamily', 'taxonOrder']));
     expect(keys).not.toContain('foldedRecordCodes');
     expect(keys).not.toContain('statistic');
+  });
+
+  it('carries summarySource and recordsBehindRow; the item carries the record unit (issue #256)', () => {
+    const keys = Object.keys(recordDetailSchema.shape);
+    expect(keys).toEqual(expect.arrayContaining(['summarySource', 'recordsBehindRow', 'unit']));
+    expect(Object.keys(recordSchema.shape)).toContain('unit');
+    expect(Object.keys(recordSchema.shape)).not.toContain('summarySource');
+    expect(SUMMARY_SOURCES).toEqual([
+      'reported_by_study',
+      'derived_from_records',
+      'reported_and_derived',
+    ]);
   });
 });
 
