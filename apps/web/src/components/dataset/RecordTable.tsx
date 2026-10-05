@@ -32,7 +32,7 @@ export function unitCaveat(status: UnitStatus | null): string | null {
 
 /**
  * How a record's value reads: its level; else its quantitative value in the
- * trait's unit, each field by its name — the single value bare, the min–max
+ * record's own unit, or the trait's when it has none, each field by its name — the single value bare, the min–max
  * range, the mean, the median, the SD and the SE, with n last (R-5) — else
  * the text as it was entered.
  * @rfc RFC-63 R8, R15
@@ -50,7 +50,8 @@ export function recordValueLabel(record: RecordItem): string {
       q.se === undefined ? null : `SE ${formatNumber(q.se)}`,
     ].filter((part): part is string => part !== null);
     if (parts.length > 0) {
-      const unit = record.trait.unit ? ` ${record.trait.unit}` : '';
+      const own = record.unit ?? record.trait.unit;
+      const unit = own ? ` ${own}` : '';
       const n = q.n === undefined ? '' : ` (n = ${q.n})`;
       return `${parts.join(' · ')}${unit}${n}`;
     }

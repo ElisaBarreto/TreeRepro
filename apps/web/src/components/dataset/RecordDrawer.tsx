@@ -79,7 +79,9 @@ const PROVENANCE_FIELDS: ReadonlyArray<{
     | 'taxonomicStatus'
     | 'gbifGenus'
     | 'gbifFamily'
-    | 'taxonOrder';
+    | 'taxonOrder'
+    | 'summarySource'
+    | 'recordsBehindRow';
   label: string;
 }> = [
   { key: 'sourceFolder', label: 'Source folder' },
@@ -88,6 +90,8 @@ const PROVENANCE_FIELDS: ReadonlyArray<{
   { key: 'gbifGenus', label: 'GBIF genus' },
   { key: 'gbifFamily', label: 'GBIF family' },
   { key: 'taxonOrder', label: 'Taxon order (source)' },
+  { key: 'summarySource', label: 'Summary source' },
+  { key: 'recordsBehindRow', label: 'Records behind row' },
 ];
 
 function errorMessage(error: unknown): string {
@@ -160,7 +164,8 @@ function RecordBody({
   onOpenRecord?: (id: string) => void;
   onClose?: () => void;
 }) {
-  const unit = record.trait.unit;
+  // The record's own unit, or the trait's standard one when it has none (RFC-63 R1).
+  const unit = record.unit ?? record.trait.unit;
   return (
     <div className="flex flex-col gap-6">
       <DrawerSection title="Value">
