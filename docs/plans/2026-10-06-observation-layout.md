@@ -10,7 +10,8 @@
 |---|---|---|
 | #256 — Import the 35-column layout; records keep unit, summary_source, records_behind_row | O1–O5 | — |
 | #257 — Summaries count a repeated study summary once | O6 | — |
-| #258 — Summaries per unit | O7 | #256 (`trait_records.unit`) |
+| #258 — Summaries per unit | O7 | #256 (`trait_records.unit`), #257 |
+| #259 — `--replace --discard-platform` | O9 | #256 (same import files) |
 
 After that, the owner reloads the imported records from a release in the new layout (O8).
 
@@ -51,10 +52,13 @@ After that, the owner reloads the imported records from a release in the new lay
   - `numeric` becomes a list `[{ unit, means, count }]` (`speciesCount` on the trait page), ordered by count descending, then unit. It is null when empty, as today.
   - The species list summary's `numeric` becomes `[{ unit, means }]`.
   - `needs_unit_check` stays out and `unit_missing` stays in, as today.
-  - The Redis key of the trait distribution moves to `v3`.
+  - The Redis key of the trait distribution moves to `v4` (O6 took `v3`).
 - **O8 Existing data.** The migration adds nullable columns, so existing records read as being in the trait's unit, with no provenance.
-  - The owner reloads with `--replace-imported` from a release in the new layout.
-  - The new layout renumbers `EB_n` (more rows). #224 therefore lands first if production holds `TR_` data.
+  - The platform is still in its test phase (owner, 2026-10-06). Once the final file is ready, the owner loads it with the total `--replace --discard-platform` (O9), and the supplementary imports run again afterwards.
+  - Existing `TR_` records, validations and contests are test data and are discarded, not re-linked, so #224 is not needed for this reload.
+- **O9 Discarding test-phase platform data** (RFC-64 R1, R12; #259). A new flag, `--discard-platform`, is valid only with `--replace` and lifts the `platform_records_exist` refusal.
+  - Without the flag, the refusal stays.
+  - The production refusal and its runbook exception are unchanged, and the runbook gains the flag.
 
 ## Unchanged
 
