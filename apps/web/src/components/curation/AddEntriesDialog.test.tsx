@@ -399,17 +399,21 @@ describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
     expect(submit(dialog)).toBeEnabled();
   });
 
-  it('RFC-70 R9 comes from a level with Contest chosen, that level unchecked and the other levels with records checked', async () => {
+  it('RFC-70 R9 comes from a level with no intent chosen; choosing Contest leaves that level unchecked and the other levels with records checked', async () => {
     dataset.fetchRecords.mockResolvedValue(page([EXISTING, EXISTING_DIOECIOUS]));
     dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
     curation.createRecords.mockResolvedValue(CREATED);
     mount({
       initialTrait: DICTIONARY_SEXUAL_SYSTEM,
-      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+      respondTo: { levelId: HERMAPHRODITE },
     });
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    const contest = await within(dialog).findByRole('radio', { name: CONTEST_LABEL });
+    // 👎 chooses nothing: the user still picks Contest or Complement (RFC-70 R9).
+    expect(contest).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL })).not.toBeChecked();
+    await userEvent.click(contest);
     const confirm = await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST });
-    expect(within(dialog).getByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
     expect(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' })).not.toBeChecked();
     expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeChecked();
     // A categorical contest responds to no record (RFC-70 R1).
@@ -435,9 +439,10 @@ describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
     dataset.fetchSpeciesTraits.mockResolvedValue(BOTH);
     mount({
       initialTrait: DICTIONARY_SEXUAL_SYSTEM,
-      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+      respondTo: { levelId: HERMAPHRODITE },
     });
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: CONTEST_LABEL }));
     await userEvent.click(await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST }));
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'dioecious' }));
@@ -477,9 +482,10 @@ describe('spec §2 item 2.1 AddEntriesDialog intent first', () => {
     );
     mount({
       initialTrait: DICTIONARY_SEXUAL_SYSTEM,
-      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+      respondTo: { levelId: HERMAPHRODITE },
     });
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: CONTEST_LABEL }));
     await userEvent.click(await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST }));
     const loads = dataset.fetchSpeciesTraits.mock.calls.length;
     const dictionaryLoads = dataset.fetchDictionary.mock.calls.length;
@@ -599,9 +605,10 @@ describe('RFC-70 R3 AddEntriesDialog result (R-7)', () => {
     curation.createRecords.mockResolvedValue({ created: [], validated: [], duplicates: [] });
     const { onCreated, onClose } = mount({
       initialTrait: DICTIONARY_SEXUAL_SYSTEM,
-      respondTo: { intent: 'contest', levelId: HERMAPHRODITE },
+      respondTo: { levelId: HERMAPHRODITE },
     });
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    await userEvent.click(await within(dialog).findByRole('radio', { name: CONTEST_LABEL }));
     await userEvent.click(await within(dialog).findByRole('checkbox', { name: CONFIRM_CONTEST }));
     await userEvent.click(submit(dialog));
     expect(await within(dialog).findByRole('listitem')).toHaveTextContent(

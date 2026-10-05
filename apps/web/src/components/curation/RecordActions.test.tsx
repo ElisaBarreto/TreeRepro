@@ -203,12 +203,16 @@ describe('RFC-70 R4 RecordActions validate', () => {
 });
 
 describe('RFC-70 R1, R9 RecordActions contest and complement', () => {
-  it('contests a categorical record: Contest chosen, its level unchecked, no "Responding to"', async () => {
+  it('contests a categorical record: no intent chosen until the user picks Contest, then its level unchecked, no "Responding to"', async () => {
     mount(THEIRS, CONTRIBUTOR);
     await userEvent.click(await screen.findByRole('button', { name: 'Contest' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
+    const contest = await within(dialog).findByRole('radio', { name: CONTEST_LABEL });
+    // 👎 chooses nothing: the user still picks Contest or Complement (RFC-70 R9).
+    expect(contest).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL })).not.toBeChecked();
+    await userEvent.click(contest);
     await within(dialog).findByRole('checkbox', { name: /^Confirm: / });
-    expect(within(dialog).getByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
     expect(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' })).not.toBeChecked();
     expect(within(dialog).getByRole('checkbox', { name: 'dioecious' })).toBeChecked();
     expect(within(dialog).queryByRole('combobox', { name: 'Responding to' })).toBeNull();
@@ -219,7 +223,11 @@ describe('RFC-70 R1, R9 RecordActions contest and complement', () => {
     mount(MEASURED, CONTRIBUTOR);
     await userEvent.click(await screen.findByRole('button', { name: 'Contest' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for seed mass (mg)' });
-    expect(await within(dialog).findByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
+    const contest = await within(dialog).findByRole('radio', { name: CONTEST_LABEL });
+    // 👎 chooses nothing: the user still picks Contest or Complement (RFC-70 R9).
+    expect(contest).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL })).not.toBeChecked();
+    await userEvent.click(contest);
     expect(within(dialog).getByRole('combobox', { name: 'Responding to' })).toHaveValue(
       MEASURED.id,
     );

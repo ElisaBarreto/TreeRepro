@@ -142,7 +142,9 @@ test.describe('RFC-70 contributor workflow (plan 09b)', () => {
         })
         .click();
       const contest = page.getByRole('dialog', { name: `Add entries for ${recordedName}` });
-      await expect(contest.getByRole('radio', { name: CONTEST })).toBeChecked();
+      // 👎 chooses nothing: the user still picks Contest (RFC-70 R9).
+      await expect(contest.getByRole('radio', { name: CONTEST })).not.toBeChecked();
+      await contest.getByRole('radio', { name: CONTEST }).check();
       await contest.getByRole('checkbox', { name: contestedLevel.key }).check();
       // Every categorical entry with a non-empty E shows what it will do per
       // level behind a required confirmation (RFC-70 R10): here E is the

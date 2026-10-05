@@ -331,14 +331,11 @@ export function SpeciesPage({
                       }
                       onRespondLevel={
                         canAdd
-                          ? (level, intent) =>
+                          ? (level) =>
                               setAdding({
                                 trait: summary.trait,
-                                // ＋ leaves the intent to the user (RFC-70 R9).
-                                respondTo:
-                                  intent === 'contest'
-                                    ? { intent, levelId: level.levelId }
-                                    : { levelId: level.levelId },
+                                // 👎 and ＋ leave the intent to the user (RFC-70 R9).
+                                respondTo: { levelId: level.levelId },
                               })
                           : undefined
                       }
@@ -367,14 +364,7 @@ export function SpeciesPage({
           }
           onRespondRecord={
             canAdd
-              ? (record, intent) =>
-                  setAdding({
-                    trait: record.trait,
-                    respondTo:
-                      intent === 'contest'
-                        ? { intent, recordId: record.id }
-                        : { recordId: record.id },
-                  })
+              ? (record) => setAdding({ trait: record.trait, respondTo: { recordId: record.id } })
               : undefined
           }
         />
