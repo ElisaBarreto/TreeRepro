@@ -14,6 +14,7 @@ import type { Redis } from '../redis/client.ts';
 import { validatedPairsSql } from './coverage.ts';
 import { getTrait, requireTrait } from './dictionary.ts';
 import { liveSql } from './records.ts';
+import { summaryRecordsSql } from './summary.ts';
 import { searchSpecies } from './taxa.ts';
 
 /** A record whose unit needs checking stays out of every numeric summary (RFC-62 R7, R8). */
@@ -24,7 +25,7 @@ const DISTRIBUTION_TTL_SECONDS = 600;
 
 /** One cache entry per trait and viewer class (RFC-62 R7). */
 const distributionKey = (traitId: string, visibility: Visibility) =>
-  `trait:${traitId}:distribution:v2:${visibility.inactive ? 'u' : 'r'}`;
+  `trait:${traitId}:distribution:v3:${visibility.inactive ? 'u' : 'r'}`;
 
 type Distribution = TraitDetail['distribution'];
 
@@ -61,7 +62,8 @@ const fieldMeansOf = (r: FieldMeansRow): FieldMeans => ({
  * records only, species counted distinct, levels with the most species first.
  * A quantitative trait answers the mean of each value field on its own,
  * taken per species first so every species weighs the same; a species
- * without the field stays out of that mean (RFC-62 R7).
+ * without the field stays out of that mean, and a summary field repeated by
+ * one study counts once within its species ({@link summaryRecordsSql}, RFC-62 R7).
  * Plot-blind like every other number of the trait header — see
  * {@link globalSpeciesVisible}.
  */
@@ -74,16 +76,16 @@ async function computeDistribution(
   if (valueType === 'quantitative') {
     const [row] = (await db.execute(sql`
       with per_species as (
-        select avg(r.numeric_value) as single, avg(r.mean_value) as mean,
-          avg(r.median_value) as median, avg(r.min_value) as min, avg(r.max_value) as max
-        from trait_records r
-        join species s on s.id = r.species_id
-        where r.trait_id = ${traitId}::uuid
+        select avg(r.numeric_value) as single, avg(r.mean_value_once) as mean,
+          avg(r.median_value_once) as median, avg(r.min_value_once) as min,
+          avg(r.max_value_once) as max
+        from ${summaryRecordsSql(sql`r.trait_id = ${traitId}::uuid
           and r.harmonisation = 'harmonised'
           and coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
           and ${unitChecked}
-          and ${liveSql(sql`r.id`)}
-          and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+          and ${liveSql(sql`r.id`)}`)}
+        join species s on s.id = r.species_id
+        where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
         group by r.species_id
       )
       select avg(single)::float8 as single, avg(mean)::float8 as mean,
@@ -264,13 +266,13 @@ async function enrich(
       db.execute(sql`
         select r.species_id, count(*)::int as record_count,
           avg(r.numeric_value) filter (where ${unitChecked})::float8 as single,
-          avg(r.mean_value) filter (where ${unitChecked})::float8 as mean,
-          avg(r.median_value) filter (where ${unitChecked})::float8 as median,
-          avg(r.min_value) filter (where ${unitChecked})::float8 as min,
-          avg(r.max_value) filter (where ${unitChecked})::float8 as max
-        from trait_records r
-        where r.trait_id = ${traitId}::uuid and r.species_id = any(${sql.param(ids)}::uuid[])
-          and ${liveSql(sql`r.id`)}
+          avg(r.mean_value_once) filter (where ${unitChecked})::float8 as mean,
+          avg(r.median_value_once) filter (where ${unitChecked})::float8 as median,
+          avg(r.min_value_once) filter (where ${unitChecked})::float8 as min,
+          avg(r.max_value_once) filter (where ${unitChecked})::float8 as max
+        from ${summaryRecordsSql(sql`r.trait_id = ${traitId}::uuid
+          and r.species_id = any(${sql.param(ids)}::uuid[])
+          and ${liveSql(sql`r.id`)}`)}
         group by r.species_id
       `) as unknown as Promise<SpeciesNumericRow[]>,
       validatedRows,

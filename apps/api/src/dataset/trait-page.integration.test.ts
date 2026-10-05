@@ -23,8 +23,8 @@ import { getTraitDetail, listTraitSpecies } from './trait-page.ts';
 
 /** Both viewer classes of RFC-62 R7's distribution cache, for a `finally`. */
 const cacheKeys = (traitId: string) => [
-  `trait:${traitId}:distribution:v2:u`,
-  `trait:${traitId}:distribution:v2:r`,
+  `trait:${traitId}:distribution:v3:u`,
+  `trait:${traitId}:distribution:v3:r`,
 ];
 
 type Actor = { id: string };
@@ -67,6 +67,38 @@ async function record(
     primaryReferenceId: input.referenceId,
     origin: 'manual',
     createdBy: input.actor.id,
+  });
+}
+
+/**
+ * Study A reports three measurements of `speciesId`, each row repeating the
+ * study's summary (mean 12, median 11, min 10, max 14); study B one summary
+ * (mean 20, median 19, min 18, max 22). Counted once each, the species'
+ * means are single 11, mean 16, median 15, min 14, max 18 (issue #257).
+ */
+async function repeatedStudySummary(db: DbExecutor, traitId: string, speciesId: string) {
+  const [studyA, studyB] = [await createReference(db), await createReference(db)];
+  const imported = { speciesId, traitId, importBatchId: (await createImportBatch(db)).id };
+  for (const v of [10, 11, 12]) {
+    await createRecord(db, {
+      ...imported,
+      primaryReferenceId: studyA.id,
+      valueText: `single=${v};min=10;max=14;mean=12;median=11`,
+      numericValue: v,
+      meanValue: 12,
+      medianValue: 11,
+      minValue: 10,
+      maxValue: 14,
+    });
+  }
+  await createRecord(db, {
+    ...imported,
+    primaryReferenceId: studyB.id,
+    valueText: 'min=18;max=22;mean=20;median=19',
+    meanValue: 20,
+    medianValue: 19,
+    minValue: 18,
+    maxValue: 22,
   });
 }
 
@@ -559,6 +591,36 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
+  it('RFC-62 R7 counts a study summary repeated on several records once, inside its species (issue #257)', async () => {
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const [a, b] = [await createSpecies(t.db), await createSpecies(t.db)];
+    await repeatedStudySummary(t.db, trait.id, a.id);
+    await createRecord(t.db, {
+      speciesId: b.id,
+      traitId: trait.id,
+      primaryReferenceId: (await createReference(t.db)).id,
+      importBatchId: (await createImportBatch(t.db)).id,
+      valueText: 'single=5;min=2;max=6;mean=4;median=3',
+      numericValue: 5,
+      meanValue: 4,
+      medianValue: 3,
+      minValue: 2,
+      maxValue: 6,
+    });
+    try {
+      const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
+      // mean: (16 + 4) / 2 = 10, not (14 + 4) / 2 = 9.
+      expect(detail?.distribution).toEqual({
+        numeric: {
+          means: { single: 8, mean: 10, median: 9, min: 8, max: 12 },
+          speciesCount: 2,
+        },
+      });
+    } finally {
+      await forgetCached(redis, ...cacheKeys(trait.id));
+    }
+  });
+
   it('answers a null numeric spread while no record of a quantitative trait is harmonised', async () => {
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
     try {
@@ -577,7 +639,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
       const second = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(second?.computedAt).toBe(first?.computedAt);
 
-      await forgetCached(redis, `trait:${trait.id}:distribution:v2:u`);
+      await forgetCached(redis, `trait:${trait.id}:distribution:v3:u`);
       const third = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(third?.computedAt).not.toBe(first?.computedAt);
     } finally {
@@ -785,6 +847,24 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       validated: false,
       summary: {
         numeric: { means: { single: 4.5, mean: null, median: null, min: null, max: null } },
+      },
+    });
+  });
+
+  it('RFC-62 R8 counts a study summary repeated on several records once (issue #257)', async () => {
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const one = await createSpecies(t.db);
+    await repeatedStudySummary(t.db, trait.id, one.id);
+
+    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+      mode: 'with',
+      limit: 50,
+    });
+    expect(data[0]).toMatchObject({
+      id: one.id,
+      recordCount: 4,
+      summary: {
+        numeric: { means: { single: 11, mean: 16, median: 15, min: 14, max: 18 } },
       },
     });
   });
