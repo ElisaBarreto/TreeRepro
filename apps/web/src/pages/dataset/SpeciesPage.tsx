@@ -134,7 +134,7 @@ function SpeciesHeader({
               checked={missing}
               onChange={(event) => onMissingChange(event.target.checked)}
             />
-            Show traits with no data
+            Show only traits with no data
           </label>
           {actions}
         </>
@@ -173,10 +173,11 @@ function SpeciesHeader({
  * alternative-name dialog (RFC-60 R9); their write invalidates the species
  * detail, so the header re-renders from the refetch. An inactive species is
  * flagged after the unresolved-taxon badge (RFC-33 R7). The header's "Show
- * traits with no data" checkbox is owned by the route's `missing` search
- * param (RFC-70 R7): checking it asks the traits query for
- * `includeMissing`, which the query key carries too, so the two answers
- * never share a cache entry. A trait the summary reports with no records
+ * only traits with no data" checkbox is owned by the route's `missing`
+ * search param (RFC-70 R7): checking it asks the traits query for
+ * `missingOnly`, which the query key carries too, so the two answers
+ * never share a cache entry; an empty answer then reads "Every trait has
+ * data for this species.". A trait the summary reports with no records
  * (`recordCount === 0`, only possible with the flag on) renders as an
  * `EmptyTraitCard` instead of `TraitCard` — nothing to open, no panel — with
  * "Add the first entry" wired to the same add-entries dialog as a card's own
@@ -222,7 +223,7 @@ export function SpeciesPage({
   });
   const traits = useQuery({
     queryKey: datasetKeys.speciesTraits(id, missing),
-    queryFn: () => fetchSpeciesTraits(id, { includeMissing: missing }),
+    queryFn: () => fetchSpeciesTraits(id, { missingOnly: missing }),
   });
   const dictionary = useQuery({
     queryKey: datasetKeys.dictionary(),
@@ -288,7 +289,13 @@ export function SpeciesPage({
           <p className="text-body text-mist-500">Loading…</p>
         ) : null}
         {species.isSuccess && traits.data && traits.data.length === 0 ? (
-          <EmptyState title="No trait records for this species yet." />
+          <EmptyState
+            title={
+              missing
+                ? 'Every trait has data for this species.'
+                : 'No trait records for this species yet.'
+            }
+          />
         ) : null}
         {species.isSuccess &&
           traits.data?.map((category) => (

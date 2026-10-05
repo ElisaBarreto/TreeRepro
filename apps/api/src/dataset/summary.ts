@@ -57,7 +57,7 @@ export async function speciesTraitSummary(
   db: DbExecutor,
   visibility: Visibility,
   speciesId: string,
-  options?: { includeMissing?: boolean },
+  options?: { missingOnly?: boolean },
 ): Promise<SpeciesTraits | null> {
   const [exists] = await db
     .select({ id: species.id })
@@ -165,21 +165,22 @@ export async function speciesTraitSummary(
     };
   };
 
-  // `includeMissing` walks the dictionary instead of the aggregates, so a
-  // trait the species has no record for still gets a row — an empty summary
-  // in dictionary order (RFC-70 R7).
-  if (options?.includeMissing) {
-    const aggregatesByTrait = new Map(aggregates.map((row) => [row.trait_id, row]));
+  // `missingOnly` walks the dictionary instead of the aggregates and keeps
+  // the traits the species has no visible record for — empty summaries in
+  // dictionary order, a category only when it keeps one (RFC-70 R7).
+  if (options?.missingOnly) {
+    const withData = new Set(aggregates.map((row) => row.trait_id));
     const dictionary = await dictionaryCategories(db, visibility);
-    return dictionary.map((cat) => ({
-      category: { key: cat.key, label: cat.label },
-      traits: cat.traits.map((t) =>
-        summaryOf(
-          { id: t.id, key: t.key, valueType: t.valueType, unit: t.unit },
-          aggregatesByTrait.get(t.id),
-        ),
-      ),
-    }));
+    return dictionary
+      .map((cat) => ({
+        category: { key: cat.key, label: cat.label },
+        traits: cat.traits
+          .filter((t) => !withData.has(t.id))
+          .map((t) =>
+            summaryOf({ id: t.id, key: t.key, valueType: t.valueType, unit: t.unit }, undefined),
+          ),
+      }))
+      .filter((cat) => cat.traits.length > 0);
   }
 
   const result: SpeciesTraits = [];

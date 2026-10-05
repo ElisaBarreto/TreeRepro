@@ -811,7 +811,7 @@ export const DICTIONARY_SEED_LENGTH: TraitRef = {
 };
 
 /**
- * A categorical trait `includeMissing` adds: no record at all, so
+ * A categorical trait `missingOnly` lists: no record at all, so
  * `levels: []` — never `null`, which stays reserved for a quantitative
  * trait, whatever its record count. Its trait is one no other summary
  * names: the API lists a species' traits once each, so two cards on a page
@@ -828,7 +828,7 @@ export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
   contested: false,
 };
 
-/** A quantitative trait `includeMissing` adds: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
+/** A quantitative trait `missingOnly` lists: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
 export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
   trait: DICTIONARY_SEED_LENGTH,
   recordCount: 0,
@@ -840,20 +840,20 @@ export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
 };
 
 /**
- * `SPECIES_TRAITS` with `includeMissing=true`'s zero-count traits added.
- * The missing traits come from walking `DICTIONARY`, so their categories are
- * `DICTIONARY`'s own (`reproductive_system` / `seed`), not the arbitrary
- * ones `SPECIES_TRAITS` uses for the traits that already have records.
+ * The answer to `missingOnly=true`: only the zero-count traits. They come
+ * from walking `DICTIONARY`, so their categories are `DICTIONARY`'s own
+ * (`reproductive_system` / `seed`), not the arbitrary ones `SPECIES_TRAITS`
+ * uses for the traits that have records.
  * @rfc RFC-70 R7
  */
-export const SPECIES_TRAITS_WITH_MISSING: SpeciesTraits = [
+export const SPECIES_TRAITS_MISSING_ONLY: SpeciesTraits = [
   {
     category: { key: 'reproductive_system', label: 'Reproductive system' },
-    traits: [SEXUAL_SYSTEM_SUMMARY, SELF_COMPATIBILITY_MISSING_SUMMARY],
+    traits: [SELF_COMPATIBILITY_MISSING_SUMMARY],
   },
   {
     category: { key: 'seed', label: 'Seed' },
-    traits: [POLLINATION_MODE_SUMMARY, SEED_MASS_SUMMARY, SEED_LENGTH_MISSING_SUMMARY],
+    traits: [SEED_LENGTH_MISSING_SUMMARY],
   },
 ];
 

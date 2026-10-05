@@ -617,7 +617,7 @@ export const traitSummarySchema = z.strictObject({
 
 /** @rfc RFC-70 R7 */
 export const speciesTraitsQuerySchema = z.strictObject({
-  includeMissing: z.enum(['true', 'false']).optional(),
+  missingOnly: z.enum(['true', 'false']).optional(),
 });
 
 /** @rfc RFC-63 R10 */

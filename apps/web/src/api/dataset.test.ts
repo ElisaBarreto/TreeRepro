@@ -60,17 +60,17 @@ describe('RFC-60 R7 fetchSpecies', () => {
 });
 
 describe('RFC-70 R7 fetchSpeciesTraits', () => {
-  it('leaves includeMissing off the query string by default and sends it as true when asked', async () => {
+  it('leaves missingOnly off the query string by default and sends it as true when asked', async () => {
     mockJson(200, { data: [] });
     await fetchSpeciesTraits(SPECIES.id);
     expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}/traits`);
 
     mockJson(200, { data: [] });
-    await fetchSpeciesTraits(SPECIES.id, { includeMissing: true });
-    expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}/traits?includeMissing=true`);
+    await fetchSpeciesTraits(SPECIES.id, { missingOnly: true });
+    expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}/traits?missingOnly=true`);
 
     mockJson(200, { data: [] });
-    await fetchSpeciesTraits(SPECIES.id, { includeMissing: false });
+    await fetchSpeciesTraits(SPECIES.id, { missingOnly: false });
     expect(lastRequest().url).toBe(`/api/species/${SPECIES.id}/traits`);
   });
 });
