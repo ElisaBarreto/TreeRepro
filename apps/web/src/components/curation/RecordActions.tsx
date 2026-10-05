@@ -39,14 +39,10 @@ const WITHDRAW_MESSAGE =
 
 type Open = 'validate' | 'withdraw' | RecordIntent;
 
-// 👎 presets Contest: a categorical record leaves its level unchecked, a
-// quantitative one is the value responded to. ＋ presets no intent (RFC-70
-// R9), only the target.
-function respondTo(record: RecordDetail, intent: RecordIntent): RespondTo {
-  if (intent === 'complement') return { recordId: record.id, levelId: record.level?.id };
-  return record.trait.valueType === 'categorical'
-    ? { intent: 'contest', levelId: record.level?.id }
-    : { intent: 'contest', recordId: record.id };
+// 👎 and ＋ preset no intent (RFC-70 R9), only the target: a categorical
+// contest leaves this level unchecked, anything else responds to this record.
+function respondTo(record: RecordDetail): RespondTo {
+  return { recordId: record.id, levelId: record.level?.id };
 }
 
 /**
@@ -175,7 +171,7 @@ export function RecordActions({
         <AddEntriesDialog
           speciesId={record.speciesId}
           initialTrait={record.trait}
-          respondTo={respondTo(record, open)}
+          respondTo={respondTo(record)}
           onClose={() => setOpen(null)}
           onCreated={(result) => {
             setOpen(null);

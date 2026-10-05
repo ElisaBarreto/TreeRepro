@@ -844,7 +844,7 @@ describe('RFC-70 R4, R9 SpeciesPage legend and record decisions', () => {
     );
   });
 
-  it('contests a level from its card: Contest chosen, that level unchecked, the other checked (amendment 6)', async () => {
+  it('contests a level from its card: no intent chosen until the user picks Contest, then that level unchecked, the other checked (RFC-70 R9)', async () => {
     auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'records.create'] });
     dataset.fetchSpeciesTraits.mockResolvedValue(DICTIONARY_SPECIES_TRAITS);
     dataset.fetchRecords.mockResolvedValue(page(LEVEL_RECORDS));
@@ -853,7 +853,11 @@ describe('RFC-70 R4, R9 SpeciesPage legend and record decisions', () => {
       await screen.findByRole('button', { name: 'Contest dioecious for sexual system' }),
     );
     const dialog = await screen.findByRole('dialog', { name: 'Add entries for sexual system' });
-    expect(await within(dialog).findByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
+    const contest = await within(dialog).findByRole('radio', { name: CONTEST_LABEL });
+    // 👎 chooses nothing: the user still picks Contest or Complement (RFC-70 R9).
+    expect(contest).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL })).not.toBeChecked();
+    await userEvent.click(contest);
     await waitFor(() =>
       expect(within(dialog).getByRole('checkbox', { name: 'hermaphrodite' })).toBeChecked(),
     );
@@ -924,7 +928,11 @@ describe('RFC-70 R4, R9 SpeciesPage legend and record decisions', () => {
     const panel = await screen.findByRole('dialog', { name: 'seed mass' });
     await userEvent.click(await within(panel).findByRole('button', { name: 'Contest TR_7' }));
     const dialog = await screen.findByRole('dialog', { name: /^Add entries for seed mass/ });
-    expect(await within(dialog).findByRole('radio', { name: CONTEST_LABEL })).toBeChecked();
+    const contest = await within(dialog).findByRole('radio', { name: CONTEST_LABEL });
+    // 👎 chooses nothing: the user still picks Contest or Complement (RFC-70 R9).
+    expect(contest).not.toBeChecked();
+    expect(within(dialog).getByRole('radio', { name: COMPLEMENT_LABEL })).not.toBeChecked();
+    await userEvent.click(contest);
     expect(within(dialog).getByRole('combobox', { name: 'Responding to' })).toHaveValue(MASS.id);
   });
 });

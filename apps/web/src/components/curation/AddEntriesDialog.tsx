@@ -75,15 +75,14 @@ function traitLabel(trait: Pick<TraitRef, 'key' | 'unit'>): string {
 }
 
 /**
- * What an entry answers, when the caller already knows. `intent` is set by
- * 👎 only (`contest`); ＋ leaves it out, so the user still chooses (RFC-70
+ * What an entry answers, when the caller already knows. It never carries an
+ * intent: 👎 and ＋ alike leave Contest or Complement to the user (RFC-70
  * R9). `levelId` is, for a categorical contest, the level left unchecked,
  * and otherwise the level whose record a complement responds to; `recordId`
  * is the responded record (a quantitative row, or the record drawer).
  * @rfc RFC-70 R1, R9
  */
 export interface RespondTo {
-  intent?: RecordIntent;
   levelId?: string;
   recordId?: string;
 }
@@ -189,7 +188,7 @@ export function AddEntriesDialog({
 
   const [categoryKey, setCategoryKey] = useState('');
   const [traitId, setTraitId] = useState(initialTrait?.id ?? '');
-  const [intent, setIntent] = useState<RecordIntent | null>(respondTo?.intent ?? null);
+  const [intent, setIntent] = useState<RecordIntent | null>(null);
   const [target, setTarget] = useState(() =>
     initialTrait?.valueType === 'categorical'
       ? (respondTo?.levelId ?? '')
