@@ -230,6 +230,7 @@ export const RECORD: RecordItem = {
   numericValue: null,
   quantitative: null,
   unitStatus: null,
+  unit: null,
   harmonisation: 'harmonised',
   review: 'validated',
   primaryReference: PRIMARY_REFERENCE,
@@ -257,6 +258,7 @@ export const PENDING_RECORD: RecordItem = {
   numericValue: null,
   quantitative: null,
   unitStatus: null,
+  unit: null,
   harmonisation: 'not_numeric',
   review: 'contested',
   primaryReference: PRIMARY_REFERENCE,
@@ -293,6 +295,8 @@ export const RECORD_DETAIL: RecordDetail = {
   gbifGenus: null,
   gbifFamily: null,
   taxonOrder: null,
+  summarySource: null,
+  recordsBehindRow: null,
   annotations: [],
   supersedes: null,
   supersededBy: [],
@@ -316,6 +320,8 @@ export const CURATED_RECORD_DETAIL: RecordDetail = {
   gbifGenus: null,
   gbifFamily: null,
   taxonOrder: null,
+  summarySource: null,
+  recordsBehindRow: null,
   annotations: [
     {
       id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d70',

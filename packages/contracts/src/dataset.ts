@@ -506,6 +506,8 @@ export const recordSchema = z.strictObject({
   quantitative: recordQuantitativeSchema.nullable(),
   /** Import provenance of the unit conversion; null when absent. @rfc RFC-63 R1, R8 */
   unitStatus: z.enum(UNIT_STATUSES).nullable(),
+  /** The record's own unit; null when it is the trait's standard unit. @rfc RFC-63 R1, R8 */
+  unit: z.string().nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
   review: z.enum(REVIEW_STATUSES),
   primaryReference: referenceRefSchema.nullable(),
@@ -551,6 +553,8 @@ export const recordDetailSchema = recordSchema.extend({
   gbifGenus: z.string().nullable(),
   gbifFamily: z.string().nullable(),
   taxonOrder: z.string().nullable(),
+  summarySource: z.enum(SUMMARY_SOURCES).nullable(),
+  recordsBehindRow: z.number().int().positive().nullable(),
   annotations: z.array(annotationSchema),
   supersedes: z.strictObject({ id: z.uuid() }).nullable(),
   supersededBy: z.array(z.strictObject({ id: z.uuid() })),
