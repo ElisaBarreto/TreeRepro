@@ -18,6 +18,7 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
       runBy: 'owner@example.test',
       force: false,
       replace: false,
+      discardPlatform: false,
       replaceImported: { sheetDir: '/sheets' },
     });
   });
@@ -28,8 +29,28 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
       runBy: undefined,
       force: true,
       replace: true,
+      discardPlatform: false,
       replaceImported: undefined,
     });
+  });
+
+  it('R12 takes --discard-platform together with --replace', () => {
+    expect(parseImportRecordsArgs(['--file', 'a.csv', '--replace', '--discard-platform'])).toEqual({
+      file: 'a.csv',
+      runBy: undefined,
+      force: false,
+      replace: true,
+      discardPlatform: true,
+      replaceImported: undefined,
+    });
+  });
+
+  it.each([
+    [['--file', 'a.csv', '--discard-platform']],
+    [['--file', 'a.csv', '--force', '--discard-platform']],
+    [['--file', 'a.csv', '--replace-imported', '--annotation-sheet', '/s', '--discard-platform']],
+  ])('R1 %j without --replace is a usage error', (args) => {
+    expect(parseImportRecordsArgs(args)).toBeNull();
   });
 
   it.each([

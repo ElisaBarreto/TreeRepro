@@ -1,4 +1,4 @@
-// `pnpm import:records --file <csv> [--run-by <email>] [--force | --replace | --replace-imported --annotation-sheet <dir>]` — loads the
+// `pnpm import:records --file <csv> [--run-by <email>] [--force | --replace [--discard-platform] | --replace-imported --annotation-sheet <dir>]` — loads the
 // compiled dataset (RFC-64). Exit codes: 0 completed, 1 refused or failed, 2 usage.
 import { stat } from 'node:fs/promises';
 import { findUserByEmail } from '../auth/users.ts';
@@ -57,6 +57,7 @@ try {
     runBy,
     force: values.force,
     replace: values.replace,
+    discardPlatform: values.discardPlatform,
     replaceImported: values.replaceImported,
   });
   const report = await batchReport(db, batch.id);
@@ -64,7 +65,9 @@ try {
   const lines = [
     `File ${batch.fileName} (sha256 ${batch.fileSha256})`,
     values.replace
-      ? 'Mode: replace (everything earlier imports loaded was cleared)'
+      ? values.discardPlatform
+        ? 'Mode: replace (everything earlier imports loaded was cleared, platform data discarded)'
+        : 'Mode: replace (everything earlier imports loaded was cleared)'
       : values.replaceImported
         ? 'Mode: replace-imported (the EB_ records were replaced; platform records and annotations kept, re-linked by code)'
         : 'Mode: append',

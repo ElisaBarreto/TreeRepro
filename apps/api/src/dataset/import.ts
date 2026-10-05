@@ -385,6 +385,12 @@ export interface ImportInput {
    */
   replace?: boolean;
   /**
+   * With `replace` only: skip the `platform_records_exist` check, so the wipe
+   * also discards test-phase platform data — manual records, annotations and
+   * contests (RFC-64 R12). Refused without `replace`.
+   */
+  discardPlatform?: boolean;
+  /**
    * Replace only the imported (`EB_`) records and keep everything users
    * produced, re-linked by `record_code` (RFC-64 R15). `sheetDir` receives
    * `replace-<batch id>-annotations.csv`.
@@ -455,6 +461,12 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
       '--replace and --replace-imported exclude each other',
     );
   }
+  if (input.discardPlatform && !input.replace) {
+    throw new ImportRefusedError(
+      'replace_not_allowed',
+      '--discard-platform is valid only together with --replace',
+    );
+  }
   // R15: the sheet is the only copy of what the run detaches, so its
   // directory has to take a file before anything else happens.
   if (input.replaceImported) {
@@ -511,7 +523,9 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
   const sql = db.$client;
   try {
     await sql.begin(async (tx) => {
-      if (input.replace) {
+      // R12: `discardPlatform` (test phase only) skips the check, and the
+      // wipe below then discards platform data along with the imports.
+      if (input.replace && !input.discardPlatform) {
         // R12 (Ruling B): refused whenever anything users produced exists — a
         // manual record, an annotation or a contest — never only a manual
         // record. The SHARE lock keeps one from arriving between this check
@@ -525,9 +539,11 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         if (platform) {
           throw new ImportRefusedError(
             'platform_records_exist',
-            'Platform data (TR_ records, annotations or contests) exists and --replace would delete it; use --replace-imported (RFC-64 R15)',
+            'Platform data (TR_ records, annotations or contests) exists and --replace would delete it; use --replace-imported (RFC-64 R15), or, in the test phase only, --replace --discard-platform',
           );
         }
+      }
+      if (input.replace) {
         // Empty what earlier imports loaded, inside this transaction, so a
         // failure below rolls the wipe back and leaves the old dataset in place.
         await resetDataset(tx, batch.id);

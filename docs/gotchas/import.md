@@ -59,7 +59,7 @@
 
 **Symptom:** After the record-schema migration (0035 at the time of writing; check `apps/api/drizzle/`) every existing record has a `record_code` of `EB_LEGACY_<n>`, and the owner has the new source file, `sample_data.csv`, whose header is quoted, starts with an unnamed column (`""`, R's row numbers) and ends in `"ID"`. That was the historic 17-column file of the first run; the importer now refuses it (`header_mismatch`, RFC-64 R2), so a total replace today loads a 35-column release, `ID` first ("The 35-column file (issue #256)" below).
 
-**Cause:** The `ID` column did not exist when the data was loaded; the migration only makes `record_code NOT NULL` possible. The owner decided to replace everything earlier imports loaded with the new file (RFC-64 R12). `--replace` is refused in production twice — by `isReplaceAllowed` and by the missing migrator secret in the `api` container — and this procedure is the one sanctioned exception (RFC-64 R12). It is safe only while nothing but imported data would be lost, so it stops unless manual records, annotations and `record_references` are all zero.
+**Cause:** The `ID` column did not exist when the data was loaded; the migration only makes `record_code NOT NULL` possible. The owner decided to replace everything earlier imports loaded with the new file (RFC-64 R12). `--replace` is refused in production twice — by `isReplaceAllowed` and by the missing migrator secret in the `api` container — and this procedure is the one sanctioned exception (RFC-64 R12). While the platform is in its test phase, its platform data — manual (`TR_`) records, annotations, contests, `record_references` — is test data: the replace runs with `--discard-platform` and discards it with everything earlier imports loaded (owner, 2026-10-06; issue #259). The backup of step 1 is the only copy left of it.
 
 **Fix:** Run on the production host, from the checkout, with the new file at `/srv/imports/sample_data.csv` — a 35-column release (RFC-64 R2), never the historic 17-column file — and the supplementary files beside it. Before anything else, check that its whole first line, with double quotes and a trailing CR stripped, is exactly the 35-column header (the owner's export writes it unquoted; a quoted header passes too, as the importer parses the line as CSV; the importer would refuse anything else only after the API is down):
    ```sh
@@ -77,12 +77,12 @@
    git pull && docker compose build
    docker compose run --rm migrate
    ```
-3. **Stop unless nothing but imported data exists:**
+3. **Back up first; platform data will be discarded.** Do not continue without step 1's `backup written:` line. Note what `--discard-platform` will discard (manual records, annotations, contests, `record_references`), for the owner:
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -v ON_ERROR_STOP=1 -At -F ' ' -c \
-     "select (select count(*) from trait_records where origin = 'manual'), (select count(*) from record_annotations), (select count(*) from record_references)"
+     "select (select count(*) from trait_records where origin = 'manual'), (select count(*) from record_annotations), (select count(*) from contests), (select count(*) from record_references)"
    ```
-   The answer must be `0 0 0`. Anything else: **do not continue** — bring the API back (`docker compose up -d api`) and take the numbers to the owner. Note, for step 6, what the replace will also empty:
+   Note, for step 6, what the replace will also empty:
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
      "select (select count(*) from plots), (select count(*) from plot_species), (select count(*) from user_plots), (select count(*) from species_names where name_type <> 'gbif'), (select count(*) from species where not active)"
@@ -93,9 +93,9 @@
      -e NODE_ENV=development \
      -v "$PWD/infra/secrets/db_migrator_password:/run/secrets/db_migrator_password:ro" \
      -v /srv/imports:/imports:ro \
-     api node dist/cli/import-records.js --file /imports/sample_data.csv --replace --run-by <owner e-mail>
+     api node dist/cli/import-records.js --file /imports/sample_data.csv --replace --discard-platform --run-by <owner e-mail>
    ```
-   The report must read `Mode: replace` and `completed`. Its `Rows already imported: <n>` line (RFC-64 R14) must read `Rows already imported: 0` on this total replace — `--replace` empties `trait_records` itself, inside this same transaction (`resetDataset`, `apps/api/src/dataset/reset.ts`, called from `importRecords` before the file is staged), not in step 2; anything else means that wipe did not run (check the report's `Mode:` line really reads `replace`, not `append`). `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
+   Without `--discard-platform` the run is refused (`platform_records_exist`) as soon as one manual record, annotation or contest exists. The report must read `Mode: replace (… platform data discarded)` and `completed`. Its `Rows already imported: <n>` line (RFC-64 R14) must read `Rows already imported: 0` on this total replace — `--replace` empties `trait_records` itself, inside this same transaction (`resetDataset`, `apps/api/src/dataset/reset.ts`, called from `importRecords` before the file is staged), not in step 2; anything else means that wipe did not run (check the report's `Mode:` line really reads `replace`, not `append`). `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
 5. **Check the triggers are back on** (`O` = enabled):
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
@@ -123,7 +123,7 @@
    Expected: `1 <N> 0 0 t`, where `<N>` equals `inserted` in step 4's `Rows:` line.
 8. **Start the API:** `docker compose up -d api`, then `docker compose ps` shows it healthy.
 
-After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`: once any platform data exists — a `TR_` record, an annotation or a contest created after this reimport — the total `--replace` is refused (RFC-64 R12).
+After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`, and `--discard-platform` is never passed again: once any platform data exists — a `TR_` record, an annotation or a contest created after this reimport — the total `--replace` without it is refused (RFC-64 R12).
 
 ## Replacing the imported records while keeping the platform (`--replace-imported`, RFC-64 R15)
 
