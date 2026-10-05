@@ -124,11 +124,12 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       // `confirm` annotation (the validation). ─────────────────────────────
       await drawer.getByRole('button', { name: 'Contest', exact: true }).click();
       const contest = page.getByRole('dialog', { name: `Add entries for ${traitName}` });
-      await expect(
-        contest.getByRole('radio', {
-          name: 'Contest — The existing value is wrong; mine should replace it.',
-        }),
-      ).toBeChecked();
+      // The drawer's Contest chooses nothing: the user still picks it (RFC-70 R9).
+      const contestRadio = contest.getByRole('radio', {
+        name: 'Contest — The existing value is wrong; mine should replace it.',
+      });
+      await expect(contestRadio).not.toBeChecked();
+      await contestRadio.check();
       await contest.getByRole('checkbox', { name: contestedLevel.key }).check();
       // Every categorical entry with a non-empty E shows what it will do per
       // level behind a required confirmation (RFC-70 R10): E is the seeded
