@@ -34,6 +34,15 @@ export const UNIT_STATUSES = [
 /** A record's unit harmonisation status. @rfc RFC-63 R1 */
 export type UnitStatus = (typeof UNIT_STATUSES)[number];
 
+/** Import provenance: whether a record's statistics were reported by its study or derived from its measurements. @rfc RFC-63 R1 */
+export const SUMMARY_SOURCES = [
+  'reported_by_study',
+  'derived_from_records',
+  'reported_and_derived',
+] as const;
+/** A record's summary source. @rfc RFC-63 R1 */
+export type SummarySource = (typeof SUMMARY_SOURCES)[number];
+
 /** @rfc RFC-63 R1 */
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];

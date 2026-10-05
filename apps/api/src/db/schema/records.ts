@@ -2,6 +2,7 @@ import {
   HARMONISATION_STATUSES,
   RECORD_INTENTS,
   RECORD_ORIGINS,
+  SUMMARY_SOURCES,
   UNIT_STATUSES,
 } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
@@ -91,6 +92,12 @@ export const traitRecords = pgTable(
     gbifGenus: text('gbif_genus'),
     gbifFamily: text('gbif_family'),
     taxonOrder: text('taxon_order'),
+    /** The unit the record's numbers are in; null means the trait's standard unit (RFC-63 R1). */
+    unit: text('unit'),
+    /** Whether the record's statistics were reported by its study or derived (RFC-63 R1). */
+    summarySource: text('summary_source', { enum: SUMMARY_SOURCES }),
+    /** How many harmonised source records the imported row stands for (RFC-63 R1). */
+    recordsBehindRow: integer('records_behind_row'),
     createdBy: uuid('created_by').references(() => users.id),
     note: text('note'),
     /** The pending record this row harmonises (RFC-65 R7); null for every other row. */
@@ -179,6 +186,16 @@ export const traitRecords = pgTable(
     check(
       'trait_records_unit_status_check',
       sql`${t.unitStatus} is null or ${t.unitStatus} in ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable')`,
+    ),
+    /** RFC-63 R1: summary_source takes only the three labelled values. */
+    check(
+      'trait_records_summary_source_check',
+      sql`${t.summarySource} is null or ${t.summarySource} in ('reported_by_study', 'derived_from_records', 'reported_and_derived')`,
+    ),
+    /** RFC-63 R1: records_behind_row is at least 1. */
+    check(
+      'trait_records_records_behind_row_check',
+      sql`${t.recordsBehindRow} is null or ${t.recordsBehindRow} >= 1`,
     ),
   ],
 );
