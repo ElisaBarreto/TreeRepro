@@ -183,10 +183,18 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
               empty: 0,
             },
             levels: null,
-            numeric: {
-              means: { single: 2, mean: null, median: null, min: 1.5, max: 2.5 },
-              count: 2,
-            },
+            numeric: [
+              {
+                unit: 'mm',
+                means: { single: 2, mean: null, median: null, min: 1.5, max: 2.5 },
+                count: 2,
+              },
+              {
+                unit: null,
+                means: { single: 3, mean: null, median: null, min: null, max: null },
+                count: 1,
+              },
+            ],
             validated: true,
             contested: false,
           },
@@ -202,10 +210,13 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
           traits: [
             {
               ...quantitativeTrait,
-              numeric: {
-                means: { single: null, mean: null, median: null, min: 1, max: 3 },
-                count: 1,
-              },
+              numeric: [
+                {
+                  unit: 'mm',
+                  means: { single: null, mean: null, median: null, min: 1, max: 3 },
+                  count: 1,
+                },
+              ],
             },
           ],
         },
@@ -217,6 +228,23 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
         {
           category: { key: 'flower_color', label: 'Flower color' },
           traits: [{ ...quantitativeTrait, numeric: { min: 1, max: 3, mean: null, count: 1 } }],
+        },
+      ]).success,
+    ).toBe(false);
+    // RFC-63 R10 (issue #258): one entry per unit, never a single object.
+    expect(
+      speciesTraitsSchema.safeParse([
+        {
+          category: { key: 'flower_color', label: 'Flower color' },
+          traits: [
+            {
+              ...quantitativeTrait,
+              numeric: {
+                means: { single: null, mean: null, median: null, min: 1, max: 3 },
+                count: 1,
+              },
+            },
+          ],
         },
       ]).success,
     ).toBe(false);
@@ -567,13 +595,28 @@ describe('RFC-62 R7 traitDetailSchema distribution union', () => {
     const detail = {
       ...DETAIL_BASE,
       distribution: {
-        numeric: {
-          means: { single: 1.25, mean: 2, median: null, min: 0.5, max: 3 },
-          speciesCount: 3,
-        },
+        numeric: [
+          {
+            unit: 'rgb_0_255',
+            means: { single: 1.25, mean: 2, median: null, min: 0.5, max: 3 },
+            speciesCount: 3,
+          },
+          {
+            unit: 'proportion_0_1',
+            means: { single: 0.4, mean: null, median: null, min: null, max: null },
+            speciesCount: 1,
+          },
+        ],
       },
     };
     expect(traitDetailSchema.parse(detail)).toEqual(detail);
+    // RFC-62 R7 (issue #258): one entry per unit, never a single object.
+    expect(
+      traitDetailSchema.safeParse({
+        ...DETAIL_BASE,
+        distribution: { numeric: detail.distribution.numeric[0] },
+      }).success,
+    ).toBe(false);
     // RFC-62 R7 (issue #234): the min / median / max shape is gone.
     expect(
       traitDetailSchema.safeParse({
@@ -707,10 +750,17 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
       recordCount: 1,
       validated: false,
       summary: {
-        numeric: { means: { single: 2, mean: null, median: null, min: 1, max: 3 } },
+        numeric: [{ unit: 'mm', means: { single: 2, mean: null, median: null, min: 1, max: 3 } }],
       },
     };
     expect(traitSpeciesItemSchema.parse(numericItem)).toEqual(numericItem);
+    // RFC-62 R8 (issue #258): one entry per unit, never a single object.
+    expect(
+      traitSpeciesItemSchema.safeParse({
+        ...numericItem,
+        summary: { numeric: numericItem.summary.numeric[0] },
+      }).success,
+    ).toBe(false);
     expect(
       traitSpeciesItemSchema.safeParse({ ...numericItem, summary: { numeric: { min: 1, max: 3 } } })
         .success,

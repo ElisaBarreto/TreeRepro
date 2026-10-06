@@ -11,30 +11,38 @@ import { recordVisible } from './records.ts';
 /** A record whose unit needs checking stays out of the numeric summary (RFC-63 R10). */
 const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
 
+/** A record's effective unit: its own, else its trait's standard unit (RFC-63 R10). */
+const effectiveUnit = 'coalesce(r.unit, su.unit)';
+
 /** A study summary's field repeated on its records: kept on the first, nulled on the rest. */
 const once = (field: string) =>
   sql.raw(`case when row_number() over (partition by r.species_id, r.trait_id,
-    r.primary_reference_id, r.secondary_reference_id, r.${field},
+    r.primary_reference_id, r.secondary_reference_id, r.${field}, ${effectiveUnit},
     r.unit_status is distinct from 'needs_unit_check' order by r.id) = 1
     then r.${field} end as ${field}_once`);
 
 /**
  * The `trait_records` matching `where` (written against alias `r`), as alias
- * `r` with `mean_value_once`, `median_value_once`, `min_value_once` and
- * `max_value_once` beside every column: the field on the first record of
- * each species, trait, (primary reference, secondary reference, value) and
- * unit-check class, null on the others, so a study's summary repeated on
- * each of its measurement rows enters a mean once. `where` must hold every
- * per-record filter of the summary, so a filtered-out record never takes
- * the place of a counted one.
+ * `r` with `summary_unit` — the record's effective unit, its own `unit` or
+ * else its trait's — and `mean_value_once`, `median_value_once`,
+ * `min_value_once` and `max_value_once` beside every column: the field on
+ * the first record of each species, trait, (primary reference, secondary
+ * reference, value), effective unit and unit-check class, null on the
+ * others, so a study's summary repeated on each of its measurement rows
+ * enters a mean once. `where` must hold every per-record filter of the
+ * summary, so a filtered-out record never takes the place of a counted one.
  * @rfc RFC-63 R10
  * @rfc RFC-62 R7, R8
  */
 export function summaryRecordsSql(where: SQL): SQL {
-  return sql`(select r.*, ${once('mean_value')}, ${once('median_value')},
-      ${once('min_value')}, ${once('max_value')}
-    from trait_records r where ${where}) r`;
+  return sql`(select r.*, ${sql.raw(effectiveUnit)} as summary_unit,
+      ${once('mean_value')}, ${once('median_value')}, ${once('min_value')}, ${once('max_value')}
+    from trait_records r join traits su on su.id = r.trait_id where ${where}) r`;
 }
+
+/** The records that enter a numeric summary: a number, in a unit that needs no checking. */
+const numericSql = sql`coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
+  and ${unitChecked}`;
 
 interface TraitAggregate {
   trait_id: string;
@@ -49,13 +57,18 @@ interface TraitAggregate {
   multi_value: number;
   not_numeric: number;
   empty: number;
-  mean_single: number | null;
-  mean_mean: number | null;
-  mean_median: number | null;
-  mean_min: number | null;
-  mean_max: number | null;
-  numeric_count: number;
   contested: boolean;
+}
+
+interface NumericAggregate {
+  trait_id: string;
+  unit: string | null;
+  single: number | null;
+  mean: number | null;
+  median: number | null;
+  min: number | null;
+  max: number | null;
+  count: number;
 }
 
 interface LevelAggregate {
@@ -73,8 +86,10 @@ interface LevelAggregate {
  * numeric spread, and whether any record is validated or contested.
  * `null` when the species itself is invisible to `visibility`.
  * The numeric summary is the mean of each value field on its own, never
- * pooled, over the records whose unit needs no checking; a summary field
- * repeated by one study counts once ({@link summaryRecordsSql}).
+ * pooled, over the records whose unit needs no checking, one entry per
+ * effective unit (most records first, then unit) so numbers in different
+ * units are never averaged together; a summary field repeated by one study
+ * counts once ({@link summaryRecordsSql}).
  * @rfc RFC-63 R10
  * @rfc RFC-70 R7
  * @rfc RFC-33 R2, R3
@@ -91,7 +106,7 @@ export async function speciesTraitSummary(
     .where(and(eq(species.id, speciesId), speciesVisible(visibility)))
     .limit(1);
   if (!exists) return null;
-  const [aggregates, levels, validated] = await Promise.all([
+  const [aggregates, numerics, levels, validated] = await Promise.all([
     db.execute(sql`
       select t.id as trait_id, t.key as trait_key, t.value_type, t.unit,
         c.key as category_key, c.label as category_label,
@@ -101,25 +116,30 @@ export async function speciesTraitSummary(
         count(*) filter (where r.harmonisation = 'multi_value')::int as multi_value,
         count(*) filter (where r.harmonisation = 'not_numeric')::int as not_numeric,
         count(*) filter (where r.harmonisation = 'empty')::int as empty,
-        avg(r.numeric_value) filter (where ${unitChecked})::float8 as mean_single,
-        avg(r.mean_value_once) filter (where ${unitChecked})::float8 as mean_mean,
-        avg(r.median_value_once) filter (where ${unitChecked})::float8 as mean_median,
-        avg(r.min_value_once) filter (where ${unitChecked})::float8 as mean_min,
-        avg(r.max_value_once) filter (where ${unitChecked})::float8 as mean_max,
-        count(*) filter (where coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
-          and ${unitChecked})::int as numeric_count,
         bool_or(${recordContestedSql(visibility, sql`r.id`)}) as contested
-      from ${summaryRecordsSql(
-        sql`r.species_id = ${speciesId}
-          and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}`,
-      )}
+      from trait_records r
       join traits t on t.id = r.trait_id
       join trait_categories c on c.key = t.category_key
       join species s on s.id = r.species_id
-      where ${traitVisible(visibility, sql`t.active`)}
+      where r.species_id = ${speciesId}
+        and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
+        and ${traitVisible(visibility, sql`t.active`)}
         and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
+    // Only quantitative traits hold numbers; an invisible trait never reaches `summaryOf`.
+    db.execute(sql`
+      select r.trait_id, r.summary_unit as unit,
+        avg(r.numeric_value)::float8 as single, avg(r.mean_value_once)::float8 as mean,
+        avg(r.median_value_once)::float8 as median, avg(r.min_value_once)::float8 as min,
+        avg(r.max_value_once)::float8 as max, count(*)::int as count
+      from ${summaryRecordsSql(
+        sql`r.species_id = ${speciesId}
+          and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
+          and ${numericSql}`,
+      )}
+      group by r.trait_id, r.summary_unit
+      order by count desc, unit asc nulls last`) as unknown as Promise<NumericAggregate[]>,
     db.execute(sql`
       select r.trait_id, l.id as level_id, l.key as level_key, count(*)::int as count,
         (select count(distinct va.actor_id) from record_annotations va
@@ -157,6 +177,17 @@ export async function speciesTraitSummary(
       },
     ]);
   }
+  const numericByTrait = new Map<string, NonNullable<TraitSummary['numeric']>>();
+  for (const n of numerics) {
+    numericByTrait.set(n.trait_id, [
+      ...(numericByTrait.get(n.trait_id) ?? []),
+      {
+        unit: n.unit,
+        means: { single: n.single, mean: n.mean, median: n.median, min: n.min, max: n.max },
+        count: n.count,
+      },
+    ]);
+  }
   const validatedTraits = new Set(validated.map((v) => v.trait_id));
   const summaryOf = (
     trait: TraitSummary['trait'],
@@ -174,19 +205,7 @@ export async function speciesTraitSummary(
         empty: row?.empty ?? 0,
       },
       levels: quantitative ? null : (levelsByTrait.get(trait.id) ?? []),
-      numeric:
-        quantitative && row !== undefined && row.numeric_count > 0
-          ? {
-              means: {
-                single: row.mean_single,
-                mean: row.mean_mean,
-                median: row.mean_median,
-                min: row.mean_min,
-                max: row.mean_max,
-              },
-              count: row.numeric_count,
-            }
-          : null,
+      numeric: (quantitative && numericByTrait.get(trait.id)) || null,
       validated: validatedTraits.has(trait.id),
       contested: row?.contested ?? false,
     };

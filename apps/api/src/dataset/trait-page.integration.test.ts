@@ -23,8 +23,8 @@ import { getTraitDetail, listTraitSpecies } from './trait-page.ts';
 
 /** Both viewer classes of RFC-62 R7's distribution cache, for a `finally`. */
 const cacheKeys = (traitId: string) => [
-  `trait:${traitId}:distribution:v3:u`,
-  `trait:${traitId}:distribution:v3:r`,
+  `trait:${traitId}:distribution:v4:u`,
+  `trait:${traitId}:distribution:v4:r`,
 ];
 
 type Actor = { id: string };
@@ -100,6 +100,48 @@ async function repeatedStudySummary(db: DbExecutor, traitId: string, speciesId: 
     minValue: 18,
     maxValue: 22,
   });
+}
+
+/**
+ * A colour-like trait in `rgb_0_255` and its records in three units (issue
+ * #258): species `a` has 100 with no unit (the trait's), 200 in `rgb_0_255`
+ * and 0.2 in `proportion_0_1`; `b` 50 and `e` 100 in `rgb_0_255`; `c` 0.6 in
+ * `proportion_0_1`; `d` 4 in `munsell_value` whose unit needs checking.
+ */
+async function mixedUnits(db: DbExecutor) {
+  const trait = await createTrait(db, { valueType: 'quantitative', unit: 'rgb_0_255' });
+  const [a, b, c, d, e] = [
+    await createSpecies(db),
+    await createSpecies(db),
+    await createSpecies(db),
+    await createSpecies(db),
+    await createSpecies(db),
+  ];
+  const imported = {
+    traitId: trait.id,
+    primaryReferenceId: (await createReference(db)).id,
+    importBatchId: (await createImportBatch(db)).id,
+  };
+  const rows: [string, number, string | undefined, boolean?][] = [
+    [a.id, 100, undefined],
+    [a.id, 200, 'rgb_0_255'],
+    [a.id, 0.2, 'proportion_0_1'],
+    [b.id, 50, 'rgb_0_255'],
+    [e.id, 100, 'rgb_0_255'],
+    [c.id, 0.6, 'proportion_0_1'],
+    [d.id, 4, 'munsell_value', true],
+  ];
+  for (const [speciesId, v, unit, unchecked] of rows) {
+    await createRecord(db, {
+      ...imported,
+      speciesId,
+      valueText: String(v),
+      numericValue: v,
+      unit,
+      unitStatus: unchecked ? 'needs_unit_check' : undefined,
+    });
+  }
+  return { trait, a };
 }
 
 describe('RFC-62 R7 getTraitDetail', () => {
@@ -368,10 +410,13 @@ describe('RFC-62 R7 getTraitDetail', () => {
     try {
       const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(detail?.distribution).toEqual({
-        numeric: {
-          means: { single: 3, mean: null, median: null, min: null, max: null },
-          speciesCount: 3,
-        },
+        numeric: [
+          {
+            unit: 'mm',
+            means: { single: 3, mean: null, median: null, min: null, max: null },
+            speciesCount: 3,
+          },
+        ],
       });
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
@@ -404,10 +449,13 @@ describe('RFC-62 R7 getTraitDetail', () => {
     try {
       const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(detail?.distribution).toEqual({
-        numeric: {
-          means: { single: 2, mean: null, median: null, min: null, max: null },
-          speciesCount: 1,
-        },
+        numeric: [
+          {
+            unit: 'mm',
+            means: { single: 2, mean: null, median: null, min: null, max: null },
+            speciesCount: 1,
+          },
+        ],
       });
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
@@ -453,7 +501,13 @@ describe('RFC-62 R7 getTraitDetail', () => {
     try {
       const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(detail?.distribution).toEqual({
-        numeric: { means: { single: 2, mean: 4, median: null, min: 0.5, max: 9 }, speciesCount: 3 },
+        numeric: [
+          {
+            unit: 'mm',
+            means: { single: 2, mean: 4, median: null, min: 0.5, max: 9 },
+            speciesCount: 3,
+          },
+        ],
       });
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
@@ -497,16 +551,19 @@ describe('RFC-62 R7 getTraitDetail', () => {
     try {
       const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(detail?.distribution).toEqual({
-        numeric: {
-          means: {
-            single: null,
-            mean: 4,
-            median: expect.closeTo((30 + 0.1 + 50) / 3, 10),
-            min: null,
-            max: null,
+        numeric: [
+          {
+            unit: 'mm',
+            means: {
+              single: null,
+              mean: 4,
+              median: expect.closeTo((30 + 0.1 + 50) / 3, 10),
+              min: null,
+              max: null,
+            },
+            speciesCount: 3,
           },
-          speciesCount: 3,
-        },
+        ],
       });
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
@@ -540,10 +597,13 @@ describe('RFC-62 R7 getTraitDetail', () => {
     try {
       const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(detail?.distribution).toEqual({
-        numeric: {
-          means: { single: null, mean: null, median: null, min: 1.25, max: 10.5 },
-          speciesCount: 2,
-        },
+        numeric: [
+          {
+            unit: 'mm',
+            means: { single: null, mean: null, median: null, min: 1.25, max: 10.5 },
+            speciesCount: 2,
+          },
+        ],
       });
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
@@ -581,10 +641,13 @@ describe('RFC-62 R7 getTraitDetail', () => {
       const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       // (mean(1, 3) + 10) / 2 = 6, not (1 + 3 + 10) / 3.
       expect(detail?.distribution).toEqual({
-        numeric: {
-          means: { single: 6, mean: null, median: null, min: null, max: null },
-          speciesCount: 2,
-        },
+        numeric: [
+          {
+            unit: 'mm',
+            means: { single: 6, mean: null, median: null, min: null, max: null },
+            speciesCount: 2,
+          },
+        ],
       });
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
@@ -611,10 +674,37 @@ describe('RFC-62 R7 getTraitDetail', () => {
       const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       // mean: (16 + 4) / 2 = 10, not (14 + 4) / 2 = 9.
       expect(detail?.distribution).toEqual({
-        numeric: {
-          means: { single: 8, mean: 10, median: 9, min: 8, max: 12 },
-          speciesCount: 2,
-        },
+        numeric: [
+          {
+            unit: 'mm',
+            means: { single: 8, mean: 10, median: 9, min: 8, max: 12 },
+            speciesCount: 2,
+          },
+        ],
+      });
+    } finally {
+      await forgetCached(redis, ...cacheKeys(trait.id));
+    }
+  });
+
+  it('RFC-62 R7 summarises each unit on its own, never averaging across units (issue #258)', async () => {
+    const { trait } = await mixedUnits(t.db);
+    try {
+      const detail = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
+      const means = (single: number) => ({
+        single,
+        mean: null,
+        median: null,
+        min: null,
+        max: null,
+      });
+      // rgb: species a (100 with no unit, 200) = 150, b 50, e 100 -> 100 over 3 species;
+      // proportion: a 0.2, c 0.6 -> 0.4 over 2; munsell needs a unit check.
+      expect(detail?.distribution).toEqual({
+        numeric: [
+          { unit: 'rgb_0_255', means: means(100), speciesCount: 3 },
+          { unit: 'proportion_0_1', means: means(expect.closeTo(0.4, 10)), speciesCount: 2 },
+        ],
       });
     } finally {
       await forgetCached(redis, ...cacheKeys(trait.id));
@@ -639,7 +729,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
       const second = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(second?.computedAt).toBe(first?.computedAt);
 
-      await forgetCached(redis, `trait:${trait.id}:distribution:v3:u`);
+      await forgetCached(redis, `trait:${trait.id}:distribution:v4:u`);
       const third = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(third?.computedAt).not.toBe(first?.computedAt);
     } finally {
@@ -846,7 +936,9 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       recordCount: 2,
       validated: false,
       summary: {
-        numeric: { means: { single: 4.5, mean: null, median: null, min: null, max: null } },
+        numeric: [
+          { unit: 'mm', means: { single: 4.5, mean: null, median: null, min: null, max: null } },
+        ],
       },
     });
   });
@@ -864,7 +956,30 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       id: one.id,
       recordCount: 4,
       summary: {
-        numeric: { means: { single: 11, mean: 16, median: 15, min: 14, max: 18 } },
+        numeric: [{ unit: 'mm', means: { single: 11, mean: 16, median: 15, min: 14, max: 18 } }],
+      },
+    });
+  });
+
+  it('RFC-62 R8 summarises a species once per unit, never across units (issue #258)', async () => {
+    const { trait, a } = await mixedUnits(t.db);
+    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+      mode: 'with',
+      limit: 50,
+    });
+    expect(data.find((s) => s.id === a.id)).toMatchObject({
+      recordCount: 3,
+      summary: {
+        numeric: [
+          {
+            unit: 'rgb_0_255',
+            means: { single: 150, mean: null, median: null, min: null, max: null },
+          },
+          {
+            unit: 'proportion_0_1',
+            means: { single: 0.2, mean: null, median: null, min: null, max: null },
+          },
+        ],
       },
     });
   });
@@ -900,7 +1015,9 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       id: one.id,
       recordCount: 2,
       summary: {
-        numeric: { means: { single: 2, mean: null, median: null, min: null, max: null } },
+        numeric: [
+          { unit: 'mm', means: { single: 2, mean: null, median: null, min: null, max: null } },
+        ],
       },
     });
   });
@@ -927,7 +1044,11 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     expect(data[0]).toMatchObject({
       id: one.id,
       recordCount: 1,
-      summary: { numeric: { means: { single: null, mean: null, median: null, min: 0.8, max: 4 } } },
+      summary: {
+        numeric: [
+          { unit: 'mm', means: { single: null, mean: null, median: null, min: 0.8, max: 4 } },
+        ],
+      },
     });
   });
 
@@ -951,7 +1072,9 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     expect(data[0]).toMatchObject({
       id: one.id,
       summary: {
-        numeric: { means: { single: null, mean: null, median: 6, min: null, max: null } },
+        numeric: [
+          { unit: 'mm', means: { single: null, mean: null, median: 6, min: null, max: null } },
+        ],
       },
     });
   });

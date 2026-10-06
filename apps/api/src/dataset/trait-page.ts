@@ -25,7 +25,7 @@ const DISTRIBUTION_TTL_SECONDS = 600;
 
 /** One cache entry per trait and viewer class (RFC-62 R7). */
 const distributionKey = (traitId: string, visibility: Visibility) =>
-  `trait:${traitId}:distribution:v3:${visibility.inactive ? 'u' : 'r'}`;
+  `trait:${traitId}:distribution:v4:${visibility.inactive ? 'u' : 'r'}`;
 
 type Distribution = TraitDetail['distribution'];
 
@@ -46,6 +46,7 @@ interface FieldMeansRow {
 }
 
 interface NumericRow extends FieldMeansRow {
+  unit: string | null;
   species_count: number;
 }
 
@@ -64,6 +65,8 @@ const fieldMeansOf = (r: FieldMeansRow): FieldMeans => ({
  * taken per species first so every species weighs the same; a species
  * without the field stays out of that mean, and a summary field repeated by
  * one study counts once within its species ({@link summaryRecordsSql}, RFC-62 R7).
+ * Each effective unit is summarised on its own, most species first, so
+ * numbers in different units are never averaged together.
  * Plot-blind like every other number of the trait header — see
  * {@link globalSpeciesVisible}.
  */
@@ -74,9 +77,9 @@ async function computeDistribution(
   valueType: 'categorical' | 'quantitative',
 ): Promise<Distribution> {
   if (valueType === 'quantitative') {
-    const [row] = (await db.execute(sql`
+    const rows = (await db.execute(sql`
       with per_species as (
-        select avg(r.numeric_value) as single, avg(r.mean_value_once) as mean,
+        select r.summary_unit as unit, avg(r.numeric_value) as single, avg(r.mean_value_once) as mean,
           avg(r.median_value_once) as median, avg(r.min_value_once) as min,
           avg(r.max_value_once) as max
         from ${summaryRecordsSql(sql`r.trait_id = ${traitId}::uuid
@@ -86,15 +89,23 @@ async function computeDistribution(
           and ${liveSql(sql`r.id`)}`)}
         join species s on s.id = r.species_id
         where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
-        group by r.species_id
+        group by r.species_id, r.summary_unit
       )
-      select avg(single)::float8 as single, avg(mean)::float8 as mean,
+      select unit, avg(single)::float8 as single, avg(mean)::float8 as mean,
         avg(median)::float8 as median, avg(min)::float8 as min, avg(max)::float8 as max,
         count(*)::int as species_count
       from per_species
+      group by unit
+      order by species_count desc, unit asc nulls last
     `)) as unknown as NumericRow[];
-    if (!row || row.species_count === 0) return { numeric: null };
-    return { numeric: { means: fieldMeansOf(row), speciesCount: row.species_count } };
+    if (rows.length === 0) return { numeric: null };
+    return {
+      numeric: rows.map((r) => ({
+        unit: r.unit,
+        means: fieldMeansOf(r),
+        speciesCount: r.species_count,
+      })),
+    };
   }
   // An inactive level is invisible to a restricted viewer (RFC-33 R2), so its
   // records leave that viewer's distribution with it; the two viewer classes
@@ -224,6 +235,7 @@ interface SpeciesLevelRow {
 
 interface SpeciesNumericRow extends FieldMeansRow {
   species_id: string;
+  unit: string | null;
   record_count: number;
 }
 
@@ -264,7 +276,7 @@ async function enrich(
   if (valueType === 'quantitative') {
     const [rows, result] = await Promise.all([
       db.execute(sql`
-        select r.species_id, count(*)::int as record_count,
+        select r.species_id, r.summary_unit as unit, count(*)::int as record_count,
           avg(r.numeric_value) filter (where ${unitChecked})::float8 as single,
           avg(r.mean_value_once) filter (where ${unitChecked})::float8 as mean,
           avg(r.median_value_once) filter (where ${unitChecked})::float8 as median,
@@ -273,20 +285,26 @@ async function enrich(
         from ${summaryRecordsSql(sql`r.trait_id = ${traitId}::uuid
           and r.species_id = any(${sql.param(ids)}::uuid[])
           and ${liveSql(sql`r.id`)}`)}
-        group by r.species_id
+        group by r.species_id, r.summary_unit
+        order by count(*) filter (where ${unitChecked}
+            and coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null) desc,
+          unit asc nulls last
       `) as unknown as Promise<SpeciesNumericRow[]>,
       validatedRows,
     ]);
     validatedRowsResult = result;
+    // One row per species and unit, most numbers first: the counts add up,
+    // and a unit with no mean to show leaves the summary.
+    const numeric = new Map<string, { unit: string | null; means: FieldMeans }[]>();
     for (const r of rows) {
-      recordCount.set(r.species_id, r.record_count);
-      summary.set(
-        r.species_id,
-        [r.single, r.mean, r.median, r.min, r.max].every((v) => v === null)
-          ? null
-          : { numeric: { means: fieldMeansOf(r) } },
-      );
+      recordCount.set(r.species_id, (recordCount.get(r.species_id) ?? 0) + r.record_count);
+      if ([r.single, r.mean, r.median, r.min, r.max].every((v) => v === null)) continue;
+      numeric.set(r.species_id, [
+        ...(numeric.get(r.species_id) ?? []),
+        { unit: r.unit, means: fieldMeansOf(r) },
+      ]);
     }
+    for (const [speciesId, entries] of numeric) summary.set(speciesId, { numeric: entries });
   } else {
     const [rows, result] = await Promise.all([
       db.execute(sql`

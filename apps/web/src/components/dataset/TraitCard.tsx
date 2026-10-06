@@ -40,7 +40,7 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
  * records, naming the trait, its unit and record count, what still waits for
  * harmonisation, a **Contested** badge while any of its levels or records is
  * contested (R-9), and — for a measurement — the mean of each value field
- * that has one (RFC-63 R10). Below it, outside the
+ * that has one, one line per unit, each value in its own unit (RFC-63 R10). Below it, outside the
  * button so no control nests in another, a categorical trait lists **every**
  * level the species has (spec §2; no cap): its record count, its validations
  * (✓ n), a bar scaled against the most frequent level, its own **Contested**
@@ -101,8 +101,12 @@ export function TraitCard({
             </span>
           </span>
           {numeric ? (
-            <span className="text-body tabular-nums text-canopy-900">
-              {fieldMeansText(numeric.means, trait.unit)}
+            <span className="flex flex-col gap-0.5">
+              {numeric.map((entry) => (
+                <span key={entry.unit ?? ''} className="text-body tabular-nums text-canopy-900">
+                  {fieldMeansText(entry.means, entry.unit)}
+                </span>
+              ))}
             </span>
           ) : null}
         </button>

@@ -34,12 +34,8 @@ function renderInRouter(ui: ReactElement) {
 }
 
 /** Mounts the table and waits for the router to put it on the page. */
-async function renderTable(
-  items: TraitSpeciesItem[],
-  mode: TraitSpeciesMode,
-  unit: string | null = null,
-) {
-  const utils = renderInRouter(<TraitSpeciesTable items={items} mode={mode} unit={unit} />);
+async function renderTable(items: TraitSpeciesItem[], mode: TraitSpeciesMode) {
+  const utils = renderInRouter(<TraitSpeciesTable items={items} mode={mode} />);
   return { ...utils, rows: await screen.findAllByRole('row') };
 }
 
@@ -64,29 +60,58 @@ describe('RFC-62 R8 TraitSpeciesTable in `with` mode', () => {
   });
 
   it('dashes the family when there is none', async () => {
-    const { rows } = await renderTable(
-      [{ ...TRAIT_SPECIES_UNDECIDED, family: null }],
-      'with',
-      'mg',
-    );
+    const { rows } = await renderTable([{ ...TRAIT_SPECIES_UNDECIDED, family: null }], 'with');
     const row = cells(rows[1] as HTMLElement);
     expect(row[1]).toHaveTextContent('—');
     expect(row).toHaveLength(3);
   });
 
-  it('RFC-62 R8 names each field mean with the trait unit, and reads it bare without one (issue #234)', async () => {
-    const first = await renderTable([TRAIT_SPECIES_UNDECIDED], 'with', 'mg');
+  it('RFC-62 R8 names each field mean with its unit, and reads it bare without one (issues #234, #258)', async () => {
+    const first = await renderTable([TRAIT_SPECIES_UNDECIDED], 'with');
     expect(cells(first.rows[1] as HTMLElement)[2]).toHaveTextContent(
       'mean of min 0.5 mg · mean of max 3 mg',
     );
     first.unmount();
 
-    const second = await renderTable([TRAIT_SPECIES_UNDECIDED], 'with');
+    const second = await renderTable(
+      [
+        {
+          ...TRAIT_SPECIES_UNDECIDED,
+          summary: {
+            numeric: [
+              { unit: null, means: { single: null, mean: null, median: null, min: 0.5, max: 3 } },
+            ],
+          },
+        },
+      ],
+      'with',
+    );
     // The count and the summary are stacked spans, so the cell's own text is
     // the two run together: one record, then its means in nothing named.
     expect(cells(second.rows[1] as HTMLElement)[2]?.textContent).toBe(
       '1mean of min 0.5 · mean of max 3',
     );
+  });
+
+  it('RFC-62 R8 puts each unit on a line of its own, never averaged together (issue #258)', async () => {
+    const only = { single: null, mean: null, median: null, min: null, max: null };
+    const { rows } = await renderTable(
+      [
+        {
+          ...TRAIT_SPECIES_UNDECIDED,
+          summary: {
+            numeric: [
+              { unit: 'rgb_0_255', means: { ...only, single: 150 } },
+              { unit: 'proportion_0_1', means: { ...only, single: 0.2 } },
+            ],
+          },
+        },
+      ],
+      'with',
+    );
+    const cell = cells(rows[1] as HTMLElement)[2] as HTMLElement;
+    expect(within(cell).getByText('mean of single values 150 rgb_0_255')).toBeInTheDocument();
+    expect(within(cell).getByText('mean of single values 0.2 proportion_0_1')).toBeInTheDocument();
   });
 
   it('counts and summaries are nullable on their own: neither hides the other', async () => {

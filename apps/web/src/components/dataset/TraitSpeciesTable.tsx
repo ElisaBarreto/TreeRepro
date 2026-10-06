@@ -6,16 +6,19 @@ import { Badge, ButtonLink, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.
 const DASH = <span className="text-mist-500">—</span>;
 const LINK = 'font-medium italic text-canopy-900 underline-offset-2 hover:underline';
 
-// The species' own records on this trait in one line: the levels it has
-// values on with their counts, or the mean of each of its value fields.
-function summaryText(item: TraitSpeciesItem, unit: string | null): string | null {
-  if (item.summary === null) return null;
+// The species' own records on this trait: one line of the levels it has
+// values on with their counts, or one line per unit of the mean of each of
+// its value fields, each value in its own unit.
+function summaryLines(item: TraitSpeciesItem): string[] {
+  if (item.summary === null) return [];
   if ('levels' in item.summary) {
-    return item.summary.levels
-      .map((level) => `${humaniseKey(level.key)} ${formatNumber(level.count)}`)
-      .join(' · ');
+    return [
+      item.summary.levels
+        .map((level) => `${humaniseKey(level.key)} ${formatNumber(level.count)}`)
+        .join(' · '),
+    ];
   }
-  return fieldMeansText(item.summary.numeric.means, unit);
+  return item.summary.numeric.map((entry) => fieldMeansText(entry.means, entry.unit));
 }
 
 /**
@@ -30,12 +33,9 @@ function summaryText(item: TraitSpeciesItem, unit: string | null): string | null
 export function TraitSpeciesTable({
   items,
   mode,
-  unit,
 }: {
   items: TraitSpeciesItem[];
   mode: TraitSpeciesMode;
-  /** The trait's unit, for the numeric summaries that carry one. */
-  unit: string | null;
 }) {
   const withData = mode === 'with';
   return (
@@ -55,7 +55,7 @@ export function TraitSpeciesTable({
       </Thead>
       <Tbody>
         {items.map((item) => {
-          const summary = summaryText(item, unit);
+          const summary = summaryLines(item);
           return (
             <Tr key={item.id}>
               <Td>
@@ -74,9 +74,11 @@ export function TraitSpeciesTable({
                       summarise records it has no count for. */}
                   <span className="flex flex-col gap-0.5">
                     <span>{item.recordCount === null ? DASH : formatNumber(item.recordCount)}</span>
-                    {summary === null ? null : (
-                      <span className="text-meta text-mist-500">{summary}</span>
-                    )}
+                    {summary.map((line) => (
+                      <span key={line} className="text-meta text-mist-500">
+                        {line}
+                      </span>
+                    ))}
                   </span>
                 </Td>
               ) : (

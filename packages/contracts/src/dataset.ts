@@ -334,7 +334,9 @@ export const dictionarySchema = z.array(
 /**
  * A quantitative summary: the mean of each value field on its own — `single`
  * is the stored `numeric_value` — or `null` when no record holds the field.
- * The fields are never pooled, and sd, se and n never enter.
+ * The fields are never pooled, and sd, se and n never enter. Every summary
+ * holds one such entry per effective unit — the records' own `unit`, else the
+ * trait's — so numbers in different units are never averaged together.
  * @rfc RFC-62 R7, R8
  * @rfc RFC-63 R10
  */
@@ -352,7 +354,7 @@ export type FieldMeans = z.infer<typeof fieldMeansSchema>;
  * counted with and without a value, the count of species with a validated
  * record, and the distribution over harmonised records — `levels` for a
  * categorical trait, `numeric` (nullable, no harmonised records yet) for a
- * quantitative one.
+ * quantitative one, one entry per effective unit.
  * @rfc RFC-62 R7
  */
 export const traitDetailSchema = traitSchema.extend({
@@ -372,7 +374,13 @@ export const traitDetailSchema = traitSchema.extend({
     }),
     z.strictObject({
       numeric: z
-        .strictObject({ means: fieldMeansSchema, speciesCount: z.number().int().nonnegative() })
+        .array(
+          z.strictObject({
+            unit: z.string().nullable(),
+            means: fieldMeansSchema,
+            speciesCount: z.number().int().nonnegative(),
+          }),
+        )
         .nullable(),
     }),
   ]),
@@ -410,7 +418,9 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
       z.strictObject({
         levels: z.array(z.strictObject({ key: z.string(), count: z.number().int().nonnegative() })),
       }),
-      z.strictObject({ numeric: z.strictObject({ means: fieldMeansSchema }) }),
+      z.strictObject({
+        numeric: z.array(z.strictObject({ unit: z.string().nullable(), means: fieldMeansSchema })),
+      }),
     ])
     .nullable(),
 });
@@ -619,8 +629,15 @@ export const traitSummarySchema = z.strictObject({
       }),
     )
     .nullable(),
+  /** One entry per effective unit, `count` descending then unit (RFC-63 R10). */
   numeric: z
-    .strictObject({ means: fieldMeansSchema, count: z.number().int().nonnegative() })
+    .array(
+      z.strictObject({
+        unit: z.string().nullable(),
+        means: fieldMeansSchema,
+        count: z.number().int().nonnegative(),
+      }),
+    )
     .nullable(),
   /** At least one of the species' records on the trait is validated (spec R-1). */
   validated: z.boolean(),
