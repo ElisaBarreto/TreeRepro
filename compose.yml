@@ -31,6 +31,22 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/db_superuser_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    # Query observability (docs/gotchas/postgres.md "Finding slow queries"):
+    # statements over 500 ms go to the container log without their bind
+    # values (they may carry personal data, RFC-02 R7); pg_stat_statements
+    # keeps normalised per-query totals.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_lock_waits=on
+      - -c
+      - track_io_timing=on
     secrets: [db_superuser_password, db_app_password, db_migrator_password, db_backup_password]
     volumes:
       - postgres-data:/var/lib/postgresql
