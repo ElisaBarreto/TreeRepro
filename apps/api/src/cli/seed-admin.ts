@@ -47,7 +47,7 @@ const ctx: AuthContext = {
   sessions: createSessionStore(redis, sessionSecret),
   mfa: createMfaStore(redis, sessionSecret),
   limiter: createRateLimiter(redis),
-  mailer: createMailer(createSmtpTransport(config.smtp), config.smtp.from),
+  mailer: createMailer(createSmtpTransport(config.smtp), config.smtp.from, config.smtp.replyTo),
   breachChecker: createHibpChecker({ logger }),
   permissionCache: createPermissionCache(redis),
   logger,

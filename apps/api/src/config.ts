@@ -61,6 +61,12 @@ const envSchema = z.object({
       const user = v?.trim();
       return user || undefined;
     }),
+  // RFC-10 R5: the Reply-To of every e-mail; unset sends none.
+  SMTP_REPLY_TO: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || undefined)
+    .pipe(z.string().email().optional()),
   DOI_CONTACT_EMAIL: z
     .string()
     .optional()
@@ -127,6 +133,8 @@ export interface SmtpSettings {
   /** Implicit TLS (port 465). Otherwise STARTTLS is attempted. */
   secure: boolean;
   from: string;
+  /** `SMTP_REPLY_TO`: the `Reply-To` of every e-mail. */
+  replyTo?: string;
   user?: string;
   password?: Secret<string>;
 }
@@ -239,6 +247,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     secure: e.SMTP_SECURE,
     from: e.SMTP_FROM,
   };
+  if (e.SMTP_REPLY_TO) smtp.replyTo = e.SMTP_REPLY_TO;
   if (e.SMTP_USER) {
     smtp.user = e.SMTP_USER;
     smtp.password = new Secret(readSecret(e.SECRETS_DIR, 'smtp_password'));

@@ -33,7 +33,11 @@ const sessionSecret = config.sessionSecret.expose();
 const sessions = createSessionStore(redis, sessionSecret);
 const mfa = createMfaStore(redis, sessionSecret);
 const limiter = createRateLimiter(redis);
-const mailer = createMailer(createSmtpTransport(config.smtp), config.smtp.from);
+const mailer = createMailer(
+  createSmtpTransport(config.smtp),
+  config.smtp.from,
+  config.smtp.replyTo,
+);
 const breachChecker = createHibpChecker({ logger });
 const permissionCache = createPermissionCache(redis);
 const doi = createDoiClient({ contactEmail: config.doiContactEmail, version: APP_VERSION });
