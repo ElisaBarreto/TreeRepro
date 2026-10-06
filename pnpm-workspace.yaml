@@ -17,3 +17,6 @@ overrides:
 # Mirrors Dependabot's cooldown in .github/dependabot.yml. Exclude a package only
 # for an urgent security patch, and remove the exclusion afterwards.
 minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  # CVE-2026-93749 (HIGH), issue #264. Remove after 2026-10-07 14:08 UTC, when 1.2.2 is 7 days old.
+  - source-map-js@1.2.2
