@@ -274,6 +274,15 @@ describe('RFC-10 R5 SMTP settings', () => {
     expect(config.smtp.password).toBeUndefined();
   });
 
+  it('reads an optional SMTP_REPLY_TO address; empty is unset, an invalid one is refused', () => {
+    expect(loadConfig(env({ SMTP_REPLY_TO: ' owner@example.test ' })).smtp.replyTo).toBe(
+      'owner@example.test',
+    );
+    expect(loadConfig(env({ SMTP_REPLY_TO: '' })).smtp.replyTo).toBeUndefined();
+    expect(loadConfig(env({})).smtp.replyTo).toBeUndefined();
+    expect(() => loadConfig(env({ SMTP_REPLY_TO: 'not-an-email' }))).toThrow(/SMTP_REPLY_TO/);
+  });
+
   it('fails without SMTP_HOST or SMTP_FROM, naming the field', () => {
     expect(() => loadConfig(env({ SMTP_HOST: undefined }))).toThrow(/SMTP_HOST/);
   });

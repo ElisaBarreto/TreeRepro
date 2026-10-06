@@ -46,6 +46,25 @@ describe('RFC-10 R5 SMTP mailer', () => {
     expect(raw.indexOf('text/plain')).toBeLessThan(raw.indexOf('text/html'));
   });
 
+  it('sets the configured Reply-To on every message, and none when unset', async () => {
+    const transport = nodemailer.createTransport({
+      streamTransport: true,
+      buffer: true,
+      newline: 'unix',
+    });
+    const spy = vi.spyOn(transport, 'sendMail');
+    const message = { to: 'ada@example.test', subject: 's', text: 't', html: 'h' };
+    await createMailer(transport, 'no-reply@localhost', 'owner@example.test').send(message);
+    await createMailer(transport, 'no-reply@localhost').send(message);
+    const raws = await Promise.all(
+      spy.mock.results.map(async (r) =>
+        ((await r.value) as { message: Buffer }).message.toString(),
+      ),
+    );
+    expect(raws[0]).toContain('Reply-To: owner@example.test');
+    expect(raws[1]).not.toContain('Reply-To:');
+  });
+
   it('propagates transport failures', async () => {
     const mailer = createMailer(
       { sendMail: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')) },

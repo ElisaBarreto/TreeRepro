@@ -36,12 +36,18 @@ export function createSmtpTransport(settings: SmtpSettings): Transporter {
  * @rfc RFC-20 R4
  * @rfc RFC-21 R5
  * @rfc RFC-10 R16
+ * @rfc RFC-10 R5
  */
-export function createMailer(transport: Pick<Transporter, 'sendMail'>, from: string): Mailer {
+export function createMailer(
+  transport: Pick<Transporter, 'sendMail'>,
+  from: string,
+  replyTo?: string,
+): Mailer {
   return {
     async send(message) {
       await transport.sendMail({
         from,
+        ...(replyTo ? { replyTo } : {}),
         to: message.to,
         subject: message.subject,
         text: message.text,
