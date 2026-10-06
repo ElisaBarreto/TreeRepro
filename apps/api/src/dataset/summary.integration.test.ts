@@ -108,16 +108,19 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       recordCount: 4,
       harmonisationCounts: { harmonised: 3, notNumeric: 1 },
       levels: null,
-      numeric: {
-        means: {
-          single: expect.closeTo(7 / 3, 10),
-          mean: null,
-          median: null,
-          min: null,
-          max: null,
+      numeric: [
+        {
+          unit: petal.unit,
+          means: {
+            single: expect.closeTo(7 / 3, 10),
+            mean: null,
+            median: null,
+            min: null,
+            max: null,
+          },
+          count: 3,
         },
-        count: 3,
-      },
+      ],
       validated: false,
     });
     // A withdrawn record is no longer a validated one (spec R-1).
@@ -153,10 +156,9 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
-    expect(numeric).toEqual({
-      means: { single: 5, mean: 4, median: null, min: 2, max: 8 },
-      count: 3,
-    });
+    expect(numeric).toEqual([
+      { unit: petal.unit, means: { single: 5, mean: 4, median: null, min: 2, max: 8 }, count: 3 },
+    ]);
   });
 
   it('RFC-63 R10 numeric: the median is its own field, averaged over the records that hold one (issues #232, #234)', async () => {
@@ -179,10 +181,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
-    expect(numeric).toEqual({
-      means: { single: 5, mean: 2, median: 60, min: null, max: null },
-      count: 3,
-    });
+    expect(numeric).toEqual([
+      {
+        unit: petal.unit,
+        means: { single: 5, mean: 2, median: 60, min: null, max: null },
+        count: 3,
+      },
+    ]);
   });
 
   it('RFC-63 R10 numeric: a study summary repeated on its measurement records counts once (issue #257)', async () => {
@@ -217,10 +222,56 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
     // mean (12 + 20) / 2 = 16, not (12 + 12 + 12 + 20) / 4 = 14; single keeps every measurement.
-    expect(numeric).toEqual({
-      means: { single: 11, mean: 16, median: 15, min: 14, max: 18 },
-      count: 4,
+    expect(numeric).toEqual([
+      { unit: petal.unit, means: { single: 11, mean: 16, median: 15, min: 14, max: 18 }, count: 4 },
+    ]);
+  });
+
+  it('RFC-63 R10 numeric: one entry per effective unit, never averaged across units (issue #258)', async () => {
+    const sp1 = await createSpecies(t.db);
+    const colour = await createTrait(t.db, { valueType: 'quantitative', unit: 'rgb_0_255' });
+    const ref = await createReference(t.db);
+    const imported = {
+      speciesId: sp1.id,
+      traitId: colour.id,
+      primaryReferenceId: ref.id,
+      importBatchId: (await createImportBatch(t.db)).id,
+    };
+    // No unit: the trait's. The same study mean in one unit counts once, in another on its own.
+    await createRecord(t.db, { ...imported, valueText: '200', numericValue: 200, meanValue: 1 });
+    for (const [v, unit] of [
+      [100, 'rgb_0_255'],
+      [60, 'rgb_0_255'],
+      [0.5, 'proportion_0_1'],
+      [0.3, 'proportion_0_1'],
+      [5, 'munsell_hue'],
+      [7, 'munsell_hue'],
+    ] as const) {
+      await createRecord(t.db, {
+        ...imported,
+        valueText: String(v),
+        numericValue: v,
+        meanValue: 1,
+        unit,
+      });
+    }
+    await createRecord(t.db, {
+      ...imported,
+      valueText: '550',
+      numericValue: 550,
+      unit: 'nm',
+      unitStatus: 'needs_unit_check',
     });
+    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
+    const numeric = summary
+      ?.flatMap((c) => c.traits)
+      .find((x) => x.trait.id === colour.id)?.numeric;
+    const means = (single: unknown) => ({ single, mean: 1, median: null, min: null, max: null });
+    expect(numeric).toEqual([
+      { unit: 'rgb_0_255', means: means(120), count: 3 },
+      { unit: 'munsell_hue', means: means(6), count: 2 },
+      { unit: 'proportion_0_1', means: means(expect.closeTo(0.4, 10)), count: 2 },
+    ]);
   });
 
   it('RFC-63 R10 a field no record holds is null: a range-only trait has only min and max', async () => {
@@ -240,7 +291,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     });
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     expect(summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric).toEqual(
-      { means: { single: null, mean: null, median: null, min: 1, max: 3 }, count: 1 },
+      [
+        {
+          unit: petal.unit,
+          means: { single: null, mean: null, median: null, min: 1, max: 3 },
+          count: 1,
+        },
+      ],
     );
   });
 
@@ -277,10 +334,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
 
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
-    expect(petalSummary?.numeric).toEqual({
-      means: { single: 10, mean: null, median: null, min: 4, max: null },
-      count: 2,
-    });
+    expect(petalSummary?.numeric).toEqual([
+      {
+        unit: petal.unit,
+        means: { single: 10, mean: null, median: null, min: 4, max: null },
+        count: 2,
+      },
+    ]);
     expect(petalSummary?.recordCount).toBe(3);
   });
 
@@ -304,10 +364,13 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
 
     const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
     const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
-    expect(petalSummary?.numeric).toEqual({
-      means: { single: 10, mean: null, median: null, min: null, max: null },
-      count: 1,
-    });
+    expect(petalSummary?.numeric).toEqual([
+      {
+        unit: petal.unit,
+        means: { single: 10, mean: null, median: null, min: null, max: null },
+        count: 1,
+      },
+    ]);
   });
 
   it('RFC-63 R10 answers a null numeric spread when the only harmonised record needs a unit check', async () => {
