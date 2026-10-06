@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { TraitDetail, TraitSpeciesMode } from '@treerepro/contracts';
-import { type ReactNode, useEffect, useId, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useId, useState } from 'react';
 import { datasetKeys, fetchTrait, fetchTraitSpecies } from '../../api/dataset.ts';
 import { mapAlt, mapsByTrait, useMaps } from '../../api/maps.ts';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
@@ -98,17 +98,57 @@ function Facts({ trait }: { trait: TraitDetail }) {
   );
 }
 
+type NumericEntries = NonNullable<
+  Extract<TraitDetail['distribution'], { numeric: unknown }>['numeric']
+>;
+
+// One list of field means per unit. A single unit reads as it always has; with
+// several, each list and its species count are named after their unit.
+function NumericDistribution({ numeric }: { numeric: NumericEntries }) {
+  const many = numeric.length > 1;
+  return (
+    <>
+      {numeric.map((entry) => {
+        const inUnit = many ? ` in ${entry.unit ?? 'no unit'}` : '';
+        return (
+          <Fragment key={entry.unit ?? ''}>
+            <ul aria-label={`Numeric distribution${inUnit}`} className="flex flex-wrap gap-2">
+              {fieldMeanParts(entry.means, entry.unit).map((figure) => (
+                <li key={figure.label}>
+                  <Chip>
+                    {figure.label} <span className="ml-1.5 font-semibold">{figure.value}</span>
+                  </Chip>
+                </li>
+              ))}
+            </ul>
+            {many ? (
+              <p className="text-meta text-mist-500">{`Across ${species(entry.speciesCount)}${inUnit}.`}</p>
+            ) : null}
+          </Fragment>
+        );
+      })}
+      <p className="text-meta text-mist-500">
+        Each species is averaged first, so every species weighs the same.{' '}
+        {many
+          ? 'Values in different units are never averaged together.'
+          : `Across ${species(numeric[0]?.speciesCount ?? 0)} with harmonised records.`}
+      </p>
+    </>
+  );
+}
+
 /**
  * How the trait's harmonised records fall: one chip per level for a
  * categorical trait, the mean of each value field for a quantitative one —
- * averaged per species first, which the section says (RFC-62 R7). Both shapes
+ * averaged per species first, which the section says, and one list per unit,
+ * each named after its unit once there are several (RFC-62 R7). Both shapes
  * can be empty — a categorical trait with no harmonised record has no level
  * to show, a quantitative one answers `numeric: null` — and then the section
  * says so rather than printing zeros, and says nothing about when a summary
  * that does not exist was computed.
  */
 function Distribution({ trait }: { trait: TraitDetail }) {
-  const { distribution, unit } = trait;
+  const { distribution } = trait;
   const counted =
     'levels' in distribution ? distribution.levels.length > 0 : distribution.numeric !== null;
   return (
@@ -132,21 +172,7 @@ function Distribution({ trait }: { trait: TraitDetail }) {
           <p className="text-body text-mist-500">{NO_RECORDS}</p>
         )
       ) : distribution.numeric !== null ? (
-        <>
-          <ul aria-label="Numeric distribution" className="flex flex-wrap gap-2">
-            {fieldMeanParts(distribution.numeric.means, unit).map((figure) => (
-              <li key={figure.label}>
-                <Chip>
-                  {figure.label} <span className="ml-1.5 font-semibold">{figure.value}</span>
-                </Chip>
-              </li>
-            ))}
-          </ul>
-          <p className="text-meta text-mist-500">
-            Each species is averaged first, so every species weighs the same. Across{' '}
-            {species(distribution.numeric.speciesCount)} with harmonised records.
-          </p>
-        </>
+        <NumericDistribution numeric={distribution.numeric} />
       ) : (
         <p className="text-body text-mist-500">{NO_RECORDS}</p>
       )}
@@ -318,9 +344,7 @@ function TraitSpecies({
             }
           />
         ) : null}
-        {list.items.length > 0 ? (
-          <TraitSpeciesTable items={list.items} mode={mode} unit={trait.unit} />
-        ) : null}
+        {list.items.length > 0 ? <TraitSpeciesTable items={list.items} mode={mode} /> : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
     </section>

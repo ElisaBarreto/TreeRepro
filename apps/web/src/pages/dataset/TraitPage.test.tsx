@@ -186,10 +186,13 @@ describe('RFC-62 R7 TraitPage distribution', () => {
     await openPage({
       ...SEED_MASS_DETAIL,
       distribution: {
-        numeric: {
-          means: { single: null, mean: null, median: null, min: 0.5, max: 3 },
-          speciesCount: 2,
-        },
+        numeric: [
+          {
+            unit: 'mg',
+            means: { single: null, mean: null, median: null, min: 0.5, max: 3 },
+            speciesCount: 2,
+          },
+        ],
       },
     });
     const spread = screen.getByRole('list', { name: 'Numeric distribution' });
@@ -198,6 +201,36 @@ describe('RFC-62 R7 TraitPage distribution', () => {
         .getAllByRole('listitem')
         .map((item) => item.textContent),
     ).toEqual(['mean of min 0.5 mg', 'mean of max 3 mg']);
+  });
+
+  it('RFC-62 R7 shows each unit on its own, with its species count, never averaged together (issue #258)', async () => {
+    const only = { single: null, mean: null, median: null, min: null, max: null };
+    await openPage({
+      ...SEED_MASS_DETAIL,
+      distribution: {
+        numeric: [
+          { unit: 'rgb_0_255', means: { ...only, single: 100 }, speciesCount: 3 },
+          { unit: 'proportion_0_1', means: { ...only, single: 0.4 }, speciesCount: 2 },
+        ],
+      },
+    });
+    const texts = (name: string) =>
+      within(screen.getByRole('list', { name }))
+        .getAllByRole('listitem')
+        .map((item) => item.textContent);
+    expect(texts('Numeric distribution in rgb_0_255')).toEqual([
+      'mean of single values 100 rgb_0_255',
+    ]);
+    expect(texts('Numeric distribution in proportion_0_1')).toEqual([
+      'mean of single values 0.4 proportion_0_1',
+    ]);
+    expect(screen.getByText('Across 3 species in rgb_0_255.')).toBeInTheDocument();
+    expect(screen.getByText('Across 2 species in proportion_0_1.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Each species is averaged first, so every species weighs the same. Values in different units are never averaged together.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('says so instead when no record has been harmonised yet, whatever the value type', async () => {

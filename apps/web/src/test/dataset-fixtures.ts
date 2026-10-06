@@ -140,10 +140,13 @@ export const SEED_MASS_SUMMARY: TraitSummary = {
   recordCount: 3,
   harmonisationCounts: { ...NO_PENDING, harmonised: 3 },
   levels: null,
-  numeric: {
-    means: { single: 1.25, mean: null, median: null, min: 0.5, max: 3 },
-    count: 3,
-  },
+  numeric: [
+    {
+      unit: 'mg',
+      means: { single: 1.25, mean: null, median: null, min: 0.5, max: 3 },
+      count: 3,
+    },
+  ],
   validated: false,
   contested: false,
 };
@@ -576,10 +579,13 @@ export const SEED_MASS_DETAIL: TraitDetail = {
   speciesMissing: 9,
   validatedCount: 1,
   distribution: {
-    numeric: {
-      means: { single: 1.25, mean: null, median: null, min: 0.5, max: 3 },
-      speciesCount: 3,
-    },
+    numeric: [
+      {
+        unit: 'mg',
+        means: { single: 1.25, mean: null, median: null, min: 0.5, max: 3 },
+        speciesCount: 3,
+      },
+    ],
   },
   computedAt: '2026-09-18T08:00:00.000Z',
 };
@@ -633,7 +639,7 @@ export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
   recordCount: 1,
   validated: false,
   summary: {
-    numeric: { means: { single: null, mean: null, median: null, min: 0.5, max: 3 } },
+    numeric: [{ unit: 'mg', means: { single: null, mean: null, median: null, min: 0.5, max: 3 } }],
   },
 };
 

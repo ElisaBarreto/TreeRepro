@@ -155,10 +155,13 @@ describe('RFC-63 R10 TraitCard', () => {
       <TraitCard
         summary={{
           ...SEED_MASS_SUMMARY,
-          numeric: {
-            means: { single: null, mean: null, median: null, min: 2, max: 8 },
-            count: 1,
-          },
+          numeric: [
+            {
+              unit: 'mg',
+              means: { single: null, mean: null, median: null, min: 2, max: 8 },
+              count: 1,
+            },
+          ],
         }}
         onOpen={() => {}}
       />,
@@ -166,6 +169,25 @@ describe('RFC-63 R10 TraitCard', () => {
     const card = screen.getByRole('button', { name: /seed mass/ });
     expect(within(card).getByText('mean of min 2 mg · mean of max 8 mg')).toBeInTheDocument();
     expect(card).not.toHaveTextContent('single');
+  });
+
+  it('RFC-63 R10 shows one line per unit, each value in its own unit, never averaged together (issue #258)', () => {
+    const only = { single: null, mean: null, median: null, min: null, max: null };
+    render(
+      <TraitCard
+        summary={{
+          ...SEED_MASS_SUMMARY,
+          numeric: [
+            { unit: 'rgb_0_255', means: { ...only, single: 120 }, count: 3 },
+            { unit: 'proportion_0_1', means: { ...only, single: 0.4 }, count: 2 },
+          ],
+        }}
+        onOpen={() => {}}
+      />,
+    );
+    const card = screen.getByRole('button', { name: /seed mass/ });
+    expect(within(card).getByText('mean of single values 120 rgb_0_255')).toBeInTheDocument();
+    expect(within(card).getByText('mean of single values 0.4 proportion_0_1')).toBeInTheDocument();
   });
 
   it('says "1 record" for a single record and calls onOpen when clicked', async () => {
