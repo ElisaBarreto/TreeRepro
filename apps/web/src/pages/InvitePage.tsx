@@ -10,7 +10,7 @@ export function inviteErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return GENERIC_MESSAGE;
   switch (error.code) {
     case 'AUTH_TOKEN_INVALID':
-      return 'This invitation is no longer valid. Ask an administrator to send a new one.';
+      return 'This invitation is no longer valid. Use Forgot password with the invited email, or ask an administrator to send a new invitation.';
     case 'RATE_LIMITED':
       return 'Too many attempts. Wait a moment and try again.';
     case 'NETWORK_ERROR':

@@ -100,7 +100,7 @@ export function UserPage({ id }: { id: string }) {
                 Resend invitation
               </Button>
             ) : null}
-            {canSuspend && u.status === 'active' ? (
+            {canSuspend && (u.status === 'active' || u.status === 'invited') ? (
               <Button variant="danger" onClick={() => setConfirming('suspend')}>
                 Suspend
               </Button>
@@ -129,7 +129,11 @@ export function UserPage({ id }: { id: string }) {
       {confirming === 'suspend' ? (
         <ConfirmDialog
           title={`Suspend ${u.name}?`}
-          message="Every session of this user ends at once and sign-in is refused until the account is reactivated."
+          message={
+            u.status === 'invited'
+              ? 'The invitation link stops working and the user cannot set a password until the account is reactivated and invited again.'
+              : 'Every session of this user ends at once and sign-in is refused until the account is reactivated.'
+          }
           confirmLabel="Suspend"
           danger
           pending={suspend.isPending}
@@ -144,7 +148,7 @@ export function UserPage({ id }: { id: string }) {
       {confirming === 'reactivate' ? (
         <ConfirmDialog
           title={`Reactivate ${u.name}?`}
-          message="The user can sign in again with the roles they had."
+          message="The user can sign in again with the roles they had. A user who never set a password goes back to invited and needs a new invitation."
           confirmLabel="Reactivate"
           pending={reactivate.isPending}
           error={reactivate.isError ? userErrorMessage(reactivate.error) : null}

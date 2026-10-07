@@ -71,6 +71,9 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
     const without = inviteEmail(base);
     expect(without.text).toContain('ask an administrator for a new invitation');
     expect(without.html).toContain('ask an administrator for a new invitation');
+    const forgot = `request a password reset for this address at ${ORIGIN}/forgot-password`;
+    expect(without.text).toContain(forgot);
+    expect(without.html).toContain(forgot);
   });
 
   it('the password reset links to the reset page and says to ignore it if not requested', () => {

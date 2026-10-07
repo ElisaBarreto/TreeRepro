@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { DbExecutor, DbTransaction } from '../db/client.ts';
 import { type AuthTokenKind, authTokens } from '../db/schema/auth-tokens.ts';
 
@@ -73,4 +73,25 @@ export async function consumeToken(
     )
     .returning({ userId: authTokens.userId });
   return row ?? null;
+}
+
+/**
+ * Spends every pending token of the given kinds for a user, so no link sent earlier works.
+ * @rfc RFC-21 R6
+ * @rfc RFC-50 R6
+ */
+export async function consumeUserTokens(
+  db: DbExecutor,
+  input: { userId: string; kinds: AuthTokenKind[]; now: Date },
+): Promise<void> {
+  await db
+    .update(authTokens)
+    .set({ consumedAt: input.now })
+    .where(
+      and(
+        eq(authTokens.userId, input.userId),
+        inArray(authTokens.kind, input.kinds),
+        isNull(authTokens.consumedAt),
+      ),
+    );
 }

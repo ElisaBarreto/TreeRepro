@@ -6,6 +6,7 @@ import { createPlot } from '../../test/helpers/dataset.ts';
 import { adminRoleId, createRole } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { consumeToken, issueToken } from '../auth/tokens.ts';
 import { findUserByEmail } from '../auth/users.ts';
 import { AppError } from '../http/errors.ts';
 import {
@@ -165,12 +166,25 @@ describe('RFC-50 R6, R7 suspendUser and reactivateUser', () => {
     );
   });
 
-  it('refuses to suspend an invited user and an unknown id', async () => {
+  it('suspends an invited user, killing the pending invitation; reactivation restores invited', async () => {
     const { user: admin } = await createUser(t.db);
     const { user } = await createUser(t.db, { status: 'invited', password: null });
-    expect(await code(suspendUser(ctxOf(t), { ...meta(admin.id), id: user.id }))).toBe(
-      'USER_INVALID_STATUS',
+    const invite = await t.db.transaction((tx) =>
+      issueToken(tx, { userId: user.id, kind: 'invite' }),
     );
+    const reset = await t.db.transaction((tx) =>
+      issueToken(tx, { userId: user.id, kind: 'password_reset' }),
+    );
+    const suspended = await suspendUser(ctxOf(t), { ...meta(admin.id), id: user.id });
+    expect(suspended.status).toBe('suspended');
+    expect(await consumeToken(t.db, { raw: invite.raw, kind: 'invite' })).toBeNull();
+    expect(await consumeToken(t.db, { raw: reset.raw, kind: 'password_reset' })).toBeNull();
+    const back = await reactivateUser(ctxOf(t), { ...meta(admin.id), id: user.id });
+    expect(back).toMatchObject({ status: 'invited', suspendedAt: null });
+  });
+
+  it('refuses to suspend an unknown id', async () => {
+    const { user: admin } = await createUser(t.db);
     expect(
       await code(
         suspendUser(ctxOf(t), { ...meta(admin.id), id: '019a0000-0000-7000-8000-000000000000' }),
