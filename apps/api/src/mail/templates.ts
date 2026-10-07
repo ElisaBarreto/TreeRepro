@@ -118,7 +118,7 @@ export function inviteEmail(input: {
   contactEmail?: string | undefined;
 }): MailContent {
   const expires = formatUtc(input.expiresAt);
-  const expiredLine = `If the link has expired, ask ${input.contactEmail ?? 'an administrator'} for a new invitation.`;
+  const expiredLine = `If the link has expired, request a password reset for this address at ${input.appOrigin}/forgot-password, or ask ${input.contactEmail ?? 'an administrator'} for a new invitation.`;
   return {
     subject: 'You have been invited to TreeRepro',
     text: [

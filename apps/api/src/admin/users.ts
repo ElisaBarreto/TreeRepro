@@ -5,6 +5,7 @@ import { recordAudit } from '../audit/audit.ts';
 import { revokeAllApiKeys } from '../auth/api-keys.ts';
 import type { AuthContext, RequestMeta } from '../auth/context.ts';
 import { inviteUser } from '../auth/flows/invitation.ts';
+import { consumeUserTokens } from '../auth/tokens.ts';
 import { findUserById, updateName } from '../auth/users.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { plots, userPlots } from '../db/schema/plots.ts';
@@ -262,8 +263,12 @@ export async function suspendUser(
 ): Promise<User> {
   const now = new Date(ctx.now());
   const user = await ctx.db.transaction(async (tx) => {
+    // Tokens before the user row, the order resetPassword locks them in, so the two never
+    // deadlock; a refusal below rolls this back.
+    await consumeUserTokens(tx, { userId: input.id, kinds: ['invite', 'password_reset'], now });
     const current = await lockUser(tx, input.id);
-    if (current.status !== 'active') throw invalidStatus('Only an active user can be suspended');
+    if (current.status !== 'active' && current.status !== 'invited')
+      throw invalidStatus('Only an active or invited user can be suspended');
     await assertNotLastAdmin(tx, current.id);
     const [row] = await tx
       .update(users)
@@ -306,7 +311,12 @@ export async function reactivateUser(
       throw invalidStatus('Only a suspended user can be reactivated');
     const [row] = await tx
       .update(users)
-      .set({ status: 'active', suspendedAt: null, updatedAt: now })
+      // Without a password the user can only come back through a new invitation (RFC-20 R2).
+      .set({
+        status: current.passwordHash === null ? 'invited' : 'active',
+        suspendedAt: null,
+        updatedAt: now,
+      })
       .where(eq(users.id, current.id))
       .returning();
     if (!row) throw notFound();

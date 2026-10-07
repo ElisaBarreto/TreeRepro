@@ -242,6 +242,17 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     expect(await screen.findByText('active')).toBeInTheDocument();
   });
 
+  it('RFC-50 R6 suspends an invited user, saying the invitation link stops working', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    admin.suspendUser.mockResolvedValueOnce({ ...INVITED_USER, status: 'suspended' });
+    await openUser(INVITED_USER);
+    await userEvent.click(screen.getByRole('button', { name: 'Suspend' }));
+    const dialog = screen.getByRole('dialog', { name: /^Suspend / });
+    expect(dialog).toHaveTextContent('The invitation link stops working');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Suspend' }));
+    expect(admin.suspendUser).toHaveBeenCalledWith(INVITED_USER.id);
+  });
+
   it('RFC-50 R8 resends the invitation only for an invited user; USER_INVALID_STATUS and MAIL_SEND_FAILED are mapped', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     admin.resendInvite
@@ -249,7 +260,6 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
       .mockRejectedValueOnce(new ApiError(409, 'USER_INVALID_STATUS', 'x'))
       .mockResolvedValueOnce(INVITED_USER);
     await openUser(INVITED_USER);
-    expect(screen.queryByRole('button', { name: 'Suspend' })).not.toBeInTheDocument();
     const button = screen.getByRole('button', { name: 'Resend invitation' });
     await userEvent.click(button);
     expect(await screen.findByRole('alert')).toHaveTextContent(

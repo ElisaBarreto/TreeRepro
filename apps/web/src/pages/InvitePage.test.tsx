@@ -42,7 +42,7 @@ describe('RFC-20 R6 InvitePage', () => {
     auth.acceptInvite.mockRejectedValueOnce(new ApiError(400, 'AUTH_TOKEN_INVALID', 'x'));
     await userEvent.click(screen.getByRole('button', { name: 'Set password and sign in' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'This invitation is no longer valid. Ask an administrator to send a new one.',
+      'This invitation is no longer valid. Use Forgot password with the invited email, or ask an administrator to send a new invitation.',
     );
 
     auth.acceptInvite.mockRejectedValueOnce(

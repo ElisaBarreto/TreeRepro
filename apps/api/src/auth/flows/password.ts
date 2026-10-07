@@ -11,8 +11,8 @@ import {
   verifyPassword,
 } from '../password.ts';
 import type { SessionRecord } from '../sessions.ts';
-import { consumeToken, issueToken } from '../tokens.ts';
-import { findUserByEmail, findUserById, updatePasswordHash } from '../users.ts';
+import { consumeToken, consumeUserTokens, issueToken } from '../tokens.ts';
+import { activateUser, findUserByEmail, findUserById, updatePasswordHash } from '../users.ts';
 
 /** Always resolves; the caller answers the same body either way. @rfc RFC-21 R5 */
 export async function forgotPassword(
@@ -20,7 +20,7 @@ export async function forgotPassword(
   input: { email: string } & RequestMeta,
 ): Promise<void> {
   const user = await findUserByEmail(ctx.db, input.email);
-  if (user?.status !== 'active') return;
+  if (user?.status !== 'active' && user?.status !== 'invited') return;
   const now = new Date(ctx.now());
   const { raw, expiresAt } = await ctx.db.transaction(async (tx) => {
     const issued = await issueToken(tx, { userId: user.id, kind: 'password_reset', now });
@@ -49,6 +49,7 @@ export async function forgotPassword(
 }
 
 /**
+ * @rfc RFC-20 R2
  * @rfc RFC-21 R6
  * @rfc RFC-82 R3
  */
@@ -63,10 +64,26 @@ export async function resetPassword(
   const userId = await ctx.db.transaction(async (tx) => {
     const consumed = await consumeToken(tx, { raw: input.token, kind: 'password_reset', now });
     const user = consumed ? await findUserById(tx, consumed.userId) : null;
-    if (user?.status !== 'active') {
+    // Redeeming a reset is as good as accepting the invitation (RFC-20 R2); activateUser
+    // matches only a still-invited row, so a concurrent suspension wins.
+    if (
+      user?.status === 'invited' &&
+      (await activateUser(tx, { id: user.id, passwordHash, now }))
+    ) {
+      await consumeUserTokens(tx, { userId: user.id, kinds: ['invite'], now });
+      await recordAudit(tx, {
+        actorUserId: user.id,
+        action: 'auth.invite.accepted',
+        targetType: 'user',
+        targetId: user.id,
+        ip: input.ip,
+        userAgent: input.userAgent,
+      });
+    } else if (user?.status === 'active') {
+      await updatePasswordHash(tx, { id: user.id, passwordHash, now });
+    } else {
       throw new AppError('AUTH_TOKEN_INVALID', 'Reset link is invalid or has expired');
     }
-    await updatePasswordHash(tx, { id: user.id, passwordHash, now });
     await recordAudit(tx, {
       actorUserId: user.id,
       action: 'auth.password.reset',

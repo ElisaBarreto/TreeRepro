@@ -5,6 +5,7 @@ import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
+import { consumeToken, issueToken } from '../tokens.ts';
 
 const NEW_PASSWORD = 'another perfectly fine passphrase';
 
@@ -37,11 +38,17 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
     });
   });
 
-  it('sends nothing for invited or suspended users', async () => {
-    const before = t.mail.sent.length;
+  it('emails an invited user a reset link', async () => {
     const invited = await createUser(t.db, { status: 'invited', password: null });
-    const suspended = await createUser(t.db, { status: 'suspended' });
+    const before = t.mail.sent.length;
     expect((await forgot(invited.email)).status).toBe(200);
+    expect(t.mail.sent[before]?.to).toBe(invited.email);
+    expect(t.mail.sent[before]?.text).toMatch(/reset-password\/[A-Za-z0-9_-]{43}/);
+  });
+
+  it('sends nothing for suspended users', async () => {
+    const before = t.mail.sent.length;
+    const suspended = await createUser(t.db, { status: 'suspended' });
     expect((await forgot(suspended.email)).status).toBe(200);
     expect(t.mail.sent.length).toBe(before);
   });
@@ -108,6 +115,29 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
       targetId: user.id,
     });
     expect((await reset({ token, newPassword: NEW_PASSWORD })).status).toBe(400);
+  });
+
+  it('activates an invited user and kills the pending invitation', async () => {
+    const { user, email } = await createUser(t.db, { status: 'invited', password: null });
+    const invite = await t.db.transaction((tx) =>
+      issueToken(tx, { userId: user.id, kind: 'invite' }),
+    );
+    const before = t.mail.sent.length;
+    await call(t.app, 'POST', '/api/auth/password/forgot', { body: { email } });
+    const token =
+      /reset-password\/([A-Za-z0-9_-]{43})/.exec(t.mail.sent[before]?.text ?? '')?.[1] ?? '';
+    expect((await reset({ token, newPassword: NEW_PASSWORD })).status).toBe(200);
+    expect(
+      (await call(t.app, 'POST', '/api/auth/login', { body: { email, password: NEW_PASSWORD } }))
+        .status,
+    ).toBe(200);
+    expect(await consumeToken(t.db, { raw: invite.raw, kind: 'invite' })).toBeNull();
+    expect(await lastAudit(t.db, 'auth.invite.accepted', { actorUserId: user.id })).toMatchObject({
+      targetId: user.id,
+    });
+    expect(await lastAudit(t.db, 'auth.password.reset', { actorUserId: user.id })).toMatchObject({
+      targetId: user.id,
+    });
   });
 
   it('a weak password is refused without consuming the token; invalid tokens answer 400', async () => {
