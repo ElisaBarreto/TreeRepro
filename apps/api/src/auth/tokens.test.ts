@@ -10,8 +10,8 @@ describe('RFC-20 R5 token format', () => {
     expect(hashToken(raw)).toBe(hashToken(raw));
   });
 
-  it('lifetimes are 72 h for invitations and 1 h for resets', () => {
-    expect(TOKEN_TTL_MS.invite).toBe(72 * 60 * 60 * 1000);
+  it('lifetimes are 14 days for invitations and 1 h for resets', () => {
+    expect(TOKEN_TTL_MS.invite).toBe(14 * 24 * 60 * 60 * 1000);
     expect(TOKEN_TTL_MS.password_reset).toBe(60 * 60 * 1000);
   });
 });

@@ -12,7 +12,7 @@ const GOOD_PASSWORD = 'a perfectly fine passphrase';
 describe('RFC-20 R4 inviteUser', () => {
   const t = useTestApp();
 
-  it('creates an invited user, a 72 h token, sends the email with the link and audits', async () => {
+  it('creates an invited user, a 14-day token, sends the email with the link and audits', async () => {
     const ctx = ctxOf(t);
     const email = randomEmail();
     const before = t.mail.sent.length;
@@ -23,7 +23,7 @@ describe('RFC-20 R4 inviteUser', () => {
     });
     expect(user.status).toBe('invited');
     expect(link).toMatch(/^http:\/\/localhost\/invite\/[A-Za-z0-9_-]{43}$/);
-    expect(expiresAt.getTime() - t.clock.now).toBe(72 * 3600 * 1000);
+    expect(expiresAt.getTime() - t.clock.now).toBe(14 * 24 * 3600 * 1000);
     const mail = t.mail.sent[before];
     expect(mail?.to).toBe(email);
     expect(mail?.text).toContain(link);
@@ -137,7 +137,7 @@ describe('RFC-20 R6 POST /api/auth/invite/accept', () => {
     });
     expect(unknown.status).toBe(400);
     const { token } = await invite();
-    t.clock.now += 72 * 3600 * 1000 + 1;
+    t.clock.now += 14 * 24 * 3600 * 1000 + 1;
     const expired = await call(t.app, 'POST', '/api/auth/invite/accept', {
       body: { token, password: GOOD_PASSWORD },
     });

@@ -24,7 +24,7 @@ describe('RFC-20 R5 issueToken / consumeToken', () => {
       const userId = await newUser(tx);
       const now = new Date('2026-09-12T10:00:00Z');
       const { raw, expiresAt } = await issueToken(tx, { userId, kind: 'invite', now });
-      expect(expiresAt.getTime() - now.getTime()).toBe(72 * 3600 * 1000);
+      expect(expiresAt.getTime() - now.getTime()).toBe(14 * 24 * 3600 * 1000);
       const [row] = await tx.select().from(authTokens).where(eq(authTokens.userId, userId));
       expect(row?.tokenHash).toBe(hashToken(raw));
       expect(JSON.stringify(row)).not.toContain(raw);
