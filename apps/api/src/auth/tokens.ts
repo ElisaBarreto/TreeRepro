@@ -7,7 +7,7 @@ const HOUR_MS = 60 * 60 * 1000;
 
 /** @rfc RFC-20 R5 */
 export const TOKEN_TTL_MS: Record<AuthTokenKind, number> = {
-  invite: 72 * HOUR_MS,
+  invite: 14 * 24 * HOUR_MS,
   password_reset: HOUR_MS,
 };
 
