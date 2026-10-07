@@ -263,11 +263,13 @@ export async function suspendUser(
 ): Promise<User> {
   const now = new Date(ctx.now());
   const user = await ctx.db.transaction(async (tx) => {
+    // Tokens before the user row, the order resetPassword locks them in, so the two never
+    // deadlock; a refusal below rolls this back.
+    await consumeUserTokens(tx, { userId: input.id, kinds: ['invite', 'password_reset'], now });
     const current = await lockUser(tx, input.id);
     if (current.status !== 'active' && current.status !== 'invited')
       throw invalidStatus('Only an active or invited user can be suspended');
     await assertNotLastAdmin(tx, current.id);
-    await consumeUserTokens(tx, { userId: current.id, kinds: ['invite', 'password_reset'], now });
     const [row] = await tx
       .update(users)
       .set({ status: 'suspended', suspendedAt: now, updatedAt: now })
