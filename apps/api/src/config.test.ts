@@ -289,8 +289,9 @@ describe('RFC-10 R5 SMTP settings', () => {
 });
 
 describe('RFC-74 R6 DIGEST_ENABLED', () => {
-  it('defaults to enabled when the variable is unset', () => {
-    expect(loadConfig(env()).digestEnabled).toBe(true);
+  it('defaults to disabled when the variable is unset', () => {
+    // Owner ruling (issue #272): the platform sends no digest unless asked to.
+    expect(loadConfig(env()).digestEnabled).toBe(false);
   });
 
   it('is off for "false" and on for "true"', () => {
