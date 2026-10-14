@@ -49,7 +49,7 @@ const envSchema = z.object({
     .regex(/^v\d+$/)
     .default('v1'),
   // RFC-74 R6: `false` turns the daily digest off; anything unset is on.
-  DIGEST_ENABLED: z.stringbool().default(true),
+  DIGEST_ENABLED: z.stringbool().default(false),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
   SMTP_SECURE: z.stringbool().default(false),
@@ -149,7 +149,7 @@ export interface AppConfig {
   pii: { keyring: Secret<PiiKeyring>; hmacKey: Secret<Buffer> };
   sessionSecret: Secret<Buffer>;
   smtp: SmtpSettings;
-  /** `DIGEST_ENABLED`; the E2E stack turns it off. @rfc RFC-74 R6 */
+  /** `DIGEST_ENABLED`; off unless set to `true`. @rfc RFC-74 R6 */
   digestEnabled: boolean;
   doiContactEmail?: string;
   /** `INVITE_CONTACT_EMAIL`. @rfc RFC-20 R4 */
