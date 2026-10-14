@@ -48,7 +48,7 @@ const envSchema = z.object({
     .string()
     .regex(/^v\d+$/)
     .default('v1'),
-  // RFC-74 R6: `false` turns the daily digest off; anything unset is on.
+  // RFC-74 R6: the daily digest is off unless set to `true` (issue #272).
   DIGEST_ENABLED: z.stringbool().default(false),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
