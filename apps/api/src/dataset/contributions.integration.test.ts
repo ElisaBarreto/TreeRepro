@@ -129,6 +129,7 @@ describe('RFC-71 R2 listContributions kind=records', () => {
       quantitative: null,
       unitStatus: null,
       unit: null,
+      outlierFlag: null,
       references: [expect.objectContaining({ id: reference.id })],
       responseCount: 0,
     });
