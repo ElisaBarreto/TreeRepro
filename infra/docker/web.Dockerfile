@@ -22,7 +22,7 @@ COPY packages/contracts packages/contracts
 COPY apps/web apps/web
 RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/web build
 
-FROM caddy:2.11.6-alpine@sha256:d44355d3c2149dc580ce2cac735955d1c08d3d00882c30489c241aa51a5c10d9
+FROM caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
 # Pull Alpine security fixes the caddy image has not rebuilt with yet.
 RUN apk upgrade --no-cache
 # Run Caddy as a dedicated user (RFC-02 R10). The upstream image already ships
