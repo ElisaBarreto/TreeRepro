@@ -315,6 +315,7 @@ describe('RFC-63 R8 RecordDrawer value fields, unit, unit status and provenance 
     'Taxon order (source)',
     'Summary source',
     'Records behind row',
+    'Outlier',
   ];
 
   it('shows each field by its name when present, and no statistic or folded records', async () => {
@@ -343,6 +344,7 @@ describe('RFC-63 R8 RecordDrawer value fields, unit, unit status and provenance 
       unit: 'g',
       summarySource: 'reported_and_derived',
       recordsBehindRow: 3,
+      outlierFlag: 'both',
     });
     renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, ME);
     await screen.findByText('GIFT');
@@ -367,6 +369,10 @@ describe('RFC-63 R8 RecordDrawer value fields, unit, unit status and provenance 
     expect(value('Taxon order (source)')).toBe('Fabales');
     expect(value('Summary source')).toBe('reported_and_derived');
     expect(value('Records behind row')).toBe('3');
+    // #281: the outlier audit's reason, worded for a viewer
+    expect(value('Outlier')).toBe(
+      "Disagrees with this species' other values and extreme for this trait",
+    );
     expect(screen.queryByText('Statistic', { selector: 'dt' })).not.toBeInTheDocument();
     expect(screen.queryByText('Folded records', { selector: 'dt' })).not.toBeInTheDocument();
   });

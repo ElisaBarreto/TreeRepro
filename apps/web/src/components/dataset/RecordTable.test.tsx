@@ -153,6 +153,24 @@ describe('RFC-63 R8 RecordTable', () => {
     expect(cells(rows[3] as HTMLElement)[1]).not.toHaveTextContent(/unit (not checked|assumed)/);
   });
 
+  it('RFC-63 R8 marks an outlier and names the reason; an unflagged record shows no mark (#281)', async () => {
+    renderInRouter(
+      <RecordTable
+        records={[
+          { ...MEASURED, id: `${MEASURED.id.slice(0, -1)}1`, outlierFlag: 'trait_extreme' },
+          { ...MEASURED, id: `${MEASURED.id.slice(0, -1)}2`, outlierFlag: null },
+        ]}
+        onSelect={vi.fn()}
+      />,
+    );
+    const rows = await screen.findAllByRole('row');
+    const flagged = cells(rows[1] as HTMLElement)[1] as HTMLElement;
+    expect(flagged).toHaveTextContent('Outlier');
+    expect(flagged).toHaveTextContent('Extreme for this trait');
+    expect(within(flagged).getByTitle('Extreme for this trait')).toBeInTheDocument();
+    expect(cells(rows[2] as HTMLElement)[1]).not.toHaveTextContent('Outlier');
+  });
+
   it('says so with a dash when a record lists no reference', async () => {
     renderInRouter(<RecordTable records={[{ ...MEASURED, references: [] }]} onSelect={vi.fn()} />);
     const rows = await screen.findAllByRole('row');

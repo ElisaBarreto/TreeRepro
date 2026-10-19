@@ -87,6 +87,7 @@ export function searchSpecies(params: {
   unresolved?: boolean;
   contested?: boolean;
   unknownLevels?: boolean;
+  outliers?: boolean;
   status?: SpeciesStatus;
   scope?: 'plots' | 'all';
   plotId?: string;
