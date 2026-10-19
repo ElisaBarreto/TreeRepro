@@ -228,10 +228,7 @@ describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)'
 
     // A flag on a trait the viewer cannot see never counts (RFC-33 R2).
     expect(await names(RESTRICTED, { outliers: true })).toEqual([`${q} flagged`]);
-    expect(await names(UNRESTRICTED, { outliers: true })).toEqual([
-      `${q} flagged`,
-      `${q} hidden`,
-    ]);
+    expect(await names(UNRESTRICTED, { outliers: true })).toEqual([`${q} flagged`, `${q} hidden`]);
     expect(await names(RESTRICTED, { outliers: false })).toHaveLength(3);
   });
 
