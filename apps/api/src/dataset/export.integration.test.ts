@@ -87,6 +87,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '',
       '',
       '',
+      '', // outlier_flag
       expect.stringMatching(ISO),
     ]);
     // RFC-63 R14: a categorical contest applies to every record of the level it names.
@@ -212,7 +213,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     expect(at('records_behind_row')).toBe('');
   });
 
-  it('R2 unit is the record unit, else the trait unit; summary_source and records_behind_row are the stored provenance (issue #256)', async () => {
+  it('R2 unit is the record unit, else the trait unit; summary_source, records_behind_row and outlier_flag are the stored provenance (issues #256, #281)', async () => {
     const sp = await createSpecies(t.db);
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
     const ref = await createReference(t.db);
@@ -230,6 +231,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       unit: 'cm',
       summarySource: 'derived_from_records',
       recordsBehindRow: 3,
+      outlierFlag: 'species_disagreement',
     });
     const plain = await createRecord(t.db, { ...base, valueText: '5', numericValue: 5 });
     const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
@@ -242,10 +244,12 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     expect(a('unit')).toBe('cm');
     expect(a('summary_source')).toBe('derived_from_records');
     expect(a('records_behind_row')).toBe('3');
+    expect(a('outlier_flag')).toBe('species_disagreement');
     const b = await rowOf(plain.id);
     expect(b('unit')).toBe('mm');
     expect(b('summary_source')).toBe('');
     expect(b('records_behind_row')).toBe('');
+    expect(b('outlier_flag')).toBe('');
   });
 
   it('R2 RFC-33 R2: a viewer without records.review gets no pending record', async () => {

@@ -52,6 +52,7 @@ export const RECORD_COLUMNS = [
   'taxon_order',
   'summary_source',
   'records_behind_row',
+  'outlier_flag',
   'created_at',
 ] as const;
 
@@ -244,6 +245,7 @@ interface RecordRow {
   taxon_order: string | null;
   summary_source: string | null;
   records_behind_row: number | null;
+  outlier_flag: string | null;
   created_at: Date;
 }
 
@@ -255,8 +257,8 @@ interface RecordRow {
  * `order_name` (RFC-60 R1); `unit` is the record's own unit, else the trait's;
  * each value column is one stored field (RFC-63 R15); `unit_status`,
  * `source_folder`, `source_file`, `taxonomic_status`, `gbif_genus`,
- * `gbif_family`, `taxon_order`, `summary_source` and `records_behind_row` are
- * the record's stored provenance (RFC-63 R1).
+ * `gbif_family`, `taxon_order`, `summary_source`, `records_behind_row` and
+ * `outlier_flag` are the record's stored provenance (RFC-63 R1).
  * @rfc RFC-66 R2, R3, R4, R5, R9
  * @rfc RFC-33 R2, R3
  * @rfc RFC-60 R1
@@ -285,7 +287,7 @@ export function recordsCsv(
       ${contestCountSql(sql`r.id`)} as n_contests,
       r.source_folder, r.source_file, r.taxonomic_status,
       r.gbif_genus, r.gbif_family, r.taxon_order, r.summary_source, r.records_behind_row,
-      r.created_at
+      r.outlier_flag, r.created_at
     from trait_records r
     join species s on s.id = r.species_id
     left join genera g on g.id = s.genus_id
@@ -337,6 +339,7 @@ export function recordsCsv(
         r.taxon_order,
         r.summary_source,
         r.records_behind_row,
+        r.outlier_flag,
         new Date(r.created_at).toISOString(),
       ]),
     options.batch ?? BATCH,
