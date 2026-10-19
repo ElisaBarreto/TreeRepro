@@ -16,6 +16,7 @@ export interface SpeciesSearchValue {
   unresolved: boolean;
   contested: boolean;
   unknownLevels: boolean;
+  outliers?: boolean;
   status?: SpeciesStatus;
   scope?: 'plots' | 'all';
   plotId?: string;
@@ -266,6 +267,15 @@ export function SpeciesSearchForm({
             onChange={(event) => onChange({ ...value, contested: event.target.checked })}
           />
           Contested only
+        </label>
+        <label className={FILTER_CHECK}>
+          <input
+            type="checkbox"
+            className="size-5 accent-canopy-700"
+            checked={value.outliers === true}
+            onChange={(event) => onChange({ ...value, outliers: event.target.checked })}
+          />
+          Outliers only
         </label>
         {canReview ? (
           <label className={FILTER_CHECK}>

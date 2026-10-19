@@ -553,6 +553,9 @@ describe('RFC-60 R6 SpeciesSearchForm contested and unknownLevels filters', () =
     });
     await userEvent.click(screen.getByRole('checkbox', { name: 'Contested only' }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ contested: true }));
+    // #281: Outliers only is open to every viewer too
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Outliers only' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ outliers: true }));
     expect(screen.queryByRole('checkbox', { name: 'Has unknown levels' })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('checkbox', { name: 'Unresolved taxa only' }),

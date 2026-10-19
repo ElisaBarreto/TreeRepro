@@ -330,6 +330,13 @@
       "when": 1791238564501,
       "tag": "0046_trait_record_observation_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792396853683,
+      "tag": "0047_trait_record_outlier_flag",
+      "breakpoints": true
     }
   ]
 }

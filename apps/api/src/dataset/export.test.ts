@@ -12,7 +12,7 @@ describe('RFC-66 R4 csvRow', () => {
 });
 
 describe('RFC-66 R2 column lists', () => {
-  it('records.csv names the 36 columns of RFC-66 R2 in order', () => {
+  it('records.csv names the 37 columns of RFC-66 R2 in order', () => {
     expect([...RECORD_COLUMNS]).toEqual([
       'record_code',
       'order',
@@ -49,6 +49,7 @@ describe('RFC-66 R2 column lists', () => {
       'taxon_order',
       'summary_source',
       'records_behind_row',
+      'outlier_flag',
       'created_at',
     ]);
   });

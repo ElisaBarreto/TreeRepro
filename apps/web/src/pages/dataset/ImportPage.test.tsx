@@ -134,6 +134,7 @@ describe('RFC-13 R2, RFC-64 R11 ImportPage', () => {
       'gbif_order',
       'taxon_order',
       'records_behind_row',
+      'outlier_flag',
     ]);
     const values = within(details as HTMLElement)
       .getAllByRole('definition')

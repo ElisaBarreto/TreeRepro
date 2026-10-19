@@ -185,6 +185,7 @@ export interface SpeciesListFilters {
   unresolved?: boolean;
   contested?: boolean;
   unknownLevels?: boolean;
+  outliers?: boolean;
   status?: SpeciesStatus;
   scope?: SpeciesScope;
   plotId?: string;
@@ -220,6 +221,8 @@ export interface SpeciesListFilters {
  * (RFC-63 R14), open to every viewer. `unknownLevels` keeps species with a
  * visible record whose `harmonisation` is `unknown_level`; like `unresolved`,
  * it applies only for a `records.review` holder and is ignored otherwise.
+ * `outliers`, open to every viewer, keeps species with a visible record on a
+ * visible trait whose `outlier_flag` is set (RFC-63 R1).
  * @rfc RFC-60 R3, R4, R6
  * @rfc RFC-33 R2, R3, R6
  * @rfc RFC-62 R8
@@ -305,6 +308,18 @@ export async function speciesListConditions(
         where utr.species_id = ${species.id} and utr.harmonisation = 'unknown_level'
           and ${traitVisible(visibility, sql`utt.active`)}
           and ${recordVisible(visibility, sql`utr.id`, sql`utr.harmonisation`)})`,
+    );
+  }
+
+  // RFC-60 R6: outliers is open to every viewer; it counts only visible
+  // flagged records on visible traits, so a flag on data the viewer cannot
+  // see never reveals itself.
+  if (filters.outliers) {
+    conditions.push(
+      sql`exists (select 1 from ${traitRecords} otr join ${traits} ott on ott.id = otr.trait_id
+        where otr.species_id = ${species.id} and otr.outlier_flag is not null
+          and ${traitVisible(visibility, sql`ott.active`)}
+          and ${recordVisible(visibility, sql`otr.id`, sql`otr.harmonisation`)})`,
     );
   }
 

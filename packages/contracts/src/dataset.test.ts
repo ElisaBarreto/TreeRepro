@@ -11,6 +11,7 @@ import {
   listTraitSpeciesQuerySchema,
   listTraitsQuerySchema,
   NAME_TYPES,
+  OUTLIER_FLAGS,
   quantitativeValueSchema,
   REVIEW_STATUSES,
   recordDetailSchema,
@@ -130,6 +131,7 @@ describe('RFC-63 R8 recordSchema', () => {
       quantitative: null,
       unitStatus: null,
       unit: null,
+      outlierFlag: null,
       references: [],
     };
     expect(recordSchema.parse(record)).toEqual(record);
@@ -137,6 +139,13 @@ describe('RFC-63 R8 recordSchema', () => {
     expect(recordSchema.safeParse({ ...record, harmonisation: 'weird' }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, species: undefined }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, statistic: 'mean' }).success).toBe(false);
+    // RFC-63 R1, R8 (#281): outlierFlag is one of the three audit reasons, or null
+    for (const flag of OUTLIER_FLAGS) {
+      expect(recordSchema.safeParse({ ...record, outlierFlag: flag }).success).toBe(true);
+    }
+    expect(recordSchema.safeParse({ ...record, outlierFlag: 'Both' }).success).toBe(false);
+    expect(recordSchema.safeParse({ ...record, outlierFlag: undefined }).success).toBe(false);
+    expect(OUTLIER_FLAGS).toEqual(['species_disagreement', 'trait_extreme', 'both']);
   });
 
   it('enumerations match the RFC', () => {
@@ -504,6 +513,8 @@ describe('RFC-60 R6 species trait filters on listSpeciesQuerySchema', () => {
     // No traitId and no categoryKey: the schema still accepts traitData, the API decides what to do.
     expect(listSpeciesQuerySchema.safeParse({ traitData: 'missing' }).success).toBe(true);
     expect(listSpeciesQuerySchema.safeParse({ sort: 'name' }).success).toBe(true);
+    expect(listSpeciesQuerySchema.parse({ outliers: 'true' }).outliers).toBe('true');
+    expect(listSpeciesQuerySchema.safeParse({ outliers: 'yes' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ sort: 'nope' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ traitData: 'nope' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);

@@ -234,6 +234,7 @@ export const RECORD: RecordItem = {
   quantitative: null,
   unitStatus: null,
   unit: null,
+  outlierFlag: null,
   harmonisation: 'harmonised',
   review: 'validated',
   primaryReference: PRIMARY_REFERENCE,
@@ -262,6 +263,7 @@ export const PENDING_RECORD: RecordItem = {
   quantitative: null,
   unitStatus: null,
   unit: null,
+  outlierFlag: null,
   harmonisation: 'not_numeric',
   review: 'contested',
   primaryReference: PRIMARY_REFERENCE,
@@ -792,6 +794,7 @@ export const IMPORT_REJECT: ImportReject = {
     gbif_order: '',
     taxon_order: '',
     records_behind_row: '',
+    outlier_flag: '',
   },
 };
 

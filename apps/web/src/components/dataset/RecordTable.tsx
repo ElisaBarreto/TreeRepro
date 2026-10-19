@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import type { RecordItem, UnitStatus } from '@treerepro/contracts';
+import type { OutlierFlag, RecordItem, UnitStatus } from '@treerepro/contracts';
 import { Fragment, type ReactNode } from 'react';
 import type { RecordSort, SortOrder } from '../../api/dataset.ts';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
@@ -29,6 +29,13 @@ const UNIT_CAVEATS: Partial<Record<UnitStatus, string>> = {
 export function unitCaveat(status: UnitStatus | null): string | null {
   return (status && UNIT_CAVEATS[status]) ?? null;
 }
+
+/** What each outlier-audit reason means, worded for a viewer. @rfc RFC-63 R8 */
+export const OUTLIER_LABELS: Record<OutlierFlag, string> = {
+  species_disagreement: "Disagrees with this species' other values",
+  trait_extreme: 'Extreme for this trait',
+  both: "Disagrees with this species' other values and extreme for this trait",
+};
 
 /**
  * How a record's value reads: its level; else its quantitative value in the
@@ -166,6 +173,15 @@ export function RecordTable<T extends RecordItem>({
                 <>
                   {' '}
                   <Badge tone="amber">{unitCaveat(record.unitStatus)}</Badge>
+                </>
+              ) : null}
+              {record.outlierFlag ? (
+                <>
+                  {' '}
+                  <span title={OUTLIER_LABELS[record.outlierFlag]}>
+                    <Badge tone="amber">Outlier</Badge>
+                    <span className="sr-only">{`: ${OUTLIER_LABELS[record.outlierFlag]}`}</span>
+                  </span>
                 </>
               ) : null}
             </Td>

@@ -197,6 +197,41 @@ describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)'
     expect(await names(RESTRICTED, { unresolved: true })).toHaveLength(3);
   });
 
+  it('outliers keeps species with a visible flagged record, for every viewer (#281)', async () => {
+    const k = tag();
+    const q = `Outlierum-${k}`;
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const hidden = await createTrait(t.db, { valueType: 'quantitative', active: false });
+    const flagged = await createSpecies(t.db, { canonicalName: `${q} flagged` });
+    const onHidden = await createSpecies(t.db, { canonicalName: `${q} hidden` });
+    const plain = await createSpecies(t.db, { canonicalName: `${q} plain` });
+    const batch = await createImportBatch(t.db);
+    const rec = (speciesId: string, traitId: string, outlierFlag?: 'both') =>
+      createRecord(t.db, {
+        speciesId,
+        traitId,
+        valueText: '1',
+        numericValue: 1,
+        primaryReferenceId: ref.id,
+        importBatchId: batch.id,
+        outlierFlag,
+      });
+    await rec(flagged.id, trait.id, 'both');
+    await rec(onHidden.id, hidden.id, 'both');
+    await rec(plain.id, trait.id);
+
+    const names = async (v: Visibility, f: object) =>
+      (await searchSpecies(t.db, v, { q, limit: 50, ...f })).data
+        .map((s) => s.canonicalName)
+        .sort();
+
+    // A flag on a trait the viewer cannot see never counts (RFC-33 R2).
+    expect(await names(RESTRICTED, { outliers: true })).toEqual([`${q} flagged`]);
+    expect(await names(UNRESTRICTED, { outliers: true })).toEqual([`${q} flagged`, `${q} hidden`]);
+    expect(await names(RESTRICTED, { outliers: false })).toHaveLength(3);
+  });
+
   it('contested lists no species whose only contest is resolved (RFC-63 R14)', async () => {
     const q = `Resolvum-${tag()}`;
     const { user } = await createUser(t.db);

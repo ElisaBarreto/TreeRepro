@@ -106,6 +106,7 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
       unresolved: false,
       contested: false,
       unknownLevels: false,
+      outliers: false,
       cursor: undefined,
       limit: 50,
     });
@@ -335,6 +336,17 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     await waitFor(() =>
       expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
         expect.objectContaining({ unresolved: true }),
+      ),
+    );
+  });
+
+  it('RFC-60 R6 reads ?outliers=true into Outliers only and sends it on the first search (#281)', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    renderAt('/app/species?outliers=true');
+    expect(await screen.findByRole('checkbox', { name: 'Outliers only' })).toBeChecked();
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ outliers: true }),
       ),
     );
   });

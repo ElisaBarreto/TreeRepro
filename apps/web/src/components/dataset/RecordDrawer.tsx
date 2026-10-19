@@ -16,7 +16,7 @@ import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
 import { DrawerSection } from './DrawerSection.tsx';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
-import { unitCaveat } from './RecordTable.tsx';
+import { OUTLIER_LABELS, unitCaveat } from './RecordTable.tsx';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -192,6 +192,9 @@ function RecordBody({
             ...(unit ? [{ label: 'Unit', value: unit }] : []),
             ...(unitCaveat(record.unitStatus)
               ? [{ label: 'Unit status', value: unitCaveat(record.unitStatus) }]
+              : []),
+            ...(record.outlierFlag
+              ? [{ label: 'Outlier', value: OUTLIER_LABELS[record.outlierFlag] }]
               : []),
           ]}
         />

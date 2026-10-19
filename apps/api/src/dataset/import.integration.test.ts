@@ -339,7 +339,7 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'overflow.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // A well-formed row (35 fields, passes COPY and R7's checks) whose
+    // A well-formed row (36 fields, passes COPY and R7's checks) whose
     // reference is too large — and incompressible, so TOAST can't shrink it
     // under the limit — to fit a btree index entry. The bibliographic
     // references insert runs after the species catalog insert, so its
@@ -350,7 +350,7 @@ describe('RFC-64 importRecords', () => {
     const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(17)}\n`,
+      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(18)}\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -368,14 +368,14 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'broken.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // 36 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // 37 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
     // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
     // in import.ts); either the driver recovers on its own with the real
     // PostgresError, or the idle guard aborts it — both are acceptable here,
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
-      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(17)},EXTRA\n`,
+      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(18)},EXTRA\n`,
     );
     await expect(
       importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
@@ -830,6 +830,54 @@ describe('RFC-64 importRecords', () => {
         ]),
       });
       expect(await orderOf()).toBe('Sapindales');
+    });
+
+    it('R6, R7 outlier_flag is stored on every record of the row and checked on every row (#281)', async () => {
+      const tag = randomBytes(4).toString('hex');
+      const n = randomInt(100_000_000, 999_999_000);
+      let next = 0;
+      const base = (cells: Partial<Record<Column, string>>) =>
+        statLine({
+          ID: `EB_${n + next++}`,
+          primary_reference: 'OUTREF',
+          wcvp_species: `Outlieria rara-${tag}`,
+          wcvp_family: `Outlieriaceae${tag}`,
+          final_standard_trait: 'seed_mass_dry',
+          trait_value_type: 'quantitative',
+          ...cells,
+        });
+      const categorical = { final_standard_trait: 'flower_color', trait_value_type: 'categorical' };
+      const lines = [
+        base({ harmonised_value: '1', outlier_flag: 'species_disagreement' }),
+        // trimmed and collapsed like every provenance column
+        base({ harmonised_value: '2', outlier_flag: '  trait_extreme ' }),
+        // every split part keeps the row's flag
+        base({ ...categorical, harmonised_value: 'black;brown', outlier_flag: 'both' }),
+        base({ harmonised_value: '3' }),
+        // 5, 6 rejects: case matters, and the check runs on a categorical row too
+        base({ harmonised_value: '4', outlier_flag: 'Both' }),
+        base({ ...categorical, harmonised_value: 'white', outlier_flag: 'weird' }),
+      ];
+      const batch = await importRecords(t.db, {
+        filePath: await writeRecords('import-outlier-', lines),
+      });
+      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 6, rowsRejected: 2 });
+      expect(await recordAt(batch.id, 1)).toMatchObject({ outlierFlag: 'species_disagreement' });
+      // the flag stays out of value_text (RFC-63 R3)
+      expect(await recordAt(batch.id, 2)).toMatchObject({
+        outlierFlag: 'trait_extreme',
+        valueText: '2',
+      });
+      const parts = await recordsAt(batch.id, 3);
+      expect(parts).toHaveLength(2);
+      for (const part of parts) expect(part).toMatchObject({ outlierFlag: 'both' });
+      expect(await recordAt(batch.id, 4)).toMatchObject({ outlierFlag: null });
+      const rejects = await rejectsOf(batch.id);
+      expect(rejects.map((r) => [r.rowNo, r.reason])).toEqual([
+        [5, 'invalid_measurement'],
+        [6, 'invalid_measurement'],
+      ]);
+      expect(rejects[0]?.raw).toMatchObject({ outlier_flag: 'Both' });
     });
 
     it('RFC-63 R3, R15: a single 5, a mean 5 and a median 5 from the same source are three claims', async () => {
