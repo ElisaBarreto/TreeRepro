@@ -265,6 +265,7 @@ export function toItem(r: ItemRow): RecordItem {
     quantitative: quantitativeOf(rec),
     unitStatus: rec.unitStatus ?? null,
     unit: rec.unit ?? null,
+    outlierFlag: rec.outlierFlag ?? null,
     harmonisation: rec.harmonisation,
     review: r.review,
     primaryReference,

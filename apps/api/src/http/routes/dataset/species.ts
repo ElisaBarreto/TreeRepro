@@ -52,6 +52,7 @@ export function speciesRoutes(ctx: AuthContext) {
           unresolved: q.unresolved === 'true',
           contested: q.contested === 'true',
           unknownLevels: q.unknownLevels === 'true',
+          outliers: q.outliers === 'true',
           status: q.status,
           scope: q.scope,
           plotId: q.plotId,

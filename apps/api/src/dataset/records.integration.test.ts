@@ -92,6 +92,7 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       quantitative: null,
       unitStatus: null,
       unit: null,
+      outlierFlag: null,
       references: [
         {
           id: ref.id,
@@ -834,6 +835,7 @@ describe('RFC-63 R8 unit status, unit, median, se and import provenance (issues 
       unit: 'RHS colour chart',
       summarySource: 'reported_and_derived',
       recordsBehindRow: 7,
+      outlierFlag: 'trait_extreme',
     });
 
     const list = await listRecords(t.db, UNRESTRICTED, {
@@ -844,6 +846,7 @@ describe('RFC-63 R8 unit status, unit, median, se and import provenance (issues 
     expect(list.data[0]).toMatchObject({
       unitStatus: 'needs_unit_check',
       unit: 'RHS colour chart',
+      outlierFlag: 'trait_extreme',
       numericValue: null,
       quantitative: { median: 9.3, se: 0.1 },
     });
@@ -892,6 +895,7 @@ describe('RFC-63 R8 unit status, unit, median, se and import provenance (issues 
       unit: null,
       summarySource: null,
       recordsBehindRow: null,
+      outlierFlag: null,
     });
     expect(detail?.quantitative).not.toHaveProperty('se');
     expect(detail?.quantitative).not.toHaveProperty('median');
