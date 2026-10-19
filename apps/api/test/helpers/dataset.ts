@@ -5,6 +5,7 @@ import type {
   ImportBatchKind,
   NameSource,
   NameType,
+  OutlierFlag,
   RecordIntent,
   SummarySource,
   TraitValueType,
@@ -196,6 +197,7 @@ type RecordOrigin =
       unit?: string;
       summarySource?: SummarySource;
       recordsBehindRow?: number;
+      outlierFlag?: OutlierFlag;
     }
   | {
       origin: 'manual';
@@ -265,6 +267,7 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
             unit: input.unit ?? null,
             summarySource: input.summarySource ?? null,
             recordsBehindRow: input.recordsBehindRow ?? null,
+            outlierFlag: input.outlierFlag ?? null,
           }),
     })
     .returning({ id: traitRecords.id });

@@ -43,6 +43,11 @@ export const SUMMARY_SOURCES = [
 /** A record's summary source. @rfc RFC-63 R1 */
 export type SummarySource = (typeof SUMMARY_SOURCES)[number];
 
+/** Import provenance: why the owner's outlier audit flagged a record's value. @rfc RFC-63 R1 */
+export const OUTLIER_FLAGS = ['species_disagreement', 'trait_extreme', 'both'] as const;
+/** A record's outlier flag. @rfc RFC-63 R1 */
+export type OutlierFlag = (typeof OUTLIER_FLAGS)[number];
+
 /** @rfc RFC-63 R1 */
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
@@ -144,6 +149,7 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   unresolved: z.enum(['true', 'false']).optional(),
   contested: z.enum(['true', 'false']).optional(),
   unknownLevels: z.enum(['true', 'false']).optional(),
+  outliers: z.enum(['true', 'false']).optional(),
   status: z.enum(SPECIES_STATUSES).optional(),
   scope: z.enum(SPECIES_SCOPES).optional(),
   plotId: z.uuid().optional(),
@@ -518,6 +524,8 @@ export const recordSchema = z.strictObject({
   unitStatus: z.enum(UNIT_STATUSES).nullable(),
   /** The record's own unit as imported (it may equal the trait's); null when the source gave none, meaning the trait's standard unit. @rfc RFC-63 R1, R8 */
   unit: z.string().nullable(),
+  /** Why the import's outlier audit flagged the value; null when it was not flagged. @rfc RFC-63 R1, R8 */
+  outlierFlag: z.enum(OUTLIER_FLAGS).nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
   review: z.enum(REVIEW_STATUSES),
   primaryReference: referenceRefSchema.nullable(),

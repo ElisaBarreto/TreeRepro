@@ -39,7 +39,8 @@ import { isReplaceAllowed, resetDataset } from './reset.ts';
 /**
  * The header of the compiled dataset, in file order: `ID`, the record code
  * (spec R-2), then the 34 columns of the owner's layout of 2026-10-05 (issue
- * #256). The 30-column file of 2026-09-29 and the old 17-column one, with its
+ * #256) and `outlier_flag` (issue #281). The 35-column file of 2026-10-05, the
+ * 30-column file of 2026-09-29 and the old 17-column one, with its
  * unnamed R row-number column, are refused.
  * @rfc RFC-64 R2
  */
@@ -79,6 +80,7 @@ export const IMPORT_COLUMNS = [
   'gbif_order',
   'taxon_order',
   'records_behind_row',
+  'outlier_flag',
 ] as const;
 
 /** A number as the importer accepts it: at most three exponent digits (RFC-64 R6); the SQL below uses the same expression. @rfc RFC-64 R6 */
@@ -574,7 +576,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           statistic text, mean text, median text, min text, max text, sd text, se text,
           sample_size text, summary_source text, unit text, unit_harmonisation_status text,
           source_folder text, file_name text, wcvp_taxonomic_status text,
-          gbif_order text, taxon_order text, records_behind_row text
+          gbif_order text, taxon_order text, records_behind_row text, outlier_flag text
         ) on commit drop`;
       const writable = await tx`
         copy import_staging (
@@ -584,7 +586,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           original_value_clean, trait_value_type, harmonised_value, statistic, mean, median,
           min, max, sd, se, sample_size, summary_source, unit, unit_harmonisation_status,
           source_folder, file_name, wcvp_taxonomic_status, gbif_order, taxon_order,
-          records_behind_row
+          records_behind_row, outlier_flag
         ) from stdin with (format csv, header true, encoding 'UTF8')`.writable();
       await pipelineWithIdleGuard(
         createReadStream(input.filePath),
@@ -609,6 +611,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           add column order_name text, add column gbif_genus_name text,
           add column gbif_family_name text, add column source_order text,
           add column unit_text text, add column summary_text text, add column behind_text text,
+          add column outlier_text text,
           add column mean_text text, add column median_text text,
           add column min_text text, add column max_text text,
           add column sd_text text, add column se_text text,
@@ -646,6 +649,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           source_order = ${collapsed('taxon_order')},
           unit_text = ${collapsed('unit')}, summary_text = ${collapsed('summary_source')},
           behind_text = ${collapsed('records_behind_row')},
+          outlier_text = ${collapsed('outlier_flag')},
           mean_text = ${collapsed('mean')}, median_text = ${collapsed('median')},
           min_text = ${collapsed('min')}, max_text = ${collapsed('max')},
           sd_text = ${collapsed('sd')}, se_text = ${collapsed('se')}`;
@@ -674,6 +678,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable'))
           or (s.summary_text is not null and s.summary_text not in
             ('reported_by_study', 'derived_from_records', 'reported_and_derived'))
+          or (s.outlier_text is not null and s.outlier_text not in
+            ('species_disagreement', 'trait_extreme', 'both'))
           or (s.behind_text is not null and s.behind_int is null)
           or (t.value_type = 'quantitative' and (
             (s.mean_text is not null and s.mean_num is null)
@@ -811,7 +817,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             'wcvp_taxonomic_status', coalesce(s.wcvp_taxonomic_status, ''),
             'gbif_order', coalesce(s.gbif_order, ''),
             'taxon_order', coalesce(s.taxon_order, ''),
-            'records_behind_row', coalesce(s.records_behind_row, ''))
+            'records_behind_row', coalesce(s.records_behind_row, ''),
+            'outlier_flag', coalesce(s.outlier_flag, ''))
         from import_staging s left join traits t on t.key = s.trait_key
         where not s.already_imported
           and (s.species_name is null or t.id is null
@@ -835,7 +842,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             s.value_num, s.mean_num, s.median_num, s.min_num, s.max_num, s.sd_num, s.se_num,
             s.n_int, s.unit_status, s.src_folder, s.src_file, s.tax_status,
             s.gbif_genus_name, s.gbif_family_name, s.source_order,
-            s.unit_text, s.summary_text, s.behind_int,
+            s.unit_text, s.summary_text, s.behind_int, s.outlier_text,
             t.id as trait_id, t.value_type, pv.value_text,
             cardinality(split.vals) as part_count, pv.part_no
           from import_staging s
@@ -872,7 +879,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             lv.id as level_id,
             p.unit_status, p.src_folder, p.src_file, p.tax_status,
             p.gbif_genus_name, p.gbif_family_name, p.source_order,
-            p.unit_text, p.summary_text, p.behind_int,
+            p.unit_text, p.summary_text, p.behind_int, p.outlier_text,
             q.numeric_value, q.mean_value, q.median_value,
             q.min_value, q.max_value, q.sd_value, q.se_value, q.n
           from parts p
@@ -898,7 +905,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           raw_value, original_trait_name, original_species_name, secondary_source_species_name, raw_category,
           primary_reference_id, secondary_reference_id, origin, import_batch_id, import_row_no,
           record_code, unit_status, source_folder, source_file, taxonomic_status,
-          gbif_genus, gbif_family, taxon_order, unit, summary_source, records_behind_row)
+          gbif_genus, gbif_family, taxon_order, unit, summary_source, records_behind_row,
+          outlier_flag)
         select species_id, trait_id, level_id, numeric_value, mean_value, median_value,
           min_value, max_value, sd_value, se_value, n, final_text,
           case when final_text = '' then 'empty'
@@ -910,7 +918,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           raw_value, original_trait_name, original_species_name, secondary_source_species_name, raw_category,
           primary_reference_id, secondary_reference_id, 'import', ${batch.id}, row_no,
           record_code, unit_status, src_folder, src_file, tax_status,
-          gbif_genus_name, gbif_family_name, source_order, unit_text, summary_text, behind_int
+          gbif_genus_name, gbif_family_name, source_order, unit_text, summary_text, behind_int,
+          outlier_text
         from (
           -- RFC-63 R15: a lone single value keeps its text (as does a value
           -- that is not a number); otherwise every present field as

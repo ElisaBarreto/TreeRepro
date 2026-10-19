@@ -50,6 +50,7 @@ const record = {
   quantitative: null,
   unitStatus: null,
   unit: null,
+  outlierFlag: null,
   references: [],
 };
 

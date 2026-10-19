@@ -1,0 +1,3 @@
+ALTER TABLE "trait_records" ADD COLUMN "outlier_flag" text;--> statement-breakpoint
+CREATE INDEX "trait_records_outlier_species_idx" ON "trait_records" USING btree ("species_id") WHERE "trait_records"."outlier_flag" is not null;--> statement-breakpoint
+ALTER TABLE "trait_records" ADD CONSTRAINT "trait_records_outlier_flag_check" CHECK ("trait_records"."outlier_flag" is null or "trait_records"."outlier_flag" in ('species_disagreement', 'trait_extreme', 'both'));

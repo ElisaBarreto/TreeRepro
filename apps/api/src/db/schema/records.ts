@@ -1,5 +1,6 @@
 import {
   HARMONISATION_STATUSES,
+  OUTLIER_FLAGS,
   RECORD_INTENTS,
   RECORD_ORIGINS,
   SUMMARY_SOURCES,
@@ -98,6 +99,8 @@ export const traitRecords = pgTable(
     summarySource: text('summary_source', { enum: SUMMARY_SOURCES }),
     /** How many harmonised source records the imported row stands for (RFC-63 R1). */
     recordsBehindRow: integer('records_behind_row'),
+    /** Why the owner's outlier audit flagged the value; null when not flagged (RFC-63 R1). */
+    outlierFlag: text('outlier_flag', { enum: OUTLIER_FLAGS }),
     createdBy: uuid('created_by').references(() => users.id),
     note: text('note'),
     /** The pending record this row harmonises (RFC-65 R7); null for every other row. */
@@ -141,6 +144,10 @@ export const traitRecords = pgTable(
     index('trait_records_responds_to_idx')
       .on(t.respondsToRecordId)
       .where(sql`${t.respondsToRecordId} is not null`),
+    /** RFC-60 R6: the `outliers` species filter reads only the flagged rows. */
+    index('trait_records_outlier_species_idx')
+      .on(t.speciesId)
+      .where(sql`${t.outlierFlag} is not null`),
     /** RFC-71 R4: the viewer's own manual records, newest first. */
     index('trait_records_created_by_idx')
       .on(t.createdBy, t.id.desc())
@@ -196,6 +203,11 @@ export const traitRecords = pgTable(
     check(
       'trait_records_records_behind_row_check',
       sql`${t.recordsBehindRow} is null or ${t.recordsBehindRow} >= 1`,
+    ),
+    /** RFC-63 R1: outlier_flag takes only the three audit reasons. */
+    check(
+      'trait_records_outlier_flag_check',
+      sql`${t.outlierFlag} is null or ${t.outlierFlag} in ('species_disagreement', 'trait_extreme', 'both')`,
     ),
   ],
 );
