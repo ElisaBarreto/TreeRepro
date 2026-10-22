@@ -55,13 +55,15 @@ export async function runSnapshot(input: {
     const last = await latestRun(db, 'snapshot', ['completed']);
     if (!isSnapshotDue(last?.finishedAt ?? null, now)) return { runId: null, status: 'not_due' };
   }
+  // The run is opened before the lock is taken, so a failure to open it can
+  // never leave the session lock held on a connection returned to the pool.
+  const runId = await startRun(db, 'snapshot');
   const lock = await db.$client.reserve();
   try {
     const [{ locked }] =
       (await lock`select pg_try_advisory_lock(${SNAPSHOT_LOCK_KEY}) as locked`) as [
         { locked: boolean },
       ];
-    const runId = await startRun(db, 'snapshot');
     if (!locked) {
       await finishRun(db, runId, { status: 'skipped', detail: { reason: 'locked' } });
       return { runId, status: 'skipped' };
