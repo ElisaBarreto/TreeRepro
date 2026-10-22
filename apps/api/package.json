@@ -23,6 +23,7 @@
     "import:user-plots": "node --conditions=development src/cli/import-user-plots.ts",
     "import:synonyms": "node --conditions=development src/cli/import-synonyms.ts",
     "import:references": "node --conditions=development src/cli/import-references.ts",
+    "import:wcvp": "node --conditions=development src/cli/import-wcvp.ts",
     "prepare:imports": "node --conditions=development src/cli/prepare-imports.ts"
   },
   "dependencies": {
