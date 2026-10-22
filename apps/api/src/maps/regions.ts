@@ -128,7 +128,9 @@ export async function mapValues(
 ): Promise<MapValues> {
   const entry = (await listMaps(db, visibility)).find(
     (m) =>
-      m.traitId === query.traitId && m.kind === query.kind && m.levelId === (query.levelId ?? null),
+      m.traitId === query.traitId.toLowerCase() &&
+      m.kind === query.kind &&
+      m.levelId === (query.levelId?.toLowerCase() ?? null),
   );
   if (!entry) throw new AppError('MAP_NOT_FOUND', 'Map not found');
   const rows = await regionRows(db, query);

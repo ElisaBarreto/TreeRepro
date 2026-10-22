@@ -144,6 +144,8 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
     const status = async (query: string) =>
       (await call(t.app, 'GET', `/api/maps/values?${query}`, { cookie })).status;
     expect(await status(`traitId=${f.cat.id}&kind=prevalence&levelId=${f.blue}`)).toBe(404);
+    // ids are compared case-insensitively, as UUIDs
+    expect(await status(`traitId=${f.cat.id.toUpperCase()}&kind=completeness`)).toBe(200);
     expect(await status(`traitId=${f.cat.id}&kind=mean`)).toBe(404);
     expect(await status(`traitId=${f.cat.id}&kind=prevalence`)).toBe(400);
     expect(await status(`traitId=${f.num.id}&kind=mean&levelId=${f.red}`)).toBe(400);
