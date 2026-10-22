@@ -52,8 +52,9 @@ describe('RFC-64 importRecords', () => {
       fileName: 'records-small.csv',
       status: 'completed',
       rowsTotal: 27,
-      rowsInserted: 23,
-      rowsDuplicate: 2,
+      // issue #299: rows 7 and 22 repeat row 1's claim but are observations of their own
+      rowsInserted: 25,
+      rowsDuplicate: 0,
       rowsRejected: 3,
       rowsPending: 6,
       runBy: null,
@@ -165,7 +166,8 @@ describe('RFC-64 importRecords', () => {
       valueText: '',
       rawValue: null,
     });
-    expect(await recordAt(batch.id, 7)).toBeUndefined(); // duplicate of 1
+    // row 1's claim again: another observation, stored (issue #299)
+    expect(await recordAt(batch.id, 7)).toMatchObject({ valueText: 'blue', recordCode: 'EB_7' });
     expect(await recordAt(batch.id, 8)).toMatchObject({
       rawValue: 'BLUE',
       harmonisation: 'harmonised',
@@ -180,7 +182,7 @@ describe('RFC-64 importRecords', () => {
       .from(bibliographicReferences)
       .where(eq(bibliographicReferences.id, row21?.primaryReferenceId as string));
     expect(primary?.citationKey.startsWith('Kühn, I., W. Durka')).toBe(true);
-    expect(await recordAt(batch.id, 22)).toBeUndefined(); // duplicate of 1 after trimming
+    expect(await recordAt(batch.id, 22)).toMatchObject({ valueText: 'blue', recordCode: 'EB_22' });
     expect(await recordAt(batch.id, 23)).toMatchObject({
       levelId: darkBlue?.id,
       valueText: 'DARK_BLUE',
@@ -236,7 +238,7 @@ describe('RFC-64 importRecords', () => {
     // R10 report
     const report = await batchReport(t.db, batch.id);
     expect(report.harmonisation).toEqual({
-      harmonised: 17,
+      harmonised: 19,
       unknown_level: 1,
       multi_value: 0,
       not_numeric: 4,
@@ -254,17 +256,16 @@ describe('RFC-64 importRecords', () => {
       reason: 'already_imported',
       batchId: batch.id,
     });
-    // R14: every row whose ID is stored is skipped — the 22 rows with records,
-    // row 4 included although its records are EB_4a/EB_4b. Rows 7 and 22 (claim
-    // duplicates whose IDs were never stored) stay duplicates, and the fixture's
+    // R14: every row whose ID is stored is skipped — the 24 rows with records,
+    // row 4 included although its records are EB_4a/EB_4b — and the fixture's
     // own three rejects reject again. No second record anywhere.
     const forced = await importRecords(t.db, { filePath: FIXTURE, force: true });
     expect(forced).toMatchObject({
       rowsTotal: 27,
       rowsInserted: 0,
-      rowsDuplicate: 2,
+      rowsDuplicate: 0,
       rowsRejected: 3,
-      rowsAlreadyImported: 22,
+      rowsAlreadyImported: 24,
       rowsFiltered: 0,
       rowsPending: 0,
     });
@@ -564,12 +565,15 @@ describe('RFC-64 importRecords', () => {
         final_standard_trait: 'growth_form',
         trait_value_type: 'categorical',
       });
-    // Row 2's part a (`shrub`) is row 1's claim, so only `EB_<n+1>b` is stored.
+    // Row 2's part a (`shrub`) repeats row 1's claim; both parts are stored all the same (issue #299).
     const lines = [categorical(`EB_${n}`, 'shrub'), categorical(`EB_${n + 1}`, 'shrub;tree')];
     const first = await importRecords(t.db, {
       filePath: await writeRecords('import-part1-', lines),
     });
-    expect((await recordsAt(first.id, 2)).map((r) => r.recordCode)).toEqual([`EB_${n + 1}b`]);
+    expect((await recordsAt(first.id, 2)).map((r) => r.recordCode).sort()).toEqual([
+      `EB_${n + 1}a`,
+      `EB_${n + 1}b`,
+    ]);
 
     // The same file again: both rows are already imported, none a duplicate.
     const same = await importRecords(t.db, {
@@ -918,25 +922,25 @@ describe('RFC-64 importRecords', () => {
           row({ harmonised_value: '5', statistic: 'single_or_unspecified' }),
           row({ mean: '5' }),
           row({ median: '5' }),
-          // an empty statistic is a single value: the same claim as row 1
+          // an empty statistic is a single value: row 1's claim, another observation (issue #299)
           row({ harmonised_value: '5' }),
           // RFC-63 R15 order: single, min, max, mean, median, sd, se, n
           row({ harmonised_value: '9.3', min: '6.2', max: '18.8' }),
           row({ median: '4', sd: '1', sample_size: '3' }),
-          // unit, summary_source and records_behind_row stay out of the claim
+          // unit, summary_source and records_behind_row stay out of the claim, which only its row makes new
           row({ harmonised_value: '5', unit: 'g', summary_source: 'reported_by_study' }),
         ]),
       });
-      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 5, rowsDuplicate: 2 });
+      expect(batch).toMatchObject({ status: 'completed', rowsInserted: 7, rowsDuplicate: 0 });
       expect(await recordAt(batch.id, 1)).toMatchObject({ numericValue: 5, valueText: '5' });
       expect(await recordAt(batch.id, 2)).toMatchObject({ meanValue: 5, valueText: 'mean=5' });
       expect(await recordAt(batch.id, 3)).toMatchObject({ medianValue: 5, valueText: 'median=5' });
-      expect(await recordAt(batch.id, 4)).toBeUndefined();
+      expect(await recordAt(batch.id, 4)).toMatchObject({ numericValue: 5, valueText: '5' });
       expect(await recordAt(batch.id, 5)).toMatchObject({
         valueText: 'single=9.3;min=6.2;max=18.8',
       });
       expect(await recordAt(batch.id, 6)).toMatchObject({ valueText: 'median=4;sd=1;n=3' });
-      expect(await recordAt(batch.id, 7)).toBeUndefined();
+      expect(await recordAt(batch.id, 7)).toMatchObject({ valueText: '5', unit: 'g' });
     });
 
     it('R7 invalid_measurement: the statistic columns are checked on a quantitative trait only', async () => {

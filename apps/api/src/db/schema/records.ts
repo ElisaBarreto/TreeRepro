@@ -128,6 +128,12 @@ export const traitRecords = pgTable(
         t.rawValue,
         t.primaryReferenceId,
         t.secondaryReferenceId,
+        // issue #299: every imported row is its own observation, and so is
+        // the harmonisation of one (RFC-65 R9); a plain manual record carries
+        // none of the three, so identical manual claims stay refused.
+        t.importBatchId,
+        t.importRowNo,
+        t.supersedesRecordId,
       )
       .nullsNotDistinct(),
     index('trait_records_species_trait_idx').on(t.speciesId, t.traitId, t.id.desc()),
