@@ -35,6 +35,7 @@ export const OUTLIER_LABELS: Record<OutlierFlag, string> = {
   unit_factor: "Likely a unit slip: about ×10, ×100, ×1000 or ×25.4 off this species' other values",
   trait_extreme: 'Extreme for this trait',
   'unit_factor;trait_extreme': 'Likely a unit slip, and extreme for this trait',
+  bounds_inverted: 'Minimum and maximum were inverted at the source; the bounds were left out',
 };
 
 /**

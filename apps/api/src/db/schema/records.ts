@@ -213,7 +213,7 @@ export const traitRecords = pgTable(
     /** RFC-63 R1: outlier_flag takes only the three audit reasons. */
     check(
       'trait_records_outlier_flag_check',
-      sql`${t.outlierFlag} is null or ${t.outlierFlag} in ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme')`,
+      sql`${t.outlierFlag} is null or ${t.outlierFlag} in ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme', 'bounds_inverted')`,
     ),
   ],
 );

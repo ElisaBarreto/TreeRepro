@@ -877,11 +877,14 @@ describe('RFC-64 importRecords', () => {
         // 7, 8 rejects: the pre-v1 values are gone
         base({ harmonised_value: '5', outlier_flag: 'species_disagreement' }),
         base({ harmonised_value: '6', outlier_flag: 'both' }),
+        // 9: bounds the source inverted, left out by the pipeline (issue #303)
+        base({ harmonised_value: '7', outlier_flag: 'bounds_inverted' }),
       ];
       const batch = await importRecords(t.db, {
         filePath: await writeRecords('import-outlier-', lines),
       });
-      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 8, rowsRejected: 4 });
+      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 9, rowsRejected: 4 });
+      expect(await recordAt(batch.id, 9)).toMatchObject({ outlierFlag: 'bounds_inverted' });
       expect(await recordAt(batch.id, 1)).toMatchObject({ outlierFlag: 'unit_factor' });
       // the flag stays out of value_text (RFC-63 R3)
       expect(await recordAt(batch.id, 2)).toMatchObject({
