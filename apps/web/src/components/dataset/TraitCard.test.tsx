@@ -43,6 +43,8 @@ const LEVELLED: TraitSummary = {
       count: 4,
       validationCount: 2,
       contested: true,
+      nSources: 3,
+      shareOfRecords: 0.6667,
     },
     {
       levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21',
@@ -50,6 +52,8 @@ const LEVELLED: TraitSummary = {
       count: 1,
       validationCount: 0,
       contested: false,
+      nSources: 1,
+      shareOfRecords: 0.1667,
     },
     {
       levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22',
@@ -57,6 +61,8 @@ const LEVELLED: TraitSummary = {
       count: 1,
       validationCount: 1,
       contested: false,
+      nSources: 1,
+      shareOfRecords: 0.1667,
     },
   ],
 };
@@ -80,6 +86,8 @@ describe('RFC-63 R10 TraitCard', () => {
         count: 7 - i,
         validationCount: 0,
         contested: false,
+        nSources: 1,
+        shareOfRecords: (7 - i) / 28,
       })),
     };
     render(<TraitCard summary={many} onOpen={() => {}} />);
@@ -95,6 +103,8 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(items[0]).toHaveTextContent('dioecious');
     expect(items[0]).toHaveTextContent('4 records');
     expect(items[0]).toHaveTextContent('✓ 2');
+    expect(items[0]).toHaveTextContent('3 sources');
+    expect(items[1]).toHaveTextContent('1 source');
     expect(within(items[0] as HTMLElement).getByText('Contested')).toBeInTheDocument();
     expect(items[1]).toHaveTextContent('1 record');
     expect(within(items[1] as HTMLElement).queryByText('Contested')).not.toBeInTheDocument();
@@ -139,55 +149,76 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(screen.queryByRole('button', { name: /^Contest / })).not.toBeInTheDocument();
   });
 
-  it('RFC-63 R10 shows the mean of each field with the unit for a quantitative trait, and no level list (issue #234)', () => {
+  it('RFC-77 R5 shows the median of source medians with its unit, then mean ± sd, range, records and sources, and no level list (issue #290)', () => {
     render(<TraitCard summary={SEED_MASS_SUMMARY} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: /seed mass/ });
+    expect(within(card).getByText('Median 1.25 mg')).toBeInTheDocument();
     expect(
-      within(card).getByText(
-        'mean of single values 1.25 mg · mean of min 0.5 mg · mean of max 3 mg',
-      ),
+      within(card).getByText('mean 1.3 ± 0.25 · 0.5–3 · 3 records · 2 sources'),
     ).toBeInTheDocument();
+    expect(within(card).queryByText('Outlier')).not.toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
-  it('RFC-63 R10 shows only the fields that have a mean: a range-only trait reads min and max (issue #234)', () => {
+  it('RFC-77 R5 names a range midpoint or a single bound, and flags outliers with their reasons (issue #290)', () => {
+    const continuous = SEED_MASS_SUMMARY.continuous as NonNullable<TraitSummary['continuous']>;
     render(
       <TraitCard
         summary={{
           ...SEED_MASS_SUMMARY,
-          numeric: [
-            {
-              unit: 'mg',
-              means: { single: null, mean: null, median: null, min: 2, max: 8 },
-              count: 1,
-            },
-          ],
+          continuous: {
+            ...continuous,
+            median: 5.5,
+            summaryBasis: 'range_midpoint',
+            mean: null,
+            sd: null,
+            outlierFlags: ['unit_factor'],
+          },
         }}
         onOpen={() => {}}
       />,
     );
     const card = screen.getByRole('button', { name: /seed mass/ });
-    expect(within(card).getByText('mean of min 2 mg · mean of max 8 mg')).toBeInTheDocument();
-    expect(card).not.toHaveTextContent('single');
+    expect(within(card).getByText('Median 5.5 mg (midpoint of the range)')).toBeInTheDocument();
+    expect(within(card).getByText('0.5–3 · 3 records · 2 sources')).toBeInTheDocument();
+    expect(within(card).getByText('Outlier')).toBeInTheDocument();
+    expect(card).toHaveTextContent(/unit slip/);
   });
 
-  it('RFC-63 R10 shows one line per unit, each value in its own unit, never averaged together (issue #258)', () => {
-    const only = { single: null, mean: null, median: null, min: null, max: null };
+  it('RFC-77 R7 shows the main state with its share and majority, and the states that are not a clear minority (issue #290)', () => {
+    render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={() => {}} />);
+    const card = screen.getByRole('button', { name: /^sexual system/ });
+    expect(
+      within(card).getByText('Main state: dioecious — 67% of records (majority)'),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText('States: dioecious · monoecious · hermaphrodite'),
+    ).toBeInTheDocument();
+  });
+
+  it('RFC-77 R7 a tie names every main state, and no States line repeats them', () => {
+    const categorical = SEXUAL_SYSTEM_SUMMARY.categorical as NonNullable<
+      TraitSummary['categorical']
+    >;
     render(
       <TraitCard
         summary={{
-          ...SEED_MASS_SUMMARY,
-          numeric: [
-            { unit: 'rgb_0_255', means: { ...only, single: 120 }, count: 3 },
-            { unit: 'proportion_0_1', means: { ...only, single: 0.4 }, count: 2 },
-          ],
+          ...SEXUAL_SYSTEM_SUMMARY,
+          categorical: {
+            ...categorical,
+            mainStates: ['dioecious', 'monoecious'],
+            share: 0.5,
+            states: ['dioecious', 'monoecious'],
+          },
         }}
         onOpen={() => {}}
       />,
     );
-    const card = screen.getByRole('button', { name: /seed mass/ });
-    expect(within(card).getByText('mean of single values 120 rgb_0_255')).toBeInTheDocument();
-    expect(within(card).getByText('mean of single values 0.4 proportion_0_1')).toBeInTheDocument();
+    const card = screen.getByRole('button', { name: /^sexual system/ });
+    expect(
+      within(card).getByText('Main state: dioecious / monoecious — 50% of records (majority)'),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText(/^States:/)).not.toBeInTheDocument();
   });
 
   it('says "1 record" for a single record and calls onOpen when clicked', async () => {

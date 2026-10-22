@@ -167,101 +167,94 @@ describe('RFC-63 R8 recordSchema', () => {
 });
 
 describe('RFC-63 R10 speciesTraitsSchema', () => {
-  it('accepts categorical and quantitative summaries', () => {
-    const payload = [
+  const counts = { harmonised: 2, unknownLevel: 0, multiValue: 0, notNumeric: 0, empty: 0 };
+  const categoricalTrait = {
+    trait: { id: uuid, key: 'flower_color', valueType: 'categorical', unit: null },
+    recordCount: 3,
+    harmonisationCounts: { ...counts, unknownLevel: 1 },
+    levels: [
       {
-        category: { key: 'flower_color', label: 'Flower color' },
-        traits: [
-          {
-            trait: { id: uuid, key: 'flower_color', valueType: 'categorical', unit: null },
-            recordCount: 3,
-            harmonisationCounts: {
-              harmonised: 2,
-              unknownLevel: 1,
-              multiValue: 0,
-              notNumeric: 0,
-              empty: 0,
-            },
-            levels: [{ levelId: uuid, key: 'blue', count: 2, validationCount: 1, contested: true }],
-            numeric: null,
-            validated: false,
-            contested: true,
-          },
-          {
-            trait: { id: uuid, key: 'petal_length', valueType: 'quantitative', unit: 'mm' },
-            recordCount: 2,
-            harmonisationCounts: {
-              harmonised: 2,
-              unknownLevel: 0,
-              multiValue: 0,
-              notNumeric: 0,
-              empty: 0,
-            },
-            levels: null,
-            numeric: [
-              {
-                unit: 'mm',
-                means: { single: 2, mean: null, median: null, min: 1.5, max: 2.5 },
-                count: 2,
-              },
-              {
-                unit: null,
-                means: { single: 3, mean: null, median: null, min: null, max: null },
-                count: 1,
-              },
-            ],
-            validated: true,
-            contested: false,
-          },
-        ],
+        levelId: uuid,
+        key: 'blue',
+        count: 2,
+        validationCount: 1,
+        contested: true,
+        nSources: 2,
+        shareOfRecords: 0.75,
+      },
+    ],
+    continuous: null,
+    categorical: {
+      mainStates: ['blue'],
+      share: 0.75,
+      majority: true,
+      states: ['blue'],
+      nRecords: 4,
+    },
+    validated: false,
+    contested: true,
+  };
+  const quantitativeTrait = {
+    trait: { id: uuid, key: 'petal_length', valueType: 'quantitative', unit: 'mm' },
+    recordCount: 2,
+    harmonisationCounts: counts,
+    levels: null,
+    continuous: {
+      median: 5,
+      summaryBasis: 'median_of_source_medians',
+      mean: 4.8,
+      meanBasis: 'central_values',
+      sd: 0.4,
+      min: 4,
+      max: 6,
+      nRecords: 2,
+      nSources: 2,
+      outlierFlags: ['trait_extreme'],
+      unit: 'mm',
+    },
+    categorical: null,
+    validated: true,
+    contested: false,
+  };
+  const wrap = (traits: unknown[]) => [
+    { category: { key: 'flower_color', label: 'Flower color' }, traits },
+  ];
+
+  it('accepts the RFC-77 summaries of both kinds (issue #290)', () => {
+    const payload = wrap([categoricalTrait, quantitativeTrait]);
+    expect(speciesTraitsSchema.parse(payload)).toEqual(payload);
+  });
+
+  it('refuses the per-field means it replaced, an unknown basis and a summary-only flag', () => {
+    const numeric = [
+      {
+        unit: 'mm',
+        means: { single: 2, mean: null, median: null, min: null, max: null },
+        count: 1,
       },
     ];
-    expect(speciesTraitsSchema.parse(payload)).toEqual(payload);
-    const quantitativeTrait = payload[0]?.traits[1];
+    expect(speciesTraitsSchema.safeParse(wrap([{ ...quantitativeTrait, numeric }])).success).toBe(
+      false,
+    );
     expect(
-      speciesTraitsSchema.safeParse([
-        {
-          category: { key: 'flower_color', label: 'Flower color' },
-          traits: [
-            {
-              ...quantitativeTrait,
-              numeric: [
-                {
-                  unit: 'mm',
-                  means: { single: null, mean: null, median: null, min: 1, max: 3 },
-                  count: 1,
-                },
-              ],
-            },
-          ],
-        },
-      ]).success,
-    ).toBe(true);
-    // RFC-63 R10 (issue #234): the old pooled shape is gone.
-    expect(
-      speciesTraitsSchema.safeParse([
-        {
-          category: { key: 'flower_color', label: 'Flower color' },
-          traits: [{ ...quantitativeTrait, numeric: { min: 1, max: 3, mean: null, count: 1 } }],
-        },
-      ]).success,
+      speciesTraitsSchema.safeParse(
+        wrap([
+          {
+            ...quantitativeTrait,
+            continuous: { ...quantitativeTrait.continuous, summaryBasis: 'mean' },
+          },
+        ]),
+      ).success,
     ).toBe(false);
-    // RFC-63 R10 (issue #258): one entry per unit, never a single object.
     expect(
-      speciesTraitsSchema.safeParse([
-        {
-          category: { key: 'flower_color', label: 'Flower color' },
-          traits: [
-            {
-              ...quantitativeTrait,
-              numeric: {
-                means: { single: null, mean: null, median: null, min: 1, max: 3 },
-                count: 1,
-              },
-            },
-          ],
-        },
-      ]).success,
+      speciesTraitsSchema.safeParse(
+        wrap([
+          {
+            ...quantitativeTrait,
+            continuous: { ...quantitativeTrait.continuous, outlierFlags: ['bounds_inverted'] },
+          },
+        ]),
+      ).success,
     ).toBe(false);
   });
 });

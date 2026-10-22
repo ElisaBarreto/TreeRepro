@@ -224,9 +224,7 @@ describe('RFC-63 R10 SpeciesPage trait sections', () => {
     expect(cards[0]).toHaveTextContent('2 pending');
     expect(cards[1]).toHaveTextContent(/^pollination mode/);
     expect(cards[2]).toHaveTextContent(/^seed mass/);
-    expect(cards[2]).toHaveTextContent(
-      'mean of single values 1.25 mg · mean of min 0.5 mg · mean of max 3 mg',
-    );
+    expect(cards[2]).toHaveTextContent('Median 1.25 mg');
   });
 });
 
@@ -772,7 +770,14 @@ const DICTIONARY_SPECIES_TRAITS: SpeciesTraits = [
         levels: [
           { levelId: DICT_HERMAPHRODITE, key: 'hermaphrodite' },
           { levelId: DICT_DIOECIOUS, key: 'dioecious' },
-        ].map((level) => ({ ...level, count: 1, validationCount: 0, contested: false })),
+        ].map((level) => ({
+          ...level,
+          count: 1,
+          validationCount: 0,
+          contested: false,
+          nSources: 1,
+          shareOfRecords: 0.5,
+        })),
       },
     ],
   },

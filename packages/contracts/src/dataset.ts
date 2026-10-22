@@ -626,6 +626,15 @@ export const harmonisationCountsSchema = z.strictObject({
   empty: z.number().int().nonnegative(),
 });
 
+/** How a species summary's value was reached (RFC-77 R5). @rfc RFC-77 R5 */
+export const SUMMARY_BASES = [
+  'median_of_source_medians',
+  'central_values',
+  'range_midpoint',
+  'single_bound',
+  'none',
+] as const;
+
 /** @rfc RFC-63 R10 */
 export const traitSummarySchema = z.strictObject({
   trait: traitRefSchema,
@@ -640,18 +649,38 @@ export const traitSummarySchema = z.strictObject({
         /** Distinct actors who validated at least one visible record of the level. */
         validationCount: z.number().int().nonnegative(),
         contested: z.boolean(),
+        /** The level's sources in the species summary (RFC-77 R6); 0 when it does not count. */
+        nSources: z.number().int().nonnegative(),
+        /** The level's share of the summary's records (RFC-77 R6); 0 when it does not count. */
+        shareOfRecords: z.number().nonnegative(),
       }),
     )
     .nullable(),
-  /** One entry per effective unit, `count` descending then unit (RFC-63 R10). */
-  numeric: z
-    .array(
-      z.strictObject({
-        unit: z.string().nullable(),
-        means: fieldMeansSchema,
-        count: z.number().int().nonnegative(),
-      }),
-    )
+  /** The species summary of a quantitative trait (RFC-77 R5), live; null otherwise or when none. */
+  continuous: z
+    .strictObject({
+      median: z.number().nullable(),
+      summaryBasis: z.enum(SUMMARY_BASES),
+      mean: z.number().nullable(),
+      meanBasis: z.enum(SUMMARY_BASES),
+      sd: z.number().nullable(),
+      min: z.number().nullable(),
+      max: z.number().nullable(),
+      nRecords: z.number().int().nonnegative(),
+      nSources: z.number().int().nonnegative(),
+      outlierFlags: z.array(z.enum(['unit_factor', 'trait_extreme'])),
+      unit: z.string().nullable(),
+    })
+    .nullable(),
+  /** The species summary of a categorical trait (RFC-77 R7), live; null otherwise or when none. */
+  categorical: z
+    .strictObject({
+      mainStates: z.array(z.string()),
+      share: z.number().nonnegative(),
+      majority: z.boolean(),
+      states: z.array(z.string()),
+      nRecords: z.number().int().nonnegative(),
+    })
     .nullable(),
   /** At least one of the species' records on the trait is validated (spec R-1). */
   validated: z.boolean(),

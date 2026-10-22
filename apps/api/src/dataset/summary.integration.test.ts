@@ -20,7 +20,7 @@ import { speciesTraitSummary } from './summary.ts';
 describe('RFC-63 R10 speciesTraitSummary', () => {
   const t = useTestDb();
 
-  it('aggregates per category and trait: counts, levels, numeric stats, validated', async () => {
+  it('aggregates per category and trait: counts, levels, the RFC-77 summaries, validated', async () => {
     const sp1 = await createSpecies(t.db);
     const color = await traitByKey(t.db, 'flower_color');
     const blue = await levelByKey(t.db, color.id, 'blue');
@@ -96,10 +96,34 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
         empty: 0,
       },
       levels: [
-        { levelId: blue.id, key: 'blue', count: 2, validationCount: 1, contested: false },
-        { levelId: red.id, key: 'red', count: 1, validationCount: 0, contested: false },
+        {
+          levelId: blue.id,
+          key: 'blue',
+          count: 2,
+          validationCount: 1,
+          contested: false,
+          nSources: 1,
+          shareOfRecords: expect.closeTo(2 / 3, 10),
+        },
+        {
+          levelId: red.id,
+          key: 'red',
+          count: 1,
+          validationCount: 0,
+          contested: false,
+          nSources: 1,
+          shareOfRecords: expect.closeTo(1 / 3, 10),
+        },
       ],
-      numeric: null,
+      continuous: null,
+      // RFC-77 R7 (issue #290): the multi_value record is pending and does not count
+      categorical: {
+        mainStates: ['blue'],
+        share: 0.6667,
+        majority: true,
+        states: ['blue', 'red'],
+        nRecords: 3,
+      },
       validated: true,
       contested: false,
     });
@@ -108,19 +132,24 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       recordCount: 4,
       harmonisationCounts: { harmonised: 3, notNumeric: 1 },
       levels: null,
-      numeric: [
-        {
-          unit: petal.unit,
-          means: {
-            single: expect.closeTo(7 / 3, 10),
-            mean: null,
-            median: null,
-            min: null,
-            max: null,
-          },
-          count: 3,
-        },
-      ],
+      // RFC-77 R5 (issue #290): one source, so the median of its values
+      continuous: {
+        median: 2,
+        summaryBasis: 'median_of_source_medians',
+        mean: expect.closeTo(7 / 3, 10),
+        meanBasis: 'central_values',
+        sd: expect.closeTo(
+          Math.sqrt(((1 - 7 / 3) ** 2 + (2 - 7 / 3) ** 2 + (4 - 7 / 3) ** 2) / 3),
+          10,
+        ),
+        min: 1,
+        max: 4,
+        nRecords: 3,
+        nSources: 1,
+        outlierFlags: [],
+        unit: petal.unit,
+      },
+      categorical: null,
       validated: false,
     });
     // A withdrawn record is no longer a validated one (spec R-1).
@@ -133,266 +162,37 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     );
   });
 
-  it('RFC-63 R10 numeric: a mean per field, never pooled across fields (issue #234)', async () => {
-    const { user } = await createUser(t.db);
-    const sp1 = await createSpecies(t.db);
-    const petal = await traitByKey(t.db, 'petal_length');
-    const ref = await createReference(t.db);
-    const manual = {
-      speciesId: sp1.id,
-      traitId: petal.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual' as const,
-      createdBy: user.id,
-    };
-    await createRecord(t.db, { ...manual, valueText: '5', numericValue: 5 });
-    await createRecord(t.db, { ...manual, valueText: 'min=2;max=8', minValue: 2, maxValue: 8 });
-    await createRecord(t.db, {
-      ...manual,
-      valueText: 'mean=4;sd=1;n=10',
-      meanValue: 4,
-      sdValue: 1,
-      n: 10,
-    });
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
-    expect(numeric).toEqual([
-      { unit: petal.unit, means: { single: 5, mean: 4, median: null, min: 2, max: 8 }, count: 3 },
+  it('RFC-77 R8 the summaries follow the viewer: a record on an inactive level is left out for a restricted viewer', async () => {
+    const sp = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { levels: ['open', 'closed'] });
+    const [open, closed] = await Promise.all([
+      levelByKey(t.db, trait.id, 'open'),
+      levelByKey(t.db, trait.id, 'closed'),
     ]);
-  });
-
-  it('RFC-63 R10 numeric: the median is its own field, averaged over the records that hold one (issues #232, #234)', async () => {
-    const sp1 = await createSpecies(t.db);
-    const petal = await traitByKey(t.db, 'petal_length');
     const ref = await createReference(t.db);
-    const imported = {
-      speciesId: sp1.id,
-      traitId: petal.id,
-      primaryReferenceId: ref.id,
-      importBatchId: (await createImportBatch(t.db)).id,
-    };
-    await createRecord(t.db, { ...imported, valueText: '5', numericValue: 5 });
-    await createRecord(t.db, { ...imported, valueText: 'median=20', medianValue: 20 });
-    await createRecord(t.db, {
-      ...imported,
-      valueText: 'mean=2;median=100',
-      meanValue: 2,
-      medianValue: 100,
-    });
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
-    expect(numeric).toEqual([
-      {
-        unit: petal.unit,
-        means: { single: 5, mean: 2, median: 60, min: null, max: null },
-        count: 3,
-      },
-    ]);
-  });
-
-  it('RFC-63 R10 numeric: a study summary repeated on its measurement records counts once (issue #257)', async () => {
-    const sp1 = await createSpecies(t.db);
-    const petal = await traitByKey(t.db, 'petal_length');
-    const [studyA, studyB] = [await createReference(t.db), await createReference(t.db)];
-    const importBatchId = (await createImportBatch(t.db)).id;
-    const imported = { speciesId: sp1.id, traitId: petal.id, importBatchId };
-    // Study A: three measurements, each row repeating the study's summary.
-    for (const v of [10, 11, 12]) {
-      await createRecord(t.db, {
-        ...imported,
-        primaryReferenceId: studyA.id,
-        valueText: `single=${v};min=10;max=14;mean=12;median=11`,
-        numericValue: v,
-        meanValue: 12,
-        medianValue: 11,
-        minValue: 10,
-        maxValue: 14,
-      });
-    }
-    // Study B: the same mean as A, through another reference — it counts on its own.
-    await createRecord(t.db, {
-      ...imported,
-      primaryReferenceId: studyB.id,
-      valueText: 'min=18;max=22;mean=20;median=19',
-      meanValue: 20,
-      medianValue: 19,
-      minValue: 18,
-      maxValue: 22,
-    });
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    const numeric = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric;
-    // mean (12 + 20) / 2 = 16, not (12 + 12 + 12 + 20) / 4 = 14; single keeps every measurement.
-    expect(numeric).toEqual([
-      { unit: petal.unit, means: { single: 11, mean: 16, median: 15, min: 14, max: 18 }, count: 4 },
-    ]);
-  });
-
-  it('RFC-63 R10 numeric: one entry per effective unit, never averaged across units (issue #258)', async () => {
-    const sp1 = await createSpecies(t.db);
-    const colour = await createTrait(t.db, { valueType: 'quantitative', unit: 'rgb_0_255' });
-    const ref = await createReference(t.db);
-    const imported = {
-      speciesId: sp1.id,
-      traitId: colour.id,
-      primaryReferenceId: ref.id,
-      importBatchId: (await createImportBatch(t.db)).id,
-    };
-    // No unit: the trait's. The same study mean in one unit counts once, in another on its own.
-    await createRecord(t.db, { ...imported, valueText: '200', numericValue: 200, meanValue: 1 });
-    for (const [v, unit] of [
-      [100, 'rgb_0_255'],
-      [60, 'rgb_0_255'],
-      [0.5, 'proportion_0_1'],
-      [0.3, 'proportion_0_1'],
-      [5, 'munsell_hue'],
-      [7, 'munsell_hue'],
+    const batch = await createImportBatch(t.db);
+    for (const [level, n] of [
+      [open, 1],
+      [closed, 2],
+      [closed, 3],
     ] as const) {
       await createRecord(t.db, {
-        ...imported,
-        valueText: String(v),
-        numericValue: v,
-        meanValue: 1,
-        unit,
+        speciesId: sp.id,
+        traitId: trait.id,
+        valueText: `${level.key}-${n}`,
+        levelId: level.id,
+        primaryReferenceId: ref.id,
+        importBatchId: batch.id,
+        importRowNo: n,
       });
     }
-    await createRecord(t.db, {
-      ...imported,
-      valueText: '550',
-      numericValue: 550,
-      unit: 'nm',
-      unitStatus: 'needs_unit_check',
-    });
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    const numeric = summary
-      ?.flatMap((c) => c.traits)
-      .find((x) => x.trait.id === colour.id)?.numeric;
-    const means = (single: unknown) => ({ single, mean: 1, median: null, min: null, max: null });
-    expect(numeric).toEqual([
-      { unit: 'rgb_0_255', means: means(120), count: 3 },
-      { unit: 'munsell_hue', means: means(6), count: 2 },
-      { unit: 'proportion_0_1', means: means(expect.closeTo(0.4, 10)), count: 2 },
-    ]);
-  });
-
-  it('RFC-63 R10 a field no record holds is null: a range-only trait has only min and max', async () => {
-    const { user } = await createUser(t.db);
-    const sp1 = await createSpecies(t.db);
-    const petal = await traitByKey(t.db, 'petal_length');
-    const ref = await createReference(t.db);
-    await createRecord(t.db, {
-      speciesId: sp1.id,
-      traitId: petal.id,
-      valueText: 'min=1;max=3',
-      minValue: 1,
-      maxValue: 3,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: user.id,
-    });
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    expect(summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id)?.numeric).toEqual(
-      [
-        {
-          unit: petal.unit,
-          means: { single: null, mean: null, median: null, min: 1, max: 3 },
-          count: 1,
-        },
-      ],
-    );
-  });
-
-  it('RFC-63 R10 leaves records whose unit needs checking out of every mean and the count', async () => {
-    const { user } = await createUser(t.db);
-    const sp1 = await createSpecies(t.db);
-    const petal = await traitByKey(t.db, 'petal_length');
-    const ref = await createReference(t.db);
-    const manual = {
-      speciesId: sp1.id,
-      traitId: petal.id,
-      primaryReferenceId: ref.id,
-      origin: 'manual' as const,
-      createdBy: user.id,
-    };
-    await createRecord(t.db, {
-      ...manual,
-      valueText: '10',
-      numericValue: 10,
-      unitStatus: 'converted_or_already_target',
-    });
-    await createRecord(t.db, {
-      ...manual,
-      valueText: '1000',
-      numericValue: 1000,
-      unitStatus: 'needs_unit_check',
-    });
-    await createRecord(t.db, {
-      ...manual,
-      valueText: 'min=4',
-      minValue: 4,
-      unitStatus: 'unit_missing',
-    });
-
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
-    expect(petalSummary?.numeric).toEqual([
-      {
-        unit: petal.unit,
-        means: { single: 10, mean: null, median: null, min: 4, max: null },
-        count: 2,
-      },
-    ]);
-    expect(petalSummary?.recordCount).toBe(3);
-  });
-
-  it('RFC-63 R10 never lets sd, se or n enter a mean', async () => {
-    const { user } = await createUser(t.db);
-    const sp1 = await createSpecies(t.db);
-    const petal = await traitByKey(t.db, 'petal_length');
-    const ref = await createReference(t.db);
-    await createRecord(t.db, {
-      speciesId: sp1.id,
-      traitId: petal.id,
-      valueText: '10',
-      numericValue: 10,
-      sdValue: 50,
-      seValue: 70,
-      n: 30,
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: user.id,
-    });
-
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
-    expect(petalSummary?.numeric).toEqual([
-      {
-        unit: petal.unit,
-        means: { single: 10, mean: null, median: null, min: null, max: null },
-        count: 1,
-      },
-    ]);
-  });
-
-  it('RFC-63 R10 answers a null numeric spread when the only harmonised record needs a unit check', async () => {
-    const { user } = await createUser(t.db);
-    const sp1 = await createSpecies(t.db);
-    const petal = await traitByKey(t.db, 'petal_length');
-    const ref = await createReference(t.db);
-    await createRecord(t.db, {
-      speciesId: sp1.id,
-      traitId: petal.id,
-      valueText: '1000',
-      numericValue: 1000,
-      unitStatus: 'needs_unit_check',
-      primaryReferenceId: ref.id,
-      origin: 'manual',
-      createdBy: user.id,
-    });
-
-    const summary = await speciesTraitSummary(t.db, UNRESTRICTED, sp1.id);
-    const petalSummary = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === petal.id);
-    expect(petalSummary?.numeric).toBeNull();
-    expect(petalSummary?.recordCount).toBe(1);
+    await t.db.update(traitLevels).set({ active: false }).where(eq(traitLevels.id, closed.id));
+    const of = async (v: typeof UNRESTRICTED) =>
+      (await speciesTraitSummary(t.db, v, sp.id))
+        ?.flatMap((c) => c.traits)
+        .find((x) => x.trait.id === trait.id)?.categorical;
+    expect(await of(UNRESTRICTED)).toMatchObject({ mainStates: ['closed'], nRecords: 3 });
+    expect(await of(RESTRICTED)).toMatchObject({ mainStates: ['open'], share: 1, nRecords: 1 });
   });
 
   it('RFC-33 R3 omits the inactive trait and answers null for the hidden species to a restricted viewer', async () => {
@@ -470,7 +270,8 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
         empty: 0,
       },
       levels: [],
-      numeric: null,
+      continuous: null,
+      categorical: null,
       validated: false,
       contested: false,
     });
