@@ -13,12 +13,12 @@
 ## Tasks
 
 1. **RFCs.**
-   - RFC-62 R2: the v1 header and `HEADER MATCH`.
+   - RFC-62 R2: the v1 header, checked before COPY.
    - RFC-62 R3: the R9 exception.
    - New RFC-62 R9: the sync.
    - RFC-64 R1: `--sync-dictionary`; R12: the sync runs after the wipe.
    - Changelogs.
-2. **Seed header.** Tests: the old header is refused, and the v1 header loads. Code in `apps/api/src/dataset/seed.ts`: rename the staging columns to the v1 names and copy with `header match`. Replace `apps/api/seed/trait-dictionary.csv` with the owner's file. Fix the `whole plant` test in `import.integration.test.ts` and any seed test that names v0 columns.
+2. **Seed header.** Tests: the old header is refused, and the v1 header loads. Code in `apps/api/src/dataset/seed.ts`: rename the staging columns to the v1 names and check the header names before COPY; keep the first spelling of a level repeated in another case. Replace `apps/api/seed/trait-dictionary.csv` with the owner's file. Fix the `whole plant` test in `import.integration.test.ts` and any seed test that names v0 columns.
 3. **`syncDictionary(tx, csvPath)`** in `seed.ts`, sharing the staging step with `seedDictionary`. Tests in `reset.integration.test.ts` (isolated database): removed trait, retyped trait, removed and reordered level, unused category, rollback on failure.
 4. **Import and CLI.**
    - `ImportInput.syncDictionary`, refused without `replace`, called after `resetDataset`.

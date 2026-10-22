@@ -19,6 +19,7 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
       force: false,
       replace: false,
       discardPlatform: false,
+      syncDictionary: false,
       replaceImported: { sheetDir: '/sheets' },
     });
   });
@@ -30,6 +31,7 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
       force: true,
       replace: true,
       discardPlatform: false,
+      syncDictionary: false,
       replaceImported: undefined,
     });
   });
@@ -41,8 +43,29 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
       force: false,
       replace: true,
       discardPlatform: true,
+      syncDictionary: false,
       replaceImported: undefined,
     });
+  });
+
+  it('RFC-62 R9 takes --sync-dictionary together with --replace', () => {
+    expect(
+      parseImportRecordsArgs([
+        '--file',
+        'a.parquet',
+        '--replace',
+        '--discard-platform',
+        '--sync-dictionary',
+      ]),
+    ).toMatchObject({ replace: true, discardPlatform: true, syncDictionary: true });
+  });
+
+  it.each([
+    [['--file', 'a.csv', '--sync-dictionary']],
+    [['--file', 'a.csv', '--force', '--sync-dictionary']],
+    [['--file', 'a.csv', '--replace-imported', '--annotation-sheet', '/s', '--sync-dictionary']],
+  ])('RFC-62 R9 %j without --replace is a usage error', (args) => {
+    expect(parseImportRecordsArgs(args)).toBeNull();
   });
 
   it.each([

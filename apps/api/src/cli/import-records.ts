@@ -6,9 +6,20 @@ import { loadConfig, loadMigratorConfig } from '../config.ts';
 import { batchReport, ImportRefusedError, importRecords } from '../dataset/import.ts';
 import { sheetPath } from '../dataset/replace-imported.ts';
 import { isReplaceAllowed } from '../dataset/reset.ts';
-import { createDb } from '../db/client.ts';
+import { createDb, type Db } from '../db/client.ts';
 import { configurePii } from '../security/pii.ts';
 import { IMPORT_RECORDS_USAGE, parseImportRecordsArgs } from './import-records-args.ts';
+
+/** RFC-64 R1: the `Dictionary:` line after a sync (RFC-62 R9). */
+async function dictionarySize(db: Db): Promise<string> {
+  const [size] = (await db.$client`
+    select (select count(*) from traits)::int as traits,
+           (select count(*) from trait_levels)::int as levels`) as {
+    traits: number;
+    levels: number;
+  }[];
+  return `${size?.traits ?? 0} traits, ${size?.levels ?? 0} levels`;
+}
 
 const values = parseImportRecordsArgs(process.argv.slice(2));
 if (!values) {
@@ -58,6 +69,7 @@ try {
     force: values.force,
     replace: values.replace,
     discardPlatform: values.discardPlatform,
+    syncDictionary: values.syncDictionary,
     replaceImported: values.replaceImported,
   });
   const report = await batchReport(db, batch.id);
@@ -72,6 +84,9 @@ try {
         ? 'Mode: replace-imported (the EB_ records were replaced; platform records and annotations kept, re-linked by code)'
         : 'Mode: append',
     `Batch ${batch.id} completed in ${seconds}s`,
+    ...(values.syncDictionary
+      ? [`Dictionary: synced to the versioned file, ${await dictionarySize(db)}`]
+      : []),
     ...(values.replaceImported
       ? [`Annotation sheet: ${sheetPath(values.replaceImported.sheetDir, batch.id)}`]
       : []),

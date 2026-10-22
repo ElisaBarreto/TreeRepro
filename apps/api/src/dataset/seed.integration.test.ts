@@ -96,7 +96,7 @@ describe('RFC-62 R2 seedDictionary', () => {
     await writeFile(
       file,
       [
-        'final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels',
+        'standard_trait,broad_category,value_type,standard_unit,description,harmonised_levels',
         'statistic,record,text,,What the value is.,',
         'wcvp_family,taxonomy,text,,The plant family.,',
         'primary_reference,reference,text,,The primary citation.,',
@@ -118,13 +118,25 @@ describe('RFC-62 R2 seedDictionary', () => {
     expect(row).toMatchObject({ categoryKey: category });
   });
 
+  it('RFC-62 R2 refuses the pre-v1 header, inserting nothing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'seed-'));
+    const key = `seed_v0_${Math.random().toString(16).slice(2)}`;
+    const file = join(dir, 'dict.csv');
+    await writeFile(
+      file,
+      `final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels\n${key},dispersal,categorical,,desc,a;b\n`,
+    );
+    await expect(seedDictionary(t.db, file)).rejects.toThrow('Unexpected header');
+    expect(await t.db.select().from(traits).where(eq(traits.key, key))).toEqual([]);
+  });
+
   it('RFC-62 R2 stores active=false from an optional seventh column; six-column files still load', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'seed-'));
     const key = `seed_off_${Math.random().toString(16).slice(2)}`;
     const file = join(dir, 'dict.csv');
     await writeFile(
       file,
-      `final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,false\n`,
+      `standard_trait,broad_category,value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,false\n`,
     );
     await seedDictionary(t.db, file);
     const [row] = await t.db
@@ -140,7 +152,7 @@ describe('RFC-62 R2 seedDictionary', () => {
     const file = join(dir, 'dict.csv');
     await writeFile(
       file,
-      `foo,broad_category,trait_value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,true\n`,
+      `foo,broad_category,value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,true\n`,
     );
     await expect(seedDictionary(t.db, file)).rejects.toThrow('Unexpected header');
     expect(await t.db.select().from(traits).where(eq(traits.key, key))).toEqual([]);
@@ -152,7 +164,7 @@ describe('RFC-62 R2 seedDictionary', () => {
     const file = join(dir, 'dict.csv');
     await writeFile(
       file,
-      `final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,maybe\n`,
+      `standard_trait,broad_category,value_type,standard_unit,description,harmonised_levels,active\n${key},dispersal,categorical,,desc,a;b,maybe\n`,
     );
     await expect(seedDictionary(t.db, file)).rejects.toThrow('Invalid active value on line 2');
     expect(await t.db.select().from(traits).where(eq(traits.key, key))).toEqual([]);
@@ -165,7 +177,7 @@ describe('RFC-62 R2 seedDictionary', () => {
     // guards against (docs/gotchas/import.md); the seed must not hang either.
     await writeFile(
       file,
-      'final_standard_trait,broad_category,trait_value_type,standard_unit,description,harmonised_levels\nzz_broken,zz_cat,categorical,,desc,a;b,EXTRA\n',
+      'standard_trait,broad_category,value_type,standard_unit,description,harmonised_levels\nzz_broken,zz_cat,categorical,,desc,a;b,EXTRA\n',
     );
     const started = Date.now();
     await expect(seedDictionary(t.db, file, { copyIdleTimeoutMs: 2000 })).rejects.toThrow(
