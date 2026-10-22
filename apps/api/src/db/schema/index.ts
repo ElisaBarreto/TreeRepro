@@ -20,3 +20,4 @@ export * from './taxa.ts';
 export * from './totp-recovery-codes.ts';
 export * from './user-roles.ts';
 export * from './users.ts';
+export * from './wcvp.ts';
