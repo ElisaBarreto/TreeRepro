@@ -1097,6 +1097,10 @@ async function runImport(
             )}::jsonb
         where id = ${batch.id}`;
     });
+    // R10: fresh planner statistics after a bulk load, without which the
+    // species summaries (RFC-77) take minutes instead of seconds. Best effort:
+    // a role that may not ANALYZE the table gets a warning, never a failure.
+    await sql`analyze trait_records`.catch(() => undefined);
   } catch (err) {
     // R15: the final sheet never outlives a rollback; the pending one stays.
     if (detached) await rm(`${detached.path}.tmp`, { force: true }).catch(() => undefined);
