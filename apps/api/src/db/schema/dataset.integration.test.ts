@@ -433,6 +433,20 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
       await expect(
         unwrapDbError(tx.transaction((sp) => sp.insert(traitRecords).values(manual))),
       ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
+      // the harmonisations of two pending records are two observations (RFC-65 R9)
+      const [p1, p2] = await tx
+        .insert(traitRecords)
+        .values([
+          { ...claim, valueText: 'reds', importRowNo: 10 },
+          { ...claim, valueText: 'reds', importRowNo: 11 },
+        ])
+        .returning({ id: traitRecords.id });
+      await tx
+        .insert(traitRecords)
+        .values({ ...manual, valueText: 'red', supersedesRecordId: p1?.id });
+      await tx
+        .insert(traitRecords)
+        .values({ ...manual, valueText: 'red', supersedesRecordId: p2?.id });
     });
   });
 

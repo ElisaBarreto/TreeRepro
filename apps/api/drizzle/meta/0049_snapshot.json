@@ -1,5 +1,5 @@
 {
-  "id": "cf4256b5-7033-4655-9e2d-37f46783ec4c",
+  "id": "564d47a3-0fd2-4869-98d9-a5f0b66424e7",
   "prevId": "167dc0f6-8c5f-473d-9aee-f5ef6edda8ba",
   "version": "7",
   "dialect": "postgresql",
@@ -2968,7 +2968,8 @@
             "primary_reference_id",
             "secondary_reference_id",
             "import_batch_id",
-            "import_row_no"
+            "import_row_no",
+            "supersedes_record_id"
           ]
         }
       },
