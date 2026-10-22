@@ -128,6 +128,10 @@ export const traitRecords = pgTable(
         t.rawValue,
         t.primaryReferenceId,
         t.secondaryReferenceId,
+        // issue #299: every imported row is its own observation; manual
+        // records carry neither, so identical manual claims stay refused.
+        t.importBatchId,
+        t.importRowNo,
       )
       .nullsNotDistinct(),
     index('trait_records_species_trait_idx').on(t.speciesId, t.traitId, t.id.desc()),

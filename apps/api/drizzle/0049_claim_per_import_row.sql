@@ -1,0 +1,2 @@
+ALTER TABLE "trait_records" DROP CONSTRAINT "trait_records_claim_key";--> statement-breakpoint
+ALTER TABLE "trait_records" ADD CONSTRAINT "trait_records_claim_key" UNIQUE NULLS NOT DISTINCT("species_id","trait_id","value_text","raw_value","primary_reference_id","secondary_reference_id","import_batch_id","import_row_no");

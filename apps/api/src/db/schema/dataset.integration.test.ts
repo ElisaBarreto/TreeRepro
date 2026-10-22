@@ -391,7 +391,7 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
     });
   });
 
-  it('R3 an identical claim is refused, nulls not distinct', async () => {
+  it('R3 an identical claim of one import row, or of two manual records, is refused, nulls not distinct', async () => {
     await withRollback(t.db, async (tx) => {
       const sp1 = await createSpecies(tx);
       const trait = await traitByKey(tx, 'flower_color');
@@ -409,12 +409,30 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
       };
       await tx.insert(traitRecords).values(claim);
       await expect(
-        unwrapDbError(
-          tx.transaction((sp) => sp.insert(traitRecords).values({ ...claim, importRowNo: 2 })),
-        ),
+        unwrapDbError(tx.transaction((sp) => sp.insert(traitRecords).values(claim))),
       ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
       // a different raw value is a different claim
-      await tx.insert(traitRecords).values({ ...claim, importRowNo: 3, rawValue: 'Blueish' });
+      await tx.insert(traitRecords).values({ ...claim, rawValue: 'Blueish' });
+      // issue #299: another row of the file is another observation, the same claim or not
+      await tx.insert(traitRecords).values({ ...claim, importRowNo: 2 });
+      await tx
+        .insert(traitRecords)
+        .values({ ...claim, importBatchId: (await createImportBatch(tx)).id });
+      // manual records carry no import row: an identical one is still refused
+      const { user } = await createUser(tx);
+      const manual = {
+        speciesId: sp1.id,
+        traitId: trait.id,
+        valueText: 'blueish',
+        harmonisation: 'unknown_level' as const,
+        origin: 'manual' as const,
+        createdBy: user.id,
+        primaryReferenceId: ref.id,
+      };
+      await tx.insert(traitRecords).values(manual);
+      await expect(
+        unwrapDbError(tx.transaction((sp) => sp.insert(traitRecords).values(manual))),
+      ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });
     });
   });
 
@@ -446,7 +464,7 @@ describe('RFC-63 R1-R3 trait_records constraints', () => {
           tx.transaction((sp) =>
             sp
               .insert(traitRecords)
-              .values({ ...claim, importRowNo: 4, valueText: 'median=5', medianValue: 5 }),
+              .values({ ...claim, importRowNo: 3, valueText: 'median=5', medianValue: 5 }),
           ),
         ),
       ).rejects.toMatchObject({ code: '23505', constraint_name: 'trait_records_claim_key' });

@@ -672,7 +672,7 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
     expect((await again.json()).data).toEqual({ created: 0, skipped: 0 });
   });
 
-  it('R9 a multi-value group maps to several levels; a numeric group maps to a number; existing claims are skipped', async () => {
+  it('R9 a multi-value group maps to several levels; a numeric group maps to a number; an imported claim does not make it skip', async () => {
     const f = await queueFixture();
     const [red, blue] = f.cat.levels.map((l) => l.id);
     const multi = await call(t.app, 'POST', '/api/records/pending/map', {
@@ -699,7 +699,8 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
       numericValue: 12,
       rawValue: 'ca. 12',
     });
-    // a claim the spreadsheet had already harmonised: (s2, cat, 'red', raw 'reds!', ref) exists → the mapping skips it
+    // a claim the spreadsheet had already harmonised: (s2, cat, 'red', raw 'reds!', ref) exists as
+    // another import row — another observation, so the mapping still creates its own (issue #299)
     await createRecord(t.db, {
       speciesId: f.s2.id,
       traitId: f.cat.id,
@@ -713,13 +714,12 @@ describe('RFC-65 R7–R9 harmonisation queue', () => {
       cookie: f.cookie,
       body: { traitId: f.cat.id, valueText: 'reds', value: { levelIds: [red] } },
     });
-    expect((await skipped.json()).data).toEqual({ created: 2, skipped: 1 });
+    expect((await skipped.json()).data).toEqual({ created: 3, skipped: 0 });
     const groups = await call(t.app, 'GET', `/api/records/pending?traitId=${f.cat.id}`, {
       cookie: f.cookie,
     });
-    expect((await groups.json()).data).toEqual([
-      { valueText: 'reds', harmonisation: 'unknown_level', count: 1, sampleRecordId: f.reds3.id },
-    ]);
+    // every pending record of the group is now harmonised, the third one included
+    expect((await groups.json()).data).toEqual([]);
   });
 
   it('R9 validates like a manual record: level of another trait, levels on a quantitative trait, unknown trait', async () => {
