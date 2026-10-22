@@ -7,9 +7,13 @@ import { levelContestedSql, recordContestedSql } from './contests.ts';
 import { validatedPairsSql } from './coverage.ts';
 import { dictionaryCategories } from './dictionary.ts';
 import { recordVisible } from './records.ts';
-
-/** A record whose unit needs checking stays out of the numeric summary (RFC-63 R10). */
-const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
+import {
+  type CategoricalTraitSummary,
+  type ContinuousSummary,
+  categoricalSummaries,
+  continuousSummaries,
+  speciesTraitStates,
+} from './species-summary.ts';
 
 /** A record's effective unit: its own, else its trait's standard unit (RFC-63 R10). */
 const effectiveUnit = 'coalesce(r.unit, su.unit)';
@@ -40,10 +44,6 @@ export function summaryRecordsSql(where: SQL): SQL {
     from trait_records r join traits su on su.id = r.trait_id where ${where}) r`;
 }
 
-/** The records that enter a numeric summary: a number, in a unit that needs no checking. */
-const numericSql = sql`coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null
-  and ${unitChecked}`;
-
 interface TraitAggregate {
   trait_id: string;
   trait_key: string;
@@ -60,17 +60,6 @@ interface TraitAggregate {
   contested: boolean;
 }
 
-interface NumericAggregate {
-  trait_id: string;
-  unit: string | null;
-  single: number | null;
-  mean: number | null;
-  median: number | null;
-  min: number | null;
-  max: number | null;
-  count: number;
-}
-
 interface LevelAggregate {
   trait_id: string;
   level_id: string;
@@ -80,17 +69,49 @@ interface LevelAggregate {
   contested: boolean;
 }
 
+/** RFC-77 R5's row in the shape of RFC-63 R10. */
+function continuousOf(c: ContinuousSummary | undefined): TraitSummary['continuous'] {
+  if (!c) return null;
+  return {
+    median: c.speciesMedian,
+    summaryBasis: c.summaryBasis,
+    mean: c.speciesMean,
+    meanBasis: c.meanBasis,
+    sd: c.speciesSd,
+    min: c.speciesMin,
+    max: c.speciesMax,
+    nRecords: c.nRecords,
+    nSources: c.nSources,
+    outlierFlags: c.outlierFlags
+      .split(';')
+      .filter(
+        (f): f is 'unit_factor' | 'trait_extreme' => f === 'unit_factor' || f === 'trait_extreme',
+      ),
+    unit: c.unit,
+  };
+}
+
+/** RFC-77 R7's row in the shape of RFC-63 R10. */
+function categoricalOf(c: CategoricalTraitSummary | undefined): TraitSummary['categorical'] {
+  if (!c) return null;
+  return {
+    mainStates: c.mainState.split(';'),
+    share: c.share,
+    majority: c.majority,
+    states: c.states === '' ? [] : c.states.split(';'),
+    nRecords: c.nRecords,
+  };
+}
+
 /**
  * One call for the species page: per category and trait, counts on both axes,
- * level distribution (each level with its validators and contested flag) or
- * numeric spread, and whether any record is validated or contested.
- * `null` when the species itself is invisible to `visibility`.
- * The numeric summary is the mean of each value field on its own, never
- * pooled, over the records whose unit needs no checking, one entry per
- * effective unit (most records first, then unit) so numbers in different
- * units are never averaged together; a summary field repeated by one study
- * counts once ({@link summaryRecordsSql}).
+ * level distribution (each level with its validators, contested flag and its
+ * sources and share in the species summary), the species summaries of RFC-77
+ * computed live for this species (`continuous`, `categorical`), and whether any
+ * record is validated or contested. `null` when the species itself is
+ * invisible to `visibility`.
  * @rfc RFC-63 R10
+ * @rfc RFC-77 R8
  * @rfc RFC-70 R7
  * @rfc RFC-33 R2, R3
  */
@@ -106,7 +127,7 @@ export async function speciesTraitSummary(
     .where(and(eq(species.id, speciesId), speciesVisible(visibility)))
     .limit(1);
   if (!exists) return null;
-  const [aggregates, numerics, levels, validated] = await Promise.all([
+  const [aggregates, levels, validated, continuous, categorical] = await Promise.all([
     db.execute(sql`
       select t.id as trait_id, t.key as trait_key, t.value_type, t.unit,
         c.key as category_key, c.label as category_label,
@@ -127,19 +148,6 @@ export async function speciesTraitSummary(
         and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
-    // Only quantitative traits hold numbers; an invisible trait never reaches `summaryOf`.
-    db.execute(sql`
-      select r.trait_id, r.summary_unit as unit,
-        avg(r.numeric_value)::float8 as single, avg(r.mean_value_once)::float8 as mean,
-        avg(r.median_value_once)::float8 as median, avg(r.min_value_once)::float8 as min,
-        avg(r.max_value_once)::float8 as max, count(*)::int as count
-      from ${summaryRecordsSql(
-        sql`r.species_id = ${speciesId}
-          and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
-          and ${numericSql}`,
-      )}
-      group by r.trait_id, r.summary_unit
-      order by count desc, unit asc nulls last`) as unknown as Promise<NumericAggregate[]>,
     db.execute(sql`
       select r.trait_id, l.id as level_id, l.key as level_key, count(*)::int as count,
         (select count(distinct va.actor_id) from record_annotations va
@@ -163,7 +171,13 @@ export async function speciesTraitSummary(
     db.execute(sql`
       select v.trait_id from (${validatedPairsSql()}) v
       where v.species_id = ${speciesId}`) as unknown as Promise<{ trait_id: string }[]>,
+    // RFC-77, live for this species under the viewer's visibility (RFC-77 R8).
+    continuousSummaries(db, visibility, [speciesId]),
+    categoricalSummaries(db, visibility, [speciesId]),
   ]);
+  const continuousByTrait = new Map(continuous.map((c) => [c.traitId, c]));
+  const levelSummaries = new Map(categorical.map((l) => [`${l.traitId}:${l.level}`, l]));
+  const categoricalByTrait = new Map(speciesTraitStates(categorical).map((c) => [c.traitId, c]));
   const levelsByTrait = new Map<string, NonNullable<TraitSummary['levels']>>();
   for (const l of levels) {
     levelsByTrait.set(l.trait_id, [
@@ -174,17 +188,8 @@ export async function speciesTraitSummary(
         count: l.count,
         validationCount: l.validation_count,
         contested: l.contested,
-      },
-    ]);
-  }
-  const numericByTrait = new Map<string, NonNullable<TraitSummary['numeric']>>();
-  for (const n of numerics) {
-    numericByTrait.set(n.trait_id, [
-      ...(numericByTrait.get(n.trait_id) ?? []),
-      {
-        unit: n.unit,
-        means: { single: n.single, mean: n.mean, median: n.median, min: n.min, max: n.max },
-        count: n.count,
+        nSources: levelSummaries.get(`${l.trait_id}:${l.level_key}`)?.nSources ?? 0,
+        shareOfRecords: levelSummaries.get(`${l.trait_id}:${l.level_key}`)?.shareOfRecords ?? 0,
       },
     ]);
   }
@@ -205,7 +210,8 @@ export async function speciesTraitSummary(
         empty: row?.empty ?? 0,
       },
       levels: quantitative ? null : (levelsByTrait.get(trait.id) ?? []),
-      numeric: (quantitative && numericByTrait.get(trait.id)) || null,
+      continuous: quantitative ? continuousOf(continuousByTrait.get(trait.id)) : null,
+      categorical: quantitative ? null : categoricalOf(categoricalByTrait.get(trait.id)),
       validated: validatedTraits.has(trait.id),
       contested: row?.contested ?? false,
     };

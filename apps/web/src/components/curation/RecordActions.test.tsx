@@ -102,8 +102,16 @@ const SUMMARY: SpeciesTraits = [
         levels: [
           { levelId: HERMAPHRODITE, key: 'hermaphrodite' },
           { levelId: DIOECIOUS, key: 'dioecious' },
-        ].map((level) => ({ ...level, count: 1, validationCount: 0, contested: false })),
-        numeric: null,
+        ].map((level) => ({
+          ...level,
+          count: 1,
+          validationCount: 0,
+          contested: false,
+          nSources: 1,
+          shareOfRecords: 0.5,
+        })),
+        continuous: null,
+        categorical: null,
         validated: false,
         contested: false,
       },

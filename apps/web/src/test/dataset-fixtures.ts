@@ -113,6 +113,8 @@ export const SEXUAL_SYSTEM_SUMMARY: TraitSummary = {
       count: 4,
       validationCount: 0,
       contested: false,
+      nSources: 2,
+      shareOfRecords: 0.6667,
     },
     {
       levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21',
@@ -120,6 +122,8 @@ export const SEXUAL_SYSTEM_SUMMARY: TraitSummary = {
       count: 1,
       validationCount: 0,
       contested: false,
+      nSources: 1,
+      shareOfRecords: 0.1667,
     },
     {
       levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22',
@@ -127,9 +131,18 @@ export const SEXUAL_SYSTEM_SUMMARY: TraitSummary = {
       count: 1,
       validationCount: 0,
       contested: false,
+      nSources: 1,
+      shareOfRecords: 0.1667,
     },
   ],
-  numeric: null,
+  continuous: null,
+  categorical: {
+    mainStates: ['dioecious'],
+    share: 0.6667,
+    majority: true,
+    states: ['dioecious', 'monoecious', 'hermaphrodite'],
+    nRecords: 6,
+  },
   validated: true,
   contested: false,
 };
@@ -140,13 +153,20 @@ export const SEED_MASS_SUMMARY: TraitSummary = {
   recordCount: 3,
   harmonisationCounts: { ...NO_PENDING, harmonised: 3 },
   levels: null,
-  numeric: [
-    {
-      unit: 'mg',
-      means: { single: 1.25, mean: null, median: null, min: 0.5, max: 3 },
-      count: 3,
-    },
-  ],
+  continuous: {
+    median: 1.25,
+    summaryBasis: 'median_of_source_medians',
+    mean: 1.3,
+    meanBasis: 'central_values',
+    sd: 0.25,
+    min: 0.5,
+    max: 3,
+    nRecords: 3,
+    nSources: 2,
+    outlierFlags: [],
+    unit: 'mg',
+  },
+  categorical: null,
   validated: false,
   contested: false,
 };
@@ -163,9 +183,18 @@ export const POLLINATION_MODE_SUMMARY: TraitSummary = {
       count: 1,
       validationCount: 0,
       contested: false,
+      nSources: 1,
+      shareOfRecords: 1,
     },
   ],
-  numeric: null,
+  continuous: null,
+  categorical: {
+    mainStates: ['insects'],
+    share: 1,
+    majority: true,
+    states: ['insects'],
+    nRecords: 1,
+  },
   validated: false,
   contested: false,
 };
@@ -844,18 +873,20 @@ export const SELF_COMPATIBILITY_MISSING_SUMMARY: TraitSummary = {
   recordCount: 0,
   harmonisationCounts: NO_PENDING,
   levels: [],
-  numeric: null,
+  continuous: null,
+  categorical: null,
   validated: false,
   contested: false,
 };
 
-/** A quantitative trait `missingOnly` lists: `levels: null`, no `numeric`. @rfc RFC-70 R7 */
+/** A quantitative trait `missingOnly` lists: `levels: null`, no summary. @rfc RFC-70 R7 */
 export const SEED_LENGTH_MISSING_SUMMARY: TraitSummary = {
   trait: DICTIONARY_SEED_LENGTH,
   recordCount: 0,
   harmonisationCounts: NO_PENDING,
   levels: null,
-  numeric: null,
+  continuous: null,
+  categorical: null,
   validated: false,
   contested: false,
 };

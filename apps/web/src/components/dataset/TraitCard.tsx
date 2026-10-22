@@ -1,9 +1,10 @@
 import type { Dictionary, RecordIntent, TraitSummary } from '@treerepro/contracts';
 import { useHasMaps } from '../../api/maps.ts';
 import { helpHref } from '../../content/help/href.ts';
-import { fieldMeansText, humaniseKey } from '../../lib/format.ts';
+import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { Badge, Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
+import { OUTLIER_LABELS } from './RecordTable.tsx';
 import { traitTip } from './trait-tip.ts';
 import { VoteButton } from './VoteButton.tsx';
 
@@ -32,6 +33,36 @@ function pendingCount(summary: TraitSummary): number {
   return unknownLevel + multiValue + notNumeric + empty;
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The species value of a quantitative trait (RFC-77 R5): the median, then how it was reached when not from central values. */
+function medianLine(c: NonNullable<TraitSummary['continuous']>): string | null {
+  if (c.median === null) return null;
+  const basis =
+    c.summaryBasis === 'range_midpoint'
+      ? ' (midpoint of the range)'
+      : c.summaryBasis === 'single_bound'
+        ? ' (from a single bound)'
+        : '';
+  return `Median ${formatNumber(c.median)}${c.unit ? ` ${c.unit}` : ''}${basis}`;
+}
+
+/** Mean ± sd, the range, and what the summary rests on. */
+function spreadLine(c: NonNullable<TraitSummary['continuous']>): string {
+  const parts: string[] = [];
+  if (c.mean !== null)
+    parts.push(`mean ${formatNumber(c.mean)}${c.sd !== null ? ` ± ${formatNumber(c.sd)}` : ''}`);
+  if (c.min !== null && c.max !== null) parts.push(`${formatNumber(c.min)}–${formatNumber(c.max)}`);
+  parts.push(plural(c.nRecords, 'record', 'records'), plural(c.nSources, 'source', 'sources'));
+  return parts.join(' · ');
+}
+
+/** The main state or states of a categorical trait (RFC-77 R7), with their share of the records. */
+function mainStateLine(c: NonNullable<TraitSummary['categorical']>): string {
+  const share = `${Math.round(c.share * 100)}% of records`;
+  return `Main state: ${c.mainStates.join(' / ')} — ${share}${c.majority ? ' (majority)' : ''}`;
+}
+
 /** One level of a categorical trait as the summary gives it. @rfc RFC-63 R10 */
 export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
 
@@ -39,19 +70,25 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
  * One trait of a species. The card itself is a button that opens the trait's
  * records, naming the trait, its unit and record count, what still waits for
  * harmonisation, a **Contested** badge while any of its levels or records is
- * contested (R-9), and — for a measurement — the mean of each value field
- * that has one, one line per unit, each value in its own unit (RFC-63 R10). Below it, outside the
- * button so no control nests in another, a categorical trait lists **every**
- * level the species has (spec §2; no cap): its record count, its validations
- * (✓ n), a bar scaled against the most frequent level, its own **Contested**
- * badge, and Validate/Contest/Complement — each present only when the page
- * passes its handler. Beside the card sit the `?` with the dictionary's
- * description (RFC-13 R11) and the "+" that opens the entry dialog for the
- * trait (RFC-65 R1). The `?` also opens for a trait with no description but
- * maps of its own, holding a **Maps** link to its trait maps page, when
- * `useMaps` names one (RFC-76 R8); a failed maps query reads as no maps.
+ * contested (R-9), and the species summary of RFC-77 (RFC-63 R10): for a
+ * measurement, the median of per-source medians (with its basis when it is a
+ * range midpoint or a single bound), then mean ± sd, the range, records and
+ * sources, and an **Outlier** badge naming the flags; for a categorical trait,
+ * the main state or states with their share of the records and whether they
+ * are a majority, then the states that are not a clear minority when they are
+ * more. Below it, outside the button so no control nests in another, a
+ * categorical trait lists **every** level the species has (spec §2; no cap):
+ * its record count, its sources, its validations (✓ n), a bar scaled against
+ * the most frequent level, its own **Contested** badge, and
+ * Validate/Contest/Complement — each present only when the page passes its
+ * handler. Beside the card sit the `?` with the dictionary's description
+ * (RFC-13 R11) and the "+" that opens the entry dialog for the trait (RFC-65
+ * R1). The `?` also opens for a trait with no description but maps of its own,
+ * holding a **Maps** link to its trait maps page, when `useMaps` names one
+ * (RFC-76 R8); a failed maps query reads as no maps.
  * @rfc RFC-13 R11
  * @rfc RFC-63 R10
+ * @rfc RFC-77 R5, R7
  * @rfc RFC-65 R1
  * @rfc RFC-70 R1, R4
  * @rfc RFC-76 R8
@@ -71,7 +108,7 @@ export function TraitCard({
   onValidateLevel?: (level: LevelSummary) => void;
   onRespondLevel?: (level: LevelSummary, intent: RecordIntent) => void;
 }) {
-  const { trait, recordCount, numeric } = summary;
+  const { trait, recordCount, continuous, categorical } = summary;
   const levels = summary.levels ?? [];
   const pending = pendingCount(summary);
   const maxCount = Math.max(0, ...levels.map((level) => level.count));
@@ -98,15 +135,34 @@ export function TraitCard({
             <span className="flex flex-wrap justify-end gap-1.5">
               {summary.contested ? <Badge tone="red">Contested</Badge> : null}
               {pending > 0 ? <Badge tone="amber">{pending} pending</Badge> : null}
+              {continuous && continuous.outlierFlags.length > 0 ? (
+                <span title={continuous.outlierFlags.map((f) => OUTLIER_LABELS[f]).join('; ')}>
+                  <Badge tone="amber">Outlier</Badge>
+                  <span className="sr-only">
+                    {`: ${continuous.outlierFlags.map((f) => OUTLIER_LABELS[f]).join('; ')}`}
+                  </span>
+                </span>
+              ) : null}
             </span>
           </span>
-          {numeric ? (
+          {continuous ? (
             <span className="flex flex-col gap-0.5">
-              {numeric.map((entry) => (
-                <span key={entry.unit ?? ''} className="text-body tabular-nums text-canopy-900">
-                  {fieldMeansText(entry.means, entry.unit)}
+              {medianLine(continuous) ? (
+                <span className="text-body tabular-nums text-canopy-900">
+                  {medianLine(continuous)}
                 </span>
-              ))}
+              ) : null}
+              <span className="text-meta tabular-nums text-mist-500">{spreadLine(continuous)}</span>
+            </span>
+          ) : null}
+          {categorical ? (
+            <span className="flex flex-col gap-0.5">
+              <span className="text-body text-canopy-900">{mainStateLine(categorical)}</span>
+              {categorical.states.length > categorical.mainStates.length ? (
+                <span className="text-meta text-mist-500">
+                  States: {categorical.states.join(' · ')}
+                </span>
+              ) : null}
             </span>
           ) : null}
         </button>
@@ -125,6 +181,7 @@ export function TraitCard({
                       {level.count}
                       <span className="sr-only">{level.count === 1 ? ' record' : ' records'}</span>
                     </span>
+                    <span>{plural(level.nSources, 'source', 'sources')}</span>
                     <span>
                       <span aria-hidden="true">✓</span> {level.validationCount}
                       <span className="sr-only"> validated</span>
