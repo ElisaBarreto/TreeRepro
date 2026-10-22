@@ -796,7 +796,7 @@ async function runImport(
           or (s.summary_text is not null and s.summary_text not in
             ('reported_by_study', 'derived_from_records', 'reported_and_derived'))
           or (s.outlier_text is not null and s.outlier_text not in
-            ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme'))
+            ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme', 'bounds_inverted'))
           or (s.behind_text is not null and s.behind_int is null)
           or (t.value_type = 'quantitative' and (
             (s.mean_text is not null and s.mean_num is null)

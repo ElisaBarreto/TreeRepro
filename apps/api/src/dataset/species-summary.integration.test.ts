@@ -66,7 +66,8 @@ describe('RFC-77 species summaries', () => {
     await load([
       // S1: 1, 2, 9 → source median 2; 9 is flagged
       q(sp, { source_folder: 'S1', harmonised_value: '1' }),
-      q(sp, { source_folder: 'S1', harmonised_value: '2' }),
+      // bounds_inverted is not an outlier flag of the summary (RFC-77 R5)
+      q(sp, { source_folder: 'S1', harmonised_value: '2', outlier_flag: 'bounds_inverted' }),
       q(sp, { source_folder: 'S1', harmonised_value: '9', outlier_flag: 'trait_extreme' }),
       // S2: 10, and 1000 in a unit that needs checking (counted, never used)
       q(sp, { source_folder: 'S2', harmonised_value: '10' }),

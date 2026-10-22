@@ -146,7 +146,12 @@ describe('RFC-63 R8 recordSchema', () => {
     expect(recordSchema.safeParse({ ...record, outlierFlag: 'Trait_extreme' }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, outlierFlag: 'both' }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, outlierFlag: undefined }).success).toBe(false);
-    expect(OUTLIER_FLAGS).toEqual(['unit_factor', 'trait_extreme', 'unit_factor;trait_extreme']);
+    expect(OUTLIER_FLAGS).toEqual([
+      'unit_factor',
+      'trait_extreme',
+      'unit_factor;trait_extreme',
+      'bounds_inverted',
+    ]);
   });
 
   it('enumerations match the RFC', () => {

@@ -45,7 +45,12 @@ export const SUMMARY_SOURCES = [
 export type SummarySource = (typeof SUMMARY_SOURCES)[number];
 
 /** Import provenance: why the owner's outlier audit flagged a record's value. @rfc RFC-63 R1 */
-export const OUTLIER_FLAGS = ['unit_factor', 'trait_extreme', 'unit_factor;trait_extreme'] as const;
+export const OUTLIER_FLAGS = [
+  'unit_factor',
+  'trait_extreme',
+  'unit_factor;trait_extreme',
+  'bounds_inverted',
+] as const;
 /** A record's outlier flag. @rfc RFC-63 R1 */
 export type OutlierFlag = (typeof OUTLIER_FLAGS)[number];
 
