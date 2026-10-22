@@ -292,7 +292,7 @@ describe('RFC-64 importRecords', () => {
   });
 
   it('R6 collapses internal whitespace so a multi-word level still matches', async () => {
-    // `diaspore_type` has the level `whole plant`. Trimming alone leaves the
+    // `sexual_system` has the level `hermaphrodite or monoecious`. Trimming alone leaves the
     // doubled space, and the match is an equality on the key, so the value
     // would land as unknown_level.
     const dir = await mkdtemp(join(tmpdir(), 'import-ws-'));
@@ -305,11 +305,11 @@ describe('RFC-64 importRecords', () => {
           : c === 'wcvp_species'
             ? 'Fixturia spatia'
             : c === 'final_standard_trait'
-              ? 'diaspore_type'
+              ? 'sexual_system'
               : c === 'trait_value_type'
                 ? 'categorical'
                 : c === 'harmonised_value'
-                  ? 'whole   plant'
+                  ? 'hermaphrodite   or  monoecious'
                   : '',
     ).join(',');
     await writeFile(file, `${IMPORT_COLUMNS.join(',')}\n${row}\n`, 'utf8');
@@ -319,7 +319,10 @@ describe('RFC-64 importRecords', () => {
       .select()
       .from(traitRecords)
       .where(eq(traitRecords.importBatchId, batch.id));
-    expect(record).toMatchObject({ harmonisation: 'harmonised', valueText: 'whole plant' });
+    expect(record).toMatchObject({
+      harmonisation: 'harmonised',
+      valueText: 'hermaphrodite or monoecious',
+    });
     expect(record?.levelId).not.toBeNull();
   });
 

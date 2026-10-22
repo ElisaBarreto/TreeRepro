@@ -35,6 +35,7 @@ import {
   relinkImported,
 } from './replace-imported.ts';
 import { isReplaceAllowed, resetDataset } from './reset.ts';
+import { syncDictionary } from './seed.ts';
 
 /**
  * The header of the compiled dataset, in file order: `ID`, the record code
@@ -393,6 +394,11 @@ export interface ImportInput {
    */
   discardPlatform?: boolean;
   /**
+   * With `replace` only: right after the wipe, make the trait dictionary
+   * equal to its versioned file (RFC-62 R9). Refused without `replace`.
+   */
+  syncDictionary?: boolean;
+  /**
    * Replace only the imported (`EB_`) records and keep everything users
    * produced, re-linked by `record_code` (RFC-64 R15). `sheetDir` receives
    * `replace-<batch id>-annotations.csv`.
@@ -439,6 +445,7 @@ const IMPORT_LOCK_KEY = 4664;
  * @rfc RFC-64 R13
  * @rfc RFC-64 R14
  * @rfc RFC-64 R15
+ * @rfc RFC-62 R9
  */
 export async function importRecords(db: Db, input: ImportInput): Promise<ImportBatch> {
   const [dictionary] = await db.select({ n: count() }).from(traits);
@@ -467,6 +474,13 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
     throw new ImportRefusedError(
       'replace_not_allowed',
       '--discard-platform is valid only together with --replace',
+    );
+  }
+  // RFC-62 R9: the sync deletes traits, which is safe only after the wipe.
+  if (input.syncDictionary && !input.replace) {
+    throw new ImportRefusedError(
+      'replace_not_allowed',
+      '--sync-dictionary is valid only together with --replace',
     );
   }
   // R15: the sheet is the only copy of what the run detaches, so its
@@ -549,6 +563,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         // Empty what earlier imports loaded, inside this transaction, so a
         // failure below rolls the wipe back and leaves the old dataset in place.
         await resetDataset(tx, batch.id);
+        // RFC-62 R9: nothing references a trait or a level any more.
+        if (input.syncDictionary) await syncDictionary(tx);
       }
       // R15: stash and detach what users produced, write the pending sheet,
       // delete the EB_ records. The file below then loads into their place.

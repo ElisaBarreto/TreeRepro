@@ -93,8 +93,9 @@
      -e NODE_ENV=development \
      -v "$PWD/infra/secrets/db_migrator_password:/run/secrets/db_migrator_password:ro" \
      -v /srv/imports:/imports:ro \
-     api node dist/cli/import-records.js --file /imports/sample_data.csv --replace --discard-platform --run-by <owner e-mail>
+     api node dist/cli/import-records.js --file /imports/sample_data.csv --replace --discard-platform --sync-dictionary --run-by <owner e-mail>
    ```
+   `--sync-dictionary` makes the trait dictionary equal to the image's `apps/api/seed/trait-dictionary.csv` right after the wipe (RFC-62 R9): renamed, retyped and dropped traits and levels follow the file, which a plain `seed:traits` never does. Pass it whenever the release ships a new dictionary (v1 renames nine traits and makes `flowering_start`, `flowering_end`, `fruiting_start` and `fruiting_end` categorical); the report then reads `Dictionary: synced to the versioned file, <n> traits, <m> levels`. Trait and level ids change, so keep the API stopped until step 8: cached dictionary entries expire within 10 minutes.
    Without `--discard-platform` the run is refused (`platform_records_exist`) as soon as one manual record, annotation or contest exists. The report must read `Mode: replace (… platform data discarded)` and `completed`. Its `Rows already imported: <n>` line (RFC-64 R14) must read `Rows already imported: 0` on this total replace — `--replace` empties `trait_records` itself, inside this same transaction (`resetDataset`, `apps/api/src/dataset/reset.ts`, called from `importRecords` before the file is staged), not in step 2; anything else means that wipe did not run (check the report's `Mode:` line really reads `replace`, not `append`). `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
 5. **Check the triggers are back on** (`O` = enabled):
    ```sh

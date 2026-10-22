@@ -1,5 +1,6 @@
 # Dataset gotchas
 
+- **`seed:traits` never follows a changed dictionary; `--sync-dictionary` does.** The seed only inserts, so a renamed, retyped or dropped trait stays as it was. During the test phase a new dictionary arrives with the total reload: `import:records --replace --discard-platform --sync-dictionary` (RFC-62 R9), which may delete traits because the wipe has just emptied every table that references them. The owner's v1 file lists a few `dispersal_mode_raw` levels twice in different case (`aveG`, `AveG`); levels are unique by `lower(key)`, so the first spelling wins.
 - **`seed:traits` re-inserts renamed levels.** The CSV in `apps/api/seed/trait-dictionary.csv` is the source of the vocabulary; `seed:traits` inserts whatever is missing. A level renamed through `PATCH /api/traits/:id/levels/:levelId` reappears under its old key on the next seed run unless the CSV is changed too (RFC-62 R6).
 - **Guard numeric casts with nested `CASE`.** `x ~ pattern and abs(x::numeric) < 1e308` may evaluate the cast first — SQL `AND` does not short-circuit — and abort the whole import batch on `Aug`. `CASE WHEN … THEN (CASE WHEN … END) END` evaluates in order (RFC-64 R6).
 - **`max(uuid)` does not exist.** For "the newest id of a group" use `(array_agg(id order by id desc))[1]` (pending groups' `sampleRecordId`).

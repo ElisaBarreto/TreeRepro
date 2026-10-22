@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isNotNull, sql } from 'drizzle-orm';
+import { eq, isNotNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   createAnnotation,
@@ -16,7 +16,7 @@ import { createDb, type Db } from '../db/client.ts';
 import { runMigrations } from '../db/migrator.ts';
 import { contests } from '../db/schema/contests.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
-import { traitLevels, traits } from '../db/schema/dictionary.ts';
+import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches, importRejects } from '../db/schema/imports.ts';
 import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
@@ -223,6 +223,100 @@ describe('RFC-64 R12 importRecords --replace', () => {
     expect(batches.map((x) => x.id)).toEqual(expect.arrayContaining([a.id]));
     expect(batches.every((x) => x.status === 'completed')).toBe(true);
   }, 60_000);
+
+  /**
+   * Drifts the dictionary away from the versioned file in every way RFC-62 R9
+   * undoes: a trait and a category the file does not name, a retyped trait
+   * with an extra level, a moved level, a level whose key changed case, and a
+   * deactivated trait. The seeded database starts equal to the file.
+   */
+  async function driftDictionary() {
+    const $ = t.db.$client;
+    await $`insert into trait_categories (key, label, sort_order) values ('zz_gone_cat', 'Zz Gone Cat', 999)`;
+    await $`insert into traits (key, category_key, value_type) values ('zz_gone', 'zz_gone_cat', 'categorical')`;
+    await $`insert into trait_levels (trait_id, key) select id, 'zz_level' from traits where key = 'zz_gone'`;
+    await $`update traits set value_type = 'categorical', unit = 'cm', description = 'OLD' where key = 'petal_length'`;
+    await $`insert into trait_levels (trait_id, key) select id, 'zz_petal' from traits where key = 'petal_length'`;
+    await $`update trait_levels set sort_order = 99 where key = 'black' and trait_id = (select id from traits where key = 'flower_color')`;
+    await $`update trait_levels set key = 'BLUE' where key = 'blue' and trait_id = (select id from traits where key = 'flower_color')`;
+    await $`update traits set active = false where key = 'seed_mass'`;
+  }
+
+  it('RFC-62 R9 a sync that fails later in the run is rolled back with the wipe', async () => {
+    await importRecords(t.db, { filePath: FIXTURE, replace: true });
+    await driftDictionary();
+    const before = await counts();
+    const dir = await mkdtemp(join(tmpdir(), 'sync-'));
+    const file = join(dir, 'broken.csv');
+    // One field too many: COPY fails after the wipe and the sync have run.
+    await writeFile(
+      file,
+      `${IMPORT_COLUMNS.join(',')}\n${IMPORT_COLUMNS.map(() => 'x').join(',')},EXTRA\n`,
+    );
+    await expect(
+      importRecords(t.db, {
+        filePath: file,
+        replace: true,
+        syncDictionary: true,
+        copyIdleTimeoutMs: 2000,
+      }),
+    ).rejects.toThrow();
+    const after = await counts();
+    expect(after).toMatchObject({
+      records: before.records,
+      traits: before.traits,
+      levels: before.levels,
+    });
+    expect(await t.db.select().from(traits).where(eq(traits.key, 'zz_gone'))).toHaveLength(1);
+  });
+
+  it('RFC-62 R9 --sync-dictionary makes the dictionary equal to the versioned file', async () => {
+    // Whatever earlier tests drifted, a sync restores it; count the file's traits on a clean sync first.
+    await importRecords(t.db, { filePath: FIXTURE, replace: true, syncDictionary: true });
+    const fileTraits = (await counts()).traits;
+    await driftDictionary();
+
+    const batch = await importRecords(t.db, {
+      filePath: FIXTURE,
+      replace: true,
+      syncDictionary: true,
+    });
+    expect(batch.status).toBe('completed');
+    expect((await counts()).records).toBeGreaterThan(0);
+
+    expect(await t.db.select().from(traits).where(eq(traits.key, 'zz_gone'))).toEqual([]);
+    expect(
+      await t.db.select().from(traitCategories).where(eq(traitCategories.key, 'zz_gone_cat')),
+    ).toEqual([]);
+    const [petal] = await t.db.select().from(traits).where(eq(traits.key, 'petal_length'));
+    expect(petal).toMatchObject({ valueType: 'quantitative', unit: 'mm' });
+    expect(petal?.description).not.toBe('OLD');
+    expect(
+      await t.db
+        .select()
+        .from(traitLevels)
+        .where(eq(traitLevels.traitId, petal?.id as string)),
+    ).toEqual([]);
+    const [flowerColor] = await t.db.select().from(traits).where(eq(traits.key, 'flower_color'));
+    const colourLevels = await t.db
+      .select({ key: traitLevels.key, sortOrder: traitLevels.sortOrder })
+      .from(traitLevels)
+      .where(eq(traitLevels.traitId, flowerColor?.id as string));
+    expect(colourLevels).toContainEqual({ key: 'black', sortOrder: 1 });
+    expect(colourLevels.map((l) => l.key)).toContain('blue');
+    expect(colourLevels.map((l) => l.key)).not.toContain('BLUE');
+    const [seedMass] = await t.db.select().from(traits).where(eq(traits.key, 'seed_mass'));
+    expect(seedMass?.active).toBe(true);
+    expect((await counts()).traits).toBe(fileTraits);
+  });
+
+  it('RFC-62 R9 refuses syncDictionary without replace, before any batch row', async () => {
+    const batches = (await t.db.select().from(importBatches)).length;
+    await expect(
+      importRecords(t.db, { filePath: FIXTURE, force: true, syncDictionary: true }),
+    ).rejects.toMatchObject({ name: 'ImportRefusedError', reason: 'replace_not_allowed' });
+    expect((await t.db.select().from(importBatches)).length).toBe(batches);
+  });
 
   it('refuses in production only', () => {
     expect(isReplaceAllowed('production')).toBe(false);
