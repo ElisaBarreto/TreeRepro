@@ -4,7 +4,6 @@ import { inspect } from 'node:util';
 import { z } from 'zod';
 import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
 
-
 const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 

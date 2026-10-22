@@ -22,7 +22,9 @@ describe('RFC-76 R7 MapViewer', () => {
   it('shows the map at the index, its heading and alt text', () => {
     render(<MapViewer items={ITEMS} index={0} onIndexChange={vi.fn()} onClose={vi.fn()} />);
     const dialog = screen.getByRole('dialog', { name: 'Data completeness' });
-    expect(within(dialog).getByRole('img', { name: 'Data completeness map of x' })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('img', { name: 'Data completeness map of x' }),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText('Data completeness map of x')).toBeInTheDocument();
   });
 

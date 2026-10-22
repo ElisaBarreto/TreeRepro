@@ -281,9 +281,7 @@ describe('RFC-76 R7 MapsPage maps of the selected trait', () => {
       within(screen.getByRole('tabpanel'))
         .getAllByRole('img')
         .map((img) => img.getAttribute('aria-label')),
-    ).toEqual(
-      ['Data completeness', 'Mean', 'SD', 'Max'].map((kind) => `${kind} map of seed mass`),
-    );
+    ).toEqual(['Data completeness', 'Mean', 'SD', 'Max'].map((kind) => `${kind} map of seed mass`));
     expect(screen.getByRole('img', { name: 'Mean map of seed mass' })).toBeInTheDocument();
   });
 

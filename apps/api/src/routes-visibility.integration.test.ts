@@ -98,7 +98,8 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
     };
     // RFC-76 R6: a map exists only in the region snapshot, so give the active
     // trait one region of completeness.
-    await t.db.$client`insert into region_completeness values (${fx.activeTrait.id}, 'MTA', 1, 10, 5)
+    await t.db
+      .$client`insert into region_completeness values (${fx.activeTrait.id}, 'MTA', 1, 10, 5)
       on conflict do nothing`;
     await t.db.$client`insert into region_snapshot (id, computed_at) values (true, now())
       on conflict (id) do nothing`;

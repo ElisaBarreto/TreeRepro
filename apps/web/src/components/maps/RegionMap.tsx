@@ -10,7 +10,11 @@ const BORDER = '#8C8C8C';
 
 const OUTLINES = outlines as { viewBox: string; regions: Record<string, string> };
 
-function regionTitle(name: string, region: MapValues['regions'][number] | undefined, legend: MapValues['legend']) {
+function regionTitle(
+  name: string,
+  region: MapValues['regions'][number] | undefined,
+  legend: MapValues['legend'],
+) {
   if (!region || region.value === null) return `${name}: no data`;
   const unit = legend.percent ? '%' : legend.unit ? ` ${legend.unit}` : '';
   const species = `${region.nSpecies} species`;
@@ -30,7 +34,8 @@ export function RegionMap({ entry, alt }: { entry: MapEntry; alt: string }) {
   const values = useMapValues(entry);
   const gradientId = useId();
   if (values.isPending) return <p className="text-meta text-mist-500">Loading map…</p>;
-  if (values.isError) return <p className="text-meta text-mist-500">The map could not be loaded.</p>;
+  if (values.isError)
+    return <p className="text-meta text-mist-500">The map could not be loaded.</p>;
   const { regions, legend } = values.data;
   const byCode = new Map(regions.map((r) => [r.code, r]));
   const [lo, hi] = legend.limits;
@@ -47,13 +52,25 @@ export function RegionMap({ entry, alt }: { entry: MapEntry; alt: string }) {
           );
         })}
       </svg>
-      <figure aria-label={`Legend: ${legend.label}`} className="flex items-center gap-2 text-meta text-mist-500">
+      <figure
+        aria-label={`Legend: ${legend.label}`}
+        className="flex items-center gap-2 text-meta text-mist-500"
+      >
         <span className="tabular-nums">{formatNumber(lo)}</span>
-        <svg viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true" className="h-2.5 w-32">
+        <svg
+          viewBox="0 0 100 4"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+          className="h-2.5 w-32"
+        >
           <defs>
             <linearGradient id={gradientId}>
               {legend.stops.map((stop, i) => (
-                <stop key={stop} offset={`${(i * 100) / (legend.stops.length - 1)}%`} stopColor={stop} />
+                <stop
+                  key={stop}
+                  offset={`${(i * 100) / (legend.stops.length - 1)}%`}
+                  stopColor={stop}
+                />
               ))}
             </linearGradient>
           </defs>

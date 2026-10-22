@@ -1,4 +1,10 @@
-import { MAP_KINDS, type MapEntry, type MapKind, type MapValues, type MapValuesQuery } from '@treerepro/contracts';
+import {
+  MAP_KINDS,
+  type MapEntry,
+  type MapKind,
+  type MapValues,
+  type MapValuesQuery,
+} from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import { levelVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -65,7 +71,13 @@ export async function listMaps(db: DbExecutor, visibility: Visibility): Promise<
         kindOrder(a.kind) - kindOrder(b.kind) ||
         a.sort - b.sort,
     )
-    .map((r) => ({ traitId: r.traitId, kind: r.kind, levelId: r.levelId, regions: r.regions, computedAt }));
+    .map((r) => ({
+      traitId: r.traitId,
+      kind: r.kind,
+      levelId: r.levelId,
+      regions: r.regions,
+      computedAt,
+    }));
 }
 
 interface RegionRow {

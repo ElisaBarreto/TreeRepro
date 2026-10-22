@@ -29,7 +29,10 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
   /** A categorical and a quantitative trait with a snapshot of their own regions. */
   async function fixture() {
     const s = tag();
-    const cat = await createTrait(t.db, { key: `map_cat_${s.toLowerCase()}`, levels: ['red', 'blue'] });
+    const cat = await createTrait(t.db, {
+      key: `map_cat_${s.toLowerCase()}`,
+      levels: ['red', 'blue'],
+    });
     const num = await createTrait(t.db, {
       key: `map_num_${s.toLowerCase()}`,
       valueType: 'quantitative',
@@ -61,7 +64,9 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
   it('R5 lists each map with a region holding a value, by trait key, kind and state', async () => {
     const f = await fixture();
     const { cookie } = await viewer();
-    const mine = (await list(cookie)).filter((m) => m.traitId === f.cat.id || m.traitId === f.num.id);
+    const mine = (await list(cookie)).filter(
+      (m) => m.traitId === f.cat.id || m.traitId === f.num.id,
+    );
     expect(mine.map((m) => [m.traitId, m.kind, m.levelId, m.regions])).toEqual([
       [f.cat.id, 'completeness', null, 1],
       // blue rests on 2 species with the trait: below the minimum, so no map
@@ -87,7 +92,9 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
   it('R6 completeness: the trees percentage and its fill; a region with no tree species has no value', async () => {
     const f = await fixture();
     const { cookie } = await viewer();
-    const res = await call(t.app, 'GET', `/api/maps/values?traitId=${f.cat.id}&kind=completeness`, { cookie });
+    const res = await call(t.app, 'GET', `/api/maps/values?traitId=${f.cat.id}&kind=completeness`, {
+      cookie,
+    });
     expect(res.status).toBe(200);
     const { data } = dataEnvelopeSchema(mapValuesSchema).parse(await res.json());
     expect(data.regions).toEqual([
@@ -117,11 +124,18 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
       [f.a, 400],
       [f.b, null],
     ]);
-    expect(max.legend).toMatchObject({ limits: [400, 400], log: false, unit: 'mm', label: 'highest species median' });
+    expect(max.legend).toMatchObject({
+      limits: [400, 400],
+      log: false,
+      unit: 'mm',
+      label: 'highest species median',
+    });
     expect(max.regions[0]?.fill).toBe(rampColour('cividis', 0.5));
     expect((await get(`traitId=${f.num.id}&kind=cv`)).legend.unit).toBeNull();
     const red = await get(`traitId=${f.cat.id}&kind=prevalence&levelId=${f.red}`);
-    expect(red.regions).toEqual([{ code: f.a, name: f.a, value: 75, nSpecies: 4, fill: rampColour('magma', 0.75) }]);
+    expect(red.regions).toEqual([
+      { code: f.a, name: f.a, value: 75, nSpecies: 4, fill: rampColour('magma', 0.75) },
+    ]);
   });
 
   it('R6 a map not listed is 404 MAP_NOT_FOUND; levelId goes with prevalence only', async () => {

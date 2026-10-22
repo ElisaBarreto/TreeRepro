@@ -24,7 +24,9 @@ describe('RFC-76 R7 MapFigure and RegionMap', () => {
     const titled = (text: string) =>
       [...paths].find((p) => p.querySelector('title')?.textContent?.startsWith(text));
     expect(titled('Brazil West-Central')).toHaveAttribute('fill', '#B63875');
-    expect(titled('Brazil West-Central')?.textContent).toBe('Brazil West-Central: 42.5% (120 species)');
+    expect(titled('Brazil West-Central')?.textContent).toBe(
+      'Brazil West-Central: 42.5% (120 species)',
+    );
     expect(titled('Peru')).toHaveAttribute('fill', '#EBEBEB');
     expect(titled('Peru')?.textContent).toBe('Peru: no data');
     // a region with no row in the snapshot is no data too, under its code
@@ -44,15 +46,28 @@ describe('RFC-76 R7 MapFigure and RegionMap', () => {
     api.useMapValues.mockReturnValueOnce({
       isPending: false,
       isError: false,
-      data: { ...MAP_VALUES, legend: { ...MAP_VALUES.legend, percent: false, log: true, unit: 'mg', label: 'mean of species medians' } },
+      data: {
+        ...MAP_VALUES,
+        legend: {
+          ...MAP_VALUES.legend,
+          percent: false,
+          log: true,
+          unit: 'mg',
+          label: 'mean of species medians',
+        },
+      },
     });
     render(<MapFigure entry={mapEntry({ kind: 'mean' })} alt={ALT} />);
     expect(screen.getByText('mean of species medians (log scale)')).toBeInTheDocument();
   });
 
   it('renders a caption in a figcaption when given one', () => {
-    render(<MapFigure entry={ENTRY} alt={ALT} caption="TDWG level 3 regions · snapshot 2026-10-23" />);
-    expect(screen.getByText('TDWG level 3 regions · snapshot 2026-10-23').tagName).toBe('FIGCAPTION');
+    render(
+      <MapFigure entry={ENTRY} alt={ALT} caption="TDWG level 3 regions · snapshot 2026-10-23" />,
+    );
+    expect(screen.getByText('TDWG level 3 regions · snapshot 2026-10-23').tagName).toBe(
+      'FIGCAPTION',
+    );
   });
 
   it('without onOpen renders only the map, no button and no dialog', () => {

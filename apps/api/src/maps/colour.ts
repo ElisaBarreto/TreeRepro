@@ -13,7 +13,10 @@ export const RAMPS = {
 } as const;
 
 /** Each kind's ramp, whether it is a percentage, and its legend label. @rfc RFC-76 R4, R6 */
-export const KIND_STYLE: Record<MapKind, { ramp: keyof typeof RAMPS; percent: boolean; label: string }> = {
+export const KIND_STYLE: Record<
+  MapKind,
+  { ramp: keyof typeof RAMPS; percent: boolean; label: string }
+> = {
   completeness: { ramp: 'magma', percent: true, label: '% of species with data' },
   mean: { ramp: 'mako', percent: false, label: 'mean of species medians' },
   median: { ramp: 'mako', percent: false, label: 'median of species medians' },
@@ -37,11 +40,9 @@ const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : (903.3 * t + 16) / 116);
 const fInv = (t: number) => (t ** 3 > 0.008856 ? t ** 3 : (116 * t - 16) / 903.3);
 
 function hexToLab(hex: string): Lab {
-  const [r, g, b] = [1, 3, 5].map((i) => toLinear(Number.parseInt(hex.slice(i, i + 2), 16) / 255)) as [
-    number,
-    number,
-    number,
-  ];
+  const [r, g, b] = [1, 3, 5].map((i) =>
+    toLinear(Number.parseInt(hex.slice(i, i + 2), 16) / 255),
+  ) as [number, number, number];
   const x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / WHITE[0];
   const y = (0.2126729 * r + 0.7151522 * g + 0.072175 * b) / WHITE[1];
   const z = (0.0193339 * r + 0.119192 * g + 0.9503041 * b) / WHITE[2];
