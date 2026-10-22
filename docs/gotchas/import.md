@@ -113,6 +113,10 @@
    docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-references.js --file /imports/references.import.csv
    ```
    Re-run the second query of step 3 and compare. Taxonomy proposals (`species_proposals`) are rebuilt by their own job.
+6b. **Rebuild the region snapshot** (RFC-78 R12) so the maps follow the new records at once instead of at the next weekly run:
+   ```sh
+   docker compose run --rm --no-deps api node dist/cli/build-snapshot.js
+   ```
 7. **Verify:**
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \

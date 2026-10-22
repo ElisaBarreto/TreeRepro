@@ -68,8 +68,9 @@ export interface CategoricalTraitSummary {
  * The records a summary may count (RFC-77 R1), as alias `r` joined to `t`
  * (traits) and `s` (species), with the observation key and the source of
  * RFC-77 R2 and R3. `speciesIds` null means every species.
+ * @rfc RFC-77 R1, R2, R3
  */
-function countedRecords(
+export function countedRecordsSql(
   visibility: Visibility,
   valueType: 'quantitative' | 'categorical',
   speciesIds: readonly string[] | null,
@@ -108,7 +109,7 @@ export async function continuousSummaries(
 ): Promise<ContinuousSummary[]> {
   if (speciesIds !== null && speciesIds.length === 0) return [];
   const rows = (await db.execute(sql`
-    with base as (${countedRecords(visibility, 'quantitative', speciesIds)}),
+    with base as (${countedRecordsSql(visibility, 'quantitative', speciesIds)}),
     flagged as (
       select b.*, b.summary_source is null as own,
         b.unit_status is distinct from 'needs_unit_check' as usable,
@@ -220,7 +221,7 @@ export async function categoricalSummaries(
     with base as (
       select r.species_id, r.trait_id, r.canonical_name, r.trait_key, r.obs_id, r.source,
         l.key as level, greatest(coalesce(r.records_behind_row, 1), 1) as w
-      from (${countedRecords(visibility, 'categorical', speciesIds)}) r
+      from (${countedRecordsSql(visibility, 'categorical', speciesIds)}) r
       join trait_levels l on l.id = r.level_id
     ),
     observations as (select distinct species_id, trait_id, obs_id, source, w from base),
