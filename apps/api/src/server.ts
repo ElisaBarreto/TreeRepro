@@ -12,6 +12,7 @@ import { createHealthChecks } from './http/health-checks.ts';
 import { createDoiClient } from './integrations/doi.ts';
 import { createTaxonomyClient, verifyWcvpDataset } from './integrations/taxonomy.ts';
 import { runDigest, startDigestTimer } from './jobs/digest.ts';
+import { startSnapshotTimer } from './jobs/snapshot.ts';
 import { createLogger } from './logger.ts';
 import { createMailer, createSmtpTransport } from './mail/mailer.ts';
 import { createRedis } from './redis/client.ts';
@@ -93,10 +94,15 @@ const digest = startDigestTimer({
   logger,
 });
 
+// RFC-78 R12: the weekly region snapshot, owned by the API process like the
+// digest; `createApp` must not start it, or every test would compute one.
+const snapshot = startSnapshotTimer({ db, logger });
+
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'shutting down');
   retention.stop();
   digest.stop();
+  snapshot.stop();
   server.close(() => {
     Promise.allSettled([closeDb(), redis.quit()]).then(() => process.exit(0));
   });

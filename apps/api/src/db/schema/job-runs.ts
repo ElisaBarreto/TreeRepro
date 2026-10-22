@@ -2,8 +2,9 @@ import { JOB_STATUSES } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-/** The background jobs that record their runs. @rfc RFC-74 R1 */
-export const JOB_KINDS = ['audit_purge', 'digest'] as const;
+/** The background jobs that record their runs. @rfc RFC-74 R1
+ * @rfc RFC-78 R12 */
+export const JOB_KINDS = ['audit_purge', 'digest', 'snapshot'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 /**
@@ -41,7 +42,7 @@ export const jobRuns = pgTable(
   },
   (t) => [
     index('job_runs_kind_idx').on(t.kind, t.startedAt.desc()),
-    check('job_runs_kind_check', sql`${t.kind} in ('audit_purge', 'digest')`),
+    check('job_runs_kind_check', sql`${t.kind} in ('audit_purge', 'digest', 'snapshot')`),
     check(
       'job_runs_status_check',
       sql`${t.status} in ('running', 'completed', 'failed', 'skipped')`,

@@ -113,6 +113,10 @@
    docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-references.js --file /imports/references.import.csv
    ```
    Re-run the second query of step 3 and compare. Taxonomy proposals (`species_proposals`) are rebuilt by their own job.
+6b. **Rebuild the region snapshot** (RFC-78 R12) so the maps follow the new records at once instead of at the next weekly run:
+   ```sh
+   docker compose run --rm --no-deps api node dist/cli/build-snapshot.js
+   ```
 7. **Verify:**
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
@@ -236,5 +240,5 @@ Nothing else needs reloading: species, taxa, references, plots, plot species, us
 ## Loading a WCVP release (`import:wcvp`, RFC-78)
 
 **When:** once per WCVP release (v15 today), before the weekly snapshot (#292) first runs, and again whenever Kew publishes a new release. The snapshot reads `wcvp_species`, `wcvp_regions`, `wcvp_distribution` and the view `wcvp_species_match`; it never reads Kew's files.
-**How:** place `wcvp_names.csv` and `wcvp_distribution.csv`, exactly as Kew distributes them, in `/srv/imports` on the server, then run `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-wcvp.js --names /imports/wcvp_names.csv --distribution /imports/wcvp_distribution.csv`. One transaction replaces the previous load, so the API can keep running; readers of the three tables wait for the commit (the load holds them under `TRUNCATE`'s lock). On v15 it takes under a minute and prints `362739 accepted species (57935 trees), 368 regions, 1210021 distribution rows`. The files are private: never commit them.
+**How:** place `wcvp_names.csv` and `wcvp_distribution.csv`, exactly as Kew distributes them, in `/srv/imports` on the server, then run `docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-wcvp.js --names /imports/wcvp_names.csv --distribution /imports/wcvp_distribution.csv`. One transaction replaces the previous load, so the API can keep running; readers of the three tables wait for the commit (the load holds them under `TRUNCATE`'s lock). On v15 it takes under a minute and prints `362739 accepted species (57935 trees), 368 regions, 1210021 distribution rows`. The files are private: never commit them. Then rebuild the region snapshot so the maps use the new load at once: `docker compose run --rm --no-deps api node dist/cli/build-snapshot.js` (RFC-78 R12).
 **Pitfalls:** Kew's files are not CSV in Postgres's sense. They are pipe-separated with CRLF endings and contain bare `"` inside fields (`Bol. Mus. Paraense "Emilio Goeldi," …`), which CSV mode would read as an opening quote and then swallow lines. The import sets `QUOTE E'\x01'`, a byte absent from both files, which turns quoting off. If a future release ever contains `\x01`, the COPY will fail on that row and the previous load stays. v15 has 375 distinct raw `area_code_l3` values: one is blank (1,318 rows, dropped) and six are lower-case twins of real codes (`nep`, `ger`, `cnt`, `grb`, `rho`, `wau`), which are upper-cased, so 368 regions remain (RFC-78 R4, R5).
