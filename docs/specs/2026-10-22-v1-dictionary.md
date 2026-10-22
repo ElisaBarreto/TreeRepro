@@ -21,7 +21,7 @@ Release v1 of the owner's data (`Final_data_v1_Oct26`) ships a new trait diction
 ## Design
 
 - **D1 Header** (RFC-62 R2). `seed:traits` reads the v1 header: `standard_trait, broad_category, value_type, standard_unit, description, harmonised_levels`, plus the optional seventh column `active`. The names are checked before COPY, so the old header is refused with an error that names the mismatch, rather than loaded under the wrong names. (COPY's `HEADER MATCH` would refuse it too, but a refused COPY can hang the driver, `docs/gotchas/import.md`.)
-- **D1b Repeated levels.** The v1 file lists some levels of `dispersal_mode_raw` twice in different case (`aveG` and `AveG`). Levels are unique by `lower(key)` (RFC-62 R1), so the first spelling is kept, by the seed and the sync alike. `apps/api/seed/trait-dictionary.csv` becomes the owner's v1 file.
+- **D1b Repeated levels.** Levels are unique by `lower(key)` (RFC-62 R1). A level a file lists twice in different case keeps its first spelling, in the seed and in the sync alike. The first v1 file had such repeats in `dispersal_mode_raw`; the owner's updated file of 2026-10-22 (21:05) drops that trait, and the rule stays for any later file.
 - **D2 Sync during a total replace** (new RFC-62 R9, RFC-64 R1 and R12). `import:records --replace --sync-dictionary` makes the dictionary equal to the committed file. This happens inside the replace transaction, right after the wipe of RFC-64 R12 and before the file is staged:
   - categories, traits and levels the file lists are inserted or updated: a trait's category, value type, unit, description and `active`; a level's position, and the spelling of its key;
   - traits and levels the file does not list are deleted, and so is a category with no trait left.
