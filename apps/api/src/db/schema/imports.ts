@@ -38,6 +38,8 @@ export const importBatches = pgTable(
     rowsPending: count('rows_pending'),
     /** Rows whose `ID` is already stored: skipped, neither record nor reject (RFC-64 R14). */
     rowsAlreadyImported: count('rows_already_imported'),
+    /** Rows `--trees-only` left out: neither record nor reject (RFC-64 R4). */
+    rowsFiltered: count('rows_filtered'),
     unknownLevels: jsonb('unknown_levels').$type<UnknownLevelCount[]>().notNull().default([]),
   },
   (t) => [

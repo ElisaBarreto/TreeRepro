@@ -143,9 +143,10 @@ describe('RFC-63 R8 recordSchema', () => {
     for (const flag of OUTLIER_FLAGS) {
       expect(recordSchema.safeParse({ ...record, outlierFlag: flag }).success).toBe(true);
     }
-    expect(recordSchema.safeParse({ ...record, outlierFlag: 'Both' }).success).toBe(false);
+    expect(recordSchema.safeParse({ ...record, outlierFlag: 'Trait_extreme' }).success).toBe(false);
+    expect(recordSchema.safeParse({ ...record, outlierFlag: 'both' }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, outlierFlag: undefined }).success).toBe(false);
-    expect(OUTLIER_FLAGS).toEqual(['species_disagreement', 'trait_extreme', 'both']);
+    expect(OUTLIER_FLAGS).toEqual(['unit_factor', 'trait_extreme', 'unit_factor;trait_extreme']);
   });
 
   it('enumerations match the RFC', () => {
@@ -413,6 +414,7 @@ describe('RFC-64 R11 importBatchSchema', () => {
       rowsRejected: 1,
       rowsPending: 2,
       rowsAlreadyImported: 0,
+      rowsFiltered: 0,
       unknownLevels: [{ trait: 'pollinator_group', value: 'bees', count: 2 }],
       error: null,
     };
@@ -435,10 +437,38 @@ describe('RFC-64 R11 importBatchSchema', () => {
       rowsRejected: 1,
       rowsPending: 2,
       rowsAlreadyImported: 0,
+      rowsFiltered: 0,
       unknownLevels: [] as { trait: string; value: string; count: number }[],
       error: null,
     };
     expect(importBatchSchema.safeParse(withoutRowsAlreadyImported).success).toBe(false);
+  });
+});
+
+describe('RFC-64 R11 rowsFiltered (issue #288)', () => {
+  it('is required: the rows --trees-only left out', () => {
+    const batch = {
+      id: '0190c3a0-0000-7000-8000-000000000001',
+      fileName: 'observation_level_trait_values.parquet',
+      fileSha256: 'a'.repeat(64),
+      status: 'completed',
+      kind: 'records',
+      runBy: null,
+      startedAt: '2026-10-22T00:00:00.000Z',
+      finishedAt: '2026-10-22T00:01:00.000Z',
+      rowsTotal: 10,
+      rowsInserted: 6,
+      rowsDuplicate: 0,
+      rowsRejected: 0,
+      rowsPending: 0,
+      rowsAlreadyImported: 0,
+      rowsFiltered: 4,
+      unknownLevels: [],
+      error: null,
+    };
+    expect(importBatchSchema.parse(batch).rowsFiltered).toBe(4);
+    const { rowsFiltered: _rf, ...without } = batch;
+    expect(importBatchSchema.safeParse(without).success).toBe(false);
   });
 });
 
@@ -459,6 +489,7 @@ describe('RFC-68 R1 import batch kinds', () => {
       rowsRejected: 1,
       rowsPending: 2,
       rowsAlreadyImported: 0,
+      rowsFiltered: 0,
       unknownLevels: [{ trait: 'pollinator_group', value: 'bees', count: 2 }],
       error: null,
     };

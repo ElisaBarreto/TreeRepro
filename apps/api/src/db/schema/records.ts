@@ -192,7 +192,7 @@ export const traitRecords = pgTable(
     /** RFC-63 R1: unit_status takes only the four labelled values. */
     check(
       'trait_records_unit_status_check',
-      sql`${t.unitStatus} is null or ${t.unitStatus} in ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable')`,
+      sql`${t.unitStatus} is null or ${t.unitStatus} in ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable', 'not_numeric')`,
     ),
     /** RFC-63 R1: summary_source takes only the three labelled values. */
     check(
@@ -207,7 +207,7 @@ export const traitRecords = pgTable(
     /** RFC-63 R1: outlier_flag takes only the three audit reasons. */
     check(
       'trait_records_outlier_flag_check',
-      sql`${t.outlierFlag} is null or ${t.outlierFlag} in ('species_disagreement', 'trait_extreme', 'both')`,
+      sql`${t.outlierFlag} is null or ${t.outlierFlag} in ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme')`,
     ),
   ],
 );

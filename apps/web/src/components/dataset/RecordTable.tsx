@@ -32,9 +32,9 @@ export function unitCaveat(status: UnitStatus | null): string | null {
 
 /** What each outlier-audit reason means, worded for a viewer. @rfc RFC-63 R8 */
 export const OUTLIER_LABELS: Record<OutlierFlag, string> = {
-  species_disagreement: "Disagrees with this species' other values",
+  unit_factor: "Likely a unit slip: about ×10, ×100, ×1000 or ×25.4 off this species' other values",
   trait_extreme: 'Extreme for this trait',
-  both: "Disagrees with this species' other values and extreme for this trait",
+  'unit_factor;trait_extreme': 'Likely a unit slip, and extreme for this trait',
 };
 
 /**

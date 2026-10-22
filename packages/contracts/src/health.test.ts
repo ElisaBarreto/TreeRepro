@@ -60,6 +60,7 @@ const healthImport = {
   rowsRejected: 1,
   rowsPending: 2,
   rowsAlreadyImported: 0,
+  rowsFiltered: 0,
   unknownLevels: [{ trait: 'pollinator_group', value: 'bees', count: 2 }],
   error: null,
 };

@@ -747,6 +747,7 @@ export const IMPORT_BATCH: ImportBatch = {
   rowsInserted: 12000,
   rowsDuplicate: 300,
   rowsAlreadyImported: 15,
+  rowsFiltered: 0,
   rowsRejected: 45,
   rowsPending: 210,
   unknownLevels: [{ trait: 'pollination_syndrome', value: 'bees', count: 17 }],

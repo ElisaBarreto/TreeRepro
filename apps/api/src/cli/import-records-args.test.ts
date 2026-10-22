@@ -15,6 +15,7 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
       ]),
     ).toEqual({
       file: 'a.csv',
+      treesOnly: false,
       runBy: 'owner@example.test',
       force: false,
       replace: false,
@@ -27,6 +28,7 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
   it('R1 keeps the existing flags', () => {
     expect(parseImportRecordsArgs(['--file', 'a.csv', '--replace', '--force'])).toEqual({
       file: 'a.csv',
+      treesOnly: false,
       runBy: undefined,
       force: true,
       replace: true,
@@ -39,6 +41,7 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
   it('R12 takes --discard-platform together with --replace', () => {
     expect(parseImportRecordsArgs(['--file', 'a.csv', '--replace', '--discard-platform'])).toEqual({
       file: 'a.csv',
+      treesOnly: false,
       runBy: undefined,
       force: false,
       replace: true,
@@ -46,6 +49,22 @@ describe('RFC-64 R1, R15 import:records arguments', () => {
       syncDictionary: false,
       replaceImported: undefined,
     });
+  });
+
+  it('R4 takes --trees-only with any mode', () => {
+    expect(parseImportRecordsArgs(['--file', 'o.parquet', '--trees-only'])).toMatchObject({
+      file: 'o.parquet',
+      treesOnly: true,
+    });
+    expect(
+      parseImportRecordsArgs([
+        '--file',
+        'o.parquet',
+        '--trees-only',
+        '--replace',
+        '--sync-dictionary',
+      ]),
+    ).toMatchObject({ treesOnly: true, replace: true, syncDictionary: true });
   });
 
   it('RFC-62 R9 takes --sync-dictionary together with --replace', () => {

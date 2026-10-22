@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
-  createImportBatch,
   createReference,
   createSpecies,
   createTrait,
@@ -56,11 +55,17 @@ describe('RFC-63 R3, R15 migration 0044 moves labelled values into their own fie
   it('rewrites the table without firing the append-only trigger; the claim key holds afterwards', async () => {
     const db = handle?.db as Db;
     const client = db.$client;
-    // The tables the helpers write are unchanged by 0044; trait_records is
+    // The other tables the helpers write are unchanged by 0044; trait_records is
     // seeded in its 0043 shape, with `statistic`.
     const sp = await createSpecies(db);
     const ref = await createReference(db);
-    const batch = await createImportBatch(db);
+    // import_batches gains columns after 0043 (0048's rows_filtered), so its
+    // row is written in the 0043 shape rather than through createImportBatch.
+    const [batch] = (await client`
+      insert into import_batches (file_name, file_sha256, kind, status)
+      values ('m0044.csv', ${'0'.repeat(64)}, 'records', 'completed') returning id`) as [
+      { id: string },
+    ];
     const category = await createTraitCategory(db);
     const trait = await createTrait(db, { valueType: 'quantitative', categoryKey: category.key });
     const seed = async (

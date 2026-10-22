@@ -38,6 +38,7 @@ const FAILED: ImportBatch = {
   rowsInserted: 0,
   rowsDuplicate: 0,
   rowsAlreadyImported: 0,
+  rowsFiltered: 0,
   rowsRejected: 0,
   rowsPending: 0,
   unknownLevels: [],

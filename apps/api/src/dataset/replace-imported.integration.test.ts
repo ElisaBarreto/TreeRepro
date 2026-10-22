@@ -369,6 +369,7 @@ describe('RFC-64 R15 replace-imported (spec R-20)', () => {
       rowsInserted: 5,
       rowsRejected: 0,
       rowsAlreadyImported: 0,
+      rowsFiltered: 0,
     });
     const [stored] = await t.db
       .select({ mode: importBatches.mode })

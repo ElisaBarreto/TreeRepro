@@ -2,10 +2,12 @@ import { parseArgs } from 'node:util';
 
 /** @rfc RFC-64 R1, R12, R15 */
 export const IMPORT_RECORDS_USAGE =
-  'usage: import-records --file <csv> [--run-by <email>] [--force | --replace [--discard-platform] [--sync-dictionary] | --replace-imported --annotation-sheet <dir>]\n';
+  'usage: import-records --file <parquet|csv> [--run-by <email>] [--trees-only] [--force | --replace [--discard-platform] [--sync-dictionary] | --replace-imported --annotation-sheet <dir>]\n';
 
 export interface ImportRecordsArgs {
   file: string;
+  /** RFC-64 R4: keep only the rows whose `is_tree_species` is true. */
+  treesOnly: boolean;
   runBy?: string;
   force: boolean;
   replace: boolean;
@@ -22,13 +24,14 @@ export interface ImportRecordsArgs {
  * `--replace-imported` excludes `--replace` (two different wipes) and
  * `--force` (it already waives R3). `--annotation-sheet` goes with it and
  * only with it, and `--discard-platform` and `--sync-dictionary` only with `--replace`.
- * @rfc RFC-64 R1, R12, R15
+ * @rfc RFC-64 R1, R4, R12, R15
  * @rfc RFC-62 R9
  */
 export function parseImportRecordsArgs(args: string[]): ImportRecordsArgs | null {
   let values: {
     file?: string;
     'run-by'?: string;
+    'trees-only': boolean;
     force: boolean;
     replace: boolean;
     'discard-platform': boolean;
@@ -42,6 +45,7 @@ export function parseImportRecordsArgs(args: string[]): ImportRecordsArgs | null
       options: {
         file: { type: 'string' },
         'run-by': { type: 'string' },
+        'trees-only': { type: 'boolean', default: false },
         force: { type: 'boolean', default: false },
         replace: { type: 'boolean', default: false },
         'discard-platform': { type: 'boolean', default: false },
@@ -61,6 +65,7 @@ export function parseImportRecordsArgs(args: string[]): ImportRecordsArgs | null
   if ((values['discard-platform'] || values['sync-dictionary']) && !values.replace) return null;
   return {
     file: values.file,
+    treesOnly: values['trees-only'],
     runBy: values['run-by'],
     force: values.force,
     replace: values.replace,
