@@ -65,6 +65,7 @@ try {
   }
   const batch = await importRecords(db, {
     filePath: values.file,
+    treesOnly: values.treesOnly,
     runBy,
     force: values.force,
     replace: values.replace,
@@ -93,6 +94,8 @@ try {
     `Rows: ${batch.rowsTotal} total, ${batch.rowsInserted} inserted, ${batch.rowsDuplicate} duplicate, ${batch.rowsRejected} rejected, ${batch.rowsPending} pending harmonisation`,
     // R14: rows whose ID is already stored, skipped without a record or a reject.
     `Rows already imported: ${batch.rowsAlreadyImported}`,
+    // R4: the rows --trees-only left out.
+    ...(values.treesOnly ? [`Rows left out (not trees): ${batch.rowsFiltered}`] : []),
     `Harmonisation: ${Object.entries(report.harmonisation)
       .map(([k, v]) => `${k} ${v}`)
       .join(', ')}`,

@@ -344,7 +344,7 @@ describe('RFC-63 R8 RecordDrawer value fields, unit, unit status and provenance 
       unit: 'g',
       summarySource: 'reported_and_derived',
       recordsBehindRow: 3,
-      outlierFlag: 'both',
+      outlierFlag: 'unit_factor;trait_extreme',
     });
     renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, ME);
     await screen.findByText('GIFT');
@@ -370,9 +370,7 @@ describe('RFC-63 R8 RecordDrawer value fields, unit, unit status and provenance 
     expect(value('Summary source')).toBe('reported_and_derived');
     expect(value('Records behind row')).toBe('3');
     // #281: the outlier audit's reason, worded for a viewer
-    expect(value('Outlier')).toBe(
-      "Disagrees with this species' other values and extreme for this trait",
-    );
+    expect(value('Outlier')).toBe('Likely a unit slip, and extreme for this trait');
     expect(screen.queryByText('Statistic', { selector: 'dt' })).not.toBeInTheDocument();
     expect(screen.queryByText('Folded records', { selector: 'dt' })).not.toBeInTheDocument();
   });

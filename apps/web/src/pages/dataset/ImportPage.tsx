@@ -145,6 +145,7 @@ function Counts({ batch }: { batch: ImportBatch }) {
     ['Inserted', batch.rowsInserted],
     ['Duplicate', batch.rowsDuplicate],
     ['Already imported', batch.rowsAlreadyImported],
+    ['Left out (not trees)', batch.rowsFiltered],
     ['Rejected', batch.rowsRejected],
     ['Pending', batch.rowsPending],
   ];

@@ -30,6 +30,7 @@ export const UNIT_STATUSES = [
   'unit_missing',
   'needs_unit_check',
   'not_applicable',
+  'not_numeric',
 ] as const;
 /** A record's unit harmonisation status. @rfc RFC-63 R1 */
 export type UnitStatus = (typeof UNIT_STATUSES)[number];
@@ -44,7 +45,7 @@ export const SUMMARY_SOURCES = [
 export type SummarySource = (typeof SUMMARY_SOURCES)[number];
 
 /** Import provenance: why the owner's outlier audit flagged a record's value. @rfc RFC-63 R1 */
-export const OUTLIER_FLAGS = ['species_disagreement', 'trait_extreme', 'both'] as const;
+export const OUTLIER_FLAGS = ['unit_factor', 'trait_extreme', 'unit_factor;trait_extreme'] as const;
 /** A record's outlier flag. @rfc RFC-63 R1 */
 export type OutlierFlag = (typeof OUTLIER_FLAGS)[number];
 
@@ -692,6 +693,8 @@ export const importBatchSchema = z.strictObject({
   rowsRejected: z.number().int().nonnegative(),
   rowsPending: z.number().int().nonnegative(),
   rowsAlreadyImported: z.number().int().nonnegative(),
+  /** Rows `--trees-only` left out (RFC-64 R4). */
+  rowsFiltered: z.number().int().nonnegative(),
   unknownLevels: z.array(unknownLevelSchema),
   error: z.string().nullable(),
 });

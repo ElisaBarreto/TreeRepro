@@ -231,7 +231,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       unit: 'cm',
       summarySource: 'derived_from_records',
       recordsBehindRow: 3,
-      outlierFlag: 'species_disagreement',
+      outlierFlag: 'unit_factor',
     });
     const plain = await createRecord(t.db, { ...base, valueText: '5', numericValue: 5 });
     const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
@@ -244,7 +244,7 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     expect(a('unit')).toBe('cm');
     expect(a('summary_source')).toBe('derived_from_records');
     expect(a('records_behind_row')).toBe('3');
-    expect(a('outlier_flag')).toBe('species_disagreement');
+    expect(a('outlier_flag')).toBe('unit_factor');
     const b = await rowOf(plain.id);
     expect(b('unit')).toBe('mm');
     expect(b('summary_source')).toBe('');

@@ -4,7 +4,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { headerMatches, readFirstLine } from '../dataset/import.ts';
 import {
   type Anomaly,
   type Prepared,
@@ -42,7 +41,6 @@ const out = values.out;
 const SPECIES_PER_PLOT = 'Species_per_plot_filtered.csv';
 const PIS_PER_PLOT = 'PIs_per_plot_filtered.csv';
 const REFS = 'refs_with_citations_filtered.csv';
-const RECORDS = 'sample_data.csv';
 
 async function read(name: string): Promise<Record<string, string>[]> {
   return parseCsv(await readFile(join(source, name), 'utf8'));
@@ -82,26 +80,6 @@ function report(name: string, anomalies: Anomaly[], full: boolean): void {
 }
 
 let exitCode = 0;
-try {
-  // RFC-64 R2 owns this header; the records file is reported, never rewritten.
-  // The first line is parsed as a CSV record, exactly as the importer does.
-  const matches = headerMatches(await readFirstLine(join(source, RECORDS)));
-  process.stdout.write(
-    `${RECORDS}: header ${matches ? 'matches RFC-64 R2 — import it as it is' : 'DOES NOT match RFC-64 R2'}\n`,
-  );
-  if (!matches) exitCode = 1;
-} catch (err) {
-  // R14 treats the records file as report-only and does not require it to
-  // exist, so a missing file is fine. Anything else — an unreadable file, or
-  // `readFirstLine` refusing a first line beyond its limit — is a real failure
-  // and must not be reported as "not found" with a success exit code.
-  if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
-    process.stdout.write(`${RECORDS}: not found in ${source} — skipped\n`);
-  } else {
-    process.stderr.write(`${RECORDS}: could not be read — ${(err as Error).message}\n`);
-    exitCode = 1;
-  }
-}
 
 const speciesRows = await read(SPECIES_PER_PLOT);
 const piRows = await read(PIS_PER_PLOT);

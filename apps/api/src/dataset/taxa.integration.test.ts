@@ -207,7 +207,7 @@ describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)'
     const onHidden = await createSpecies(t.db, { canonicalName: `${q} hidden` });
     const plain = await createSpecies(t.db, { canonicalName: `${q} plain` });
     const batch = await createImportBatch(t.db);
-    const rec = (speciesId: string, traitId: string, outlierFlag?: 'both') =>
+    const rec = (speciesId: string, traitId: string, outlierFlag?: 'unit_factor;trait_extreme') =>
       createRecord(t.db, {
         speciesId,
         traitId,
@@ -217,8 +217,8 @@ describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)'
         importBatchId: batch.id,
         outlierFlag,
       });
-    await rec(flagged.id, trait.id, 'both');
-    await rec(onHidden.id, hidden.id, 'both');
+    await rec(flagged.id, trait.id, 'unit_factor;trait_extreme');
+    await rec(onHidden.id, hidden.id, 'unit_factor;trait_extreme');
     await rec(plain.id, trait.id);
 
     const names = async (v: Visibility, f: object) =>

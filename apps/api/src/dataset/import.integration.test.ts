@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import { parquetWriteBuffer } from 'hyparquet-writer';
 import { describe, expect, it } from 'vitest';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
@@ -264,6 +265,7 @@ describe('RFC-64 importRecords', () => {
       rowsDuplicate: 2,
       rowsRejected: 3,
       rowsAlreadyImported: 22,
+      rowsFiltered: 0,
       rowsPending: 0,
     });
     expect((await batchReport(t.db, forced.id)).rejectReasons).toMatchObject({
@@ -342,7 +344,7 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'overflow.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // A well-formed row (36 fields, passes COPY and R7's checks) whose
+    // A well-formed row (37 fields, the empty one being `species`; passes COPY and R7's checks) whose
     // reference is too large — and incompressible, so TOAST can't shrink it
     // under the limit — to fit a btree index entry. The bibliographic
     // references insert runs after the species catalog insert, so its
@@ -353,7 +355,7 @@ describe('RFC-64 importRecords', () => {
     const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\n${freshId()},${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(18)}\n`,
+      `${header}\n${freshId()},,${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(18)}\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -371,14 +373,14 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'broken.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // 37 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // 38 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
     // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
     // in import.ts); either the driver recovers on its own with the real
     // PostgresError, or the idle guard aborts it — both are acceptable here,
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
-      `${header}\n${freshId()},Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(18)},EXTRA\n`,
+      `${header}\n${freshId()},,Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(18)},EXTRA\n`,
     );
     await expect(
       importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
@@ -471,6 +473,7 @@ describe('RFC-64 importRecords', () => {
       rowsRejected: 4,
       rowsDuplicate: 0,
       rowsAlreadyImported: 0,
+      rowsFiltered: 0,
     });
     const rejects = await rejectsOf(batch.id);
     expect(rejects.map((r) => [r.rowNo, r.reason])).toEqual([
@@ -535,6 +538,7 @@ describe('RFC-64 importRecords', () => {
       rowsRejected: 1,
       rowsDuplicate: 0,
       rowsAlreadyImported: 3,
+      rowsFiltered: 0,
     });
     expect((await rejectsOf(second.id)).map((r) => [r.rowNo, r.reason])).toEqual([
       [5, 'invalid_record_id'],
@@ -583,6 +587,7 @@ describe('RFC-64 importRecords', () => {
       rowsInserted: 0,
       rowsRejected: 0,
       rowsAlreadyImported: 1,
+      rowsFiltered: 0,
     });
   });
 
@@ -615,6 +620,7 @@ describe('RFC-64 importRecords', () => {
       rowsInserted: 0,
       rowsRejected: 1,
       rowsAlreadyImported: 1,
+      rowsFiltered: 0,
       rowsDuplicate: 0,
     });
     expect((await rejectsOf(again.id)).map((r) => [r.rowNo, r.reason])).toEqual([
@@ -835,7 +841,7 @@ describe('RFC-64 importRecords', () => {
       expect(await orderOf()).toBe('Sapindales');
     });
 
-    it('R6, R7 outlier_flag is stored on every record of the row and checked on every row (#281)', async () => {
+    it('R6, R7 outlier_flag is stored on every record of the row and checked on every row (#281, v1 values #288)', async () => {
       const tag = randomBytes(4).toString('hex');
       const n = randomInt(100_000_000, 999_999_000);
       let next = 0;
@@ -851,21 +857,28 @@ describe('RFC-64 importRecords', () => {
         });
       const categorical = { final_standard_trait: 'flower_color', trait_value_type: 'categorical' };
       const lines = [
-        base({ harmonised_value: '1', outlier_flag: 'species_disagreement' }),
+        base({ harmonised_value: '1', outlier_flag: 'unit_factor' }),
         // trimmed and collapsed like every provenance column
         base({ harmonised_value: '2', outlier_flag: '  trait_extreme ' }),
         // every split part keeps the row's flag
-        base({ ...categorical, harmonised_value: 'black;brown', outlier_flag: 'both' }),
+        base({
+          ...categorical,
+          harmonised_value: 'black;brown',
+          outlier_flag: 'unit_factor;trait_extreme',
+        }),
         base({ harmonised_value: '3' }),
         // 5, 6 rejects: case matters, and the check runs on a categorical row too
-        base({ harmonised_value: '4', outlier_flag: 'Both' }),
+        base({ harmonised_value: '4', outlier_flag: 'Trait_extreme' }),
         base({ ...categorical, harmonised_value: 'white', outlier_flag: 'weird' }),
+        // 7, 8 rejects: the pre-v1 values are gone
+        base({ harmonised_value: '5', outlier_flag: 'species_disagreement' }),
+        base({ harmonised_value: '6', outlier_flag: 'both' }),
       ];
       const batch = await importRecords(t.db, {
         filePath: await writeRecords('import-outlier-', lines),
       });
-      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 6, rowsRejected: 2 });
-      expect(await recordAt(batch.id, 1)).toMatchObject({ outlierFlag: 'species_disagreement' });
+      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 8, rowsRejected: 4 });
+      expect(await recordAt(batch.id, 1)).toMatchObject({ outlierFlag: 'unit_factor' });
       // the flag stays out of value_text (RFC-63 R3)
       expect(await recordAt(batch.id, 2)).toMatchObject({
         outlierFlag: 'trait_extreme',
@@ -873,14 +886,17 @@ describe('RFC-64 importRecords', () => {
       });
       const parts = await recordsAt(batch.id, 3);
       expect(parts).toHaveLength(2);
-      for (const part of parts) expect(part).toMatchObject({ outlierFlag: 'both' });
+      for (const part of parts)
+        expect(part).toMatchObject({ outlierFlag: 'unit_factor;trait_extreme' });
       expect(await recordAt(batch.id, 4)).toMatchObject({ outlierFlag: null });
       const rejects = await rejectsOf(batch.id);
       expect(rejects.map((r) => [r.rowNo, r.reason])).toEqual([
         [5, 'invalid_measurement'],
         [6, 'invalid_measurement'],
+        [7, 'invalid_measurement'],
+        [8, 'invalid_measurement'],
       ]);
-      expect(rejects[0]?.raw).toMatchObject({ outlier_flag: 'Both' });
+      expect(rejects[0]?.raw).toMatchObject({ outlier_flag: 'Trait_extreme' });
     });
 
     it('RFC-63 R3, R15: a single 5, a mean 5 and a median 5 from the same source are three claims', async () => {
@@ -961,6 +977,203 @@ describe('RFC-64 importRecords', () => {
         [4, 'invalid_measurement'],
         [5, 'invalid_measurement'],
       ]);
+    });
+  });
+
+  describe('RFC-64 R2, R4, R5 release v1: by name, Parquet, --trees-only (#288)', () => {
+    type Cells = Record<string, string | boolean | null>;
+    const tag = () => randomBytes(4).toString('hex');
+    /** A row of IMPORT_COLUMNS plus is_tree_species, from a few cells. */
+    const row = (cells: Cells): Cells => ({
+      ...Object.fromEntries(IMPORT_COLUMNS.map((c) => [c, ''])),
+      is_tree_species: true,
+      primary_reference: 'V1REF',
+      final_standard_trait: 'flower_color',
+      trait_value_type: 'categorical',
+      harmonised_value: 'blue',
+      ...cells,
+    });
+    const columnsOf = (rows: Cells[]) => Object.keys(rows[0] as Cells);
+    async function writeCsv(rows: Cells[]) {
+      const dir = await mkdtemp(join(tmpdir(), 'v1-csv-'));
+      const file = join(dir, 'observations.csv');
+      const columns = columnsOf(rows).reverse(); // names, not positions
+      const cell = (v: Cells[string]) => (v === null ? '' : `"${String(v).replaceAll('"', '""')}"`);
+      const body = rows.map((r) => columns.map((c) => cell(r[c] ?? null)).join(','));
+      await writeFile(
+        file,
+        `${columns.join(',')},sheet\n${body.map((b) => `${b},Sheet1`).join('\n')}\n`,
+      );
+      return file;
+    }
+    async function writeParquet(rows: Cells[]) {
+      const dir = await mkdtemp(join(tmpdir(), 'v1-pq-'));
+      const file = join(dir, 'observations.parquet');
+      const columnData = columnsOf(rows).map((name) =>
+        name === 'is_tree_species'
+          ? { name, data: rows.map((r) => r[name] as boolean | null), type: 'BOOLEAN' as const }
+          : {
+              name,
+              data: rows.map((r) => (r[name] === '' ? null : (r[name] as string))),
+              type: 'STRING' as const,
+            },
+      );
+      await writeFile(file, Buffer.from(parquetWriteBuffer({ columnData })));
+      return file;
+    }
+    async function speciesOf(batchId: string) {
+      return t.db
+        .select({
+          rowNo: traitRecords.importRowNo,
+          name: species.canonicalName,
+          source: species.nameSource,
+        })
+        .from(traitRecords)
+        .innerJoin(species, eq(species.id, traitRecords.speciesId))
+        .where(eq(traitRecords.importBatchId, batchId))
+        .orderBy(asc(traitRecords.importRowNo));
+    }
+
+    it('R5 the species name is the species column; name_source still follows wcvp_species and gbif_species', async () => {
+      const k = tag();
+      const file = await writeCsv([
+        row({
+          ID: freshId(),
+          species: `Resolvia vera-${k}`,
+          wcvp_species: `Resolvia vera-${k}`,
+          primary_source_species_name: `Resolvia verra-${k}`,
+        }),
+        row({ ID: freshId(), species: `Gbifia sola-${k}`, gbif_species: `Gbifia sola-${k}` }),
+        row({
+          ID: freshId(),
+          species: `Rawia nuda-${k}`,
+          primary_source_species_name: `Rawia nuda L.-${k}`,
+        }),
+        row({ ID: freshId(), wcvp_species: `Fallbackia antiqua-${k}` }),
+      ]);
+      const batch = await importRecords(t.db, { filePath: file });
+      expect(batch).toMatchObject({
+        status: 'completed',
+        rowsTotal: 4,
+        rowsRejected: 0,
+        rowsFiltered: 0,
+      });
+      expect((await speciesOf(batch.id)).map((r) => [r.name, r.source])).toEqual([
+        [`Resolvia vera-${k}`, 'wcvp'],
+        [`Gbifia sola-${k}`, 'gbif'],
+        [`Rawia nuda-${k}`, 'original'],
+        [`Fallbackia antiqua-${k}`, 'wcvp'],
+      ]);
+    });
+
+    it('R4 --trees-only stages every row and keeps only is_tree_species true, counting the rest as filtered', async () => {
+      const k = tag();
+      const file = await writeCsv([
+        row({ ID: freshId(), species: `Arboria alta-${k}`, is_tree_species: 'TRUE' }),
+        row({ ID: freshId(), species: `Herbia humilis-${k}`, is_tree_species: 'FALSE' }),
+        row({
+          ID: freshId(),
+          species: `Arboria alta-${k}`,
+          harmonised_value: 'red',
+          is_tree_species: ' true ',
+        }),
+        row({ ID: freshId(), species: `Nescia ignota-${k}`, is_tree_species: null }),
+      ]);
+      const all = await importRecords(t.db, { filePath: file, force: true });
+      expect(all).toMatchObject({ rowsTotal: 4, rowsFiltered: 0, rowsDuplicate: 0 });
+      const trees = await importRecords(t.db, {
+        filePath: await writeCsv([
+          // a value the first import did not claim, so nothing here is a duplicate
+          row({
+            ID: freshId(),
+            species: `Arboria alta-${k}`,
+            harmonised_value: 'white',
+            is_tree_species: 'TRUE',
+          }),
+          row({ ID: freshId(), species: `Herbia humilis-${k}`, is_tree_species: 'FALSE' }),
+          row({ ID: freshId(), species: `Nescia ignota-${k}`, is_tree_species: null }),
+        ]),
+        treesOnly: true,
+      });
+      expect(trees).toMatchObject({
+        status: 'completed',
+        rowsTotal: 3,
+        rowsFiltered: 2,
+        rowsDuplicate: 0,
+        rowsRejected: 0,
+      });
+      expect((await speciesOf(trees.id)).map((r) => r.name)).toEqual([`Arboria alta-${k}`]);
+    });
+
+    it('R2 --trees-only without an is_tree_species column is refused before any batch row', async () => {
+      const file = await writeRecords('v1-notree-', [`${IMPORT_COLUMNS.map(() => '').join(',')}`]);
+      const before = (await t.db.select().from(importBatches)).length;
+      await expect(importRecords(t.db, { filePath: file, treesOnly: true })).rejects.toMatchObject({
+        name: 'ImportRefusedError',
+        reason: 'header_mismatch',
+      });
+      expect((await t.db.select().from(importBatches)).length).toBe(before);
+    });
+
+    it('R4 a Parquet file imports like its CSV twin: nulls, booleans, commas and quotes', async () => {
+      // Each file names its own species, so neither import's claims duplicate the other's.
+      const rows = (k: string, ids: string[]) => [
+        row({
+          ID: ids[0] as string,
+          species: `Parquetia prima-${k}`,
+          original_value_clean: 'blue, "sky"',
+          is_tree_species: true,
+        }),
+        row({ ID: ids[1] as string, species: `Parquetia secunda-${k}`, is_tree_species: false }),
+        row({
+          ID: ids[2] as string,
+          species: `Parquetia prima-${k}`,
+          final_standard_trait: 'seed_mass_dry',
+          trait_value_type: 'quantitative_or_text',
+          harmonised_value: '12.5',
+          sample_size: '3',
+          unit_harmonisation_status: 'not_numeric',
+          outlier_flag: 'unit_factor',
+          is_tree_species: true,
+        }),
+      ];
+      const fromCsv = await importRecords(t.db, {
+        filePath: await writeCsv(rows(tag(), [freshId(), freshId(), freshId()])),
+        treesOnly: true,
+      });
+      const fromParquet = await importRecords(t.db, {
+        filePath: await writeParquet(rows(tag(), [freshId(), freshId(), freshId()])),
+        treesOnly: true,
+      });
+      for (const batch of [fromCsv, fromParquet]) {
+        expect(batch).toMatchObject({
+          status: 'completed',
+          rowsTotal: 3,
+          rowsFiltered: 1,
+          rowsRejected: 0,
+        });
+      }
+      const shape = async (batchId: string) =>
+        (
+          await t.db
+            .select({
+              rowNo: traitRecords.importRowNo,
+              valueText: traitRecords.valueText,
+              raw: traitRecords.rawValue,
+              n: traitRecords.n,
+              unitStatus: traitRecords.unitStatus,
+              outlierFlag: traitRecords.outlierFlag,
+              harmonisation: traitRecords.harmonisation,
+            })
+            .from(traitRecords)
+            .where(eq(traitRecords.importBatchId, batchId))
+            .orderBy(asc(traitRecords.importRowNo))
+        ).map(({ rowNo: _r, ...rest }) => rest);
+      const parquetShape = await shape(fromParquet.id);
+      expect(parquetShape).toEqual(await shape(fromCsv.id));
+      expect(parquetShape).toContainEqual(
+        expect.objectContaining({ unitStatus: 'not_numeric', outlierFlag: 'unit_factor', n: 3 }),
+      );
     });
   });
 });

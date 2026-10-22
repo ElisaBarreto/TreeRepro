@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { open, rm, stat, unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { Readable } from 'node:stream';
 import {
   type HarmonisationStatus,
   IMPORT_REJECT_REASONS,
@@ -12,6 +13,8 @@ import {
   type UserRef,
 } from '@treerepro/contracts';
 import { and, asc, count, desc, sql as dsql, eq, lt } from 'drizzle-orm';
+import { asyncBufferFromFile, parquetMetadataAsync, parquetReadObjects } from 'hyparquet';
+import { compressors } from 'hyparquet-compressors';
 import postgres from 'postgres';
 import type { Db, DbExecutor } from '../db/client.ts';
 import { DEFAULT_COPY_IDLE_TIMEOUT_MS, pipelineWithIdleGuard } from '../db/copy.ts';
@@ -38,15 +41,15 @@ import { isReplaceAllowed, resetDataset } from './reset.ts';
 import { syncDictionary } from './seed.ts';
 
 /**
- * The header of the compiled dataset, in file order: `ID`, the record code
- * (spec R-2), then the 34 columns of the owner's layout of 2026-10-05 (issue
- * #256) and `outlier_flag` (issue #281). The 35-column file of 2026-10-05, the
- * 30-column file of 2026-09-29 and the old 17-column one, with its
- * unnamed R row-number column, are refused.
+ * The columns the import reads, by name, from the owner's release v1
+ * observation table (`TABLE_LAYOUT.md`, 2026-10-22): the 36 of the 2026-10-19
+ * layout, `original_species_name` renamed `primary_source_species_name`, plus
+ * `species`. The file may hold them in any order, among other columns.
  * @rfc RFC-64 R2
  */
 export const IMPORT_COLUMNS = [
   'ID',
+  'species',
   'primary_reference',
   'secondary_reference',
   'wcvp_species',
@@ -56,7 +59,7 @@ export const IMPORT_COLUMNS = [
   'gbif_genus',
   'gbif_family',
   'gbif_usage_key',
-  'original_species_name',
+  'primary_source_species_name',
   'secondary_source_species_name',
   'original_trait_name',
   'final_standard_trait',
@@ -83,6 +86,22 @@ export const IMPORT_COLUMNS = [
   'records_behind_row',
   'outlier_flag',
 ] as const;
+
+/** The column `--trees-only` reads (RFC-64 R4). @rfc RFC-64 R2 */
+export const TREE_COLUMN = 'is_tree_species';
+
+/** File column → staging column, where they differ: the SQL predates the v1 names. */
+const STAGING_NAMES: Record<string, string> = {
+  ID: 'source_id',
+  primary_source_species_name: 'original_species_name',
+};
+
+/** The staging column a file column is copied into; one the import does not read gets `extra_<n>`. */
+function stagingColumn(name: string, index: number): string {
+  if (name in STAGING_NAMES) return STAGING_NAMES[name] as string;
+  if ((IMPORT_COLUMNS as readonly string[]).includes(name) || name === TREE_COLUMN) return name;
+  return `extra_${index}`;
+}
 
 /** A number as the importer accepts it: at most three exponent digits (RFC-64 R6); the SQL below uses the same expression. @rfc RFC-64 R6 */
 export const NUMBER_PATTERN = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d{1,3})?$/;
@@ -182,22 +201,76 @@ function headerColumns(line: string): string[] {
   return parseCsvLine(line.replace(/^\uFEFF/, '').replace(/\r$/, '')).map((c) => c.trim());
 }
 
-/** Whether a first line, parsed as a CSV record, is exactly {@link IMPORT_COLUMNS}. @rfc RFC-64 R2 */
-export function headerMatches(line: string): boolean {
-  const columns = headerColumns(line);
-  return (
-    columns.length === IMPORT_COLUMNS.length && columns.every((c, i) => c === IMPORT_COLUMNS[i])
+/**
+ * Refuses a header that lacks a column the import reads, or repeats a name,
+ * naming each (`header_mismatch`). Other columns pass.
+ * @rfc RFC-64 R2
+ */
+export function validateColumns(columns: readonly string[], treesOnly = false): void {
+  const required: readonly string[] = treesOnly ? [...IMPORT_COLUMNS, TREE_COLUMN] : IMPORT_COLUMNS;
+  const missing = required.filter((c) => !columns.includes(c));
+  const repeated = [...new Set(columns.filter((c, i) => columns.indexOf(c) !== i))];
+  if (missing.length === 0 && repeated.length === 0) return;
+  const list = (names: string[]) => names.map((c) => `"${c}"`).join(', ');
+  throw new ImportRefusedError(
+    'header_mismatch',
+    [
+      missing.length > 0 ? `Missing columns: ${list(missing)}` : '',
+      repeated.length > 0 ? `Repeated columns: ${list(repeated)}` : '',
+    ]
+      .filter(Boolean)
+      .join('. '),
   );
 }
 
-/** @rfc RFC-64 R2 */
-export function validateHeader(line: string): void {
-  if (!headerMatches(line)) {
-    const show = (columns: readonly string[]) => columns.map((c) => `"${c}"`).join(',');
-    throw new ImportRefusedError(
-      'header_mismatch',
-      `Unexpected header. Expected: ${show(IMPORT_COLUMNS)}. Got: ${show(headerColumns(line))}`,
-    );
+/** {@link validateColumns} on a CSV file's first line. @rfc RFC-64 R2 */
+export function validateHeader(line: string, treesOnly = false): void {
+  validateColumns(headerColumns(line), treesOnly);
+}
+
+/** Whether a file is read as Parquet: by extension, as RFC-64 R1 says. @rfc RFC-64 R1 */
+export function isParquet(path: string): boolean {
+  return path.toLowerCase().endsWith('.parquet');
+}
+
+/** The leaf column names of a Parquet file's schema. @rfc RFC-64 R2 */
+async function parquetColumns(path: string): Promise<string[]> {
+  const metadata = await parquetMetadataAsync(await asyncBufferFromFile(path));
+  return metadata.schema.slice(1).map((element) => element.name);
+}
+
+/** Rows a Parquet file is read in, per window (RFC-64 R4). */
+const PARQUET_WINDOW = 100_000;
+
+/** One CSV field: null as an unquoted empty field (COPY reads NULL), anything else quoted. */
+function csvField(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+/**
+ * A Parquet file's `columns` as CSV text with a header line, read in windows
+ * of {@link PARQUET_WINDOW} rows, so the file is never held in memory whole.
+ * @rfc RFC-64 R4
+ */
+export async function* parquetCsv(
+  path: string,
+  columns: readonly string[],
+): AsyncGenerator<string> {
+  const file = await asyncBufferFromFile(path);
+  const metadata = await parquetMetadataAsync(file);
+  yield `${columns.join(',')}\n`;
+  const total = Number(metadata.num_rows);
+  for (let rowStart = 0; rowStart < total; rowStart += PARQUET_WINDOW) {
+    const rows = await parquetReadObjects({
+      file,
+      metadata,
+      columns: [...columns],
+      rowStart,
+      rowEnd: Math.min(rowStart + PARQUET_WINDOW, total),
+      compressors,
+    });
+    yield rows.map((row) => `${columns.map((c) => csvField(row[c])).join(',')}\n`).join('');
   }
 }
 
@@ -253,6 +326,7 @@ export function toImportBatch(row: ImportBatchRow, runBy: UserRef | null): Impor
     rowsRejected: row.rowsRejected,
     rowsPending: row.rowsPending,
     rowsAlreadyImported: row.rowsAlreadyImported,
+    rowsFiltered: row.rowsFiltered,
     unknownLevels: row.unknownLevels,
     error: row.error,
   };
@@ -375,7 +449,10 @@ export async function batchReport(
 }
 
 export interface ImportInput {
+  /** A `.parquet` or a `.csv` file, read by column name (RFC-64 R1, R2). */
   filePath: string;
+  /** Keep only the rows whose `is_tree_species` is true; the rest are counted as filtered (RFC-64 R4). */
+  treesOnly?: boolean;
   /** User id of the administrator running the import; null when unknown. */
   runBy?: string | null;
   /** Import a file whose hash was already completed. */
@@ -488,7 +565,10 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
   if (input.replaceImported) {
     await assertSheetWritable(input.replaceImported.sheetDir);
   }
-  validateHeader(await readFirstLine(input.filePath));
+  const columns = isParquet(input.filePath)
+    ? await parquetColumns(input.filePath)
+    : headerColumns(await readFirstLine(input.filePath));
+  validateColumns(columns, input.treesOnly);
   const fileSha256 = await sha256File(input.filePath);
   // R13: one import at a time, on a connection of its own so the unlock runs
   // where the lock was taken — which means the pool must allow at least two. It is held from before the batch row exists
@@ -497,7 +577,7 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
   const lock = await db.$client.reserve();
   try {
     await lock`select pg_advisory_lock(${IMPORT_LOCK_KEY})`;
-    return await runImport(db, input, fileSha256);
+    return await runImport(db, input, fileSha256, columns);
   } finally {
     await lock`select pg_advisory_unlock(${IMPORT_LOCK_KEY})`;
     lock.release();
@@ -505,7 +585,12 @@ export async function importRecords(db: Db, input: ImportInput): Promise<ImportB
 }
 
 /** The body of {@link importRecords}, run while R13's lock is held. */
-async function runImport(db: Db, input: ImportInput, fileSha256: string): Promise<ImportBatch> {
+async function runImport(
+  db: Db,
+  input: ImportInput,
+  fileSha256: string,
+  fileColumns: readonly string[],
+): Promise<ImportBatch> {
   // Inside R13's lock: two runs of the same file would otherwise both pass
   // this check before either had written its batch row.
   if (!input.force && !input.replace && !input.replaceImported) {
@@ -578,11 +663,13 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
       const asNumber = (column: string) =>
         tx`case when length(${tx(column)}) <= ${NUMBER_MAX_LENGTH} and ${tx(column)} ~ ${NUMBER_PATTERN_SQL}
                 then (case when abs(${tx(column)}::numeric) < ${String(NUMBER_MAX_MAGNITUDE)}::numeric then ${tx(column)}::numeric end) end`;
-      // R4 staging
+      // R4 staging: every column the import reads, then one `extra_<n>` per
+      // other column of a CSV file. A Parquet file is read through the used
+      // columns only, as CSV text.
       await tx`
         create temporary table import_staging (
           row_no bigserial primary key,
-          source_id text,
+          source_id text, species text,
           primary_reference text, secondary_reference text,
           wcvp_species text, wcvp_genus text, wcvp_family text,
           gbif_species text, gbif_genus text, gbif_family text, gbif_usage_key text,
@@ -592,26 +679,39 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
           statistic text, mean text, median text, min text, max text, sd text, se text,
           sample_size text, summary_source text, unit text, unit_harmonisation_status text,
           source_folder text, file_name text, wcvp_taxonomic_status text,
-          gbif_order text, taxon_order text, records_behind_row text, outlier_flag text
+          gbif_order text, taxon_order text, records_behind_row text, outlier_flag text,
+          is_tree_species text
         ) on commit drop`;
+      const parquet = isParquet(input.filePath);
+      const copied: readonly string[] = parquet
+        ? input.treesOnly
+          ? [...IMPORT_COLUMNS, TREE_COLUMN]
+          : IMPORT_COLUMNS
+        : fileColumns;
+      const staged = copied.map(stagingColumn);
+      for (const column of staged.filter((c) => c.startsWith('extra_'))) {
+        await tx`alter table import_staging add column ${tx(column)} text`;
+      }
       const writable = await tx`
-        copy import_staging (
-          source_id, primary_reference, secondary_reference, wcvp_species, wcvp_genus, wcvp_family,
-          gbif_species, gbif_genus, gbif_family, gbif_usage_key, original_species_name,
-          secondary_source_species_name, original_trait_name, final_standard_trait, broad_category,
-          original_value_clean, trait_value_type, harmonised_value, statistic, mean, median,
-          min, max, sd, se, sample_size, summary_source, unit, unit_harmonisation_status,
-          source_folder, file_name, wcvp_taxonomic_status, gbif_order, taxon_order,
-          records_behind_row, outlier_flag
-        ) from stdin with (format csv, header true, encoding 'UTF8')`.writable();
+        copy import_staging (${tx(staged)})
+        from stdin with (format csv, header true, encoding 'UTF8')`.writable();
       await pipelineWithIdleGuard(
-        createReadStream(input.filePath),
+        parquet
+          ? Readable.from(parquetCsv(input.filePath, copied))
+          : createReadStream(input.filePath),
         writable,
         input.copyIdleTimeoutMs ?? DEFAULT_COPY_IDLE_TIMEOUT_MS,
       );
       const [{ total }] = (await tx`select count(*)::int as total from import_staging`) as [
         { total: number },
       ];
+      // R4 --trees-only: the other rows are neither records nor rejects.
+      const filtered = input.treesOnly
+        ? (
+            await tx`delete from import_staging
+              where lower(btrim(coalesce(is_tree_species, ''))) <> 'true'`
+          ).count
+        : 0;
 
       // R5 normalised lookup columns (COPY turns unquoted empty fields into NULL; nullif covers '')
       await tx`
@@ -640,6 +740,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         update import_staging set
           record_code = nullif(trim(source_id), ''),
           species_name = coalesce(
+            nullif(trim(regexp_replace(species, '\\s+', ' ', 'g')), ''),
             nullif(trim(regexp_replace(wcvp_species, '\\s+', ' ', 'g')), ''),
             nullif(trim(regexp_replace(gbif_species, '\\s+', ' ', 'g')), ''),
             nullif(trim(regexp_replace(original_species_name, '\\s+', ' ', 'g')), ''),
@@ -691,11 +792,11 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
         where t.key = s.trait_key and (
           (s.stat is not null and s.stat <> 'single_or_unspecified')
           or (s.unit_status is not null and s.unit_status not in
-            ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable'))
+            ('converted_or_already_target', 'unit_missing', 'needs_unit_check', 'not_applicable', 'not_numeric'))
           or (s.summary_text is not null and s.summary_text not in
             ('reported_by_study', 'derived_from_records', 'reported_and_derived'))
           or (s.outlier_text is not null and s.outlier_text not in
-            ('species_disagreement', 'trait_extreme', 'both'))
+            ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme'))
           or (s.behind_text is not null and s.behind_int is null)
           or (t.value_type = 'quantitative' and (
             (s.mean_text is not null and s.mean_num is null)
@@ -800,6 +901,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
                else 'invalid_measurement' end,
           jsonb_build_object(
             'ID', coalesce(s.source_id, ''),
+            'species', coalesce(s.species, ''),
             'primary_reference', coalesce(s.primary_reference, ''),
             'secondary_reference', coalesce(s.secondary_reference, ''),
             'wcvp_species', coalesce(s.wcvp_species, ''),
@@ -809,7 +911,7 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             'gbif_genus', coalesce(s.gbif_genus, ''),
             'gbif_family', coalesce(s.gbif_family, ''),
             'gbif_usage_key', coalesce(s.gbif_usage_key, ''),
-            'original_species_name', coalesce(s.original_species_name, ''),
+            'primary_source_species_name', coalesce(s.original_species_name, ''),
             'secondary_source_species_name', coalesce(s.secondary_source_species_name, ''),
             'original_trait_name', coalesce(s.original_trait_name, ''),
             'final_standard_trait', coalesce(s.final_standard_trait, ''),
@@ -985,7 +1087,8 @@ async function runImport(db: Db, input: ImportInput, fileSha256: string): Promis
             finished_at = clock_timestamp(),
             rows_total = ${total},
             rows_inserted = ${inserted.count},
-            rows_duplicate = ${total - rejected.count - alreadyImported - insertedRows},
+            rows_duplicate = ${total - filtered - rejected.count - alreadyImported - insertedRows},
+            rows_filtered = ${filtered},
             rows_rejected = ${rejected.count},
             rows_already_imported = ${alreadyImported},
             rows_pending = ${pending},

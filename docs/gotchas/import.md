@@ -61,10 +61,7 @@
 
 **Cause:** The `ID` column did not exist when the data was loaded; the migration only makes `record_code NOT NULL` possible. The owner decided to replace everything earlier imports loaded with the new file (RFC-64 R12). `--replace` is refused in production twice — by `isReplaceAllowed` and by the missing migrator secret in the `api` container — and this procedure is the one sanctioned exception (RFC-64 R12). While the platform is in its test phase, its platform data — manual (`TR_`) records, annotations, contests, `record_references` — is test data: the replace runs with `--discard-platform` and discards it with everything earlier imports loaded (owner, 2026-10-06; issue #259). The backup of step 1 is the only copy left of it.
 
-**Fix:** Run on the production host, from the checkout, with the new file at `/srv/imports/sample_data.csv` — a 36-column release (RFC-64 R2), never the historic 17-column file — and the supplementary files beside it. Before anything else, check that its whole first line, with double quotes and a trailing CR stripped, is exactly the 36-column header (the owner's export writes it unquoted; a quoted header passes too, as the importer parses the line as CSV; the importer would refuse anything else only after the API is down):
-   ```sh
-   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '"\r')" = 'ID,primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_genus,gbif_family,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value,statistic,mean,median,min,max,sd,se,sample_size,summary_source,unit,unit_harmonisation_status,source_folder,file_name,wcvp_taxonomic_status,gbif_order,taxon_order,records_behind_row,outlier_flag' ] && echo header ok   # → header ok
-   ```
+**Fix:** Run on the production host, from the checkout, with the release v1 observation table at `/srv/imports/observation_level_trait_values.parquet` (its `.csv` twin works too) and the supplementary files beside it. There is no shell check of its columns: the import reads them by name and refuses a file missing one (`header_mismatch`, naming each missing column) before any batch row exists and before the wipe, so a refused run changes nothing and `docker compose up -d api` brings the service back (RFC-64 R2). Phase 1 loads the tree species only: `--trees-only` (epic #286).
 
 1. **Back up** (a `pg_dump` by the read-only `treerepro_backup` role, `age`-encrypted into the `backups` volume):
    ```sh
@@ -93,10 +90,10 @@
      -e NODE_ENV=development \
      -v "$PWD/infra/secrets/db_migrator_password:/run/secrets/db_migrator_password:ro" \
      -v /srv/imports:/imports:ro \
-     api node dist/cli/import-records.js --file /imports/sample_data.csv --replace --discard-platform --sync-dictionary --run-by <owner e-mail>
+     api node dist/cli/import-records.js --file /imports/observation_level_trait_values.parquet --trees-only --replace --discard-platform --sync-dictionary --run-by <owner e-mail>
    ```
    `--sync-dictionary` makes the trait dictionary equal to the image's `apps/api/seed/trait-dictionary.csv` right after the wipe (RFC-62 R9): renamed, retyped and dropped traits and levels follow the file, which a plain `seed:traits` never does. Pass it whenever the release ships a new dictionary (v1 renames nine traits and makes `flowering_start`, `flowering_end`, `fruiting_start` and `fruiting_end` categorical); the report then reads `Dictionary: synced to the versioned file, <n> traits, <m> levels`. Trait and level ids change, so keep the API stopped until step 8: cached dictionary entries expire within 10 minutes.
-   Without `--discard-platform` the run is refused (`platform_records_exist`) as soon as one manual record, annotation or contest exists. The report must read `Mode: replace (… platform data discarded)` and `completed`. Its `Rows already imported: <n>` line (RFC-64 R14) must read `Rows already imported: 0` on this total replace — `--replace` empties `trait_records` itself, inside this same transaction (`resetDataset`, `apps/api/src/dataset/reset.ts`, called from `importRecords` before the file is staged), not in step 2; anything else means that wipe did not run (check the report's `Mode:` line really reads `replace`, not `append`). `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
+   Without `--discard-platform` the run is refused (`platform_records_exist`) as soon as one manual record, annotation or contest exists. The report must read `Mode: replace (… platform data discarded)` and `completed`, and `Rows left out (not trees): <n>` counts the non-tree rows (about 5.1 M of the 7.0 M in release v1). Its `Rows already imported: <n>` line (RFC-64 R14) must read `Rows already imported: 0` on this total replace — `--replace` empties `trait_records` itself, inside this same transaction (`resetDataset`, `apps/api/src/dataset/reset.ts`, called from `importRecords` before the file is staged), not in step 2; anything else means that wipe did not run (check the report's `Mode:` line really reads `replace`, not `append`). `invalid_record_id` and `duplicate_record_id` in `Rejections:` are rows of the file with a missing or malformed `ID`, or one an earlier row already used; they are listed on the batch page (`/app/imports/<batch id>` in the workspace) and are not loaded. A failure rolls everything back and the previous data stays.
 5. **Check the triggers are back on** (`O` = enabled):
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -c \
@@ -106,7 +103,7 @@
    ```sh
    pnpm --filter @treerepro/api prepare:imports --source <dir> --out <dir>
    ```
-   which writes the `import:*` files, including the `user_email,plot_id` user-plots file — check `apps/api/src/cli/prepare-imports.ts` for the current output names before copying anything into `/srv/imports` (at the time of writing: `plots.import.csv`, `plot-species.import.csv`, `user-plots.import.csv`, `synonyms.import.csv`, `references.import.csv`). `species-status.csv` is not produced by `prepare:imports`; the owner maintains it directly. Copy all six files into `/srv/imports` next to `sample_data.csv`, then:
+   which writes the `import:*` files, including the `user_email,plot_id` user-plots file — check `apps/api/src/cli/prepare-imports.ts` for the current output names before copying anything into `/srv/imports` (at the time of writing: `plots.import.csv`, `plot-species.import.csv`, `user-plots.import.csv`, `synonyms.import.csv`, `references.import.csv`). `species-status.csv` is not produced by `prepare:imports`; the owner maintains it directly. Copy all six files into `/srv/imports` next to `observation_level_trait_values.parquet`, then:
    ```sh
    docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-species-status.js --file /imports/species-status.csv
    docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-plots.js --file /imports/plots.import.csv
@@ -132,12 +129,11 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
 
 **Cause:** Imported records are append-only (RFC-63 R4), and users' validations, withdrawals, contests and harmonisations point at them by id. Swapping the file means deleting the `EB_` rows and re-attaching all of that to the new rows by `record_code`. RFC-64 R15 does this in one transaction, as `treerepro_migrator`.
 
-**Fix:** Run it on the production host, from the checkout. Put the new file at `/srv/imports/sample_data.csv`: a 36-column release (RFC-64 R2, "The 36-column file" below) whose whole first line is exactly the 36-column header (`ID` first, no unnamed row-number column; quoted or not — step 1 strips quotes and a trailing CR, then compares the whole line).
+**Fix:** Run it on the production host, from the checkout. Put the new release at `/srv/imports/observation_level_trait_values.parquet`, and its `.csv` twin beside it for the ID check of step 4 (a shell cannot read Parquet). The import reads the columns by name and refuses a file missing one before anything is written (RFC-64 R2).
 
 1. **Sheet directory.** The sheet names users (personal data), so the directory is private to the `api` image's user (`node`, uid 1000):
    ```sh
    sudo install -d -m 700 -o 1000 -g 1000 /srv/imports/replace-sheets
-   [ "$(head -1 /srv/imports/sample_data.csv | tr -d '"\r')" = 'ID,primary_reference,secondary_reference,wcvp_species,wcvp_genus,wcvp_family,gbif_species,gbif_genus,gbif_family,gbif_usage_key,original_species_name,secondary_source_species_name,original_trait_name,final_standard_trait,broad_category,original_value_clean,trait_value_type,harmonised_value,statistic,mean,median,min,max,sd,se,sample_size,summary_source,unit,unit_harmonisation_status,source_folder,file_name,wcvp_taxonomic_status,gbif_order,taxon_order,records_behind_row,outlier_flag' ] && echo header ok   # → header ok
    ```
 2. **Back up**, as in the section above:
    ```sh
@@ -164,18 +160,18 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
      "select distinct regexp_replace(t.record_code, '[a-z]+$', '') from trait_records k join trait_records t on t.id = k.supersedes_record_id
       where t.origin = 'import' and k.primary_reference_id is null order by 1" > /tmp/needed-ids.txt
    awk -F, 'NR>1 { v=$1; gsub(/["\r]/, "", v); print v }' \
-     /srv/imports/sample_data.csv | sort -u > /tmp/file-ids.txt
+     /srv/imports/observation_level_trait_values.csv | sort -u > /tmp/file-ids.txt
    sort -u /tmp/needed-ids.txt | comm -23 - /tmp/file-ids.txt   # must print nothing
    ```
-   `ID` is the file's first column and never holds a comma, while the fields after it may be quoted and hold one, which reading only the first field tolerates. The run re-links by `record_code` alone (RFC-64 R15 step 4): a code missing from the file is an orphan. If the check prints codes, stop: bring the API back (`docker compose up -d api`) and take the codes to the owner. The run would roll back anyway, naming them.
+   `ID` is the release's first column and never holds a comma, while the fields after it may be quoted and hold one, which reading only the first field tolerates. The run re-links by `record_code` alone (RFC-64 R15 step 4): a code missing from the file is an orphan. If the check prints codes, stop: bring the API back (`docker compose up -d api`) and take the codes to the owner. The run would roll back anyway, naming them.
 5. **Replace.** A one-off container of the `api` image, with the migrator secret mounted, the files read-only and the sheet directory writable. `NODE_ENV` stays `production`: RFC-64 R15 is allowed there, and the migrator secret is its gate.
    ```sh
    docker compose run --rm --no-deps \
      -v "$PWD/infra/secrets/db_migrator_password:/run/secrets/db_migrator_password:ro" \
      -v /srv/imports:/imports:ro \
      -v /srv/imports/replace-sheets:/sheets \
-     api node dist/cli/import-records.js --file /imports/sample_data.csv \
-       --replace-imported --annotation-sheet /sheets --run-by <owner e-mail>
+     api node dist/cli/import-records.js --file /imports/observation_level_trait_values.parquet \
+       --trees-only --replace-imported --annotation-sheet /sheets --run-by <owner e-mail>
    ```
    The report must read `Mode: replace-imported …`, `Batch <id> completed …` and `Annotation sheet: /sheets/replace-<id>-annotations.csv`.
 
@@ -227,10 +223,12 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
 
 Nothing else needs reloading: species, taxa, references, plots, plot species, user plots, synonyms and proposals were never touched, and the file adds whatever is missing.
 
-## The 36-column file (issues #256, #281)
+## The release v1 observation table (issue #288)
 
-**Symptom:** An older export — the 35-column release of 2026-10-05 (no `outlier_flag`), the 30-column release of 2026-09-29 (no `mean`, `median`, `summary_source`, `unit` or `records_behind_row`), the 28-column one of 2026-09-27, the 17-column file with R's unnamed row-number column first and `ID` last, or a 16-column file with no `ID` at all — is refused with `header_mismatch`, and rows whose `statistic` is `mean` or `median` now land in the batch report as `invalid_measurement`.
-**Cause:** RFC-64 R2 now takes exactly the owner's 35 columns (`TABLE_LAYOUT.md`, 2026-10-05) plus `outlier_flag` (2026-10-19), `ID` first. `harmonised_value` is an observed measurement and nothing else: it always goes to `numeric_value`. `mean`, `median`, `min`, `max`, `sd`, `se` and `sample_size` fill `mean_value`, `median_value`, `min_value`, `max_value`, `sd_value`, `se_value` and `n` on a quantitative trait only, and are ignored on a categorical one. `statistic` is only checked, never stored: it may be empty or `single_or_unspecified`; anything else — `mean` and `median`, which have their own columns now, `derived_midpoint`, or `min`/`max`/`sd`/`se`/`n` as the pre-2026-09-27 exports used it — is `invalid_measurement`. The import never computes a midpoint nor converts `se` to `sd`. `gbif_genus`, `gbif_family`, `taxon_order`, `unit`, `summary_source` and `records_behind_row` are stored on every record of the row, split categorical parts included, as provenance (`unit` null means the trait's standard unit); `families.order_name` is filled from `gbif_order`, never from `taxon_order` (RFC-64 R5). A malformed combination — a bad number, a negative spread, `min > max`, a spread with no value, mean, median or bound, an unknown statistic, unit status or summary source, a `records_behind_row` that is not a whole number from 1 — would break a `trait_records` CHECK and abort the whole transaction, so RFC-64 R7 rejects it first as `invalid_measurement`. `outlier_flag` is empty or one of `species_disagreement`, `trait_extreme`, `both`, stored on every record of the row like the other provenance. `summary_source`, `records_behind_row` and `outlier_flag` are checked on categorical rows too; `unit` is free text and never checked.
-**Fix:** Import only a 36-column release; an old export is not converted. Read the `invalid_measurement` rows in the batch report (Import page or `import_rejects.raw_row`, which holds all 36 columns) and fix them upstream.
+**Symptom:** An older export — `sample_data.csv` in any of its layouts (36 columns of 2026-10-19, 35 of 2026-10-05, 30 of 2026-09-29, 28, 17 or 16 columns) — is refused with `header_mismatch` naming `species` and `primary_source_species_name`. A v1 row whose `outlier_flag` is `species_disagreement` or `both` lands in the batch report as `invalid_measurement`.
+**Cause:** RFC-64 R2 now reads the owner's release v1 table (`TABLE_LAYOUT.md`, 2026-10-22) by column name, from `observation_level_trait_values.parquet` or its `.csv` twin: the 37 columns it uses must all be there, in any order, and the other twelve are ignored. `species` is the owner's resolved name and comes first in the resolution (RFC-64 R5); `original_species_name` is now `primary_source_species_name`. `outlier_flag` takes `unit_factor`, `trait_extreme` or `unit_factor;trait_extreme`, and `unit_harmonisation_status` gains `not_numeric` (RFC-64 R7). `--trees-only` needs `is_tree_species`. The rest of the row rules are as before: `harmonised_value` is an observed measurement and nothing else, `statistic` is only checked, the statistics fill their own fields on a quantitative trait, the provenance columns are stored on every record of the row, and a malformed combination is `invalid_measurement`.
+**Fix:** Import only a release v1 table; an old export is not converted. Read the `invalid_measurement` rows in the batch report (Import page, or `import_rejects.raw_row`, which holds the 37 columns the import reads) and fix them upstream. **The Parquet file of 2026-10-22 has no `is_tree_species`**, so `--trees-only` refuses it: use the regenerated file (epic #286, decision 1).
+
+**Migration `0048_v1_import` and the old flags.** It rewrites the `outlier_flag` check as `NOT VALID`, so records loaded before v1 keep `species_disagreement` or `both` until the reload replaces them, and the API answers with values outside its contract in the meantime. Migrate and reload in the same stop (steps 2–4 above), and start the API only afterwards.
 
 **Existing records do not pick up a new provenance column (issue #281).** Records are append-only, and an incremental import skips every `EB_n` already stored (RFC-64 R14), so sending the 36-column file again adds the new IDs and leaves the stored records with `outlier_flag` null. To flag the records already loaded, reload the imported records: `--replace-imported` ("Replacing the imported records while keeping the platform" above), or the total `--replace --discard-platform` while the platform is still in its test phase.
