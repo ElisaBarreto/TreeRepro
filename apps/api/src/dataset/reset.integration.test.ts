@@ -81,6 +81,12 @@ describe('RFC-64 R12 importRecords --replace', () => {
 
   it('clears what an earlier import loaded and keeps the trait dictionary', async () => {
     const first = await importRecords(t.db, { filePath: FIXTURE, force: true });
+    // R10 (issue #289): the run analysed trait_records (-1 means never analysed)
+    const [stats] = (await t.db.$client`
+      select reltuples::float8 as n from pg_class where relname = 'trait_records'`) as [
+      { n: number },
+    ];
+    expect(stats.n).toBeGreaterThanOrEqual(0);
     const before = await counts();
     expect(before.records).toBeGreaterThan(0);
     expect(before.species).toBeGreaterThan(0);
