@@ -82,10 +82,11 @@ function continuousOf(c: ContinuousSummary | undefined): TraitSummary['continuou
     max: c.speciesMax,
     nRecords: c.nRecords,
     nSources: c.nSources,
-    outlierFlags:
-      c.outlierFlags === ''
-        ? []
-        : (c.outlierFlags.split(';') as ('unit_factor' | 'trait_extreme')[]),
+    outlierFlags: c.outlierFlags
+      .split(';')
+      .filter(
+        (f): f is 'unit_factor' | 'trait_extreme' => f === 'unit_factor' || f === 'trait_extreme',
+      ),
     unit: c.unit,
   };
 }
