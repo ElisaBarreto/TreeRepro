@@ -94,9 +94,14 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
       return path
         .replace(':traitId', fx.activeTrait.id)
         .replace(':levelId', sweptLevel?.id ?? '')
-        .replace(':name', 'map_fixture-completeness.svg')
         .replace(':id', id ?? '0'.repeat(32));
     };
+    // RFC-76 R6: a map exists only in the region snapshot, so give the active
+    // trait one region of completeness.
+    await t.db.$client`insert into region_completeness values (${fx.activeTrait.id}, 'MTA', 1, 10, 5)
+      on conflict do nothing`;
+    await t.db.$client`insert into region_snapshot (id, computed_at) values (true, now())
+      on conflict (id) do nothing`;
     // Query strings and bodies the route's schema requires.
     const inputs: Record<string, { query?: string; body?: unknown }> = {
       'GET /api/records': { query: `speciesId=${fx.shownSpecies.id}&traitId=${fx.activeTrait.id}` },
@@ -109,6 +114,7 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
         },
       },
       'GET /api/me/contributions': { query: 'kind=records' },
+      'GET /api/maps/values': { query: `traitId=${fx.activeTrait.id}&kind=completeness` },
       'GET /api/admin/users/:id/contributions': { query: 'kind=records' },
     };
 

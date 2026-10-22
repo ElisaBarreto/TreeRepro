@@ -3,31 +3,43 @@ import {
   dataEnvelopeSchema,
   type MapEntry,
   type MapKind,
+  type MapValues,
   mapsResponseSchema,
+  mapValuesSchema,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 
-/** Query keys of the maps pages. @rfc RFC-76 R6 */
-export const mapsKeys = { all: ['maps'] as const };
+/** Query keys of the maps pages. @rfc RFC-76 R7 */
+export const mapsKeys = {
+  all: ['maps'] as const,
+  values: (entry: MapEntry) =>
+    ['maps', 'values', entry.traitId, entry.kind, entry.levelId, entry.computedAt] as const,
+};
 
-/** `GET /api/maps`, in manifest order. @rfc RFC-76 R4 */
+/** `GET /api/maps`, by trait key, kind and state. @rfc RFC-76 R5 */
 export async function fetchMaps(): Promise<MapEntry[]> {
   return (await apiFetch('/maps', dataEnvelopeSchema(mapsResponseSchema))).data;
 }
 
-/**
- * The same-origin, session-guarded URL of a map file (RFC-76 R5) — never
- * built from anything but a `file` this viewer's own `/api/maps` answer
- * named, so a name the manifest does not list is never reached this way.
- * @rfc RFC-76 R5
- */
-export function mapFileUrl(file: string): string {
-  return `/api/maps/files/${encodeURIComponent(file)}`;
+/** `GET /api/maps/values` for one map (RFC-76 R6). @rfc RFC-76 R6 */
+export async function fetchMapValues(entry: MapEntry): Promise<MapValues> {
+  const params = new URLSearchParams({ traitId: entry.traitId, kind: entry.kind });
+  if (entry.levelId) params.set('levelId', entry.levelId);
+  return (await apiFetch(`/maps/values?${params}`, dataEnvelopeSchema(mapValuesSchema))).data;
+}
+
+/** One map's regions and legend; fixed for a given snapshot, so cached by its time. @rfc RFC-76 R7 */
+export function useMapValues(entry: MapEntry) {
+  return useQuery({
+    queryKey: mapsKeys.values(entry),
+    queryFn: () => fetchMapValues(entry),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
 }
 
 /**
- * Every map entry grouped by its trait, in the manifest order `entries`
- * already carries (RFC-76 R4).
+ * Every map entry grouped by its trait, in the order `entries` already
+ * carries (RFC-76 R5).
  * @rfc RFC-76 R6
  */
 export function mapsByTrait(entries: readonly MapEntry[]): Map<string, MapEntry[]> {
@@ -57,14 +69,16 @@ export function useHasMaps(traitId: string): boolean {
   return (mapsByTrait(maps.data ?? []).get(traitId) ?? []).length > 0;
 }
 
-/** How each map kind reads (RFC-76 R6, R7); the wire code stays the value. @rfc RFC-76 R1 */
+/** How each map kind reads (RFC-76 R7); the wire code stays the value. @rfc RFC-76 R1 */
 export const MAP_KIND_LABELS: Record<MapKind, string> = {
   completeness: 'Data completeness',
-  prevalence: 'Prevalence',
   mean: 'Mean',
+  median: 'Median',
+  sd: 'SD',
+  cv: 'CV',
   min: 'Min',
   max: 'Max',
-  sd: 'SD',
+  prevalence: 'Prevalence',
 };
 
 /**

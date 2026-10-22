@@ -28,6 +28,7 @@ import {
   lookupSchema,
   mapResultSchema,
   mapsResponseSchema,
+  mapValuesSchema,
   meResponseSchema,
   okStatusSchema,
   pendingGroupSchema,
@@ -486,7 +487,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
     summary: 'List the trait maps a viewer may see',
     response: dataEnvelopeSchema(mapsResponseSchema),
   },
-  'GET /api/maps/files/:name': { summary: 'Download one trait map image file' },
+  'GET /api/maps/values': {
+    summary: "One trait map's regions, values, colours and legend",
+    response: dataEnvelopeSchema(mapValuesSchema),
+  },
 
   // plots
   'GET /api/plots': { summary: 'List field plots', response: listEnvelopeSchema(plotSchema) },

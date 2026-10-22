@@ -1,14 +1,12 @@
 import type { MapEntry } from '@treerepro/contracts';
 import type { ReactNode } from 'react';
-import { mapFileUrl } from '../../api/maps.ts';
+import { RegionMap } from './RegionMap.tsx';
 
 /**
- * One map image inside a fixed-ratio frame (RFC-76 R7), lazily loaded. With
- * `onOpen` the image is a button that asks the page to show it full size —
- * the page owns the one viewer (`MapViewer`) so it can step through all of a
- * trait's maps; without it the image stands alone (the trait page's
- * thumbnail). The legend lives inside the image itself (RFC-76 R3); the
- * platform draws none of its own.
+ * One map inside a fixed-ratio frame (RFC-76 R7), drawn by `RegionMap`. With
+ * `onOpen` the map is a button that asks the page to show it full size — the
+ * page owns the one viewer (`MapViewer`) so it can step through all of a
+ * trait's maps; without it the map stands alone (the trait page's thumbnail).
  * @rfc RFC-76 R7, R8
  */
 export function MapFigure({
@@ -24,14 +22,7 @@ export function MapFigure({
 }) {
   const frame =
     'flex aspect-[2/1] items-center justify-center overflow-hidden rounded-lg bg-mist-50';
-  const image = (
-    <img
-      src={mapFileUrl(entry.file)}
-      alt={alt}
-      loading="lazy"
-      className="size-full object-contain"
-    />
-  );
+  const image = <RegionMap entry={entry} alt={alt} />;
 
   return (
     <figure className="flex flex-col gap-2">

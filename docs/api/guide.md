@@ -1,4 +1,4 @@
-openapi-sha256: 4c584d112a149fbb4884b0fbaf90f0d51114a26be96f11d00568abd0d79d65c8
+openapi-sha256: f3ddf9dbb4e337663df75225e1265f91dd2259ff5e028c248e2f3e9f0d0ed888
 
 # TreeRepro API guide
 
@@ -411,6 +411,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-10-23 — Trait maps are computed by the platform from the weekly region snapshot (RFC-76, RFC-78; issue #293): `GET /api/maps` answers `[{ traitId, kind, levelId, regions, computedAt }]` (no `file`, no `dataVersion`), kinds gain `median` and `cv`, and `GET /api/maps/values?traitId=&kind=&levelId=` answers one map's `regions: [{ code, name, value, nSpecies, fill }]` (TDWG level-3 codes, `value` null below 3 species) and `legend: { stops, limits, log, percent, label, unit }`. `GET /api/maps/files/:name` is gone. (openapi f3ddf9dbb4e3)
 - 2026-10-23 — `GET /api/species/:id/traits` answers the owner's species summaries (RFC-77, live) instead of per-field means: `numeric` is gone; a quantitative trait carries `continuous: { median, summaryBasis, mean, meanBasis, sd, min, max, nRecords, nSources, outlierFlags, unit }`, a categorical one `categorical: { mainStates, share, majority, states, nRecords }`, and every level gains `nSources` and `shareOfRecords` (RFC-63 R10; issue #290). (openapi 4c584d112a14)
 - 2026-10-23 — `outlierFlag` (and `outlier_flag` in `records.csv`) may be `bounds_inverted`: the source's minimum exceeded its maximum, and the owner's pipeline left both bounds out (RFC-63 R1, RFC-64 R7; issue #303). (openapi ca93dfc17f50)
 - 2026-10-22 — The owner's updated v1 dictionary drops seven traits that release v1 holds no record for: `dispersal_mode_raw`, `disperser_group`, `pollination_raw`, `seed_size`, `flower_color_brightness`, `flower_color_hue` and `flower_color_saturation`; the reload removes them (RFC-62 R9). No route or shape changes. (openapi 485208efd99f)

@@ -33,7 +33,6 @@ import type { DoiClient } from './integrations/doi.ts';
 import type { TaxonomyClient } from './integrations/taxonomy.ts';
 import type { Logger } from './logger.ts';
 import type { Mailer } from './mail/mailer.ts';
-import { defaultMapsDir } from './maps/manifest.ts';
 import type { Redis } from './redis/client.ts';
 
 export interface AppDeps {
@@ -50,8 +49,6 @@ export interface AppDeps {
   mailer: Mailer;
   breachChecker: PasswordBreachChecker;
   permissionCache: PermissionCache;
-  /** Default `apps/api/maps/`; tests point it at a fixture (RFC-76 R1). */
-  mapsDir?: string;
   /** Default `docs/api/guide.md`; tests point it at a fixture (RFC-82 R20). */
   guidePath?: string;
   /** Epoch ms; tests inject a controllable clock. */
@@ -85,7 +82,6 @@ export function createApp(deps: AppDeps) {
     taxonomy: deps.taxonomy,
     appOrigin: deps.config.appOrigin,
     inviteContactEmail: deps.config.inviteContactEmail,
-    mapsDir: deps.mapsDir ?? defaultMapsDir(),
     now: deps.now ?? Date.now,
   };
   // Request id, security headers, 404 and error handling sit on the root so

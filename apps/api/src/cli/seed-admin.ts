@@ -57,7 +57,6 @@ const ctx: AuthContext = {
   taxonomy: createTaxonomyClient({ wcvpDatasetKey: null, version: APP_VERSION }),
   appOrigin: config.appOrigin,
   inviteContactEmail: config.inviteContactEmail,
-  mapsDir: config.mapsDir,
   now: Date.now,
 };
 

@@ -33,10 +33,12 @@ const COMPLETENESS_LEGEND =
 const PREVALENCE_LEGEND =
   "Share of the region's tree species with data for this trait that hold each level; a species with several levels counts under each.";
 const SUMMARY_KINDS = [
-  { kind: 'mean', note: 'Mean of the species means in the region.' },
-  { kind: 'min', note: 'Lowest species mean in the region.' },
-  { kind: 'max', note: 'Highest species mean in the region.' },
-  { kind: 'sd', note: 'Standard deviation of the species means in the region.' },
+  { kind: 'mean', note: 'Mean of the species medians in the region.' },
+  { kind: 'median', note: 'Median of the species medians in the region.' },
+  { kind: 'sd', note: 'Standard deviation of the species medians in the region.' },
+  { kind: 'cv', note: 'Coefficient of variation of the species medians (sd / mean, %).' },
+  { kind: 'min', note: 'Lowest species median in the region.' },
+  { kind: 'max', note: 'Highest species median in the region.' },
 ] as const;
 
 const tabId = (key: string) => `maps-tab-${key}`;
@@ -64,10 +66,10 @@ function moveIndex(
  * `/app/maps` (RFC-76 R6, R7): one dictionary category at a time. A tab bar
  * of the categories with maps, then the selected category's traits with
  * maps as buttons, then the selected trait's maps — completeness first,
- * then Mean/Min/Max/SD or the prevalence of each level — each labelled.
- * `?trait=` alone selects its category; an unknown or mapless key falls
- * back to the first. Names, levels and categories come from the dictionary;
- * the manifest only says which maps exist. The shell's own trail already
+ * then Mean/Median/SD/CV/Min/Max or the prevalence of each level — each
+ * labelled. `?trait=` alone selects its category; an unknown or mapless key
+ * falls back to the first. Names, levels and categories come from the
+ * dictionary; `GET /api/maps` only says which maps exist. The shell's own trail already
  * reads `Data › Maps`, so the page registers no crumb of its own.
  * @rfc RFC-76 R6, R7
  */
@@ -322,7 +324,7 @@ function TraitMaps({ trait, entries }: { trait: Trait; entries: MapEntry[] }) {
   );
 }
 
-// Every map's caption (RFC-76 R7): the manifest row's data version, read, never computed.
+// Every map's caption (RFC-76 R7): the snapshot's date.
 function caption(entry: MapEntry): string {
-  return `TDWG level 3 regions · ${entry.dataVersion}`;
+  return `TDWG level 3 regions · snapshot ${entry.computedAt.slice(0, 10)}`;
 }

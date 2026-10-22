@@ -1,6 +1,6 @@
 import type { MapEntry } from '@treerepro/contracts';
 import { useEffect, useRef } from 'react';
-import { mapFileUrl } from '../../api/maps.ts';
+import { RegionMap } from './RegionMap.tsx';
 
 /** One map as the viewer shows it: the page's heading for it and its alt text. @rfc RFC-76 R7 */
 export interface MapViewerItem {
@@ -19,7 +19,7 @@ const CONTROL =
  * step to the previous/next map, wrapping; Escape closes it natively. It
  * heads the map with the same text the page does and repeats its alt text
  * for sighted users, `aria-hidden` so a screen reader — already given that
- * text as the image's own alt — does not hear it twice.
+ * text as the map's own label — does not hear it twice.
  * @rfc RFC-76 R7
  */
 export function MapViewer({
@@ -107,11 +107,9 @@ export function MapViewer({
               </button>
             </div>
           </div>
-          <img
-            src={mapFileUrl(item.entry.file)}
-            alt={item.alt}
-            className="min-h-0 w-full flex-1 object-contain"
-          />
+          <div className="flex min-h-0 w-full flex-1">
+            <RegionMap entry={item.entry} alt={item.alt} />
+          </div>
         </>
       ) : null}
     </dialog>

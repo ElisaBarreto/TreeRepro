@@ -171,7 +171,7 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'GET /api/imports/:id/rejects',
         'GET /api/export/dataset.zip',
         'GET /api/maps',
-        'GET /api/maps/files/:name',
+        'GET /api/maps/values',
         'GET /api/plots',
         'POST /api/plots',
         'GET /api/plots/:id',
