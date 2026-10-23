@@ -15,8 +15,8 @@ const ENTRY: MapEntry = {
   traitId: 't1',
   kind: 'completeness',
   levelId: null,
-  file: 'x.svg',
-  dataVersion: '2026-09-01',
+  regions: 3,
+  computedAt: '2026-10-23T03:00:00.000Z',
 };
 
 /**
@@ -40,13 +40,13 @@ function seededClient(entries: MapEntry[]) {
 }
 
 describe('RFC-76 R8 useHasMaps', () => {
-  it('is true only for a trait the cached manifest names', () => {
+  it('is true only for a trait the cached map list names', () => {
     const wrapper = createWrapper(seededClient([ENTRY]));
     expect(renderHook(() => useHasMaps('t1'), { wrapper }).result.current).toBe(true);
     expect(renderHook(() => useHasMaps('t2'), { wrapper }).result.current).toBe(false);
   });
 
-  it('is false for an empty manifest', () => {
+  it('is false for an empty map list', () => {
     const wrapper = createWrapper(seededClient([]));
     expect(renderHook(() => useHasMaps('t1'), { wrapper }).result.current).toBe(false);
   });

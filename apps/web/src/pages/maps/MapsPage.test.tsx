@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event';
 import type { Dictionary, MapEntry, MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { mapFileUrl } from '../../api/maps.ts';
 import { ME } from '../../test/fixtures.ts';
+import { MAP_VALUES } from '../../test/map-fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
 const auth = vi.hoisted(() => ({
@@ -23,7 +23,7 @@ const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn() }));
 // module as `fetchMaps` and calls it through its own closure, a same-module
 // reference `vi.mock`'s replacement of the exported binding never reaches —
 // only the cross-module import `MapsPage.tsx` holds of `useMaps` itself is.
-const maps = vi.hoisted(() => ({ useMaps: vi.fn() }));
+const maps = vi.hoisted(() => ({ useMaps: vi.fn(), useMapValues: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -86,7 +86,7 @@ const DICTIONARY: Dictionary = [
   { key: 'leaf', label: 'Leaf', traits: [LEAF_AREA] },
 ];
 
-const VERSION = '2026-09-01';
+const COMPUTED_AT = '2026-10-23T03:00:00.000Z';
 
 function entry(
   trait: { id: string; key: string },
@@ -97,12 +97,12 @@ function entry(
     traitId: trait.id,
     kind,
     levelId: level?.id ?? null,
-    file: `${trait.key}_${kind}${level ? `_${level.key}` : ''}.svg`,
-    dataVersion: VERSION,
+    regions: 2,
+    computedAt: COMPUTED_AT,
   };
 }
 
-// Manifest order is scrambled on purpose: page order comes from the dictionary.
+// The list order is scrambled on purpose: page order comes from the dictionary.
 const MAP_ENTRIES: MapEntry[] = [
   entry(SEED_MASS, 'sd'),
   entry(SEED_MASS, 'mean'),
@@ -126,6 +126,7 @@ beforeEach(() => {
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
   maps.useMaps.mockReturnValue(queryResult(MAP_ENTRIES));
+  maps.useMapValues.mockReturnValue({ isPending: false, isError: false, data: MAP_VALUES });
 });
 
 async function openPage(path = '/app/maps') {
@@ -258,7 +259,7 @@ describe('RFC-76 R6 MapsPage', () => {
 });
 
 describe('RFC-76 R7 MapsPage maps of the selected trait', () => {
-  it('shows Data completeness, then Summary statistics Mean/Min/Max/SD, missing kinds left out', async () => {
+  it('shows Data completeness, then Summary statistics Mean/Median/SD/CV/Min/Max, missing kinds left out', async () => {
     await openPage();
     await tabs();
     expect(headingTexts(4)).toEqual(['Data completeness', 'Summary statistics']);
@@ -267,22 +268,20 @@ describe('RFC-76 R7 MapsPage maps of the selected trait', () => {
         'Share of tree species with data for this trait in each TDWG level-3 region.',
       ),
     ).toBeInTheDocument();
-    expect(headingTexts(5)).toEqual(['Mean', 'Max', 'SD']);
-    expect(screen.getByText('Mean of the species means in the region.')).toBeInTheDocument();
-    expect(screen.getByText('Highest species mean in the region.')).toBeInTheDocument();
+    expect(headingTexts(5)).toEqual(['Mean', 'SD', 'Max']);
+    expect(screen.getByText('Mean of the species medians in the region.')).toBeInTheDocument();
+    expect(screen.getByText('Highest species median in the region.')).toBeInTheDocument();
     expect(
-      screen.getByText('Standard deviation of the species means in the region.'),
+      screen.getByText('Standard deviation of the species medians in the region.'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Lowest species mean in the region.')).not.toBeInTheDocument();
-    // completeness + mean + max + sd.
-    expect(screen.getAllByText(`TDWG level 3 regions · ${VERSION}`)).toHaveLength(4);
+    expect(screen.queryByText('Lowest species median in the region.')).not.toBeInTheDocument();
+    // completeness + mean + sd + max, each dated by the snapshot.
+    expect(screen.getAllByText('TDWG level 3 regions · snapshot 2026-10-23')).toHaveLength(4);
     expect(
       within(screen.getByRole('tabpanel'))
         .getAllByRole('img')
-        .map((img) => img.getAttribute('src')),
-    ).toEqual(
-      ['completeness', 'mean', 'max', 'sd'].map((kind) => mapFileUrl(`seed_mass_${kind}.svg`)),
-    );
+        .map((img) => img.getAttribute('aria-label')),
+    ).toEqual(['Data completeness', 'Mean', 'SD', 'Max'].map((kind) => `${kind} map of seed mass`));
     expect(screen.getByRole('img', { name: 'Mean map of seed mass' })).toBeInTheDocument();
   });
 
@@ -298,7 +297,7 @@ describe('RFC-76 R7 MapsPage maps of the selected trait', () => {
     expect(headingTexts(5)).toEqual(['white', 'blue']);
     expect(
       screen.getByRole('img', { name: 'Prevalence map of flower colour: blue' }),
-    ).toHaveAttribute('src', mapFileUrl('flower_colour_prevalence_blue.svg'));
+    ).toBeInTheDocument();
   });
 
   it('leaves the completeness section out when the trait has no completeness map', async () => {
@@ -362,22 +361,21 @@ describe('RFC-76 R7 MapsPage keyboard', () => {
       screen.getByRole('button', { name: 'Data completeness map of seed mass, open full size' }),
     );
     const dialog = screen.getByRole('dialog');
-    const shown = () => within(dialog).getByRole('img');
+    const shown = () => within(dialog).getByRole('img').getAttribute('aria-label');
     expect(within(dialog).getByRole('heading', { name: 'Data completeness' })).toBeInTheDocument();
-    expect(shown()).toHaveAttribute('src', mapFileUrl('seed_mass_completeness.svg'));
+    expect(shown()).toBe('Data completeness map of seed mass');
     expect(within(dialog).getByText('Data completeness map of seed mass')).toBeInTheDocument();
 
     await user.keyboard('{ArrowRight}');
     expect(within(dialog).getByRole('heading', { name: 'Mean' })).toBeInTheDocument();
-    expect(shown()).toHaveAttribute('src', mapFileUrl('seed_mass_mean.svg'));
-    expect(shown()).toHaveAttribute('alt', 'Mean map of seed mass');
+    expect(shown()).toBe('Mean map of seed mass');
 
     await user.keyboard('{ArrowLeft}{ArrowLeft}');
-    expect(within(dialog).getByRole('heading', { name: 'SD' })).toBeInTheDocument();
-    expect(shown()).toHaveAttribute('src', mapFileUrl('seed_mass_sd.svg'));
+    expect(within(dialog).getByRole('heading', { name: 'Max' })).toBeInTheDocument();
+    expect(shown()).toBe('Max map of seed mass');
 
     await user.keyboard('{ArrowRight}');
-    expect(shown()).toHaveAttribute('src', mapFileUrl('seed_mass_completeness.svg'));
+    expect(shown()).toBe('Data completeness map of seed mass');
 
     await user.click(within(dialog).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

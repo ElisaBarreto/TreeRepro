@@ -8,7 +8,7 @@
       "!**/drizzle",
       "!**/routeTree.gen.ts",
       "!**/pnpm-lock.yaml",
-      "!apps/api/maps/**/*.svg"
+      "!apps/web/src/components/maps/tdwg-l3.json"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

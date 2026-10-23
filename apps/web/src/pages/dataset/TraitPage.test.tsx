@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import type { MapEntry, MeResponse, TraitDetail, TraitSpeciesItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { mapFileUrl } from '../../api/maps.ts';
 import {
   FAMILIES,
   FAMILY,
@@ -15,6 +14,7 @@ import {
   TRAIT_SPECIES_WITH_DATA,
 } from '../../test/dataset-fixtures.ts';
 import { ME } from '../../test/fixtures.ts';
+import { MAP_VALUES } from '../../test/map-fixtures.ts';
 import { renderAt } from '../../test/router.tsx';
 
 const auth = vi.hoisted(() => ({
@@ -37,7 +37,7 @@ const dataset = vi.hoisted(() => ({
 // `TraitPage`'s Maps section calls `useMaps()` itself (RFC-76 R8); mocked
 // directly, the same way `MapsPage.test.tsx` does — `fetchMaps` is defined
 // in the same module and a same-module reference `vi.mock` never reaches.
-const maps = vi.hoisted(() => ({ useMaps: vi.fn() }));
+const maps = vi.hoisted(() => ({ useMaps: vi.fn(), useMapValues: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -65,6 +65,7 @@ beforeEach(() => {
   dataset.fetchFamilies.mockReset();
   dataset.fetchGenera.mockReset();
   maps.useMaps.mockReset();
+  maps.useMapValues.mockReturnValue({ isPending: false, isError: false, data: MAP_VALUES });
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchTrait.mockResolvedValue(SEXUAL_SYSTEM_DETAIL);
   dataset.fetchTraitSpecies.mockResolvedValue(page([TRAIT_SPECIES_WITH_DATA]));
@@ -434,16 +435,16 @@ describe('RFC-76 R8 TraitPage maps section', () => {
           traitId: SEXUAL_SYSTEM_DETAIL.id,
           kind: 'completeness',
           levelId: null,
-          file: 'sexual_system_completeness.svg',
-          dataVersion: '2026-09-01',
+          regions: 3,
+          computedAt: '2026-10-23T03:00:00.000Z',
         },
       ]),
     );
     await openPage();
     const section = screen.getByRole('heading', { name: 'Maps' }).closest('section') as HTMLElement;
-    const img = within(section).getByRole('img');
-    expect(img).toHaveAttribute('src', mapFileUrl('sexual_system_completeness.svg'));
-    expect(img).toHaveAttribute('alt', 'Data completeness map of sexual system');
+    expect(
+      within(section).getByRole('img', { name: 'Data completeness map of sexual system' }),
+    ).toBeInTheDocument();
     expect(
       within(section).getByRole('link', { name: 'See all maps for this trait →' }),
     ).toHaveAttribute('href', `/app/maps?trait=${SEXUAL_SYSTEM_DETAIL.key}`);
@@ -456,8 +457,8 @@ describe('RFC-76 R8 TraitPage maps section', () => {
           traitId: SEXUAL_SYSTEM_DETAIL.id,
           kind: 'prevalence',
           levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11',
-          file: 'sexual_system_prevalence.svg',
-          dataVersion: '2026-09-01',
+          regions: 3,
+          computedAt: '2026-10-23T03:00:00.000Z',
         },
       ]),
     );

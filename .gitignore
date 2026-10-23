@@ -49,6 +49,6 @@ CLAUDE.local.md
 data/
 
 # trait map images: private research output, never committed (RFC-76 R1)
-apps/api/maps/*
-!apps/api/maps/README.md
-!apps/api/maps/manifest.csv
+
+# The pre-v1 private trait map images (RFC-76 before release v1): never commit them.
+/apps/api/maps/
