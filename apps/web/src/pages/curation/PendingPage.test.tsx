@@ -55,6 +55,19 @@ beforeEach(() => {
 });
 
 describe('RFC-65 R7–R9 PendingPage', () => {
+  it('RFC-13 R13 a header sorts the groups through the API and into the URL', async () => {
+    const { router } = renderAt('/app/curation/pending');
+    await userEvent.click(await screen.findByRole('button', { name: /^Value/ }));
+    await waitFor(() =>
+      expect(curation.fetchPendingGroups).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'value', order: 'asc' }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(
+      expect.objectContaining({ sort: 'value', order: 'asc' }),
+    );
+  });
+
   it('lists the traits with counts, selects the first, shows its groups, opens a sample and maps a group', async () => {
     renderAt('/app/curation/pending');
     const traits = await screen.findByRole('list', { name: 'Traits with pending values' });

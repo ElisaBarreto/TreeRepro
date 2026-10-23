@@ -75,6 +75,70 @@ describe('RFC-72 R1 queue counts', () => {
   });
 });
 
+describe('RFC-65 R8 pending groups in a chosen order (RFC-11 R10)', () => {
+  const t = useTestDb();
+
+  it('sorts by value, count or kind either way and pages each order whole; a foreign cursor is refused', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { levels: ['a'] });
+    const sp = await createSpecies(t.db);
+    const visibility = await ownPlot(t.db, [sp.id]);
+    // beta ×3 (unknown level), alpha ×1 (multi value), gamma ×2 (unknown level)
+    for (const [valueText, n, harmonisation] of [
+      ['beta', 3, 'unknown_level'],
+      ['alpha', 1, 'multi_value'],
+      ['gamma', 2, 'unknown_level'],
+    ] as const) {
+      for (let i = 0; i < n; i++) {
+        await createRecord(t.db, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          valueText,
+          harmonisation,
+          primaryReferenceId: (await createReference(t.db)).id,
+          origin: 'manual',
+          createdBy: user.id,
+        });
+      }
+    }
+    const walk = async (sort: 'value' | 'count' | 'kind', order: 'asc' | 'desc') => {
+      const values: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await pendingGroups(t.db, visibility, {
+          traitId: trait.id,
+          sort,
+          order,
+          limit: 1,
+          cursor,
+        });
+        values.push(...page.data.map((g) => g.valueText));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return values;
+    };
+    expect(await walk('value', 'desc')).toEqual(['gamma', 'beta', 'alpha']);
+    expect(await walk('count', 'asc')).toEqual(['alpha', 'gamma', 'beta']);
+    expect(await walk('count', 'desc')).toEqual(['beta', 'gamma', 'alpha']);
+    // `multi_value` sorts before `unknown_level`; ties by value.
+    expect(await walk('kind', 'asc')).toEqual(['alpha', 'beta', 'gamma']);
+
+    const first = await pendingGroups(t.db, visibility, {
+      traitId: trait.id,
+      sort: 'count',
+      limit: 1,
+    });
+    await expect(
+      pendingGroups(t.db, visibility, {
+        traitId: trait.id,
+        sort: 'value',
+        limit: 1,
+        cursor: first.nextCursor ?? undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+});
+
 describe('RFC-65 R9 mapPending numeric validation', () => {
   const t = useTestDb();
 
@@ -282,6 +346,42 @@ describe('RFC-65 R10 the contested queue', () => {
     const inactive = await reviewer([f.sp.id], true);
     expect((await walk(inactive)).map((i) => i.id)).toEqual([contest.id]);
     expect(await countContested(t.db, inactive)).toBe(1);
+  });
+
+  it('sorts by species name either way, paging the order whole (RFC-11 R10)', async () => {
+    const a = await categorical(['x']);
+    const b = await categorical(['x']);
+    await a.record('x');
+    await b.record('x');
+    const ca = await createContest(t.db, {
+      speciesId: a.sp.id,
+      traitId: a.trait.id,
+      createdBy: a.bo.id,
+      levelIds: [a.level('x')],
+    });
+    const cb = await createContest(t.db, {
+      speciesId: b.sp.id,
+      traitId: b.trait.id,
+      createdBy: b.bo.id,
+      levelIds: [b.level('x')],
+    });
+    const v = await reviewer([a.sp.id, b.sp.id]);
+    const byName = [
+      { id: ca.id, name: a.sp.canonicalName },
+      { id: cb.id, name: b.sp.canonicalName },
+    ].sort((x, y) => (x.name < y.name ? -1 : 1));
+    const ids = async (order: 'asc' | 'desc') => {
+      const out: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listContested(t.db, v, { sort: 'species', order, limit: 1, cursor });
+        out.push(...page.data.map((i) => i.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return out;
+    };
+    expect(await ids('asc')).toEqual(byName.map((x) => x.id));
+    expect(await ids('desc')).toEqual(byName.map((x) => x.id).reverse());
   });
 
   it('pages by the contest id, newest first, and rejects a bad cursor', async () => {

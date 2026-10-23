@@ -1,8 +1,14 @@
 import { Link } from '@tanstack/react-router';
-import type { ContestedQueueItem, MeResponse, RecordItem } from '@treerepro/contracts';
+import type {
+  ContestedQueueItem,
+  ContestedSort,
+  MeResponse,
+  RecordItem,
+  SortOrder,
+} from '@treerepro/contracts';
 import { humaniseKey, isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
-import { Badge, Button, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { Badge, Button, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 /**
  * The three resolutions a reviewer can pick from an open contest (RFC-65
@@ -45,10 +51,14 @@ function mayWithdraw(
  */
 export function DisputedTable({
   items,
+  sort,
+  onSort,
   onSelect,
   onAction,
 }: {
   items: ContestedQueueItem[];
+  sort: { sort: ContestedSort; order: SortOrder } | null;
+  onSort: (by: ContestedSort) => void;
   onSelect: (recordId: string) => void;
   onAction: (item: ContestedQueueItem, action: ContestAction) => void;
 }) {
@@ -61,12 +71,24 @@ export function DisputedTable({
     <Table>
       <Thead>
         <Tr>
-          <Th>Species</Th>
-          <Th>Trait</Th>
+          <SortTh
+            label="Species"
+            direction={sort?.sort === 'species' ? sort.order : null}
+            onSort={() => onSort('species')}
+          />
+          <SortTh
+            label="Trait"
+            direction={sort?.sort === 'trait' ? sort.order : null}
+            onSort={() => onSort('trait')}
+          />
           <Th>Contested value</Th>
           <Th>Contest records</Th>
           <Th>By</Th>
-          <Th>Date</Th>
+          <SortTh
+            label="Date"
+            direction={sort?.sort === 'date' ? sort.order : null}
+            onSort={() => onSort('date')}
+          />
           <Th>Actions</Th>
         </Tr>
       </Thead>

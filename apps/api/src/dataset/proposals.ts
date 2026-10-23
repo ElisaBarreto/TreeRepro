@@ -1,5 +1,11 @@
-import type { ApproveProposalBody, Proposal, ProposalStatus } from '@treerepro/contracts';
-import { and, count, desc, eq, gt, lt, lte, type SQL, sql } from 'drizzle-orm';
+import type {
+  ApproveProposalBody,
+  Proposal,
+  ProposalSort,
+  ProposalStatus,
+  SortOrder,
+} from '@treerepro/contracts';
+import { and, count, eq, gt, lte, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
@@ -8,7 +14,7 @@ import { isUniqueViolation } from '../db/errors.ts';
 import { speciesProposals } from '../db/schema/proposals.ts';
 import { families, genera, species, speciesNames } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
-import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
+import { pageOf, type SortKey, sortedKeyset } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import type { TaxonomyClient, TaxonomyLookup } from '../integrations/taxonomy.ts';
 import { addSpeciesName, createFamily, createGenus, createSpecies } from './catalog.ts';
@@ -43,9 +49,10 @@ interface ProposalRow {
  * @rfc RFC-75 R6
  * @rfc RFC-40 R8
  */
-function proposalQuery(db: DbExecutor) {
+function proposalQuery(db: DbExecutor, sortKey: SQL<string> = sql<string>`''`) {
   return db
     .select({
+      sortKey: sortKey.as('sort_key'),
       id: speciesProposals.id,
       proposedName: speciesProposals.proposedName,
       note: speciesProposals.note,
@@ -215,23 +222,56 @@ export async function createProposal(
 }
 
 /**
- * Proposals newest first, keyed on the uuidv7 primary key. `status` filters
- * when given; the route applies RFC-75 R3's `open` default.
+ * Proposals newest first unless `sort` names another column. `status`
+ * filters when given; the route applies RFC-75 R3's `open` default.
  * @rfc RFC-75 R3
- * @rfc RFC-11 R6
+ * @rfc RFC-11 R6, R10
  */
 export async function listProposals(
   db: DbExecutor,
-  input: { status?: ProposalStatus; cursor?: string; limit: number },
+  input: ProposalListInput & { status?: ProposalStatus },
 ): Promise<{ data: Proposal[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
   if (input.status) conditions.push(eq(speciesProposals.status, input.status));
-  if (input.cursor) conditions.push(lt(speciesProposals.id, decodeCursor(input.cursor)));
-  const rows = await proposalQuery(db)
+  return proposalPage(db, conditions, input);
+}
+
+/** What both proposal lists page by (RFC-75 R3, R5; RFC-11 R10). */
+interface ProposalListInput {
+  sort?: ProposalSort;
+  order?: SortOrder;
+  cursor?: string;
+  limit: number;
+}
+
+// The proposals lists' sort columns (RFC-75 R3, RFC-11 R10).
+const PROPOSAL_COLUMNS: Record<ProposalSort, SortKey> = {
+  proposed: { expr: sql`${speciesProposals.createdAt}`, type: 'timestamptz' },
+  name: { expr: sql`${speciesProposals.proposedName}`, type: 'text' },
+  status: { expr: sql`${speciesProposals.status}`, type: 'text' },
+};
+
+/** One page of proposals under `conditions`, newest first unless `sort` says otherwise. */
+async function proposalPage(
+  db: DbExecutor,
+  conditions: SQL[],
+  input: ProposalListInput,
+): Promise<{ data: Proposal[]; nextCursor: string | null }> {
+  const keyset = sortedKeyset({
+    columns: PROPOSAL_COLUMNS,
+    sort: input.sort ?? 'proposed',
+    order: input.order ?? (input.sort ? 'asc' : 'desc'),
+    id: speciesProposals.id,
+    cursor: input.cursor,
+  });
+  if (keyset.where) conditions.push(keyset.where);
+  const rows = await proposalQuery(db, keyset.key)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(speciesProposals.id))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.id));
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.id }),
+  );
   return { data: page.map(toProposal), nextCursor };
 }
 
@@ -242,23 +282,16 @@ export async function getProposal(db: DbExecutor, id: string): Promise<Proposal 
 }
 
 /**
- * One proposer's own proposals, any status, newest first.
+ * One proposer's own proposals, any status, newest first unless `sort` says otherwise.
  * @rfc RFC-75 R5
- * @rfc RFC-11 R6
+ * @rfc RFC-11 R6, R10
  */
 export async function listMyProposals(
   db: DbExecutor,
   userId: string,
-  input: { cursor?: string; limit: number },
+  input: ProposalListInput,
 ): Promise<{ data: Proposal[]; nextCursor: string | null }> {
-  const conditions: SQL[] = [eq(speciesProposals.proposerId, userId)];
-  if (input.cursor) conditions.push(lt(speciesProposals.id, decodeCursor(input.cursor)));
-  const rows = await proposalQuery(db)
-    .where(and(...conditions))
-    .orderBy(desc(speciesProposals.id))
-    .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.id));
-  return { data: page.map(toProposal), nextCursor };
+  return proposalPage(db, [eq(speciesProposals.proposerId, userId)], input);
 }
 
 /** The open proposal, locked for the decision about to be written. @rfc RFC-75 R4 */

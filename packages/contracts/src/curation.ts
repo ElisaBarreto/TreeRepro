@@ -13,7 +13,7 @@ import {
   userRefSchema,
 } from './dataset.ts';
 import { isValidIsbn } from './isbn.ts';
-import { cursorQuerySchema } from './pagination.ts';
+import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 
 /** Free text attached to a write: 1–2,000 characters, trimmed. @rfc RFC-65 R1 */
 export const curationNoteSchema = z.string().trim().min(1).max(2000);
@@ -170,8 +170,28 @@ export const pendingTraitSchema = z.strictObject({
   count: z.number().int().nonnegative(),
 });
 
+/** The pending groups' sorts (RFC-65 R8). @rfc RFC-65 R8 */
+export const PENDING_SORTS = ['count', 'value', 'kind'] as const;
 /** @rfc RFC-65 R8 */
-export const pendingGroupsQuerySchema = cursorQuerySchema.extend({ traitId: z.uuid() });
+export type PendingSort = (typeof PENDING_SORTS)[number];
+
+/** @rfc RFC-65 R8 */
+export const pendingGroupsQuerySchema = cursorQuerySchema.extend({
+  traitId: z.uuid(),
+  sort: z.enum(PENDING_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
+});
+
+/** The contested queue's sorts (RFC-65 R10). @rfc RFC-65 R10 */
+export const CONTESTED_SORTS = ['date', 'species', 'trait'] as const;
+/** @rfc RFC-65 R10 */
+export type ContestedSort = (typeof CONTESTED_SORTS)[number];
+
+/** `GET /api/records/disputed` query. @rfc RFC-65 R10 */
+export const listContestedQuerySchema = cursorQuerySchema.extend({
+  sort: z.enum(CONTESTED_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
+});
 
 /** @rfc RFC-65 R8 */
 export const pendingGroupSchema = z.strictObject({

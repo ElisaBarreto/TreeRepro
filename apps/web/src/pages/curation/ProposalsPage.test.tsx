@@ -45,6 +45,19 @@ beforeEach(() => {
 });
 
 describe('RFC-75 R3 ProposalsPage', () => {
+  it('RFC-13 R13 the Name header sorts the queue through the API and into the URL, keeping the status', async () => {
+    const { router } = renderAt('/app/curation/proposals?status=rejected');
+    await userEvent.click(await screen.findByRole('button', { name: /^Name/ }));
+    await waitFor(() =>
+      expect(proposals.fetchProposals).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'rejected', sort: 'name', order: 'asc' }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(
+      expect.objectContaining({ status: 'rejected', sort: 'name' }),
+    );
+  });
+
   it('lists name, proposer, date and the lookup verdict, opening the queue on the open ones', async () => {
     renderAt('/app/curation/proposals');
     const rows = (await screen.findAllByRole('row')).slice(1);

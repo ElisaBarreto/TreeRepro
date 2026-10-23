@@ -1,4 +1,9 @@
-import type { ContestedQueueItem, WithdrawLevelResult } from '@treerepro/contracts';
+import type {
+  ContestedQueueItem,
+  ContestedSort,
+  SortOrder,
+  WithdrawLevelResult,
+} from '@treerepro/contracts';
 import { useState } from 'react';
 import {
   annotateRecord,
@@ -16,6 +21,7 @@ import { Alert, ConfirmDialog, EmptyState, PageHeader } from '../../components/u
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 import { useRecordWrite } from '../../lib/use-record-write.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
 type Pending = { item: ContestedQueueItem; action: ContestAction };
 
@@ -93,8 +99,11 @@ function remainingNotice(pending: Pending, result: unknown): string | null {
  * @rfc RFC-65 R10, R14-R16
  */
 export function DisputedPage() {
-  const list = usePagedList(curationKeys.contested, (cursor, limit) =>
-    fetchContested({ cursor, limit }),
+  // Newest first until a header is clicked (RFC-65 R10, RFC-13 R13).
+  const [sort, setSort] = useState<{ sort: ContestedSort; order: SortOrder } | null>(null);
+  const sortParams = { sort: sort?.sort, order: sort?.order };
+  const list = usePagedList([...curationKeys.contested, sortParams], (cursor, limit) =>
+    fetchContested({ ...sortParams, cursor, limit }),
   );
   const [open, setOpen] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -120,6 +129,8 @@ export function DisputedPage() {
         {list.items.length > 0 ? (
           <DisputedTable
             items={list.items}
+            sort={sort}
+            onSort={(by) => setSort(toggleSort(sort ?? { sort: 'date', order: 'desc' }, by))}
             onSelect={setOpen}
             onAction={(item, action) => {
               act.reset();

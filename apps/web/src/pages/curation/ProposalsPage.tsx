@@ -1,4 +1,10 @@
-import { PROPOSAL_STATUSES, type Proposal, type ProposalStatus } from '@treerepro/contracts';
+import {
+  PROPOSAL_STATUSES,
+  type Proposal,
+  type ProposalSort,
+  type ProposalStatus,
+  type SortOrder,
+} from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { fetchProposals, proposalKeys } from '../../api/proposals.ts';
 import { LookupBadge } from '../../components/curation/LookupCard.tsx';
@@ -10,6 +16,7 @@ import {
   Field,
   PageHeader,
   Select,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -20,10 +27,14 @@ import {
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
-/** The one control of the queue, in the URL. @rfc RFC-75 R3 */
+/** The queue's status and order, in the URL. @rfc RFC-75 R3 */
 export interface ProposalsSearch {
   status?: ProposalStatus;
+  /** Newest first when absent (RFC-75 R3, RFC-13 R13). */
+  sort?: ProposalSort;
+  order?: SortOrder;
 }
 
 const EMPTY: Record<ProposalStatus, string> = {
@@ -56,8 +67,20 @@ export function ProposalsPage({
   const status = search.status ?? 'open';
   const statusId = useId();
   const [open, setOpen] = useState<Proposal | null>(null);
-  const list = usePagedList(proposalKeys.list({ status }), (cursor, limit) =>
-    fetchProposals({ status, cursor, limit }),
+  const params = { status, sort: search.sort, order: search.order };
+  const list = usePagedList(proposalKeys.list(params), (cursor, limit) =>
+    fetchProposals({ ...params, cursor, limit }),
+  );
+  const current = {
+    sort: search.sort ?? 'proposed',
+    order: search.order ?? (search.sort ? 'asc' : 'desc'),
+  } as const;
+  const head = (by: 'name' | 'proposed', label: string) => (
+    <SortTh
+      label={label}
+      direction={search.sort === by ? current.order : null}
+      onSort={() => onSearchChange({ ...search, ...toggleSort<ProposalSort>(current, by) })}
+    />
   );
 
   return (
@@ -72,7 +95,9 @@ export function ProposalsPage({
             <Select
               id={statusId}
               value={status}
-              onChange={(e) => onSearchChange({ status: e.target.value as ProposalStatus })}
+              onChange={(e) =>
+                onSearchChange({ ...search, status: e.target.value as ProposalStatus })
+              }
             >
               {PROPOSAL_STATUSES.map((value) => (
                 <option key={value} value={value}>
@@ -91,9 +116,9 @@ export function ProposalsPage({
           <Table>
             <Thead>
               <Tr>
-                <Th>Name</Th>
+                {head('name', 'Name')}
                 <Th>Proposer</Th>
-                <Th>Proposed</Th>
+                {head('proposed', 'Proposed')}
                 <Th>Lookup</Th>
               </Tr>
             </Thead>

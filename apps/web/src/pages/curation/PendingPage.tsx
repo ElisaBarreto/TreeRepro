@@ -1,5 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import type { MapResult, PendingGroup, PendingTrait } from '@treerepro/contracts';
+import type {
+  MapResult,
+  PendingGroup,
+  PendingSort,
+  PendingTrait,
+  SortOrder,
+} from '@treerepro/contracts';
 import { useState } from 'react';
 import { curationKeys, fetchPendingGroups, fetchPendingTraits } from '../../api/curation.ts';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
@@ -13,6 +19,7 @@ import {
   ButtonLink,
   EmptyState,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -24,6 +31,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
 /**
  * The harmonisation queue (RFC-65 R7–R9): the traits with pending import
@@ -38,10 +46,15 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
  */
 export function PendingPage({
   traitId: chosenId,
+  sort,
   onSelectTrait,
+  onSort,
 }: {
   traitId: string | undefined;
+  /** The groups' order (RFC-65 R8); none is most records first. */
+  sort?: { sort: PendingSort; order: SortOrder };
   onSelectTrait: (traitId: string) => void;
+  onSort: (next: { sort: PendingSort; order: SortOrder }) => void;
 }) {
   const me = useMe();
   const canMap = hasPermission(me, 'records.create');
@@ -53,9 +66,10 @@ export function PendingPage({
   const selected: PendingTrait | undefined =
     traits.data?.find((t) => t.trait.id === chosenId) ?? traits.data?.[0];
   const traitId = selected?.trait.id ?? '';
+  const sortParams = { sort: sort?.sort, order: sort?.order };
   const groups = usePagedList(
-    curationKeys.pendingGroups(traitId),
-    (cursor, limit) => fetchPendingGroups({ traitId, cursor, limit }),
+    curationKeys.pendingGroups(traitId, sortParams),
+    (cursor, limit) => fetchPendingGroups({ traitId, ...sortParams, cursor, limit }),
     { enabled: traitId !== '' },
   );
   const [mapping, setMapping] = useState<PendingGroup | null>(null);
@@ -122,9 +136,22 @@ export function PendingPage({
               <Table>
                 <Thead>
                   <Tr>
-                    <Th>Value</Th>
-                    <Th>Kind</Th>
-                    <Th>Records</Th>
+                    {(
+                      [
+                        ['value', 'Value'],
+                        ['kind', 'Kind'],
+                        ['count', 'Records'],
+                      ] as const
+                    ).map(([by, label]) => (
+                      <SortTh
+                        key={by}
+                        label={label}
+                        direction={sort?.sort === by ? sort.order : null}
+                        onSort={() =>
+                          onSort(toggleSort(sort ?? { sort: 'count', order: 'desc' }, by))
+                        }
+                      />
+                    ))}
                     <Th>
                       <span className="sr-only">Actions</span>
                     </Th>

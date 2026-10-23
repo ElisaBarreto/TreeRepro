@@ -114,7 +114,7 @@ describe('RFC-65 R8–R10 queues', () => {
 
 describe('query keys and invalidation', () => {
   it('curationKeys nest under the dataset prefixes; invalidateAfterRecordWrite marks records and the species stale', async () => {
-    expect(curationKeys.pendingGroups('t')).toEqual(['records', 'pending', 'groups', 't']);
+    expect(curationKeys.pendingGroups('t')).toEqual(['records', 'pending', 'groups', 't', {}]);
     expect(curationKeys.contested).toEqual(['records', 'contested']);
     expect(EXPORT_DATASET_URL).toBe('/api/export/dataset.zip');
     expect(EXPORT_PLATFORM_URL).toBe('/api/export/dataset.zip?scope=platform');

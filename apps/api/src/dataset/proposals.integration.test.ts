@@ -289,6 +289,34 @@ describe('RFC-75 R3 listProposals and getProposal', () => {
     expect(next.data.map((p) => p.id)).toEqual([first.id]);
   });
 
+  it('sorts by name either way and pages the order whole (RFC-75 R5, RFC-11 R10)', async () => {
+    const { user } = await createUser(t.db);
+    const stem = aName();
+    for (const suffix of ['charlie', 'alpha', 'bravo']) {
+      await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
+        name: `${stem} ${suffix}`,
+        proposerId: user.id,
+      });
+    }
+    const names = async (order: 'asc' | 'desc') => {
+      const out: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listMyProposals(t.db, user.id, {
+          sort: 'name',
+          order,
+          limit: 1,
+          cursor,
+        });
+        out.push(...page.data.map((p) => p.proposedName.split(' ').pop() ?? ''));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return out;
+    };
+    expect(await names('asc')).toEqual(['alpha', 'bravo', 'charlie']);
+    expect(await names('desc')).toEqual(['charlie', 'bravo', 'alpha']);
+  });
+
   it('getProposal answers null for an id that does not exist', async () => {
     expect(await getProposal(t.db, '00000000-0000-7000-8000-000000000000')).toBeNull();
   });
