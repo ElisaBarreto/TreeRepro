@@ -57,12 +57,6 @@ function spreadLine(c: NonNullable<TraitSummary['continuous']>): string {
   return parts.join(' · ');
 }
 
-/** The main state or states of a categorical trait (RFC-77 R7), with their share of the records. */
-function mainStateLine(c: NonNullable<TraitSummary['categorical']>): string {
-  const share = `${Math.round(c.share * 100)}% of records`;
-  return `Main state: ${c.mainStates.join(' / ')} — ${share}${c.majority ? ' (majority)' : ''}`;
-}
-
 /** One level of a categorical trait as the summary gives it. @rfc RFC-63 R10 */
 export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
 
@@ -74,9 +68,8 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
  * measurement, the median of per-source medians (with its basis when it is a
  * range midpoint or a single bound), then mean ± sd, the range, records and
  * sources, and an **Outlier** badge naming the flags; for a categorical trait,
- * the main state or states with their share of the records and whether they
- * are a majority, then the states that are not a clear minority when they are
- * more. Below it, outside the button so no control nests in another, a
+ * the states that are not a clear minority when they are more than the main
+ * states — the main state itself is left to the bars (issue #314). Below it, outside the button so no control nests in another, a
  * categorical trait lists **every** level the species has (spec §2; no cap):
  * its record count, its sources, its validations (✓ n), a bar scaled against
  * the most frequent level, its own **Contested** badge, and
@@ -155,14 +148,9 @@ export function TraitCard({
               <span className="text-meta tabular-nums text-mist-500">{spreadLine(continuous)}</span>
             </span>
           ) : null}
-          {categorical ? (
-            <span className="flex flex-col gap-0.5">
-              <span className="text-body text-canopy-900">{mainStateLine(categorical)}</span>
-              {categorical.states.length > categorical.mainStates.length ? (
-                <span className="text-meta text-mist-500">
-                  States: {categorical.states.join(' · ')}
-                </span>
-              ) : null}
+          {categorical && categorical.states.length > categorical.mainStates.length ? (
+            <span className="text-meta text-mist-500">
+              States: {categorical.states.join(' · ')}
             </span>
           ) : null}
         </button>

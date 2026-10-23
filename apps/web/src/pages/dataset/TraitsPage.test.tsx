@@ -110,13 +110,13 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     await screen.findByRole('heading', { name: 'Seed' });
     await userEvent.type(screen.getByLabelText('Filter traits'), 'SEED');
     expect(screen.queryByRole('heading', { name: 'Reproductive system' })).not.toBeInTheDocument();
-    expect(screen.queryByText('sexual system')).not.toBeInTheDocument();
-    expect(screen.getByText('seed mass')).toBeInTheDocument();
-    expect(screen.getByText('seed colour')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'sexual system' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'seed mass' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'seed colour' })).toBeInTheDocument();
 
     await userEvent.clear(screen.getByLabelText('Filter traits'));
     await userEvent.type(screen.getByLabelText('Filter traits'), 'sexual system');
-    expect(screen.getByText('sexual system')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'sexual system' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Seed' })).not.toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('Filter traits'), 'zz');
@@ -219,6 +219,21 @@ describe('RFC-62 R5 TraitsPage filters', () => {
     expect(within(table).queryByText('seed length')).not.toBeInTheDocument();
   });
 
+  it('picks a trait with no category chosen; its category then shows (issue #313)', async () => {
+    const { router } = await openPage();
+    const trait = screen.getByLabelText('Trait');
+    expect(trait).toBeEnabled();
+    expect(await within(trait).findByRole('group', { name: 'Seed' })).toBeInTheDocument();
+    await userEvent.selectOptions(trait, SEED_MASS_TRAIT.id);
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ traitId: SEED_MASS_TRAIT.id }),
+      ),
+    );
+    expect(router.state.location.search).not.toHaveProperty('categoryKey');
+    expect(screen.getByLabelText('Category')).toHaveValue('seed');
+  });
+
   it('writes each filter into the URL and drops the trait when the category changes', async () => {
     const { router } = await openPage();
     await screen.findByRole('option', { name: 'Seed' });
@@ -255,7 +270,7 @@ describe('RFC-62 R5 TraitsPage filters', () => {
 describe('RFC-62 R6 TraitsPage editing', () => {
   it('hides "New trait" and "Edit" from a reader', async () => {
     renderAt('/app/traits');
-    await screen.findByText('sexual system');
+    await screen.findByRole('link', { name: 'sexual system' });
     expect(screen.queryByRole('button', { name: 'New trait' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Edit/ })).not.toBeInTheDocument();
   });
@@ -280,7 +295,7 @@ describe('RFC-62 R6 TraitsPage editing', () => {
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create trait' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(await screen.findByText('flower colour')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'flower colour' })).toBeInTheDocument();
   });
 
   it('opens the edit dialog for a trait with its category preselected', async () => {

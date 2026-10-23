@@ -159,7 +159,6 @@ export function TraitsPage({
           <Field id={ids.trait} label="Trait">
             <Select
               id={ids.trait}
-              disabled={!effectiveCategory}
               value={search.traitId ?? ''}
               onChange={(event) =>
                 // A category derived from the trait goes with it when the
@@ -168,11 +167,22 @@ export function TraitsPage({
               }
             >
               <option value="">All traits</option>
-              {categoryTraits.map((trait) => (
-                <option key={trait.id} value={trait.id}>
-                  {humaniseKey(trait.key)}
-                </option>
-              ))}
+              {/* With no category, every trait, grouped by category (issue #313). */}
+              {effectiveCategory
+                ? categoryTraits.map((trait) => (
+                    <option key={trait.id} value={trait.id}>
+                      {humaniseKey(trait.key)}
+                    </option>
+                  ))
+                : vocabulary.data?.map((category) => (
+                    <optgroup key={category.key} label={category.label}>
+                      {category.traits.map((trait) => (
+                        <option key={trait.id} value={trait.id}>
+                          {humaniseKey(trait.key)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
             </Select>
           </Field>
           <Field id={ids.valueType} label="Value type">
