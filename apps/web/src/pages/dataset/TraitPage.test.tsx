@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client.ts';
 import {
   FAMILIES,
   FAMILY,
+  RECORD,
   SEED_LENGTH_DETAIL,
   SEED_MASS_DETAIL,
   SEXUAL_SYSTEM_DETAIL,
@@ -33,6 +34,8 @@ const dataset = vi.hoisted(() => ({
   fetchTraitSpecies: vi.fn(),
   fetchFamilies: vi.fn(),
   fetchGenera: vi.fn(),
+  fetchRecords: vi.fn(),
+  fetchRecord: vi.fn(),
 }));
 // `TraitPage`'s Maps section calls `useMaps()` itself (RFC-76 R8); mocked
 // directly, the same way `MapsPage.test.tsx` does — `fetchMaps` is defined
@@ -64,6 +67,10 @@ beforeEach(() => {
   dataset.fetchTraitSpecies.mockReset();
   dataset.fetchFamilies.mockReset();
   dataset.fetchGenera.mockReset();
+  dataset.fetchRecords
+    .mockReset()
+    .mockResolvedValue({ data: [RECORD], meta: { nextCursor: null } });
+  dataset.fetchRecord.mockReset().mockReturnValue(new Promise(() => {}));
   maps.useMaps.mockReset();
   maps.useMapValues.mockReturnValue({ isPending: false, isError: false, data: MAP_VALUES });
   auth.fetchMe.mockResolvedValue(READER);
@@ -440,6 +447,27 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
       SEXUAL_SYSTEM_DETAIL.id,
       expect.objectContaining({ mode: 'missing', levelId: undefined }),
     );
+  });
+
+  it("a species' record count opens its records on the trait, and a record opens the record (issue #311)", async () => {
+    await openPage();
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: `See the 4 records of ${TRAIT_SPECIES_WITH_DATA.canonicalName}`,
+      }),
+    );
+    const drawer = await screen.findByRole('dialog', { name: 'sexual system' });
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenCalledWith(
+        expect.objectContaining({
+          speciesId: TRAIT_SPECIES_WITH_DATA.id,
+          traitId: SEXUAL_SYSTEM_DETAIL.id,
+        }),
+      ),
+    );
+    await userEvent.click(await within(drawer).findByRole('button', { name: 'dioecious' }));
+    expect(await screen.findByRole('dialog', { name: 'Record' })).toBeInTheDocument();
+    expect(dataset.fetchRecord).toHaveBeenCalledWith(RECORD.id);
   });
 
   it('says so when a tab has no species, each in its own words', async () => {

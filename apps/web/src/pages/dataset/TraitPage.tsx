@@ -1,14 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { TraitDetail, TraitSpeciesMode } from '@treerepro/contracts';
+import type { TraitDetail, TraitSpeciesItem, TraitSpeciesMode } from '@treerepro/contracts';
 import { Fragment, type ReactNode, useEffect, useId, useState } from 'react';
 import { datasetKeys, fetchTrait, fetchTraitSpecies } from '../../api/dataset.ts';
 import { mapAlt, mapsByTrait, useMaps } from '../../api/maps.ts';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
+import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import {
   TaxonomyFilters,
   type TaxonomyFiltersValue,
 } from '../../components/dataset/TaxonomyFilters.tsx';
+import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
 import { TraitSpeciesTable } from '../../components/dataset/TraitSpeciesTable.tsx';
 import { MapFigure } from '../../components/maps/MapFigure.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
@@ -252,7 +254,9 @@ function TraitMaps({ trait }: { trait: TraitDetail }) {
  * adopted wholesale — the pattern `SpeciesSearchPage` established. A name
  * shorter than the API's minimum of two letters is not sent. Every change of
  * a filter changes the query key, which starts the list over at page 1: a
- * cursor never crosses a change of mode, where it would be meaningless.
+ * cursor never crosses a change of mode, where it would be meaningless. A
+ * species' record count opens its records on the trait in the species page's
+ * drawer, and a record there opens the record (issue #311).
  */
 function TraitSpecies({
   trait,
@@ -267,6 +271,8 @@ function TraitSpecies({
   const panelId = useId();
   const tabPrefix = useId();
   const stateId = useId();
+  const [openSpecies, setOpenSpecies] = useState<TraitSpeciesItem | null>(null);
+  const [openRecord, setOpenRecord] = useState<string | null>(null);
   const tabId = (value: TraitSpeciesMode) => `${tabPrefix}-${value}`;
 
   const incoming: TaxonomyFiltersValue = {
@@ -398,9 +404,24 @@ function TraitSpecies({
             }
           />
         ) : null}
-        {list.items.length > 0 ? <TraitSpeciesTable items={list.items} mode={mode} /> : null}
+        {list.items.length > 0 ? (
+          <TraitSpeciesTable items={list.items} mode={mode} onOpenRecords={setOpenSpecies} />
+        ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
+      {openSpecies ? (
+        <TraitPanel
+          speciesId={openSpecies.id}
+          summary={{ trait, recordCount: openSpecies.recordCount ?? 0 }}
+          onClose={() => setOpenSpecies(null)}
+          onSelectRecord={setOpenRecord}
+        />
+      ) : null}
+      <RecordDrawer
+        recordId={openRecord}
+        onClose={() => setOpenRecord(null)}
+        onOpenRecord={setOpenRecord}
+      />
     </section>
   );
 }
