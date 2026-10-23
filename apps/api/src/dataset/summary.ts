@@ -69,8 +69,12 @@ interface LevelAggregate {
   contested: boolean;
 }
 
-/** RFC-77 R5's row in the shape of RFC-63 R10. */
-function continuousOf(c: ContinuousSummary | undefined): TraitSummary['continuous'] {
+/**
+ * RFC-77 R5's row in the shape of RFC-63 R10 and RFC-62 R8.
+ * @rfc RFC-77 R5
+ * @rfc RFC-63 R10
+ */
+export function continuousOf(c: ContinuousSummary | undefined): TraitSummary['continuous'] {
   if (!c) return null;
   return {
     median: c.speciesMedian,

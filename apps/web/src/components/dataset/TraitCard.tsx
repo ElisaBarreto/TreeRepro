@@ -1,4 +1,9 @@
-import type { Dictionary, RecordIntent, TraitSummary } from '@treerepro/contracts';
+import type {
+  ContinuousSummary,
+  Dictionary,
+  RecordIntent,
+  TraitSummary,
+} from '@treerepro/contracts';
 import { useHasMaps } from '../../api/maps.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
@@ -35,8 +40,12 @@ function pendingCount(summary: TraitSummary): number {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** The species value of a quantitative trait (RFC-77 R5): the median, then how it was reached when not from central values. */
-function medianLine(c: NonNullable<TraitSummary['continuous']>): string | null {
+/**
+ * The species value of a quantitative trait (RFC-77 R5): the median, then how
+ * it was reached when not from central values.
+ * @rfc RFC-77 R5
+ */
+export function medianLine(c: ContinuousSummary): string | null {
   if (c.median === null) return null;
   const basis =
     c.summaryBasis === 'range_midpoint'
@@ -47,8 +56,8 @@ function medianLine(c: NonNullable<TraitSummary['continuous']>): string | null {
   return `Median ${formatNumber(c.median)}${c.unit ? ` ${c.unit}` : ''}${basis}`;
 }
 
-/** Mean ± sd, the range, and what the summary rests on. */
-function spreadLine(c: NonNullable<TraitSummary['continuous']>): string {
+/** Mean ± sd, the range, and what the summary rests on. @rfc RFC-77 R5 */
+export function spreadLine(c: ContinuousSummary): string {
   const parts: string[] = [];
   if (c.mean !== null)
     parts.push(`mean ${formatNumber(c.mean)}${c.sd !== null ? ` ± ${formatNumber(c.sd)}` : ''}`);

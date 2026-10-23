@@ -74,6 +74,7 @@ export function countedRecordsSql(
   visibility: Visibility,
   valueType: 'quantitative' | 'categorical',
   speciesIds: readonly string[] | null,
+  traitId?: string,
 ): SQL {
   const only =
     speciesIds === null
@@ -91,6 +92,7 @@ export function countedRecordsSql(
     join traits t on t.id = r.trait_id
     join species s on s.id = r.species_id
     where t.value_type = ${valueType} and r.harmonisation = 'harmonised' and ${only}
+      ${traitId ? sql`and r.trait_id = ${traitId}::uuid` : sql``}
       and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
       and ${traitVisible(visibility, sql`t.active`)}
       and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}`;
@@ -99,17 +101,19 @@ export function countedRecordsSql(
 /**
  * The continuous summaries of RFC-77 R4–R5, for `speciesIds` (null: every
  * species), in one statement: records become central values, bounds and
- * spreads, which are reduced per species × trait.
+ * spreads, which are reduced per species × trait. `traitId` narrows it to one
+ * trait (the trait page's species list, RFC-62 R8).
  * @rfc RFC-77 R1, R2, R3, R4, R5, R8
  */
 export async function continuousSummaries(
   db: DbExecutor,
   visibility: Visibility,
   speciesIds: readonly string[] | null,
+  traitId?: string,
 ): Promise<ContinuousSummary[]> {
   if (speciesIds !== null && speciesIds.length === 0) return [];
   const rows = (await db.execute(sql`
-    with base as (${countedRecordsSql(visibility, 'quantitative', speciesIds)}),
+    with base as (${countedRecordsSql(visibility, 'quantitative', speciesIds, traitId)}),
     flagged as (
       select b.*, b.summary_source is null as own,
         b.unit_status is distinct from 'needs_unit_check' as usable,

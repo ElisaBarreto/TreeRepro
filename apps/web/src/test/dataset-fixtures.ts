@@ -670,7 +670,19 @@ export const TRAIT_SPECIES_UNDECIDED: TraitSpeciesItem = {
   recordCount: 1,
   validated: false,
   summary: {
-    numeric: [{ unit: 'mg', means: { single: null, mean: null, median: null, min: 0.5, max: 3 } }],
+    continuous: {
+      median: 1.75,
+      summaryBasis: 'range_midpoint',
+      mean: 1.75,
+      meanBasis: 'range_midpoint',
+      sd: null,
+      min: 0.5,
+      max: 3,
+      nRecords: 1,
+      nSources: 1,
+      outlierFlags: [],
+      unit: 'mg',
+    },
   },
 };
 

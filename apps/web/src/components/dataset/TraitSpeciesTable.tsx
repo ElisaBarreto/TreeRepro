@@ -1,14 +1,20 @@
 import { Link } from '@tanstack/react-router';
-import type { TraitSpeciesItem, TraitSpeciesMode } from '@treerepro/contracts';
-import { fieldMeansText, formatNumber, humaniseKey } from '../../lib/format.ts';
-import { Badge, ButtonLink, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import type {
+  SortOrder,
+  TraitSpeciesItem,
+  TraitSpeciesMode,
+  TraitSpeciesSort,
+} from '@treerepro/contracts';
+import { formatNumber, humaniseKey } from '../../lib/format.ts';
+import { Badge, ButtonLink, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { medianLine, spreadLine } from './TraitCard.tsx';
 
 const DASH = <span className="text-mist-500">—</span>;
 const LINK = 'font-medium italic text-canopy-900 underline-offset-2 hover:underline';
 
 // The species' own records on this trait: one line of the levels it has
-// values on with their counts, or one line per unit of the mean of each of
-// its value fields, each value in its own unit.
+// values on with their counts, or its RFC-77 summary — the median, then the
+// mean, range, records and sources — as the species page's card reads it.
 function summaryLines(item: TraitSpeciesItem): string[] {
   if (item.summary === null) return [];
   if ('levels' in item.summary) {
@@ -18,7 +24,8 @@ function summaryLines(item: TraitSpeciesItem): string[] {
         .join(' · '),
     ];
   }
-  return item.summary.numeric.map((entry) => fieldMeansText(entry.means, entry.unit));
+  const median = medianLine(item.summary.continuous);
+  return [...(median ? [median] : []), spreadLine(item.summary.continuous)];
 }
 
 /**
@@ -28,7 +35,8 @@ function summaryLines(item: TraitSpeciesItem): string[] {
  * offers the way to change that instead: the species page opened on the
  * traits it has no record for (RFC-70 R7). With `onOpenRecords`, a non-zero
  * record count is a button that hands the row back, so the page can open the
- * species' records on the trait (issue #311).
+ * species' records on the trait (issue #311). With `sort`, the Species and
+ * Family headers — and Records, in `with` mode — are sort buttons (RFC-62 R8).
  * @rfc RFC-13 R2
  * @rfc RFC-62 R8
  */
@@ -36,20 +44,32 @@ export function TraitSpeciesTable({
   items,
   mode,
   onOpenRecords,
+  sort,
 }: {
   items: TraitSpeciesItem[];
   mode: TraitSpeciesMode;
   onOpenRecords?: (item: TraitSpeciesItem) => void;
+  sort?: { by: TraitSpeciesSort; order: SortOrder; onSort: (by: TraitSpeciesSort) => void };
 }) {
   const withData = mode === 'with';
+  const head = (by: TraitSpeciesSort, label: string) =>
+    sort ? (
+      <SortTh
+        label={label}
+        direction={sort.by === by ? sort.order : null}
+        onSort={() => sort.onSort(by)}
+      />
+    ) : (
+      <Th>{label}</Th>
+    );
   return (
     <Table>
       <Thead>
         <Tr>
-          <Th>Species</Th>
-          <Th>Family</Th>
+          {head('name', 'Species')}
+          {head('family', 'Family')}
           {withData ? (
-            <Th>Records</Th>
+            head('records', 'Records')
           ) : (
             <Th>
               <span className="sr-only">Actions</span>

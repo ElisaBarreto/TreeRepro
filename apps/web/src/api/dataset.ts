@@ -28,6 +28,7 @@ import {
   type TraitDataMode,
   type TraitDetail,
   type TraitSpeciesMode,
+  type TraitSpeciesSort,
   type TraitValueType,
   taxonRefSchema,
   traitDetailSchema,
@@ -175,6 +176,8 @@ export function fetchTraitSpecies(
     scope?: 'plots' | 'all';
     plotId?: string;
     levelId?: string;
+    sort?: TraitSpeciesSort;
+    order?: SortOrder;
     cursor?: string;
     limit?: number;
   },

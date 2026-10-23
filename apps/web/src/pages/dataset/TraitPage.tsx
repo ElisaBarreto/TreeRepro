@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { TraitDetail, TraitSpeciesItem, TraitSpeciesMode } from '@treerepro/contracts';
+import type {
+  SortOrder,
+  TraitDetail,
+  TraitSpeciesItem,
+  TraitSpeciesMode,
+  TraitSpeciesSort,
+} from '@treerepro/contracts';
 import { Fragment, type ReactNode, useEffect, useId, useState } from 'react';
 import { datasetKeys, fetchTrait, fetchTraitSpecies } from '../../api/dataset.ts';
 import { mapAlt, mapsByTrait, useMaps } from '../../api/maps.ts';
@@ -48,8 +54,9 @@ const TAB_IDLE = 'border-transparent text-mist-500 hover:text-canopy-800';
 
 /**
  * The trait page's own search params: which tab is open, the taxonomy
- * filters both tables share and, on a categorical trait's with-data tab, the
- * level (`level`) its species must have a record of (RFC-62 R8).
+ * filters both tables share, on a categorical trait's with-data tab the level
+ * (`level`) its species must have a record of, and the table's order (`sort`,
+ * `order`) (RFC-62 R8).
  * @rfc RFC-62 R8
  */
 export interface TraitSpeciesSearch {
@@ -58,6 +65,9 @@ export interface TraitSpeciesSearch {
   familyId?: string;
   genusId?: string;
   level?: string;
+  /** The table's order (RFC-62 R8); `name` and `asc` are left out of the URL. */
+  sort?: TraitSpeciesSort;
+  order?: SortOrder;
 }
 
 function errorMessage(error: unknown): string {
@@ -159,7 +169,7 @@ function NumericDistribution({ numeric }: { numeric: NumericEntries }) {
  * says so rather than printing zeros, and says nothing about when a summary
  * that does not exist was computed.
  */
-function Distribution({ trait }: { trait: TraitDetail }) {
+function Distribution({ trait, search }: { trait: TraitDetail; search: TraitSpeciesSearch }) {
   const { distribution } = trait;
   const counted =
     'levels' in distribution ? distribution.levels.length > 0 : distribution.numeric !== null;
@@ -175,11 +185,7 @@ function Distribution({ trait }: { trait: TraitDetail }) {
                 <Link
                   to="/app/traits/$id"
                   params={{ id: trait.id }}
-                  search={(prev: TraitSpeciesSearch) => ({
-                    ...prev,
-                    mode: undefined,
-                    level: entry.level.id,
-                  })}
+                  search={{ ...search, mode: undefined, level: entry.level.id }}
                   replace
                   aria-label={`Show the species with ${humaniseKey(entry.level.key)}`}
                   className="rounded-full hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
@@ -305,8 +311,20 @@ function TraitSpecies({
       familyId: form.familyId,
       genusId: form.genusId,
       level: search.level,
+      sort: search.sort,
+      order: search.order,
     });
-  }, [settled, formKey, seen, form, search.mode, search.level, onSearchChange]);
+  }, [
+    settled,
+    formKey,
+    seen,
+    form,
+    search.mode,
+    search.level,
+    search.sort,
+    search.order,
+    onSearchChange,
+  ]);
 
   // A state narrows the with-data tab only: a species missing the trait has none.
   const levels = 'levels' in trait.distribution ? trait.distribution.levels : [];
@@ -317,6 +335,8 @@ function TraitSpecies({
     familyId: form.familyId,
     genusId: form.genusId,
     levelId: level,
+    sort: search.sort,
+    order: search.order,
   };
   const list = usePagedList(datasetKeys.traitSpecies(trait.id, params), (cursor, limit) =>
     fetchTraitSpecies(trait.id, { ...params, cursor, limit }),
@@ -329,6 +349,21 @@ function TraitSpecies({
       ...search,
       mode: next === 'with' ? undefined : next,
       level: next === 'with' ? search.level : undefined,
+      // Every species missing the trait has no record: nothing to order by.
+      ...(next === 'missing' && search.sort === 'records'
+        ? { sort: undefined, order: undefined }
+        : {}),
+    });
+  }
+
+  function sortBy(by: TraitSpeciesSort) {
+    // A new column sorts ascending; the same column again flips it.
+    const order: SortOrder =
+      (search.sort ?? 'name') === by && (search.order ?? 'asc') === 'asc' ? 'desc' : 'asc';
+    onSearchChange({
+      ...search,
+      sort: by === 'name' ? undefined : by,
+      order: order === 'asc' ? undefined : order,
     });
   }
 
@@ -405,7 +440,12 @@ function TraitSpecies({
           />
         ) : null}
         {list.items.length > 0 ? (
-          <TraitSpeciesTable items={list.items} mode={mode} onOpenRecords={setOpenSpecies} />
+          <TraitSpeciesTable
+            items={list.items}
+            mode={mode}
+            onOpenRecords={setOpenSpecies}
+            sort={{ by: search.sort ?? 'name', order: search.order ?? 'asc', onSort: sortBy }}
+          />
         ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
@@ -499,7 +539,7 @@ export function TraitPage({
       />
       <div className="flex flex-col gap-8">
         <Facts trait={loaded} />
-        <Distribution trait={loaded} />
+        <Distribution trait={loaded} search={search} />
         <TraitMaps trait={loaded} />
         <TraitSpecies trait={loaded} search={search} onSearchChange={onSearchChange} />
       </div>
