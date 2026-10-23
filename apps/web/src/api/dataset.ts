@@ -5,6 +5,8 @@ import {
   genusSchema,
   type ImportBatch,
   type ImportBatchKind,
+  type ImportRejectSort,
+  type ImportSort,
   importBatchSchema,
   importRejectSchema,
   type ListEnvelope,
@@ -12,6 +14,7 @@ import {
   type RecordDetail,
   type RecordSort,
   type ReferenceDetail,
+  type ReferenceSort,
   recordDetailSchema,
   recordSchema,
   referenceDetailSchema,
@@ -70,7 +73,7 @@ export const datasetKeys = {
   genera: (params: Params) => ['genera', params] as const,
   imports: (params: Params) => ['imports', params] as const,
   importBatch: (id: string) => ['imports', id] as const,
-  importRejects: (id: string) => ['imports', id, 'rejects'] as const,
+  importRejects: (id: string, params: Params = {}) => ['imports', id, 'rejects', params] as const,
 };
 
 /**
@@ -96,6 +99,7 @@ export function searchSpecies(params: {
   traitId?: string;
   traitData?: TraitDataMode;
   sort?: SpeciesSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }) {
@@ -197,6 +201,8 @@ export function searchReferences(params: {
   q?: string;
   categoryKey?: string;
   traitId?: string;
+  sort?: ReferenceSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }) {
@@ -233,7 +239,13 @@ export function fetchGenera(params: {
  * @rfc RFC-64 R11
  * @rfc RFC-68 R7
  */
-export function fetchImports(params: { kind?: ImportBatchKind; cursor?: string; limit?: number }) {
+export function fetchImports(params: {
+  kind?: ImportBatchKind;
+  sort?: ImportSort;
+  order?: SortOrder;
+  cursor?: string;
+  limit?: number;
+}) {
   return apiFetch(withQuery('/imports', params), listEnvelopeSchema(importBatchSchema));
 }
 /** @rfc RFC-64 R11 */
@@ -241,7 +253,10 @@ export async function fetchImport(id: string): Promise<ImportBatch> {
   return (await apiFetch(`/imports/${id}`, dataEnvelopeSchema(importBatchSchema))).data;
 }
 /** @rfc RFC-64 R11 */
-export function fetchImportRejects(id: string, params: { cursor?: string; limit?: number }) {
+export function fetchImportRejects(
+  id: string,
+  params: { sort?: ImportRejectSort; order?: SortOrder; cursor?: string; limit?: number },
+) {
   return apiFetch(
     withQuery(`/imports/${id}/rejects`, params),
     listEnvelopeSchema(importRejectSchema),

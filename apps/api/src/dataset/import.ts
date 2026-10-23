@@ -10,9 +10,12 @@ import {
   type ImportBatchKind,
   type ImportReject,
   type ImportRejectReason,
+  type ImportRejectSort,
+  type ImportSort,
+  type SortOrder,
   type UserRef,
 } from '@treerepro/contracts';
-import { and, asc, count, desc, sql as dsql, eq, lt } from 'drizzle-orm';
+import { and, count, sql as dsql, eq } from 'drizzle-orm';
 import { asyncBufferFromFile, parquetMetadataAsync, parquetReadObjects } from 'hyparquet';
 import { compressors } from 'hyparquet-compressors';
 import postgres from 'postgres';
@@ -22,15 +25,7 @@ import { traits } from '../db/schema/dictionary.ts';
 import { type ImportBatchRow, importBatches, importRejects } from '../db/schema/imports.ts';
 import { traitRecords } from '../db/schema/records.ts';
 import { users } from '../db/schema/users.ts';
-import {
-  decodeCompositeCursor,
-  decodeCursor,
-  encodeCompositeCursor,
-  encodeCursor,
-  isDigits,
-  isUuid,
-  pageOf,
-} from '../http/cursor.ts';
+import { pageOf, type SortKey, sortedKeyset } from '../http/cursor.ts';
 import {
   type DetachedImported,
   detachImported,
@@ -361,52 +356,96 @@ export async function getImportBatch(db: DbExecutor, id: string): Promise<Import
 }
 
 /**
- * Newest first by id (UUID v7).
+ * Newest first unless `sort` names another column (RFC-11 R10).
  * @rfc RFC-64 R11
  * @rfc RFC-68 R7
  */
 export async function listImportBatches(
   db: DbExecutor,
-  input: { kind?: ImportBatchKind; cursor?: string; limit: number },
+  input: {
+    kind?: ImportBatchKind;
+    sort?: ImportSort;
+    order?: SortOrder;
+    cursor?: string;
+    limit: number;
+  },
 ): Promise<{ data: ImportBatch[]; nextCursor: string | null }> {
+  const keyset = sortedKeyset({
+    columns: BATCH_SORT_COLUMNS,
+    sort: input.sort ?? 'started',
+    order: input.order ?? (input.sort ? 'asc' : 'desc'),
+    id: importBatches.id,
+    cursor: input.cursor,
+  });
   const conditions = [
     input.kind ? eq(importBatches.kind, input.kind) : undefined,
-    input.cursor ? lt(importBatches.id, decodeCursor(input.cursor)) : undefined,
+    keyset.where,
   ].filter((c) => c !== undefined);
   const rows = await db
-    .select(batchWithRunBy)
+    .select({ ...batchWithRunBy, sortKey: keyset.key.as('sort_key') })
     .from(importBatches)
     .leftJoin(users, eq(users.id, importBatches.runBy))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(importBatches.id))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.batch.id));
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.batch.id }),
+  );
   return { data: page.map(fromJoined), nextCursor };
 }
 
-/** By row number ascending; composite cursor (row_no, id). @rfc RFC-64 R11 */
+// The sort columns of the batches and rejects lists (RFC-64 R11, RFC-11 R10).
+const BATCH_SORT_COLUMNS: Record<ImportSort, SortKey> = {
+  started: { expr: dsql`${importBatches.startedAt}`, type: 'timestamptz' },
+  file: { expr: dsql`${importBatches.fileName}`, type: 'text' },
+  kind: { expr: dsql`${importBatches.kind}`, type: 'text' },
+  status: { expr: dsql`${importBatches.status}`, type: 'text' },
+  total: { expr: dsql`${importBatches.rowsTotal}`, type: 'int' },
+  inserted: { expr: dsql`${importBatches.rowsInserted}`, type: 'int' },
+  duplicate: { expr: dsql`${importBatches.rowsDuplicate}`, type: 'int' },
+  alreadyImported: { expr: dsql`${importBatches.rowsAlreadyImported}`, type: 'int' },
+  rejected: { expr: dsql`${importBatches.rowsRejected}`, type: 'int' },
+  pending: { expr: dsql`${importBatches.rowsPending}`, type: 'int' },
+};
+const REJECT_SORT_COLUMNS: Record<ImportRejectSort, SortKey> = {
+  row: { expr: dsql`${importRejects.rowNo}`, type: 'int' },
+  reason: { expr: dsql`${importRejects.reason}`, type: 'text' },
+};
+
+/** By row number ascending unless `sort` names another column. @rfc RFC-64 R11 */
 export async function listImportRejects(
   db: DbExecutor,
-  input: { batchId: string; cursor?: string; limit: number },
+  input: {
+    batchId: string;
+    sort?: ImportRejectSort;
+    order?: SortOrder;
+    cursor?: string;
+    limit: number;
+  },
 ): Promise<{ data: ImportReject[]; nextCursor: string | null }> {
+  const keyset = sortedKeyset({
+    columns: REJECT_SORT_COLUMNS,
+    sort: input.sort ?? 'row',
+    order: input.order ?? 'asc',
+    id: importRejects.id,
+    cursor: input.cursor,
+  });
   const conditions = [eq(importRejects.batchId, input.batchId)];
-  if (input.cursor) {
-    const [rowNo, id] = decodeCompositeCursor(input.cursor, 2, [isDigits, isUuid]) as [
-      string,
-      string,
-    ];
-    conditions.push(
-      dsql`(${importRejects.rowNo}, ${importRejects.id}) > (${Number(rowNo)}::bigint, ${id}::uuid)`,
-    );
-  }
+  if (keyset.where) conditions.push(keyset.where);
   const rows = await db
-    .select()
+    .select({
+      id: importRejects.id,
+      rowNo: importRejects.rowNo,
+      reason: importRejects.reason,
+      rawRow: importRejects.rawRow,
+      sortKey: keyset.key.as('sort_key'),
+    })
     .from(importRejects)
     .where(and(...conditions))
-    .orderBy(asc(importRejects.rowNo), asc(importRejects.id))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    encodeCompositeCursor([String(r.rowNo), r.id]),
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.id }),
   );
   return {
     data: page.map((r) => ({ id: r.id, rowNo: r.rowNo, reason: r.reason, rawRow: r.rawRow })),

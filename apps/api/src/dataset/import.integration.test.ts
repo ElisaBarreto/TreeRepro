@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 import { describe, expect, it } from 'vitest';
+import { createImportBatch } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches, importRejects } from '../db/schema/imports.ts';
@@ -292,6 +293,41 @@ describe('RFC-64 importRecords', () => {
     });
     expect(second.data.map((r) => r.rowNo)).toEqual([14]);
     expect(second.nextCursor).toBeNull();
+    // RFC-11 R10: the rejects sort either way.
+    const descending = await listImportRejects(t.db, {
+      batchId: batch.id,
+      sort: 'row',
+      order: 'desc',
+      limit: 50,
+    });
+    expect(descending.data.map((r) => r.rowNo)).toEqual([14, 13, 12]);
+  });
+
+  it('R11 sorts the batches by a column either way, the cursor tied to it (RFC-11 R10)', async () => {
+    const k = Math.random().toString(16).slice(2);
+    const aa = await createImportBatch(t.db, { fileName: `aa-${k}.csv` });
+    const zz = await createImportBatch(t.db, { fileName: `zz-${k}.csv` });
+    const ids = async (sort: 'file' | 'started', order: 'asc' | 'desc') => {
+      const out: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listImportBatches(t.db, { sort, order, limit: 100, cursor });
+        out.push(...page.data.map((b) => b.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return out.filter((id) => id === aa.id || id === zz.id);
+    };
+    expect(await ids('file', 'asc')).toEqual([aa.id, zz.id]);
+    expect(await ids('file', 'desc')).toEqual([zz.id, aa.id]);
+    const first = await listImportBatches(t.db, { sort: 'file', limit: 1 });
+    await expect(
+      listImportBatches(t.db, {
+        sort: 'file',
+        order: 'desc',
+        limit: 1,
+        cursor: first.nextCursor ?? undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
   it('R6 collapses internal whitespace so a multi-word level still matches', async () => {

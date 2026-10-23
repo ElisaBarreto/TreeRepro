@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { textParam, uuidParam } from '../../../lib/search-params.ts';
+import { REFERENCE_SORTS, SORT_ORDERS } from '@treerepro/contracts';
+import { enumParam, textParam, uuidParam } from '../../../lib/search-params.ts';
 import { ReferencesPage, type ReferencesSearch } from '../../../pages/dataset/ReferencesPage.tsx';
 
 /**
@@ -12,6 +13,8 @@ function validateSearch(search: Record<string, unknown>): ReferencesSearch {
   return {
     categoryKey: textParam(search.categoryKey, 100),
     traitId: uuidParam(search.traitId),
+    sort: enumParam(search.sort, REFERENCE_SORTS),
+    order: enumParam(search.order, SORT_ORDERS),
   };
 }
 

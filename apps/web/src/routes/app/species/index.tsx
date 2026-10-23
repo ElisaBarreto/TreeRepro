@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import {
+  SORT_ORDERS,
   SPECIES_SCOPES,
   SPECIES_SORTS,
   SPECIES_STATUSES,
@@ -41,6 +42,7 @@ function validateSearch(search: Record<string, unknown>): SpeciesSearch {
     traitId: uuidParam(search.traitId),
     traitData: enumParam(search.traitData, TRAIT_DATA_MODES),
     sort: enumParam(search.sort, SPECIES_SORTS),
+    order: enumParam(search.order, SORT_ORDERS),
   };
 }
 

@@ -66,3 +66,16 @@ export function useSort<T, K extends string>(
     }),
   };
 }
+
+/**
+ * The next sort of a paginated table (RFC-13 R13) when header `by` is
+ * clicked: a new column ascending, the same column again flipped. `current`
+ * is what the URL holds, its defaults filled in by the caller.
+ * @rfc RFC-13 R13
+ */
+export function toggleSort<K extends string>(
+  current: { sort: K; order: 'asc' | 'desc' },
+  by: K,
+): { sort: K; order: 'asc' | 'desc' } {
+  return { sort: by, order: current.sort === by && current.order === 'asc' ? 'desc' : 'asc' };
+}

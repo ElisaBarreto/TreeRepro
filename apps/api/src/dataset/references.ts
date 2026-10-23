@@ -1,4 +1,10 @@
-import type { Reference, ReferenceDetail, ReferenceKind } from '@treerepro/contracts';
+import type {
+  Reference,
+  ReferenceDetail,
+  ReferenceKind,
+  ReferenceSort,
+  SortOrder,
+} from '@treerepro/contracts';
 import { and, asc, count, desc, eq, ilike, ne, or, type SQL, sql } from 'drizzle-orm';
 import { traitVisible, UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
@@ -9,13 +15,7 @@ import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
 import { users } from '../db/schema/users.ts';
-import {
-  decodeCompositeCursor,
-  encodeCompositeCursor,
-  isDigits,
-  isUuid,
-  pageOf,
-} from '../http/cursor.ts';
+import { pageOf, type SortKey, sortedKeyset } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { type DoiMetadata, shortCitationFrom } from '../integrations/doi.ts';
 import { requireTrait } from './dictionary.ts';
@@ -66,9 +66,17 @@ async function requireCategory(db: DbExecutor, key: string): Promise<void> {
   }
 }
 
-// A usage total in a cursor: digits that still fit a JS integer, so the bigint
-// cast below never sees `Infinity`.
-const isUsageCount = (part: string) => isDigits(part) && Number.isSafeInteger(Number(part));
+// The references list's sort columns (RFC-61 R4, RFC-11 R10).
+const REFERENCE_COLUMNS: Record<ReferenceSort, SortKey> = {
+  usage: { expr: sql`${bibliographicReferences.usageCount}`, type: 'int' },
+  reference: {
+    expr: sql`coalesce(${bibliographicReferences.shortCitation}, ${bibliographicReferences.title}, ${bibliographicReferences.citationKey})`,
+    type: 'text',
+  },
+  primary: { expr: sql`${bibliographicReferences.primaryCount}`, type: 'int' },
+  secondary: { expr: sql`${bibliographicReferences.secondaryCount}`, type: 'int' },
+  year: { expr: sql`coalesce(${bibliographicReferences.year}, 0)`, type: 'int' },
+};
 
 /**
  * Most used first (`usage_count` = `primaryCount + secondaryCount` desc, then
@@ -94,6 +102,8 @@ export async function searchReferences(
     kind?: ReferenceKind | 'all';
     traitId?: string;
     categoryKey?: string;
+    sort?: ReferenceSort;
+    order?: SortOrder;
   },
 ): Promise<{ data: Reference[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
@@ -132,27 +142,28 @@ export async function searchReferences(
           and t.category_key = ${input.categoryKey} and ${traitVisible(visibility, sql`t.active`)})`,
     );
   }
-  if (input.cursor) {
-    const [total, id] = decodeCompositeCursor(input.cursor, 2, [isUsageCount, isUuid]) as [
-      string,
-      string,
-    ];
-    conditions.push(
-      sql`(${bibliographicReferences.usageCount}, ${bibliographicReferences.id}) < (${Number(total)}::int, ${id}::uuid)`,
-    );
-  }
+  const keyset = sortedKeyset({
+    columns: REFERENCE_COLUMNS,
+    sort: input.sort ?? 'usage',
+    // Most used first by default; a chosen column runs ascending (R4).
+    order: input.order ?? (input.sort ? 'asc' : 'desc'),
+    id: bibliographicReferences.id,
+    cursor: input.cursor,
+  });
+  if (keyset.where) conditions.push(keyset.where);
   const rows = await db
     .select({
       ref: bibliographicReferences,
       observer: { id: users.id, name: users.name },
+      sortKey: keyset.key.as('sort_key'),
     })
     .from(bibliographicReferences)
     .leftJoin(users, eq(users.id, bibliographicReferences.observerUserId))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(bibliographicReferences.usageCount), desc(bibliographicReferences.id))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    encodeCompositeCursor([String(r.ref.usageCount), r.ref.id]),
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.ref.id }),
   );
   return {
     data: page.map((r) => toReference(r.ref, r.observer?.id ? r.observer : null)),

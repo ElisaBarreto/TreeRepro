@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import type { Reference } from '@treerepro/contracts';
+import type { Reference, ReferenceSort, SortOrder } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchDictionary, searchReferences } from '../../api/dataset.ts';
 import { ReferenceDialog } from '../../components/catalog/ReferenceDialog.tsx';
@@ -14,6 +14,7 @@ import {
   Input,
   PageHeader,
   Select,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -27,6 +28,7 @@ import { doiHref, referenceLabel } from '../../lib/references.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
 const KEY_MAX = 80;
 const DASH = <span className="text-mist-500">—</span>;
@@ -41,6 +43,9 @@ const DASH = <span className="text-mist-500">—</span>;
 export interface ReferencesSearch {
   categoryKey?: string;
   traitId?: string;
+  /** The table's order (RFC-61 R4, RFC-13 R13); none is most cited first. */
+  sort?: ReferenceSort;
+  order?: SortOrder;
 }
 
 /**
@@ -92,7 +97,13 @@ export function ReferencesPage({
   const categoryTraits =
     vocabulary.data?.find((category) => category.key === effectiveCategory)?.traits ?? [];
 
-  const params = { q, categoryKey: search.categoryKey, traitId: search.traitId };
+  const params = {
+    q,
+    categoryKey: search.categoryKey,
+    traitId: search.traitId,
+    sort: search.sort,
+    order: search.order,
+  };
   const list = usePagedList(datasetKeys.references(params), (cursor, limit) =>
     searchReferences({ ...params, cursor, limit }),
   );
@@ -173,22 +184,58 @@ export function ReferencesPage({
         {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No references match." />
         ) : null}
-        {list.items.length > 0 ? <ReferenceTable items={list.items} /> : null}
+        {list.items.length > 0 ? (
+          <ReferenceTable
+            items={list.items}
+            sort={search.sort}
+            order={search.order ?? (search.sort ? 'asc' : 'desc')}
+            onSort={(by) =>
+              onSearchChange({
+                ...search,
+                ...toggleSort(
+                  {
+                    sort: search.sort ?? 'usage',
+                    order: search.order ?? (search.sort ? 'asc' : 'desc'),
+                  },
+                  by,
+                ),
+              })
+            }
+          />
+        ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
     </>
   );
 }
 
-function ReferenceTable({ items }: { items: Reference[] }) {
+function ReferenceTable({
+  items,
+  sort,
+  order,
+  onSort,
+}: {
+  items: Reference[];
+  sort: ReferenceSort | undefined;
+  order: SortOrder;
+  onSort: (by: ReferenceSort) => void;
+}) {
+  const head = (by: ReferenceSort, label: string, className?: string) => (
+    <SortTh
+      label={label}
+      className={className}
+      direction={sort === by ? order : null}
+      onSort={() => onSort(by)}
+    />
+  );
   return (
     <Table>
       <Thead>
         <Tr>
-          <Th>Reference</Th>
-          <Th className="text-right">As primary</Th>
-          <Th className="text-right">As secondary</Th>
-          <Th>Year</Th>
+          {head('reference', 'Reference')}
+          {head('primary', 'As primary', 'text-right')}
+          {head('secondary', 'As secondary', 'text-right')}
+          {head('year', 'Year')}
           <Th>DOI / ISBN</Th>
         </Tr>
       </Thead>

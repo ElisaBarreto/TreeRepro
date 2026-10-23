@@ -125,7 +125,13 @@ describe('RFC-60 R6 datasetKeys', () => {
     expect(datasetKeys.speciesTraits('x', false)).toEqual(['species', 'x', 'traits', false]);
     expect(datasetKeys.speciesTraits('x', true)).toEqual(['species', 'x', 'traits', true]);
     expect(datasetKeys.families).toEqual(['families']);
-    expect(datasetKeys.importRejects('b')).toEqual(['imports', 'b', 'rejects']);
+    // The rejects' sort is part of the key, so a new order starts over at page 1.
+    expect(datasetKeys.importRejects('b', { sort: 'reason' })).toEqual([
+      'imports',
+      'b',
+      'rejects',
+      { sort: 'reason' },
+    ]);
     expect(datasetKeys.imports({ kind: 'species_status' })).toEqual([
       'imports',
       { kind: 'species_status' },

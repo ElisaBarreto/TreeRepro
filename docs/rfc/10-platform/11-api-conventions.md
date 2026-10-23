@@ -21,6 +21,7 @@ One shape for every request and response so that the web client, tests and futur
 - **R7** Request bodies are JSON sent with `Content-Type: application/json`. A body with any other content type is rejected with 400 `VALIDATION_FAILED` and a single detail `{ "path": "", "message": "Expected application/json" }`; malformed JSON answers 400 `VALIDATION_INVALID_JSON`.
 - **R8** An unknown route answers 404 `NOT_FOUND` using the error envelope.
 - **R9** JSON fields are camelCase. Timestamps are ISO 8601 strings in UTC. Identifiers are UUID strings.
+- **R10** A list that sorts takes `sort` (one of the column keys its RFC names) and `order` (`asc` | `desc`, default `asc` unless its RFC names another default). Rows are ordered by that column, then by `id`, both in `order`; an empty value sorts as the lowest (first ascending). Without `sort`, the list keeps the default order its RFC names. The cursor carries the sort and order it was minted under; a cursor minted under another answers 400 `VALIDATION_FAILED` with path `cursor`.
 
 ## Open questions
 
@@ -33,3 +34,4 @@ None.
 - 2026-09-20 — R2 names the contracts schemas of the two envelopes and of the `{ status: "ok" }` acknowledgement, and records that the API never answers 204 (issue #116).
 - 2026-09-13 — R2: file downloads (RFC-66).
 - 2026-09-13 — R5: applies outside `/api` too (issue #14).
+- 2026-10-23 — R10: sortable lists, `sort` and `order` with a cursor tied to both (epic #318).

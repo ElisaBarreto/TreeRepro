@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contracts';
+import type { SortOrder, SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contracts';
 import { useId } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
 import { listPlots, plotKeys } from '../../api/plots.ts';
@@ -24,6 +24,8 @@ export interface SpeciesSearchValue {
   traitId?: string;
   traitData?: TraitDataMode;
   sort?: SpeciesSort;
+  /** The table headers' direction (RFC-60 R6, RFC-13 R13). */
+  order?: SortOrder;
 }
 
 /**
@@ -310,11 +312,17 @@ export function SpeciesSearchForm({
                 // `name` is the API's default order; leaving it off keeps
                 // the URL to the filters that actually narrow the list.
                 sort: event.target.value === 'completeness' ? 'completeness' : undefined,
+                order: undefined,
               })
             }
           >
             <option value="name">Name</option>
             <option value="completeness">Most incomplete first</option>
+            {/* A table header chose another column: named, so the select
+                does not claim the list is in name order. */}
+            {value.sort && value.sort !== 'name' && value.sort !== 'completeness' ? (
+              <option value={value.sort}>The {value.sort} column</option>
+            ) : null}
           </Select>
         </Field>
       </div>

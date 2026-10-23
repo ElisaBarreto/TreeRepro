@@ -43,6 +43,8 @@ export function referenceRoutes(ctx: AuthContext) {
           kind: q.kind,
           traitId: q.traitId,
           categoryKey: q.categoryKey,
+          sort: q.sort,
+          order: q.order,
         });
         return c.json({ data, meta: { nextCursor } });
       },

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { cursorQuerySchema } from './pagination.ts';
+import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 import { plotRefSchema, SPECIES_SCOPES } from './plots.ts';
 
 /** @rfc RFC-60 R1, R3 */
@@ -138,8 +138,19 @@ export const taxonRefSchema = z.strictObject({ id: z.uuid(), name: z.string() })
 export const TRAIT_DATA_MODES = ['with', 'missing'] as const;
 export type TraitDataMode = (typeof TRAIT_DATA_MODES)[number];
 
-/** `completeness` orders by `trait_count asc, canonical_name asc, id asc`. @rfc RFC-60 R6 */
-export const SPECIES_SORTS = ['name', 'completeness'] as const;
+/**
+ * `completeness` orders by `trait_count asc, canonical_name asc, id asc`; the
+ * others by their column in `order` (RFC-11 R10); `records` needs `traitId`.
+ * @rfc RFC-60 R6
+ */
+export const SPECIES_SORTS = [
+  'name',
+  'completeness',
+  'family',
+  'genus',
+  'traits',
+  'records',
+] as const;
 export type SpeciesSort = (typeof SPECIES_SORTS)[number];
 
 /**
@@ -163,6 +174,7 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   traitId: z.uuid().optional(),
   traitData: z.enum(TRAIT_DATA_MODES).optional(),
   sort: z.enum(SPECIES_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
 
 /**
@@ -298,8 +310,20 @@ export const referenceDetailSchema = referenceSchema.extend({
   ),
 });
 
+/**
+ * The references list's sorts (RFC-61 R4, RFC-11 R10): `usage` (the
+ * default, most used first), `reference` (the short citation, else the
+ * title, else the key), `primary`, `secondary` and `year`.
+ * @rfc RFC-61 R4
+ */
+export const REFERENCE_SORTS = ['usage', 'reference', 'primary', 'secondary', 'year'] as const;
+/** @rfc RFC-61 R4 */
+export type ReferenceSort = (typeof REFERENCE_SORTS)[number];
+
 /** @rfc RFC-61 R4 */
 export const listReferencesQuerySchema = cursorQuerySchema.extend({
+  sort: z.enum(REFERENCE_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
   q: searchTermSchema.optional(),
   kind: z.enum([...REFERENCE_KINDS, 'all']).optional(),
   traitId: z.uuid().optional(),
@@ -407,11 +431,6 @@ export const SUMMARY_BASES = [
   'single_bound',
   'none',
 ] as const;
-
-/** @rfc RFC-63 R9 */
-export const SORT_ORDERS = ['asc', 'desc'] as const;
-/** @rfc RFC-63 R9 */
-export type SortOrder = (typeof SORT_ORDERS)[number];
 
 /**
  * A species' summary of a quantitative trait (RFC-77 R5): the median of
@@ -762,8 +781,37 @@ export const importRejectSchema = z.strictObject({
 });
 
 /** @rfc RFC-68 R7 */
+/** The import batches list's sorts (RFC-64 R11). @rfc RFC-64 R11 */
+export const IMPORT_SORTS = [
+  'started',
+  'file',
+  'kind',
+  'status',
+  'total',
+  'inserted',
+  'duplicate',
+  'alreadyImported',
+  'rejected',
+  'pending',
+] as const;
+/** @rfc RFC-64 R11 */
+export type ImportSort = (typeof IMPORT_SORTS)[number];
+/** The rejects list's sorts (RFC-64 R11). @rfc RFC-64 R11 */
+export const IMPORT_REJECT_SORTS = ['row', 'reason'] as const;
+/** @rfc RFC-64 R11 */
+export type ImportRejectSort = (typeof IMPORT_REJECT_SORTS)[number];
+
+/** @rfc RFC-64 R11 */
 export const listImportsQuerySchema = cursorQuerySchema.extend({
   kind: z.enum(IMPORT_BATCH_KINDS).optional(),
+  sort: z.enum(IMPORT_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
+});
+
+/** @rfc RFC-64 R11 */
+export const listImportRejectsQuerySchema = cursorQuerySchema.extend({
+  sort: z.enum(IMPORT_REJECT_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
 
 /** `all` is the whole dataset (the default); `platform` keeps the `TR_` records. @rfc RFC-66 R9 */
