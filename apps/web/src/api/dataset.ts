@@ -174,6 +174,7 @@ export function fetchTraitSpecies(
     genusId?: string;
     scope?: 'plots' | 'all';
     plotId?: string;
+    levelId?: string;
     cursor?: string;
     limit?: number;
   },

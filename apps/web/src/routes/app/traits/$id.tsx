@@ -4,7 +4,8 @@ import { enumParam, textParam, uuidParam } from '../../../lib/search-params.ts';
 import { TraitPage, type TraitSpeciesSearch } from '../../../pages/dataset/TraitPage.tsx';
 
 /**
- * Which tab is open and the taxonomy filters both tables share (RFC-62 R8),
+ * Which tab is open, the taxonomy filters both tables share and the state the
+ * with-data table is narrowed to (RFC-62 R8),
  * every key answered so nothing unvalidated reaches a control or the API.
  */
 function validateSearch(search: Record<string, unknown>): TraitSpeciesSearch {
@@ -13,6 +14,7 @@ function validateSearch(search: Record<string, unknown>): TraitSpeciesSearch {
     q: textParam(search.q, 100),
     familyId: uuidParam(search.familyId),
     genusId: uuidParam(search.genusId),
+    level: uuidParam(search.level),
   };
 }
 

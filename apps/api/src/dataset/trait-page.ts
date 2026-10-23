@@ -9,6 +9,7 @@ import { eq, sql } from 'drizzle-orm';
 import { globalSpeciesVisible, levelVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
+import { AppError } from '../http/errors.ts';
 import { cachedJson } from '../redis/cache.ts';
 import type { Redis } from '../redis/client.ts';
 import { validatedPairsSql } from './coverage.ts';
@@ -223,6 +224,8 @@ export interface TraitSpeciesInput {
   scope?: SpeciesScope;
   plotId?: string;
   viewerPlotIds?: string[];
+  /** A level of this categorical trait, with `mode=with` only (issue #309). */
+  levelId?: string;
   cursor?: string;
   limit: number;
 }
@@ -365,6 +368,22 @@ export async function listTraitSpecies(
   input: TraitSpeciesInput,
 ): Promise<{ data: TraitSpeciesItem[]; nextCursor: string | null }> {
   const trait = await requireTrait(db, visibility, traitId);
+  if (input.levelId !== undefined) {
+    const [level] =
+      input.mode === 'with' && trait.valueType === 'categorical'
+        ? ((await db.execute(sql`select 1 from trait_levels l
+            where l.id = ${input.levelId}::uuid and l.trait_id = ${traitId}::uuid
+              and ${levelVisible(visibility, sql`l.active`)}`)) as unknown as unknown[])
+        : [];
+    if (!level) {
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+        {
+          path: 'levelId',
+          message: 'Not a visible level of this categorical trait, or mode is not with',
+        },
+      ]);
+    }
+  }
   const { data, nextCursor } = await searchSpecies(db, visibility, {
     q: input.q,
     familyId: input.familyId,
@@ -374,6 +393,7 @@ export async function listTraitSpecies(
     viewerPlotIds: input.viewerPlotIds,
     traitId,
     traitData: input.mode,
+    traitLevelId: input.levelId,
     cursor: input.cursor,
     limit: input.limit,
   });

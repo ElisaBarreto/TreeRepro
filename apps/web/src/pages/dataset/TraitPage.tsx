@@ -12,7 +12,15 @@ import {
 import { TraitSpeciesTable } from '../../components/dataset/TraitSpeciesTable.tsx';
 import { MapFigure } from '../../components/maps/MapFigure.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
-import { Alert, Badge, Chip, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import {
+  Alert,
+  Badge,
+  Chip,
+  EmptyState,
+  Field,
+  PageHeader,
+  Select,
+} from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import {
   fieldMeanParts,
@@ -37,8 +45,9 @@ const TAB_SELECTED = 'border-canopy-700 text-canopy-950';
 const TAB_IDLE = 'border-transparent text-mist-500 hover:text-canopy-800';
 
 /**
- * The trait page's own search params: which tab is open and the taxonomy
- * filters both tables share (RFC-62 R8).
+ * The trait page's own search params: which tab is open, the taxonomy
+ * filters both tables share and, on a categorical trait's with-data tab, the
+ * level (`level`) its species must have a record of (RFC-62 R8).
  * @rfc RFC-62 R8
  */
 export interface TraitSpeciesSearch {
@@ -46,6 +55,7 @@ export interface TraitSpeciesSearch {
   q?: string;
   familyId?: string;
   genusId?: string;
+  level?: string;
 }
 
 function errorMessage(error: unknown): string {
@@ -159,12 +169,26 @@ function Distribution({ trait }: { trait: TraitDetail }) {
           <ul aria-label="Level distribution" className="flex flex-wrap gap-2">
             {distribution.levels.map((entry) => (
               <li key={entry.level.id}>
-                <Chip>
-                  {humaniseKey(entry.level.key)}{' '}
-                  <span className="ml-1.5 text-mist-500">
-                    {species(entry.speciesCount)} · {records(entry.recordCount)}
-                  </span>
-                </Chip>
+                {/* Each chip filters the species list below to its level. */}
+                <Link
+                  to="/app/traits/$id"
+                  params={{ id: trait.id }}
+                  search={(prev: TraitSpeciesSearch) => ({
+                    ...prev,
+                    mode: undefined,
+                    level: entry.level.id,
+                  })}
+                  replace
+                  aria-label={`Show the species with ${humaniseKey(entry.level.key)}`}
+                  className="rounded-full hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+                >
+                  <Chip>
+                    {humaniseKey(entry.level.key)}{' '}
+                    <span className="ml-1.5 text-mist-500">
+                      {species(entry.speciesCount)} · {records(entry.recordCount)}
+                    </span>
+                  </Chip>
+                </Link>
               </li>
             ))}
           </ul>
@@ -242,6 +266,7 @@ function TraitSpecies({
   const mode: TraitSpeciesMode = search.mode ?? 'with';
   const panelId = useId();
   const tabPrefix = useId();
+  const stateId = useId();
   const tabId = (value: TraitSpeciesMode) => `${tabPrefix}-${value}`;
 
   const incoming: TaxonomyFiltersValue = {
@@ -273,14 +298,19 @@ function TraitSpecies({
       q: form.q.trim() || undefined,
       familyId: form.familyId,
       genusId: form.genusId,
+      level: search.level,
     });
-  }, [settled, formKey, seen, form, search.mode, onSearchChange]);
+  }, [settled, formKey, seen, form, search.mode, search.level, onSearchChange]);
 
+  // A state narrows the with-data tab only: a species missing the trait has none.
+  const levels = 'levels' in trait.distribution ? trait.distribution.levels : [];
+  const level = mode === 'with' ? search.level : undefined;
   const params = {
     mode,
     q: term.length >= 2 ? term : undefined,
     familyId: form.familyId,
     genusId: form.genusId,
+    levelId: level,
   };
   const list = usePagedList(datasetKeys.traitSpecies(trait.id, params), (cursor, limit) =>
     fetchTraitSpecies(trait.id, { ...params, cursor, limit }),
@@ -289,7 +319,11 @@ function TraitSpecies({
   function select(next: TraitSpeciesMode) {
     // `with` is the API's default mode; leaving it off keeps the URL to what
     // actually narrows the page.
-    onSearchChange({ ...search, mode: next === 'with' ? undefined : next });
+    onSearchChange({
+      ...search,
+      mode: next === 'with' ? undefined : next,
+      level: next === 'with' ? search.level : undefined,
+    });
   }
 
   return (
@@ -331,6 +365,26 @@ function TraitSpecies({
         className="flex flex-col gap-4"
       >
         <TaxonomyFilters value={form} onChange={setForm} />
+        {mode === 'with' && levels.length > 0 ? (
+          <div className="max-w-xs">
+            <Field id={stateId} label="State">
+              <Select
+                id={stateId}
+                value={level ?? ''}
+                onChange={(event) =>
+                  onSearchChange({ ...search, level: event.target.value || undefined })
+                }
+              >
+                <option value="">All states</option>
+                {levels.map((entry) => (
+                  <option key={entry.level.id} value={entry.level.id}>
+                    {humaniseKey(entry.level.key)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+        ) : null}
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading && !list.error ? (
           <p className="text-body text-mist-500">Loading species…</p>
