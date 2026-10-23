@@ -4,11 +4,14 @@ import {
   listEnvelopeSchema,
   type Plot,
   type PlotDetail,
+  type PlotSort,
   type PlotSpeciesBody,
   type PlotUser,
+  type PlotUserSort,
   plotDetailSchema,
   plotSchema,
   plotUserSchema,
+  type SortOrder,
   type SpeciesListItem,
   speciesListItemSchema,
   type UpdatePlotBody,
@@ -32,6 +35,8 @@ export const plotKeys = {
 /** @rfc RFC-67 R3 */
 export function listPlots(params: {
   q?: string;
+  sort?: PlotSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }): Promise<Page<Plot>> {
@@ -65,7 +70,13 @@ export async function fetchPlot(id: string): Promise<PlotDetail> {
 /** @rfc RFC-67 R4 */
 export function fetchPlotSpecies(
   id: string,
-  params: { q?: string; cursor?: string; limit?: number },
+  params: {
+    q?: string;
+    sort?: 'name' | 'family';
+    order?: SortOrder;
+    cursor?: string;
+    limit?: number;
+  },
 ): Promise<Page<SpeciesListItem>> {
   return apiFetch(
     withQuery(`/plots/${id}/species`, params),
@@ -76,7 +87,7 @@ export function fetchPlotSpecies(
 /** @rfc RFC-67 R4 */
 export function fetchPlotUsers(
   id: string,
-  params: { cursor?: string; limit?: number },
+  params: { sort?: PlotUserSort; order?: SortOrder; cursor?: string; limit?: number },
 ): Promise<Page<PlotUser>> {
   return apiFetch(withQuery(`/plots/${id}/users`, params), listEnvelopeSchema(plotUserSchema));
 }

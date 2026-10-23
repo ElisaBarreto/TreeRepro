@@ -26,6 +26,8 @@ export function adminAuditRoutes(ctx: AuthContext) {
         action: q.action,
         from: q.from ? new Date(q.from) : undefined,
         to: q.to ? new Date(q.to) : undefined,
+        sort: q.sort,
+        order: q.order,
         cursor: q.cursor,
         limit: q.limit,
       });

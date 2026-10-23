@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { AUDIT_ACTIONS, type AuditLogEntry } from '@treerepro/contracts';
+import {
+  AUDIT_ACTIONS,
+  type AuditLogEntry,
+  type AuditSort,
+  type SortOrder,
+} from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
 import { z } from 'zod';
 import { adminKeys, listUsers, queryAudit } from '../../api/admin.ts';
@@ -12,6 +17,7 @@ import {
   Input,
   PageHeader,
   Select,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -23,6 +29,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, truncate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { useServerSort } from '../../lib/use-sort.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 const AGENT_MAX = 40;
@@ -78,8 +85,10 @@ export function AuditPage() {
     to?: string;
     range?: string;
   }>({});
-  const list = usePagedList(adminKeys.audit({ ...filters }), (cursor, limit) =>
-    queryAudit({ ...filters, cursor, limit }),
+  // Newest first until a header is clicked (RFC-51 R1, RFC-13 R13).
+  const sort = useServerSort<AuditSort>({ sort: 'at', order: 'desc' });
+  const list = usePagedList(adminKeys.audit({ ...filters, ...sort.params }), (cursor, limit) =>
+    queryAudit({ ...filters, ...sort.params, cursor, limit }),
   );
   const canReadUsers = hasPermission(me, 'users.read');
   const users = useQuery({
@@ -177,21 +186,31 @@ export function AuditPage() {
         {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No entries match." />
         ) : null}
-        {list.items.length > 0 ? <AuditTable items={list.items} names={names} /> : null}
+        {list.items.length > 0 ? (
+          <AuditTable items={list.items} names={names} header={sort.header} />
+        ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
     </>
   );
 }
 
-function AuditTable({ items, names }: { items: AuditLogEntry[]; names: Map<string, string> }) {
+function AuditTable({
+  items,
+  names,
+  header,
+}: {
+  items: AuditLogEntry[];
+  names: Map<string, string>;
+  header: (by: AuditSort) => { direction: SortOrder | null; onSort: () => void };
+}) {
   return (
     <Table>
       <Thead>
         <Tr>
-          <Th>At (UTC)</Th>
+          <SortTh label="At (UTC)" {...header('at')} />
           <Th>Actor</Th>
-          <Th>Action</Th>
+          <SortTh label="Action" {...header('action')} />
           <Th>Target</Th>
           <Th>IP</Th>
           <Th>User agent</Th>

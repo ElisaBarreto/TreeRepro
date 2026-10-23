@@ -1,5 +1,6 @@
 import {
   type AuditLogEntry,
+  type AuditSort,
   auditLogEntrySchema,
   type CreateRoleBody,
   type CreateUserBody,
@@ -14,10 +15,12 @@ import {
   roleSchema,
   type SessionSummary,
   type SetUserPlotsBody,
+  type SortOrder,
   sessionSummarySchema,
   type UpdateRoleBody,
   type UpdateUserBody,
   type User,
+  type UserSort,
   type UserStatus,
   userSchema,
 } from '@treerepro/contracts';
@@ -44,6 +47,8 @@ export const adminKeys = {
 /** @rfc RFC-50 R2 */
 export function listUsers(params: {
   status?: UserStatus;
+  sort?: UserSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }): Promise<Page<User>> {
@@ -140,6 +145,8 @@ export function queryAudit(params: {
   action?: string;
   from?: string;
   to?: string;
+  sort?: AuditSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }): Promise<Page<AuditLogEntry>> {

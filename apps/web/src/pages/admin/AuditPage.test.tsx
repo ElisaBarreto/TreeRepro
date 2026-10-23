@@ -69,6 +69,17 @@ async function openPage() {
 }
 
 describe('RFC-13 R2, RFC-51 R1 AuditPage', () => {
+  it('RFC-13 R13 the Action header sorts the log through the API', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    await openPage();
+    await userEvent.click(await screen.findByRole('button', { name: /^Action/ }));
+    await waitFor(() =>
+      expect(admin.queryAudit).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'action', order: 'asc' }),
+      ),
+    );
+  });
+
   it('lists entries newest first with actor names, targets, agents and metadata', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     await openPage();
@@ -77,7 +88,7 @@ describe('RFC-13 R2, RFC-51 R1 AuditPage', () => {
     expect(
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
-        .map((th) => th.textContent),
+        .map((th) => th.textContent?.replace(/[↕↑↓]/, '')),
     ).toEqual(['At (UTC)', 'Actor', 'Action', 'Target', 'IP', 'User agent', 'Details']);
     expect(admin.queryAudit).toHaveBeenCalledWith({
       actor: undefined,

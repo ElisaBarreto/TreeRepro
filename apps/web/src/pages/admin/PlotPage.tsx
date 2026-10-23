@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import type { PlotUserSort } from '@treerepro/contracts';
 import { useState } from 'react';
 import { fetchPlot, fetchPlotUsers, plotKeys } from '../../api/plots.ts';
 import { PlotDialog } from '../../components/admin/PlotDialog.tsx';
@@ -14,6 +15,7 @@ import {
   EmptyState,
   PageHeader,
   Section,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -25,6 +27,7 @@ import { detailErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { useServerSort } from '../../lib/use-sort.ts';
 
 /**
  * Field plot detail page: metadata, edit plot dialog, species section, users
@@ -54,9 +57,11 @@ export function PlotPage({ id }: { id: string }) {
     plotQuery.data ? [{ label: `${plotQuery.data.code} — ${plotQuery.data.name}` }] : [],
   );
 
+  // By name until a header is clicked (RFC-67 R4, RFC-13 R13).
+  const userSort = useServerSort<PlotUserSort>({ sort: 'name', order: 'asc' });
   const usersList = usePagedList(
-    plotKeys.users(id, {}),
-    (cursor, limit) => fetchPlotUsers(id, { cursor, limit }),
+    plotKeys.users(id, userSort.params),
+    (cursor, limit) => fetchPlotUsers(id, { ...userSort.params, cursor, limit }),
     { enabled: canManage },
   );
 
@@ -116,8 +121,8 @@ export function PlotPage({ id }: { id: string }) {
                 <Table>
                   <Thead>
                     <Tr>
-                      <Th>Name</Th>
-                      <Th>Status</Th>
+                      <SortTh label="Name" {...userSort.header('name')} />
+                      <SortTh label="Status" {...userSort.header('status')} />
                       <Th>Scope</Th>
                     </Tr>
                   </Thead>

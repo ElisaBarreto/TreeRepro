@@ -1,4 +1,4 @@
-openapi-sha256: 3394396069e6d653a3bfdf2fe80a9c90c4674e79dc65d800b5f869916cf01874
+openapi-sha256: cd6597bce518a08086890fffe8164f4d0600e1edc04490207508584cd47bdefe
 
 # TreeRepro API guide
 
@@ -411,6 +411,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-10-23 — Sorted admin lists (RFC-11 R10; issue #322): `GET /api/admin/users` takes `sort=created|name|status` and `order` (default: newest first; `name` is decrypted and sorted in the process); `GET /api/plots` takes `sort=code|name|country|biome|species` and `order` (default: by code); `GET /api/plots/:id/species` takes `sort=name|family` and `order`; `GET /api/plots/:id/users` takes `sort=name|status` and `order` (its cursor is no longer a bare user id); `GET /api/admin/audit` takes `sort=at|action` and `order` (default: newest first). (openapi cd6597bce518)
 - 2026-10-23 — Sorted curation lists (RFC-11 R10; issue #321): `GET /api/records/pending` takes `sort=count|value|kind` and `order` (default: most records first, then value); `GET /api/records/disputed` takes `sort=date|species|trait` and `order` (default: newest first); `GET /api/species/proposals` and `GET /api/me/proposals` take `sort=proposed|name|status` and `order` (default: newest first). (openapi 3394396069e6)
 - 2026-10-23 — Sorted lists (RFC-11 R10; epic #318, issue #320): `GET /api/species` takes `sort=family|genus|traits|records` (beside `name` and `completeness`; `records` needs `traitId`) and `order=asc|desc`; `GET /api/references` takes `sort=usage|reference|primary|secondary|year` and `order` (default: most used first); `GET /api/imports` takes `sort=started|file|kind|status|total|inserted|duplicate|alreadyImported|rejected|pending` and `order` (default: newest first); `GET /api/imports/:id/rejects` takes `sort=row|reason` and `order`. A cursor carries the sort and order it was minted under and is refused under another. (openapi 24b6766cee4d)
 - 2026-10-23 — `GET /api/traits/:id/species` (RFC-62 R8; issue #316): for a quantitative trait, `summary` is `{ continuous: { median, summaryBasis, mean, meanBasis, sd, min, max, nRecords, nSources, outlierFlags, unit } }` — the RFC-77 species summary, the same object as `continuous` in `GET /api/species/:id/traits` — instead of `{ numeric: [{ unit, means }] }`. New `sort=name|family|records` and `order=asc|desc`; a cursor is tied to the sort and order it was minted under. (openapi b49939b168de)

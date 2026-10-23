@@ -1,6 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { USER_STATUSES, type User, type UserStatus } from '@treerepro/contracts';
+import {
+  type SortOrder,
+  USER_STATUSES,
+  type User,
+  type UserSort,
+  type UserStatus,
+} from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { adminKeys, listUsers } from '../../api/admin.ts';
 import { InviteUserDialog } from '../../components/admin/InviteUserDialog.tsx';
@@ -13,6 +19,7 @@ import {
   Field,
   PageHeader,
   Select,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -24,6 +31,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { useServerSort } from '../../lib/use-sort.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -43,7 +51,9 @@ export function UsersPage() {
   const [status, setStatus] = useState<UserStatus | ''>('');
   const [inviting, setInviting] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
-  const filter = { status: status || undefined };
+  // Newest first until a header is clicked (RFC-50 R2, RFC-13 R13).
+  const sort = useServerSort<UserSort>({ sort: 'created', order: 'desc' });
+  const filter = { status: status || undefined, ...sort.params };
   const list = usePagedList(adminKeys.users(filter), (cursor, limit) =>
     listUsers({ ...filter, cursor, limit }),
   );
@@ -82,7 +92,7 @@ export function UsersPage() {
         {!list.isLoading && !list.error && list.items.length === 0 ? (
           <EmptyState title="No users match." />
         ) : null}
-        {list.items.length > 0 ? <UserTable items={list.items} /> : null}
+        {list.items.length > 0 ? <UserTable items={list.items} header={sort.header} /> : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>
       {inviting ? (
@@ -106,16 +116,23 @@ export function UsersPage() {
   );
 }
 
-function UserTable({ items }: { items: User[] }) {
+function UserTable({
+  items,
+  header,
+}: {
+  items: User[];
+  header: (by: UserSort) => { direction: SortOrder | null; onSort: () => void };
+}) {
   return (
     <Table>
       <Thead>
         <Tr>
-          <Th>Name</Th>
+          <SortTh label="Name" {...header('name')} />
+          {/* Encrypted at rest (RFC-40): not a sort. */}
           <Th>Email</Th>
-          <Th>Status</Th>
+          <SortTh label="Status" {...header('status')} />
           <Th>Roles</Th>
-          <Th>Created</Th>
+          <SortTh label="Created" {...header('created')} />
         </Tr>
       </Thead>
       <Tbody>

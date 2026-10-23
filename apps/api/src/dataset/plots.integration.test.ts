@@ -122,6 +122,24 @@ describe('RFC-67 R3, R5 plots service', () => {
     });
     expect(page2.data).toHaveLength(1);
     expect(page2.data[0]?.id).toBe(p2.id);
+
+    // RFC-11 R10: by species count, most first, paging the order whole.
+    const bySpecies = await listPlots(t.db, {
+      q: `list-${k}`,
+      sort: 'species',
+      order: 'desc',
+      limit: 1,
+    });
+    expect(bySpecies.data[0]?.id).toBe(p1.id);
+    const bySpecies2 = await listPlots(t.db, {
+      q: `list-${k}`,
+      sort: 'species',
+      order: 'desc',
+      cursor: bySpecies.nextCursor ?? undefined,
+      limit: 1,
+    });
+    expect(bySpecies2.data.map((p) => p.id)).toEqual([p2.id]);
+    expect(bySpecies2.nextCursor).toBeNull();
   });
 
   it('updatePlot audits changed fields, throws on collision or unknown, and records nothing if no change', async () => {
@@ -267,6 +285,17 @@ describe('RFC-67 R3, R5 plots service', () => {
       { id: u2.id, name: 'Aaron Contributor', restricted: true, status: 'active' },
       { id: u1.id, name: 'Zara Researcher', restricted: false, status: 'active' },
     ]);
+
+    // RFC-11 R10: the other way round, and a page of one walks it whole.
+    const first = await listPlotUsers(t.db, plot.id, { order: 'desc', limit: 1 });
+    expect(first.data.map((u) => u.id)).toEqual([u1.id]);
+    const second = await listPlotUsers(t.db, plot.id, {
+      order: 'desc',
+      limit: 1,
+      cursor: first.nextCursor ?? undefined,
+    });
+    expect(second.data.map((u) => u.id)).toEqual([u2.id]);
+    expect(second.nextCursor).toBeNull();
 
     // Unknown plot throws PLOT_NOT_FOUND
     await expect(

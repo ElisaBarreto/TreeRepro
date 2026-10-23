@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { emailSchema, USER_STATUSES } from './auth.ts';
-import { cursorQuerySchema } from './pagination.ts';
+import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 import { plotRefSchema } from './plots.ts';
 
 /** @rfc RFC-50 R1 */
@@ -33,7 +33,12 @@ export const userIdParamSchema = z.strictObject({ id: z.uuid() });
 /** @rfc RFC-50 R2 */
 export const listUsersQuerySchema = cursorQuerySchema.extend({
   status: z.enum(USER_STATUSES).optional(),
+  sort: z.enum(['created', 'name', 'status']).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
+
+/** The users list's sorts (RFC-50 R2). @rfc RFC-50 R2 */
+export type UserSort = NonNullable<z.infer<typeof listUsersQuerySchema>['sort']>;
 
 /** @rfc RFC-50 R3 */
 export const createUserBodySchema = z.strictObject({
