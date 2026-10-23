@@ -6,9 +6,10 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { TraitSpeciesItem, TraitSpeciesMode } from '@treerepro/contracts';
 import type { ReactElement } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   TRAIT_SPECIES_MISSING,
   TRAIT_SPECIES_UNDECIDED,
@@ -66,52 +67,30 @@ describe('RFC-62 R8 TraitSpeciesTable in `with` mode', () => {
     expect(row).toHaveLength(3);
   });
 
-  it('RFC-62 R8 names each field mean with its unit, and reads it bare without one (issues #234, #258)', async () => {
-    const first = await renderTable([TRAIT_SPECIES_UNDECIDED], 'with');
-    expect(cells(first.rows[1] as HTMLElement)[2]).toHaveTextContent(
-      'mean of min 0.5 mg · mean of max 3 mg',
-    );
-    first.unmount();
-
-    const second = await renderTable(
-      [
-        {
-          ...TRAIT_SPECIES_UNDECIDED,
-          summary: {
-            numeric: [
-              { unit: null, means: { single: null, mean: null, median: null, min: 0.5, max: 3 } },
-            ],
-          },
-        },
-      ],
-      'with',
-    );
-    // The count and the summary are stacked spans, so the cell's own text is
-    // the two run together: one record, then its means in nothing named.
-    expect(cells(second.rows[1] as HTMLElement)[2]?.textContent).toBe(
-      '1mean of min 0.5 · mean of max 3',
-    );
+  it('RFC-62 R8 shows the RFC-77 summary: the median and its basis, then mean, range, records and sources (issue #316)', async () => {
+    const { rows } = await renderTable([TRAIT_SPECIES_UNDECIDED], 'with');
+    const cell = cells(rows[1] as HTMLElement)[2] as HTMLElement;
+    expect(within(cell).getByText('Median 1.75 mg (midpoint of the range)')).toBeInTheDocument();
+    expect(within(cell).getByText('mean 1.75 · 0.5–3 · 1 record · 1 source')).toBeInTheDocument();
   });
 
-  it('RFC-62 R8 puts each unit on a line of its own, never averaged together (issue #258)', async () => {
-    const only = { single: null, mean: null, median: null, min: null, max: null };
-    const { rows } = await renderTable(
-      [
-        {
-          ...TRAIT_SPECIES_UNDECIDED,
-          summary: {
-            numeric: [
-              { unit: 'rgb_0_255', means: { ...only, single: 150 } },
-              { unit: 'proportion_0_1', means: { ...only, single: 0.2 } },
-            ],
-          },
-        },
-      ],
-      'with',
+  it('RFC-62 R8 the Species, Family and Records headers sort; Records only with data (issue #316)', async () => {
+    const onSort = vi.fn();
+    renderInRouter(
+      <TraitSpeciesTable
+        items={[TRAIT_SPECIES_WITH_DATA]}
+        mode="with"
+        sort={{ by: 'records', order: 'desc', onSort }}
+      />,
     );
-    const cell = cells(rows[1] as HTMLElement)[2] as HTMLElement;
-    expect(within(cell).getByText('mean of single values 150 rgb_0_255')).toBeInTheDocument();
-    expect(within(cell).getByText('mean of single values 0.2 proportion_0_1')).toBeInTheDocument();
+    const records = await screen.findByRole('columnheader', { name: /Records/ });
+    expect(records).toHaveAttribute('aria-sort', 'descending');
+    expect(screen.getByRole('columnheader', { name: /Species/ })).toHaveAttribute(
+      'aria-sort',
+      'none',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Family/ }));
+    expect(onSort).toHaveBeenCalledWith('family');
   });
 
   it('counts and summaries are nullable on their own: neither hides the other', async () => {

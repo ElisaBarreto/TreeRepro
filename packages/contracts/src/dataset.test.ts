@@ -784,34 +784,44 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     ).toBe(true);
   });
 
-  it('summary is either levels or numeric, never both; recordCount is non-negative', () => {
-    const numericItem = {
+  it('summary is either levels or continuous, never both; recordCount is non-negative', () => {
+    const continuousItem = {
       ...ITEM_BASE,
       recordCount: 1,
       validated: false,
       summary: {
-        numeric: [{ unit: 'mm', means: { single: 2, mean: null, median: null, min: 1, max: 3 } }],
+        continuous: {
+          median: 2,
+          summaryBasis: 'median_of_source_medians' as const,
+          mean: 2,
+          meanBasis: 'central_values' as const,
+          sd: null,
+          min: 1,
+          max: 3,
+          nRecords: 1,
+          nSources: 1,
+          outlierFlags: [],
+          unit: 'mm',
+        },
       },
     };
-    expect(traitSpeciesItemSchema.parse(numericItem)).toEqual(numericItem);
-    // RFC-62 R8 (issue #258): one entry per unit, never a single object.
+    expect(traitSpeciesItemSchema.parse(continuousItem)).toEqual(continuousItem);
+    // RFC-62 R8 (issue #316): the per-field means are gone.
     expect(
       traitSpeciesItemSchema.safeParse({
-        ...numericItem,
-        summary: { numeric: numericItem.summary.numeric[0] },
+        ...continuousItem,
+        summary: {
+          numeric: [{ unit: 'mm', means: { single: 2, mean: null, median: null, min: 1, max: 3 } }],
+        },
       }).success,
     ).toBe(false);
     expect(
-      traitSpeciesItemSchema.safeParse({ ...numericItem, summary: { numeric: { min: 1, max: 3 } } })
-        .success,
-    ).toBe(false);
-    expect(
       traitSpeciesItemSchema.safeParse({
-        ...numericItem,
-        summary: { levels: [], ...numericItem.summary },
+        ...continuousItem,
+        summary: { levels: [], ...continuousItem.summary },
       }).success,
     ).toBe(false);
-    expect(traitSpeciesItemSchema.safeParse({ ...numericItem, recordCount: -1 }).success).toBe(
+    expect(traitSpeciesItemSchema.safeParse({ ...continuousItem, recordCount: -1 }).success).toBe(
       false,
     );
   });

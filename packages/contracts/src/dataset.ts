@@ -399,6 +399,50 @@ export const traitDetailSchema = traitSchema.extend({
   computedAt: z.iso.datetime(),
 });
 
+/** How a species summary's value was reached (RFC-77 R5). @rfc RFC-77 R5 */
+export const SUMMARY_BASES = [
+  'median_of_source_medians',
+  'central_values',
+  'range_midpoint',
+  'single_bound',
+  'none',
+] as const;
+
+/** @rfc RFC-63 R9 */
+export const SORT_ORDERS = ['asc', 'desc'] as const;
+/** @rfc RFC-63 R9 */
+export type SortOrder = (typeof SORT_ORDERS)[number];
+
+/**
+ * A species' summary of a quantitative trait (RFC-77 R5): the median of
+ * per-source medians and its basis, the weighted mean, sd, range, records,
+ * sources, outlier flags and the trait's unit. The species page's trait card
+ * and the trait page's species list both carry it.
+ * @rfc RFC-77 R5
+ * @rfc RFC-63 R10
+ * @rfc RFC-62 R8
+ */
+export const continuousSummarySchema = z.strictObject({
+  median: z.number().nullable(),
+  summaryBasis: z.enum(SUMMARY_BASES),
+  mean: z.number().nullable(),
+  meanBasis: z.enum(SUMMARY_BASES),
+  sd: z.number().nullable(),
+  min: z.number().nullable(),
+  max: z.number().nullable(),
+  nRecords: z.number().int().nonnegative(),
+  nSources: z.number().int().nonnegative(),
+  outlierFlags: z.array(z.enum(['unit_factor', 'trait_extreme'])),
+  unit: z.string().nullable(),
+});
+/** @rfc RFC-77 R5 */
+export type ContinuousSummary = z.infer<typeof continuousSummarySchema>;
+
+/** The orders of `GET /api/traits/:id/species` (RFC-62 R8). @rfc RFC-62 R8 */
+export const TRAIT_SPECIES_SORTS = ['name', 'family', 'records'] as const;
+/** @rfc RFC-62 R8 */
+export type TraitSpeciesSort = (typeof TRAIT_SPECIES_SORTS)[number];
+
 /** `mode=with` keeps species with a value on the trait; `missing` keeps the rest. @rfc RFC-62 R8 */
 export const TRAIT_SPECIES_MODES = ['with', 'missing'] as const;
 export type TraitSpeciesMode = (typeof TRAIT_SPECIES_MODES)[number];
@@ -412,6 +456,8 @@ export const listTraitSpeciesQuerySchema = cursorQuerySchema.extend({
   scope: z.enum(SPECIES_SCOPES).optional(),
   plotId: z.uuid().optional(),
   levelId: z.uuid().optional(),
+  sort: z.enum(TRAIT_SPECIES_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
 
 /**
@@ -432,7 +478,7 @@ export const traitSpeciesItemSchema = speciesListItemSchema.extend({
         levels: z.array(z.strictObject({ key: z.string(), count: z.number().int().nonnegative() })),
       }),
       z.strictObject({
-        numeric: z.array(z.strictObject({ unit: z.string().nullable(), means: fieldMeansSchema })),
+        continuous: continuousSummarySchema,
       }),
     ])
     .nullable(),
@@ -597,10 +643,6 @@ export const recordDetailSchema = recordSchema.extend({
 export const RECORD_SORTS = ['value', 'references', 'origin', 'added'] as const;
 /** @rfc RFC-63 R9 */
 export type RecordSort = (typeof RECORD_SORTS)[number];
-/** @rfc RFC-63 R9 */
-export const SORT_ORDERS = ['asc', 'desc'] as const;
-/** @rfc RFC-63 R9 */
-export type SortOrder = (typeof SORT_ORDERS)[number];
 
 /** @rfc RFC-63 R9 */
 export const listRecordsQuerySchema = cursorQuerySchema
@@ -627,15 +669,6 @@ export const harmonisationCountsSchema = z.strictObject({
   empty: z.number().int().nonnegative(),
 });
 
-/** How a species summary's value was reached (RFC-77 R5). @rfc RFC-77 R5 */
-export const SUMMARY_BASES = [
-  'median_of_source_medians',
-  'central_values',
-  'range_midpoint',
-  'single_bound',
-  'none',
-] as const;
-
 /** @rfc RFC-63 R10 */
 export const traitSummarySchema = z.strictObject({
   trait: traitRefSchema,
@@ -658,21 +691,7 @@ export const traitSummarySchema = z.strictObject({
     )
     .nullable(),
   /** The species summary of a quantitative trait (RFC-77 R5), live; null otherwise or when none. */
-  continuous: z
-    .strictObject({
-      median: z.number().nullable(),
-      summaryBasis: z.enum(SUMMARY_BASES),
-      mean: z.number().nullable(),
-      meanBasis: z.enum(SUMMARY_BASES),
-      sd: z.number().nullable(),
-      min: z.number().nullable(),
-      max: z.number().nullable(),
-      nRecords: z.number().int().nonnegative(),
-      nSources: z.number().int().nonnegative(),
-      outlierFlags: z.array(z.enum(['unit_factor', 'trait_extreme'])),
-      unit: z.string().nullable(),
-    })
-    .nullable(),
+  continuous: continuousSummarySchema.nullable(),
   /** The species summary of a categorical trait (RFC-77 R7), live; null otherwise or when none. */
   categorical: z
     .strictObject({

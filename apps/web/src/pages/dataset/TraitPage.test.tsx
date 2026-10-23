@@ -281,7 +281,8 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     expect(
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
-        .map((th) => th.textContent),
+        // Each header is a sort button whose arrow is decorative (issue #316).
+        .map((th) => th.textContent?.replace(/[↕↑↓]/, '')),
     ).toEqual(['Species', 'Family', 'Records']);
     const cells = within(rows[1] as HTMLElement).getAllByRole('cell');
     expect(
@@ -292,13 +293,13 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     expect(cells[2]).toHaveTextContent('dioecious 3 · hermaphrodite 1');
   });
 
-  it('prints the species field means with the unit (issue #234)', async () => {
+  it('prints the species RFC-77 summary with the unit (issue #316)', async () => {
     dataset.fetchTraitSpecies.mockResolvedValue(page([TRAIT_SPECIES_UNDECIDED]));
     await openPage(SEED_MASS_DETAIL);
     const cells = within((await screen.findAllByRole('row'))[1] as HTMLElement).getAllByRole(
       'cell',
     );
-    expect(cells[2]).toHaveTextContent('mean of min 0.5 mg · mean of max 3 mg');
+    expect(cells[2]).toHaveTextContent('Median 1.75 mg (midpoint of the range)');
   });
 
   it('counts and summaries are independent: no count still shows the summary, no summary just the count', async () => {
@@ -344,7 +345,7 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     expect(
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
-        .map((th) => th.textContent)
+        .map((th) => th.textContent?.replace(/[↕↑↓]/, ''))
         .slice(0, 2),
     ).toEqual(['Species', 'Family']);
     expect(
@@ -468,6 +469,32 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     await userEvent.click(await within(drawer).findByRole('button', { name: 'dioecious' }));
     expect(await screen.findByRole('dialog', { name: 'Record' })).toBeInTheDocument();
     expect(dataset.fetchRecord).toHaveBeenCalledWith(RECORD.id);
+  });
+
+  it('sorts the table from its headers: a new column ascending, the same one again descending (issue #316)', async () => {
+    const { router } = await openPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Records/ }));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(expect.objectContaining({ sort: 'records' })),
+    );
+    await waitFor(() =>
+      expect(dataset.fetchTraitSpecies).toHaveBeenLastCalledWith(
+        SEXUAL_SYSTEM_DETAIL.id,
+        expect.objectContaining({ sort: 'records' }),
+      ),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Records/ }));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ sort: 'records', order: 'desc' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(dataset.fetchTraitSpecies).toHaveBeenLastCalledWith(
+        SEXUAL_SYSTEM_DETAIL.id,
+        expect.objectContaining({ sort: 'records', order: 'desc' }),
+      ),
+    );
   });
 
   it('says so when a tab has no species, each in its own words', async () => {

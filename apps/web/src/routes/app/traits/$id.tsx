@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { TRAIT_SPECIES_MODES } from '@treerepro/contracts';
+import { SORT_ORDERS, TRAIT_SPECIES_MODES, TRAIT_SPECIES_SORTS } from '@treerepro/contracts';
 import { enumParam, textParam, uuidParam } from '../../../lib/search-params.ts';
 import { TraitPage, type TraitSpeciesSearch } from '../../../pages/dataset/TraitPage.tsx';
 
@@ -15,6 +15,8 @@ function validateSearch(search: Record<string, unknown>): TraitSpeciesSearch {
     familyId: uuidParam(search.familyId),
     genusId: uuidParam(search.genusId),
     level: uuidParam(search.level),
+    sort: enumParam(search.sort, TRAIT_SPECIES_SORTS),
+    order: enumParam(search.order, SORT_ORDERS),
   };
 }
 

@@ -2,6 +2,7 @@ import type {
   Genus,
   NameType,
   PlotRef,
+  SortOrder,
   Species,
   SpeciesListItem,
   SpeciesScope,
@@ -9,8 +10,20 @@ import type {
   SpeciesStatus,
   TaxonRef,
   TraitDataMode,
+  TraitSpeciesSort,
 } from '@treerepro/contracts';
-import { and, asc, count, countDistinct, eq, ilike, inArray, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  countDistinct,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -68,6 +81,44 @@ const isTraitCount = (part: string) => isDigits(part) && Number(part) <= 2_147_4
 const isTier = (part: string) => part === '0' || part === '1' || part === '2';
 
 /**
+ * A sort of RFC-62 R8 other than the species list's own two (name ascending,
+ * completeness): its key, its direction and the tag its cursor carries, so a
+ * cursor minted under one sort or order is refused under another. `null` for
+ * the species list's own sorts, which keep their cursors.
+ */
+interface KeyedSort {
+  tag: string;
+  key: SQL;
+  desc: boolean;
+  isKey: (part: string) => boolean;
+  cast: SQL;
+}
+
+function keyedSort(filters: SpeciesListFilters): KeyedSort | null {
+  const sort = filters.sort ?? 'name';
+  const order = filters.order ?? 'asc';
+  if (sort === 'completeness' || (sort === 'name' && order === 'asc')) return null;
+  if (sort === 'records' && !filters.traitId) {
+    throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+      { path: 'sort', message: 'Sorting by records needs a trait' },
+    ]);
+  }
+  const key =
+    sort === 'family'
+      ? sql`coalesce(${families.name}, '')`
+      : sort === 'records'
+        ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
+        : sql`${species.canonicalName}`;
+  return {
+    tag: `${sort}:${order}`,
+    key,
+    desc: order === 'desc',
+    isKey: sort === 'records' ? isTraitCount : () => true,
+    cast: sort === 'records' ? sql`::int` : sql``,
+  };
+}
+
+/**
  * The species list's cursor carries a leading tier key ahead of its ordering
  * keyset (RFC-60 R6): `[tier, name, id]` under `sort=name`, `[tier,
  * traitCount, name, id]` under `sort=completeness` — one part longer than
@@ -78,7 +129,25 @@ const isTier = (part: string) => part === '0' || part === '1' || part === '2';
  * @rfc RFC-60 R6
  * @rfc RFC-11 R6
  */
-function decodeSpeciesCursor(cursor: string, sort: SpeciesSort): { tier: string; predicate: SQL } {
+function decodeSpeciesCursor(
+  cursor: string,
+  sort: SpeciesListFilters['sort'],
+  keyed: KeyedSort | null,
+): { tier: string; predicate: SQL } {
+  if (keyed) {
+    const [tier, , key, name, id] = decodeCompositeCursor(cursor, 5, [
+      isTier,
+      (part) => part === keyed.tag,
+      keyed.isKey,
+      () => true,
+      isUuid,
+    ]) as [string, string, string, string, string];
+    const op = sql.raw(keyed.desc ? '<' : '>');
+    return {
+      tier,
+      predicate: sql`(${keyed.key}, ${species.canonicalName}, ${species.id}) ${op} (${key}${keyed.cast}, ${name}, ${id}::uuid)`,
+    };
+  }
   if (sort === 'completeness') {
     const [tier, traitCount, name, id] = decodeCompositeCursor(cursor, 4, [
       isTier,
@@ -196,7 +265,10 @@ export interface SpeciesListFilters {
   traitData?: TraitDataMode;
   /** With `traitId`: a harmonised, live record of this level (RFC-62 R8). The caller validates the level. */
   traitLevelId?: string;
-  sort?: SpeciesSort;
+  /** `family` and `records` are the trait page's (RFC-62 R8); `records` needs `traitId`. */
+  sort?: SpeciesSort | TraitSpeciesSort;
+  /** `asc` by default; `desc` under any sort but `completeness` (RFC-62 R8). */
+  order?: SortOrder;
   cursor?: string;
 }
 
@@ -365,7 +437,9 @@ export async function speciesListConditions(
   // decided and paged under — visibility, plot scope, status, the taxonomy
   // filters, the trait filters — but never `q` or the cursor.
   const sort = filters.sort ?? 'name';
-  const cursorInfo = filters.cursor ? decodeSpeciesCursor(filters.cursor, sort) : null;
+  const cursorInfo = filters.cursor
+    ? decodeSpeciesCursor(filters.cursor, sort, keyedSort(filters))
+    : null;
   let tier: 0 | 1 | 2 = 0;
   if (filters.q) {
     tier = cursorInfo
@@ -407,7 +481,8 @@ export async function searchSpecies(
   // R6) — no pattern is even built.
   const pattern = input.q && tier === 2 ? likePattern(input.q, 'substring') : undefined;
   // The same choice the cursor predicate made in `speciesListConditions`.
-  const sort: SpeciesSort = input.sort ?? 'name';
+  const sort = input.sort ?? 'name';
+  const keyed = keyedSort(input);
   // `null` unless a trait was named; the coverage row's `record_count`
   // otherwise, and 0 in missing mode — where no row exists by construction.
   const traitRecordCount = input.traitId
@@ -432,21 +507,30 @@ export async function searchSpecies(
       matchedName: matchedName.as('matched_name'),
       matchedNameType: matchedNameType.as('matched_name_type'),
       traitRecordCount: traitRecordCount.as('trait_record_count'),
+      sortKey: (keyed ? sql<string | number>`${keyed.key}` : sql<null>`null`).as('sort_key'),
     })
     .from(species)
     .leftJoin(genera, eq(genera.id, species.genusId))
     .leftJoin(families, eq(families.id, genera.familyId))
     .where(and(...conditions))
     .orderBy(
-      ...(sort === 'completeness'
-        ? [asc(species.traitCount), asc(species.canonicalName), asc(species.id)]
-        : [asc(species.canonicalName), asc(species.id)]),
+      ...(keyed
+        ? (keyed.desc ? [desc] : [asc]).flatMap((dir) => [
+            dir(keyed.key),
+            dir(species.canonicalName),
+            dir(species.id),
+          ])
+        : sort === 'completeness'
+          ? [asc(species.traitCount), asc(species.canonicalName), asc(species.id)]
+          : [asc(species.canonicalName), asc(species.id)]),
     )
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    sort === 'completeness'
-      ? encodeCompositeCursor([String(tier), String(r.traitCount), r.canonicalName, r.id])
-      : encodeCompositeCursor([String(tier), r.canonicalName, r.id]),
+    keyed
+      ? encodeCompositeCursor([String(tier), keyed.tag, String(r.sortKey), r.canonicalName, r.id])
+      : sort === 'completeness'
+        ? encodeCompositeCursor([String(tier), String(r.traitCount), r.canonicalName, r.id])
+        : encodeCompositeCursor([String(tier), r.canonicalName, r.id]),
   );
   return { data: page.map((r) => toListItem(r, visibility.review === true)), nextCursor };
 }

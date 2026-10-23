@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   addPlotSpecies,
   createAnnotation,
+  createFamily,
   createGenus,
   createImportBatch,
   createPlot,
@@ -912,7 +913,7 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     expect(data[0]).not.toHaveProperty('accepted');
   });
 
-  it('with: a quantitative species carries a mean per field (issue #234)', async () => {
+  it('with: a quantitative species carries its RFC-77 summary (issue #316)', async () => {
     const { user } = await createUser(t.db);
     const reference = await createReference(t.db);
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
@@ -927,77 +928,7 @@ describe('RFC-62 R8 listTraitSpecies', () => {
         referenceId: reference.id,
       });
     }
-
-    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
-      mode: 'with',
-      limit: 50,
-    });
-    expect(data[0]).toMatchObject({
-      id: one.id,
-      recordCount: 2,
-      validated: false,
-      summary: {
-        numeric: [
-          { unit: 'mm', means: { single: 4.5, mean: null, median: null, min: null, max: null } },
-        ],
-      },
-    });
-  });
-
-  it('RFC-62 R8 counts a study summary repeated on several records once (issue #257)', async () => {
-    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
-    const one = await createSpecies(t.db);
-    await repeatedStudySummary(t.db, trait.id, one.id);
-
-    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
-      mode: 'with',
-      limit: 50,
-    });
-    expect(data[0]).toMatchObject({
-      id: one.id,
-      recordCount: 4,
-      summary: {
-        numeric: [{ unit: 'mm', means: { single: 11, mean: 16, median: 15, min: 14, max: 18 } }],
-      },
-    });
-  });
-
-  it('RFC-62 R8 summarises a species once per unit, never across units (issue #258)', async () => {
-    const { trait, a } = await mixedUnits(t.db);
-    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
-      mode: 'with',
-      limit: 50,
-    });
-    expect(data.find((s) => s.id === a.id)).toMatchObject({
-      recordCount: 3,
-      summary: {
-        numeric: [
-          {
-            unit: 'rgb_0_255',
-            means: { single: 150, mean: null, median: null, min: null, max: null },
-          },
-          {
-            unit: 'proportion_0_1',
-            means: { single: 0.2, mean: null, median: null, min: null, max: null },
-          },
-        ],
-      },
-    });
-  });
-
-  it('RFC-62 R8 leaves a record whose unit needs checking out of a species numeric summary', async () => {
-    const { user } = await createUser(t.db);
-    const reference = await createReference(t.db);
-    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
-    const one = await createSpecies(t.db);
-    await record(t.db, {
-      actor: user,
-      speciesId: one.id,
-      traitId: trait.id,
-      valueText: '2',
-      numericValue: 2,
-      referenceId: reference.id,
-    });
+    // RFC-77 R4: a value whose unit needs checking is left out of the figures.
     await record(t.db, {
       actor: user,
       speciesId: one.id,
@@ -1014,16 +945,26 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     });
     expect(data[0]).toMatchObject({
       id: one.id,
-      recordCount: 2,
+      recordCount: 3,
+      validated: false,
       summary: {
-        numeric: [
-          { unit: 'mm', means: { single: 2, mean: null, median: null, min: null, max: null } },
-        ],
+        continuous: {
+          median: 4.5,
+          summaryBasis: 'median_of_source_medians',
+          mean: 4.5,
+          meanBasis: 'central_values',
+          min: 2,
+          max: 7,
+          nRecords: 3,
+          nSources: 1,
+          outlierFlags: [],
+          unit: 'mm',
+        },
       },
     });
   });
 
-  it('RFC-62 R8 summarises a species whose only record is a range with no value', async () => {
+  it('with: a species whose only record is a range is summarised by its midpoint (issue #316)', async () => {
     const { user } = await createUser(t.db);
     const reference = await createReference(t.db);
     const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
@@ -1042,41 +983,8 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       mode: 'with',
       limit: 50,
     });
-    expect(data[0]).toMatchObject({
-      id: one.id,
-      recordCount: 1,
-      summary: {
-        numeric: [
-          { unit: 'mm', means: { single: null, mean: null, median: null, min: 0.8, max: 4 } },
-        ],
-      },
-    });
-  });
-
-  it('RFC-62 R8 summarises a species whose only record is a median (issue #232)', async () => {
-    const reference = await createReference(t.db);
-    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
-    const one = await createSpecies(t.db);
-    await createRecord(t.db, {
-      speciesId: one.id,
-      traitId: trait.id,
-      valueText: 'median=6',
-      medianValue: 6,
-      primaryReferenceId: reference.id,
-      importBatchId: (await createImportBatch(t.db)).id,
-    });
-
-    const { data } = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
-      mode: 'with',
-      limit: 50,
-    });
-    expect(data[0]).toMatchObject({
-      id: one.id,
-      summary: {
-        numeric: [
-          { unit: 'mm', means: { single: null, mean: null, median: 6, min: null, max: null } },
-        ],
-      },
+    expect(data[0]?.summary).toMatchObject({
+      continuous: { median: 2.4, summaryBasis: 'range_midpoint', min: 0.8, max: 4 },
     });
   });
 
@@ -1185,6 +1093,74 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     expect(second.nextCursor).toBeNull();
     // Every page carries its enrichment, not only the first.
     expect(second.data[0]?.recordCount).toBe(1);
+  });
+
+  it('sorts by name, family or record count, either way, and pages each order whole (issue #316)', async () => {
+    const { user } = await createUser(t.db);
+    const trait = await createTrait(t.db, { levels: ['alpha'] });
+    const alpha = levelOf(trait, 'alpha');
+    const tag = Math.random().toString(16).slice(2);
+    const fam = async (name: string) => {
+      const family = await createFamily(t.db, { name: `${name} ${tag}` });
+      return (await createGenus(t.db, { familyId: family.id })).id;
+    };
+    const rows = [
+      { name: `Aaa ${tag}`, genusId: await fam('Zeta'), records: 1 },
+      { name: `Bbb ${tag}`, genusId: await fam('Alpha'), records: 3 },
+      { name: `Ccc ${tag}`, genusId: await fam('Mid'), records: 2 },
+    ];
+    for (const r of rows) {
+      const s = await createSpecies(t.db, { canonicalName: r.name, genusId: r.genusId });
+      for (let i = 0; i < r.records; i++) {
+        await record(t.db, {
+          actor: user,
+          speciesId: s.id,
+          traitId: trait.id,
+          valueText: 'alpha',
+          levelId: alpha.id,
+          // One reference per record: the same claim twice is one record.
+          referenceId: (await createReference(t.db)).id,
+        });
+      }
+    }
+    const walk = async (sort: 'name' | 'family' | 'records', order: 'asc' | 'desc') => {
+      const names: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+          mode: 'with',
+          sort,
+          order,
+          limit: 2,
+          cursor,
+        });
+        names.push(...page.data.map((s) => s.canonicalName.slice(0, 3)));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return names;
+    };
+    expect(await walk('name', 'desc')).toEqual(['Ccc', 'Bbb', 'Aaa']);
+    expect(await walk('family', 'asc')).toEqual(['Bbb', 'Ccc', 'Aaa']);
+    expect(await walk('family', 'desc')).toEqual(['Aaa', 'Ccc', 'Bbb']);
+    expect(await walk('records', 'desc')).toEqual(['Bbb', 'Ccc', 'Aaa']);
+    expect(await walk('records', 'asc')).toEqual(['Aaa', 'Ccc', 'Bbb']);
+
+    // A cursor minted under one order is refused under another.
+    const first = await listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+      mode: 'with',
+      sort: 'records',
+      order: 'desc',
+      limit: 1,
+    });
+    await expect(
+      listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+        mode: 'with',
+        sort: 'records',
+        order: 'asc',
+        limit: 1,
+        cursor: first.nextCursor ?? undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
   it('throws TRAIT_NOT_FOUND for a trait the viewer cannot see', async () => {

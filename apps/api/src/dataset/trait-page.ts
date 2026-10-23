@@ -1,9 +1,11 @@
 import type {
   FieldMeans,
+  SortOrder,
   SpeciesScope,
   TraitDetail,
   TraitSpeciesItem,
   TraitSpeciesMode,
+  TraitSpeciesSort,
 } from '@treerepro/contracts';
 import { eq, sql } from 'drizzle-orm';
 import { globalSpeciesVisible, levelVisible, type Visibility } from '../access/visibility.ts';
@@ -15,7 +17,8 @@ import type { Redis } from '../redis/client.ts';
 import { validatedPairsSql } from './coverage.ts';
 import { getTrait, requireTrait } from './dictionary.ts';
 import { liveSql } from './records.ts';
-import { summaryRecordsSql } from './summary.ts';
+import { continuousSummaries } from './species-summary.ts';
+import { continuousOf, summaryRecordsSql } from './summary.ts';
 import { searchSpecies } from './taxa.ts';
 
 /** A record whose unit needs checking stays out of every numeric summary (RFC-62 R7, R8). */
@@ -226,6 +229,9 @@ export interface TraitSpeciesInput {
   viewerPlotIds?: string[];
   /** A level of this categorical trait, with `mode=with` only (issue #309). */
   levelId?: string;
+  /** RFC-62 R8's orders; `records` sorts by the coverage count. */
+  sort?: TraitSpeciesSort;
+  order?: SortOrder;
   cursor?: string;
   limit: number;
 }
@@ -234,12 +240,6 @@ interface SpeciesLevelRow {
   species_id: string;
   level_key: string | null;
   count: number;
-}
-
-interface SpeciesNumericRow extends FieldMeansRow {
-  species_id: string;
-  unit: string | null;
-  record_count: number;
 }
 
 type Summary = TraitSpeciesItem['summary'];
@@ -277,37 +277,24 @@ async function enrich(
   let validatedRowsResult: { species_id: string }[];
 
   if (valueType === 'quantitative') {
-    const [rows, result] = await Promise.all([
+    const [rows, summaries, result] = await Promise.all([
       db.execute(sql`
-        select r.species_id, r.summary_unit as unit, count(*)::int as record_count,
-          avg(r.numeric_value) filter (where ${unitChecked})::float8 as single,
-          avg(r.mean_value_once) filter (where ${unitChecked})::float8 as mean,
-          avg(r.median_value_once) filter (where ${unitChecked})::float8 as median,
-          avg(r.min_value_once) filter (where ${unitChecked})::float8 as min,
-          avg(r.max_value_once) filter (where ${unitChecked})::float8 as max
+        select r.species_id, count(*)::int as record_count
         from ${summaryRecordsSql(sql`r.trait_id = ${traitId}::uuid
           and r.species_id = any(${sql.param(ids)}::uuid[])
           and ${liveSql(sql`r.id`)}`)}
-        group by r.species_id, r.summary_unit
-        order by count(*) filter (where ${unitChecked}
-            and coalesce(r.numeric_value, r.min_value, r.max_value, r.mean_value, r.median_value) is not null) desc,
-          unit asc nulls last
-      `) as unknown as Promise<SpeciesNumericRow[]>,
+        group by r.species_id
+      `) as unknown as Promise<{ species_id: string; record_count: number }[]>,
+      // RFC-77 R5, the species page's summary, for this page's species only.
+      continuousSummaries(db, visibility, ids, traitId),
       validatedRows,
     ]);
     validatedRowsResult = result;
-    // One row per species and unit, most numbers first: the counts add up,
-    // and a unit with no mean to show leaves the summary.
-    const numeric = new Map<string, { unit: string | null; means: FieldMeans }[]>();
-    for (const r of rows) {
-      recordCount.set(r.species_id, (recordCount.get(r.species_id) ?? 0) + r.record_count);
-      if ([r.single, r.mean, r.median, r.min, r.max].every((v) => v === null)) continue;
-      numeric.set(r.species_id, [
-        ...(numeric.get(r.species_id) ?? []),
-        { unit: r.unit, means: fieldMeansOf(r) },
-      ]);
+    for (const r of rows) recordCount.set(r.species_id, r.record_count);
+    for (const c of summaries) {
+      const continuous = continuousOf(c);
+      if (continuous) summary.set(c.speciesId, { continuous });
     }
-    for (const [speciesId, entries] of numeric) summary.set(speciesId, { numeric: entries });
   } else {
     const [rows, result] = await Promise.all([
       db.execute(sql`
@@ -394,6 +381,8 @@ export async function listTraitSpecies(
     traitId,
     traitData: input.mode,
     traitLevelId: input.levelId,
+    sort: input.sort,
+    order: input.order,
     cursor: input.cursor,
     limit: input.limit,
   });

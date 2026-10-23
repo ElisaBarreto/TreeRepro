@@ -91,17 +91,6 @@ export function fieldMeanParts(
   });
 }
 
-/**
- * One line of field means: `mean of min 6.2 mg · mean of max 18.8 mg`.
- * @rfc RFC-62 R8
- * @rfc RFC-63 R10
- */
-export function fieldMeansText(means: FieldMeans, unit: string | null): string {
-  return fieldMeanParts(means, unit)
-    .map((part) => `${part.label} ${part.value}`)
-    .join(' · ');
-}
-
 /** Cuts a string to `max` characters, ending with an ellipsis. @rfc RFC-13 R9 */
 export function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
