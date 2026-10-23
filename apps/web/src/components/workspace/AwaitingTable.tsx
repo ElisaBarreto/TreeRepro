@@ -40,7 +40,8 @@ export function AwaitingTable({
   const sorted = useSort(records, {
     species: (record) => record.species.canonicalName,
     trait: (record) => humaniseKey(record.trait.key),
-    value: (record) => recordValueLabel(record),
+    // A number sorts by value; a level or a range by its label.
+    value: (record) => record.numericValue ?? recordValueLabel(record),
   });
   return (
     <Table>
