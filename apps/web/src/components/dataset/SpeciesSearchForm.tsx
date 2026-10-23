@@ -33,8 +33,8 @@ export interface SpeciesSearchValue {
  * too, with the unresolved-taxa toggle this form alone offers.
  *
  * **Traits** (RFC-60 R6 amendment) — a category select fed by the trait
- * dictionary, a trait select filtered to that category (disabled until a
- * category is chosen) and a "Has data" / "Missing data" radio pair (disabled
+ * dictionary, a trait select filtered to that category (every trait, grouped
+ * by category, while none is chosen; issue #313) and a "Has data" / "Missing data" radio pair (disabled
  * until a category or trait is chosen). A value that names a trait and no
  * category — what `/app/species?traitId=…` deep links carry — shows the
  * trait's own category, read out of the dictionary, so the filter in force
@@ -160,7 +160,6 @@ export function SpeciesSearchForm({
         <Field id={ids.trait} label="Trait">
           <Select
             id={ids.trait}
-            disabled={!effectiveCategory}
             value={value.traitId ?? ''}
             onChange={(event) => {
               const traitId = event.target.value || undefined;
@@ -178,11 +177,21 @@ export function SpeciesSearchForm({
             }}
           >
             <option value="">All traits</option>
-            {categoryTraits.map((trait) => (
-              <option key={trait.id} value={trait.id}>
-                {humaniseKey(trait.key)}
-              </option>
-            ))}
+            {effectiveCategory
+              ? categoryTraits.map((trait) => (
+                  <option key={trait.id} value={trait.id}>
+                    {humaniseKey(trait.key)}
+                  </option>
+                ))
+              : dictionary.data?.map((category) => (
+                  <optgroup key={category.key} label={category.label}>
+                    {category.traits.map((trait) => (
+                      <option key={trait.id} value={trait.id}>
+                        {humaniseKey(trait.key)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
           </Select>
         </Field>
         <fieldset disabled={!traitFilterChosen} className="flex flex-col gap-2">

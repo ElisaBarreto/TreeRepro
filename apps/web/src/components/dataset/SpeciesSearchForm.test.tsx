@@ -270,7 +270,7 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ categoryKey: 'seed' }));
   });
 
-  it('disables the trait select until a category is chosen and then lists only its traits', async () => {
+  it('lists every trait, grouped by category, until a category narrows it (issue #313)', async () => {
     const onChange = vi.fn();
     renderWithProviders(
       <Controlled
@@ -281,8 +281,11 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
         me: READER,
       },
     );
-    expect(await screen.findByLabelText('Trait')).toBeDisabled();
-    await screen.findByRole('option', { name: 'Seed' });
+    const all = await screen.findByLabelText('Trait');
+    expect(all).toBeEnabled();
+    expect(await within(all).findByRole('group', { name: 'Seed' })).toBeInTheDocument();
+    expect(within(all).getByRole('option', { name: 'seed mass' })).toBeInTheDocument();
+    expect(within(all).getByRole('option', { name: 'sexual system' })).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText('Category'), 'seed');
     const trait = screen.getByLabelText('Trait');
@@ -458,6 +461,23 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
     expect(screen.getByRole('radio', { name: 'Missing data' })).toBeChecked();
   });
 
+  it("picks a trait with no category: the category shows as the trait's own (issue #313)", async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    await screen.findByRole('option', { name: 'seed mass' });
+    await userEvent.selectOptions(screen.getByLabelText('Trait'), SEED_MASS_ID);
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ traitId: SEED_MASS_ID }));
+    expect(onChange.mock.lastCall?.[0].categoryKey).toBeUndefined();
+    expect(screen.getByLabelText('Category')).toHaveValue('seed');
+    expect(screen.getByRole('radio', { name: 'Missing data' })).toBeEnabled();
+  });
+
   it('clears the trait when the derived category is cleared', async () => {
     const onChange = vi.fn();
     renderWithProviders(
@@ -483,7 +503,7 @@ describe('RFC-60 R6 SpeciesSearchForm trait filters', () => {
         traitData: undefined,
       }),
     );
-    expect(screen.getByLabelText('Trait')).toBeDisabled();
+    expect(screen.getByLabelText('Trait')).toHaveValue('');
     expect(screen.getByRole('radio', { name: 'Missing data' })).toBeDisabled();
   });
 
