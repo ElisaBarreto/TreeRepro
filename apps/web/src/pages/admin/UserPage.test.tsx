@@ -301,6 +301,6 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     await openUser(ADMIN_USER);
     const region = screen.getByRole('region', { name: 'Sessions' });
     await within(region).findAllByRole('row');
-    expect(within(region).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(region).queryByRole('button', { name: /^Sign out/ })).not.toBeInTheDocument();
   });
 });

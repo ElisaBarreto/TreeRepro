@@ -4,10 +4,21 @@ import { useId } from 'react';
 import { datasetKeys, fetchImport, fetchImportRejects } from '../../api/dataset.ts';
 import { ImportStatusBadge } from '../../components/dataset/ImportStatusBadge.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
-import { Alert, PageHeader, Table, Tbody, Td, Th, Thead, Tr } from '../../components/ui/index.ts';
+import {
+  Alert,
+  PageHeader,
+  SortTh,
+  Table,
+  Tbody,
+  Td,
+  Th,
+  Thead,
+  Tr,
+} from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, formatNumber } from '../../lib/format.ts';
 import { type PagedList, usePagedList } from '../../lib/use-paged-list.ts';
+import { useSort } from '../../lib/use-sort.ts';
 
 const NUMBER = 'text-right tabular-nums';
 const DASH = <span className="text-mist-500">—</span>;
@@ -167,6 +178,11 @@ function Counts({ batch }: { batch: ImportBatch }) {
 
 function UnknownLevels({ batch }: { batch: ImportBatch }) {
   const headingId = useId();
+  const sorted = useSort(batch.unknownLevels, {
+    trait: (level) => level.trait,
+    value: (level) => level.value,
+    count: (level) => level.count,
+  });
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
@@ -178,13 +194,13 @@ function UnknownLevels({ batch }: { batch: ImportBatch }) {
         <Table>
           <Thead>
             <Tr>
-              <Th>Trait</Th>
-              <Th>Value</Th>
-              <Th className={NUMBER}>Count</Th>
+              <SortTh label="Trait" {...sorted.header('trait')} />
+              <SortTh label="Value" {...sorted.header('value')} />
+              <SortTh label="Count" className={NUMBER} {...sorted.header('count')} />
             </Tr>
           </Thead>
           <Tbody>
-            {batch.unknownLevels.map((level) => (
+            {sorted.rows.map((level) => (
               <Tr key={`${level.trait}::${level.value}`}>
                 <Td className="font-medium text-canopy-900">{level.trait}</Td>
                 <Td>{level.value}</Td>

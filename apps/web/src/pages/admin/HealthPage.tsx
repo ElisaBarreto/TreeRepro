@@ -10,6 +10,7 @@ import {
   EmptyState,
   Meter,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -20,6 +21,7 @@ import {
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, formatNumber, humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { useSort } from '../../lib/use-sort.ts';
 
 const TILE_LABEL = 'text-label font-bold uppercase tracking-[0.08em] text-canopy-800';
 const TILE_VALUE = 'mt-1 font-display text-section font-bold tabular-nums text-canopy-950';
@@ -83,6 +85,12 @@ export function HealthPage() {
     queryKey: adminKeys.health,
     queryFn: fetchPlatformHealth,
     enabled: canRead,
+  });
+  const imports = useSort(health.data?.imports ?? [], {
+    file: (batch) => batch.fileName,
+    kind: (batch) => batch.kind,
+    status: (batch) => batch.status,
+    started: (batch) => batch.startedAt,
   });
 
   if (!canRead) return <NoPermission />;
@@ -222,14 +230,14 @@ export function HealthPage() {
                 <Table>
                   <Thead>
                     <Tr>
-                      <Th>File</Th>
-                      <Th>Kind</Th>
-                      <Th>Status</Th>
-                      <Th>Started</Th>
+                      <SortTh label="File" {...imports.header('file')} />
+                      <SortTh label="Kind" {...imports.header('kind')} />
+                      <SortTh label="Status" {...imports.header('status')} />
+                      <SortTh label="Started" {...imports.header('started')} />
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {health.data.imports.map((batch) => (
+                    {imports.rows.map((batch) => (
                       <Tr key={batch.id}>
                         <Td>
                           <Link

@@ -6,11 +6,13 @@ import {
   revokeUserSession,
 } from '../../api/admin.ts';
 import { formatDateTime } from '../../lib/format.ts';
+import { useSort } from '../../lib/use-sort.ts';
 import {
   Alert,
   Button,
   EmptyState,
   Section,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -32,6 +34,11 @@ export function UserSessionsSection({ userId, canRevoke }: { userId: string; can
   const queryClient = useQueryClient();
   const key = adminKeys.userSessions(userId);
   const sessions = useQuery({ queryKey: key, queryFn: () => listUserSessions(userId) });
+  const sorted = useSort(sessions.data ?? [], {
+    device: (s) => s.userAgent,
+    ip: (s) => s.ip,
+    lastSeen: (s) => s.lastSeenAt,
+  });
   const revoke = useMutation({
     mutationFn: (id: string) => revokeUserSession(userId, id),
     // onSettled, not onSuccess: a failed revoke (the session may already have
@@ -56,16 +63,16 @@ export function UserSessionsSection({ userId, canRevoke }: { userId: string; can
         <Table>
           <Thead>
             <Tr>
-              <Th>Device</Th>
-              <Th>IP</Th>
-              <Th>Last seen</Th>
+              <SortTh label="Device" {...sorted.header('device')} />
+              <SortTh label="IP" {...sorted.header('ip')} />
+              <SortTh label="Last seen" {...sorted.header('lastSeen')} />
               <Th>
                 <span className="sr-only">Actions</span>
               </Th>
             </Tr>
           </Thead>
           <Tbody>
-            {sessions.data.map((s) => (
+            {sorted.rows.map((s) => (
               <Tr key={s.id}>
                 <Td>
                   <span className="block max-w-xs truncate" title={s.userAgent}>

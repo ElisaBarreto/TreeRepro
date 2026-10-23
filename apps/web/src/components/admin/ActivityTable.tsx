@@ -1,6 +1,7 @@
 import type { PlatformHealth } from '@treerepro/contracts';
 import { formatNumber } from '../../lib/format.ts';
-import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { useSort } from '../../lib/use-sort.ts';
+import { SortTh, Table, Tbody, Td, Thead, Tr } from '../ui/index.ts';
 
 /**
  * The 14-day activity series `GET /api/admin/health` answers, oldest day
@@ -12,6 +13,11 @@ import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
  * @rfc RFC-52 R1
  */
 export function ActivityTable({ byDay }: { byDay: PlatformHealth['activity']['byDay'] }) {
+  const sorted = useSort(byDay, {
+    day: (row) => row.day,
+    records: (row) => row.records,
+    annotations: (row) => row.annotations,
+  });
   return (
     <Table>
       <caption className="px-[18px] py-3 text-left text-meta text-mist-500">
@@ -19,13 +25,13 @@ export function ActivityTable({ byDay }: { byDay: PlatformHealth['activity']['by
       </caption>
       <Thead>
         <Tr>
-          <Th>Day</Th>
-          <Th className="text-right">Records</Th>
-          <Th className="text-right">Annotations</Th>
+          <SortTh label="Day" {...sorted.header('day')} />
+          <SortTh label="Records" className="text-right" {...sorted.header('records')} />
+          <SortTh label="Annotations" className="text-right" {...sorted.header('annotations')} />
         </Tr>
       </Thead>
       <Tbody>
-        {byDay.map((row) => (
+        {sorted.rows.map((row) => (
           <Tr key={row.day}>
             <Td className="whitespace-nowrap tabular-nums">{row.day}</Td>
             <Td className="text-right tabular-nums">{formatNumber(row.records)}</Td>

@@ -17,6 +17,7 @@ import {
   Input,
   PageHeader,
   Select,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -27,6 +28,7 @@ import {
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber, humaniseKey, TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { useSort } from '../../lib/use-sort.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -244,6 +246,14 @@ export function TraitsPage({
   );
 }
 
+// The sortable columns of a category's table (RFC-13 R13).
+const TRAIT_COLUMNS = {
+  trait: (t: Trait) => humaniseKey(t.key),
+  type: (t: Trait) => TRAIT_VALUE_TYPE_LABELS[t.valueType],
+  unit: (t: Trait) => t.unit,
+  species: (t: Trait) => t.speciesCount,
+};
+
 function CategorySection({
   label,
   traits,
@@ -256,6 +266,7 @@ function CategorySection({
   onEdit: (trait: Trait) => void;
 }) {
   const headingId = useId();
+  const sorted = useSort(traits, TRAIT_COLUMNS);
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <h2 id={headingId} className="font-display text-section font-semibold text-canopy-950">
@@ -264,18 +275,18 @@ function CategorySection({
       <Table>
         <Thead>
           <Tr>
-            <Th>Trait</Th>
-            <Th>Type</Th>
-            <Th>Unit</Th>
+            <SortTh label="Trait" {...sorted.header('trait')} />
+            <SortTh label="Type" {...sorted.header('type')} />
+            <SortTh label="Unit" {...sorted.header('unit')} />
             <Th>Description</Th>
-            <Th>Species</Th>
+            <SortTh label="Species" {...sorted.header('species')} />
             <Th>
               <span className="sr-only">Actions</span>
             </Th>
           </Tr>
         </Thead>
         <Tbody>
-          {traits.map((trait) => (
+          {sorted.rows.map((trait) => (
             <TraitRows key={trait.id} trait={trait} canManage={canManage} onEdit={onEdit} />
           ))}
         </Tbody>

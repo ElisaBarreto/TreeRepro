@@ -32,7 +32,9 @@ describe('RFC-72 R3 AwaitingTable', () => {
   it('lists species, trait, value and source; the value opens the record', async () => {
     const onSelect = vi.fn();
     renderInRouter(<AwaitingTable records={[RECORD, PENDING_RECORD]} onSelect={onSelect} />);
-    const headers = (await screen.findAllByRole('columnheader')).map((th) => th.textContent);
+    const headers = (await screen.findAllByRole('columnheader')).map((th) =>
+      th.textContent?.replace(/[↕↑↓]/, ''),
+    );
     expect(headers).toEqual(['Species', 'Trait', 'Value', 'Source']);
     const body = (await rows()).slice(1);
     expect(body).toHaveLength(2);

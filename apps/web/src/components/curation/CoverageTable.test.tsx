@@ -178,6 +178,21 @@ describe('RFC-69 R5 CoverageTable', () => {
     expect(url.searchParams.get('scope')).toBeNull();
   });
 
+  it('RFC-13 R13 sorts categories by a column, and their traits follow it', async () => {
+    renderInRouter(
+      <CoverageTable byCategory={COVERAGE.byCategory} byTrait={COVERAGE.byTrait} search={{}} />,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: /^Cells/ }));
+    await userEvent.click(screen.getByRole('button', { name: /^Cells/ }));
+    const cells = (COVERAGE.byCategory ?? []).map((c) => c.cells).sort((a, b) => b - a);
+    expect(screen.getByRole('columnheader', { name: /^Cells/ })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+    const firstCategory = COVERAGE.byCategory.find((c) => c.cells === cells[0]);
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent(firstCategory?.category.label ?? '');
+  });
+
   it('shows the "No record yet" empty state when nothing is in scope', async () => {
     renderInRouter(<CoverageTable byCategory={[]} byTrait={[]} search={{}} />);
     expect(await screen.findByText('No record yet.')).toBeInTheDocument();

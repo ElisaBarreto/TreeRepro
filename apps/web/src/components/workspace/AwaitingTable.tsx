@@ -2,8 +2,9 @@ import { Link } from '@tanstack/react-router';
 import type { RecordItem } from '@treerepro/contracts';
 import { humaniseKey } from '../../lib/format.ts';
 import { referenceLabel } from '../../lib/references.ts';
+import { useSort } from '../../lib/use-sort.ts';
 import { recordValueLabel } from '../dataset/RecordTable.tsx';
-import { Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -36,18 +37,23 @@ export function AwaitingTable({
   records: RecordItem[];
   onSelect: (record: RecordItem) => void;
 }) {
+  const sorted = useSort(records, {
+    species: (record) => record.species.canonicalName,
+    trait: (record) => humaniseKey(record.trait.key),
+    value: (record) => recordValueLabel(record),
+  });
   return (
     <Table>
       <Thead>
         <Tr>
-          <Th>Species</Th>
-          <Th>Trait</Th>
-          <Th>Value</Th>
+          <SortTh label="Species" {...sorted.header('species')} />
+          <SortTh label="Trait" {...sorted.header('trait')} />
+          <SortTh label="Value" {...sorted.header('value')} />
           <Th>Source</Th>
         </Tr>
       </Thead>
       <Tbody>
-        {records.map((record) => (
+        {sorted.rows.map((record) => (
           <Tr key={record.id} className="transition-colors hover:bg-mist-50">
             <Td>
               <Link

@@ -3,11 +3,30 @@ import type { Coverage } from '@treerepro/contracts';
 import { useState } from 'react';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { useMe } from '../../lib/session.ts';
-import { EmptyState, Icon, Meter, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { type Cell, sortRows, useSort } from '../../lib/use-sort.ts';
+import { EmptyState, Icon, Meter, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import type { CoverageSearch } from './CoverageFilters.tsx';
 
 const CHEVRON_BUTTON =
   'flex size-8 items-center justify-center rounded-full text-canopy-700 transition-transform hover:bg-mist-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500 aria-expanded:rotate-90';
+
+// The sortable columns (RFC-13 R13): a category row and its trait rows read
+// the same column, so the traits inside a category follow its order.
+const CATEGORY_COLUMNS = {
+  name: (row: Coverage['byCategory'][number]) => row.category.label,
+  cells: (row: Coverage['byCategory'][number]) => row.cells,
+  withData: (row: Coverage['byCategory'][number]) => row.percentWithData,
+  validated: (row: Coverage['byCategory'][number]) => row.percentValidated,
+};
+const TRAIT_COLUMNS: Record<
+  keyof typeof CATEGORY_COLUMNS,
+  (row: Coverage['byTrait'][number]) => Cell
+> = {
+  name: (row) => humaniseKey(row.trait.key),
+  cells: (row) => row.cells,
+  withData: (row) => row.percentWithData,
+  validated: (row) => row.percentValidated,
+};
 
 /**
  * The coverage grid by category, each row's chevron expanding to the
@@ -37,6 +56,7 @@ export function CoverageTable({
   search: CoverageSearch;
 }) {
   const me = useMe();
+  const sorted = useSort(byCategory, CATEGORY_COLUMNS);
   if (byCategory.length === 0) {
     return (
       <EmptyState
@@ -52,22 +72,30 @@ export function CoverageTable({
           <Th>
             <span className="sr-only">Expand</span>
           </Th>
-          <Th>Category / trait</Th>
-          <Th>Cells</Th>
-          <Th>With data</Th>
-          <Th>Validated</Th>
+          <SortTh label="Category / trait" {...sorted.header('name')} />
+          <SortTh label="Cells" {...sorted.header('cells')} />
+          <SortTh label="With data" {...sorted.header('withData')} />
+          <SortTh label="Validated" {...sorted.header('validated')} />
         </Tr>
       </Thead>
       <Tbody>
-        {byCategory.map((category) => (
-          <CategoryRows
-            key={category.category.key}
-            category={category}
-            traits={byTrait.filter((trait) => trait.category.key === category.category.key)}
-            search={search}
-            restricted={me.scope.restricted}
-          />
-        ))}
+        {sorted.rows.map((category) => {
+          const traits = byTrait.filter((trait) => trait.category.key === category.category.key);
+          return (
+            <CategoryRows
+              key={category.category.key}
+              category={category}
+              // A category's traits follow the column its rows are sorted by.
+              traits={
+                sorted.sort
+                  ? sortRows(traits, TRAIT_COLUMNS[sorted.sort.by], sorted.sort.order)
+                  : traits
+              }
+              search={search}
+              restricted={me.scope.restricted}
+            />
+          );
+        })}
       </Tbody>
     </Table>
   );
