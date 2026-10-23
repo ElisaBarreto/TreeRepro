@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import {
   type AnnotateRecordBody,
+  type ContestedSort,
   type CreateRecordBody,
   type CreateRecordsResult,
   contestedQueueItemSchema,
@@ -10,6 +11,7 @@ import {
   type MapPendingBody,
   type MapResult,
   mapResultSchema,
+  type PendingSort,
   type PendingTrait,
   pendingGroupSchema,
   pendingTraitSchema,
@@ -17,6 +19,7 @@ import {
   type ResolveDoiResult,
   recordDetailSchema,
   resolveDoiResultSchema,
+  type SortOrder,
   type ValidateLevelBody,
   validateLevelResultSchema,
   type WithdrawLevelResult,
@@ -24,7 +27,7 @@ import {
 } from '@treerepro/contracts';
 import { z } from 'zod';
 import { apiFetch } from './client.ts';
-import { withQuery } from './query.ts';
+import { type QueryParams as Params, withQuery } from './query.ts';
 
 /**
  * Query keys of the curation screens, nested under the dataset prefixes so
@@ -34,7 +37,8 @@ import { withQuery } from './query.ts';
  */
 export const curationKeys = {
   pendingTraits: ['records', 'pending', 'traits'] as const,
-  pendingGroups: (traitId: string) => ['records', 'pending', 'groups', traitId] as const,
+  pendingGroups: (traitId: string, params: Params = {}) =>
+    ['records', 'pending', 'groups', traitId, params] as const,
   contested: ['records', 'contested'] as const,
 };
 
@@ -112,7 +116,13 @@ export async function fetchPendingTraits(): Promise<PendingTrait[]> {
   ).data;
 }
 /** @rfc RFC-65 R8 */
-export function fetchPendingGroups(params: { traitId: string; cursor?: string; limit?: number }) {
+export function fetchPendingGroups(params: {
+  traitId: string;
+  sort?: PendingSort;
+  order?: SortOrder;
+  cursor?: string;
+  limit?: number;
+}) {
   return apiFetch(withQuery('/records/pending', params), listEnvelopeSchema(pendingGroupSchema));
 }
 /** @rfc RFC-65 R9 */
@@ -125,7 +135,12 @@ export async function mapPending(body: MapPendingBody): Promise<MapResult> {
   ).data;
 }
 /** The open contests, newest first (the path predates them). @rfc RFC-65 R10 */
-export function fetchContested(params: { cursor?: string; limit?: number }) {
+export function fetchContested(params: {
+  sort?: ContestedSort;
+  order?: SortOrder;
+  cursor?: string;
+  limit?: number;
+}) {
   return apiFetch(
     withQuery('/records/disputed', params),
     listEnvelopeSchema(contestedQueueItemSchema),

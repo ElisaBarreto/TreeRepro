@@ -92,6 +92,22 @@ beforeEach(() => {
 });
 
 describe('RFC-65 R10 DisputedPage is the contested queue', () => {
+  it('RFC-13 R13 the Species header sorts the queue through the API, flipping on a second click', async () => {
+    renderAt('/app/curation/disputed');
+    await userEvent.click(await screen.findByRole('button', { name: /^Species/ }));
+    await waitFor(() =>
+      expect(curation.fetchContested).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'species', order: 'asc' }),
+      ),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Species/ }));
+    await waitFor(() =>
+      expect(curation.fetchContested).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'species', order: 'desc' }),
+      ),
+    );
+  });
+
   it('lists a categorical contest: species, trait, contested level (marked), contest record, by, date', async () => {
     renderAt('/app/curation/disputed');
     expect(await screen.findByRole('heading', { name: 'Contested records' })).toBeInTheDocument();

@@ -7,9 +7,11 @@ import {
   listEnvelopeSchema,
   lookupSchema,
   type Proposal,
+  type ProposalSort,
   type ProposalStatus,
   proposalSchema,
   type RejectProposalBody,
+  type SortOrder,
 } from '@treerepro/contracts';
 import { apiFetch } from './client.ts';
 import type { Page } from './dataset.ts';
@@ -27,7 +29,8 @@ const proposalsPage = listEnvelopeSchema(proposalSchema);
  */
 export const proposalKeys = {
   all: ['proposals'] as const,
-  list: (params: { status?: ProposalStatus }) => ['proposals', 'queue', params] as const,
+  list: (params: { status?: ProposalStatus; sort?: ProposalSort; order?: SortOrder }) =>
+    ['proposals', 'queue', params] as const,
   mine: ['proposals', 'me'] as const,
 };
 
@@ -40,6 +43,8 @@ export async function createProposal(body: CreateProposalBody): Promise<Proposal
 /** @rfc RFC-75 R3 */
 export function fetchProposals(params: {
   status?: ProposalStatus;
+  sort?: ProposalSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }): Promise<Page<Proposal>> {
@@ -48,6 +53,8 @@ export function fetchProposals(params: {
 
 /** @rfc RFC-75 R5 */
 export function fetchMyProposals(params: {
+  sort?: ProposalSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }): Promise<Page<Proposal>> {

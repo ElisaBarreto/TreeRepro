@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { catalogNameSchema, curationNoteSchema, speciesNameBodySchema } from './curation.ts';
 import { NAME_SOURCES, userRefSchema } from './dataset.ts';
-import { cursorQuerySchema } from './pagination.ts';
+import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 
 /**
  * The `species_proposals.status` values the table CHECK constraint allows.
@@ -67,8 +67,19 @@ export const createProposalBodySchema = z.strictObject({
   note: curationNoteSchema.optional(),
 });
 
+/** The proposals lists' sorts (RFC-75 R3, R5). @rfc RFC-75 R3 */
+export const PROPOSAL_SORTS = ['proposed', 'name', 'status'] as const;
+/** @rfc RFC-75 R3 */
+export type ProposalSort = (typeof PROPOSAL_SORTS)[number];
+
+/** `GET /api/me/proposals` query. @rfc RFC-75 R5 */
+export const listMyProposalsQuerySchema = cursorQuerySchema.extend({
+  sort: z.enum(PROPOSAL_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
+});
+
 /** `GET /api/species/proposals` query. @rfc RFC-75 R3 */
-export const listProposalsQuerySchema = cursorQuerySchema.extend({
+export const listProposalsQuerySchema = listMyProposalsQuerySchema.extend({
   status: z.enum(PROPOSAL_STATUSES).optional(),
 });
 

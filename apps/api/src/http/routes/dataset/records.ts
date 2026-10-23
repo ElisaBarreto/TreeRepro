@@ -1,8 +1,8 @@
 import {
   annotateRecordBodySchema,
   createRecordBodySchema,
-  cursorQuerySchema,
   idParamSchema,
+  listContestedQuerySchema,
   listRecordsQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
@@ -139,6 +139,8 @@ export function recordRoutes(ctx: AuthContext) {
         const visibility = await visibilityOf(ctx, c);
         const { data, nextCursor } = await pendingGroups(ctx.db, visibility, {
           traitId: q.traitId,
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -168,12 +170,14 @@ export function recordRoutes(ctx: AuthContext) {
     .get(
       '/disputed',
       requirePermission(ctx, 'records.review'),
-      validate('query', cursorQuerySchema),
+      validate('query', listContestedQuerySchema),
       async (c) => {
         const q = c.req.valid('query');
         const visibility = await visibilityOf(ctx, c);
         // RFC-65 R10: the standing contests; the path predates them (Spec note 10).
         const { data, nextCursor } = await listContested(ctx.db, visibility, {
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });

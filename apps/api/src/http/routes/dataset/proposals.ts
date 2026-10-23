@@ -1,8 +1,8 @@
 import {
   approveProposalBodySchema,
   createProposalBodySchema,
-  cursorQuerySchema,
   idParamSchema,
+  listMyProposalsQuerySchema,
   listProposalsQuerySchema,
   rejectProposalBodySchema,
 } from '@treerepro/contracts';
@@ -57,6 +57,8 @@ export function proposalRoutes(ctx: AuthContext) {
         // `curation.ts` does for its own list.
         const { data, nextCursor } = await listProposals(ctx.db, {
           status: q.status ?? 'open',
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -114,10 +116,12 @@ export function myProposalRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>().get(
     '/proposals',
     requirePermission(ctx, 'taxa.propose'),
-    validate('query', cursorQuerySchema),
+    validate('query', listMyProposalsQuerySchema),
     async (c) => {
       const q = c.req.valid('query');
       const { data, nextCursor } = await listMyProposals(ctx.db, currentUser(c).id, {
+        sort: q.sort,
+        order: q.order,
         cursor: q.cursor,
         limit: q.limit,
       });

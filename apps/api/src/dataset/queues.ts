@@ -1,11 +1,14 @@
 import type {
   ContestedQueueItem,
+  ContestedSort,
   MapPendingBody,
   MapResult,
   PendingGroup,
+  PendingSort,
   PendingTrait,
+  SortOrder,
 } from '@treerepro/contracts';
-import { and, desc, eq, inArray, lt, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
@@ -15,12 +18,12 @@ import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import {
   decodeCompositeCursor,
-  decodeCursor,
   encodeCompositeCursor,
-  encodeCursor,
   isDigits,
   isUuid,
   pageOf,
+  type SortKey,
+  sortedKeyset,
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { contestStandingSql, contestVisibleSql, levelContestedSql } from './contests.ts';
@@ -92,6 +95,72 @@ interface GroupRow {
   sample_record_id: string;
 }
 
+const toGroup = (r: GroupRow): PendingGroup => ({
+  valueText: r.value_text,
+  harmonisation: r.harmonisation,
+  count: r.count,
+  sampleRecordId: r.sample_record_id,
+});
+
+// The pending groups' sort keys (RFC-65 R8): aggregates over a group, so the
+// keyset goes in `having`; the value itself is the group key.
+const PENDING_KEYS: Record<
+  PendingSort,
+  { expr: SQL; cast: SQL; isKey: (part: string) => boolean }
+> = {
+  count: { expr: sql`count(*)`, cast: sql`::bigint`, isKey: (part) => isCount(part) },
+  kind: { expr: sql`min(r.harmonisation)`, cast: sql``, isKey: () => true },
+  value: { expr: sql`r.value_text`, cast: sql``, isKey: (part) => part === '' },
+};
+
+/**
+ * The pending groups in a chosen order (RFC-65 R8, RFC-11 R10): the key,
+ * then `value_text`, both in `order`. The cursor is `[sort:order, key,
+ * sampleRecordId]`; the value is re-derived from the sample record rather
+ * than carried, as the default order does, and the key is empty when it is
+ * the value itself.
+ */
+async function sortedPendingGroups(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: { traitId: string; sort: PendingSort; order?: SortOrder; cursor?: string; limit: number },
+): Promise<{ data: PendingGroup[]; nextCursor: string | null }> {
+  const order = input.order ?? 'asc';
+  const tag = `${input.sort}:${order}`;
+  const key = PENDING_KEYS[input.sort];
+  const dir = sql.raw(order);
+  const op = sql.raw(order === 'asc' ? '>' : '<');
+  let after: SQL = sql`true`;
+  if (input.cursor) {
+    const [, value, sampleRecordId] = decodeCompositeCursor(input.cursor, 3, [
+      (part) => part === tag,
+      key.isKey,
+      isUuid,
+    ]) as [string, string, string];
+    const sampleValue = sql`(select s.value_text from trait_records s where s.id = ${sampleRecordId}::uuid)`;
+    after =
+      input.sort === 'value'
+        ? sql`r.value_text ${op} ${sampleValue}`
+        : sql`(${key.expr}, r.value_text) ${op} (${value}${key.cast}, ${sampleValue})`;
+  }
+  const rows = (await db.execute(sql`
+    select r.value_text, min(r.harmonisation) as harmonisation, count(*)::int as count,
+      (array_agg(r.id order by r.id desc))[1] as sample_record_id,
+      ${input.sort === 'value' ? sql`''` : sql`(${key.expr})::text`} as sort_key
+    from trait_records r
+    join species s on s.id = r.species_id
+    join traits t on t.id = r.trait_id
+    where ${pendingWhere(visibility, input.traitId)}
+    group by r.value_text
+    having ${after}
+    order by ${key.expr} ${dir}, r.value_text ${dir}
+    limit ${input.limit + 1}`)) as unknown as (GroupRow & { sort_key: string })[];
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    encodeCompositeCursor([tag, r.sort_key, r.sample_record_id]),
+  );
+  return { data: page.map(toGroup), nextCursor };
+}
+
 const isCount = (part: string) => isDigits(part) && Number.isSafeInteger(Number(part));
 
 /**
@@ -106,9 +175,16 @@ const isCount = (part: string) => isDigits(part) && Number.isSafeInteger(Number(
 export async function pendingGroups(
   db: DbExecutor,
   visibility: Visibility,
-  input: { traitId: string; cursor?: string; limit: number },
+  input: {
+    traitId: string;
+    sort?: PendingSort;
+    order?: SortOrder;
+    cursor?: string;
+    limit: number;
+  },
 ): Promise<{ data: PendingGroup[]; nextCursor: string | null }> {
   await requireTrait(db, visibility, input.traitId);
+  if (input.sort) return sortedPendingGroups(db, visibility, { ...input, sort: input.sort });
   let after: SQL = sql`true`;
   if (input.cursor) {
     const [count, sampleRecordId] = decodeCompositeCursor(input.cursor, 2, [isCount, isUuid]) as [
@@ -137,15 +213,7 @@ export async function pendingGroups(
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
     encodeCompositeCursor([String(r.count), r.sample_record_id]),
   );
-  return {
-    data: page.map((r) => ({
-      valueText: r.value_text,
-      harmonisation: r.harmonisation,
-      count: r.count,
-      sampleRecordId: r.sample_record_id,
-    })),
-    nextCursor,
-  };
+  return { data: page.map(toGroup), nextCursor };
 }
 
 /**
@@ -288,6 +356,13 @@ export async function countContested(db: DbExecutor, visibility: Visibility): Pr
   return row?.count ?? 0;
 }
 
+// The contested queue's sort columns (RFC-65 R10, RFC-11 R10).
+const CONTESTED_COLUMNS: Record<ContestedSort, SortKey> = {
+  date: { expr: sql`${contests.createdAt}`, type: 'timestamptz' },
+  species: { expr: sql`${species.canonicalName}`, type: 'text' },
+  trait: { expr: sql`${traits.key}`, type: 'text' },
+};
+
 /**
  * One page of the standing contests, newest first (keyset on the contest id,
  * a uuidv7). Four queries whatever the page size, never one per row: the page
@@ -300,9 +375,15 @@ export async function countContested(db: DbExecutor, visibility: Visibility): Pr
 export async function listContested(
   db: DbExecutor,
   visibility: Visibility,
-  input: { cursor?: string; limit: number },
+  input: { sort?: ContestedSort; order?: SortOrder; cursor?: string; limit: number },
 ): Promise<{ data: ContestedQueueItem[]; nextCursor: string | null }> {
-  const after = input.cursor ? decodeCursor(input.cursor) : null;
+  const keyset = sortedKeyset({
+    columns: CONTESTED_COLUMNS,
+    sort: input.sort ?? 'date',
+    order: input.order ?? (input.sort ? 'asc' : 'desc'),
+    id: contests.id,
+    cursor: input.cursor,
+  });
   const rows = await db
     .select({
       id: contests.id,
@@ -314,15 +395,18 @@ export async function listContested(
       createdById: users.id,
       createdByName: users.name,
       createdAt: contests.createdAt,
+      sortKey: keyset.key.as('sort_key'),
     })
     .from(contests)
     .innerJoin(species, eq(species.id, contests.speciesId))
     .innerJoin(traits, eq(traits.id, contests.traitId))
     .innerJoin(users, eq(users.id, contests.createdBy))
-    .where(and(contestedWhere(visibility), after === null ? undefined : lt(contests.id, after)))
-    .orderBy(desc(contests.id))
+    .where(and(contestedWhere(visibility), keyset.where))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.id));
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.id }),
+  );
   if (page.length === 0) return { data: [], nextCursor };
   const ids = page.map((r) => r.id);
 
