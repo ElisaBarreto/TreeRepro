@@ -24,6 +24,7 @@
 - **R10** Dialogs and drawers are modal: while one is open the rest of the document is `inert` (not focusable, not clickable, hidden from assistive technology), Tab and Shift+Tab cycle inside it, focus moves into it on open and returns to the element that opened it on close. The native `<dialog>` opened with `showModal` provides the trap; both `Dialog` and `Drawer` render through a portal at the end of `document.body` and share one stack of open modals that marks every other child of `body` `inert` and returns focus on close — also when a dialog is unmounted still open after a successful save, where the browser restores nothing. A drawer never opens over an open dialog: the native modal blocks everything outside it.
 - **R11** A `?` help tip is a button that shows a `role="tooltip"` element it controls (`aria-controls`/`aria-expanded`); it opens on click, on focus and on pointer hover, and closes on Escape, on a pointerdown outside it and once focus leaves it. Opening is not a toggle: a pointer click also carries the hover that opened the tip, so a click never closes it; hover and focus leaving are what close it. Its text is plain content, never HTML from the API.
 - **R12** The workspace is usable at 390px wide: no `/app` route scrolls horizontally, except inside a table's own scroll container. Below the `lg` breakpoint the sidebar is a modal drawer opened from a menu button in the top bar (R10 applies), and the top bar and page padding tighten; from `lg` up the desktop layout is unchanged.
+- **R13** Every table's data column headers sort (`SortTh`): a new column sorts ascending, the same column again flips it, and `aria-sort` names the direction. Columns of actions, free text or several values stay plain. A table that holds its whole list sorts in the browser — text by locale, ignoring case, numbers and dates by value, an empty cell last in either direction — and keeps the sort in component state. A paginated table sorts through its route (RFC-11 R10), never one page in the browser, and keeps the sort in the URL (`?sort=&order=`).
 
 ## Open questions
 
@@ -52,3 +53,4 @@ None.
 - 2026-09-25 — R12: phone-width workspace (issue #160).
 - 2026-09-26 — R2: /app/maps and /app/maps/$traitId (RFC-76, issue #197).
 - 2026-09-26 — R2: /app/maps/$traitId removed; /app/maps takes `?category=&trait=` (RFC-76, issue #211).
+- 2026-10-23 — R13: sortable table headers on every table (epic #318).

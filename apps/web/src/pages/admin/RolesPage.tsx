@@ -10,6 +10,7 @@ import {
   ConfirmDialog,
   EmptyState,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -18,6 +19,7 @@ import {
   Tr,
 } from '../../components/ui/index.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { useSort } from '../../lib/use-sort.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -41,6 +43,10 @@ export function RolesPage() {
   const [editing, setEditing] = useState<Editing>(null);
   const [deleting, setDeleting] = useState<Role | null>(null);
   const roles = useQuery({ queryKey: adminKeys.roles, queryFn: listRoles });
+  const sorted = useSort(roles.data ?? [], {
+    name: (role) => role.name,
+    description: (role) => role.description,
+  });
   const remove = useMutation({
     mutationFn: (id: string) => deleteRole(id),
     onSuccess: () => {
@@ -65,14 +71,14 @@ export function RolesPage() {
         <Table>
           <Thead>
             <Tr>
-              <Th>Name</Th>
-              <Th>Description</Th>
+              <SortTh label="Name" {...sorted.header('name')} />
+              <SortTh label="Description" {...sorted.header('description')} />
               <Th>Permissions</Th>
               <Th>Actions</Th>
             </Tr>
           </Thead>
           <Tbody>
-            {roles.data.map((role) => (
+            {sorted.rows.map((role) => (
               <Tr key={role.id}>
                 <Td>
                   <span className="font-medium text-canopy-900">{role.name}</span>{' '}

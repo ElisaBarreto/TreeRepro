@@ -76,7 +76,7 @@ describe('RFC-13 R2, RFC-50 R10 RolesPage', () => {
     expect(
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
-        .map((th) => th.textContent),
+        .map((th) => th.textContent?.replace(/[↕↑↓]/, '')),
     ).toEqual(['Name', 'Description', 'Permissions', 'Actions']);
     const adminCells = within(rows[1] as HTMLElement).getAllByRole('cell');
     expect(adminCells[0]).toHaveTextContent('admin');
@@ -84,8 +84,10 @@ describe('RFC-13 R2, RFC-50 R10 RolesPage', () => {
     expect(adminCells[2]).toHaveTextContent('all');
     expect(within(rows[2] as HTMLElement).getAllByRole('cell')[2]).toHaveTextContent('1');
     // Scoped to the page content: the AppShell chrome always renders its own
-    // "Sign out" button, unrelated to this page's actions.
-    expect(within(screen.getByRole('main')).queryByRole('button')).not.toBeInTheDocument();
+    // "Sign out" button, and the sort headers are buttons too (RFC-13 R13).
+    expect(
+      within(screen.getByRole('main')).queryByRole('button', { name: /^(Edit|Delete|New role)/ }),
+    ).not.toBeInTheDocument();
     expect(admin.listPermissions).not.toHaveBeenCalled();
   });
 

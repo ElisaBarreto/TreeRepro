@@ -48,13 +48,15 @@ export function SortTh({
   label,
   direction,
   onSort,
+  className,
 }: {
   label: string;
   direction: 'asc' | 'desc' | null;
   onSort: () => void;
+  className?: string;
 }) {
   return (
-    <Th aria-sort={direction ? ARIA_SORT[direction] : 'none'}>
+    <Th aria-sort={direction ? ARIA_SORT[direction] : 'none'} className={className}>
       <button
         type="button"
         onClick={onSort}

@@ -3,12 +3,14 @@ import { logoutAll } from '../../api/auth.ts';
 import { listSessions, revokeSession } from '../../api/me.ts';
 import { GENERIC_MESSAGE } from '../../lib/errors.ts';
 import { forgetSession } from '../../lib/session.ts';
+import { useSort } from '../../lib/use-sort.ts';
 import {
   Alert,
   Badge,
   Button,
   EmptyState,
   Section,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -38,6 +40,11 @@ export function SessionsSection({
 }) {
   const queryClient = useQueryClient();
   const sessions = useQuery({ queryKey: SESSIONS_KEY, queryFn: listSessions });
+  const sorted = useSort(sessions.data ?? [], {
+    device: (s) => s.userAgent,
+    ip: (s) => s.ip,
+    lastSeen: (s) => s.lastSeenAt,
+  });
   const revoke = useMutation({
     mutationFn: (id: string) => revokeSession(id),
     // onSettled, not onSuccess: a failed revoke (the session may already have
@@ -63,16 +70,16 @@ export function SessionsSection({
         <Table>
           <Thead>
             <Tr>
-              <Th>Device</Th>
-              <Th>IP</Th>
-              <Th>Last seen</Th>
+              <SortTh label="Device" {...sorted.header('device')} />
+              <SortTh label="IP" {...sorted.header('ip')} />
+              <SortTh label="Last seen" {...sorted.header('lastSeen')} />
               <Th>
                 <span className="sr-only">Actions</span>
               </Th>
             </Tr>
           </Thead>
           <Tbody>
-            {sessions.data.map((s) => (
+            {sorted.rows.map((s) => (
               <Tr key={s.id}>
                 <Td>
                   <span className="block max-w-xs truncate" title={s.userAgent}>

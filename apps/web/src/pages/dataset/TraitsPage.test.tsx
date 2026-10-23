@@ -81,7 +81,8 @@ describe('RFC-13 R2, RFC-62 R5 TraitsPage', () => {
     expect(
       within(reproductive as HTMLElement)
         .getAllByRole('columnheader')
-        .map((th) => th.textContent)
+        // A sortable header's arrow is decorative (RFC-13 R13).
+        .map((th) => th.textContent?.replace(/[↕↑↓]/, ''))
         .slice(0, 5),
     ).toEqual(['Trait', 'Type', 'Unit', 'Description', 'Species']);
     const sexual = within(reproductive as HTMLElement).getAllByRole('row')[1] as HTMLElement;
@@ -217,6 +218,27 @@ describe('RFC-62 R5 TraitsPage filters', () => {
     const table = screen.getByRole('table');
     expect(within(table).getByRole('link', { name: 'seed mass' })).toBeInTheDocument();
     expect(within(table).queryByText('seed length')).not.toBeInTheDocument();
+  });
+
+  it("RFC-13 R13 sorts a category's table from its headers, ascending then descending", async () => {
+    await openPage();
+    const seed = (await screen.findAllByRole('table'))[1] as HTMLElement;
+    const names = () =>
+      within(seed)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => within(row).getAllByRole('link')[0]?.textContent);
+    const initial = names();
+    expect(initial.length).toBeGreaterThan(1);
+    await userEvent.click(within(seed).getByRole('button', { name: /^Trait/ }));
+    const ascending = [...initial].sort((a, b) => String(a).localeCompare(String(b)));
+    expect(names()).toEqual(ascending);
+    expect(within(seed).getByRole('columnheader', { name: /^Trait/ })).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+    await userEvent.click(within(seed).getByRole('button', { name: /^Trait/ }));
+    expect(names()).toEqual([...ascending].reverse());
   });
 
   it('picks a trait with no category chosen; its category then shows (issue #313)', async () => {

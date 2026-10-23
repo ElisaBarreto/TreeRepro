@@ -5,6 +5,7 @@ import { ApiError } from '../../api/client.ts';
 import { createApiKey, listApiKeys, revokeApiKey } from '../../api/me.ts';
 import { GENERIC_MESSAGE } from '../../lib/errors.ts';
 import { useMe } from '../../lib/session.ts';
+import { useSort } from '../../lib/use-sort.ts';
 import {
   Alert,
   Badge,
@@ -12,6 +13,7 @@ import {
   Field,
   Input,
   Section,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -81,6 +83,11 @@ export function ApiKeysSection() {
   const [secret, setSecret] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const keys = useQuery({ queryKey: API_KEYS_QUERY_KEY, queryFn: listApiKeys });
+  const sorted = useSort(keys.data?.keys ?? [], {
+    key: (k) => k.name,
+    expires: (k) => k.expiresAt,
+    lastUsed: (k) => k.lastUsedAt,
+  });
   const create = useMutation({
     // Wrapped, not passed bare: TanStack Query calls mutationFn with a second
     // (context) argument that a directly-passed reference — and its mock in
@@ -141,16 +148,16 @@ export function ApiKeysSection() {
         <Table>
           <Thead>
             <Tr>
-              <Th>Key</Th>
-              <Th>Expires</Th>
-              <Th>Last used</Th>
+              <SortTh label="Key" {...sorted.header('key')} />
+              <SortTh label="Expires" {...sorted.header('expires')} />
+              <SortTh label="Last used" {...sorted.header('lastUsed')} />
               <Th>
                 <span className="sr-only">Actions</span>
               </Th>
             </Tr>
           </Thead>
           <Tbody>
-            {keys.data.keys.map((k) => (
+            {sorted.rows.map((k) => (
               <Tr key={k.id}>
                 <Td>
                   {/* Name, prefix and state stacked in one cell: a column each overflowed 1200 px. */}
