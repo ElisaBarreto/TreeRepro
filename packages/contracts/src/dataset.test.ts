@@ -548,7 +548,7 @@ describe('RFC-60 R6 species trait filters on listSpeciesQuerySchema', () => {
     expect(listSpeciesQuerySchema.safeParse({ traitData: 'nope' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);
     expect(TRAIT_DATA_MODES).toEqual(['with', 'missing']);
-    expect(SPECIES_SORTS).toEqual(['name', 'completeness']);
+    expect(SPECIES_SORTS).toEqual(['name', 'completeness', 'family', 'genus', 'traits', 'records']);
   });
 });
 

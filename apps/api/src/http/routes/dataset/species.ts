@@ -61,6 +61,7 @@ export function speciesRoutes(ctx: AuthContext) {
           traitId: q.traitId,
           traitData: q.traitData,
           sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });

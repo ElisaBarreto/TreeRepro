@@ -1,4 +1,8 @@
-import { cursorQuerySchema, idParamSchema, listImportsQuerySchema } from '@treerepro/contracts';
+import {
+  idParamSchema,
+  listImportRejectsQuerySchema,
+  listImportsQuerySchema,
+} from '@treerepro/contracts';
 import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
 import { getImportBatch, listImportBatches, listImportRejects } from '../../../dataset/import.ts';
@@ -23,6 +27,8 @@ export function importRoutes(ctx: AuthContext) {
         const q = c.req.valid('query');
         const { data, nextCursor } = await listImportBatches(ctx.db, {
           kind: q.kind,
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -43,13 +49,15 @@ export function importRoutes(ctx: AuthContext) {
       '/:id/rejects',
       requirePermission(ctx, 'imports.read'),
       validate('param', idParamSchema),
-      validate('query', cursorQuerySchema),
+      validate('query', listImportRejectsQuerySchema),
       async (c) => {
         const { id } = c.req.valid('param');
         const q = c.req.valid('query');
         if (!(await getImportBatch(ctx.db, id))) throw notFound();
         const { data, nextCursor } = await listImportRejects(ctx.db, {
           batchId: id,
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });

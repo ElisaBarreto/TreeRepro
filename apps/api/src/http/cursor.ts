@@ -1,3 +1,4 @@
+import { type AnyColumn, type SQL, sql } from 'drizzle-orm';
 import { AppError } from './errors.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -97,4 +98,67 @@ export function pageOf<Row>(
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return { page, nextCursor: rows.length > limit && last ? cursorOf(last) : null };
+}
+
+/**
+ * A column a list sorts by (RFC-11 R10): an expression that is never null —
+ * coalesce an optional column to the value that should sort first — and the
+ * type its cursor value is read back as.
+ * @rfc RFC-11 R10
+ */
+export interface SortKey {
+  expr: SQL;
+  type: 'text' | 'int' | 'numeric' | 'timestamptz';
+}
+
+const KEY_PART: Record<SortKey['type'], (part: string) => boolean> = {
+  text: () => true,
+  int: (part) => /^-?\d{1,18}$/.test(part),
+  numeric: (part) => part.trim() !== '' && Number.isFinite(Number(part)),
+  timestamptz: (part) => !Number.isNaN(Date.parse(part)),
+};
+
+/**
+ * The keyset of a sorted list (RFC-11 R10): `orderBy` (the column, then `id`,
+ * both in `order`), the cursor predicate when `cursor` is given, the `key` to
+ * select as text for the next cursor, and `cursorOf` to mint it. The cursor
+ * is `[sort:order, key, id]`; one minted under another sort or order fails as
+ * any bad cursor does. The key travels as Postgres's own text, so a
+ * timestamp keeps its microseconds and a page boundary never repeats a row.
+ * @rfc RFC-11 R6, R10
+ */
+export function sortedKeyset<K extends string>(input: {
+  columns: Record<K, SortKey>;
+  sort: K;
+  order: 'asc' | 'desc';
+  id: SQL | AnyColumn;
+  cursor?: string;
+}): {
+  where: SQL | undefined;
+  orderBy: SQL[];
+  key: SQL<string>;
+  cursorOf: (row: { sortKey: string; id: string }) => string;
+} {
+  const column = input.columns[input.sort];
+  const tag = `${input.sort}:${input.order}`;
+  const dir = sql.raw(input.order === 'asc' ? 'asc' : 'desc');
+  let where: SQL | undefined;
+  if (input.cursor) {
+    const [, key, id] = decodeCompositeCursor(input.cursor, 3, [
+      (part) => part === tag,
+      KEY_PART[column.type],
+      isUuid,
+    ]) as [string, string, string];
+    const op = sql.raw(input.order === 'asc' ? '>' : '<');
+    // An `int` key is read back as `bigint`, the range its validator accepts,
+    // so a large forged value fails as a comparison, never as an overflow.
+    const cast = sql.raw(column.type === 'int' ? 'bigint' : column.type);
+    where = sql`(${column.expr}, ${input.id}) ${op} (${key}::${cast}, ${id}::uuid)`;
+  }
+  return {
+    where,
+    orderBy: [sql`${column.expr} ${dir}`, sql`${input.id} ${dir}`],
+    key: sql<string>`(${column.expr})::text`,
+    cursorOf: (row) => encodeCompositeCursor([tag, row.sortKey, row.id]),
+  };
 }

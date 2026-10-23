@@ -324,6 +324,45 @@ describe('RFC-60 R6 search tiers', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'cursor' }] });
   });
 
+  it('RFC-60 R6 sorts by genus or trait count either way and pages it whole; records needs a trait (RFC-11 R10)', async () => {
+    const stem = `Order${tag()}`;
+    const genus = async (name: string) => (await createGenus(t.db, { name: `${name}${tag()}` })).id;
+    const a = await createSpecies(t.db, {
+      canonicalName: `${stem} a`,
+      genusId: await genus('Zgen'),
+    });
+    const b = await createSpecies(t.db, {
+      canonicalName: `${stem} b`,
+      genusId: await genus('Agen'),
+    });
+    const c = await createSpecies(t.db, {
+      canonicalName: `${stem} c`,
+      genusId: await genus('Mgen'),
+    });
+    const walk = async (sort: 'genus' | 'name', order: 'asc' | 'desc') => {
+      const ids: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await searchSpecies(t.db, UNRESTRICTED, {
+          q: stem,
+          sort,
+          order,
+          limit: 2,
+          cursor,
+        });
+        ids.push(...page.data.map((s) => s.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return ids;
+    };
+    expect(await walk('genus', 'asc')).toEqual([b.id, c.id, a.id]);
+    expect(await walk('genus', 'desc')).toEqual([a.id, c.id, b.id]);
+    expect(await walk('name', 'desc')).toEqual([c.id, b.id, a.id]);
+    await expect(
+      searchSpecies(t.db, UNRESTRICTED, { q: stem, sort: 'records', limit: 2 }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'sort' }] });
+  });
+
   it('a cursor whose tier is not 0, 1 or 2 is rejected with 400, never mis-decoded into the wrong tier branch (RFC-60 R6, RFC-11 R6)', async () => {
     const stem = `Tier${tag()}`;
     const sp = await createSpecies(t.db, { canonicalName: stem });

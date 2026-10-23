@@ -106,15 +106,19 @@ function keyedSort(filters: SpeciesListFilters): KeyedSort | null {
   const key =
     sort === 'family'
       ? sql`coalesce(${families.name}, '')`
-      : sort === 'records'
-        ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
-        : sql`${species.canonicalName}`;
+      : sort === 'genus'
+        ? sql`coalesce(${genera.name}, '')`
+        : sort === 'traits'
+          ? sql`${species.traitCount}`
+          : sort === 'records'
+            ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
+            : sql`${species.canonicalName}`;
   return {
     tag: `${sort}:${order}`,
     key,
     desc: order === 'desc',
-    isKey: sort === 'records' ? isTraitCount : () => true,
-    cast: sort === 'records' ? sql`::int` : sql``,
+    isKey: sort === 'records' || sort === 'traits' ? isTraitCount : () => true,
+    cast: sort === 'records' || sort === 'traits' ? sql`::int` : sql``,
   };
 }
 
@@ -265,7 +269,7 @@ export interface SpeciesListFilters {
   traitData?: TraitDataMode;
   /** With `traitId`: a harmonised, live record of this level (RFC-62 R8). The caller validates the level. */
   traitLevelId?: string;
-  /** `family` and `records` are the trait page's (RFC-62 R8); `records` needs `traitId`. */
+  /** `records` needs `traitId` (RFC-60 R6, RFC-62 R8). */
   sort?: SpeciesSort | TraitSpeciesSort;
   /** `asc` by default; `desc` under any sort but `completeness` (RFC-62 R8). */
   order?: SortOrder;

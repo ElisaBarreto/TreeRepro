@@ -105,6 +105,52 @@ describe('RFC-61 R4 references', () => {
     expect(second.nextCursor).toBeNull();
   });
 
+  it('RFC-11 R10 sorts by a column either way and pages it whole; a cursor from another order is refused', async () => {
+    const k = tag();
+    const make = async (key: string, year: number | null) => {
+      const ref = await createReference(t.db, { citationKey: `${key}_${k}` });
+      await t.db
+        .update(bibliographicReferences)
+        .set({ year })
+        .where(eq(bibliographicReferences.id, ref.id));
+      return ref;
+    };
+    await make('Cc', 2001);
+    await make('Aa', null);
+    await make('Bb', 1999);
+    const walk = async (sort: 'reference' | 'year', order: 'asc' | 'desc') => {
+      const keys: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await searchReferences(t.db, UNRESTRICTED, {
+          q: k,
+          sort,
+          order,
+          limit: 2,
+          cursor,
+        });
+        keys.push(...page.data.map((r) => r.citationKey.slice(0, 2)));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return keys;
+    };
+    expect(await walk('reference', 'asc')).toEqual(['Aa', 'Bb', 'Cc']);
+    expect(await walk('reference', 'desc')).toEqual(['Cc', 'Bb', 'Aa']);
+    // A reference without a year sorts first ascending (RFC-61 R4).
+    expect(await walk('year', 'asc')).toEqual(['Aa', 'Bb', 'Cc']);
+    expect(await walk('year', 'desc')).toEqual(['Cc', 'Bb', 'Aa']);
+
+    const first = await searchReferences(t.db, UNRESTRICTED, { q: k, sort: 'year', limit: 1 });
+    await expect(
+      searchReferences(t.db, UNRESTRICTED, {
+        q: k,
+        sort: 'reference',
+        limit: 1,
+        cursor: first.nextCursor ?? undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
   it('a tampered cursor is refused with VALIDATION_FAILED', async () => {
     const forged = Buffer.from(JSON.stringify(['1', 'not-a-uuid']), 'utf8').toString('base64url');
     await expect(

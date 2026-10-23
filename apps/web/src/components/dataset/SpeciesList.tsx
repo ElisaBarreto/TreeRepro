@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
-import type { NameType, SpeciesListItem } from '@treerepro/contracts';
+import type { NameType, SortOrder, SpeciesListItem, SpeciesSort } from '@treerepro/contracts';
 import { formatNumber } from '../../lib/format.ts';
-import { Badge, Chip, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { Badge, Chip, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -38,19 +38,31 @@ const MATCH_TYPE_LABELS: Record<NameType, string> = {
 export function SpeciesList({
   items,
   showTraitRecords = false,
+  sort,
 }: {
   items: SpeciesListItem[];
   showTraitRecords?: boolean;
+  sort?: { by: SpeciesSort; order: SortOrder; onSort: (by: SpeciesSort) => void };
 }) {
+  const head = (by: SpeciesSort, label: string) =>
+    sort ? (
+      <SortTh
+        label={label}
+        direction={sort.by === by ? sort.order : null}
+        onSort={() => sort.onSort(by)}
+      />
+    ) : (
+      <Th>{label}</Th>
+    );
   return (
     <Table>
       <Thead>
         <Tr>
-          <Th>Species</Th>
-          <Th>Family</Th>
-          <Th>Genus</Th>
-          <Th>Traits</Th>
-          {showTraitRecords ? <Th>Records</Th> : null}
+          {head('name', 'Species')}
+          {head('family', 'Family')}
+          {head('genus', 'Genus')}
+          {head('traits', 'Traits')}
+          {showTraitRecords ? head('records', 'Records') : null}
           <Th>Match</Th>
         </Tr>
       </Thead>

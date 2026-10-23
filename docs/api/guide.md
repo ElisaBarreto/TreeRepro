@@ -1,4 +1,4 @@
-openapi-sha256: b49939b168dedff8e7e332ade46fce4aeeb310fc62ebb26e45b5b22874aa2efd
+openapi-sha256: 24b6766cee4d1f547804bd85e1d6955e66fab1091efa1b561b3108f42144af13
 
 # TreeRepro API guide
 
@@ -411,6 +411,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-10-23 — Sorted lists (RFC-11 R10; epic #318, issue #320): `GET /api/species` takes `sort=family|genus|traits|records` (beside `name` and `completeness`; `records` needs `traitId`) and `order=asc|desc`; `GET /api/references` takes `sort=usage|reference|primary|secondary|year` and `order` (default: most used first); `GET /api/imports` takes `sort=started|file|kind|status|total|inserted|duplicate|alreadyImported|rejected|pending` and `order` (default: newest first); `GET /api/imports/:id/rejects` takes `sort=row|reason` and `order`. A cursor carries the sort and order it was minted under and is refused under another. (openapi 24b6766cee4d)
 - 2026-10-23 — `GET /api/traits/:id/species` (RFC-62 R8; issue #316): for a quantitative trait, `summary` is `{ continuous: { median, summaryBasis, mean, meanBasis, sd, min, max, nRecords, nSources, outlierFlags, unit } }` — the RFC-77 species summary, the same object as `continuous` in `GET /api/species/:id/traits` — instead of `{ numeric: [{ unit, means }] }`. New `sort=name|family|records` and `order=asc|desc`; a cursor is tied to the sort and order it was minted under. (openapi b49939b168de)
 - 2026-10-23 — `GET /api/traits/:id/species` accepts `levelId` (with `mode=with` on a categorical trait): only the species with a harmonised, live record of that level, the records `distribution.levels` counts; a level of another trait or invisible to the viewer, `mode=missing` or a quantitative trait answers 400 `VALIDATION_FAILED` on `levelId` (RFC-62 R8; issue #309). (openapi fe22dcd06e53)
 - 2026-10-23 — Trait maps are computed by the platform from the weekly region snapshot (RFC-76, RFC-78; issue #293): `GET /api/maps` answers `[{ traitId, kind, levelId, regions, computedAt }]` (no `file`, no `dataVersion`), kinds gain `median` and `cv`, and `GET /api/maps/values?traitId=&kind=&levelId=` answers one map's `regions: [{ code, name, value, nSpecies, fill }]` (TDWG level-3 codes, `value` null below 3 species) and `legend: { stops, limits, log, percent, label, unit }`. `GET /api/maps/files/:name` is gone. (openapi f3ddf9dbb4e3)

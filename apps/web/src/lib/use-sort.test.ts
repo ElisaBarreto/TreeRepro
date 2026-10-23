@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { compareCells, useSort } from './use-sort.ts';
+import { compareCells, toggleSort, useSort } from './use-sort.ts';
 
 describe('RFC-13 R13 compareCells', () => {
   it('compares text by locale ignoring case, numbers by value, and puts an empty cell last', () => {
@@ -40,5 +40,22 @@ describe('RFC-13 R13 useSort', () => {
     act(() => result.current.header('n').onSort());
     expect(result.current.rows.map((r) => r.n)).toEqual([2, 1, null]);
     expect(result.current.header('name').direction).toBeNull();
+  });
+});
+
+describe('RFC-13 R13 toggleSort', () => {
+  it('sorts a new column ascending and flips the same column', () => {
+    expect(toggleSort({ sort: 'name', order: 'asc' }, 'year')).toEqual({
+      sort: 'year',
+      order: 'asc',
+    });
+    expect(toggleSort({ sort: 'year', order: 'asc' }, 'year')).toEqual({
+      sort: 'year',
+      order: 'desc',
+    });
+    expect(toggleSort({ sort: 'year', order: 'desc' }, 'year')).toEqual({
+      sort: 'year',
+      order: 'asc',
+    });
   });
 });

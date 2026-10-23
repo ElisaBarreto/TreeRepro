@@ -1,5 +1,10 @@
 import { Link } from '@tanstack/react-router';
-import { IMPORT_BATCH_KINDS, type ImportBatchKind } from '@treerepro/contracts';
+import {
+  IMPORT_BATCH_KINDS,
+  type ImportBatchKind,
+  type ImportSort,
+  type SortOrder,
+} from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { datasetKeys, fetchImports } from '../../api/dataset.ts';
 import { ImportStatusBadge } from '../../components/dataset/ImportStatusBadge.tsx';
@@ -10,6 +15,7 @@ import {
   Field,
   PageHeader,
   Select,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -20,6 +26,7 @@ import {
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, formatNumber, humaniseKey } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 const NUMBER = 'text-right tabular-nums';
@@ -36,7 +43,17 @@ const NUMBER = 'text-right tabular-nums';
 export function ImportsPage() {
   const ids = { kind: useId() };
   const [kind, setKind] = useState<ImportBatchKind | undefined>(undefined);
-  const params = { kind };
+  // Newest first until a header is clicked (RFC-64 R11, RFC-13 R13).
+  const [sort, setSort] = useState<{ sort: ImportSort; order: SortOrder } | null>(null);
+  const params = { kind, sort: sort?.sort, order: sort?.order };
+  const head = (by: ImportSort, label: string, className?: string) => (
+    <SortTh
+      label={label}
+      className={className}
+      direction={sort?.sort === by ? sort.order : null}
+      onSort={() => setSort(toggleSort(sort ?? { sort: 'started', order: 'desc' }, by))}
+    />
+  );
   const list = usePagedList(datasetKeys.imports(params), (cursor, limit) =>
     fetchImports({ ...params, cursor, limit }),
   );
@@ -72,17 +89,17 @@ export function ImportsPage() {
           <Table>
             <Thead>
               <Tr>
-                <Th>File</Th>
-                <Th>Kind</Th>
-                <Th>Status</Th>
-                <Th>Started</Th>
+                {head('file', 'File')}
+                {head('kind', 'Kind')}
+                {head('status', 'Status')}
+                {head('started', 'Started')}
                 <Th>Run by</Th>
-                <Th className={NUMBER}>Total</Th>
-                <Th className={NUMBER}>Inserted</Th>
-                <Th className={NUMBER}>Duplicate</Th>
-                <Th className={NUMBER}>Already imported</Th>
-                <Th className={NUMBER}>Rejected</Th>
-                <Th className={NUMBER}>Pending</Th>
+                {head('total', 'Total', NUMBER)}
+                {head('inserted', 'Inserted', NUMBER)}
+                {head('duplicate', 'Duplicate', NUMBER)}
+                {head('alreadyImported', 'Already imported', NUMBER)}
+                {head('rejected', 'Rejected', NUMBER)}
+                {head('pending', 'Pending', NUMBER)}
               </Tr>
             </Thead>
             <Tbody>

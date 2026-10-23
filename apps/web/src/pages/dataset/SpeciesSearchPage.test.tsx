@@ -424,6 +424,28 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
 });
 
 describe('RFC-60 R6 SpeciesSearchPage trait filters, order and the URL', () => {
+  it('RFC-13 R13 the Family header sorts the list through the API and into the URL, flipping on a second click', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA, ADANSONIA]));
+    const { router } = await openPage();
+    await userEvent.click(await screen.findByRole('button', { name: /^Family/ }));
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'family' }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(expect.objectContaining({ sort: 'family' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Family/ }));
+    await waitFor(() =>
+      expect(dataset.searchSpecies).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'family', order: 'desc' }),
+      ),
+    );
+    expect(screen.getByRole('columnheader', { name: /^Family/ })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+  });
+
   it('seeds every control from the URL and sends the filters on the first search', async () => {
     dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
     renderAt(

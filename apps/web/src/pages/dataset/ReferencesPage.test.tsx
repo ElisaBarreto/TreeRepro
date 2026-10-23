@@ -99,6 +99,20 @@ async function openPage() {
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell');
 
 describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
+  it('RFC-13 R13 a header sorts the list through the API and into the URL', async () => {
+    dataset.searchReferences.mockResolvedValue(page([REFERENCE]));
+    const { router } = await openPage();
+    await userEvent.click(await screen.findByRole('button', { name: /^Year/ }));
+    await waitFor(() =>
+      expect(dataset.searchReferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'year', order: 'asc' }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(
+      expect.objectContaining({ sort: 'year', order: 'asc' }),
+    );
+  });
+
   it('lists the first page at once, in the order the API sent, and searches again once two letters settle', async () => {
     dataset.searchReferences.mockResolvedValue(page([DOI_KEY, NUMERIC_KEY, REFERENCE, BARE]));
     await openPage();
@@ -121,7 +135,7 @@ describe('RFC-13 R2, RFC-61 R4 ReferencesPage', () => {
     expect(
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
-        .map((th) => th.textContent),
+        .map((th) => th.textContent?.replace(/[↕↑↓]/, '')),
     ).toEqual(['Reference', 'As primary', 'As secondary', 'Year', 'DOI / ISBN']);
     expect(
       rows

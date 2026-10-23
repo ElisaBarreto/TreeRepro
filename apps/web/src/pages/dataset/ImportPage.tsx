@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ImportBatch, ImportReject, ImportRejectReason } from '@treerepro/contracts';
-import { useId } from 'react';
+import type {
+  ImportBatch,
+  ImportReject,
+  ImportRejectReason,
+  ImportRejectSort,
+  SortOrder,
+} from '@treerepro/contracts';
+import { useId, useState } from 'react';
 import { datasetKeys, fetchImport, fetchImportRejects } from '../../api/dataset.ts';
 import { ImportStatusBadge } from '../../components/dataset/ImportStatusBadge.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
@@ -18,7 +24,7 @@ import {
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatDateTime, formatNumber } from '../../lib/format.ts';
 import { type PagedList, usePagedList } from '../../lib/use-paged-list.ts';
-import { useSort } from '../../lib/use-sort.ts';
+import { toggleSort, useSort } from '../../lib/use-sort.ts';
 
 const NUMBER = 'text-right tabular-nums';
 const DASH = <span className="text-mist-500">—</span>;
@@ -95,9 +101,12 @@ function orderedColumns(rawRow: Record<string, string>): string[] {
  */
 export function ImportPage({ id }: { id: string }) {
   const batch = useQuery({ queryKey: datasetKeys.importBatch(id), queryFn: () => fetchImport(id) });
+  // Row order until a header is clicked (RFC-64 R11, RFC-13 R13).
+  const [sort, setSort] = useState<{ sort: ImportRejectSort; order: SortOrder } | null>(null);
+  const sortParams = { sort: sort?.sort, order: sort?.order };
   const rejects = usePagedList(
-    datasetKeys.importRejects(id),
-    (cursor, limit) => fetchImportRejects(id, { cursor, limit }),
+    datasetKeys.importRejects(id, sortParams),
+    (cursor, limit) => fetchImportRejects(id, { ...sortParams, cursor, limit }),
     { enabled: batch.isSuccess },
   );
 
@@ -144,7 +153,11 @@ export function ImportPage({ id }: { id: string }) {
         ) : null}
         <Counts batch={data} />
         <UnknownLevels batch={data} />
-        <Rejects list={rejects} />
+        <Rejects
+          list={rejects}
+          sort={sort}
+          onSort={(by) => setSort(toggleSort(sort ?? { sort: 'row', order: 'asc' }, by))}
+        />
       </div>
     </>
   );
@@ -214,7 +227,15 @@ function UnknownLevels({ batch }: { batch: ImportBatch }) {
   );
 }
 
-function Rejects({ list }: { list: PagedList<ImportReject> }) {
+function Rejects({
+  list,
+  sort,
+  onSort,
+}: {
+  list: PagedList<ImportReject>;
+  sort: { sort: ImportRejectSort; order: SortOrder } | null;
+  onSort: (by: ImportRejectSort) => void;
+}) {
   const { items, isLoading, error } = list;
   const headingId = useId();
   return (
@@ -231,8 +252,17 @@ function Rejects({ list }: { list: PagedList<ImportReject> }) {
         <Table>
           <Thead>
             <Tr>
-              <Th className={NUMBER}>Row</Th>
-              <Th>Reason</Th>
+              <SortTh
+                label="Row"
+                className={NUMBER}
+                direction={sort?.sort === 'row' ? sort.order : null}
+                onSort={() => onSort('row')}
+              />
+              <SortTh
+                label="Reason"
+                direction={sort?.sort === 'reason' ? sort.order : null}
+                onSort={() => onSort('reason')}
+              />
               <Th>Raw row</Th>
             </Tr>
           </Thead>

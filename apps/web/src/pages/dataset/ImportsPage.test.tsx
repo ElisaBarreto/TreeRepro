@@ -56,6 +56,23 @@ beforeEach(() => {
 });
 
 describe('RFC-13 R2, RFC-64 R11 ImportsPage', () => {
+  it('RFC-13 R13 a header sorts the batches through the API, flipping on a second click', async () => {
+    dataset.fetchImports.mockResolvedValue(page([IMPORT_BATCH]));
+    renderAt('/app/imports');
+    await userEvent.click(await screen.findByRole('button', { name: /^Rejected/ }));
+    await waitFor(() =>
+      expect(dataset.fetchImports).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'rejected', order: 'asc' }),
+      ),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Rejected/ }));
+    await waitFor(() =>
+      expect(dataset.fetchImports).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'rejected', order: 'desc' }),
+      ),
+    );
+  });
+
   it('lists the batches with their status, start, operator and counts', async () => {
     dataset.fetchImports.mockResolvedValue(page([IMPORT_BATCH, FAILED]));
     renderAt('/app/imports');

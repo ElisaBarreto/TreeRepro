@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import {
   createProposalBodySchema,
+  type SortOrder,
   type SpeciesSort,
   type SpeciesStatus,
   type TraitDataMode,
@@ -27,6 +28,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
 /**
  * Every control of the species search as URL search params, so a link from
@@ -50,6 +52,7 @@ export interface SpeciesSearch {
   traitId?: string;
   traitData?: TraitDataMode;
   sort?: SpeciesSort;
+  order?: SortOrder;
 }
 
 function toValue(search: SpeciesSearch): SpeciesSearchValue {
@@ -68,6 +71,7 @@ function toValue(search: SpeciesSearch): SpeciesSearchValue {
     traitId: search.traitId,
     traitData: search.traitData,
     sort: search.sort,
+    order: search.order,
   };
 }
 
@@ -90,6 +94,7 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
     traitId: value.traitId,
     traitData: value.traitData,
     sort: value.sort,
+    order: value.order,
   };
 }
 
@@ -116,6 +121,7 @@ function searchKey(value: SpeciesSearchValue): string {
     value.traitId ?? null,
     value.traitData ?? null,
     value.sort ?? null,
+    value.order ?? null,
   ]);
 }
 
@@ -196,7 +202,10 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     categoryKey: form.categoryKey,
     traitId: form.traitId,
     traitData: form.traitData,
-    sort: form.sort,
+    // The Records column needs a trait: with the trait filter cleared, the
+    // list falls back to its default order instead of a refused request.
+    sort: form.sort === 'records' && !form.traitId ? undefined : form.sort,
+    order: form.sort === 'records' && !form.traitId ? undefined : form.order,
   };
   const list = usePagedList(datasetKeys.species(params), (cursor, limit) =>
     searchSpecies({ ...params, cursor, limit }),
@@ -266,7 +275,27 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
           />
         ) : null}
         {list.items.length > 0 ? (
-          <SpeciesList items={list.items} showTraitRecords={Boolean(form.traitId)} />
+          <SpeciesList
+            items={list.items}
+            showTraitRecords={Boolean(form.traitId)}
+            sort={{
+              by: form.sort ?? 'name',
+              order: form.order ?? 'asc',
+              onSort: (by) => {
+                const next = toggleSort(
+                  { sort: form.sort ?? 'name', order: form.order ?? 'asc' },
+                  by,
+                );
+                // Name ascending is the default: left out of the URL.
+                const plain = next.sort === 'name' && next.order === 'asc';
+                setForm({
+                  ...form,
+                  sort: plain ? undefined : next.sort,
+                  order: plain || next.order === 'asc' ? undefined : next.order,
+                });
+              },
+            }}
+          />
         ) : null}
         {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
       </div>

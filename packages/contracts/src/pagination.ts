@@ -7,6 +7,11 @@ export const cursorQuerySchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+/** A sorted list's direction (RFC-11 R10). @rfc RFC-11 R10 */
+export const SORT_ORDERS = ['asc', 'desc'] as const;
+/** @rfc RFC-11 R10 */
+export type SortOrder = (typeof SORT_ORDERS)[number];
+
 /** @rfc RFC-11 R2 */
 export const listMetaSchema = z.strictObject({ nextCursor: z.string().nullable() });
 
