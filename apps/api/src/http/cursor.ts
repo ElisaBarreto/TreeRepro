@@ -150,7 +150,10 @@ export function sortedKeyset<K extends string>(input: {
       isUuid,
     ]) as [string, string, string];
     const op = sql.raw(input.order === 'asc' ? '>' : '<');
-    where = sql`(${column.expr}, ${input.id}) ${op} (${key}::${sql.raw(column.type)}, ${id}::uuid)`;
+    // An `int` key is read back as `bigint`, the range its validator accepts,
+    // so a large forged value fails as a comparison, never as an overflow.
+    const cast = sql.raw(column.type === 'int' ? 'bigint' : column.type);
+    where = sql`(${column.expr}, ${input.id}) ${op} (${key}::${cast}, ${id}::uuid)`;
   }
   return {
     where,

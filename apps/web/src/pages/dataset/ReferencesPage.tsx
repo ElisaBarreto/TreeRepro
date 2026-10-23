@@ -147,6 +147,7 @@ export function ReferencesPage({
               value={effectiveCategory ?? ''}
               onChange={(event) =>
                 onSearchChange({
+                  ...search,
                   categoryKey: event.target.value || undefined,
                   // The trait belonged to the category being left behind.
                   traitId: undefined,
