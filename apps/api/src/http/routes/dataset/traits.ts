@@ -75,6 +75,7 @@ export function traitRoutes(ctx: AuthContext) {
             scope: q.scope,
             plotId: q.plotId,
             viewerPlotIds: scope.plots.map((p) => p.id),
+            levelId: q.levelId,
             cursor: q.cursor,
             limit: q.limit,
           },

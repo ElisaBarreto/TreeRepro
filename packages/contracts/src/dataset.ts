@@ -411,6 +411,7 @@ export const listTraitSpeciesQuerySchema = cursorQuerySchema.extend({
   genusId: z.uuid().optional(),
   scope: z.enum(SPECIES_SCOPES).optional(),
   plotId: z.uuid().optional(),
+  levelId: z.uuid().optional(),
 });
 
 /**

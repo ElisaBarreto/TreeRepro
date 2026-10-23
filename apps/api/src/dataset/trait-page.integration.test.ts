@@ -10,6 +10,7 @@ import {
   createReference,
   createSpecies,
   createTrait,
+  levelByKey,
 } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { createUser } from '../../test/helpers/users.ts';
@@ -1191,5 +1192,74 @@ describe('RFC-62 R8 listTraitSpecies', () => {
     await expect(
       listTraitSpecies(t.db, RESTRICTED, trait.id, { mode: 'with', limit: 50 }),
     ).rejects.toMatchObject({ code: 'TRAIT_NOT_FOUND' });
+  });
+
+  it('levelId keeps the species with a harmonised, live record of that level (issue #309)', async () => {
+    const { user } = await createUser(t.db);
+    const reference = await createReference(t.db);
+    const trait = await createTrait(t.db, { levels: ['tree', 'shrub'] });
+    const tree = await levelByKey(t.db, trait.id, 'tree');
+    const shrub = await levelByKey(t.db, trait.id, 'shrub');
+    const both = await createSpecies(t.db);
+    const shrubOnly = await createSpecies(t.db);
+    const withdrawnTree = await createSpecies(t.db);
+    const add = (speciesId: string, level: { id: string; key: string }) =>
+      record(t.db, {
+        actor: user,
+        speciesId,
+        traitId: trait.id,
+        valueText: level.key,
+        levelId: level.id,
+        referenceId: reference.id,
+      });
+    await add(both.id, tree);
+    await add(both.id, shrub);
+    await add(shrubOnly.id, shrub);
+    const gone = await add(withdrawnTree.id, tree);
+    await add(withdrawnTree.id, shrub);
+    await createAnnotation(t.db, { recordId: gone.id, actorId: user.id, kind: 'withdraw' });
+
+    const ids = async (levelId: string) =>
+      (
+        await listTraitSpecies(t.db, UNRESTRICTED, trait.id, { mode: 'with', levelId, limit: 50 })
+      ).data
+        .map((s) => s.id)
+        .sort();
+    expect(await ids(tree.id)).toEqual([both.id]);
+    expect(await ids(shrub.id)).toEqual([both.id, shrubOnly.id, withdrawnTree.id].sort());
+  });
+
+  it("levelId is refused with mode=missing, for another trait's level, an invisible level or a quantitative trait (issue #309)", async () => {
+    const trait = await createTrait(t.db, { levels: ['tree', 'retired'] });
+    const other = await createTrait(t.db, { levels: ['tree'] });
+    const numeric = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const tree = await levelByKey(t.db, trait.id, 'tree');
+    const retired = await levelByKey(t.db, trait.id, 'retired');
+    const foreign = await levelByKey(t.db, other.id, 'tree');
+    await t.db.execute(sql`update trait_levels set active = false where id = ${retired.id}`);
+    const refused = (
+      traitId: string,
+      levelId: string,
+      mode: 'with' | 'missing' = 'with',
+      v = UNRESTRICTED,
+    ) =>
+      expect(
+        listTraitSpecies(t.db, v, traitId, { mode, levelId, limit: 50 }),
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_FAILED',
+        details: [expect.objectContaining({ path: 'levelId' })],
+      });
+    await refused(trait.id, tree.id, 'missing');
+    await refused(trait.id, foreign.id);
+    await refused(trait.id, retired.id, 'with', RESTRICTED);
+    await refused(numeric.id, tree.id);
+    // an inactive level stays a filter for a viewer who sees inactive levels
+    await expect(
+      listTraitSpecies(t.db, UNRESTRICTED, trait.id, {
+        mode: 'with',
+        levelId: retired.id,
+        limit: 50,
+      }),
+    ).resolves.toMatchObject({ data: [] });
   });
 });

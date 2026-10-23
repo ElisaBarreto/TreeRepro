@@ -194,6 +194,8 @@ export interface SpeciesListFilters {
   categoryKey?: string;
   traitId?: string;
   traitData?: TraitDataMode;
+  /** With `traitId`: a harmonised, live record of this level (RFC-62 R8). The caller validates the level. */
+  traitLevelId?: string;
   sort?: SpeciesSort;
   cursor?: string;
 }
@@ -338,6 +340,12 @@ export async function speciesListConditions(
     }
     const e = coverageExists(sql`c.trait_id = ${filters.traitId}::uuid`);
     conditions.push(filters.traitData === 'missing' ? sql`not ${e}` : e);
+    if (filters.traitLevelId) {
+      conditions.push(sql`exists (select 1 from ${traitRecords} lr
+        where lr.species_id = ${species.id} and lr.trait_id = ${filters.traitId}::uuid
+          and lr.level_id = ${filters.traitLevelId}::uuid and lr.harmonisation = 'harmonised'
+          and ${liveSql(sql`lr.id`)})`);
+    }
   } else if (filters.categoryKey) {
     const [category] = await db
       .select({ key: traitCategories.key })

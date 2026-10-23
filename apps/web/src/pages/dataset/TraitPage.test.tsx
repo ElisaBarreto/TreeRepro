@@ -402,6 +402,46 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     );
   });
 
+  it('filters the species with data by a state, from the State select or a Distribution chip (issue #309)', async () => {
+    const DIOECIOUS = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e12';
+    const HERMAPHRODITE = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8e11';
+    const { router } = await openPage();
+    await userEvent.selectOptions(screen.getByLabelText('State'), DIOECIOUS);
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(expect.objectContaining({ level: DIOECIOUS })),
+    );
+    await waitFor(() =>
+      expect(dataset.fetchTraitSpecies).toHaveBeenLastCalledWith(
+        SEXUAL_SYSTEM_DETAIL.id,
+        expect.objectContaining({ mode: 'with', levelId: DIOECIOUS }),
+      ),
+    );
+
+    const chips = screen.getByRole('list', { name: 'Level distribution' });
+    await userEvent.click(
+      within(chips).getByRole('link', { name: 'Show the species with hermaphrodite' }),
+    );
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.objectContaining({ level: HERMAPHRODITE }),
+      ),
+    );
+    expect(screen.getByLabelText('State')).toHaveValue(HERMAPHRODITE);
+
+    // A species missing the trait has no state: the missing tab drops it.
+    await userEvent.click(screen.getByRole('tab', { name: 'Species missing data' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.not.objectContaining({ level: expect.anything() }),
+      ),
+    );
+    expect(screen.queryByLabelText('State')).not.toBeInTheDocument();
+    expect(dataset.fetchTraitSpecies).toHaveBeenLastCalledWith(
+      SEXUAL_SYSTEM_DETAIL.id,
+      expect.objectContaining({ mode: 'missing', levelId: undefined }),
+    );
+  });
+
   it('says so when a tab has no species, each in its own words', async () => {
     dataset.fetchTraitSpecies.mockResolvedValue(page([]));
     const { router } = await openPage();
