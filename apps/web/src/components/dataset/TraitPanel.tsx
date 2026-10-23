@@ -36,7 +36,11 @@ export function TraitPanel({
   isOwnRecord,
 }: {
   speciesId: string;
-  summary: TraitSummary;
+  /** What the drawer reads of a trait card's summary; the trait page builds it from its own row. */
+  summary: {
+    trait: Pick<TraitSummary['trait'], 'id' | 'key' | 'unit' | 'valueType'>;
+    recordCount: number;
+  };
   onClose: () => void;
   onSelectRecord: (id: string) => void;
   onValidateRecord?: (record: RecordItem) => void;

@@ -26,16 +26,20 @@ function summaryLines(item: TraitSpeciesItem): string[] {
  * row carries how many records the species has on the trait and a one-line
  * summary of them. In `missing` mode there is nothing to count, so the row
  * offers the way to change that instead: the species page opened on the
- * traits it has no record for (RFC-70 R7).
+ * traits it has no record for (RFC-70 R7). With `onOpenRecords`, a non-zero
+ * record count is a button that hands the row back, so the page can open the
+ * species' records on the trait (issue #311).
  * @rfc RFC-13 R2
  * @rfc RFC-62 R8
  */
 export function TraitSpeciesTable({
   items,
   mode,
+  onOpenRecords,
 }: {
   items: TraitSpeciesItem[];
   mode: TraitSpeciesMode;
+  onOpenRecords?: (item: TraitSpeciesItem) => void;
 }) {
   const withData = mode === 'with';
   return (
@@ -73,7 +77,20 @@ export function TraitSpeciesTable({
                       (RFC-62 R8), so neither hides the other: a row can
                       summarise records it has no count for. */}
                   <span className="flex flex-col gap-0.5">
-                    <span>{item.recordCount === null ? DASH : formatNumber(item.recordCount)}</span>
+                    {item.recordCount === null ? (
+                      DASH
+                    ) : onOpenRecords && item.recordCount > 0 ? (
+                      <button
+                        type="button"
+                        aria-label={`See the ${formatNumber(item.recordCount)} records of ${item.canonicalName}`}
+                        className="self-start font-medium text-canopy-900 underline underline-offset-2 hover:text-canopy-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+                        onClick={() => onOpenRecords(item)}
+                      >
+                        {formatNumber(item.recordCount)}
+                      </button>
+                    ) : (
+                      <span>{formatNumber(item.recordCount)}</span>
+                    )}
                     {summary.map((line) => (
                       <span key={line} className="text-meta text-mist-500">
                         {line}
