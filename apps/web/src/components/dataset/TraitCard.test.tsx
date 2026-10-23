@@ -185,18 +185,16 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(card).toHaveTextContent(/unit slip/);
   });
 
-  it('RFC-77 R7 shows the main state with its share and majority, and the states that are not a clear minority (issue #290)', () => {
+  it('RFC-77 R7 shows the states that are not a clear minority, and no Main state line (issues #290, #314)', () => {
     render(<TraitCard summary={SEXUAL_SYSTEM_SUMMARY} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: /^sexual system/ });
-    expect(
-      within(card).getByText('Main state: dioecious — 67% of records (majority)'),
-    ).toBeInTheDocument();
+    expect(within(card).queryByText(/Main state/)).not.toBeInTheDocument();
     expect(
       within(card).getByText('States: dioecious · monoecious · hermaphrodite'),
     ).toBeInTheDocument();
   });
 
-  it('RFC-77 R7 a tie names every main state, and no States line repeats them', () => {
+  it('RFC-77 R7 a tie leaves no States line repeating the main states', () => {
     const categorical = SEXUAL_SYSTEM_SUMMARY.categorical as NonNullable<
       TraitSummary['categorical']
     >;
@@ -215,9 +213,7 @@ describe('RFC-63 R10 TraitCard', () => {
       />,
     );
     const card = screen.getByRole('button', { name: /^sexual system/ });
-    expect(
-      within(card).getByText('Main state: dioecious / monoecious — 50% of records (majority)'),
-    ).toBeInTheDocument();
+    expect(within(card).queryByText(/Main state/)).not.toBeInTheDocument();
     expect(within(card).queryByText(/^States:/)).not.toBeInTheDocument();
   });
 
