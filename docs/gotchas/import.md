@@ -67,7 +67,7 @@
    ```sh
    docker compose run --rm --no-deps --entrypoint /usr/local/bin/backup.sh backup
    ```
-   It prints `backup written: /backups/treerepro-<stamp>.sql.age`. Restoring it is "Restoring a backup" in `docs/gotchas/infra.md`.
+   It prints `backup written: /backups/treerepro-<stamp>.sql.gz.age`. Restoring it is "Restoring a backup" in `docs/gotchas/infra.md`.
 2. **Stop the API**, then deploy and migrate (a running `api` would keep writing through the old trigger functions — see "Stop `api` before applying migration 0022" in `docs/gotchas/postgres.md`; the record-schema migration (0035 at the time of writing; check `apps/api/drizzle/`) rewrites all ~9.3M `trait_records` rows under an `ACCESS EXCLUSIVE` lock, then builds a unique index on `record_code` and validates four `CHECK` constraints — this takes minutes on the full dataset and the API stays down for all of it: let it finish). The rewrite needs free disk of roughly the size of `trait_records` plus its indexes; check first with `select pg_size_pretty(pg_total_relation_size('trait_records'))`:
    ```sh
    docker compose stop api
@@ -143,7 +143,7 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
    ```sh
    docker compose run --rm --no-deps --entrypoint /usr/local/bin/backup.sh backup
    ```
-   It prints `backup written: /backups/treerepro-<stamp>.sql.age`. Note the stamp. Restoring it is "Restoring a backup" in `docs/gotchas/infra.md`.
+   It prints `backup written: /backups/treerepro-<stamp>.sql.gz.age`. Note the stamp. Restoring it is "Restoring a backup" in `docs/gotchas/infra.md`.
 3. **Stop the API.** The run locks `trait_records` and `record_annotations` for its whole length (minutes on the full dataset), and nobody should be working meanwhile:
    ```sh
    docker compose stop api

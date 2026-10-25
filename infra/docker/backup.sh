@@ -1,5 +1,5 @@
 #!/bin/sh
-# Daily encrypted logical backup (design spec section 7; RFC-10 R9).
+# Daily compressed, encrypted logical backup (design spec section 7; RFC-10 R9).
 # Runs as treerepro_backup, a read-only role (pg_read_all_data); the dump
 # carries no owners or grants so it restores as whichever role runs psql
 # (docs/gotchas/infra.md, "Restoring a backup").
@@ -18,10 +18,14 @@ export PGPASSWORD
 # shellcheck disable=SC2046
 set -- $(date -u '+%Y-%m-%dT%H%M%SZ %u %d')
 stamp=$1 weekday=$2 monthday=$3
-target="/backups/treerepro-${stamp}.sql.age"
-pg_dump --host postgres --username treerepro_backup --dbname treerepro --no-owner --no-privileges --format=plain \
+target="/backups/treerepro-${stamp}.sql.gz.age"
+# Expire old dumps first, so a full disk cannot keep its own cleanup from running.
+find /backups -name 'treerepro-*.age' -mtime +30 -delete
+# A failed run must not leave a partial dump behind for the retries to pile up.
+trap 'rm -f "$target"' EXIT
+pg_dump --host postgres --username treerepro_backup --dbname treerepro --no-owner --no-privileges --format=plain --compress=gzip:6 \
   | age --recipient "$BACKUP_AGE_RECIPIENT" --output "$target"
-find /backups -name 'treerepro-*.sql.age' -mtime +30 -delete
+trap - EXIT
 echo "backup written: $target"
 # Off-site copy (RFC-10 R9): Cloudflare R2, whose lifecycle rules expire each
 # prefix and whose bucket lock keeps every object undeletable for 30 days, so
