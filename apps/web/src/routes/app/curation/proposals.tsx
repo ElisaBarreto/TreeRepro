@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { PROPOSAL_STATUSES } from '@treerepro/contracts';
+import { PROPOSAL_SORTS, PROPOSAL_STATUSES, SORT_ORDERS } from '@treerepro/contracts';
 import { enumParam } from '../../../lib/search-params.ts';
 import { ProposalsPage, type ProposalsSearch } from '../../../pages/curation/ProposalsPage.tsx';
 
@@ -10,7 +10,11 @@ import { ProposalsPage, type ProposalsSearch } from '../../../pages/curation/Pro
  * the same default the API applies.
  */
 function validateSearch(search: Record<string, unknown>): ProposalsSearch {
-  return { status: enumParam(search.status, PROPOSAL_STATUSES) };
+  return {
+    status: enumParam(search.status, PROPOSAL_STATUSES),
+    sort: enumParam(search.sort, PROPOSAL_SORTS),
+    order: enumParam(search.order, SORT_ORDERS),
+  };
 }
 
 function ProposalsRoute() {
