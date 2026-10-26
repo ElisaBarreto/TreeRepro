@@ -27,7 +27,7 @@ All actions are pinned to a commit SHA with the version in a trailing comment. D
 Source of truth: `infra/github/ruleset-main.json`, applied by `scripts/github-admin.sh` (creates or updates the ruleset named `main`); `./scripts/github-admin.sh --check` compares the live ruleset with the file and reports `matches` or `DRIFT: …` (edits made in the GitHub UI show up here; re-run the script to restore the file's state). `integration_id` 15368 is the GitHub Actions app, so only Actions can satisfy a required check. Rules:
 
 - Pull request required; no direct pushes, no force-push, no branch deletion.
-- Required status checks (branch must be up to date with `main`): `Verify`, `Images`, `E2E`, `CodeQL (javascript-typescript)`, `CodeQL (actions)`, `Dependency review`, `Gitleaks`, `Zizmor`, `Trivy config`.
+- Required status checks (the branch need not be up to date with `main`, see "Branches need not be up to date to merge" below): `Verify`, `Images`, `E2E`, `CodeQL (javascript-typescript)`, `CodeQL (actions)`, `Dependency review`, `Gitleaks`, `Zizmor`, `Trivy config`.
 - Code scanning merge protection: CodeQL and zizmor alerts of severity high or higher (and any "error" level alert) block the merge. Trivy is not in this rule: its jobs already fail on HIGH/CRITICAL, and the `web` image carries unfixable-by-us findings inside the caddy binary.
 - No review count required — CodeRabbit reviews every PR; a second human is not mandatory.
 
@@ -57,6 +57,11 @@ CodeQL uses the **advanced setup** (the workflow file). Do not turn on "default 
 **Symptom:** A PR stays blocked on a required check that shows as "Expected — waiting for status".
 **Cause:** The check's job name changed, or the job has an `if:` that skipped it on this PR. Ruleset entries match check names literally.
 **Fix:** Keep every required job unconditional on `pull_request` (except `Dependency review`, which only exists on PRs) and update the ruleset in the same PR whenever a job `name:` changes.
+
+## Branches need not be up to date to merge
+**Symptom:** Two PRs, each green on its own, are merged one after the other and the CI run on the push to `main` fails; `Deploy` does not run.
+**Cause:** Decision of 2026-10-26: the `main` ruleset sets `strict_required_status_checks_policy: false`. With it `true`, every PR had to be rebased on `main` and re-run the full CI (10–15 min) right before merging, so N green PRs took N sequential CI runs. GitHub's merge queue, which removes that wait without the risk, is offered only on organization-owned repositories, and this one belongs to a personal account. Accepted cost: a PR's checks prove it against the `main` its CI ran on, not the `main` it merges into, so two changes that never conflict textually (a signature and a call site in another file, two migrations with the same number) can break `main` together. Production is not exposed: `Deploy` needs `Verify`, `Images` and `E2E` from the push-to-main run of the same commit, so it stays on the last good SHA. Scorecard `Branch-Protection` loses its "up-to-date branches" credit (4/10 before the change).
+**Fix:** Open a fix PR straight away: until `main` is green again no merge deploys and new branches start from a broken base. Rebasing on `main` before pushing is still the practice; the ruleset just no longer enforces it. Turning the policy back on is a one-line change in `infra/github/ruleset-main.json` applied by the owner with `scripts/github-admin.sh`; adopt the merge queue instead if the repository moves to an organization.
 
 ## Trivy fails on a base-image CVE
 **Symptom:** `Images` fails on a HIGH/CRITICAL finding in an OS package of `treerepro-api` or `treerepro-web`.
