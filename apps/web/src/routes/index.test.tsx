@@ -87,7 +87,15 @@ describe('RFC-13 R7 the / route after sign-in', () => {
   });
 
   it('reaches /app at once and plainly under prefers-reduced-motion', async () => {
-    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+    // AppShell subscribes to its `lg` query once /app renders
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    );
     const { router } = renderAt('/');
     await signIn();
     await waitFor(() => expect(router.state.location.pathname).toBe('/app'), { timeout: 500 });

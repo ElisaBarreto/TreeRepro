@@ -1,7 +1,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { parquetWriteBuffer } from 'hyparquet-writer';
@@ -1150,12 +1150,16 @@ describe('RFC-64 importRecords', () => {
 
     it('R2 --trees-only without an is_tree_species column is refused before any batch row', async () => {
       const file = await writeRecords('v1-notree-', [`${IMPORT_COLUMNS.map(() => '').join(',')}`]);
-      const before = (await t.db.select().from(importBatches)).length;
       await expect(importRecords(t.db, { filePath: file, treesOnly: true })).rejects.toMatchObject({
         name: 'ImportRefusedError',
         reason: 'header_mismatch',
       });
-      expect((await t.db.select().from(importBatches)).length).toBe(before);
+      // by file name: other test files share the database and insert batches concurrently
+      const batches = await t.db
+        .select()
+        .from(importBatches)
+        .where(eq(importBatches.fileName, basename(file)));
+      expect(batches).toEqual([]);
     });
 
     it('R4 a Parquet file imports like its CSV twin: nulls, booleans, commas and quotes', async () => {
