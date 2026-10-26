@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS base
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS base
 # pnpm through corepack, pinned by version and by the sha512 of the npm tarball:
 # corepack refuses a download whose hash differs (OpenSSF Scorecard flags any
 # `npm install` as unpinned). pnpm 12's npm package is a launcher that fetches
@@ -29,7 +29,7 @@ RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/api bui
 FROM manifests AS prod-deps
 RUN pnpm install --frozen-lockfile --prod --filter "@treerepro/api..."
 
-FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS runtime
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS runtime
 # Pull Alpine security fixes the node image has not rebuilt with yet, and drop
 # the bundled npm, corepack and yarn: the runtime only executes `node dist/server.js`.
 RUN apk upgrade --no-cache \
