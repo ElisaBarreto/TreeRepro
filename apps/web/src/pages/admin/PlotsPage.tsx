@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import type { PlotSort } from '@treerepro/contracts';
 import { useState } from 'react';
 import { listPlots, plotKeys } from '../../api/plots.ts';
 import { PlotDialog } from '../../components/admin/PlotDialog.tsx';
@@ -11,10 +12,10 @@ import {
   EmptyState,
   Input,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
-  Th,
   Thead,
   Tr,
 } from '../../components/ui/index.ts';
@@ -22,6 +23,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { useServerSort } from '../../lib/use-sort.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -38,7 +40,9 @@ export function PlotsPage() {
 
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedValue(q.trim(), 300);
-  const filter = { q: debouncedQ || undefined };
+  // By code until a header is clicked (RFC-67 R3, RFC-13 R13).
+  const sort = useServerSort<PlotSort>({ sort: 'code', order: 'asc' });
+  const filter = { q: debouncedQ || undefined, ...sort.params };
 
   const [creating, setCreating] = useState(false);
 
@@ -78,11 +82,11 @@ export function PlotsPage() {
           <Table>
             <Thead>
               <Tr>
-                <Th>Code</Th>
-                <Th>Name</Th>
-                <Th>Country</Th>
-                <Th>Biome</Th>
-                <Th>Species</Th>
+                <SortTh label="Code" {...sort.header('code')} />
+                <SortTh label="Name" {...sort.header('name')} />
+                <SortTh label="Country" {...sort.header('country')} />
+                <SortTh label="Biome" {...sort.header('biome')} />
+                <SortTh label="Species" {...sort.header('species')} />
               </Tr>
             </Thead>
             <Tbody>

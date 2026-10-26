@@ -74,6 +74,34 @@ describe('RFC-50 R2 listUsers', () => {
     expect(first.nextCursor).toEqual(expect.any(String));
   });
 
+  it('RFC-11 R10 sorts by decrypted name or by status, either way, paging the order whole', async () => {
+    const k = Math.random().toString(16).slice(2);
+    const zed = (await createUser(t.db, { name: `zed ${k}`, status: 'suspended' })).user.id;
+    const amy = (await createUser(t.db, { name: `Amy ${k}`, status: 'suspended' })).user.id;
+    const bob = (await createUser(t.db, { name: `bob ${k}`, status: 'suspended' })).user.id;
+    const walk = async (sort: 'name' | 'status', order: 'asc' | 'desc') => {
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listUsers(t.db, { status: 'suspended', sort, order, cursor, limit: 2 });
+        seen.push(...page.data.map((u) => u.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return seen.filter((id) => id === zed || id === amy || id === bob);
+    };
+    // By locale, ignoring case.
+    expect(await walk('name', 'asc')).toEqual([amy, bob, zed]);
+    expect(await walk('name', 'desc')).toEqual([zed, bob, amy]);
+    const byStatus = await walk('status', 'asc');
+    expect(new Set(byStatus)).toEqual(new Set([amy, bob, zed]));
+    const first = await listUsers(t.db, { sort: 'name', limit: 1 });
+    expect(
+      await code(
+        listUsers(t.db, { sort: 'status', cursor: first.nextCursor ?? undefined, limit: 1 }),
+      ),
+    ).toBe('VALIDATION_FAILED');
+  });
+
   it('rejects a malformed cursor with VALIDATION_FAILED', async () => {
     expect(await code(listUsers(t.db, { cursor: 'nope', limit: 10 }))).toBe('VALIDATION_FAILED');
   });

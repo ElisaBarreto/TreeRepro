@@ -65,6 +65,25 @@ async function openPage() {
 }
 
 describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
+  it('RFC-13 R13 the Name header sorts users through the API, flipping on a second click; Email does not sort', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    admin.listUsers.mockResolvedValue(page([ADMIN_USER]));
+    await openPage();
+    await userEvent.click(await screen.findByRole('button', { name: /^Name/ }));
+    await waitFor(() =>
+      expect(admin.listUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'name', order: 'asc' }),
+      ),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Name/ }));
+    await waitFor(() =>
+      expect(admin.listUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'name', order: 'desc' }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: /^Email/ })).not.toBeInTheDocument();
+  });
+
   it('lists users with status, roles and created date, links to the detail page', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     admin.listUsers.mockResolvedValue(page([INVITED_USER, ADMIN_USER, SUSPENDED_USER]));
@@ -74,7 +93,7 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
     expect(
       within(rows[0] as HTMLElement)
         .getAllByRole('columnheader')
-        .map((th) => th.textContent),
+        .map((th) => th.textContent?.replace(/[↕↑↓]/, '')),
     ).toEqual(['Name', 'Email', 'Status', 'Roles', 'Created']);
     expect(admin.listUsers).toHaveBeenCalledWith({
       status: undefined,

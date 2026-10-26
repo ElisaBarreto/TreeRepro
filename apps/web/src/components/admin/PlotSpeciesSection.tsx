@@ -7,6 +7,7 @@ import { searchSpecies } from '../../api/dataset.ts';
 import { addPlotSpecies, fetchPlotSpecies, plotKeys, removePlotSpecies } from '../../api/plots.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { useServerSort } from '../../lib/use-sort.ts';
 import { Pagination } from '../dataset/Pagination.tsx';
 import {
   Alert,
@@ -19,6 +20,7 @@ import {
   Field,
   Input,
   Section,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -44,7 +46,9 @@ export function PlotSpeciesSection({
   const queryClient = useQueryClient();
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedValue(q.trim(), 300);
-  const filter = { q: debouncedQ || undefined };
+  // By name until a header is clicked (RFC-67 R4, RFC-13 R13).
+  const sort = useServerSort<'name' | 'family'>({ sort: 'name', order: 'asc' });
+  const filter = { q: debouncedQ || undefined, ...sort.params };
 
   const list = usePagedList(plotKeys.species(plotId, filter), (cursor, limit) =>
     fetchPlotSpecies(plotId, { ...filter, cursor, limit }),
@@ -146,8 +150,8 @@ export function PlotSpeciesSection({
           <Table>
             <Thead>
               <Tr>
-                <Th>Canonical name</Th>
-                <Th>Family</Th>
+                <SortTh label="Canonical name" {...sort.header('name')} />
+                <SortTh label="Family" {...sort.header('family')} />
                 <Th>Status</Th>
                 {canManage ? <Th className="w-20">Actions</Th> : null}
               </Tr>

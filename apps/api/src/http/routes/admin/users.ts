@@ -84,8 +84,8 @@ export function adminUserRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'users.read'),
       validate('query', listUsersQuerySchema),
       async (c) => {
-        const { status, cursor, limit } = c.req.valid('query');
-        const { data, nextCursor } = await listUsers(ctx.db, { status, cursor, limit });
+        const q = c.req.valid('query');
+        const { data, nextCursor } = await listUsers(ctx.db, q);
         return c.json({ data, meta: { nextCursor } });
       },
     )

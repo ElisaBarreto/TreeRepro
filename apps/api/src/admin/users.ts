@@ -1,5 +1,12 @@
-import type { PlotRef, User, UserRoleRef, UserStatus } from '@treerepro/contracts';
-import { and, asc, desc, eq, inArray, lt, type SQL, sql } from 'drizzle-orm';
+import type {
+  PlotRef,
+  SortOrder,
+  User,
+  UserRoleRef,
+  UserSort,
+  UserStatus,
+} from '@treerepro/contracts';
+import { and, asc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { assertNotLastAdmin, recordingRefusal, setUserRoles } from '../access/roles.ts';
 import { recordAudit } from '../audit/audit.ts';
 import { revokeAllApiKeys } from '../auth/api-keys.ts';
@@ -12,7 +19,7 @@ import { plots, userPlots } from '../db/schema/plots.ts';
 import { roles } from '../db/schema/roles.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
 import { type UserRow, users } from '../db/schema/users.ts';
-import { decodeCursor, encodeCursor } from '../http/cursor.ts';
+import { pageOf, type SortKey, sortedInMemory, sortedKeyset } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 
 /** The administrator performing an action and the request it came from. */
@@ -98,23 +105,73 @@ export async function getUser(db: DbExecutor, id: string): Promise<User | null> 
   return row ? withRoles(db, row) : null;
 }
 
-/** Newest first by id (UUID v7); `limit + 1` rows decide whether a next page exists. @rfc RFC-50 R2 */
+// The users list's SQL sort columns (RFC-50 R2, RFC-11 R10); `name` is
+// encrypted at rest (RFC-40) and sorted in memory instead.
+const USER_COLUMNS: Record<Exclude<UserSort, 'name'>, SortKey> = {
+  // UUID v7 is time-ordered (RFC-02 R8), and unlike `created_at` (a
+  // transaction's start) it never disagrees with insertion order.
+  created: { expr: sql`${users.id}`, type: 'uuid' },
+  status: { expr: sql`${users.status}`, type: 'text' },
+};
+
+/**
+ * Newest first unless `sort` names another column; `limit + 1` rows decide
+ * whether a next page exists.
+ * @rfc RFC-50 R2
+ * @rfc RFC-11 R10
+ */
 export async function listUsers(
   db: DbExecutor,
-  input: { status?: UserStatus; cursor?: string; limit: number },
+  input: {
+    status?: UserStatus;
+    sort?: UserSort;
+    order?: SortOrder;
+    cursor?: string;
+    limit: number;
+  },
 ): Promise<{ data: User[]; nextCursor: string | null }> {
+  const sort = input.sort ?? 'created';
+  const order = input.order ?? (input.sort ? 'asc' : 'desc');
   const conditions: SQL[] = [];
   if (input.status) conditions.push(eq(users.status, input.status));
-  if (input.cursor) conditions.push(lt(users.id, decodeCursor(input.cursor)));
-  const rows = await db
-    .select()
-    .from(users)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(users.id))
-    .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  const nextCursor = rows.length > input.limit && last ? encodeCursor(last.id) : null;
+  let page: UserRow[];
+  let nextCursor: string | null;
+  if (sort === 'name') {
+    // ponytail: decrypts every matching user to sort by name; fine for the
+    // platform's few hundred accounts, a sortable blind index if it grows to
+    // tens of thousands.
+    const all = await db
+      .select()
+      .from(users)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    ({ page, nextCursor } = sortedInMemory(all, {
+      sort,
+      order,
+      key: (r) => r.name,
+      cursor: input.cursor,
+      limit: input.limit,
+    }));
+  } else {
+    const keyset = sortedKeyset({
+      columns: USER_COLUMNS,
+      sort,
+      order,
+      id: users.id,
+      cursor: input.cursor,
+    });
+    if (keyset.where) conditions.push(keyset.where);
+    const rows = await db
+      .select({ user: users, sortKey: keyset.key.as('sort_key') })
+      .from(users)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(...keyset.orderBy)
+      .limit(input.limit + 1);
+    const paged = pageOf(rows, input.limit, (r) =>
+      keyset.cursorOf({ sortKey: r.sortKey, id: r.user.id }),
+    );
+    page = paged.page.map((r) => r.user);
+    nextCursor = paged.nextCursor;
+  }
   const userIds = page.map((r) => r.id);
   const [byUser, byPlots] = await Promise.all([rolesOf(db, userIds), plotsOf(db, userIds)]);
   return {

@@ -65,6 +65,13 @@ describe('RFC-51 R1-R3 queryAudit', () => {
     expect(rest.data.map((e) => e.id)).toEqual([ids[0]]);
     expect(rest.nextCursor).toBeNull();
 
+    // RFC-11 R10: by action, ascending, then by id.
+    const byAction = await queryAudit(t.db, { actor: user.id, sort: 'action', limit: 10 });
+    expect(byAction.data.map((e) => e.action)).toEqual(
+      [...byAction.data.map((e) => e.action)].sort(),
+    );
+    expect(byAction.data).toHaveLength(3);
+
     const at = new Date(all.data[1]?.at ?? 0);
     const window = await queryAudit(t.db, { actor: user.id, from: at, to: at, limit: 10 });
     expect(window.data.map((e) => e.id)).toEqual([ids[1]]);

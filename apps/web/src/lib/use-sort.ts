@@ -79,3 +79,22 @@ export function toggleSort<K extends string>(
 ): { sort: K; order: 'asc' | 'desc' } {
   return { sort: by, order: current.sort === by && current.order === 'asc' ? 'desc' : 'asc' };
 }
+
+/**
+ * The sort of a paginated table that keeps its filters in component state
+ * (RFC-13 R13): `params` for the route (both undefined until a header is
+ * clicked, so the route's default order applies) and `header(by)` for a
+ * `SortTh`. `fallback` is the route's default, from which the first click
+ * on its own column flips.
+ * @rfc RFC-13 R13
+ */
+export function useServerSort<K extends string>(fallback: { sort: K; order: 'asc' | 'desc' }) {
+  const [sort, setSort] = useState<{ sort: K; order: 'asc' | 'desc' } | null>(null);
+  return {
+    params: { sort: sort?.sort, order: sort?.order },
+    header: (by: K) => ({
+      direction: sort?.sort === by ? sort.order : null,
+      onSort: () => setSort(toggleSort(sort ?? fallback, by)),
+    }),
+  };
+}

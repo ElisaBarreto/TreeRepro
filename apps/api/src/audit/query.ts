@@ -1,9 +1,15 @@
-import type { AuditLogEntry } from '@treerepro/contracts';
-import { and, desc, eq, gte, lt, type SQL } from 'drizzle-orm';
+import type { AuditLogEntry, AuditSort, SortOrder } from '@treerepro/contracts';
+import { and, eq, gte, lt, type SQL, sql } from 'drizzle-orm';
 import type { DbExecutor } from '../db/client.ts';
 import { type AuditLogRow, auditLog } from '../db/schema/audit-log.ts';
-import { decodeCursor, encodeCursor } from '../http/cursor.ts';
+import { pageOf, type SortKey, sortedKeyset } from '../http/cursor.ts';
 import type { AuditAction } from './actions.ts';
+
+// The audit list's sort columns (RFC-51 R1, RFC-11 R10).
+const AUDIT_COLUMNS: Record<AuditSort, SortKey> = {
+  at: { expr: sql`${auditLog.at}`, type: 'timestamptz' },
+  action: { expr: sql`${auditLog.action}`, type: 'text' },
+};
 
 /** `ip` and `userAgent` arrive decrypted from the column type (RFC-40 R8). @rfc RFC-51 R2 */
 export function toAuditLogEntry(row: AuditLogRow): AuditLogEntry {
@@ -21,7 +27,8 @@ export function toAuditLogEntry(row: AuditLogRow): AuditLogEntry {
 }
 
 /**
- * Newest first by id (UUID v7); `from`/`to` bound `at` inclusively.
+ * Newest first unless `sort` names another column (RFC-11 R10); `from`/`to`
+ * bound `at` inclusively.
  *
  * `at` is stored with microsecond precision (RFC-51 R3) but `from`/`to` arrive
  * as JS `Date`s, which only carry millisecond precision; comparing `to` with
@@ -37,6 +44,8 @@ export async function queryAudit(
     action?: AuditAction;
     from?: Date;
     to?: Date;
+    sort?: AuditSort;
+    order?: SortOrder;
     cursor?: string;
     limit: number;
   },
@@ -46,17 +55,22 @@ export async function queryAudit(
   if (input.action) conditions.push(eq(auditLog.action, input.action));
   if (input.from) conditions.push(gte(auditLog.at, input.from));
   if (input.to) conditions.push(lt(auditLog.at, new Date(input.to.getTime() + 1)));
-  if (input.cursor) conditions.push(lt(auditLog.id, decodeCursor(input.cursor)));
+  const keyset = sortedKeyset({
+    columns: AUDIT_COLUMNS,
+    sort: input.sort ?? 'at',
+    order: input.order ?? (input.sort ? 'asc' : 'desc'),
+    id: auditLog.id,
+    cursor: input.cursor,
+  });
+  if (keyset.where) conditions.push(keyset.where);
   const rows = await db
-    .select()
+    .select({ entry: auditLog, sortKey: keyset.key.as('sort_key') })
     .from(auditLog)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(auditLog.id))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
-  const page = rows.slice(0, input.limit);
-  const last = page[page.length - 1];
-  return {
-    data: page.map(toAuditLogEntry),
-    nextCursor: rows.length > input.limit && last ? encodeCursor(last.id) : null,
-  };
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.entry.id }),
+  );
+  return { data: page.map((r) => toAuditLogEntry(r.entry)), nextCursor };
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { cursorQuerySchema } from './pagination.ts';
+import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 
 /**
  * The RFC-41 catalog, in the table's order.
@@ -80,9 +80,16 @@ export const auditLogEntrySchema = z.strictObject({
   metadata: z.record(z.string(), z.unknown()),
 });
 
+/** The audit list's sorts (RFC-51 R1). @rfc RFC-51 R1 */
+export const AUDIT_SORTS = ['at', 'action'] as const;
+/** @rfc RFC-51 R1 */
+export type AuditSort = (typeof AUDIT_SORTS)[number];
+
 /** @rfc RFC-51 R1, R4 */
 export const auditQuerySchema = cursorQuerySchema
   .extend({
+    sort: z.enum(AUDIT_SORTS).optional(),
+    order: z.enum(SORT_ORDERS).optional(),
     actor: z.uuid().optional(),
     action: actionKeySchema.optional(),
     from: z.iso.datetime({ offset: true }).optional(),

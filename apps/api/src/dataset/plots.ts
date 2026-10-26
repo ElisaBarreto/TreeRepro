@@ -2,11 +2,14 @@ import type {
   CreatePlotBody,
   Plot,
   PlotDetail,
+  PlotSort,
   PlotUser,
+  PlotUserSort,
+  SortOrder,
   SpeciesListItem,
   UpdatePlotBody,
 } from '@treerepro/contracts';
-import { and, asc, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
+import { and, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
 import type { Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -14,24 +17,29 @@ import { isUniqueViolation } from '../db/errors.ts';
 import { plotSpecies, plots, userPlots } from '../db/schema/plots.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
-import { decodeCompositeCursor, encodeCompositeCursor, isUuid, pageOf } from '../http/cursor.ts';
+import { pageOf, type SortKey, sortedInMemory, sortedKeyset } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { likePattern, searchSpecies } from './taxa.ts';
 
-function afterCodeCursor(cursor: string): SQL {
-  const [code, id] = decodeCompositeCursor(cursor, 2, [() => true, isUuid]) as [string, string];
-  return sql`(${plots.code}, ${plots.id}) > (${code}, ${id}::uuid)`;
-}
-
 const speciesCountSql = sql<number>`coalesce((select count(*)::int from ${plotSpecies} ps where ps.plot_id = ${plots.id}), 0)`;
 
+// The plots list's sort columns (RFC-67 R3, RFC-11 R10).
+const PLOT_COLUMNS: Record<PlotSort, SortKey> = {
+  code: { expr: sql`${plots.code}`, type: 'text' },
+  name: { expr: sql`${plots.name}`, type: 'text' },
+  country: { expr: sql`coalesce(${plots.country}, '')`, type: 'text' },
+  biome: { expr: sql`coalesce(${plots.biome}, '')`, type: 'text' },
+  species: { expr: speciesCountSql, type: 'int' },
+};
+
 /**
- * Lists field plots by code then id.
+ * Lists field plots by code then id, unless `sort` names another column.
  * @rfc RFC-67 R3
+ * @rfc RFC-11 R10
  */
 export async function listPlots(
   db: DbExecutor,
-  input: { q?: string; cursor?: string; limit: number },
+  input: { q?: string; sort?: PlotSort; order?: SortOrder; cursor?: string; limit: number },
 ): Promise<{ data: Plot[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
 
@@ -41,9 +49,14 @@ export async function listPlots(
     conditions.push(or(ilike(plots.code, prefix), ilike(plots.name, substring)) as SQL);
   }
 
-  if (input.cursor) {
-    conditions.push(afterCodeCursor(input.cursor));
-  }
+  const keyset = sortedKeyset({
+    columns: PLOT_COLUMNS,
+    sort: input.sort ?? 'code',
+    order: input.order ?? 'asc',
+    id: plots.id,
+    cursor: input.cursor,
+  });
+  if (keyset.where) conditions.push(keyset.where);
 
   const rows = await db
     .select({
@@ -58,14 +71,15 @@ export async function listPlots(
       speciesCount: speciesCountSql.as('species_count'),
       createdAt: plots.createdAt,
       updatedAt: plots.updatedAt,
+      sortKey: keyset.key.as('sort_key'),
     })
     .from(plots)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(asc(plots.code), asc(plots.id))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
 
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    encodeCompositeCursor([r.code, r.id]),
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.id }),
   );
 
   const data: Plot[] = page.map((r) => ({
@@ -143,7 +157,13 @@ export async function listPlotSpecies(
   db: DbExecutor,
   visibility: Visibility,
   plotId: string,
-  input: { q?: string; cursor?: string; limit: number },
+  input: {
+    q?: string;
+    sort?: 'name' | 'family';
+    order?: SortOrder;
+    cursor?: string;
+    limit: number;
+  },
 ): Promise<{ data: SpeciesListItem[]; nextCursor: string | null }> {
   const [plot] = await db.select({ id: plots.id }).from(plots).where(eq(plots.id, plotId)).limit(1);
   if (!plot) throw new AppError('PLOT_NOT_FOUND', 'Plot not found');
@@ -152,7 +172,8 @@ export async function listPlotSpecies(
 }
 
 /**
- * Lists users assigned to a field plot, sorted by decrypted name. The item
+ * Lists users assigned to a field plot, sorted by decrypted name or by
+ * status (RFC-11 R10), in memory: the names are encrypted at rest. The item
  * never carries the e-mail address (RFC-02 R14): the route is `plots.manage`,
  * and the address stays behind `users.read`.
  * @rfc RFC-67 R4
@@ -161,7 +182,7 @@ export async function listPlotSpecies(
 export async function listPlotUsers(
   db: DbExecutor,
   plotId: string,
-  input: { cursor?: string; limit: number },
+  input: { sort?: PlotUserSort; order?: SortOrder; cursor?: string; limit: number },
 ): Promise<{ data: PlotUser[]; nextCursor: string | null }> {
   const [plot] = await db.select({ id: plots.id }).from(plots).where(eq(plots.id, plotId)).limit(1);
   if (!plot) throw new AppError('PLOT_NOT_FOUND', 'Plot not found');
@@ -177,20 +198,14 @@ export async function listPlotUsers(
     .innerJoin(users, eq(users.id, userPlots.userId))
     .where(eq(userPlots.plotId, plotId));
 
-  rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-
-  let sorted = rows;
-  if (input.cursor) {
-    const cursorIdx = sorted.findIndex((u) => u.id === input.cursor);
-    if (cursorIdx >= 0) {
-      sorted = sorted.slice(cursorIdx + 1);
-    }
-  }
-
-  const page = sorted.slice(0, input.limit);
-  const last = page[page.length - 1];
-  const nextCursor = sorted.length > input.limit && last ? last.id : null;
-
+  const sort = input.sort ?? 'name';
+  const { page, nextCursor } = sortedInMemory(rows, {
+    sort,
+    order: input.order ?? 'asc',
+    key: (u) => (sort === 'status' ? u.status : u.name),
+    cursor: input.cursor,
+    limit: input.limit,
+  });
   return { data: page, nextCursor };
 }
 

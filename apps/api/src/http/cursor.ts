@@ -108,7 +108,8 @@ export function pageOf<Row>(
  */
 export interface SortKey {
   expr: SQL;
-  type: 'text' | 'int' | 'numeric' | 'timestamptz';
+  /** `uuid` for a time-ordered UUID v7 id standing in for its creation time. */
+  type: 'text' | 'int' | 'numeric' | 'timestamptz' | 'uuid';
 }
 
 const KEY_PART: Record<SortKey['type'], (part: string) => boolean> = {
@@ -116,6 +117,7 @@ const KEY_PART: Record<SortKey['type'], (part: string) => boolean> = {
   int: (part) => /^-?\d{1,18}$/.test(part),
   numeric: (part) => part.trim() !== '' && Number.isFinite(Number(part)),
   timestamptz: (part) => !Number.isNaN(Date.parse(part)),
+  uuid: isUuid,
 };
 
 /**
@@ -161,4 +163,41 @@ export function sortedKeyset<K extends string>(input: {
     key: sql<string>`(${column.expr})::text`,
     cursorOf: (row) => encodeCompositeCursor([tag, row.sortKey, row.id]),
   };
+}
+
+/**
+ * One page of rows already in memory, sorted by `key` then `id` (RFC-11 R10)
+ * with the cursor shape of {@link sortedKeyset}, `[sort:order, key, id]`.
+ * For a column SQL cannot order, such as a name encrypted at rest (RFC-40):
+ * the caller loads every matching row and decrypts it first.
+ * @rfc RFC-11 R10
+ */
+export function sortedInMemory<Row extends { id: string }>(
+  rows: readonly Row[],
+  input: {
+    sort: string;
+    order: 'asc' | 'desc';
+    key: (row: Row) => string;
+    cursor?: string;
+    limit: number;
+  },
+): { page: Row[]; nextCursor: string | null } {
+  const tag = `${input.sort}:${input.order}`;
+  const sign = input.order === 'asc' ? 1 : -1;
+  const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+  const compare = (aKey: string, aId: string, bKey: string, bId: string) =>
+    sign * (collator.compare(aKey, bKey) || (aId < bId ? -1 : aId > bId ? 1 : 0));
+  const sorted = [...rows].sort((a, b) => compare(input.key(a), a.id, input.key(b), b.id));
+  let rest = sorted;
+  if (input.cursor) {
+    const [, key, id] = decodeCompositeCursor(input.cursor, 3, [
+      (part) => part === tag,
+      () => true,
+      isUuid,
+    ]) as [string, string, string];
+    rest = sorted.filter((row) => compare(input.key(row), row.id, key, id) > 0);
+  }
+  return pageOf(rest, input.limit, (last) =>
+    encodeCompositeCursor([tag, input.key(last), last.id]),
+  );
 }

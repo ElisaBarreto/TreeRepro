@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { cursorQuerySchema } from './pagination.ts';
+import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 import { USER_STATUSES } from './user-status.ts';
 
 const nonEmpty = <T extends z.ZodRawShape>(shape: T, first: keyof T & string) =>
@@ -52,7 +52,20 @@ export const plotDetailSchema = plotSchema.extend({
  */
 export const listPlotsQuerySchema = cursorQuerySchema.extend({
   q: z.string().trim().min(1).max(100).optional(),
+  sort: z.enum(['code', 'name', 'country', 'biome', 'species']).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
+
+/** The plots list's sorts (RFC-67 R3). @rfc RFC-67 R3 */
+export type PlotSort = NonNullable<z.infer<typeof listPlotsQuerySchema>['sort']>;
+
+/** `GET /api/plots/:id/users` query (RFC-67 R4). @rfc RFC-67 R4 */
+export const listPlotUsersQuerySchema = cursorQuerySchema.extend({
+  sort: z.enum(['name', 'status']).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
+});
+/** @rfc RFC-67 R4 */
+export type PlotUserSort = NonNullable<z.infer<typeof listPlotUsersQuerySchema>['sort']>;
 
 /**
  * Query schema for listing species within a plot.
@@ -61,6 +74,8 @@ export const listPlotsQuerySchema = cursorQuerySchema.extend({
  */
 export const listPlotSpeciesQuerySchema = cursorQuerySchema.extend({
   q: z.string().trim().min(2).max(100).optional(),
+  sort: z.enum(['name', 'family']).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
 
 /**

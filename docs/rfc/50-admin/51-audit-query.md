@@ -12,9 +12,9 @@ Administrators holding `audit.read` inspect the audit log (RFC-41) through one p
 
 ## Rules
 
-- **R1** `GET /api/admin/audit?actor=&action=&from=&to=&cursor=&limit=` (`audit.read`). `actor` is a user id (`actor_user_id` equality); `action` is one key of the RFC-41 catalog; `from` and `to` are millisecond-precision instants (ISO 8601) bounding `at`: `from` inclusive (`at >= from`); `to` inclusive of its whole millisecond (`at < to + 1 ms`), because `audit_log.at` keeps microsecond precision and `from`/`to` cannot carry it. Pagination is RFC-11 R6.
+- **R1** `GET /api/admin/audit?actor=&action=&from=&to=&sort=at|action&order=&cursor=&limit=` (`audit.read`); newest first unless `sort` names `action`, or `at` with `order` (RFC-11 R10; `order` defaults to `desc` without `sort`, `asc` with it). `actor` is a user id (`actor_user_id` equality); `action` is one key of the RFC-41 catalog; `from` and `to` are millisecond-precision instants (ISO 8601) bounding `at`: `from` inclusive (`at >= from`); `to` inclusive of its whole millisecond (`at < to + 1 ms`), because `audit_log.at` keeps microsecond precision and `from`/`to` cannot carry it. Pagination is RFC-11 R6.
 - **R2** Entry: `{ id, at, actorUserId, action, targetType, targetId, ip, userAgent, metadata }`; `ip` and `userAgent` are decrypted (RFC-40 R8); nullable fields are `null`, never omitted. Answer `{ data: entry[], meta: { nextCursor } }`.
-- **R3** Order is `id` descending (UUID v7, insertion order); the cursor is a keyset on `id`, as in RFC-50 R2.
+- **R3** Order is `at` descending, then `id` descending, unless R1's `sort` names another (RFC-11 R10); the cursor is RFC-11 R10's `[sort:order, key, id]`, and one minted under another sort or order, or before this rule, answers 400 `VALIDATION_FAILED` with path `cursor`.
 - **R4** Validation: an `action` outside the catalog, a malformed `actor`, `from` or `to`, or `from` later than `to` answers 400 `VALIDATION_FAILED` with the failing path in `details`. Reading the audit log is not itself audited.
 
 ## Open questions
@@ -26,3 +26,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — R1: `from`/`to` are millisecond-precision instants; `to` is inclusive of its whole millisecond (`at < to + 1 ms`), matching `audit_log.at`'s microsecond precision.
 - 2026-09-12 — accepted.
+- 2026-10-23 — R1: `sort` and `order`; R3: ordered by `at` then `id`, with RFC-11 R10's cursor (epic #318).

@@ -1,9 +1,9 @@
 import {
   createPlotBodySchema,
-  cursorQuerySchema,
   idParamSchema,
   listPlotSpeciesQuerySchema,
   listPlotsQuerySchema,
+  listPlotUsersQuerySchema,
   plotSpeciesBodySchema,
   plotSpeciesMemberParamSchema,
   updatePlotBodySchema,
@@ -41,6 +41,8 @@ export function plotRoutes(ctx: AuthContext) {
         const q = c.req.valid('query');
         const { data, nextCursor } = await listPlots(ctx.db, {
           q: q.q,
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -98,6 +100,8 @@ export function plotRoutes(ctx: AuthContext) {
         const visibility = await visibilityOf(ctx, c);
         const { data, nextCursor } = await listPlotSpecies(ctx.db, visibility, id, {
           q: q.q,
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });
@@ -108,11 +112,13 @@ export function plotRoutes(ctx: AuthContext) {
       '/:id/users',
       requirePermission(ctx, 'plots.manage'),
       validate('param', idParamSchema),
-      validate('query', cursorQuerySchema),
+      validate('query', listPlotUsersQuerySchema),
       async (c) => {
         const { id } = c.req.valid('param');
         const q = c.req.valid('query');
         const { data, nextCursor } = await listPlotUsers(ctx.db, id, {
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });
