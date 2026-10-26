@@ -99,6 +99,21 @@ describe('RFC-71 R2 listContributions kind=records', () => {
     expect(second.data.map((r) => r.id)).toEqual([a1.id]);
     expect(second.nextCursor).toBeNull();
 
+    // RFC-71 R1: the records list's own sorts (RFC-63 R9), here by value.
+    const byValue: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listRecordsOf(t.db, UNRESTRICTED, a.id, {
+        sort: 'value',
+        order: 'asc',
+        limit: 1,
+        cursor,
+      });
+      byValue.push(...page.data.map((r) => r.valueText));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(byValue).toEqual(['alpha', 'beta', 'gamma']);
+
     expect(second.data[0]).toEqual({
       id: a1.id,
       speciesId: species.id,
@@ -523,6 +538,25 @@ describe('RFC-71 R3 listContributions kind=annotations', () => {
     });
     expect(rest[0]?.generated).toBe(false);
     expect(rest[0]?.record?.id).toBe(record.id);
+
+    // RFC-71 R1: oldest first walks both sources the other way round; a
+    // cursor of the other order, or another sort, is refused.
+    const oldest = await listContributions(t.db, UNRESTRICTED, a.id, {
+      kind: 'annotations',
+      order: 'asc',
+      limit: 1,
+    });
+    expect(asAnnotations(oldest.data).map((r) => r.id)).toEqual([confirm.id]);
+    await expect(
+      listContributions(t.db, UNRESTRICTED, a.id, {
+        kind: 'annotations',
+        limit: 1,
+        cursor: oldest.nextCursor ?? undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await expect(
+      listContributions(t.db, UNRESTRICTED, a.id, { kind: 'annotations', sort: 'value', limit: 1 }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'sort' }] });
   });
 
   it('a resolution names its contest first VISIBLE record: the lower-record_code record withdrawn, the second one still stands', async () => {

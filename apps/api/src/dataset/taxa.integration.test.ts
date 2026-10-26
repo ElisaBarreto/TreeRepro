@@ -363,6 +363,27 @@ describe('RFC-60 R6 search tiers', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'sort' }] });
   });
 
+  it('RFC-60 R8 lists genera by family name either way, a genus with no family first ascending (RFC-11 R10)', async () => {
+    const k = tag();
+    const zf = await createFamily(t.db, { name: `Zfam${k}` });
+    const af = await createFamily(t.db, { name: `Afam${k}` });
+    const g1 = await createGenus(t.db, { name: `Gen${k}a`, familyId: zf.id });
+    const g2 = await createGenus(t.db, { name: `Gen${k}b`, familyId: af.id });
+    const g3 = await createGenus(t.db, { name: `Gen${k}c`, familyId: null });
+    const walk = async (order: 'asc' | 'desc') => {
+      const ids: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listGenera(t.db, UNRESTRICTED, { q: `Gen${k}`, sort: 'family', order, limit: 1, cursor });
+        ids.push(...page.data.map((g) => g.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return ids;
+    };
+    expect(await walk('asc')).toEqual([g3.id, g2.id, g1.id]);
+    expect(await walk('desc')).toEqual([g1.id, g2.id, g3.id]);
+  });
+
   it('a cursor whose tier is not 0, 1 or 2 is rejected with 400, never mis-decoded into the wrong tier branch (RFC-60 R6, RFC-11 R6)', async () => {
     const stem = `Tier${tag()}`;
     const sp = await createSpecies(t.db, { canonicalName: stem });

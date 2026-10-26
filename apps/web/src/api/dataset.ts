@@ -230,6 +230,8 @@ export async function fetchFamilies(): Promise<TaxonRef[]> {
 export function fetchGenera(params: {
   familyId?: string;
   q?: string;
+  sort?: 'name' | 'family';
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }) {

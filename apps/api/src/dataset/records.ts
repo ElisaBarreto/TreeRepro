@@ -485,6 +485,25 @@ export async function listRecords(
     throw new Error('listRecords: speciesId+traitId or referenceId is required');
   }
 
+  const { page, nextCursor } = await sortedRecordPage(db, visibility, conditions, input);
+  return { data: page.map(toItem), nextCursor };
+}
+
+/**
+ * One page of {@link itemQuery} rows under `conditions`, in RFC-63 R9's
+ * sorts: `added` (the default) keeps the keyset cursor on the id, the others
+ * a composite keyset of the sort key(s) and the id. `order` defaults to
+ * `desc` for every sort. Shared by the records list and the viewer's own
+ * records (RFC-71 R1).
+ * @rfc RFC-63 R9
+ * @rfc RFC-71 R1
+ */
+export async function sortedRecordPage(
+  db: DbExecutor,
+  visibility: Visibility,
+  conditions: SQL[],
+  input: { sort?: RecordSort; order?: SortOrder; cursor?: string; limit: number },
+): Promise<{ page: ItemRow[]; nextCursor: string | null }> {
   const sort = input.sort ?? 'added';
   // RFC-63 R9 names one default, "added desc"; the controller ruling reads
   // that as the general default too, so every sort defaults to `desc` when
@@ -501,8 +520,7 @@ export async function listRecords(
       .where(and(...conditions))
       .orderBy(dir(traitRecords.id))
       .limit(input.limit + 1);
-    const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
-    return { data: page.map(toItem), nextCursor };
+    return pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
   }
 
   if (input.cursor) conditions.push(sortCursorCondition(sort, order, input.cursor));
@@ -510,8 +528,7 @@ export async function listRecords(
     .where(and(...conditions))
     .orderBy(...SORT_KEYS[sort].map((k) => dir(k)), dir(traitRecords.id))
     .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeSortCursor(sort, r));
-  return { data: page.map(toItem), nextCursor };
+  return pageOf(rows, input.limit, (r) => encodeSortCursor(sort, r));
 }
 
 /**

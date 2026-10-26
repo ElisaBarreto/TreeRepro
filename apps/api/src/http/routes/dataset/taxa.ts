@@ -77,6 +77,8 @@ export function genusRoutes(ctx: AuthContext) {
         const { data, nextCursor } = await listGenera(ctx.db, visibility, {
           familyId: q.familyId,
           q: q.q,
+          sort: q.sort,
+          order: q.order,
           cursor: q.cursor,
           limit: q.limit,
         });

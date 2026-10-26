@@ -2,11 +2,12 @@ import { z } from 'zod';
 import {
   ANNOTATION_KINDS,
   RECORD_INTENTS,
+  RECORD_SORTS,
   REVIEW_STATUSES,
   recordSchema,
   referenceRefSchema,
 } from './dataset.ts';
-import { cursorQuerySchema } from './pagination.ts';
+import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 
 /** @rfc RFC-71 R1 */
 export const CONTRIBUTION_KINDS = ['records', 'annotations'] as const;
@@ -25,6 +26,8 @@ export const listContributionsQuerySchema = cursorQuerySchema.extend({
   intent: z.enum([...RECORD_INTENTS, 'none']).optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
+  sort: z.enum(RECORD_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
 
 /** A viewer's own manual record, plus its standing. @rfc RFC-71 R2 */

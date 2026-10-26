@@ -1,4 +1,4 @@
-openapi-sha256: cd6597bce518a08086890fffe8164f4d0600e1edc04490207508584cd47bdefe
+openapi-sha256: 6fb8675791ec739a1b9e25af723674b802a332ff84e0bd2bafdc0eda5c345c14
 
 # TreeRepro API guide
 
@@ -411,6 +411,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-10-26 — Sorted contributions and genera (RFC-11 R10; issue #323): `GET /api/me/contributions` and `GET /api/admin/users/:id/contributions` take `sort` and `order` — `kind=records` sorts as `GET /api/records` (`added|value|references|origin`, default newest first), `kind=annotations` by date only (`sort` absent or `added`; any other answers 400 on `sort`), its cursor now `[added:order, id]`; `GET /api/genera` takes `sort=name|family` and `order`. (openapi 6fb8675791ec)
 - 2026-10-23 — Sorted admin lists (RFC-11 R10; issue #322): `GET /api/admin/users` takes `sort=created|name|status` and `order` (default: newest first; `name` is decrypted and sorted in the process); `GET /api/plots` takes `sort=code|name|country|biome|species` and `order` (default: by code); `GET /api/plots/:id/species` takes `sort=name|family` and `order`; `GET /api/plots/:id/users` takes `sort=name|status` and `order` (its cursor is no longer a bare user id); `GET /api/admin/audit` takes `sort=at|action` and `order` (default: newest first). Each of these cursors is `[sort:order, key, id]`: one minted before this change, or under another sort or order, answers 400 `VALIDATION_FAILED` on `cursor`. (openapi cd6597bce518)
 - 2026-10-23 — Sorted curation lists (RFC-11 R10; issue #321): `GET /api/records/pending` takes `sort=count|value|kind` and `order` (default: most records first, then value); `GET /api/records/disputed` takes `sort=date|species|trait` and `order` (default: newest first); `GET /api/species/proposals` and `GET /api/me/proposals` take `sort=proposed|name|status` and `order` (default: newest first). (openapi 3394396069e6)
 - 2026-10-23 — Sorted lists (RFC-11 R10; epic #318, issue #320): `GET /api/species` takes `sort=family|genus|traits|records` (beside `name` and `completeness`; `records` needs `traitId`) and `order=asc|desc`; `GET /api/references` takes `sort=usage|reference|primary|secondary|year` and `order` (default: most used first); `GET /api/imports` takes `sort=started|file|kind|status|total|inserted|duplicate|alreadyImported|rejected|pending` and `order` (default: newest first); `GET /api/imports/:id/rejects` takes `sort=row|reason` and `order`. A cursor carries the sort and order it was minted under and is refused under another. (openapi 24b6766cee4d)

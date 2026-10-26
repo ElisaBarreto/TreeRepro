@@ -38,6 +38,8 @@ import {
   isDigits,
   isUuid,
   pageOf,
+  type SortKey,
+  sortedKeyset,
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { contestStandingSql } from './contests.ts';
@@ -665,6 +667,12 @@ export async function listFamilies(
   return { data: page, nextCursor };
 }
 
+// The genera list's sort columns (RFC-60 R8, RFC-11 R10).
+const GENUS_COLUMNS: Record<'name' | 'family', SortKey> = {
+  name: { expr: sql`${genera.name}`, type: 'text' },
+  family: { expr: sql`coalesce(${families.name}, '')`, type: 'text' },
+};
+
 /**
  * @rfc RFC-60 R8
  * @rfc RFC-33 R3
@@ -672,12 +680,26 @@ export async function listFamilies(
 export async function listGenera(
   db: DbExecutor,
   visibility: Visibility,
-  input: { familyId?: string; q?: string; cursor?: string; limit: number },
+  input: {
+    familyId?: string;
+    q?: string;
+    sort?: 'name' | 'family';
+    order?: SortOrder;
+    cursor?: string;
+    limit: number;
+  },
 ): Promise<{ data: Genus[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
   if (input.familyId) conditions.push(eq(genera.familyId, input.familyId));
   if (input.q) conditions.push(ilike(genera.name, likePattern(input.q, 'prefix')));
-  if (input.cursor) conditions.push(afterNameCursor(input.cursor, genera.name, genera.id));
+  const keyset = sortedKeyset({
+    columns: GENUS_COLUMNS,
+    sort: input.sort ?? 'name',
+    order: input.order ?? 'asc',
+    id: genera.id,
+    cursor: input.cursor,
+  });
+  if (keyset.where) conditions.push(keyset.where);
   // Same guard as listFamilies: only push for a restricted viewer.
   if (!visibility.inactive || visibility.plotIds !== null) {
     conditions.push(
@@ -685,14 +707,20 @@ export async function listGenera(
     );
   }
   const rows = await db
-    .select({ id: genera.id, name: genera.name, familyId: families.id, familyName: families.name })
+    .select({
+      id: genera.id,
+      name: genera.name,
+      familyId: families.id,
+      familyName: families.name,
+      sortKey: keyset.key.as('sort_key'),
+    })
     .from(genera)
     .leftJoin(families, eq(families.id, genera.familyId))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(asc(genera.name), asc(genera.id))
+    .orderBy(...keyset.orderBy)
     .limit(input.limit + 1);
   const { page, nextCursor } = pageOf(rows, input.limit, (r) =>
-    encodeCompositeCursor([r.name, r.id]),
+    keyset.cursorOf({ sortKey: r.sortKey, id: r.id }),
   );
   return {
     data: page.map((g) => ({
