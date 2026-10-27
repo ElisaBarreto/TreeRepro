@@ -14,12 +14,14 @@ import {
   Field,
   Input,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
   Th,
   Thead,
-  Tr, SortTh,} from '../../components/ui/index.ts';
+  Tr,
+} from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';

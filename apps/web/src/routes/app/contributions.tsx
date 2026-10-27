@@ -4,9 +4,9 @@ import {
   RECORD_INTENTS,
   RECORD_SORTS,
   REVIEW_STATUSES,
-  SORT_ORDERS,
   type RecordIntent,
   type ReviewStatus,
+  SORT_ORDERS,
 } from '@treerepro/contracts';
 import { NoPermission } from '../../components/shell/NoPermission.tsx';
 import { hasPermission, useMe } from '../../lib/session.ts';

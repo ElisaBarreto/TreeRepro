@@ -374,7 +374,13 @@ describe('RFC-60 R6 search tiers', () => {
       const ids: string[] = [];
       let cursor: string | undefined;
       do {
-        const page = await listGenera(t.db, UNRESTRICTED, { q: `Gen${k}`, sort: 'family', order, limit: 1, cursor });
+        const page = await listGenera(t.db, UNRESTRICTED, {
+          q: `Gen${k}`,
+          sort: 'family',
+          order,
+          limit: 1,
+          cursor,
+        });
         ids.push(...page.data.map((g) => g.id));
         cursor = page.nextCursor ?? undefined;
       } while (cursor);

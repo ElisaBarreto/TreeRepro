@@ -6,7 +6,20 @@ import type {
   RecordItem,
   SortOrder,
 } from '@treerepro/contracts';
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -172,7 +185,9 @@ async function listResolutions(
   if (input.from) conditions.push(gte(contestEvents.createdAt, dayStart(input.from)));
   if (input.to) conditions.push(lt(contestEvents.createdAt, dayAfter(input.to)));
   if (cursorId) {
-    conditions.push(order === 'asc' ? gt(contestEvents.id, cursorId) : lt(contestEvents.id, cursorId));
+    conditions.push(
+      order === 'asc' ? gt(contestEvents.id, cursorId) : lt(contestEvents.id, cursorId),
+    );
   }
   return db
     .select({
@@ -294,7 +309,9 @@ async function listAnnotationContributions(
     })),
   ].sort((a, b) => (order === 'asc' ? 1 : -1) * (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-  const { page, nextCursor } = pageOf(merged, input.limit, (r) => encodeCompositeCursor([tag, r.id]));
+  const { page, nextCursor } = pageOf(merged, input.limit, (r) =>
+    encodeCompositeCursor([tag, r.id]),
+  );
   if (page.length === 0) return { data: [], nextCursor };
 
   const recordIds = [

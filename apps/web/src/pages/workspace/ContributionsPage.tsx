@@ -2,19 +2,18 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import {
   CONTRIBUTION_KINDS,
-  PROPOSAL_SORTS,
-  type ProposalSort,
-  RECORD_SORTS,
-  type RecordSort,
-  type SortOrder,
   type ContributionKind,
   type ContributionSummary,
+  PROPOSAL_SORTS,
   type Proposal,
+  type ProposalSort,
   type ProposalStatus,
+  RECORD_SORTS,
   type RecordIntent,
+  type RecordSort,
+  type SortOrder,
 } from '@treerepro/contracts';
 import { useState } from 'react';
-import { toggleSort } from '../../lib/use-sort.ts';
 import { adminKeys, fetchUser } from '../../api/admin.ts';
 import {
   type ContributionItem,
@@ -35,12 +34,14 @@ import {
   Badge,
   EmptyState,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
   Th,
   Thead,
-  Tr, SortTh,} from '../../components/ui/index.ts';
+  Tr,
+} from '../../components/ui/index.ts';
 import { AnnotationTable } from '../../components/workspace/AnnotationTable.tsx';
 import {
   ContributionFilters,
@@ -51,6 +52,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
 /**
  * Everything the contributions page carries in the URL: the tab, the five
