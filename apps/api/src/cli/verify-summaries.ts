@@ -6,7 +6,12 @@ import { parseArgs } from 'node:util';
 import { UNRESTRICTED } from '../access/visibility.ts';
 import { loadConfig } from '../config.ts';
 import { categoricalSummaries, continuousSummaries } from '../dataset/species-summary.ts';
-import { type CsvRow, compareRows, readCsvRows } from '../dataset/verify-summaries.ts';
+import {
+  type CsvRow,
+  compareRows,
+  ownerOutlierFlags,
+  readCsvRows,
+} from '../dataset/verify-summaries.ts';
 import { createDb } from '../db/client.ts';
 
 let values: { expected?: string; 'trees-only': boolean };
@@ -40,7 +45,10 @@ let exitCode = 0;
 try {
   const continuous = compareRows(
     await expectedRows('species_continuous_traits_long.csv'),
-    await continuousSummaries(db, UNRESTRICTED, null),
+    (await continuousSummaries(db, UNRESTRICTED, null)).map((row) => ({
+      ...row,
+      outlierFlags: ownerOutlierFlags(row.outlierFlags),
+    })),
     { expected: ['species', 'final_standard_trait'], computed: ['speciesName', 'traitKey'] },
     {
       species_median: 'speciesMedian',
