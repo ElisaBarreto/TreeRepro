@@ -40,38 +40,40 @@ const LEVELLED: TraitSummary = {
     {
       levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d20',
       key: 'dioecious',
-      count: 4,
+      nReferences: 4,
       validationCount: 2,
       contested: true,
       nSources: 3,
-      shareOfRecords: 0.6667,
+      shareOfReferences: 0.6667,
     },
     {
       levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d21',
       key: 'monoecious',
-      count: 1,
+      nReferences: 1,
       validationCount: 0,
       contested: false,
       nSources: 1,
-      shareOfRecords: 0.1667,
+      shareOfReferences: 0.1667,
     },
     {
       levelId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d22',
       key: 'hermaphrodite',
-      count: 1,
+      nReferences: 1,
       validationCount: 1,
       contested: false,
       nSources: 1,
-      shareOfRecords: 0.1667,
+      shareOfReferences: 0.1667,
     },
   ],
 };
 
 describe('RFC-63 R10 TraitCard', () => {
-  it('is a button named after the trait, with the record count, the pending line and the trait’s Contested badge', () => {
+  it('is a button named after the trait, with the reference count, the pending line and the trait’s Contested badge', () => {
     render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: /^sexual system/ });
-    expect(card).toHaveTextContent('8 records');
+    // RFC-63 R10 (issue #345): a categorical trait counts its references
+    expect(card).toHaveTextContent('6 references');
+    expect(card).not.toHaveTextContent('records');
     expect(card).toHaveTextContent('2 pending');
     expect(within(card).getByText('Contested')).toBeInTheDocument();
     expect(card.parentElement?.querySelector('[style]')).toBeNull();
@@ -83,11 +85,11 @@ describe('RFC-63 R10 TraitCard', () => {
       levels: Array.from({ length: 7 }, (_, i) => ({
         levelId: `018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d${20 + i}`,
         key: `level_${i}`,
-        count: 7 - i,
+        nReferences: 7 - i,
         validationCount: 0,
         contested: false,
         nSources: 1,
-        shareOfRecords: (7 - i) / 28,
+        shareOfReferences: (7 - i) / 28,
       })),
     };
     render(<TraitCard summary={many} onOpen={() => {}} />);
@@ -96,17 +98,18 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(within(list).getByText('level_6')).toBeInTheDocument();
   });
 
-  it('shows per level its record count, its validations, a bar and a Contested badge where it applies', () => {
+  it('shows per level its reference count, its validations, a bar and a Contested badge where it applies', () => {
     render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
     const list = screen.getByRole('list', { name: 'Levels of sexual system' });
     const items = within(list).getAllByRole('listitem');
     expect(items[0]).toHaveTextContent('dioecious');
-    expect(items[0]).toHaveTextContent('4 records');
+    expect(items[0]).toHaveTextContent('4 references');
     expect(items[0]).toHaveTextContent('✓ 2');
     expect(items[0]).toHaveTextContent('3 sources');
     expect(items[1]).toHaveTextContent('1 source');
     expect(within(items[0] as HTMLElement).getByText('Contested')).toBeInTheDocument();
-    expect(items[1]).toHaveTextContent('1 record');
+    expect(items[1]).toHaveTextContent('1 reference');
+    expect(items[1]).not.toHaveTextContent('1 references');
     expect(within(items[1] as HTMLElement).queryByText('Contested')).not.toBeInTheDocument();
     const fills = list.querySelectorAll('.bg-canopy-500');
     expect(fills[0]?.className).toContain('w-full');
@@ -217,12 +220,12 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(within(card).queryByText(/^States:/)).not.toBeInTheDocument();
   });
 
-  it('says "1 record" for a single record and calls onOpen when clicked', async () => {
+  it('says "1 reference" for a single reference and calls onOpen when clicked', async () => {
     const onOpen = vi.fn();
     render(<TraitCard summary={POLLINATION_MODE_SUMMARY} onOpen={onOpen} />);
     const card = screen.getByRole('button', { name: /pollination mode/ });
-    expect(card).toHaveTextContent('1 record');
-    expect(card).not.toHaveTextContent('1 records');
+    expect(card).toHaveTextContent('1 reference');
+    expect(card).not.toHaveTextContent('1 references');
     await userEvent.click(card);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });

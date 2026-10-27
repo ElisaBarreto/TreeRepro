@@ -116,28 +116,24 @@ describe('RFC-63 R14 contested is derived from contest storage', () => {
         expect.objectContaining({
           levelId: f.level('blue'),
           key: 'blue',
-          count: 2,
           validationCount: 2,
           contested: true,
         }),
         expect.objectContaining({
           levelId: f.level('red'),
           key: 'red',
-          count: 1,
           validationCount: 0,
           contested: false,
         }),
         expect.objectContaining({
           levelId: f.level('orange'),
           key: 'orange',
-          count: 1,
           validationCount: 0,
           contested: false,
         }),
         expect.objectContaining({
           levelId: f.level('green'),
           key: 'green',
-          count: 1,
           validationCount: 0,
           contested: false,
         }),

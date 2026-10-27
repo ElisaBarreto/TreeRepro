@@ -1,4 +1,5 @@
 import {
+  DISPERSAL_PHASES,
   HARMONISATION_STATUSES,
   OUTLIER_FLAGS,
   RECORD_INTENTS,
@@ -10,6 +11,7 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
+  boolean,
   check,
   index,
   integer,
@@ -101,6 +103,14 @@ export const traitRecords = pgTable(
     recordsBehindRow: integer('records_behind_row'),
     /** Why the owner's outlier audit flagged the value; null when not flagged (RFC-63 R1). */
     outlierFlag: text('outlier_flag', { enum: OUTLIER_FLAGS }),
+    /** False for a copy of evidence another dataset already gives; a copy is never read (RFC-63 R17). */
+    countsAsEvidence: boolean('counts_as_evidence').notNull().default(true),
+    /** The `ID` of the row that counts for this evidence (RFC-63 R17). */
+    evidenceCode: text('evidence_code'),
+    /** The other datasets' references reporting the same evidence (RFC-63 R17). */
+    alsoReportedBy: text('also_reported_by'),
+    /** A dispersal trait's phase (RFC-63 R17). */
+    dispersalPhase: text('dispersal_phase', { enum: DISPERSAL_PHASES }),
     createdBy: uuid('created_by').references(() => users.id),
     note: text('note'),
     /** The pending record this row harmonises (RFC-65 R7); null for every other row. */
@@ -154,6 +164,8 @@ export const traitRecords = pgTable(
     index('trait_records_outlier_species_idx')
       .on(t.speciesId)
       .where(sql`${t.outlierFlag} is not null`),
+    /** RFC-63 R17: the visibility check probes the few copies only. */
+    index('trait_records_copies_idx').on(t.id).where(sql`not ${t.countsAsEvidence}`),
     /** RFC-71 R4: the viewer's own manual records, newest first. */
     index('trait_records_created_by_idx')
       .on(t.createdBy, t.id.desc())
@@ -214,6 +226,11 @@ export const traitRecords = pgTable(
     check(
       'trait_records_outlier_flag_check',
       sql`${t.outlierFlag} is null or ${t.outlierFlag} in ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme', 'bounds_inverted')`,
+    ),
+    /** RFC-63 R17: dispersal_phase takes only the three phases. */
+    check(
+      'trait_records_dispersal_phase_check',
+      sql`${t.dispersalPhase} is null or ${t.dispersalPhase} in ('primary', 'secondary', 'unspecified')`,
     ),
   ],
 );

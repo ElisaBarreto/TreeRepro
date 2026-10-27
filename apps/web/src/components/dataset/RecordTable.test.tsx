@@ -171,6 +171,30 @@ describe('RFC-63 R8 RecordTable', () => {
     expect(cells(rows[2] as HTMLElement)[1]).not.toHaveTextContent('Outlier');
   });
 
+  it('RFC-63 R8, R17 names the other datasets beside the references, and the dispersal phase by the value (issue #345)', async () => {
+    renderInRouter(
+      <RecordTable
+        records={[
+          {
+            ...MEASURED,
+            id: `${MEASURED.id.slice(0, -1)}1`,
+            alsoReportedBy: 'Kleyer et al., 2008',
+            dispersalPhase: 'secondary',
+          },
+          { ...MEASURED, id: `${MEASURED.id.slice(0, -1)}2` },
+        ]}
+        onSelect={vi.fn()}
+      />,
+    );
+    const rows = await screen.findAllByRole('row');
+    const first = cells(rows[1] as HTMLElement);
+    expect(first[2]).toHaveTextContent('Also reported by Kleyer et al., 2008');
+    expect(first[1]).toHaveTextContent('Secondary dispersal');
+    const second = cells(rows[2] as HTMLElement);
+    expect(second[2]).not.toHaveTextContent('Also reported by');
+    expect(second[1]).not.toHaveTextContent(/dispersal|phase/i);
+  });
+
   it('says so with a dash when a record lists no reference', async () => {
     renderInRouter(<RecordTable records={[{ ...MEASURED, references: [] }]} onSelect={vi.fn()} />);
     const rows = await screen.findAllByRole('row');

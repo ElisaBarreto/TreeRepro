@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import type { OutlierFlag, RecordItem, UnitStatus } from '@treerepro/contracts';
+import type { DispersalPhase, OutlierFlag, RecordItem, UnitStatus } from '@treerepro/contracts';
 import { Fragment, type ReactNode } from 'react';
 import type { RecordSort, SortOrder } from '../../api/dataset.ts';
 import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
@@ -37,6 +37,16 @@ export const OUTLIER_LABELS: Record<OutlierFlag, string> = {
   'unit_factor;trait_extreme': 'Likely a unit slip, and extreme for this trait',
   bounds_inverted: 'Minimum and maximum were inverted at the source; the bounds were left out',
 };
+
+/** A dispersal trait's phase as it reads beside the value. @rfc RFC-63 R17 */
+export const DISPERSAL_PHASE_LABELS: Record<DispersalPhase, string> = {
+  primary: 'Primary dispersal',
+  secondary: 'Secondary dispersal',
+  unspecified: 'Phase unspecified',
+};
+
+/** `also_reported_by` can run to hundreds of characters; the cell shows this much. */
+const ALSO_MAX = 120;
 
 /**
  * How a record's value reads: its level; else its quantitative value in the
@@ -94,14 +104,15 @@ export interface RecordTableSort {
 
 /**
  * Records as rows: the record ID (R-2), the value — a button that selects the
- * row, so every record is reachable by keyboard — every reference of the
- * record joined by "; " (R-4), the import's secondary article, origin,
+ * row, so every record is reachable by keyboard — with a dispersal trait's
+ * phase, every reference of the record joined by "; " (R-4) and the other
+ * datasets reporting the same evidence (RFC-63 R17), the import's secondary article, origin,
  * harmonisation, the validation and contest counts with a **Contested**
  * badge (R-9), and the date added. Withdrawn records never reach it (R-13).
  * With `sort`, the value, references, origin and added headers sort on the
  * server (spec §2). `showSpecies` / `showTrait` add leading columns outside a
  * species page or trait panel; `extra` appends one column of the caller's.
- * @rfc RFC-63 R8, R9
+ * @rfc RFC-63 R8, R9, R17
  * @rfc RFC-71 R2
  */
 export function RecordTable<T extends RecordItem>({
@@ -185,6 +196,12 @@ export function RecordTable<T extends RecordItem>({
                   </span>
                 </>
               ) : null}
+              {record.dispersalPhase ? (
+                <>
+                  {' '}
+                  <Badge>{DISPERSAL_PHASE_LABELS[record.dispersalPhase]}</Badge>
+                </>
+              ) : null}
             </Td>
             <Td>
               {record.references.length === 0
@@ -195,6 +212,16 @@ export function RecordTable<T extends RecordItem>({
                       <ReferenceLink reference={reference} />
                     </Fragment>
                   ))}
+              {record.alsoReportedBy ? (
+                <span
+                  className="block text-meta text-mist-500"
+                  title={
+                    record.alsoReportedBy.length > ALSO_MAX ? record.alsoReportedBy : undefined
+                  }
+                >
+                  Also reported by {truncate(record.alsoReportedBy, ALSO_MAX)}
+                </span>
+              ) : null}
             </Td>
             <Td>
               {record.secondaryReference ? (

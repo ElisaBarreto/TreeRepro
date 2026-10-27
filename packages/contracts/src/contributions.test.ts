@@ -34,6 +34,8 @@ const record = {
   unitStatus: null,
   unit: null,
   outlierFlag: null,
+  alsoReportedBy: null,
+  dispersalPhase: null,
   references: [],
 };
 

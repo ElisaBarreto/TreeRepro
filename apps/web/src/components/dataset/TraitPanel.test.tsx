@@ -124,8 +124,71 @@ describe('spec §2 TraitPanel row actions', () => {
     dataset.fetchRecords.mockResolvedValue(page([{ ...RECORD, recordCode: 'EB_1' }]));
     mount(SEXUAL_SYSTEM_SUMMARY, { onValidateRecord: vi.fn(), onRespondRecord: vi.fn() });
     const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    await userEvent.click(within(panel).getByRole('button', { name: /^dioecious/ }));
     await within(panel).findByRole('button', { name: 'dioecious' });
     expect(within(panel).queryByRole('button', { name: /^Validate/ })).not.toBeInTheDocument();
     expect(within(panel).queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-63 R9, R17 TraitPanel of a categorical trait (issue #345)', () => {
+  const [dioecious, monoecious] = SEXUAL_SYSTEM_SUMMARY.levels ?? [];
+
+  it('groups the observations by level: each level names its references, and opens on its own records', async () => {
+    dataset.fetchRecords.mockResolvedValue(
+      page([{ ...RECORD, recordCode: 'EB_1', alsoReportedBy: 'Kleyer et al., 2008' }]),
+    );
+    mount(SEXUAL_SYSTEM_SUMMARY);
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    expect(within(panel).getByText('6 references')).toBeInTheDocument();
+    const level = within(panel).getByRole('button', { name: /^dioecious/ });
+    expect(level).toHaveAttribute('aria-expanded', 'false');
+    expect(level).toHaveTextContent('4 references · 2 sources');
+    expect(within(panel).getByRole('button', { name: /^monoecious/ })).toHaveTextContent(
+      '1 reference · 1 source',
+    );
+    // nothing is fetched until a level opens
+    expect(dataset.fetchRecords).not.toHaveBeenCalled();
+    await userEvent.click(level);
+    expect(level).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenCalledWith(
+        expect.objectContaining({
+          speciesId: SPECIES.id,
+          traitId: SEXUAL_SYSTEM_SUMMARY.trait.id,
+          levelId: dioecious?.levelId,
+        }),
+      ),
+    );
+    expect(await within(panel).findByText('EB_1')).toBeInTheDocument();
+    expect(within(panel).getByText('Also reported by Kleyer et al., 2008')).toBeInTheDocument();
+    await userEvent.click(level);
+    expect(level).toHaveAttribute('aria-expanded', 'false');
+    expect(within(panel).queryByText('EB_1')).not.toBeInTheDocument();
+    expect(monoecious).toBeDefined();
+  });
+
+  it('offers a dispersal-phase filter on a dispersal trait only, and applies it to the open level', async () => {
+    mount(SEXUAL_SYSTEM_SUMMARY, { dispersal: true });
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    await userEvent.click(within(panel).getByRole('button', { name: /^dioecious/ }));
+    await waitFor(() => expect(dataset.fetchRecords).toHaveBeenCalled());
+    await userEvent.selectOptions(
+      within(panel).getByRole('combobox', { name: 'Dispersal phase' }),
+      'secondary',
+    );
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ levelId: dioecious?.levelId, dispersalPhase: 'secondary' }),
+      ),
+    );
+  });
+
+  it('has no dispersal-phase filter on another trait', async () => {
+    mount(SEXUAL_SYSTEM_SUMMARY);
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    expect(
+      within(panel).queryByRole('combobox', { name: 'Dispersal phase' }),
+    ).not.toBeInTheDocument();
   });
 });

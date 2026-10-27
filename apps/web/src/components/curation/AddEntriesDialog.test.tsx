@@ -93,11 +93,11 @@ function summary(levels: { levelId: string; key: string }[]): SpeciesTraits {
           },
           levels: levels.map((level) => ({
             ...level,
-            count: 1,
+            nReferences: 1,
             validationCount: 0,
             contested: false,
             nSources: 1,
-            shareOfRecords: 1 / levels.length,
+            shareOfReferences: 1 / levels.length,
           })),
           continuous: null,
           categorical: null,

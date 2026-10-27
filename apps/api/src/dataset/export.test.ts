@@ -50,6 +50,10 @@ describe('RFC-66 R2 column lists', () => {
       'summary_source',
       'records_behind_row',
       'outlier_flag',
+      'counts_as_evidence',
+      'evidence_id',
+      'also_reported_by',
+      'dispersal_phase',
       'created_at',
     ]);
   });

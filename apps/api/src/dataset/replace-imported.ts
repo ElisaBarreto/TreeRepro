@@ -176,7 +176,7 @@ export async function detachImported(
 
 /**
  * The counters of RFC-69 R2 and RFC-61 R4, R9, rebuilt from the records that
- * are not withdrawn (RFC-63 R13): the mirror of 0038's
+ * are not withdrawn (RFC-63 R13) nor copies of evidence (RFC-63 R17): the mirror of 0038's
  * `trait_records_uncount`, with 13f's `record_references` counted on its own.
  * The deletes of detachImported decremented nothing, so an incremental fix
  * would be wrong. `first_record_at` / `last_record_at` are taken over live
@@ -191,17 +191,20 @@ async function recomputeCounters(tx: TransactionSql): Promise<void> {
     from (select id, count(*)::int as n from (
             select r.primary_reference_id as id from trait_records r
             where r.primary_reference_id is not null
+              and r.counts_as_evidence
               and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
             union all
             select rr.reference_id from record_references rr join trait_records r on r.id = rr.record_id
-            where not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
+            where r.counts_as_evidence
+              and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
           ) x group by 1) u
     where b.id = u.id`;
   await tx`
     update bibliographic_references b set secondary_count = u.n
     from (select r.secondary_reference_id as id, count(*)::int as n from trait_records r
           where r.secondary_reference_id is not null
-            and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
+            and r.counts_as_evidence
+              and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
           group by 1) u
     where b.id = u.id`;
   await tx`delete from species_trait_coverage`;
@@ -210,7 +213,8 @@ async function recomputeCounters(tx: TransactionSql): Promise<void> {
     select r.species_id, r.trait_id, count(*), count(*) filter (where r.harmonisation = 'harmonised'),
       min(r.created_at), max(r.created_at)
     from trait_records r
-    where not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
+    where r.counts_as_evidence
+              and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
     group by 1, 2`;
   await tx`update species set trait_count = 0 where trait_count <> 0`;
   await tx`
@@ -226,15 +230,18 @@ async function recomputeCounters(tx: TransactionSql): Promise<void> {
       select reference_id, trait_id from (
         select distinct r.id, r.primary_reference_id as reference_id, r.trait_id from trait_records r
         where r.primary_reference_id is not null
-          and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
+          and r.counts_as_evidence
+              and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
         union
         select distinct r.id, r.secondary_reference_id, r.trait_id from trait_records r
         where r.secondary_reference_id is not null
-          and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
+          and r.counts_as_evidence
+              and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
       ) d
       union all
       select rr.reference_id, r.trait_id from record_references rr join trait_records r on r.id = rr.record_id
-      where not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
+      where r.counts_as_evidence
+              and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw')
     ) x group by 1, 2`;
 }
 

@@ -1,4 +1,5 @@
 import {
+  type DispersalPhase,
   RECORD_ORIGINS,
   type RecordDetail,
   type RecordItem,
@@ -111,15 +112,26 @@ export function reviewStatusSql(
     else 'unvalidated' end`;
 }
 
+/** What the export reads beyond what a viewer does: the copies of evidence (RFC-66 R2). */
+export interface LiveOptions {
+  copies?: boolean;
+}
+
 /**
- * No `withdraw` annotation exists for the record (spec R-13): the one
- * definition of "still in the dataset". `recordId` is wrapped for the reason
- * given on {@link reviewStatusSql}.
- * @rfc RFC-63 R6
+ * No `withdraw` annotation exists for the record (spec R-13), and it is not a
+ * copy of evidence another dataset already gives (RFC-63 R17) unless
+ * `copies` asks for them: the one definition of "still in the dataset".
+ * `recordId` is wrapped for the reason given on {@link reviewStatusSql}.
+ * @rfc RFC-63 R6, R17
  */
-export function liveSql(recordId: SQL | typeof traitRecords.id): SQL {
-  return sql`not exists (select 1 from ${recordAnnotations} lw
-    where lw.record_id = ${sql`${recordId}`} and lw.kind = 'withdraw')`;
+export function liveSql(recordId: SQL | typeof traitRecords.id, options?: LiveOptions): SQL {
+  const id = sql`${recordId}`;
+  const notWithdrawn = sql`not exists (select 1 from ${recordAnnotations} lw
+    where lw.record_id = ${id} and lw.kind = 'withdraw')`;
+  if (options?.copies) return notWithdrawn;
+  // trait_records_copies_idx holds only the copies, so this probe stays cheap.
+  return sql`${notWithdrawn} and not exists (select 1 from ${traitRecords} lc
+    where lc.id = ${id} and not lc.counts_as_evidence)`;
 }
 
 /** Harmonised, unless the viewer reviews (spec R-14). @rfc RFC-33 R2 */
@@ -147,17 +159,19 @@ function levelVisibleForRecord(v: Visibility, recordId: SQL | typeof traitRecord
 }
 
 /**
- * A record the viewer reads: live, harmonised or reviewed (RFC-33 R2), and on
- * a level that is null, active, or visible to a `dataset.read_inactive`
- * holder (RFC-33 R2).
+ * A record the viewer reads: live — so never a copy of evidence (RFC-63 R17)
+ * unless `options.copies` — harmonised or reviewed (RFC-33 R2), and on a
+ * level that is null, active, or visible to a `dataset.read_inactive` holder
+ * (RFC-33 R2).
  * @rfc RFC-33 R2
  */
 export function recordVisible(
   v: Visibility,
   recordId: SQL | typeof traitRecords.id = traitRecords.id,
   harmonisation: SQL | typeof traitRecords.harmonisation = traitRecords.harmonisation,
+  options?: LiveOptions,
 ): SQL {
-  return sql`${liveSql(recordId)} and ${harmonisedFor(v, harmonisation)} and ${levelVisibleForRecord(v, recordId)}`;
+  return sql`${liveSql(recordId, options)} and ${harmonisedFor(v, harmonisation)} and ${levelVisibleForRecord(v, recordId)}`;
 }
 
 const itemColumns = {
@@ -266,6 +280,8 @@ export function toItem(r: ItemRow): RecordItem {
     unitStatus: rec.unitStatus ?? null,
     unit: rec.unit ?? null,
     outlierFlag: rec.outlierFlag ?? null,
+    alsoReportedBy: rec.alsoReportedBy ?? null,
+    dispersalPhase: rec.dispersalPhase ?? null,
     harmonisation: rec.harmonisation,
     review: r.review,
     primaryReference,
@@ -440,7 +456,8 @@ function sortCursorCondition(
 
 /**
  * Either `speciesId` and `traitId` together, or `referenceId` alone (primary,
- * secondary or `record_references`). `sort` is `value`, `references`,
+ * secondary or `record_references`); with the first, `levelId` and
+ * `dispersalPhase` narrow it to one level and one phase. `sort` is `value`, `references`,
  * `origin` or `added` (spec §2); `added` keeps the keyset cursor on the id
  * (today's cursor, unchanged), the other sorts page under a composite
  * keyset cursor of the sort key(s) and the id (RFC-11 R6), `id` breaking
@@ -457,6 +474,8 @@ export async function listRecords(
     speciesId?: string;
     traitId?: string;
     referenceId?: string;
+    levelId?: string;
+    dispersalPhase?: DispersalPhase;
     cursor?: string;
     limit: number;
     sort?: RecordSort;
@@ -473,6 +492,9 @@ export async function listRecords(
       eq(traitRecords.speciesId, input.speciesId),
       eq(traitRecords.traitId, input.traitId),
     );
+    if (input.levelId) conditions.push(eq(traitRecords.levelId, input.levelId));
+    if (input.dispersalPhase)
+      conditions.push(eq(traitRecords.dispersalPhase, input.dispersalPhase));
   } else if (input.referenceId) {
     conditions.push(
       sql`${traitRecords.id} in (

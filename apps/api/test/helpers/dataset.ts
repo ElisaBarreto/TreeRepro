@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type {
   AnnotationKind,
+  DispersalPhase,
   HarmonisationStatus,
   ImportBatchKind,
   NameSource,
@@ -198,6 +199,11 @@ type RecordOrigin =
       summarySource?: SummarySource;
       recordsBehindRow?: number;
       outlierFlag?: OutlierFlag;
+      /** The evidence columns (RFC-63 R17); `countsAsEvidence` defaults to true. */
+      countsAsEvidence?: boolean;
+      evidenceCode?: string;
+      alsoReportedBy?: string;
+      dispersalPhase?: DispersalPhase;
     }
   | {
       origin: 'manual';
@@ -268,6 +274,10 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
             summarySource: input.summarySource ?? null,
             recordsBehindRow: input.recordsBehindRow ?? null,
             outlierFlag: input.outlierFlag ?? null,
+            countsAsEvidence: input.countsAsEvidence ?? true,
+            evidenceCode: input.evidenceCode ?? null,
+            alsoReportedBy: input.alsoReportedBy ?? null,
+            dispersalPhase: input.dispersalPhase ?? null,
           }),
     })
     .returning({ id: traitRecords.id });

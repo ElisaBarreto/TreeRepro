@@ -104,11 +104,11 @@ const SUMMARY: SpeciesTraits = [
           { levelId: DIOECIOUS, key: 'dioecious' },
         ].map((level) => ({
           ...level,
-          count: 1,
+          nReferences: 1,
           validationCount: 0,
           contested: false,
           nSources: 1,
-          shareOfRecords: 0.5,
+          shareOfReferences: 0.5,
         })),
         continuous: null,
         categorical: null,

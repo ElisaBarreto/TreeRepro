@@ -134,9 +134,12 @@ async function openPage(species = SPECIES) {
 
 const ADD_ENTRIES = 'Add entries for another trait';
 
+/** Opens the sexual system drawer on its first level, dioecious (issue #345: grouped by level). */
 async function openTraitPanel() {
   await userEvent.click(screen.getByRole('button', { name: /^sexual system/ }));
-  return screen.findByRole('dialog', { name: 'sexual system' });
+  const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+  await userEvent.click(within(panel).getByRole('button', { name: /^dioecious \d/ }));
+  return panel;
 }
 
 describe('RFC-60 R7 SpeciesPage header', () => {
@@ -236,13 +239,14 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
       expect(dataset.fetchRecords).toHaveBeenCalledWith({
         speciesId: SPECIES.id,
         traitId: SEXUAL_SYSTEM.id,
+        levelId: SEXUAL_SYSTEM_SUMMARY.levels?.[0]?.levelId,
         sort: 'added',
         order: 'desc',
         cursor: undefined,
         limit: 50,
       }),
     );
-    expect(panel).toHaveTextContent('8 records');
+    expect(panel).toHaveTextContent('6 references');
     const rows = within(await within(panel).findByRole('table')).getAllByRole('row');
     expect(rows).toHaveLength(3);
     expect(within(rows[1] as HTMLElement).getByRole('button', { name: 'dioecious' })).toBeVisible();
@@ -772,11 +776,11 @@ const DICTIONARY_SPECIES_TRAITS: SpeciesTraits = [
           { levelId: DICT_DIOECIOUS, key: 'dioecious' },
         ].map((level) => ({
           ...level,
-          count: 1,
+          nReferences: 1,
           validationCount: 0,
           contested: false,
           nSources: 1,
-          shareOfRecords: 0.5,
+          shareOfReferences: 0.5,
         })),
       },
     ],

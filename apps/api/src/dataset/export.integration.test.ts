@@ -88,6 +88,10 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '',
       '',
       '', // outlier_flag
+      'true', // counts_as_evidence
+      '',
+      '',
+      '', // dispersal_phase
       expect.stringMatching(ISO),
     ]);
     // RFC-63 R14: a categorical contest applies to every record of the level it names.
@@ -250,6 +254,47 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     expect(b('summary_source')).toBe('');
     expect(b('records_behind_row')).toBe('');
     expect(b('outlier_flag')).toBe('');
+  });
+
+  it('R2 RFC-63 R17: a copy of evidence is exported, with the evidence columns (issue #345)', async () => {
+    const sp = await createSpecies(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative', unit: 'mm' });
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const base = {
+      speciesId: sp.id,
+      traitId: trait.id,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    };
+    const counted = await createRecord(t.db, {
+      ...base,
+      valueText: '5',
+      numericValue: 5,
+      alsoReportedBy: 'Kleyer et al., 2008',
+      dispersalPhase: 'primary',
+    });
+    const code = await codeOf(t.db, counted.id);
+    const copy = await createRecord(t.db, {
+      ...base,
+      valueText: '5.0',
+      numericValue: 5,
+      countsAsEvidence: false,
+      evidenceCode: code,
+    });
+    const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
+    const rowOf = async (id: string) => {
+      const c = await codeOf(t.db, id);
+      const row = csv.rows.find((r) => r[0] === c);
+      return (name: (typeof RECORD_COLUMNS)[number]) => row?.[RECORD_COLUMNS.indexOf(name)];
+    };
+    const a = await rowOf(counted.id);
+    expect(a('counts_as_evidence')).toBe('true');
+    expect(a('also_reported_by')).toBe('Kleyer et al., 2008');
+    expect(a('dispersal_phase')).toBe('primary');
+    const b = await rowOf(copy.id);
+    expect(b('counts_as_evidence')).toBe('false');
+    expect(b('evidence_id')).toBe(code);
   });
 
   it('R2 RFC-33 R2: a viewer without records.review gets no pending record', async () => {

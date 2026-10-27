@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DISPERSAL_PHASES,
   HARMONISATION_STATUSES,
   IMPORT_BATCH_KINDS,
   IMPORT_REJECT_REASONS,
@@ -69,6 +70,27 @@ describe('RFC-63 R9 listRecordsQuerySchema', () => {
     ]);
   });
 
+  it('RFC-63 R9 levelId and dispersalPhase narrow a species × trait list only (issue #345)', () => {
+    const base = { speciesId: uuid, traitId: uuid };
+    expect(listRecordsQuerySchema.safeParse({ ...base, levelId: uuid }).success).toBe(true);
+    for (const phase of DISPERSAL_PHASES) {
+      expect(listRecordsQuerySchema.safeParse({ ...base, dispersalPhase: phase }).success).toBe(
+        true,
+      );
+    }
+    expect(listRecordsQuerySchema.safeParse({ ...base, dispersalPhase: 'tertiary' }).success).toBe(
+      false,
+    );
+    expect(listRecordsQuerySchema.safeParse({ ...base, levelId: 'blue' }).success).toBe(false);
+    const paths = (q: object) => {
+      const r = listRecordsQuerySchema.safeParse(q);
+      return r.success ? [] : r.error.issues.map((i) => i.path.join('.'));
+    };
+    expect(paths({ referenceId: uuid, levelId: uuid })).toEqual(['levelId']);
+    expect(paths({ referenceId: uuid, dispersalPhase: 'primary' })).toEqual(['dispersalPhase']);
+    expect(DISPERSAL_PHASES).toEqual(['primary', 'secondary', 'unspecified']);
+  });
+
   it('sort is value, references, origin or added; order is asc or desc', () => {
     expect(
       listRecordsQuerySchema.safeParse({
@@ -132,9 +154,21 @@ describe('RFC-63 R8 recordSchema', () => {
       unitStatus: null,
       unit: null,
       outlierFlag: null,
+      alsoReportedBy: null,
+      dispersalPhase: null,
       references: [],
     };
     expect(recordSchema.parse(record)).toEqual(record);
+    // RFC-63 R8, R17 (issue #345): the evidence columns a viewer reads.
+    expect(
+      recordSchema.safeParse({
+        ...record,
+        alsoReportedBy: 'Kleyer et al., 2008',
+        dispersalPhase: 'secondary',
+      }).success,
+    ).toBe(true);
+    expect(recordSchema.safeParse({ ...record, dispersalPhase: 'post' }).success).toBe(false);
+    expect(recordSchema.safeParse({ ...record, alsoReportedBy: undefined }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, extra: true }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, harmonisation: 'weird' }).success).toBe(false);
     expect(recordSchema.safeParse({ ...record, species: undefined }).success).toBe(false);
@@ -176,11 +210,11 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
       {
         levelId: uuid,
         key: 'blue',
-        count: 2,
+        nReferences: 2,
         validationCount: 1,
         contested: true,
         nSources: 2,
-        shareOfRecords: 0.75,
+        shareOfReferences: 0.75,
       },
     ],
     continuous: null,
@@ -189,7 +223,7 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
       share: 0.75,
       majority: true,
       states: ['blue'],
-      nRecords: 4,
+      nReferences: 4,
     },
     validated: false,
     contested: true,
@@ -225,6 +259,22 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
     expect(speciesTraitsSchema.parse(payload)).toEqual(payload);
   });
 
+  it('RFC-63 R10 counts levels in references and flags bounds_inverted (issue #345)', () => {
+    const flagged = {
+      ...quantitativeTrait,
+      continuous: { ...quantitativeTrait.continuous, outlierFlags: ['bounds_inverted'] },
+    };
+    expect(speciesTraitsSchema.safeParse(wrap([flagged])).success).toBe(true);
+    const [level] = categoricalTrait.levels;
+    const byRecords = { ...categoricalTrait, levels: [{ ...level, count: 2 }] };
+    expect(speciesTraitsSchema.safeParse(wrap([byRecords])).success).toBe(false);
+    const oldTotal = {
+      ...categoricalTrait,
+      categorical: { ...categoricalTrait.categorical, nRecords: 4 },
+    };
+    expect(speciesTraitsSchema.safeParse(wrap([oldTotal])).success).toBe(false);
+  });
+
   it('refuses the per-field means it replaced, an unknown basis and a summary-only flag', () => {
     const numeric = [
       {
@@ -251,7 +301,10 @@ describe('RFC-63 R10 speciesTraitsSchema', () => {
         wrap([
           {
             ...quantitativeTrait,
-            continuous: { ...quantitativeTrait.continuous, outlierFlags: ['bounds_inverted'] },
+            continuous: {
+              ...quantitativeTrait.continuous,
+              outlierFlags: ['unit_factor;trait_extreme'],
+            },
           },
         ]),
       ).success,

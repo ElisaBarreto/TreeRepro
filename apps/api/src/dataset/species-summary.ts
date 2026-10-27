@@ -26,7 +26,7 @@ export interface ContinuousSummary {
   speciesMax: number | null;
   nRecords: number;
   nSources: number;
-  /** `unit_factor` and/or `trait_extreme`, joined with `;`; empty when none. */
+  /** `unit_factor`, `trait_extreme` and/or `bounds_inverted`, joined with `;`; empty when none. */
   outlierFlags: string;
   unit: string | null;
 }
@@ -38,11 +38,11 @@ export interface CategoricalLevelSummary {
   speciesName: string;
   traitKey: string;
   level: string;
-  nRecords: number;
+  nReferences: number;
   nSources: number;
-  nRecordsSpeciesTrait: number;
+  nReferencesSpeciesTrait: number;
   nSourcesSpeciesTrait: number;
-  shareOfRecords: number;
+  shareOfReferences: number;
   shareOfSources: number;
   nLevels: number;
   isMainState: boolean;
@@ -60,15 +60,16 @@ export interface CategoricalTraitSummary {
   majority: boolean;
   states: string;
   allStates: string;
-  nRecords: number;
+  nReferences: number;
   nStates: number;
 }
 
 /**
  * The records a summary may count (RFC-77 R1), as alias `r` joined to `t`
  * (traits) and `s` (species), with the observation key and the source of
- * RFC-77 R2 and R3. `speciesIds` null means every species.
- * @rfc RFC-77 R1, R2, R3
+ * RFC-77 R2 and R3 and the reference of R6. `speciesIds` null means every
+ * species.
+ * @rfc RFC-77 R1, R2, R3, R6
  */
 export function countedRecordsSql(
   visibility: Visibility,
@@ -87,7 +88,13 @@ export function countedRecordsSql(
     select r.*, s.canonical_name, t.key as trait_key, t.unit as target_unit,
       coalesce(r.import_batch_id::text || ':' || r.import_row_no::text, r.id::text) as obs_id,
       case when r.origin = 'import' then coalesce(r.source_folder, '')
-           else 'ref:' || coalesce(r.primary_reference_id::text, '') end as source
+           else 'ref:' || coalesce(r.primary_reference_id::text, '') end as source,
+      -- R6: the owner's source_folder + primary reference, else secondary; a
+      -- reference id stands for its citation key, which is unique.
+      case when r.origin = 'import'
+           then coalesce(r.source_folder, '') || '|'
+             || coalesce(r.primary_reference_id, r.secondary_reference_id)::text
+           else 'ref:' || coalesce(r.primary_reference_id::text, '') end as ref
     from trait_records r
     join traits t on t.id = r.trait_id
     join species s on s.id = r.species_id
@@ -172,6 +179,7 @@ export async function continuousSummaries(
         count(distinct obs_id)::int as n_records, count(distinct source)::int as n_sources,
         bool_or(cls <> 'spread' and outlier_flag like '%unit_factor%') as unit_factor,
         bool_or(cls <> 'spread' and outlier_flag like '%trait_extreme%') as trait_extreme,
+        bool_or(outlier_flag = 'bounds_inverted') as bounds_inverted,
         min(value) filter (where cls <> 'spread' and usable) as observed_min,
         max(value) filter (where cls <> 'spread' and usable) as observed_max
       from pieces group by 1, 2, 3, 4, 5
@@ -203,7 +211,8 @@ export async function continuousSummaries(
            else 'none' end as "meanBasis",
       sd as "speciesSd", observed_min as "speciesMin", observed_max as "speciesMax",
       concat_ws(';', case when unit_factor then 'unit_factor' end,
-                     case when trait_extreme then 'trait_extreme' end) as "outlierFlags"
+                     case when trait_extreme then 'trait_extreme' end,
+                     case when bounds_inverted then 'bounds_inverted' end) as "outlierFlags"
     from summary
     where coalesce(central_median, central_mean, median_min, median_max, observed_min, observed_max) is not null
     order by trait_key, canonical_name`)) as unknown as ContinuousSummary[];
@@ -212,8 +221,9 @@ export async function continuousSummaries(
 
 /**
  * The categorical summaries of RFC-77 R6, one row per species × trait ×
- * state, for `speciesIds` (null: every species).
- * @rfc RFC-77 R1, R2, R3, R6, R8
+ * state, for `speciesIds` (null: every species), counted in distinct
+ * references, each stating a state once however many records say it.
+ * @rfc RFC-77 R1, R3, R6, R8
  */
 export async function categoricalSummaries(
   db: DbExecutor,
@@ -223,27 +233,25 @@ export async function categoricalSummaries(
   if (speciesIds !== null && speciesIds.length === 0) return [];
   const rows = (await db.execute(sql`
     with base as (
-      select r.species_id, r.trait_id, r.canonical_name, r.trait_key, r.obs_id, r.source,
-        l.key as level, greatest(coalesce(r.records_behind_row, 1), 1) as w
+      select r.species_id, r.trait_id, r.canonical_name, r.trait_key, r.source, r.ref,
+        l.key as level
       from (${countedRecordsSql(visibility, 'categorical', speciesIds)}) r
       join trait_levels l on l.id = r.level_id
     ),
-    observations as (select distinct species_id, trait_id, obs_id, source, w from base),
     totals as (
-      select species_id, trait_id, sum(w)::int as n_records_t, count(distinct source)::int as n_sources_t
-      from observations group by 1, 2
+      select species_id, trait_id, count(distinct ref)::int as n_refs_t,
+        count(distinct source)::int as n_sources_t
+      from base group by 1, 2
     ),
     levels as (
       select species_id, trait_id, canonical_name, trait_key, level,
-        sum(w)::int as n_records, count(distinct source)::int as n_sources
-      from (select distinct species_id, trait_id, canonical_name, trait_key, obs_id, source, w, level
-            from base) stated
-      group by 1, 2, 3, 4, 5
+        count(distinct ref)::int as n_refs, count(distinct source)::int as n_sources
+      from base group by 1, 2, 3, 4, 5
     ),
     ranked as (
-      select l.*, t.n_records_t, t.n_sources_t,
+      select l.*, t.n_refs_t, t.n_sources_t,
         count(*) over (partition by l.species_id, l.trait_id)::int as n_levels,
-        l.n_records = max(l.n_records) over (partition by l.species_id, l.trait_id) as is_main
+        l.n_refs = max(l.n_refs) over (partition by l.species_id, l.trait_id) as is_main
       from levels l join totals t using (species_id, trait_id)
     ),
     main as (
@@ -251,9 +259,9 @@ export async function categoricalSummaries(
       from ranked where is_main group by 1, 2
     )
     select r.species_id as "speciesId", r.trait_id as "traitId", r.canonical_name as "speciesName",
-      r.trait_key as "traitKey", r.level, r.n_records as "nRecords", r.n_sources as "nSources",
-      r.n_records_t as "nRecordsSpeciesTrait", r.n_sources_t as "nSourcesSpeciesTrait",
-      r.n_records::float8 / r.n_records_t as "shareOfRecords",
+      r.trait_key as "traitKey", r.level, r.n_refs as "nReferences", r.n_sources as "nSources",
+      r.n_refs_t as "nReferencesSpeciesTrait", r.n_sources_t as "nSourcesSpeciesTrait",
+      r.n_refs::float8 / r.n_refs_t as "shareOfReferences",
       r.n_sources::float8 / r.n_sources_t as "shareOfSources",
       r.n_levels as "nLevels", r.is_main as "isMainState", m.main_state as "mainState"
     from ranked r join main m using (species_id, trait_id)
@@ -261,7 +269,7 @@ export async function categoricalSummaries(
   return rows;
 }
 
-/** A state is a clear minority under this share of both records and sources (RFC-77 R7). */
+/** A state is a clear minority under this share of both references and sources (RFC-77 R7). */
 const MINORITY = 0.1;
 
 /**
@@ -281,10 +289,11 @@ export function speciesTraitStates(
   }
   return [...groups.values()].map((group) => {
     const ordered = [...group].sort(
-      (a, b) => b.nRecords - a.nRecords || (a.level < b.level ? -1 : a.level > b.level ? 1 : 0),
+      (a, b) =>
+        b.nReferences - a.nReferences || (a.level < b.level ? -1 : a.level > b.level ? 1 : 0),
     );
     const first = ordered[0] as CategoricalLevelSummary;
-    const top = Math.max(...group.map((l) => l.shareOfRecords));
+    const top = Math.max(...group.map((l) => l.shareOfReferences));
     // As EB: the majority is decided on the exact share, which is reported rounded.
     const share = Math.round(top * 1e4) / 1e4;
     return {
@@ -296,11 +305,11 @@ export function speciesTraitStates(
       share,
       majority: top >= 0.5,
       states: ordered
-        .filter((l) => !(l.shareOfRecords < MINORITY && l.shareOfSources < MINORITY))
+        .filter((l) => !(l.shareOfReferences < MINORITY && l.shareOfSources < MINORITY))
         .map((l) => l.level)
         .join(';'),
       allStates: ordered.map((l) => l.level).join(';'),
-      nRecords: first.nRecordsSpeciesTrait,
+      nReferences: first.nReferencesSpeciesTrait,
       nStates: first.nLevels,
     };
   });
