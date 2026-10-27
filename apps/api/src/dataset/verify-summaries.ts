@@ -51,6 +51,19 @@ export function valuesMatch(expected: string | undefined, got: unknown): boolean
   return e === String(got ?? '');
 }
 
+/**
+ * The platform's `outlier_flags` as the owner's summaries can state them:
+ * without `bounds_inverted`, which the owner's package never emits (owner,
+ * 2026-10-27; issue #347).
+ * @rfc RFC-77 R9
+ */
+export function ownerOutlierFlags(flags: string): string {
+  return flags
+    .split(';')
+    .filter((f) => f !== '' && f !== 'bounds_inverted')
+    .join(';');
+}
+
 /** The outcome of one comparison. @rfc RFC-77 R9 */
 export interface Comparison {
   compared: number;

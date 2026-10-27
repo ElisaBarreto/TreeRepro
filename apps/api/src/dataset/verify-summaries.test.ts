@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { compareRows, readCsvRows, valuesMatch } from './verify-summaries.ts';
+import { compareRows, ownerOutlierFlags, readCsvRows, valuesMatch } from './verify-summaries.ts';
 
 describe('RFC-77 R9 verify:summaries', () => {
   it('valuesMatch: empty and NA are null, booleans, numbers within 1e-9, text exact', () => {
@@ -17,6 +17,15 @@ describe('RFC-77 R9 verify:summaries', () => {
     expect(valuesMatch('3', 3)).toBe(true);
     expect(valuesMatch('median_of_source_medians', 'median_of_source_medians')).toBe(true);
     expect(valuesMatch('black;brown', 'black')).toBe(false);
+  });
+
+  it("ownerOutlierFlags drops bounds_inverted, which the owner's summaries never name (issue #347)", () => {
+    expect(ownerOutlierFlags('bounds_inverted')).toBe('');
+    expect(ownerOutlierFlags('unit_factor;trait_extreme;bounds_inverted')).toBe(
+      'unit_factor;trait_extreme',
+    );
+    expect(ownerOutlierFlags('trait_extreme')).toBe('trait_extreme');
+    expect(ownerOutlierFlags('')).toBe('');
   });
 
   it('compareRows reports missing, extra and differing rows', () => {
