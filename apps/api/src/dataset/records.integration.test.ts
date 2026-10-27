@@ -93,6 +93,8 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
       unitStatus: null,
       unit: null,
       outlierFlag: null,
+      alsoReportedBy: null,
+      dispersalPhase: null,
       references: [
         {
           id: ref.id,
@@ -281,6 +283,69 @@ describe('RFC-63 R8, R9 listRecords and getRecord', () => {
 
     const detail = await getRecord(t.db, UNRESTRICTED, rec.id);
     expect(detail?.primaryReference?.observer).toEqual({ id: observer.id, name: observer.name });
+  });
+});
+
+describe('RFC-63 R9, R17 evidence counted once (issue #345)', () => {
+  const t = useTestDb();
+
+  it('a copy of evidence is never listed nor read; levelId and dispersalPhase narrow the list', async () => {
+    const sp = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'dispersal_mode');
+    const biotic = await levelByKey(t.db, trait.id, 'biotic');
+    const abiotic = await levelByKey(t.db, trait.id, 'abiotic');
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const base = {
+      speciesId: sp.id,
+      traitId: trait.id,
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    };
+    const counted = await createRecord(t.db, {
+      ...base,
+      valueText: 'biotic',
+      levelId: biotic.id,
+      alsoReportedBy: 'Kleyer et al., 2008',
+      dispersalPhase: 'primary',
+    });
+    const copy = await createRecord(t.db, {
+      ...base,
+      valueText: 'biotic',
+      rawValue: 'zoochor',
+      levelId: biotic.id,
+      countsAsEvidence: false,
+      dispersalPhase: 'primary',
+    });
+    const other = await createRecord(t.db, {
+      ...base,
+      valueText: 'abiotic',
+      levelId: abiotic.id,
+      dispersalPhase: 'secondary',
+    });
+    const list = (extra: object) =>
+      listRecords(t.db, UNRESTRICTED, { speciesId: sp.id, traitId: trait.id, limit: 10, ...extra });
+    expect((await list({})).data.map((r) => r.id)).toEqual([other.id, counted.id]);
+    expect((await list({})).data[1]).toMatchObject({
+      alsoReportedBy: 'Kleyer et al., 2008',
+      dispersalPhase: 'primary',
+    });
+    expect((await list({ levelId: biotic.id })).data.map((r) => r.id)).toEqual([counted.id]);
+    expect((await list({ dispersalPhase: 'secondary' })).data.map((r) => r.id)).toEqual([other.id]);
+    expect((await list({ levelId: biotic.id, dispersalPhase: 'secondary' })).data).toEqual([]);
+    expect(await getRecord(t.db, UNRESTRICTED, copy.id)).toBeNull();
+    const byRef = await listRecords(t.db, UNRESTRICTED, { referenceId: ref.id, limit: 10 });
+    expect(byRef.data.map((r) => r.id)).not.toContain(copy.id);
+    // RFC-69 R2, RFC-61 R4, R9: the counters count the two records that count.
+    const [coverage] = await t.db.execute(sql`
+      select record_count from species_trait_coverage
+      where species_id = ${sp.id} and trait_id = ${trait.id}`);
+    expect(coverage).toMatchObject({ record_count: 2 });
+    const [usage] = await t.db.execute(sql`
+      select b.primary_count, rt.record_count from bibliographic_references b
+      join reference_traits rt on rt.reference_id = b.id and rt.trait_id = ${trait.id}
+      where b.id = ${ref.id}`);
+    expect(usage).toMatchObject({ primary_count: 2, record_count: 2 });
   });
 });
 

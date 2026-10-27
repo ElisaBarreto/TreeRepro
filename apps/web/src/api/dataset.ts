@@ -1,5 +1,6 @@
 import {
   type Dictionary,
+  type DispersalPhase,
   dataEnvelopeSchema,
   dictionarySchema,
   genusSchema,
@@ -136,6 +137,8 @@ export function fetchRecords(params: {
   speciesId?: string;
   traitId?: string;
   referenceId?: string;
+  levelId?: string;
+  dispersalPhase?: DispersalPhase;
   sort?: RecordSort;
   order?: SortOrder;
   cursor?: string;

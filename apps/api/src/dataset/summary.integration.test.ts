@@ -62,6 +62,26 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       primaryReferenceId: ref.id,
       importBatchId: batch.id,
     });
+    // issue #345: a second reference states blue; its copy of a red statement
+    // repeats evidence another dataset gives and is never read (RFC-63 R17).
+    const ref2 = await createReference(t.db);
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: color.id,
+      valueText: 'blue',
+      levelId: blue.id,
+      primaryReferenceId: ref2.id,
+      importBatchId: batch.id,
+    });
+    await createRecord(t.db, {
+      speciesId: sp1.id,
+      traitId: color.id,
+      valueText: 'red',
+      levelId: red.id,
+      primaryReferenceId: ref2.id,
+      importBatchId: batch.id,
+      countsAsEvidence: false,
+    });
     for (const v of [1, 2, 4]) {
       await createRecord(t.db, {
         speciesId: sp1.id,
@@ -87,9 +107,9 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
     const colorSummary = summary?.[1]?.traits[0];
     expect(colorSummary).toEqual({
       trait: { id: color.id, key: 'flower_color', valueType: 'categorical', unit: null },
-      recordCount: 4,
+      recordCount: 5,
       harmonisationCounts: {
-        harmonised: 3,
+        harmonised: 4,
         unknownLevel: 0,
         multiValue: 1,
         notNumeric: 0,
@@ -99,30 +119,31 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
         {
           levelId: blue.id,
           key: 'blue',
-          count: 2,
+          // two records of ref and one of ref2: two references
+          nReferences: 2,
           validationCount: 1,
           contested: false,
           nSources: 1,
-          shareOfRecords: expect.closeTo(2 / 3, 10),
+          shareOfReferences: 1,
         },
         {
           levelId: red.id,
           key: 'red',
-          count: 1,
+          nReferences: 1,
           validationCount: 0,
           contested: false,
           nSources: 1,
-          shareOfRecords: expect.closeTo(1 / 3, 10),
+          shareOfReferences: 0.5,
         },
       ],
       continuous: null,
       // RFC-77 R7 (issue #290): the multi_value record is pending and does not count
       categorical: {
         mainStates: ['blue'],
-        share: 0.6667,
+        share: 1,
         majority: true,
         states: ['blue', 'red'],
-        nRecords: 3,
+        nReferences: 2,
       },
       validated: true,
       contested: false,
@@ -169,13 +190,14 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       levelByKey(t.db, trait.id, 'open'),
       levelByKey(t.db, trait.id, 'closed'),
     ]);
-    const ref = await createReference(t.db);
     const batch = await createImportBatch(t.db);
+    // one reference per record: the summary counts references (RFC-77 R6)
     for (const [level, n] of [
       [open, 1],
       [closed, 2],
       [closed, 3],
     ] as const) {
+      const ref = await createReference(t.db);
       await createRecord(t.db, {
         speciesId: sp.id,
         traitId: trait.id,
@@ -191,8 +213,8 @@ describe('RFC-63 R10 speciesTraitSummary', () => {
       (await speciesTraitSummary(t.db, v, sp.id))
         ?.flatMap((c) => c.traits)
         .find((x) => x.trait.id === trait.id)?.categorical;
-    expect(await of(UNRESTRICTED)).toMatchObject({ mainStates: ['closed'], nRecords: 3 });
-    expect(await of(RESTRICTED)).toMatchObject({ mainStates: ['open'], share: 1, nRecords: 1 });
+    expect(await of(UNRESTRICTED)).toMatchObject({ mainStates: ['closed'], nReferences: 3 });
+    expect(await of(RESTRICTED)).toMatchObject({ mainStates: ['open'], share: 1, nReferences: 1 });
   });
 
   it('RFC-33 R3 omits the inactive trait and answers null for the hidden species to a restricted viewer', async () => {

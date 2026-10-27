@@ -231,10 +231,11 @@ export function SpeciesPage({
   });
   useBreadcrumb(species.data ? [{ label: <em>{species.data.canonicalName}</em> }] : []);
   const [openTraitId, setOpenTraitId] = useState<string | null>(null);
-  const openTrait =
+  const openCategory =
     openTraitId === null
       ? undefined
-      : traits.data?.flatMap((c) => c.traits).find((t) => t.trait.id === openTraitId);
+      : traits.data?.find((c) => c.traits.some((t) => t.trait.id === openTraitId));
+  const openTrait = openCategory?.traits.find((t) => t.trait.id === openTraitId);
   // The trait left the summary (a refetch no longer lists it): forget it
   // during this render so a later summary cannot reopen the panel unasked.
   if (openTraitId !== null && traits.data && !openTrait) setOpenTraitId(null);
@@ -350,6 +351,8 @@ export function SpeciesPage({
         <TraitPanel
           speciesId={id}
           summary={openTrait}
+          // RFC-63 R17: a dispersal trait's records may name their phase.
+          dispersal={openCategory?.category.key === 'dispersal'}
           onClose={() => setOpenTraitId(null)}
           onSelectRecord={setOpenRecord}
           isOwnRecord={(record) => record.createdBy?.id === me.user.id}

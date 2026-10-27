@@ -66,7 +66,7 @@ describe('RFC-77 species summaries', () => {
     await load([
       // S1: 1, 2, 9 → source median 2; 9 is flagged
       q(sp, { source_folder: 'S1', harmonised_value: '1' }),
-      // bounds_inverted is not an outlier flag of the summary (RFC-77 R5)
+      // bounds_inverted joins the summary's flags (RFC-77 R5, issue #345)
       q(sp, { source_folder: 'S1', harmonised_value: '2', outlier_flag: 'bounds_inverted' }),
       q(sp, { source_folder: 'S1', harmonised_value: '9', outlier_flag: 'trait_extreme' }),
       // S2: 10, and 1000 in a unit that needs checking (counted, never used)
@@ -98,6 +98,8 @@ describe('RFC-77 species summaries', () => {
       }),
       // S5: a derived mean alone contributes nothing and is not counted
       q(sp, { source_folder: 'S5', mean: '50', summary_source: 'derived_from_records' }),
+      // S6: a copy of evidence another dataset gives never counts (RFC-63 R17)
+      q(sp, { source_folder: 'S6', harmonised_value: '500', counts_as_evidence: 'FALSE' }),
     ]);
     const [id] = await ids(sp);
     const [row] = await continuousSummaries(t.db, UNRESTRICTED, [id as string]);
@@ -119,7 +121,7 @@ describe('RFC-77 species summaries', () => {
       speciesMax: 20,
       nRecords: 8,
       nSources: 4,
-      outlierFlags: 'unit_factor;trait_extreme',
+      outlierFlags: 'unit_factor;trait_extreme;bounds_inverted',
       unit: 'mg',
     });
     expect(row?.speciesMean).toBeCloseTo(mean, 12);
@@ -158,57 +160,68 @@ describe('RFC-77 species summaries', () => {
     });
   });
 
-  it('R6, R7 states counted per observation, weighted by records_behind_row; shares, main state, majority', async () => {
+  it('R6, R7 states counted per reference, never per record or records_behind_row; shares, main state, majority (issue #345)', async () => {
     const sp = name('Summaria colorata');
     await load([
-      // one observation stating two states, standing for two records; each
-      // observation cites its own reference, as in the owner's file (the claim
-      // key of RFC-63 R3 merges identical claims of one reference)
-      c(sp, { source_folder: 'S1', harmonised_value: 'black;brown', records_behind_row: '2' }),
+      // S1 | SUMREF states black twice and brown once: one reference, once per state
+      c(sp, { source_folder: 'S1', harmonised_value: 'black;brown', records_behind_row: '6' }),
+      c(sp, { source_folder: 'S1', harmonised_value: 'black', original_value_clean: 'jet' }),
+      // S1 | SUMREF-B: a second reference of the same source
       c(sp, { source_folder: 'S1', primary_reference: 'SUMREF-B', harmonised_value: 'black' }),
+      // S2 | SUMREF: the same citation in another source is another reference
       c(sp, { source_folder: 'S2', harmonised_value: 'red' }),
+      // S3: a copy of S2's evidence (RFC-63 R17) never counts
+      c(sp, { source_folder: 'S3', harmonised_value: 'red', counts_as_evidence: 'FALSE' }),
+      // no primary reference: the secondary one names the reference
+      c(sp, {
+        source_folder: 'S2',
+        primary_reference: '',
+        secondary_reference: 'SUMREF-2ND',
+        harmonised_value: 'red',
+      }),
     ]);
     const [id] = await ids(sp);
     const levels = await categoricalSummaries(t.db, UNRESTRICTED, [id as string]);
     const by = (level: string) => levels.find((l) => l.level === level);
     const totals = {
-      nRecordsSpeciesTrait: 4,
+      nReferencesSpeciesTrait: 4,
       nSourcesSpeciesTrait: 2,
       nLevels: 3,
-      mainState: 'black',
+      mainState: 'black;red',
     };
     expect(by('black')).toMatchObject({
       ...totals,
-      nRecords: 3,
+      nReferences: 2,
       nSources: 1,
-      shareOfRecords: 0.75,
+      shareOfReferences: 0.5,
       shareOfSources: 0.5,
       isMainState: true,
     });
     expect(by('brown')).toMatchObject({
       ...totals,
-      nRecords: 2,
+      nReferences: 1,
       nSources: 1,
-      shareOfRecords: 0.5,
+      shareOfReferences: 0.25,
       isMainState: false,
     });
     expect(by('red')).toMatchObject({
       ...totals,
-      nRecords: 1,
+      nReferences: 2,
       nSources: 1,
-      shareOfRecords: 0.25,
+      shareOfReferences: 0.5,
       shareOfSources: 0.5,
+      isMainState: true,
     });
     expect(speciesTraitStates(levels)).toEqual([
       expect.objectContaining({
         speciesName: sp,
         traitKey: 'flower_color',
-        mainState: 'black',
-        share: 0.75,
+        mainState: 'black;red',
+        share: 0.5,
         majority: true,
-        states: 'black;brown;red',
-        allStates: 'black;brown;red',
-        nRecords: 4,
+        states: 'black;red;brown',
+        allStates: 'black;red;brown',
+        nReferences: 4,
         nStates: 3,
       }),
     ]);

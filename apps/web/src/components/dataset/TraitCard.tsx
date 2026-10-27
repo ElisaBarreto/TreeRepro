@@ -71,7 +71,8 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
 
 /**
  * One trait of a species. The card itself is a button that opens the trait's
- * records, naming the trait, its unit and record count, what still waits for
+ * records, naming the trait, its unit and record count — for a categorical
+ * trait its reference count (RFC-77 R7, issue #345) — what still waits for
  * harmonisation, a **Contested** badge while any of its levels or records is
  * contested (R-9), and the species summary of RFC-77 (RFC-63 R10): for a
  * measurement, the median of per-source medians (with its basis when it is a
@@ -80,8 +81,8 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
  * the states that are not a clear minority when they are more than the main
  * states — the main state itself is left to the bars (issue #314). Below it, outside the button so no control nests in another, a
  * categorical trait lists **every** level the species has (spec §2; no cap):
- * its record count, its sources, its validations (✓ n), a bar scaled against
- * the most frequent level, its own **Contested** badge, and
+ * its references, its sources, its validations (✓ n), a bar scaled against
+ * the level most references state, its own **Contested** badge, and
  * Validate/Contest/Complement — each present only when the page passes its
  * handler. Beside the card sit the `?` with the dictionary's description
  * (RFC-13 R11) and the "+" that opens the entry dialog for the trait (RFC-65
@@ -113,7 +114,12 @@ export function TraitCard({
   const { trait, recordCount, continuous, categorical } = summary;
   const levels = summary.levels ?? [];
   const pending = pendingCount(summary);
-  const maxCount = Math.max(0, ...levels.map((level) => level.count));
+  const maxCount = Math.max(0, ...levels.map((level) => level.nReferences));
+  // RFC-77 R7: one piece of evidence counts once, so a categorical trait
+  // counts references, never records (issue #345).
+  const counted = categorical
+    ? plural(categorical.nReferences, 'reference', 'references')
+    : plural(recordCount, 'record', 'records');
   const name = humaniseKey(trait.key);
   const tip = traitTip(dictionary, trait);
   const hasMaps = useHasMaps(trait.id);
@@ -131,7 +137,7 @@ export function TraitCard({
               <span className="font-display text-card font-semibold text-canopy-950">{name}</span>
               <span className="text-meta text-mist-500">
                 {trait.unit ? `${trait.unit} · ` : ''}
-                {recordCount} {recordCount === 1 ? 'record' : 'records'}
+                {counted}
               </span>
             </span>
             <span className="flex flex-wrap justify-end gap-1.5">
@@ -174,10 +180,7 @@ export function TraitCard({
                     {level.contested ? <Badge tone="red">Contested</Badge> : null}
                   </span>
                   <span className="flex shrink-0 items-center gap-3 tabular-nums text-mist-500">
-                    <span>
-                      {level.count}
-                      <span className="sr-only">{level.count === 1 ? ' record' : ' records'}</span>
-                    </span>
+                    <span>{plural(level.nReferences, 'reference', 'references')}</span>
                     <span>{plural(level.nSources, 'source', 'sources')}</span>
                     <span>
                       <span aria-hidden="true">✓</span> {level.validationCount}
@@ -187,7 +190,7 @@ export function TraitCard({
                 </span>
                 <span aria-hidden="true" className="block h-2 w-full rounded-full bg-mist-100">
                   <span
-                    className={`block h-full rounded-full bg-canopy-500 ${widthClass(level.count, maxCount)}`}
+                    className={`block h-full rounded-full bg-canopy-500 ${widthClass(level.nReferences, maxCount)}`}
                   />
                 </span>
                 {onValidateLevel || onRespondLevel ? (

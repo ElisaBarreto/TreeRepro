@@ -1,4 +1,9 @@
-import type { SpeciesTraits, TraitSummary } from '@treerepro/contracts';
+import {
+  type SpeciesTraits,
+  SUMMARY_OUTLIER_FLAGS,
+  type SummaryOutlierFlag,
+  type TraitSummary,
+} from '@treerepro/contracts';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -64,7 +69,6 @@ interface LevelAggregate {
   trait_id: string;
   level_id: string;
   level_key: string;
-  count: number;
   validation_count: number;
   contested: boolean;
 }
@@ -88,8 +92,8 @@ export function continuousOf(c: ContinuousSummary | undefined): TraitSummary['co
     nSources: c.nSources,
     outlierFlags: c.outlierFlags
       .split(';')
-      .filter(
-        (f): f is 'unit_factor' | 'trait_extreme' => f === 'unit_factor' || f === 'trait_extreme',
+      .filter((f): f is SummaryOutlierFlag =>
+        (SUMMARY_OUTLIER_FLAGS as readonly string[]).includes(f),
       ),
     unit: c.unit,
   };
@@ -103,7 +107,7 @@ function categoricalOf(c: CategoricalTraitSummary | undefined): TraitSummary['ca
     share: c.share,
     majority: c.majority,
     states: c.states === '' ? [] : c.states.split(';'),
-    nRecords: c.nRecords,
+    nReferences: c.nReferences,
   };
 }
 
@@ -153,7 +157,7 @@ export async function speciesTraitSummary(
       group by t.id, t.key, t.value_type, t.unit, c.key, c.label, c.sort_order
       order by c.sort_order, c.key, t.key`) as unknown as Promise<TraitAggregate[]>,
     db.execute(sql`
-      select r.trait_id, l.id as level_id, l.key as level_key, count(*)::int as count,
+      select r.trait_id, l.id as level_id, l.key as level_key,
         (select count(distinct va.actor_id) from record_annotations va
           join trait_records vr on vr.id = va.record_id
           where va.kind = 'confirm' and vr.species_id = ${speciesId} and vr.trait_id = r.trait_id
@@ -168,8 +172,7 @@ export async function speciesTraitSummary(
         and ${traitVisible(visibility, sql`t.active`)}
         and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
         and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
-      group by r.trait_id, l.id, l.key
-      order by count desc, l.key`) as unknown as Promise<LevelAggregate[]>,
+      group by r.trait_id, l.id, l.key`) as unknown as Promise<LevelAggregate[]>,
     // Visibility needs no predicate here: only visible traits reach
     // `summaryOf`, and the species was checked above.
     db.execute(sql`
@@ -184,18 +187,25 @@ export async function speciesTraitSummary(
   const categoricalByTrait = new Map(speciesTraitStates(categorical).map((c) => [c.traitId, c]));
   const levelsByTrait = new Map<string, NonNullable<TraitSummary['levels']>>();
   for (const l of levels) {
+    const counted = levelSummaries.get(`${l.trait_id}:${l.level_key}`);
     levelsByTrait.set(l.trait_id, [
       ...(levelsByTrait.get(l.trait_id) ?? []),
       {
         levelId: l.level_id,
         key: l.level_key,
-        count: l.count,
+        nReferences: counted?.nReferences ?? 0,
         validationCount: l.validation_count,
         contested: l.contested,
-        nSources: levelSummaries.get(`${l.trait_id}:${l.level_key}`)?.nSources ?? 0,
-        shareOfRecords: levelSummaries.get(`${l.trait_id}:${l.level_key}`)?.shareOfRecords ?? 0,
+        nSources: counted?.nSources ?? 0,
+        shareOfReferences: counted?.shareOfReferences ?? 0,
       },
     ]);
+  }
+  // RFC-63 R10: references descending, then key.
+  for (const list of levelsByTrait.values()) {
+    list.sort(
+      (a, b) => b.nReferences - a.nReferences || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    );
   }
   const validatedTraits = new Set(validated.map((v) => v.trait_id));
   const summaryOf = (

@@ -409,7 +409,8 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
 
   // records and curation
   'GET /api/records': {
-    summary: 'List records for a species and trait, or for a reference',
+    summary:
+      'List records for a species and trait (one level or dispersal phase), or for a reference',
     response: listEnvelopeSchema(recordSchema),
   },
   'GET /api/records/:id': {

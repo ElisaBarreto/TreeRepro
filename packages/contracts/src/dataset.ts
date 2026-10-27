@@ -54,6 +54,16 @@ export const OUTLIER_FLAGS = [
 /** A record's outlier flag. @rfc RFC-63 R1 */
 export type OutlierFlag = (typeof OUTLIER_FLAGS)[number];
 
+/** The flags a continuous species summary names (RFC-77 R5). @rfc RFC-77 R5 */
+export const SUMMARY_OUTLIER_FLAGS = ['unit_factor', 'trait_extreme', 'bounds_inverted'] as const;
+/** @rfc RFC-77 R5 */
+export type SummaryOutlierFlag = (typeof SUMMARY_OUTLIER_FLAGS)[number];
+
+/** Import provenance: which dispersal a dispersal trait's record describes. @rfc RFC-63 R17 */
+export const DISPERSAL_PHASES = ['primary', 'secondary', 'unspecified'] as const;
+/** @rfc RFC-63 R17 */
+export type DispersalPhase = (typeof DISPERSAL_PHASES)[number];
+
 /** @rfc RFC-63 R1 */
 export const RECORD_ORIGINS = ['import', 'manual'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
@@ -453,7 +463,7 @@ export const continuousSummarySchema = z.strictObject({
   max: z.number().nullable(),
   nRecords: z.number().int().nonnegative(),
   nSources: z.number().int().nonnegative(),
-  outlierFlags: z.array(z.enum(['unit_factor', 'trait_extreme'])),
+  outlierFlags: z.array(z.enum(SUMMARY_OUTLIER_FLAGS)),
   unit: z.string().nullable(),
 });
 /** @rfc RFC-77 R5 */
@@ -600,6 +610,10 @@ export const recordSchema = z.strictObject({
   unit: z.string().nullable(),
   /** Why the import's outlier audit flagged the value; null when it was not flagged. @rfc RFC-63 R1, R8 */
   outlierFlag: z.enum(OUTLIER_FLAGS).nullable(),
+  /** The other datasets' references reporting the same evidence; null when none. @rfc RFC-63 R8, R17 */
+  alsoReportedBy: z.string().nullable(),
+  /** A dispersal trait's phase; null on other traits. @rfc RFC-63 R8, R17 */
+  dispersalPhase: z.enum(DISPERSAL_PHASES).nullable(),
   harmonisation: z.enum(HARMONISATION_STATUSES),
   review: z.enum(REVIEW_STATUSES),
   primaryReference: referenceRefSchema.nullable(),
@@ -671,6 +685,8 @@ export const listRecordsQuerySchema = cursorQuerySchema
     speciesId: z.uuid().optional(),
     traitId: z.uuid().optional(),
     referenceId: z.uuid().optional(),
+    levelId: z.uuid().optional(),
+    dispersalPhase: z.enum(DISPERSAL_PHASES).optional(),
     sort: z.enum(RECORD_SORTS).optional(),
     order: z.enum(SORT_ORDERS).optional(),
   })
@@ -679,7 +695,15 @@ export const listRecordsQuerySchema = cursorQuerySchema
       (q.speciesId !== undefined && q.traitId !== undefined && q.referenceId === undefined) ||
       (q.referenceId !== undefined && q.speciesId === undefined && q.traitId === undefined),
     { message: 'Filter by speciesId and traitId together, or by referenceId', path: ['speciesId'] },
-  );
+  )
+  .refine((q) => q.levelId === undefined || q.speciesId !== undefined, {
+    message: 'levelId needs speciesId and traitId',
+    path: ['levelId'],
+  })
+  .refine((q) => q.dispersalPhase === undefined || q.speciesId !== undefined, {
+    message: 'dispersalPhase needs speciesId and traitId',
+    path: ['dispersalPhase'],
+  });
 
 /** @rfc RFC-63 R10 */
 export const harmonisationCountsSchema = z.strictObject({
@@ -700,14 +724,15 @@ export const traitSummarySchema = z.strictObject({
       z.strictObject({
         levelId: z.uuid(),
         key: z.string(),
-        count: z.number().int().nonnegative(),
+        /** The references stating the level in the species summary (RFC-77 R6); 0 when it does not count. */
+        nReferences: z.number().int().nonnegative(),
         /** Distinct actors who validated at least one visible record of the level. */
         validationCount: z.number().int().nonnegative(),
         contested: z.boolean(),
         /** The level's sources in the species summary (RFC-77 R6); 0 when it does not count. */
         nSources: z.number().int().nonnegative(),
-        /** The level's share of the summary's records (RFC-77 R6); 0 when it does not count. */
-        shareOfRecords: z.number().nonnegative(),
+        /** The level's share of the summary's references (RFC-77 R6); 0 when it does not count. */
+        shareOfReferences: z.number().nonnegative(),
       }),
     )
     .nullable(),
@@ -720,7 +745,8 @@ export const traitSummarySchema = z.strictObject({
       share: z.number().nonnegative(),
       majority: z.boolean(),
       states: z.array(z.string()),
-      nRecords: z.number().int().nonnegative(),
+      /** The distinct references behind the trait (RFC-77 R7). */
+      nReferences: z.number().int().nonnegative(),
     })
     .nullable(),
   /** At least one of the species' records on the trait is validated (spec R-1). */

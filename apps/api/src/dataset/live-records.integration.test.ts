@@ -72,7 +72,7 @@ describe('RFC-63 R6 a withdrawn record leaves every read (spec R-13)', () => {
     const summary = await speciesTraitSummary(t.db, REVIEWER, f.sp.id);
     const trait = summary?.flatMap((c) => c.traits).find((x) => x.trait.id === f.trait.id);
     expect(trait?.recordCount).toBe(2);
-    expect(trait?.levels).toEqual([expect.objectContaining({ key: 'a', count: 1 })]);
+    expect(trait?.levels).toEqual([expect.objectContaining({ key: 'a', nReferences: 1 })]);
     expect((await getSpecies(t.db, REVIEWER, f.sp.id))?.recordCount).toBe(2);
     expect((await getReference(t.db, f.ref.id, REVIEWER))?.recordCount).toBe(2);
   });

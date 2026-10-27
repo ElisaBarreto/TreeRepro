@@ -70,6 +70,10 @@ describe('RFC-64 R2 header validation', () => {
     'primary_reference',
     'secondary_reference',
     'records_behind_row',
+    'dispersal_phase',
+    'evidence_id',
+    'counts_as_evidence',
+    'also_reported_by',
   ];
   const refusal = (fn: () => void) => {
     try {
@@ -82,8 +86,8 @@ describe('RFC-64 R2 header validation', () => {
     throw new Error('expected a header_mismatch refusal');
   };
 
-  it("R2 accepts the owner's 49-column release v1 header, in its own order, with or without --trees-only", () => {
-    expect(V1).toHaveLength(49);
+  it("R2 accepts the owner's 53-column release v1 header, in its own order, with or without --trees-only", () => {
+    expect(V1).toHaveLength(53);
     expect(() => validateColumns(V1)).not.toThrow();
     expect(() => validateColumns(V1, true)).not.toThrow();
     expect(() => validateHeader(V1.join(','))).not.toThrow();
@@ -122,8 +126,14 @@ describe('RFC-64 R2 header validation', () => {
     expect(message).toMatch(/\bspecies\b/);
   });
 
-  it('R2 the used columns are the v1 names: the 36 of the old layout, renamed, plus species', () => {
-    expect(IMPORT_COLUMNS).toHaveLength(37);
+  it('R2 refuses the 49-column file of 2026-10-22, which has no evidence columns (issue #345)', () => {
+    const evidence = ['dispersal_phase', 'evidence_id', 'counts_as_evidence', 'also_reported_by'];
+    const message = refusal(() => validateColumns(V1.filter((c) => !evidence.includes(c))));
+    for (const c of evidence) expect(message).toContain(c);
+  });
+
+  it('R2 the used columns are the v1 names: the 36 of the old layout, renamed, plus species and the four evidence columns', () => {
+    expect(IMPORT_COLUMNS).toHaveLength(41);
     expect(IMPORT_COLUMNS).toContain('species');
     expect(IMPORT_COLUMNS).toContain('primary_source_species_name');
     expect(IMPORT_COLUMNS).not.toContain('original_species_name');

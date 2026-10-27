@@ -37,9 +37,10 @@ import { syncDictionary } from './seed.ts';
 
 /**
  * The columns the import reads, by name, from the owner's release v1
- * observation table (`TABLE_LAYOUT.md`, 2026-10-22): the 36 of the 2026-10-19
+ * observation table (`TABLE_LAYOUT.md`, 2026-10-27): the 36 of the 2026-10-19
  * layout, `original_species_name` renamed `primary_source_species_name`, plus
- * `species`. The file may hold them in any order, among other columns.
+ * `species` and the four evidence columns (RFC-63 R17). The file may hold them
+ * in any order, among other columns.
  * @rfc RFC-64 R2
  */
 export const IMPORT_COLUMNS = [
@@ -80,6 +81,10 @@ export const IMPORT_COLUMNS = [
   'taxon_order',
   'records_behind_row',
   'outlier_flag',
+  'counts_as_evidence',
+  'evidence_id',
+  'also_reported_by',
+  'dispersal_phase',
 ] as const;
 
 /** The column `--trees-only` reads (RFC-64 R4). @rfc RFC-64 R2 */
@@ -719,6 +724,7 @@ async function runImport(
           sample_size text, summary_source text, unit text, unit_harmonisation_status text,
           source_folder text, file_name text, wcvp_taxonomic_status text,
           gbif_order text, taxon_order text, records_behind_row text, outlier_flag text,
+          counts_as_evidence text, evidence_id text, also_reported_by text, dispersal_phase text,
           is_tree_species text
         ) on commit drop`;
       const parquet = isParquet(input.filePath);
@@ -767,6 +773,8 @@ async function runImport(
           add column gbif_family_name text, add column source_order text,
           add column unit_text text, add column summary_text text, add column behind_text text,
           add column outlier_text text,
+          add column counts_text text, add column evidence_text text,
+          add column also_text text, add column phase_text text,
           add column mean_text text, add column median_text text,
           add column min_text text, add column max_text text,
           add column sd_text text, add column se_text text,
@@ -806,6 +814,10 @@ async function runImport(
           unit_text = ${collapsed('unit')}, summary_text = ${collapsed('summary_source')},
           behind_text = ${collapsed('records_behind_row')},
           outlier_text = ${collapsed('outlier_flag')},
+          counts_text = ${collapsed('counts_as_evidence')},
+          evidence_text = ${collapsed('evidence_id')},
+          also_text = ${collapsed('also_reported_by')},
+          phase_text = ${collapsed('dispersal_phase')},
           mean_text = ${collapsed('mean')}, median_text = ${collapsed('median')},
           min_text = ${collapsed('min')}, max_text = ${collapsed('max')},
           sd_text = ${collapsed('sd')}, se_text = ${collapsed('se')}`;
@@ -837,6 +849,10 @@ async function runImport(
           or (s.outlier_text is not null and s.outlier_text not in
             ('unit_factor', 'trait_extreme', 'unit_factor;trait_extreme', 'bounds_inverted'))
           or (s.behind_text is not null and s.behind_int is null)
+          -- RFC-63 R17: the evidence columns, on every row.
+          or (s.counts_text is not null and lower(s.counts_text) not in ('true', 'false'))
+          or (s.evidence_text is not null and s.evidence_text !~ '^EB_[0-9]+$')
+          or (s.phase_text is not null and s.phase_text not in ('primary', 'secondary', 'unspecified'))
           or (t.value_type = 'quantitative' and (
             (s.mean_text is not null and s.mean_num is null)
             or (s.median_text is not null and s.median_num is null)
@@ -975,7 +991,11 @@ async function runImport(
             'gbif_order', coalesce(s.gbif_order, ''),
             'taxon_order', coalesce(s.taxon_order, ''),
             'records_behind_row', coalesce(s.records_behind_row, ''),
-            'outlier_flag', coalesce(s.outlier_flag, ''))
+            'outlier_flag', coalesce(s.outlier_flag, ''),
+            'counts_as_evidence', coalesce(s.counts_as_evidence, ''),
+            'evidence_id', coalesce(s.evidence_id, ''),
+            'also_reported_by', coalesce(s.also_reported_by, ''),
+            'dispersal_phase', coalesce(s.dispersal_phase, ''))
         from import_staging s left join traits t on t.key = s.trait_key
         where not s.already_imported
           and (s.species_name is null or t.id is null
@@ -1000,6 +1020,8 @@ async function runImport(
             s.n_int, s.unit_status, s.src_folder, s.src_file, s.tax_status,
             s.gbif_genus_name, s.gbif_family_name, s.source_order,
             s.unit_text, s.summary_text, s.behind_int, s.outlier_text,
+            coalesce(lower(s.counts_text), 'true') = 'true' as counts,
+            s.evidence_text, s.also_text, s.phase_text,
             t.id as trait_id, t.value_type, pv.value_text,
             cardinality(split.vals) as part_count, pv.part_no
           from import_staging s
@@ -1037,6 +1059,7 @@ async function runImport(
             p.unit_status, p.src_folder, p.src_file, p.tax_status,
             p.gbif_genus_name, p.gbif_family_name, p.source_order,
             p.unit_text, p.summary_text, p.behind_int, p.outlier_text,
+            p.counts, p.evidence_text, p.also_text, p.phase_text,
             q.numeric_value, q.mean_value, q.median_value,
             q.min_value, q.max_value, q.sd_value, q.se_value, q.n
           from parts p
@@ -1063,7 +1086,7 @@ async function runImport(
           primary_reference_id, secondary_reference_id, origin, import_batch_id, import_row_no,
           record_code, unit_status, source_folder, source_file, taxonomic_status,
           gbif_genus, gbif_family, taxon_order, unit, summary_source, records_behind_row,
-          outlier_flag)
+          outlier_flag, counts_as_evidence, evidence_code, also_reported_by, dispersal_phase)
         select species_id, trait_id, level_id, numeric_value, mean_value, median_value,
           min_value, max_value, sd_value, se_value, n, final_text,
           case when final_text = '' then 'empty'
@@ -1076,7 +1099,7 @@ async function runImport(
           primary_reference_id, secondary_reference_id, 'import', ${batch.id}, row_no,
           record_code, unit_status, src_folder, src_file, tax_status,
           gbif_genus_name, gbif_family_name, source_order, unit_text, summary_text, behind_int,
-          outlier_text
+          outlier_text, counts, evidence_text, also_text, phase_text
         from (
           -- RFC-63 R15: a lone single value keeps its text (as does a value
           -- that is not a number); otherwise every present field as

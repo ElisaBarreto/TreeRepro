@@ -381,7 +381,7 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'overflow.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // A well-formed row (37 fields, the empty one being `species`; passes COPY and R7's checks) whose
+    // A well-formed row (41 fields, the empty one being `species`; passes COPY and R7's checks) whose
     // reference is too large — and incompressible, so TOAST can't shrink it
     // under the limit — to fit a btree index entry. The bibliographic
     // references insert runs after the species catalog insert, so its
@@ -392,7 +392,7 @@ describe('RFC-64 importRecords', () => {
     const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\n${freshId()},,${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(18)}\n`,
+      `${header}\n${freshId()},,${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(22)}\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -410,14 +410,14 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'broken.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // 38 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // 42 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
     // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
     // in import.ts); either the driver recovers on its own with the real
     // PostgresError, or the idle guard aborts it — both are acceptable here,
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
-      `${header}\n${freshId()},,Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(18)},EXTRA\n`,
+      `${header}\n${freshId()},,Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(22)},EXTRA\n`,
     );
     await expect(
       importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
@@ -940,6 +940,79 @@ describe('RFC-64 importRecords', () => {
         [8, 'invalid_measurement'],
       ]);
       expect(rejects[0]?.raw).toMatchObject({ outlier_flag: 'Trait_extreme' });
+    });
+
+    it('R6, R7 the evidence columns are stored on every record of the row and checked on every row (issue #345)', async () => {
+      const tag = randomBytes(4).toString('hex');
+      const n = randomInt(100_000_000, 999_999_000);
+      let next = 0;
+      const base = (cells: Partial<Record<Column, string>>) =>
+        statLine({
+          ID: `EB_${n + next++}`,
+          primary_reference: 'EVIREF',
+          wcvp_species: `Evidentia duplex-${tag}`,
+          final_standard_trait: 'dispersal_mode',
+          trait_value_type: 'categorical',
+          ...cells,
+        });
+      const lines = [
+        // 1: the row that counts, naming itself
+        base({
+          harmonised_value: 'biotic',
+          counts_as_evidence: 'TRUE',
+          evidence_id: `EB_${n}`,
+          also_reported_by: 'Kleyer et al., 2008',
+          dispersal_phase: 'primary',
+        }),
+        // 2: its copy in another dataset, split in two parts that both stay copies
+        base({
+          harmonised_value: 'abiotic;biotic',
+          counts_as_evidence: ' false ',
+          evidence_id: `EB_${n}`,
+          also_reported_by: 'Kleyer, M., et al. 2008. The LEDA Traitbase',
+          dispersal_phase: 'secondary',
+        }),
+        // 3: empty columns — a row that counts, with no phase
+        base({ harmonised_value: 'abiotic' }),
+        // 4–6 rejects, on a categorical row: each column keeps its vocabulary
+        base({ harmonised_value: 'biotic', counts_as_evidence: 'yes' }),
+        base({ harmonised_value: 'biotic', evidence_id: 'EB_x' }),
+        base({ harmonised_value: 'biotic', dispersal_phase: 'post' }),
+      ];
+      const batch = await importRecords(t.db, {
+        filePath: await writeRecords('import-evidence-', lines),
+      });
+      expect(batch).toMatchObject({ status: 'completed', rowsTotal: 6, rowsRejected: 3 });
+      expect(await recordAt(batch.id, 1)).toMatchObject({
+        countsAsEvidence: true,
+        evidenceCode: `EB_${n}`,
+        alsoReportedBy: 'Kleyer et al., 2008',
+        dispersalPhase: 'primary',
+        valueText: 'biotic',
+      });
+      const copies = await recordsAt(batch.id, 2);
+      expect(copies).toHaveLength(2);
+      for (const part of copies)
+        expect(part).toMatchObject({
+          countsAsEvidence: false,
+          evidenceCode: `EB_${n}`,
+          alsoReportedBy: 'Kleyer, M., et al. 2008. The LEDA Traitbase',
+          dispersalPhase: 'secondary',
+        });
+      expect(await recordAt(batch.id, 3)).toMatchObject({
+        countsAsEvidence: true,
+        evidenceCode: null,
+        alsoReportedBy: null,
+        dispersalPhase: null,
+      });
+      const rejects = await rejectsOf(batch.id);
+      expect(rejects.map((r) => [r.rowNo, r.reason])).toEqual([
+        [4, 'invalid_measurement'],
+        [5, 'invalid_measurement'],
+        [6, 'invalid_measurement'],
+      ]);
+      expect(rejects[0]?.raw).toMatchObject({ counts_as_evidence: 'yes' });
+      expect(rejects[2]?.raw).toMatchObject({ dispersal_phase: 'post' });
     });
 
     it('RFC-63 R3, R15: a single 5, a mean 5 and a median 5 from the same source are three claims', async () => {

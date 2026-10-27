@@ -53,6 +53,10 @@ export const RECORD_COLUMNS = [
   'summary_source',
   'records_behind_row',
   'outlier_flag',
+  'counts_as_evidence',
+  'evidence_id',
+  'also_reported_by',
+  'dispersal_phase',
   'created_at',
 ] as const;
 
@@ -179,11 +183,13 @@ function csvStream<Row extends object>(
 /**
  * Record `r`, joined to its species `s` and trait `t`, is visible to the
  * viewer: live, harmonised or reviewed, on a visible level, species and trait.
+ * `copies` also keeps the copies of evidence, which `records.csv` lists and
+ * nothing else does (RFC-63 R17).
  */
-function visibleRecord(v: Visibility): SQL {
+function visibleRecord(v: Visibility, copies = false): SQL {
   return sql`${speciesVisible(v, sql`s.active`, sql`s.id`)}
     and ${traitVisible(v, sql`t.active`)}
-    and ${recordVisible(v, sql`r.id`, sql`r.harmonisation`)}`;
+    and ${recordVisible(v, sql`r.id`, sql`r.harmonisation`, { copies })}`;
 }
 
 /**
@@ -246,19 +252,25 @@ interface RecordRow {
   summary_source: string | null;
   records_behind_row: number | null;
   outlier_flag: string | null;
+  counts_as_evidence: boolean;
+  evidence_id: string | null;
+  also_reported_by: string | null;
+  dispersal_phase: string | null;
   created_at: Date;
 }
 
 /**
- * `records.csv`: every record visible to the viewer, pending ones (for a
- * reviewer) with their raw value; `platform` keeps the `TR_` records.
+ * `records.csv`: every record visible to the viewer, and every copy of
+ * evidence that would be (RFC-63 R17), pending ones (for a reviewer) with
+ * their raw value; `platform` keeps the `TR_` records.
  * `contested` and `n_contests` are RFC-63 R14's, `n_validations` counts
  * distinct validators (RFC-63 R8). `order` is the species' family's
  * `order_name` (RFC-60 R1); `unit` is the record's own unit, else the trait's;
  * each value column is one stored field (RFC-63 R15); `unit_status`,
  * `source_folder`, `source_file`, `taxonomic_status`, `gbif_genus`,
  * `gbif_family`, `taxon_order`, `summary_source`, `records_behind_row` and
- * `outlier_flag` are the record's stored provenance (RFC-63 R1).
+ * `outlier_flag` are the record's stored provenance (RFC-63 R1), followed by
+ * its evidence columns (RFC-63 R17).
  * @rfc RFC-66 R2, R3, R4, R5, R9
  * @rfc RFC-33 R2, R3
  * @rfc RFC-60 R1
@@ -287,7 +299,8 @@ export function recordsCsv(
       ${contestCountSql(sql`r.id`)} as n_contests,
       r.source_folder, r.source_file, r.taxonomic_status,
       r.gbif_genus, r.gbif_family, r.taxon_order, r.summary_source, r.records_behind_row,
-      r.outlier_flag, r.created_at
+      r.outlier_flag, r.counts_as_evidence, r.evidence_code as evidence_id, r.also_reported_by,
+      r.dispersal_phase, r.created_at
     from trait_records r
     join species s on s.id = r.species_id
     left join genera g on g.id = s.genus_id
@@ -295,7 +308,7 @@ export function recordsCsv(
     join traits t on t.id = r.trait_id
     join trait_categories c on c.key = t.category_key
     left join trait_levels l on l.id = r.level_id
-    where ${visibleRecord(visibility)}
+    where ${visibleRecord(visibility, true)}
       and ${options.scope === 'platform' ? sql`r.origin = 'manual'` : sql`true`}
     order by f.name nulls last, g.name nulls last, s.canonical_name, t.key, r.record_code`;
   return csvStream<RecordRow>(
@@ -340,6 +353,10 @@ export function recordsCsv(
         r.summary_source,
         r.records_behind_row,
         r.outlier_flag,
+        r.counts_as_evidence ? 'true' : 'false',
+        r.evidence_id,
+        r.also_reported_by,
+        r.dispersal_phase,
         new Date(r.created_at).toISOString(),
       ]),
     options.batch ?? BATCH,
