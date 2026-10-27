@@ -230,6 +230,8 @@ export const speciesSchema = speciesListItemSchema.omit({ traitRecordCount: true
 export const listGeneraQuerySchema = cursorQuerySchema.extend({
   familyId: z.uuid().optional(),
   q: z.string().trim().min(1).max(100).optional(),
+  sort: z.enum(['name', 'family']).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
 
 /** @rfc RFC-60 R8 */

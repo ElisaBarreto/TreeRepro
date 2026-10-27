@@ -4,8 +4,22 @@ import type {
   ContributionSummary,
   ListContributionsQuery,
   RecordItem,
+  SortOrder,
 } from '@treerepro/contracts';
-import { and, count, desc, eq, gte, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -16,9 +30,17 @@ import { traitRecords } from '../db/schema/records.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import { species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
-import { decodeCursor, encodeCursor, pageOf } from '../http/cursor.ts';
+import { decodeCompositeCursor, encodeCompositeCursor, isUuid, pageOf } from '../http/cursor.ts';
+import { AppError } from '../http/errors.ts';
 import { contestVisibleSql, contestWithdrawnSql, recordFullyVisible } from './contests.ts';
-import { itemQuery, liveSql, recordVisible, reviewStatusSql, toItem } from './records.ts';
+import {
+  itemQuery,
+  liveSql,
+  recordVisible,
+  reviewStatusSql,
+  sortedRecordPage,
+  toItem,
+} from './records.ts';
 
 const annotationRefObserver = alias(users, 'annotation_ref_observer');
 
@@ -87,12 +109,8 @@ async function listRecordContributions(
     recordVisible(visibility),
     ...recordFilters(visibility, input),
   ];
-  if (input.cursor) conditions.push(lt(traitRecords.id, decodeCursor(input.cursor)));
-  const rows = await itemQuery(db, visibility)
-    .where(and(...conditions))
-    .orderBy(desc(traitRecords.id))
-    .limit(input.limit + 1);
-  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.record.id));
+  // RFC-71 R1: the records list's own sorts (RFC-63 R9), newest first by default.
+  const { page, nextCursor } = await sortedRecordPage(db, visibility, conditions, input);
   const counts = await responseCounts(
     db,
     page.map((r) => r.record.id),
@@ -133,6 +151,7 @@ async function listResolutions(
   userId: string,
   input: ListContributionsQuery & { limit: number },
   cursorId: string | undefined,
+  order: SortOrder,
 ): Promise<{ id: string; createdAt: Date; recordId: string | null }[]> {
   const recordIdSql = firstVisibleContestRecordIdSql(visibility, contests.id);
   const conditions: SQL[] = [
@@ -165,7 +184,11 @@ async function listResolutions(
   }
   if (input.from) conditions.push(gte(contestEvents.createdAt, dayStart(input.from)));
   if (input.to) conditions.push(lt(contestEvents.createdAt, dayAfter(input.to)));
-  if (cursorId) conditions.push(lt(contestEvents.id, cursorId));
+  if (cursorId) {
+    conditions.push(
+      order === 'asc' ? gt(contestEvents.id, cursorId) : lt(contestEvents.id, cursorId),
+    );
+  }
   return db
     .select({
       id: contestEvents.id,
@@ -175,7 +198,7 @@ async function listResolutions(
     .from(contestEvents)
     .innerJoin(contests, eq(contests.id, contestEvents.contestId))
     .where(and(...conditions))
-    .orderBy(desc(contestEvents.id))
+    .orderBy(order === 'asc' ? asc(contestEvents.id) : desc(contestEvents.id))
     .limit(input.limit + 1);
 }
 
@@ -210,7 +233,18 @@ async function listAnnotationContributions(
   userId: string,
   input: ListContributionsQuery & { limit: number },
 ): Promise<{ data: ContributionAnnotation[]; nextCursor: string | null }> {
-  const cursorId = input.cursor ? decodeCursor(input.cursor) : undefined;
+  // By date only (RFC-71 R1): both sources' ids are uuidv7, so the id is
+  // the date, and the cursor `[added:order, id]` is tied to the order.
+  if (input.sort && input.sort !== 'added') {
+    throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+      { path: 'sort', message: 'Annotations sort by date only' },
+    ]);
+  }
+  const order = input.order ?? 'desc';
+  const tag = `added:${order}`;
+  const cursorId = input.cursor
+    ? (decodeCompositeCursor(input.cursor, 2, [(part) => part === tag, isUuid])[1] as string)
+    : undefined;
 
   const confirmConditions: SQL[] = [
     eq(recordAnnotations.actorId, userId),
@@ -220,7 +254,11 @@ async function listAnnotationContributions(
     recordVisible(visibility),
     ...recordFilters(visibility, input),
   ];
-  if (cursorId) confirmConditions.push(lt(recordAnnotations.id, cursorId));
+  if (cursorId) {
+    confirmConditions.push(
+      order === 'asc' ? gt(recordAnnotations.id, cursorId) : lt(recordAnnotations.id, cursorId),
+    );
+  }
   const confirmRows = await db
     .select({
       id: recordAnnotations.id,
@@ -248,10 +286,10 @@ async function listAnnotationContributions(
       eq(annotationRefObserver.id, bibliographicReferences.observerUserId),
     )
     .where(and(...confirmConditions))
-    .orderBy(desc(recordAnnotations.id))
+    .orderBy(order === 'asc' ? asc(recordAnnotations.id) : desc(recordAnnotations.id))
     .limit(input.limit + 1);
 
-  const resolveRows = await listResolutions(db, visibility, userId, input, cursorId);
+  const resolveRows = await listResolutions(db, visibility, userId, input, cursorId, order);
 
   const merged: MergedAnnotationRow[] = [
     ...confirmRows.map((r) => ({ ...r, kind: 'confirm' as const })),
@@ -269,9 +307,11 @@ async function listAnnotationContributions(
       referenceObserverName: null,
       shortCitation: null,
     })),
-  ].sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  ].sort((a, b) => (order === 'asc' ? 1 : -1) * (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-  const { page, nextCursor } = pageOf(merged, input.limit, (r) => encodeCursor(r.id));
+  const { page, nextCursor } = pageOf(merged, input.limit, (r) =>
+    encodeCompositeCursor([tag, r.id]),
+  );
   if (page.length === 0) return { data: [], nextCursor };
 
   const recordIds = [

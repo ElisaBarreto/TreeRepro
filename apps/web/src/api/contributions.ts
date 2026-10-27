@@ -9,7 +9,9 @@ import {
   dataEnvelopeSchema,
   listEnvelopeSchema,
   type RecordIntent,
+  type RecordSort,
   type ReviewStatus,
+  type SortOrder,
 } from '@treerepro/contracts';
 import { z } from 'zod';
 import { apiFetch } from './client.ts';
@@ -42,6 +44,9 @@ export type ContributionsQuery = {
   /** Inclusive day bounds in UTC, as `YYYY-MM-DD`. */
   from?: string;
   to?: string;
+  /** RFC-63 R9's sorts for `records`; `annotations` take `order` alone (RFC-71 R1). */
+  sort?: RecordSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 };

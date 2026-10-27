@@ -1,9 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router';
 import {
+  PROPOSAL_SORTS,
   RECORD_INTENTS,
+  RECORD_SORTS,
   REVIEW_STATUSES,
   type RecordIntent,
   type ReviewStatus,
+  SORT_ORDERS,
 } from '@treerepro/contracts';
 import { NoPermission } from '../../components/shell/NoPermission.tsx';
 import { hasPermission, useMe } from '../../lib/session.ts';
@@ -52,6 +55,8 @@ function validateSearch(search: Record<string, unknown>): ContributionsSearch {
     intent: oneOf(search.intent, INTENT_FILTERS),
     from: day(search.from),
     to: day(search.to),
+    sort: oneOf(search.sort, [...RECORD_SORTS, ...PROPOSAL_SORTS]),
+    order: oneOf(search.order, SORT_ORDERS),
   };
 }
 

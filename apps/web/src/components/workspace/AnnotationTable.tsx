@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router';
-import type { AnnotationKind, ContributionAnnotation } from '@treerepro/contracts';
+import type { AnnotationKind, ContributionAnnotation, SortOrder } from '@treerepro/contracts';
 import { humaniseKey, isoDate } from '../../lib/format.ts';
 import { referenceLabel } from '../../lib/references.ts';
-import { Badge, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { Badge, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 
@@ -30,15 +30,25 @@ const TONES: Record<AnnotationKind, 'neutral' | 'green' | 'red'> = {
 export function AnnotationTable({
   annotations,
   onSelect,
+  order,
+  onSortDate,
 }: {
   annotations: ContributionAnnotation[];
   onSelect: (annotation: ContributionAnnotation) => void;
+  /** The date order the page asked for; none is newest first (RFC-71 R1). */
+  order?: SortOrder;
+  /** Given, the Annotated header flips the date order (RFC-13 R13). */
+  onSortDate?: () => void;
 }) {
   return (
     <Table>
       <Thead>
         <Tr>
-          <Th>Annotated</Th>
+          {onSortDate ? (
+            <SortTh label="Annotated" direction={order ?? null} onSort={onSortDate} />
+          ) : (
+            <Th>Annotated</Th>
+          )}
           <Th>Kind</Th>
           <Th>Record</Th>
           <Th>Note</Th>

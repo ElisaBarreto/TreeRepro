@@ -49,6 +49,16 @@ beforeEach(() => {
 });
 
 describe('RFC-60 R9 TaxaPage', () => {
+  it('RFC-13 R13 the Family header sorts the genera through the API', async () => {
+    renderAt('/app/taxa');
+    await userEvent.click(await screen.findByRole('button', { name: /^Family/ }));
+    await waitFor(() =>
+      expect(dataset.fetchGenera).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'family', order: 'asc' }),
+      ),
+    );
+  });
+
   it('lists the families, selects the first, and lists its genera with the family column', async () => {
     renderAt('/app/taxa');
     expect(

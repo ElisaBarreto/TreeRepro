@@ -93,6 +93,25 @@ beforeEach(() => {
 });
 
 describe('RFC-71 R1, R2, R4 the contributions page', () => {
+  it('RFC-13 R13 the records headers sort through the API and the URL; a tab change clears the sort', async () => {
+    const { router } = renderAt('/app/contributions');
+    await userEvent.click(await screen.findByRole('button', { name: /^Value/ }));
+    await waitFor(() =>
+      expect(contributions.fetchMyContributions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ kind: 'records', sort: 'value', order: 'asc' }),
+      ),
+    );
+    expect(router.state.location.search).toEqual(
+      expect.objectContaining({ sort: 'value', order: 'asc' }),
+    );
+    await userEvent.click(screen.getByRole('link', { name: 'Annotations' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(
+        expect.not.objectContaining({ sort: expect.anything() }),
+      ),
+    );
+  });
+
   it('opens on the records tab and shows the summary as tiles', async () => {
     const { router } = renderAt('/app/contributions');
     expect(await screen.findByRole('heading', { name: 'My contributions' })).toBeInTheDocument();
@@ -153,6 +172,18 @@ describe('RFC-71 R1, R2, R4 the contributions page', () => {
 });
 
 describe('RFC-71 R3 the annotations tab', () => {
+  it('RFC-13 R13 the Annotated header flips the date order through the API', async () => {
+    contributions.fetchMyContributions.mockResolvedValue(page([CONTRIBUTION_ANNOTATION]));
+    renderAt('/app/contributions?kind=annotations');
+    await userEvent.click(await screen.findByRole('button', { name: /^Annotated/ }));
+    await waitFor(() =>
+      expect(contributions.fetchMyContributions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ kind: 'annotations', order: 'asc' }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: /^Kind/ })).not.toBeInTheDocument();
+  });
+
   it('is reached by a tab that writes ?kind= and asks the API for annotations', async () => {
     const { router } = renderAt('/app/contributions');
     await screen.findByRole('table');
@@ -330,6 +361,17 @@ describe('RFC-75 R5 the Proposals tab', () => {
     auth.fetchMe.mockResolvedValue(PROPOSER);
     renderAt('/app/contributions');
     expect(await screen.findByRole('link', { name: 'Proposals' })).toBeInTheDocument();
+  });
+
+  it('RFC-13 R13 the Name header sorts the proposals through the API', async () => {
+    auth.fetchMe.mockResolvedValue(PROPOSER);
+    renderAt('/app/contributions?kind=proposals');
+    await userEvent.click(await screen.findByRole('button', { name: /^Name/ }));
+    await waitFor(() =>
+      expect(proposals.fetchMyProposals).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'name', order: 'asc' }),
+      ),
+    );
   });
 
   it('lists the viewer\u2019s proposals with their status, decision note and species link', async () => {

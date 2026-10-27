@@ -4,9 +4,14 @@ import {
   CONTRIBUTION_KINDS,
   type ContributionKind,
   type ContributionSummary,
+  PROPOSAL_SORTS,
   type Proposal,
+  type ProposalSort,
   type ProposalStatus,
+  RECORD_SORTS,
   type RecordIntent,
+  type RecordSort,
+  type SortOrder,
 } from '@treerepro/contracts';
 import { useState } from 'react';
 import { adminKeys, fetchUser } from '../../api/admin.ts';
@@ -29,6 +34,7 @@ import {
   Badge,
   EmptyState,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -46,6 +52,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { toggleSort } from '../../lib/use-sort.ts';
 
 /**
  * Everything the contributions page carries in the URL: the tab, the five
@@ -64,6 +71,13 @@ export interface ContributionsSearch extends ContributionFiltersValue {
    */
   kind?: ContributionKind | 'proposals';
   userId?: string;
+  /**
+   * The open tab's order (RFC-71 R1, RFC-13 R13): one of RFC-63 R9's sorts
+   * on Records, of RFC-75 R5's on Proposals; Annotations read `order` alone.
+   * A tab change clears both.
+   */
+  sort?: RecordSort | ProposalSort;
+  order?: SortOrder;
 }
 
 /**
@@ -154,8 +168,16 @@ export function ContributionsPage({
   const showProposals = kind === 'proposals';
   const [open, setOpen] = useState<string | null>(null);
 
+  const recordSort = (RECORD_SORTS as readonly string[]).includes(search.sort ?? '')
+    ? (search.sort as RecordSort)
+    : undefined;
+  const proposalSort = (PROPOSAL_SORTS as readonly string[]).includes(search.sort ?? '')
+    ? (search.sort as ProposalSort)
+    : undefined;
   const params = {
     kind: showProposals ? 'records' : kind,
+    sort: kind === 'records' ? recordSort : undefined,
+    order: search.order,
     traitId: search.traitId,
     speciesId: search.speciesId,
     review: search.review,
@@ -171,9 +193,10 @@ export function ContributionsPage({
         : fetchMyContributions({ ...params, cursor, limit }),
     { enabled: !showProposals },
   );
+  const proposalParams = { sort: proposalSort, order: search.order };
   const proposals = usePagedList<Proposal>(
-    proposalKeys.mine,
-    (cursor, limit) => fetchMyProposals({ cursor, limit }),
+    [...proposalKeys.mine, proposalParams],
+    (cursor, limit) => fetchMyProposals({ ...proposalParams, cursor, limit }),
     { enabled: showProposals },
   );
   const rows = showProposals ? proposals : list;
@@ -211,7 +234,7 @@ export function ContributionsPage({
             <Link
               key={tab.kind}
               to="/app/contributions"
-              search={{ ...search, kind: tab.kind }}
+              search={{ ...search, kind: tab.kind, sort: undefined, order: undefined }}
               aria-current={tab.kind === kind ? 'page' : undefined}
               className={TAB_CLASS}
             >
@@ -221,7 +244,7 @@ export function ContributionsPage({
           {canPropose ? (
             <Link
               to="/app/contributions"
-              search={{ ...search, kind: 'proposals' }}
+              search={{ ...search, kind: 'proposals', sort: undefined, order: undefined }}
               aria-current={showProposals ? 'page' : undefined}
               className={TAB_CLASS}
             >
@@ -252,9 +275,31 @@ export function ContributionsPage({
           <Table>
             <Thead>
               <Tr>
-                <Th>Name</Th>
-                <Th>Proposed</Th>
-                <Th>Status</Th>
+                {(
+                  [
+                    ['name', 'Name'],
+                    ['proposed', 'Proposed'],
+                    ['status', 'Status'],
+                  ] as const
+                ).map(([by, label]) => (
+                  <SortTh
+                    key={by}
+                    label={label}
+                    direction={proposalSort === by ? (search.order ?? 'asc') : null}
+                    onSort={() =>
+                      onSearchChange({
+                        ...search,
+                        ...toggleSort<ProposalSort>(
+                          {
+                            sort: proposalSort ?? 'proposed',
+                            order: search.order ?? (proposalSort ? 'asc' : 'desc'),
+                          },
+                          by,
+                        ),
+                      })
+                    }
+                  />
+                ))}
                 <Th>Species</Th>
                 <Th>Decision note</Th>
               </Tr>
@@ -292,6 +337,16 @@ export function ContributionsPage({
             onSelect={(record) => setOpen(record.id)}
             showSpecies
             showTrait
+            sort={{
+              // Newest first by default, every sort `desc` unless asked (RFC-63 R9).
+              by: recordSort ?? 'added',
+              order: search.order ?? 'desc',
+              onSort: (by) =>
+                onSearchChange({
+                  ...search,
+                  ...toggleSort({ sort: recordSort ?? 'added', order: search.order ?? 'desc' }, by),
+                }),
+            }}
             extra={{
               header: 'Status',
               cell: (record) => (
@@ -313,6 +368,13 @@ export function ContributionsPage({
         {kind === 'annotations' && annotations.length > 0 ? (
           <AnnotationTable
             annotations={annotations}
+            order={search.order}
+            onSortDate={() =>
+              onSearchChange({
+                ...search,
+                order: (search.order ?? 'desc') === 'desc' ? 'asc' : 'desc',
+              })
+            }
             // A Keep-both resolution's `record` is null when its contest
             // created none, or one the viewer cannot see (RFC-71 R3): the
             // row then has nothing to open.

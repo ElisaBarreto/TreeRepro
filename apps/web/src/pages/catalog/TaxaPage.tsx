@@ -14,6 +14,7 @@ import {
   Field,
   Input,
   PageHeader,
+  SortTh,
   Table,
   Tbody,
   Td,
@@ -25,6 +26,7 @@ import { pageErrorMessage } from '../../lib/errors.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+import { useServerSort } from '../../lib/use-sort.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
 const FAMILY_TAKEN = 'A family with this name already exists.';
@@ -76,11 +78,19 @@ function TaxaEditor() {
   const shown = families.data?.filter((family) => family.name.toLowerCase().includes(needle)) ?? [];
   // Nothing to list before a family is selected or a term is typed.
   const listing = term !== '' || selectedId !== null;
+  // By name until a header is clicked (RFC-60 R8, RFC-13 R13).
+  const generaSort = useServerSort<'name' | 'family'>({ sort: 'name', order: 'asc' });
   const genera = usePagedList(
-    datasetKeys.genera(term ? { q: term } : { familyId: selectedId ?? '' }),
+    datasetKeys.genera(
+      term
+        ? { q: term, ...generaSort.params }
+        : { familyId: selectedId ?? '', ...generaSort.params },
+    ),
     (cursor, limit) =>
       fetchGenera(
-        term ? { q: term, cursor, limit } : { familyId: selectedId ?? undefined, cursor, limit },
+        term
+          ? { q: term, ...generaSort.params, cursor, limit }
+          : { familyId: selectedId ?? undefined, ...generaSort.params, cursor, limit },
       ),
     { enabled: listing },
   );
@@ -179,8 +189,8 @@ function TaxaEditor() {
             <Table>
               <Thead>
                 <Tr>
-                  <Th>Name</Th>
-                  <Th>Family</Th>
+                  <SortTh label="Name" {...generaSort.header('name')} />
+                  <SortTh label="Family" {...generaSort.header('family')} />
                   <Th>
                     <span className="sr-only">Actions</span>
                   </Th>
