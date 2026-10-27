@@ -184,6 +184,31 @@ describe('RFC-63 R9, R17 TraitPanel of a categorical trait (issue #345)', () => 
     );
   });
 
+  it('keeps the records pending harmonisation, which have no level, reachable in a group of every record', async () => {
+    mount(SEXUAL_SYSTEM_SUMMARY);
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    const all = within(panel).getByRole('button', { name: /^All records/ });
+    expect(all).toHaveTextContent('8 records · 2 pending');
+    await userEvent.click(all);
+    await waitFor(() => expect(dataset.fetchRecords).toHaveBeenCalled());
+    expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
+      expect.objectContaining({ levelId: undefined, traitId: SEXUAL_SYSTEM_SUMMARY.trait.id }),
+    );
+  });
+
+  it('has no group of every record when nothing is pending', async () => {
+    mount({
+      ...SEXUAL_SYSTEM_SUMMARY,
+      harmonisationCounts: {
+        ...SEXUAL_SYSTEM_SUMMARY.harmonisationCounts,
+        unknownLevel: 0,
+        multiValue: 0,
+      },
+    });
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    expect(within(panel).queryByRole('button', { name: /^All records/ })).not.toBeInTheDocument();
+  });
+
   it('has no dispersal-phase filter on another trait', async () => {
     mount(SEXUAL_SYSTEM_SUMMARY);
     const panel = await screen.findByRole('dialog', { name: 'sexual system' });

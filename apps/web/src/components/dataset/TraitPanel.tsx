@@ -13,7 +13,6 @@ import { usePagedList } from '../../lib/use-paged-list.ts';
 import { Alert, Drawer, EmptyState, Select } from '../ui/index.ts';
 import { Pagination } from './Pagination.tsx';
 import { DISPERSAL_PHASE_LABELS, RecordTable } from './RecordTable.tsx';
-import type { LevelSummary } from './TraitCard.tsx';
 import { VoteButton } from './VoteButton.tsx';
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -79,17 +78,15 @@ function RecordList({
   );
 }
 
-/**
- * A level of a categorical trait as a disclosure: its references and
- * sources, and once opened, the observations stating it (RFC-63 R17: one
- * piece of evidence, one row).
- */
-function LevelGroup({
-  level,
-  list,
+/** A button that opens and closes what it names, the list it holds rendered only while open. */
+function Disclosure({
+  title,
+  meta,
+  children,
 }: {
-  level: LevelSummary;
-  list: Omit<RecordListProps, 'levelId'>;
+  title: string;
+  meta: string;
+  children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -104,18 +101,11 @@ function LevelGroup({
       >
         <span className="font-medium">
           <span aria-hidden="true">{open ? '▾' : '▸'} </span>
-          {level.key}
+          {title}
         </span>{' '}
-        <span className="text-meta tabular-nums text-mist-500">
-          {plural(level.nReferences, 'reference', 'references')} ·{' '}
-          {plural(level.nSources, 'source', 'sources')}
-        </span>
+        <span className="text-meta tabular-nums text-mist-500">{meta}</span>
       </button>
-      {open ? (
-        <div id={panelId}>
-          <RecordList {...list} levelId={level.levelId} />
-        </div>
-      ) : null}
+      {open ? <div id={panelId}>{children}</div> : null}
     </li>
   );
 }
@@ -155,6 +145,7 @@ export function TraitPanel({
     recordCount: number;
     levels?: TraitSummary['levels'];
     categorical?: TraitSummary['categorical'];
+    harmonisationCounts?: TraitSummary['harmonisationCounts'];
   };
   /** The trait is a dispersal trait, whose records may name their phase (RFC-63 R17). */
   dispersal?: boolean;
@@ -212,6 +203,10 @@ export function TraitPanel({
       : undefined,
   };
   const name = humaniseKey(summary.trait.key);
+  const counts = summary.harmonisationCounts;
+  const pending = counts
+    ? counts.unknownLevel + counts.multiValue + counts.notNumeric + counts.empty
+    : 0;
   // RFC-77 R7: a categorical trait counts its references, never its records.
   const counted =
     levels && summary.categorical
@@ -248,8 +243,23 @@ export function TraitPanel({
         {levels ? (
           <ul aria-label={`Levels of ${name}`} className="flex flex-col gap-3">
             {levels.map((level) => (
-              <LevelGroup key={level.levelId} level={level} list={list} />
+              <Disclosure
+                key={level.levelId}
+                title={level.key}
+                meta={`${plural(level.nReferences, 'reference', 'references')} · ${plural(level.nSources, 'source', 'sources')}`}
+              >
+                <RecordList {...list} levelId={level.levelId} />
+              </Disclosure>
             ))}
+            {pending > 0 ? (
+              // A record pending harmonisation has no level yet; a reviewer reaches it here.
+              <Disclosure
+                title="All records"
+                meta={`${plural(summary.recordCount, 'record', 'records')} · ${pending} pending`}
+              >
+                <RecordList {...list} />
+              </Disclosure>
+            ) : null}
           </ul>
         ) : (
           <RecordList {...list} />
