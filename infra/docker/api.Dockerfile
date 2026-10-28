@@ -1,13 +1,9 @@
 # syntax=docker/dockerfile:1
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS base
-# pnpm through corepack, pinned by version and by the sha512 of the npm tarball:
-# corepack refuses a download whose hash differs (OpenSSF Scorecard flags any
-# `npm install` as unpinned). pnpm 12's npm package is a launcher that fetches
-# the native binary on first run, so run it once here and not at container
-# start. Bump: docs/gotchas/docker.md "Bumping pnpm".
-RUN corepack enable \
- && corepack prepare pnpm@12.4.2+sha512.08adc6613180275c7c9edada39dcf08c9c61ad4e7eaf330a4f3461f102b0f907423454d117f98e72d47fef0616070644d7bffc973a6a57f5090a6d7c368b07c9 --activate \
- && pnpm --version
+FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS base
+# pnpm, pinned by version and by the sha512 of its native build
+# (docs/gotchas/docker.md "Bumping pnpm").
+COPY infra/docker/install-pnpm.sh /tmp/install-pnpm.sh
+RUN sh /tmp/install-pnpm.sh && rm /tmp/install-pnpm.sh
 WORKDIR /workspace
 
 FROM base AS manifests
@@ -29,12 +25,11 @@ RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/api bui
 FROM manifests AS prod-deps
 RUN pnpm install --frozen-lockfile --prod --filter "@treerepro/api..."
 
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS runtime
+FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS runtime
 # Pull Alpine security fixes the node image has not rebuilt with yet, and drop
-# the bundled npm, corepack and yarn: the runtime only executes `node dist/server.js`.
+# the bundled npm: the runtime only executes `node dist/server.js`.
 RUN apk upgrade --no-cache \
- && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
-           /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+ && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx
 ENV NODE_ENV=production
 WORKDIR /workspace
 COPY --from=prod-deps /workspace/node_modules ./node_modules

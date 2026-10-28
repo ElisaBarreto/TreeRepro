@@ -6,7 +6,7 @@ Personal, machine-specific notes go in `CLAUDE.local.md` (gitignored), never her
 
 ## Stack (exact versions pinned in package.json; rationale in RFC-10)
 
-Node 24 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite 8 + TanStack Router/Query + Tailwind 4 (`apps/web`) · Drizzle ORM + PostgreSQL 18 · Redis 8 (ioredis) · Zod 4 · Vitest 5 + testcontainers · Playwright · Biome 2 · Docker Compose + Caddy 2.
+Node 26 LTS · pnpm 12 · TypeScript 7 · Hono 4 (`apps/api`) · React 19 + Vite 8 + TanStack Router/Query + Tailwind 4 (`apps/web`) · Drizzle ORM + PostgreSQL 18 · Redis 8 (ioredis) · Zod 4 · Vitest 5 + testcontainers · Playwright · Biome 2 · Docker Compose + Caddy 2.
 
 ## Layout
 
