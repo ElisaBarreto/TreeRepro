@@ -296,6 +296,23 @@ describe('RFC-61 R4, R9 ReferencePage traits', () => {
     }
   });
 
+  it('adopts a search the URL brings, rather than writing a stale one back (issue #351)', async () => {
+    dataset.fetchReference.mockResolvedValue(CITED_REFERENCE_DETAIL);
+    dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
+    const { router } = renderAt(`/app/references/${CITED_REFERENCE_DETAIL.id}?q=adenanthera`);
+    const box = await screen.findByRole('searchbox', { name: 'Search species' });
+    expect(box).toHaveValue('adenanthera');
+    await router.navigate({
+      to: '/app/references/$id',
+      params: { id: CITED_REFERENCE_DETAIL.id },
+      search: { q: 'picea' },
+    });
+    await waitFor(() => expect(box).toHaveValue('picea'));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(router.state.location.search).toEqual(expect.objectContaining({ q: 'picea' }));
+    expect(dataset.fetchRecords).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'picea' }));
+  });
+
   it('shows no Traits section when the reference names no visible trait', async () => {
     await openPage();
     expect(screen.queryByRole('heading', { level: 2, name: 'Traits' })).not.toBeInTheDocument();

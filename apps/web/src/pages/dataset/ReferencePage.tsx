@@ -29,7 +29,7 @@ import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 
-/** The records section's filters and sort, kept in the URL (issue #351). */
+/** The records section's filters and sort, kept in the URL (issue #351). @rfc RFC-63 R9 */
 export interface ReferenceSearch {
   traitId?: string;
   q?: string;
@@ -214,11 +214,22 @@ function ReferenceRecords({
 }) {
   const searchId = useId();
   const [term, setTerm] = useState(search.q ?? '');
+  const [seen, setSeen] = useState(search.q);
+  if (search.q !== seen) {
+    // The URL moved under the box (Back, a shared link): adopt it during
+    // this render, so a stale term never writes itself back over it.
+    setSeen(search.q);
+    setTerm(search.q ?? '');
+  }
   const settled = useDebouncedValue(term.trim(), 300);
   useEffect(() => {
+    // Only once typing has settled on what the box holds now.
+    if (settled !== term.trim()) return;
     const q = settled.length >= 2 ? settled : undefined;
-    if (q !== search.q) onSearchChange({ ...search, q });
-  }, [settled, search, onSearchChange]);
+    if (q === search.q) return;
+    setSeen(q);
+    onSearchChange({ ...search, q });
+  }, [settled, term, search, onSearchChange]);
   const params = {
     referenceId: id,
     traitId: search.traitId,
