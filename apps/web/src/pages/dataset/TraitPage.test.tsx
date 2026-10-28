@@ -35,6 +35,7 @@ const dataset = vi.hoisted(() => ({
   fetchFamilies: vi.fn(),
   fetchGenera: vi.fn(),
   fetchRecords: vi.fn(),
+  fetchRecordGroups: vi.fn(),
   fetchRecord: vi.fn(),
 }));
 // `TraitPage`'s Maps section calls `useMaps()` itself (RFC-76 R8); mocked
@@ -70,6 +71,22 @@ beforeEach(() => {
   dataset.fetchRecords
     .mockReset()
     .mockResolvedValue({ data: [RECORD], meta: { nextCursor: null } });
+  // A categorical trait's drawer reads groups (RFC-63 R18): RECORD alone is one.
+  dataset.fetchRecordGroups.mockReset().mockResolvedValue({
+    data: [
+      {
+        level: RECORD.level,
+        secondaryReference: RECORD.secondaryReference,
+        nRecords: 1,
+        nReferences: 1,
+        validationCount: 0,
+        contestCount: 0,
+        contested: false,
+        record: RECORD,
+      },
+    ],
+    meta: { nextCursor: null },
+  });
   dataset.fetchRecord.mockReset().mockReturnValue(new Promise(() => {}));
   maps.useMaps.mockReset();
   maps.useMapValues.mockReturnValue({ isPending: false, isError: false, data: MAP_VALUES });
@@ -459,7 +476,7 @@ describe('RFC-62 R8 TraitPage species tabs', () => {
     );
     const drawer = await screen.findByRole('dialog', { name: 'sexual system' });
     await waitFor(() =>
-      expect(dataset.fetchRecords).toHaveBeenCalledWith(
+      expect(dataset.fetchRecordGroups).toHaveBeenCalledWith(
         expect.objectContaining({
           speciesId: TRAIT_SPECIES_WITH_DATA.id,
           traitId: SEXUAL_SYSTEM_DETAIL.id,

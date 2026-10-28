@@ -6,6 +6,7 @@ import {
   listRecordsQuerySchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
+  recordGroupsQuerySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { visibilityOf } from '../../../access/visibility.ts';
@@ -17,6 +18,7 @@ import {
   pendingGroups,
   pendingTraits,
 } from '../../../dataset/queues.ts';
+import { recordGroups } from '../../../dataset/record-groups.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
 import type { AppEnv } from '../../env.ts';
@@ -27,7 +29,7 @@ import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 
 /**
- * @rfc RFC-63 R8, R9
+ * @rfc RFC-63 R8, R9, R18
  * @rfc RFC-65 R1, R3, R4
  * @rfc RFC-65 R7-R9
  * @rfc RFC-70 R1-R6
@@ -120,11 +122,23 @@ export function recordRoutes(ctx: AuthContext) {
           referenceId: q.referenceId,
           levelId: q.levelId,
           dispersalPhase: q.dispersalPhase,
+          secondaryReferenceId: q.secondaryReferenceId,
           cursor: q.cursor,
           limit: q.limit,
           sort: q.sort,
           order: q.order,
         });
+        return c.json({ data, meta: { nextCursor } });
+      },
+    )
+    .get(
+      '/groups',
+      requirePermission(ctx, 'dataset.read'),
+      validate('query', recordGroupsQuerySchema),
+      async (c) => {
+        const q = c.req.valid('query');
+        const visibility = await visibilityOf(ctx, c);
+        const { data, nextCursor } = await recordGroups(ctx.db, visibility, q);
         return c.json({ data, meta: { nextCursor } });
       },
     )

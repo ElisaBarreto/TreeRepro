@@ -687,6 +687,8 @@ export const listRecordsQuerySchema = cursorQuerySchema
     referenceId: z.uuid().optional(),
     levelId: z.uuid().optional(),
     dispersalPhase: z.enum(DISPERSAL_PHASES).optional(),
+    /** A reference id, or `none` for the records with no secondary reference (issue #349). */
+    secondaryReferenceId: z.union([z.uuid(), z.literal('none')]).optional(),
     sort: z.enum(RECORD_SORTS).optional(),
     order: z.enum(SORT_ORDERS).optional(),
   })
@@ -703,7 +705,34 @@ export const listRecordsQuerySchema = cursorQuerySchema
   .refine((q) => q.dispersalPhase === undefined || q.speciesId !== undefined, {
     message: 'dispersalPhase needs speciesId and traitId',
     path: ['dispersalPhase'],
+  })
+  .refine((q) => q.secondaryReferenceId === undefined || q.speciesId !== undefined, {
+    message: 'secondaryReferenceId needs speciesId and traitId',
+    path: ['secondaryReferenceId'],
   });
+
+/** @rfc RFC-63 R18 */
+export const recordGroupsQuerySchema = cursorQuerySchema.extend({
+  speciesId: z.uuid(),
+  traitId: z.uuid(),
+  dispersalPhase: z.enum(DISPERSAL_PHASES).optional(),
+});
+
+/**
+ * One level × secondary reference of a species × trait's records; `record` is
+ * the group's record when it holds exactly one.
+ * @rfc RFC-63 R18
+ */
+export const recordGroupSchema = z.strictObject({
+  level: z.strictObject({ id: z.uuid(), key: z.string() }).nullable(),
+  secondaryReference: referenceRefSchema.nullable(),
+  nRecords: z.number().int().positive(),
+  nReferences: z.number().int().nonnegative(),
+  validationCount: z.number().int().nonnegative(),
+  contestCount: z.number().int().nonnegative(),
+  contested: z.boolean(),
+  record: recordSchema.nullable(),
+});
 
 /** @rfc RFC-63 R10 */
 export const harmonisationCountsSchema = z.strictObject({
@@ -876,6 +905,8 @@ export type RecordItem = z.infer<typeof recordSchema>;
 export type Annotation = z.infer<typeof annotationSchema>;
 export type RecordDetail = z.infer<typeof recordDetailSchema>;
 export type ListRecordsQuery = z.infer<typeof listRecordsQuerySchema>;
+/** @rfc RFC-63 R18 */
+export type RecordGroup = z.infer<typeof recordGroupSchema>;
 export type HarmonisationCounts = z.infer<typeof harmonisationCountsSchema>;
 export type TraitSummary = z.infer<typeof traitSummarySchema>;
 export type SpeciesTraits = z.infer<typeof speciesTraitsSchema>;

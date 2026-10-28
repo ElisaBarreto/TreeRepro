@@ -40,6 +40,7 @@ import {
   plotUserSchema,
   proposalSchema,
   recordDetailSchema,
+  recordGroupSchema,
   recordSchema,
   referenceDetailSchema,
   referenceSchema,
@@ -412,6 +413,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
     summary:
       'List records for a species and trait (one level or dispersal phase), or for a reference',
     response: listEnvelopeSchema(recordSchema),
+  },
+  'GET /api/records/groups': {
+    summary: "Group a species and trait's records by level and secondary reference",
+    response: listEnvelopeSchema(recordGroupSchema),
   },
   'GET /api/records/:id': {
     summary: "Get a record's full detail",

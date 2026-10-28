@@ -17,6 +17,7 @@ import {
   type ReferenceDetail,
   type ReferenceSort,
   recordDetailSchema,
+  recordGroupSchema,
   recordSchema,
   referenceDetailSchema,
   referenceSchema,
@@ -62,6 +63,7 @@ export const datasetKeys = {
   speciesTraits: (id: string, missingOnly: boolean) =>
     ['species', id, 'traits', missingOnly] as const,
   records: (params: Params) => ['records', params] as const,
+  recordGroups: (params: Params) => ['records', 'groups', params] as const,
   record: (id: string) => ['records', id] as const,
   // The filters are part of the key: a filtered dictionary and the whole
   // one (which every form's selects read) must never share a cache entry.
@@ -139,12 +141,24 @@ export function fetchRecords(params: {
   referenceId?: string;
   levelId?: string;
   dispersalPhase?: DispersalPhase;
+  /** A reference id, or `none` (RFC-63 R9). */
+  secondaryReferenceId?: string;
   sort?: RecordSort;
   order?: SortOrder;
   cursor?: string;
   limit?: number;
 }) {
   return apiFetch(withQuery('/records', params), listEnvelopeSchema(recordSchema));
+}
+/** @rfc RFC-63 R18 */
+export function fetchRecordGroups(params: {
+  speciesId: string;
+  traitId: string;
+  dispersalPhase?: DispersalPhase;
+  cursor?: string;
+  limit?: number;
+}) {
+  return apiFetch(withQuery('/records/groups', params), listEnvelopeSchema(recordGroupSchema));
 }
 /** @rfc RFC-63 R8 */
 export async function fetchRecord(id: string): Promise<RecordDetail> {

@@ -106,6 +106,9 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
     // Query strings and bodies the route's schema requires.
     const inputs: Record<string, { query?: string; body?: unknown }> = {
       'GET /api/records': { query: `speciesId=${fx.shownSpecies.id}&traitId=${fx.activeTrait.id}` },
+      'GET /api/records/groups': {
+        query: `speciesId=${fx.shownSpecies.id}&traitId=${fx.activeTrait.id}`,
+      },
       'GET /api/records/pending': { query: `traitId=${fx.activeTrait.id}` },
       'POST /api/records/pending/map': {
         body: {

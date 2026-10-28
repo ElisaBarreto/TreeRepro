@@ -16,6 +16,8 @@ import {
   quantitativeValueSchema,
   REVIEW_STATUSES,
   recordDetailSchema,
+  recordGroupSchema,
+  recordGroupsQuerySchema,
   recordQuantitativeSchema,
   recordSchema,
   referenceDetailSchema,
@@ -89,6 +91,23 @@ describe('RFC-63 R9 listRecordsQuerySchema', () => {
     expect(paths({ referenceId: uuid, levelId: uuid })).toEqual(['levelId']);
     expect(paths({ referenceId: uuid, dispersalPhase: 'primary' })).toEqual(['dispersalPhase']);
     expect(DISPERSAL_PHASES).toEqual(['primary', 'secondary', 'unspecified']);
+  });
+
+  it('RFC-63 R9 secondaryReferenceId is an id or none, on a species × trait list only (issue #349)', () => {
+    const base = { speciesId: uuid, traitId: uuid };
+    expect(listRecordsQuerySchema.safeParse({ ...base, secondaryReferenceId: uuid }).success).toBe(
+      true,
+    );
+    expect(
+      listRecordsQuerySchema.safeParse({ ...base, secondaryReferenceId: 'none' }).success,
+    ).toBe(true);
+    expect(listRecordsQuerySchema.safeParse({ ...base, secondaryReferenceId: 'x' }).success).toBe(
+      false,
+    );
+    const r = listRecordsQuerySchema.safeParse({ referenceId: uuid, secondaryReferenceId: uuid });
+    expect(r.success ? [] : r.error.issues.map((i) => i.path.join('.'))).toEqual([
+      'secondaryReferenceId',
+    ]);
   });
 
   it('sort is value, references, origin or added; order is asc or desc', () => {
@@ -954,5 +973,37 @@ describe('RFC-64 R7 reject reasons (spec R-2)', () => {
     expect(IMPORT_REJECT_REASONS).toEqual(
       expect.arrayContaining(['invalid_record_id', 'duplicate_record_id']),
     );
+  });
+});
+
+describe('RFC-63 R18 recordGroupsQuerySchema and recordGroupSchema (issue #349)', () => {
+  it('needs speciesId and traitId; takes dispersalPhase and a cursor', () => {
+    expect(recordGroupsQuerySchema.safeParse({ speciesId: uuid, traitId: uuid }).success).toBe(
+      true,
+    );
+    expect(
+      recordGroupsQuerySchema.safeParse({
+        speciesId: uuid,
+        traitId: uuid,
+        dispersalPhase: 'primary',
+      }).success,
+    ).toBe(true);
+    expect(recordGroupsQuerySchema.safeParse({ speciesId: uuid }).success).toBe(false);
+    expect(recordGroupsQuerySchema.safeParse({ traitId: uuid }).success).toBe(false);
+  });
+
+  it('a group without its single record is valid; unknown keys are refused', () => {
+    const group = {
+      level: { id: uuid, key: 'biotic' },
+      secondaryReference: null,
+      nRecords: 2,
+      nReferences: 2,
+      validationCount: 0,
+      contestCount: 0,
+      contested: false,
+      record: null,
+    };
+    expect(recordGroupSchema.safeParse(group).success).toBe(true);
+    expect(recordGroupSchema.safeParse({ ...group, extra: 1 }).success).toBe(false);
   });
 });
