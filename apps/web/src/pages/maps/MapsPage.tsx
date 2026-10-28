@@ -2,12 +2,19 @@ import { useQuery } from '@tanstack/react-query';
 import type { MapEntry, Trait } from '@treerepro/contracts';
 import { type KeyboardEvent, useState } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
-import { MAP_KIND_LABELS, mapAlt, mapsByTrait, useMaps } from '../../api/maps.ts';
+import {
+  MAP_KIND_LABELS,
+  mapAlt,
+  mapsByTrait,
+  useMaps,
+  usePrefetchTraitMaps,
+} from '../../api/maps.ts';
 import { MapFigure } from '../../components/maps/MapFigure.tsx';
 import { MapViewer, type MapViewerItem } from '../../components/maps/MapViewer.tsx';
 import { Alert, Badge, ButtonLink, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey, TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
+import { hasPermission, useMe } from '../../lib/session.ts';
 
 /** The page's search params (RFC-76 R6): a category key and a trait key. @rfc RFC-76 R6 */
 export interface MapsSearch {
@@ -69,9 +76,11 @@ function moveIndex(
  * then Mean/Median/SD/CV/Min/Max or the prevalence of each level — each
  * labelled. `?trait=` alone selects its category; an unknown or mapless key
  * falls back to the first. Names, levels and categories come from the
- * dictionary; `GET /api/maps` only says which maps exist. The shell's own trail already
+ * dictionary; `GET /api/maps` only says which maps exist. Opening a category
+ * prefetches its traits' maps (R10); with `dataset.export` the full-size
+ * viewer downloads the map as SVG (R11). The shell's own trail already
  * reads `Data › Maps`, so the page registers no crumb of its own.
- * @rfc RFC-76 R6, R7
+ * @rfc RFC-76 R6, R7, R10, R11
  */
 export function MapsPage({
   search,
@@ -97,6 +106,8 @@ export function MapsPage({
     categories.find((c) => c.key === search.category) ??
     categories[0];
   const trait = category?.traits.find((t) => t.key === search.trait) ?? category?.traits[0];
+  usePrefetchTraitMaps(category?.traits.flatMap((t) => byTrait.get(t.id) ?? []) ?? []);
+  const canDownload = hasPermission(useMe(), 'dataset.export');
 
   const error = dictionary.error ?? maps.error;
   const isPending = dictionary.isPending || maps.isPending;
@@ -163,7 +174,12 @@ export function MapsPage({
                 onSelect={(key) => onSearchChange({ category: category.key, trait: key })}
               />
             </section>
-            <TraitMaps key={trait.id} trait={trait} entries={byTrait.get(trait.id) ?? []} />
+            <TraitMaps
+              key={trait.id}
+              trait={trait}
+              entries={byTrait.get(trait.id) ?? []}
+              canDownload={canDownload}
+            />
           </div>
         </>
       ) : null}
@@ -257,10 +273,21 @@ function traitMaps(trait: Trait, entries: MapEntry[]) {
   return { completeness, details };
 }
 
-function TraitMaps({ trait, entries }: { trait: Trait; entries: MapEntry[] }) {
+function TraitMaps({
+  trait,
+  entries,
+  canDownload,
+}: {
+  trait: Trait;
+  entries: MapEntry[];
+  canDownload: boolean;
+}) {
   const [open, setOpen] = useState<number | null>(null);
   const { completeness, details } = traitMaps(trait, entries);
-  const items = completeness ? [completeness, ...details] : details;
+  const items = (completeness ? [completeness, ...details] : details).map((map) => ({
+    ...map,
+    caption: caption(map.entry),
+  }));
   const offset = completeness ? 1 : 0;
   const categorical = trait.valueType === 'categorical';
 
@@ -319,7 +346,13 @@ function TraitMaps({ trait, entries }: { trait: Trait; entries: MapEntry[] }) {
           </div>
         </section>
       ) : null}
-      <MapViewer items={items} index={open} onIndexChange={setOpen} onClose={() => setOpen(null)} />
+      <MapViewer
+        items={items}
+        index={open}
+        onIndexChange={setOpen}
+        onClose={() => setOpen(null)}
+        canDownload={canDownload}
+      />
     </article>
   );
 }

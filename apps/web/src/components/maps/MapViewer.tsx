@@ -1,12 +1,15 @@
 import type { MapEntry } from '@treerepro/contracts';
 import { useEffect, useRef } from 'react';
+import { useMapValues } from '../../api/maps.ts';
+import { mapFileName, mapSvg } from './map-svg.ts';
 import { RegionMap } from './RegionMap.tsx';
 
-/** One map as the viewer shows it: the page's heading for it and its alt text. @rfc RFC-76 R7 */
+/** One map as the viewer shows it: the page's heading for it, its alt text and caption. @rfc RFC-76 R7 */
 export interface MapViewerItem {
   entry: MapEntry;
   heading: string;
   alt: string;
+  caption?: string;
 }
 
 const CONTROL =
@@ -19,19 +22,22 @@ const CONTROL =
  * step to the previous/next map, wrapping; Escape closes it natively. It
  * heads the map with the same text the page does and repeats its alt text
  * for sighted users, `aria-hidden` so a screen reader — already given that
- * text as the map's own label — does not hear it twice.
- * @rfc RFC-76 R7
+ * text as the map's own label — does not hear it twice. With `canDownload`
+ * (the page's `dataset.export` check) it offers the map as an SVG file (R11).
+ * @rfc RFC-76 R7, R11
  */
 export function MapViewer({
   items,
   index,
   onIndexChange,
   onClose,
+  canDownload = false,
 }: {
   items: readonly MapViewerItem[];
   index: number | null;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  canDownload?: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const item = index === null ? undefined : items[index];
@@ -102,6 +108,7 @@ export function MapViewer({
                   </button>
                 </>
               ) : null}
+              {canDownload ? <DownloadSvg item={item} /> : null}
               <button type="button" onClick={() => dialogRef.current?.close()} className={CONTROL}>
                 Close
               </button>
@@ -113,5 +120,26 @@ export function MapViewer({
         </>
       ) : null}
     </dialog>
+  );
+}
+
+// Saves the shown map as a standalone SVG (RFC-76 R11), from the values the
+// map itself was drawn with.
+function DownloadSvg({ item }: { item: MapViewerItem }) {
+  const values = useMapValues(item.entry);
+  function download() {
+    if (!values.data) return;
+    const svg = mapSvg(values.data, item.alt, item.caption ?? '');
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = mapFileName(item.alt);
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  return (
+    <button type="button" className={CONTROL} disabled={!values.data} onClick={download}>
+      Download SVG
+    </button>
   );
 }

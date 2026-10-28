@@ -119,6 +119,7 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
       },
       'GET /api/me/contributions': { query: 'kind=records' },
       'GET /api/maps/values': { query: `traitId=${fx.activeTrait.id}&kind=completeness` },
+      'GET /api/maps/trait-values': { query: `traitId=${fx.activeTrait.id}` },
       'GET /api/admin/users/:id/contributions': { query: 'kind=records' },
     };
 

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Dictionary, MapEntry, MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,7 +23,11 @@ const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn() }));
 // module as `fetchMaps` and calls it through its own closure, a same-module
 // reference `vi.mock`'s replacement of the exported binding never reaches —
 // only the cross-module import `MapsPage.tsx` holds of `useMaps` itself is.
-const maps = vi.hoisted(() => ({ useMaps: vi.fn(), useMapValues: vi.fn() }));
+const maps = vi.hoisted(() => ({
+  useMaps: vi.fn(),
+  useMapValues: vi.fn(),
+  usePrefetchTraitMaps: vi.fn(),
+}));
 vi.mock('../../api/auth.ts', () => auth);
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -123,6 +127,7 @@ beforeEach(() => {
   auth.fetchMe.mockReset();
   dataset.fetchDictionary.mockReset();
   maps.useMaps.mockReset();
+  maps.usePrefetchTraitMaps.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
   maps.useMaps.mockReturnValue(queryResult(MAP_ENTRIES));
@@ -394,6 +399,39 @@ describe('RFC-76 R7 MapsPage keyboard', () => {
     expect(within(dialog).getByRole('heading', { name: 'blue' })).toBeInTheDocument();
     await user.keyboard('{ArrowRight}');
     expect(within(dialog).getByRole('heading', { name: 'Data completeness' })).toBeInTheDocument();
+  });
+});
+
+describe('RFC-76 R10, R11 MapsPage loading and download', () => {
+  const traitsOf = () =>
+    new Set(
+      ((maps.usePrefetchTraitMaps.mock.lastCall?.[0] ?? []) as MapEntry[]).map((e) => e.traitId),
+    );
+
+  it('prefetches every map of the open category, and the next category once opened', async () => {
+    const user = userEvent.setup();
+    await openPage();
+    await tabs();
+    expect(traitsOf()).toEqual(new Set([SEED_MASS.id, SEED_LENGTH.id]));
+    expect(maps.usePrefetchTraitMaps.mock.lastCall?.[0]).toHaveLength(5);
+    await user.click(screen.getByRole('tab', { name: 'Flower' }));
+    await waitFor(() => expect(traitsOf()).toEqual(new Set([FLOWER_COLOUR.id])));
+  });
+
+  it('offers Download SVG in the viewer only with dataset.export', async () => {
+    const user = userEvent.setup();
+    const open = async () => {
+      await openPage();
+      await tabs();
+      await user.click(
+        screen.getByRole('button', { name: 'Data completeness map of seed mass, open full size' }),
+      );
+      return screen.getByRole('dialog');
+    };
+    expect(within(await open()).queryByRole('button', { name: 'Download SVG' })).toBeNull();
+    cleanup();
+    auth.fetchMe.mockResolvedValue({ ...READER, permissions: ['dataset.read', 'dataset.export'] });
+    expect(within(await open()).getByRole('button', { name: 'Download SVG' })).toBeEnabled();
   });
 });
 

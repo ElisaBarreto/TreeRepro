@@ -2,13 +2,7 @@ import type { MapEntry, MapValues } from '@treerepro/contracts';
 import { useId } from 'react';
 import { useMapValues } from '../../api/maps.ts';
 import { formatNumber } from '../../lib/format.ts';
-import outlines from './tdwg-l3.json';
-
-/** No data and borders (RFC-76 R4). */
-const NO_DATA = '#EBEBEB';
-const BORDER = '#8C8C8C';
-
-const OUTLINES = outlines as { viewBox: string; regions: Record<string, string> };
+import { BORDER, legendUnit, NO_DATA, OUTLINES } from './map-svg.ts';
 
 function regionTitle(
   name: string,
@@ -16,9 +10,10 @@ function regionTitle(
   legend: MapValues['legend'],
 ) {
   if (!region || region.value === null) return `${name}: no data`;
-  const unit = legend.percent ? '%' : legend.unit ? ` ${legend.unit}` : '';
+  const unit = legendUnit(legend);
+  const suffix = unit === '%' || !unit ? unit : ` ${unit}`;
   const species = `${region.nSpecies} species`;
-  return `${name}: ${formatNumber(Math.round(region.value * 100) / 100)}${unit} (${species})`;
+  return `${name}: ${formatNumber(Math.round(region.value * 100) / 100)}${suffix} (${species})`;
 }
 
 /**
@@ -39,7 +34,7 @@ export function RegionMap({ entry, alt }: { entry: MapEntry; alt: string }) {
   const { regions, legend } = values.data;
   const byCode = new Map(regions.map((r) => [r.code, r]));
   const [lo, hi] = legend.limits;
-  const unit = legend.percent ? '%' : (legend.unit ?? '');
+  const unit = legendUnit(legend);
   return (
     <div className="flex size-full flex-col gap-1">
       <svg viewBox={OUTLINES.viewBox} role="img" aria-label={alt} className="min-h-0 w-full flex-1">

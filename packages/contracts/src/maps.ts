@@ -77,3 +77,21 @@ export const mapValuesSchema = z.strictObject({
 });
 /** @rfc RFC-76 R6 */
 export type MapValues = z.infer<typeof mapValuesSchema>;
+
+/** `GET /api/maps/trait-values`: one trait's maps. @rfc RFC-76 R9 */
+export const traitMapsQuerySchema = z.strictObject({ traitId: z.uuid() });
+/** @rfc RFC-76 R9 */
+export type TraitMapsQuery = z.infer<typeof traitMapsQuerySchema>;
+
+/** Every map of one trait, in `GET /api/maps` order, each with its regions and legend. @rfc RFC-76 R9 */
+export const traitMapsSchema = z.strictObject({
+  maps: z.array(
+    mapValuesSchema.omit({ computedAt: true }).extend({
+      kind: z.enum(MAP_KINDS),
+      levelId: z.uuid().nullable(),
+    }),
+  ),
+  computedAt: z.iso.datetime({ offset: true }),
+});
+/** @rfc RFC-76 R9 */
+export type TraitMaps = z.infer<typeof traitMapsSchema>;

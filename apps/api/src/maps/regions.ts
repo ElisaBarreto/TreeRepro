@@ -4,6 +4,8 @@ import {
   type MapKind,
   type MapValues,
   type MapValuesQuery,
+  type TraitMaps,
+  type TraitMapsQuery,
 } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import { levelVisible, traitVisible, type Visibility } from '../access/visibility.ts';
@@ -115,6 +117,37 @@ async function regionRows(db: DbExecutor, query: MapValuesQuery): Promise<Region
     order by x.area_code_l3`)) as unknown as RegionRow[];
 }
 
+/** The trait's unit, which the legend of every non-percentage kind but `cv` carries. */
+async function traitUnit(db: DbExecutor, traitId: string): Promise<string | null> {
+  const [trait] = (await db.execute(
+    sql`select unit from traits where id = ${traitId}::uuid`,
+  )) as unknown as { unit: string | null }[];
+  return trait?.unit ?? null;
+}
+
+/** R6's regions and legend of one map already known to be listed. */
+async function regionsAndLegend(
+  db: DbExecutor,
+  query: MapValuesQuery,
+  unit: string | null,
+): Promise<Omit<MapValues, 'computedAt'>> {
+  const rows = await regionRows(db, query);
+  const values = rows.flatMap((r) => (r.value === null ? [] : [r.value]));
+  const scale = colourScale(query.kind, values);
+  const style = KIND_STYLE[query.kind];
+  return {
+    regions: rows.map((r) => ({ ...r, fill: fillColour(query.kind, r.value, scale) })),
+    legend: {
+      stops: [...RAMPS[style.ramp]],
+      limits: scale.limits,
+      log: scale.log,
+      percent: scale.percent,
+      label: style.label,
+      unit: style.percent || query.kind === 'cv' ? null : unit,
+    },
+  };
+}
+
 /**
  * One map's regions and legend (RFC-76 R6): every region with a row, its
  * value (null below the species minimum), species count and fill. A map
@@ -133,23 +166,30 @@ export async function mapValues(
       m.levelId === (query.levelId?.toLowerCase() ?? null),
   );
   if (!entry) throw new AppError('MAP_NOT_FOUND', 'Map not found');
-  const rows = await regionRows(db, query);
-  const values = rows.flatMap((r) => (r.value === null ? [] : [r.value]));
-  const scale = colourScale(query.kind, values);
-  const style = KIND_STYLE[query.kind];
-  const [trait] = (await db.execute(
-    sql`select unit from traits where id = ${query.traitId}::uuid`,
-  )) as unknown as { unit: string | null }[];
-  return {
-    regions: rows.map((r) => ({ ...r, fill: fillColour(query.kind, r.value, scale) })),
-    legend: {
-      stops: [...RAMPS[style.ramp]],
-      limits: scale.limits,
-      log: scale.log,
-      percent: scale.percent,
-      label: style.label,
-      unit: style.percent || query.kind === 'cv' ? null : (trait?.unit ?? null),
-    },
-    computedAt: entry.computedAt,
-  };
+  const unit = await traitUnit(db, query.traitId);
+  return { ...(await regionsAndLegend(db, query, unit)), computedAt: entry.computedAt };
+}
+
+/**
+ * Every map of one trait `listMaps` gives this viewer, in its order, each
+ * with R6's regions and legend — `listMaps` read once for all of them
+ * (RFC-76 R9). A trait with none answers 404 `MAP_NOT_FOUND`.
+ * @rfc RFC-76 R9
+ */
+export async function traitMapValues(
+  db: DbExecutor,
+  visibility: Visibility,
+  query: TraitMapsQuery,
+): Promise<TraitMaps> {
+  const traitId = query.traitId.toLowerCase();
+  const entries = (await listMaps(db, visibility)).filter((m) => m.traitId === traitId);
+  const [first] = entries;
+  if (!first) throw new AppError('MAP_NOT_FOUND', 'Map not found');
+  const unit = await traitUnit(db, traitId);
+  const maps: TraitMaps['maps'] = [];
+  for (const { kind, levelId } of entries) {
+    const q = { traitId, kind, levelId: levelId ?? undefined };
+    maps.push({ kind, levelId, ...(await regionsAndLegend(db, q, unit)) });
+  }
+  return { maps, computedAt: first.computedAt };
 }
