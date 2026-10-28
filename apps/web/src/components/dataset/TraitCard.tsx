@@ -28,8 +28,8 @@ const WIDTHS = [
   'w-full',
 ] as const;
 
-function widthClass(count: number, max: number): string {
-  const tenths = Math.min(WIDTHS.length, Math.max(1, Math.round((count / max) * WIDTHS.length)));
+function widthClass(share: number): string {
+  const tenths = Math.min(WIDTHS.length, Math.max(1, Math.round(share * WIDTHS.length)));
   return WIDTHS[tenths - 1] ?? 'w-full';
 }
 
@@ -71,7 +71,8 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
 
 /**
  * One trait of a species. The card itself is a button that opens the trait's
- * records, naming the trait, its unit and record count — for a categorical
+ * records — and so is a click anywhere else on the card but its controls
+ * (issue #357) — naming the trait, its unit and record count — for a categorical
  * trait its reference count (RFC-77 R7, issue #345) — what still waits for
  * harmonisation, a **Contested** badge while any of its levels or records is
  * contested (R-9), and the species summary of RFC-77 (RFC-63 R10): for a
@@ -81,8 +82,8 @@ export type LevelSummary = NonNullable<TraitSummary['levels']>[number];
  * the states that are not a clear minority when they are more than the main
  * states — the main state itself is left to the bars (issue #314). Below it, outside the button so no control nests in another, a
  * categorical trait lists **every** level the species has (spec §2; no cap):
- * its references, its sources, its validations (✓ n), a bar scaled against
- * the level most references state, its own **Contested** badge, and
+ * its references, its sources, its validations (✓ n), a bar of its share of
+ * the card's references (issue #357), its own **Contested** badge, and
  * Validate/Contest/Complement — each present only when the page passes its
  * handler. Beside the card sit the `?` with the dictionary's description
  * (RFC-13 R11) and the "+" that opens the entry dialog for the trait (RFC-65
@@ -114,7 +115,6 @@ export function TraitCard({
   const { trait, recordCount, continuous, categorical } = summary;
   const levels = summary.levels ?? [];
   const pending = pendingCount(summary);
-  const maxCount = Math.max(0, ...levels.map((level) => level.nReferences));
   // RFC-77 R7: one piece of evidence counts once, so a categorical trait
   // counts references, never records (issue #345).
   const counted = categorical
@@ -125,7 +125,7 @@ export function TraitCard({
   const hasMaps = useHasMaps(trait.id);
 
   return (
-    <CardFrame>
+    <CardFrame onOpen={onOpen}>
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <button
           type="button"
@@ -190,7 +190,7 @@ export function TraitCard({
                 </span>
                 <span aria-hidden="true" className="block h-2 w-full rounded-full bg-mist-100">
                   <span
-                    className={`block h-full rounded-full bg-canopy-500 ${widthClass(level.nReferences, maxCount)}`}
+                    className={`block h-full rounded-full bg-canopy-500 ${widthClass(level.shareOfReferences)}`}
                   />
                 </span>
                 {onValidateLevel || onRespondLevel ? (
