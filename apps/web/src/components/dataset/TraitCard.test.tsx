@@ -98,7 +98,7 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(within(list).getByText('level_6')).toBeInTheDocument();
   });
 
-  it('shows per level its reference count, its validations, a bar and a Contested badge where it applies', () => {
+  it('shows per level its reference count, its validations, a bar of its share of references and a Contested badge where it applies', () => {
     render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
     const list = screen.getByRole('list', { name: 'Levels of sexual system' });
     const items = within(list).getAllByRole('listitem');
@@ -112,8 +112,10 @@ describe('RFC-63 R10 TraitCard', () => {
     expect(items[1]).not.toHaveTextContent('1 references');
     expect(within(items[1] as HTMLElement).queryByText('Contested')).not.toBeInTheDocument();
     const fills = list.querySelectorAll('.bg-canopy-500');
-    expect(fills[0]?.className).toContain('w-full');
-    expect(fills[1]?.className).toContain('w-3/10');
+    // Issue #357: the bar is the level's share of the card's references, not
+    // its count against the leading level — 0.6667 is 7 tenths, 0.1667 two.
+    expect(fills[0]?.className).toContain('w-7/10');
+    expect(fills[1]?.className).toContain('w-2/10');
   });
 
   it('spec §2 gives each level Validate, Contest and Complement, outside the card’s own button', async () => {
@@ -142,6 +144,37 @@ describe('RFC-63 R10 TraitCard', () => {
     );
     expect(onRespondLevel).toHaveBeenLastCalledWith(LEVELLED.levels?.[2], 'complement');
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens the records on a click anywhere on the card that is not a control (issue #357)', async () => {
+    const onOpen = vi.fn();
+    const onAdd = vi.fn();
+    const onValidateLevel = vi.fn();
+    render(
+      withRouter(
+        <TraitCard
+          summary={{ ...LEVELLED, trait: DICTIONARY_SEXUAL_SYSTEM }}
+          dictionary={DICTIONARY}
+          onOpen={onOpen}
+          onAdd={onAdd}
+          onValidateLevel={onValidateLevel}
+        />,
+      ),
+    );
+    const list = await screen.findByRole('list', { name: 'Levels of sexual system' });
+    await userEvent.click(within(list).getByText('dioecious'));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(list).getByText('4 references'));
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Validate dioecious for sexual system' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Add value for sexual system' }));
+    await userEvent.click(screen.getByRole('button', { name: 'What does sexual system mean?' }));
+    await userEvent.click(screen.getByRole('tooltip'));
+    expect(onValidateLevel).toHaveBeenCalledTimes(1);
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
   it('offers only the actions the page passes', () => {
