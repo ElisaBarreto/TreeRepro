@@ -14,6 +14,7 @@ import {
   NAME_TYPES,
   OUTLIER_FLAGS,
   quantitativeValueSchema,
+  RECORD_SORTS,
   REVIEW_STATUSES,
   recordDetailSchema,
   recordGroupSchema,
@@ -63,7 +64,7 @@ describe('RFC-63 R9 listRecordsQuerySchema', () => {
     expect(listRecordsQuerySchema.safeParse({ referenceId: uuid }).success).toBe(true);
     expect(listRecordsQuerySchema.safeParse({ speciesId: uuid }).success).toBe(false);
     expect(listRecordsQuerySchema.safeParse({ referenceId: uuid, traitId: uuid }).success).toBe(
-      false,
+      true,
     );
     expect(listRecordsQuerySchema.safeParse({}).success).toBe(false);
     const failed = listRecordsQuerySchema.safeParse({ speciesId: uuid });
@@ -110,7 +111,24 @@ describe('RFC-63 R9 listRecordsQuerySchema', () => {
     ]);
   });
 
-  it('sort is value, references, origin or added; order is asc or desc', () => {
+  it('sort is any RECORD_SORTS column; order is asc or desc (issue #351)', () => {
+    for (const sort of RECORD_SORTS) {
+      expect(
+        listRecordsQuerySchema.safeParse({ speciesId: uuid, traitId: uuid, sort }).success,
+      ).toBe(true);
+    }
+    expect(RECORD_SORTS).toEqual([
+      'code',
+      'species',
+      'trait',
+      'value',
+      'references',
+      'secondary',
+      'origin',
+      'harmonisation',
+      'counts',
+      'added',
+    ]);
     expect(
       listRecordsQuerySchema.safeParse({
         speciesId: uuid,
@@ -122,7 +140,7 @@ describe('RFC-63 R9 listRecordsQuerySchema', () => {
     const badSort = listRecordsQuerySchema.safeParse({
       speciesId: uuid,
       traitId: uuid,
-      sort: 'species',
+      sort: 'colour',
     });
     expect(badSort.success).toBe(false);
     expect(badSort.success ? [] : badSort.error.issues.map((i) => i.path.join('.'))).toEqual([
@@ -137,6 +155,20 @@ describe('RFC-63 R9 listRecordsQuerySchema', () => {
     expect(badOrder.success ? [] : badOrder.error.issues.map((i) => i.path.join('.'))).toEqual([
       'order',
     ]);
+  });
+});
+
+describe('RFC-63 R9 a reference list takes traitId and q (issue #351)', () => {
+  it('narrows a reference list by trait and by species name; q needs two characters', () => {
+    const paths = (q: object) => {
+      const r = listRecordsQuerySchema.safeParse(q);
+      return r.success ? [] : r.error.issues.map((i) => i.path.join('.'));
+    };
+    expect(paths({ referenceId: uuid, traitId: uuid })).toEqual([]);
+    expect(paths({ referenceId: uuid, q: 'Abies' })).toEqual([]);
+    expect(paths({ referenceId: uuid, q: 'A' })).toEqual(['q']);
+    expect(paths({ speciesId: uuid, traitId: uuid, q: 'Abies' })).toEqual(['q']);
+    expect(paths({ referenceId: uuid, speciesId: uuid, traitId: uuid })).toEqual(['speciesId']);
   });
 });
 
@@ -990,14 +1022,37 @@ describe('RFC-63 R18 recordGroupsQuerySchema and recordGroupSchema (issue #349)'
     ).toBe(true);
     expect(recordGroupsQuerySchema.safeParse({ speciesId: uuid }).success).toBe(false);
     expect(recordGroupsQuerySchema.safeParse({ traitId: uuid }).success).toBe(false);
+    for (const sort of [
+      'code',
+      'value',
+      'references',
+      'secondary',
+      'origin',
+      'harmonisation',
+      'counts',
+      'added',
+    ]) {
+      expect(
+        recordGroupsQuerySchema.safeParse({ speciesId: uuid, traitId: uuid, sort, order: 'desc' })
+          .success,
+      ).toBe(true);
+    }
+    expect(
+      recordGroupsQuerySchema.safeParse({ speciesId: uuid, traitId: uuid, sort: 'species' })
+        .success,
+    ).toBe(false);
   });
 
   it('a group without its single record is valid; unknown keys are refused', () => {
     const group = {
       level: { id: uuid, key: 'biotic' },
       secondaryReference: null,
+      recordCode: 'EB_1',
       nRecords: 2,
       nReferences: 2,
+      origin: 'import',
+      harmonisation: null,
+      createdAt: '2026-10-28T00:00:00.000Z',
       validationCount: 0,
       contestCount: 0,
       contested: false,

@@ -120,6 +120,7 @@ export function recordRoutes(ctx: AuthContext) {
           speciesId: q.speciesId,
           traitId: q.traitId,
           referenceId: q.referenceId,
+          q: q.q,
           levelId: q.levelId,
           dispersalPhase: q.dispersalPhase,
           secondaryReferenceId: q.secondaryReferenceId,

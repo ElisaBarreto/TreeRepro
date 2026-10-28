@@ -229,7 +229,7 @@ describe('RFC-63 R8 RecordTable', () => {
     expect(cells(rows[2] as HTMLElement)[1]).toHaveTextContent('seed mass');
   });
 
-  it('spec §2 sorts on value, references, origin and added only, and says which is active', async () => {
+  it('spec §2 sorts on every header, and says which is active (issue #351)', async () => {
     const onSort = vi.fn();
     renderInRouter(
       <RecordTable
@@ -246,11 +246,16 @@ describe('RFC-63 R8 RecordTable', () => {
       'aria-sort',
       'none',
     );
+    // issue #351: every header sorts.
     for (const name of ['ID', 'Secondary article', 'Harmonisation', 'Counts']) {
-      expect(screen.getByRole('columnheader', { name })).not.toHaveAttribute('aria-sort');
+      expect(screen.getByRole('columnheader', { name })).toHaveAttribute('aria-sort', 'none');
     }
     await userEvent.click(screen.getByRole('button', { name: 'References' }));
     expect(onSort).toHaveBeenCalledWith('references');
+    await userEvent.click(screen.getByRole('button', { name: 'ID' }));
+    expect(onSort).toHaveBeenCalledWith('code');
+    await userEvent.click(screen.getByRole('button', { name: 'Counts' }));
+    expect(onSort).toHaveBeenCalledWith('counts');
   });
 });
 

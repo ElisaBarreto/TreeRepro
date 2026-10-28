@@ -675,7 +675,18 @@ export const recordDetailSchema = recordSchema.extend({
 });
 
 /** Sortable columns of the record panel (spec §2). @rfc RFC-63 R9 */
-export const RECORD_SORTS = ['value', 'references', 'origin', 'added'] as const;
+export const RECORD_SORTS = [
+  'code',
+  'species',
+  'trait',
+  'value',
+  'references',
+  'secondary',
+  'origin',
+  'harmonisation',
+  'counts',
+  'added',
+] as const;
 /** @rfc RFC-63 R9 */
 export type RecordSort = (typeof RECORD_SORTS)[number];
 
@@ -689,15 +700,24 @@ export const listRecordsQuerySchema = cursorQuerySchema
     dispersalPhase: z.enum(DISPERSAL_PHASES).optional(),
     /** A reference id, or `none` for the records with no secondary reference (issue #349). */
     secondaryReferenceId: z.union([z.uuid(), z.literal('none')]).optional(),
+    /** With `referenceId`: the species whose canonical name contains it (issue #351). */
+    q: z.string().trim().min(2).max(100).optional(),
     sort: z.enum(RECORD_SORTS).optional(),
     order: z.enum(SORT_ORDERS).optional(),
   })
   .refine(
     (q) =>
       (q.speciesId !== undefined && q.traitId !== undefined && q.referenceId === undefined) ||
-      (q.referenceId !== undefined && q.speciesId === undefined && q.traitId === undefined),
-    { message: 'Filter by speciesId and traitId together, or by referenceId', path: ['speciesId'] },
+      (q.referenceId !== undefined && q.speciesId === undefined),
+    {
+      message: 'Filter by speciesId and traitId together, or by referenceId (with traitId)',
+      path: ['speciesId'],
+    },
   )
+  .refine((q) => q.q === undefined || q.referenceId !== undefined, {
+    message: 'q needs referenceId',
+    path: ['q'],
+  })
   .refine((q) => q.levelId === undefined || q.speciesId !== undefined, {
     message: 'levelId needs speciesId and traitId',
     path: ['levelId'],
@@ -711,11 +731,27 @@ export const listRecordsQuerySchema = cursorQuerySchema
     path: ['secondaryReferenceId'],
   });
 
+/** Sortable columns of the grouped records table (issue #351). @rfc RFC-63 R18 */
+export const RECORD_GROUP_SORTS = [
+  'code',
+  'value',
+  'references',
+  'secondary',
+  'origin',
+  'harmonisation',
+  'counts',
+  'added',
+] as const;
+/** @rfc RFC-63 R18 */
+export type RecordGroupSort = (typeof RECORD_GROUP_SORTS)[number];
+
 /** @rfc RFC-63 R18 */
 export const recordGroupsQuerySchema = cursorQuerySchema.extend({
   speciesId: z.uuid(),
   traitId: z.uuid(),
   dispersalPhase: z.enum(DISPERSAL_PHASES).optional(),
+  sort: z.enum(RECORD_GROUP_SORTS).optional(),
+  order: z.enum(SORT_ORDERS).optional(),
 });
 
 /**
@@ -726,8 +762,15 @@ export const recordGroupsQuerySchema = cursorQuerySchema.extend({
 export const recordGroupSchema = z.strictObject({
   level: z.strictObject({ id: z.uuid(), key: z.string() }).nullable(),
   secondaryReference: referenceRefSchema.nullable(),
+  /** Its first record's code, in the `code` order. */
+  recordCode: z.string(),
   nRecords: z.number().int().positive(),
   nReferences: z.number().int().nonnegative(),
+  /** Its records' origin and harmonisation; null when they differ. */
+  origin: z.enum(RECORD_ORIGINS).nullable(),
+  harmonisation: z.enum(HARMONISATION_STATUSES).nullable(),
+  /** Its newest record's. */
+  createdAt: z.iso.datetime(),
   validationCount: z.number().int().nonnegative(),
   contestCount: z.number().int().nonnegative(),
   contested: z.boolean(),

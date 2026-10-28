@@ -182,6 +182,8 @@ type RecordBase = {
   supersedesRecordId?: string;
   /** Overrides the default `now()` (RFC-71 R1's day bounds need fixed instants). */
   createdAt?: Date;
+  /** Overrides the default `TR_<n>` code (RFC-63 R12). */
+  recordCode?: string;
 };
 type RecordOrigin =
   | {
@@ -252,6 +254,7 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
       secondaryReferenceId: input.secondaryReferenceId ?? null,
       supersedesRecordId: input.supersedesRecordId ?? null,
       ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      ...(input.recordCode ? { recordCode: input.recordCode } : {}),
       ...(input.origin === 'manual'
         ? {
             origin: 'manual' as const,
@@ -280,7 +283,7 @@ export async function createRecord(db: DbExecutor, input: RecordBase & RecordOri
             dispersalPhase: input.dispersalPhase ?? null,
           }),
     })
-    .returning({ id: traitRecords.id });
+    .returning({ id: traitRecords.id, recordCode: traitRecords.recordCode });
   if (!row) throw new Error('createRecord: no row');
   return row;
 }

@@ -10,9 +10,15 @@ import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 const ARTICLE_MAX = 60;
 const DASH = <span className="text-mist-500">—</span>;
 const SORT_LABELS: Record<RecordSort, string> = {
+  code: 'ID',
+  species: 'Species',
+  trait: 'Trait',
   value: 'Value',
   references: 'References',
+  secondary: 'Secondary article',
   origin: 'Origin',
+  harmonisation: 'Harmonisation',
+  counts: 'Counts',
   added: 'Added',
 };
 
@@ -112,8 +118,7 @@ export interface RecordTableSort {
  * datasets reporting the same evidence (RFC-63 R17), the import's secondary article, origin,
  * harmonisation, the validation and contest counts with a **Contested**
  * badge (R-9), and the date added. Withdrawn records never reach it (R-13).
- * With `sort`, the value, references, origin and added headers sort on the
- * server (spec §2). `showSpecies` / `showTrait` add leading columns outside a
+ * With `sort`, every header sorts on the server (spec §2, issue #351). `showSpecies` / `showTrait` add leading columns outside a
  * species page or trait panel; `extra` appends one column of the caller's.
  * @rfc RFC-63 R8, R9, R17
  * @rfc RFC-71 R2
@@ -147,15 +152,15 @@ export function RecordTable<T extends RecordItem>({
     <Table>
       <Thead>
         <Tr>
-          {showSpecies ? <Th>Species</Th> : null}
-          {showTrait ? <Th>Trait</Th> : null}
-          <Th>ID</Th>
+          {showSpecies ? head('species') : null}
+          {showTrait ? head('trait') : null}
+          {head('code')}
           {head('value')}
           {head('references')}
-          <Th>Secondary article</Th>
+          {head('secondary')}
           {head('origin')}
-          <Th>Harmonisation</Th>
-          <Th>Counts</Th>
+          {head('harmonisation')}
+          {head('counts')}
           {head('added')}
           {extra ? <Th>{extra.header}</Th> : null}
         </Tr>

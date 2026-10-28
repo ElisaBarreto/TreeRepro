@@ -13,6 +13,7 @@ import {
   type ListEnvelope,
   listEnvelopeSchema,
   type RecordDetail,
+  type RecordGroupSort,
   type RecordSort,
   type ReferenceDetail,
   type ReferenceSort,
@@ -143,6 +144,8 @@ export function fetchRecords(params: {
   dispersalPhase?: DispersalPhase;
   /** A reference id, or `none` (RFC-63 R9). */
   secondaryReferenceId?: string;
+  /** With `referenceId`: a species-name search (RFC-63 R9). */
+  q?: string;
   sort?: RecordSort;
   order?: SortOrder;
   cursor?: string;
@@ -155,6 +158,8 @@ export function fetchRecordGroups(params: {
   speciesId: string;
   traitId: string;
   dispersalPhase?: DispersalPhase;
+  sort?: RecordGroupSort;
+  order?: SortOrder;
   cursor?: string;
   limit?: number;
 }) {

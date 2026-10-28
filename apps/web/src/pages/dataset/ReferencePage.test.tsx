@@ -233,21 +233,67 @@ describe('RFC-61 R4, R6, R8 ReferencePage full citation and short citation headi
 });
 
 describe('RFC-61 R4, R9 ReferencePage traits', () => {
-  it('chips the traits this article has been used for, each with its count and a link to the trait page', async () => {
+  it('chips the traits this article has been used for; a chip filters the records to it within this reference (issue #351)', async () => {
     dataset.fetchReference.mockResolvedValue(CITED_REFERENCE_DETAIL);
     dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
     renderAt(`/app/references/${CITED_REFERENCE_DETAIL.id}`);
     const heading = await screen.findByRole('heading', { level: 2, name: 'Traits' });
     const section = heading.closest('section');
     if (!(section instanceof HTMLElement)) throw new Error('no Traits section');
-    const sexual = within(section).getByRole('link', { name: /sexual system/ });
-    expect(sexual).toHaveAttribute(
-      'href',
-      `/app/traits/${CITED_REFERENCE_DETAIL.traits[0]?.trait.id}`,
-    );
+    expect(within(section).queryByRole('link')).not.toBeInTheDocument();
+    const sexual = within(section).getByRole('button', { name: /sexual system/ });
     expect(sexual).toHaveTextContent('5 records');
-    const seed = within(section).getByRole('link', { name: /seed mass/ });
-    expect(seed).toHaveTextContent('1 record');
+    expect(sexual).toHaveAttribute('aria-pressed', 'false');
+    expect(within(section).getByRole('button', { name: /seed mass/ })).toHaveTextContent(
+      '1 record',
+    );
+    const traitId = CITED_REFERENCE_DETAIL.traits[0]?.trait.id;
+    await userEvent.click(sexual);
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ referenceId: CITED_REFERENCE_DETAIL.id, traitId }),
+      ),
+    );
+    expect(within(section).getByRole('button', { name: /sexual system/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await userEvent.click(within(section).getByRole('button', { name: /sexual system/ }));
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ referenceId: CITED_REFERENCE_DETAIL.id, traitId: undefined }),
+      ),
+    );
+  });
+
+  it('searches the species once two letters have settled, and sorts from any header (issue #351)', async () => {
+    dataset.fetchReference.mockResolvedValue(CITED_REFERENCE_DETAIL);
+    dataset.fetchRecords.mockResolvedValue(page([PRIMARY]));
+    renderAt(`/app/references/${CITED_REFERENCE_DETAIL.id}`);
+    const box = await screen.findByRole('searchbox', { name: 'Search species' });
+    await userEvent.type(box, 'a');
+    await userEvent.type(box, 'den');
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ referenceId: CITED_REFERENCE_DETAIL.id, q: 'aden' }),
+      ),
+    );
+    expect(dataset.fetchRecords).not.toHaveBeenCalledWith(expect.objectContaining({ q: 'a' }));
+    await userEvent.click(await screen.findByRole('button', { name: /^Species/ }));
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ q: 'aden', sort: 'species', order: 'asc' }),
+      ),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^Species/ }));
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'species', order: 'desc' }),
+      ),
+    );
+    for (const header of ['ID', 'Trait', 'Secondary article', 'Harmonisation', 'Counts']) {
+      expect(screen.getByRole('button', { name: new RegExp(`^${header}`) })).toBeInTheDocument();
+    }
   });
 
   it('shows no Traits section when the reference names no visible trait', async () => {
@@ -273,7 +319,7 @@ describe('RFC-63 R8, R9 ReferencePage records', () => {
     expect(rows).toHaveLength(3);
     const headers = within(rows[0] as HTMLElement)
       .getAllByRole('columnheader')
-      .map((th) => th.textContent);
+      .map((th) => th.textContent?.replace('↕', ''));
     expect(headers.slice(0, 6)).toEqual([
       'Species',
       'Trait',

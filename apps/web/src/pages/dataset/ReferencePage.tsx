@@ -1,19 +1,41 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
 import type { ReferenceDetail } from '@treerepro/contracts';
-import { type ReactNode, useState } from 'react';
-import { datasetKeys, fetchRecords, fetchReference } from '../../api/dataset.ts';
+import { type ReactNode, useEffect, useId, useState } from 'react';
+import {
+  datasetKeys,
+  fetchRecords,
+  fetchReference,
+  type RecordSort,
+  type SortOrder,
+} from '../../api/dataset.ts';
 import { ReferenceDialog } from '../../components/catalog/ReferenceDialog.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import { RecordTable } from '../../components/dataset/RecordTable.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
-import { Alert, Button, Chip, EmptyState, PageHeader } from '../../components/ui/index.ts';
+import {
+  Alert,
+  Button,
+  Chip,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+} from '../../components/ui/index.ts';
 import { detailErrorMessage, pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { doiHref, referenceLabel } from '../../lib/references.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
+import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
+
+/** The records section's filters and sort, kept in the URL (issue #351). */
+export interface ReferenceSearch {
+  traitId?: string;
+  q?: string;
+  sort?: RecordSort;
+  order?: SortOrder;
+}
 
 const DASH = <span className="text-mist-500">—</span>;
 const LINK = 'font-medium text-canopy-900 underline-offset-2 hover:underline break-all';
@@ -126,61 +148,114 @@ function FullCitation({ reference }: { reference: ReferenceDetail }) {
 /**
  * The reference's usage by trait (R9's counters, visible traits only,
  * ordered by count): a chip per trait naming how many records cite this
- * article for it, linking to the trait page. Renders nothing when the
- * reference names no visible trait — a personal observation's own field
- * notes, or a reference no harmonised record has used yet — rather than an
- * empty heading. The chips are the one visibility-filtered thing on the
- * page: the per-role counts in the header count every viewer's records
- * alike (RFC-33 R3), so for a viewer who cannot see every trait the chips
- * need not add up to them.
+ * article for it. A chip filters the records below to that trait, within this
+ * reference, and pressing it again clears the filter (issue #351). Renders
+ * nothing when the reference names no visible trait — a personal
+ * observation's own field notes, or a reference no harmonised record has used
+ * yet — rather than an empty heading. The chips are the one
+ * visibility-filtered thing on the page: the per-role counts in the header
+ * count every viewer's records alike (RFC-33 R3), so for a viewer who cannot
+ * see every trait the chips need not add up to them.
  * @rfc RFC-61 R4, R9
  */
-function Traits({ reference }: { reference: ReferenceDetail }) {
+function Traits({
+  reference,
+  selected,
+  onSelect,
+}: {
+  reference: ReferenceDetail;
+  selected: string | undefined;
+  onSelect: (traitId: string | undefined) => void;
+}) {
   if (reference.traits.length === 0) return null;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="font-display text-section font-semibold text-canopy-950">Traits</h2>
       <ul aria-label="Traits" className="flex flex-wrap gap-2">
-        {reference.traits.map(({ trait, recordCount }) => (
-          <li key={trait.id}>
-            <Link
-              to="/app/traits/$id"
-              params={{ id: trait.id }}
-              className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-            >
-              <Chip tone="amber">
-                {humaniseKey(trait.key)}
-                <span className="ml-1.5 text-bark-700/70">{records(recordCount)}</span>
-              </Chip>
-            </Link>
-          </li>
-        ))}
+        {reference.traits.map(({ trait, recordCount }) => {
+          const pressed = selected === trait.id;
+          return (
+            <li key={trait.id}>
+              <button
+                type="button"
+                aria-pressed={pressed}
+                onClick={() => onSelect(pressed ? undefined : trait.id)}
+                className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+              >
+                <Chip tone={pressed ? 'neutral' : 'amber'}>
+                  {humaniseKey(trait.key)}
+                  <span className="ml-1.5 text-bark-700/70">{records(recordCount)}</span>
+                </Chip>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
 }
 
+/**
+ * Every record naming the reference, narrowed by the trait chips and a
+ * species-name search, sorted from any header, all kept in the URL (issue
+ * #351). The search reaches the URL once typing settles and holds at least
+ * two characters, the API's minimum.
+ */
 function ReferenceRecords({
   id,
+  search,
+  onSearchChange,
   onSelectRecord,
 }: {
   id: string;
+  search: ReferenceSearch;
+  onSearchChange: (next: ReferenceSearch) => void;
   onSelectRecord: (recordId: string) => void;
 }) {
-  const list = usePagedList(datasetKeys.records({ referenceId: id }), (cursor, limit) =>
-    fetchRecords({ referenceId: id, cursor, limit }),
+  const searchId = useId();
+  const [term, setTerm] = useState(search.q ?? '');
+  const settled = useDebouncedValue(term.trim(), 300);
+  useEffect(() => {
+    const q = settled.length >= 2 ? settled : undefined;
+    if (q !== search.q) onSearchChange({ ...search, q });
+  }, [settled, search, onSearchChange]);
+  const params = {
+    referenceId: id,
+    traitId: search.traitId,
+    q: search.q,
+    sort: search.sort,
+    order: search.order,
+  };
+  const list = usePagedList(datasetKeys.records(params), (cursor, limit) =>
+    fetchRecords({ ...params, cursor, limit }),
   );
+  const filtered = search.traitId !== undefined || search.q !== undefined;
   return (
     <section className="flex flex-col gap-3">
       <h2 className="font-display text-section font-semibold text-canopy-950">
         Records citing this reference
       </h2>
+      <div className="max-w-sm">
+        <Field id={searchId} label="Search species">
+          <Input
+            id={searchId}
+            type="search"
+            value={term}
+            placeholder="At least two letters"
+            onChange={(e) => setTerm(e.target.value)}
+          />
+        </Field>
+      </div>
       {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
       {list.isLoading && !list.error ? (
         <p className="text-body text-mist-500">Loading records…</p>
       ) : null}
       {!list.isLoading && !list.error && list.items.length === 0 ? (
-        <EmptyState title="No records cite this reference yet." />
+        <EmptyState
+          title={
+            filtered ? 'No records match these filters.' : 'No records cite this reference yet.'
+          }
+        />
       ) : null}
       {list.items.length > 0 ? (
         <RecordTable
@@ -188,6 +263,16 @@ function ReferenceRecords({
           onSelect={(record) => onSelectRecord(record.id)}
           showSpecies
           showTrait
+          sort={{
+            by: search.sort ?? 'added',
+            order: search.order ?? 'desc',
+            onSort: (by) =>
+              onSearchChange({
+                ...search,
+                sort: by,
+                order: search.sort === by && search.order === 'asc' ? 'desc' : 'asc',
+              }),
+          }}
         />
       ) : null}
       {list.items.length > 0 || list.page > 1 ? <Pagination pager={list} /> : null}
@@ -205,7 +290,8 @@ function ReferenceRecords({
  * article, the metadata the import kept with the DOI opening the registry in
  * a new tab, the traits it has been used for (R9), and every record that
  * names it in either role, one page at a time with the species, trait and
- * both articles of each row; a row opens the record in a drawer. The
+ * both articles of each row — filtered by a trait chip and a species search,
+ * sorted from any header (issue #351); a row opens the record in a drawer. The
  * records section mounts only once the reference resolved, so an unknown id
  * shows one alert and no empty list. An Edit action on the loaded header
  * opens `ReferenceDialog` for `references.manage`; the dialog's own
@@ -215,7 +301,15 @@ function ReferenceRecords({
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-61 R4, R6, R7, R8, R9, R10
  */
-export function ReferencePage({ id }: { id: string }) {
+export function ReferencePage({
+  id,
+  search = {},
+  onSearchChange = () => {},
+}: {
+  id: string;
+  search?: ReferenceSearch;
+  onSearchChange?: (next: ReferenceSearch) => void;
+}) {
   const me = useMe();
   const reference = useQuery({
     queryKey: datasetKeys.reference(id),
@@ -266,8 +360,17 @@ export function ReferencePage({ id }: { id: string }) {
       <div className="flex flex-col gap-8">
         <FullCitation reference={data} />
         <Metadata reference={data} />
-        <Traits reference={data} />
-        <ReferenceRecords id={id} onSelectRecord={setOpenRecord} />
+        <Traits
+          reference={data}
+          selected={search.traitId}
+          onSelect={(traitId) => onSearchChange({ ...search, traitId })}
+        />
+        <ReferenceRecords
+          id={id}
+          search={search}
+          onSearchChange={onSearchChange}
+          onSelectRecord={setOpenRecord}
+        />
       </div>
       <RecordDrawer
         recordId={openRecord}

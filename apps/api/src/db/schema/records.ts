@@ -149,7 +149,7 @@ export const traitRecords = pgTable(
     index('trait_records_species_trait_idx').on(t.speciesId, t.traitId, t.id.desc()),
     index('trait_records_trait_idx').on(t.traitId),
     index('trait_records_primary_reference_idx').on(t.primaryReferenceId, t.id.desc()),
-    index('trait_records_secondary_reference_idx').on(t.secondaryReferenceId),
+    index('trait_records_secondary_reference_idx').on(t.secondaryReferenceId, t.id.desc()),
     index('trait_records_batch_idx').on(t.importBatchId),
     index('trait_records_pending_idx')
       .on(t.harmonisation)
