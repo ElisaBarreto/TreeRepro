@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { RecordItem, TraitSummary } from '@treerepro/contracts';
+import type { RecordGroup, RecordItem, TraitSummary } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PENDING_RECORD,
@@ -13,7 +13,7 @@ import { renderWithProviders } from '../../test/render.tsx';
 import { withRouter } from '../../test/router.tsx';
 import { TraitPanel } from './TraitPanel.tsx';
 
-const dataset = vi.hoisted(() => ({ fetchRecords: vi.fn() }));
+const dataset = vi.hoisted(() => ({ fetchRecords: vi.fn(), fetchRecordGroups: vi.fn() }));
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
@@ -27,8 +27,43 @@ const MASS: RecordItem = {
 };
 const page = (data: RecordItem[]) => ({ data, meta: { nextCursor: null } });
 
+const GIFT = {
+  id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d01',
+  citationKey: 'Weigelt_et_al_2020',
+  kind: 'publication' as const,
+  observer: null,
+  shortCitation: 'Weigelt et al. 2020',
+};
+const [DIOECIOUS, MONOECIOUS] = SEXUAL_SYSTEM_SUMMARY.levels ?? [];
+const SEVERAL: RecordGroup = {
+  level: { id: DIOECIOUS?.levelId ?? '', key: 'dioecious' },
+  secondaryReference: GIFT,
+  nRecords: 3,
+  nReferences: 2,
+  validationCount: 1,
+  contestCount: 0,
+  contested: false,
+  record: null,
+};
+const ALONE: RecordGroup = {
+  level: { id: MONOECIOUS?.levelId ?? '', key: 'monoecious' },
+  secondaryReference: null,
+  nRecords: 1,
+  nReferences: 1,
+  validationCount: 0,
+  contestCount: 0,
+  contested: false,
+  record: {
+    ...RECORD,
+    recordCode: 'EB_9',
+    level: { id: MONOECIOUS?.levelId ?? '', key: 'monoecious' },
+  },
+};
+const groups = (data: RecordGroup[]) => ({ data, meta: { nextCursor: null } });
+
 beforeEach(() => {
   dataset.fetchRecords.mockReset().mockResolvedValue(page([MASS]));
+  dataset.fetchRecordGroups.mockReset().mockResolvedValue(groups([SEVERAL, ALONE]));
 });
 
 function mount(summary: TraitSummary, props: Partial<Parameters<typeof TraitPanel>[0]> = {}) {
@@ -121,92 +156,95 @@ describe('spec §2 TraitPanel row actions', () => {
   });
 
   it('leaves the rows of a categorical trait alone: its levels carry the actions on the card', async () => {
-    dataset.fetchRecords.mockResolvedValue(page([{ ...RECORD, recordCode: 'EB_1' }]));
     mount(SEXUAL_SYSTEM_SUMMARY, { onValidateRecord: vi.fn(), onRespondRecord: vi.fn() });
     const panel = await screen.findByRole('dialog', { name: 'sexual system' });
-    await userEvent.click(within(panel).getByRole('button', { name: /^dioecious/ }));
-    await within(panel).findByRole('button', { name: 'dioecious' });
+    await within(panel).findByText('EB_9');
     expect(within(panel).queryByRole('button', { name: /^Validate/ })).not.toBeInTheDocument();
     expect(within(panel).queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument();
   });
 });
 
-describe('RFC-63 R9, R17 TraitPanel of a categorical trait (issue #345)', () => {
-  const [dioecious, monoecious] = SEXUAL_SYSTEM_SUMMARY.levels ?? [];
-
-  it('groups the observations by level: each level names its references, and opens on its own records', async () => {
+describe('RFC-63 R18 TraitPanel of a categorical trait: one table of groups (issue #349)', () => {
+  it('shows a lone record as its row and a group of several as an expandable row of totals', async () => {
     dataset.fetchRecords.mockResolvedValue(
-      page([{ ...RECORD, recordCode: 'EB_1', alsoReportedBy: 'Kleyer et al., 2008' }]),
+      page([
+        { ...RECORD, recordCode: 'EB_1', alsoReportedBy: 'Kleyer et al., 2008' },
+        { ...RECORD, id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d02', recordCode: 'EB_2' },
+      ]),
     );
     mount(SEXUAL_SYSTEM_SUMMARY);
     const panel = await screen.findByRole('dialog', { name: 'sexual system' });
     expect(within(panel).getByText('6 references')).toBeInTheDocument();
-    const level = within(panel).getByRole('button', { name: /^dioecious/ });
-    expect(level).toHaveAttribute('aria-expanded', 'false');
-    expect(level).toHaveTextContent('4 references · 2 sources');
-    expect(within(panel).getByRole('button', { name: /^monoecious/ })).toHaveTextContent(
-      '1 reference · 1 source',
-    );
-    // nothing is fetched until a level opens
-    expect(dataset.fetchRecords).not.toHaveBeenCalled();
-    await userEvent.click(level);
-    expect(level).toHaveAttribute('aria-expanded', 'true');
     await waitFor(() =>
-      expect(dataset.fetchRecords).toHaveBeenCalledWith(
-        expect.objectContaining({
-          speciesId: SPECIES.id,
-          traitId: SEXUAL_SYSTEM_SUMMARY.trait.id,
-          levelId: dioecious?.levelId,
-        }),
-      ),
+      expect(dataset.fetchRecordGroups).toHaveBeenCalledWith({
+        speciesId: SPECIES.id,
+        traitId: SEXUAL_SYSTEM_SUMMARY.trait.id,
+        dispersalPhase: undefined,
+        cursor: undefined,
+        limit: 50,
+      }),
+    );
+    expect(await within(panel).findByText('EB_9')).toBeInTheDocument();
+    const group = within(panel).getByRole('button', { name: /3 entries/ });
+    expect(group).toHaveAttribute('aria-expanded', 'false');
+    const row = group.closest('tr') as HTMLElement;
+    expect(within(row).getByText('dioecious')).toBeInTheDocument();
+    expect(within(row).getByText('2 references')).toBeInTheDocument();
+    expect(within(row).getByRole('link', { name: 'Weigelt et al. 2020' })).toBeInTheDocument();
+    // a group's entries are fetched only once it opens
+    expect(dataset.fetchRecords).not.toHaveBeenCalled();
+    await userEvent.click(group);
+    expect(group).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenCalledWith({
+        speciesId: SPECIES.id,
+        traitId: SEXUAL_SYSTEM_SUMMARY.trait.id,
+        dispersalPhase: undefined,
+        levelId: DIOECIOUS?.levelId,
+        secondaryReferenceId: GIFT.id,
+        limit: 200,
+      }),
     );
     expect(await within(panel).findByText('EB_1')).toBeInTheDocument();
+    expect(within(panel).getByText('EB_2')).toBeInTheDocument();
     expect(within(panel).getByText('Also reported by Kleyer et al., 2008')).toBeInTheDocument();
-    await userEvent.click(level);
-    expect(level).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(group);
     expect(within(panel).queryByText('EB_1')).not.toBeInTheDocument();
-    expect(monoecious).toBeDefined();
   });
 
-  it('offers a dispersal-phase filter on a dispersal trait only, and applies it to the open level', async () => {
+  it('opens a group with no secondary article on the records that have none', async () => {
+    dataset.fetchRecordGroups.mockResolvedValue(groups([{ ...SEVERAL, secondaryReference: null }]));
+    mount(SEXUAL_SYSTEM_SUMMARY);
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    await userEvent.click(await within(panel).findByRole('button', { name: /3 entries/ }));
+    await waitFor(() =>
+      expect(dataset.fetchRecords).toHaveBeenCalledWith(
+        expect.objectContaining({ secondaryReferenceId: 'none' }),
+      ),
+    );
+  });
+
+  it('opens a record from its row', async () => {
+    const onSelectRecord = vi.fn();
+    mount(SEXUAL_SYSTEM_SUMMARY, { onSelectRecord });
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    await within(panel).findByText('EB_9');
+    await userEvent.click(within(panel).getByRole('button', { name: 'monoecious' }));
+    expect(onSelectRecord).toHaveBeenCalledWith(RECORD.id);
+  });
+
+  it('offers a dispersal-phase filter on a dispersal trait only, and applies it to the groups', async () => {
     mount(SEXUAL_SYSTEM_SUMMARY, { dispersal: true });
     const panel = await screen.findByRole('dialog', { name: 'sexual system' });
-    await userEvent.click(within(panel).getByRole('button', { name: /^dioecious/ }));
-    await waitFor(() => expect(dataset.fetchRecords).toHaveBeenCalled());
     await userEvent.selectOptions(
       within(panel).getByRole('combobox', { name: 'Dispersal phase' }),
       'secondary',
     );
     await waitFor(() =>
-      expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
-        expect.objectContaining({ levelId: dioecious?.levelId, dispersalPhase: 'secondary' }),
+      expect(dataset.fetchRecordGroups).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dispersalPhase: 'secondary' }),
       ),
     );
-  });
-
-  it('keeps the records pending harmonisation, which have no level, reachable in a group of every record', async () => {
-    mount(SEXUAL_SYSTEM_SUMMARY);
-    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
-    const all = within(panel).getByRole('button', { name: /^All records/ });
-    expect(all).toHaveTextContent('8 records · 2 pending');
-    await userEvent.click(all);
-    await waitFor(() => expect(dataset.fetchRecords).toHaveBeenCalled());
-    expect(dataset.fetchRecords).toHaveBeenLastCalledWith(
-      expect.objectContaining({ levelId: undefined, traitId: SEXUAL_SYSTEM_SUMMARY.trait.id }),
-    );
-  });
-
-  it('has no group of every record when nothing is pending', async () => {
-    mount({
-      ...SEXUAL_SYSTEM_SUMMARY,
-      harmonisationCounts: {
-        ...SEXUAL_SYSTEM_SUMMARY.harmonisationCounts,
-        unknownLevel: 0,
-        multiValue: 0,
-      },
-    });
-    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
-    expect(within(panel).queryByRole('button', { name: /^All records/ })).not.toBeInTheDocument();
   });
 
   it('has no dispersal-phase filter on another trait', async () => {

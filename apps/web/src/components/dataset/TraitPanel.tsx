@@ -12,6 +12,7 @@ import { humaniseKey } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
 import { Alert, Drawer, EmptyState, Select } from '../ui/index.ts';
 import { Pagination } from './Pagination.tsx';
+import { RecordGroupTable } from './RecordGroupTable.tsx';
 import { DISPERSAL_PHASE_LABELS, RecordTable } from './RecordTable.tsx';
 import { VoteButton } from './VoteButton.tsx';
 
@@ -21,14 +22,13 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 interface RecordListProps {
   speciesId: string;
   traitId: string;
-  levelId?: string;
   dispersalPhase?: DispersalPhase;
   onSelectRecord: (id: string) => void;
   extra?: { header: string; cell: (record: RecordItem) => ReactNode };
 }
 
 /**
- * One page at a time of `GET /api/records?speciesId&traitId[&levelId]
+ * One page at a time of `GET /api/records?speciesId&traitId
  * [&dispersalPhase]&sort&order` (RFC-63 R9), newest first until a sortable
  * header says otherwise — a new column sorts ascending, the same column again
  * flips it, and either starts over at page one.
@@ -36,7 +36,6 @@ interface RecordListProps {
 function RecordList({
   speciesId,
   traitId,
-  levelId,
   dispersalPhase,
   onSelectRecord,
   extra,
@@ -45,7 +44,7 @@ function RecordList({
     by: 'added',
     order: 'desc',
   });
-  const params = { speciesId, traitId, levelId, dispersalPhase, sort: sort.by, order: sort.order };
+  const params = { speciesId, traitId, dispersalPhase, sort: sort.by, order: sort.order };
   const list = usePagedList(datasetKeys.records(params), (cursor, limit) =>
     fetchRecords({ ...params, cursor, limit }),
   );
@@ -78,53 +77,20 @@ function RecordList({
   );
 }
 
-/** A button that opens and closes what it names, the list it holds rendered only while open. */
-function Disclosure({
-  title,
-  meta,
-  children,
-}: {
-  title: string;
-  meta: string;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
-  return (
-    <li className="flex flex-col gap-3">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center justify-between gap-3 rounded-[10px] border border-mist-200 px-3.5 py-2.5 text-left text-body text-canopy-900 hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-      >
-        <span className="font-medium">
-          <span aria-hidden="true">{open ? '▾' : '▸'} </span>
-          {title}
-        </span>{' '}
-        <span className="text-meta tabular-nums text-mist-500">{meta}</span>
-      </button>
-      {open ? <div id={panelId}>{children}</div> : null}
-    </li>
-  );
-}
-
 /**
  * The records of one trait for one species, in a wide drawer. A categorical
- * trait whose levels the summary gives is grouped by level: each level names
- * its references and sources and opens on its own observations, each with its
- * ID and the datasets that also report it (RFC-63 R10, R17; issue #345); any
- * other trait is one list (RFC-63 R9). The table omits the species and trait
+ * trait's records are one table grouped by level × secondary article, a group
+ * of several entries expanding into them (RFC-63 R18; issue #349); a
+ * quantitative trait's are one list (RFC-63 R9). The table omits the species and trait
  * columns, which the page and the title already name; a row hands its id back
  * so the page can open the record. On a dispersal trait (`dispersal`) a
- * **Dispersal phase** select narrows every list to one phase. A quantitative
+ * **Dispersal phase** select narrows the table to one phase. A quantitative
  * trait's rows carry Validate/Contest/Complement (spec §2) — a categorical
  * trait's levels carry them on the card instead — each present only when the
  * page passes its handler, that is, when the viewer holds the permission it
  * needs. Validate is further hidden on the viewer's own row, since the API
  * refuses to confirm it (spec R-6, mirroring {@link RecordActions}).
- * @rfc RFC-63 R9, R10, R17
+ * @rfc RFC-63 R9, R10, R17, R18
  * @rfc RFC-65 R3
  * @rfc RFC-70 R1, R4
  */
@@ -143,9 +109,7 @@ export function TraitPanel({
   summary: {
     trait: Pick<TraitSummary['trait'], 'id' | 'key' | 'unit' | 'valueType'>;
     recordCount: number;
-    levels?: TraitSummary['levels'];
     categorical?: TraitSummary['categorical'];
-    harmonisationCounts?: TraitSummary['harmonisationCounts'];
   };
   /** The trait is a dispersal trait, whose records may name their phase (RFC-63 R17). */
   dispersal?: boolean;
@@ -162,11 +126,7 @@ export function TraitPanel({
   const withActions =
     summary.trait.valueType === 'quantitative' &&
     (onValidateRecord !== undefined || onRespondRecord !== undefined);
-  const levels =
-    summary.trait.valueType === 'categorical' && summary.levels && summary.levels.length > 0
-      ? summary.levels
-      : null;
-  const list: Omit<RecordListProps, 'levelId'> = {
+  const list: RecordListProps = {
     speciesId,
     traitId,
     dispersalPhase: phase === '' ? undefined : phase,
@@ -203,15 +163,10 @@ export function TraitPanel({
       : undefined,
   };
   const name = humaniseKey(summary.trait.key);
-  const counts = summary.harmonisationCounts;
-  const pending = counts
-    ? counts.unknownLevel + counts.multiValue + counts.notNumeric + counts.empty
-    : 0;
   // RFC-77 R7: a categorical trait counts its references, never its records.
-  const counted =
-    levels && summary.categorical
-      ? plural(summary.categorical.nReferences, 'reference', 'references')
-      : plural(summary.recordCount, 'record', 'records');
+  const counted = summary.categorical
+    ? plural(summary.categorical.nReferences, 'reference', 'references')
+    : plural(summary.recordCount, 'record', 'records');
 
   return (
     <Drawer open title={name} onClose={onClose} size="lg">
@@ -240,27 +195,13 @@ export function TraitPanel({
             </Select>
           </span>
         ) : null}
-        {levels ? (
-          <ul aria-label={`Levels of ${name}`} className="flex flex-col gap-3">
-            {levels.map((level) => (
-              <Disclosure
-                key={level.levelId}
-                title={level.key}
-                meta={`${plural(level.nReferences, 'reference', 'references')} · ${plural(level.nSources, 'source', 'sources')}`}
-              >
-                <RecordList {...list} levelId={level.levelId} />
-              </Disclosure>
-            ))}
-            {pending > 0 ? (
-              // A record pending harmonisation has no level yet; a reviewer reaches it here.
-              <Disclosure
-                title="All records"
-                meta={`${plural(summary.recordCount, 'record', 'records')} · ${pending} pending`}
-              >
-                <RecordList {...list} />
-              </Disclosure>
-            ) : null}
-          </ul>
+        {summary.trait.valueType === 'categorical' ? (
+          <RecordGroupTable
+            speciesId={speciesId}
+            traitId={traitId}
+            dispersalPhase={list.dispersalPhase}
+            onSelect={(record) => onSelectRecord(record.id)}
+          />
         ) : (
           <RecordList {...list} />
         )}

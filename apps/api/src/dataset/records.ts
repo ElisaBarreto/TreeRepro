@@ -8,7 +8,7 @@ import {
   type ReviewStatus,
   type SortOrder,
 } from '@treerepro/contracts';
-import { and, asc, desc, eq, gt, lt, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -456,8 +456,9 @@ function sortCursorCondition(
 
 /**
  * Either `speciesId` and `traitId` together, or `referenceId` alone (primary,
- * secondary or `record_references`); with the first, `levelId` and
- * `dispersalPhase` narrow it to one level and one phase. `sort` is `value`, `references`,
+ * secondary or `record_references`); with the first, `levelId`,
+ * `dispersalPhase` and `secondaryReferenceId` narrow it to one level, one
+ * phase and one secondary reference (or none). `sort` is `value`, `references`,
  * `origin` or `added` (spec §2); `added` keeps the keyset cursor on the id
  * (today's cursor, unchanged), the other sorts page under a composite
  * keyset cursor of the sort key(s) and the id (RFC-11 R6), `id` breaking
@@ -476,6 +477,8 @@ export async function listRecords(
     referenceId?: string;
     levelId?: string;
     dispersalPhase?: DispersalPhase;
+    /** A reference id, or `none`: the records with that secondary reference, or none. */
+    secondaryReferenceId?: string;
     cursor?: string;
     limit: number;
     sort?: RecordSort;
@@ -495,6 +498,12 @@ export async function listRecords(
     if (input.levelId) conditions.push(eq(traitRecords.levelId, input.levelId));
     if (input.dispersalPhase)
       conditions.push(eq(traitRecords.dispersalPhase, input.dispersalPhase));
+    if (input.secondaryReferenceId)
+      conditions.push(
+        input.secondaryReferenceId === 'none'
+          ? isNull(traitRecords.secondaryReferenceId)
+          : eq(traitRecords.secondaryReferenceId, input.secondaryReferenceId),
+      );
   } else if (input.referenceId) {
     conditions.push(
       sql`${traitRecords.id} in (

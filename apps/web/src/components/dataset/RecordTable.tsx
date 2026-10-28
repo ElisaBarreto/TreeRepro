@@ -77,10 +77,13 @@ export function recordValueLabel(record: RecordItem): string {
   return record.valueText || '(empty)';
 }
 
-// One reference as it reads (RFC-61 R4 — a personal observation by its
-// observer, never by its key) linked to its page, cut at sixty characters
-// with the whole label in the link's `title`.
-function ReferenceLink({ reference }: { reference: LabelledReference & { id: string } }) {
+/**
+ * One reference as it reads (RFC-61 R4 — a personal observation by its
+ * observer, never by its key) linked to its page, cut at sixty characters
+ * with the whole label in the link's `title`.
+ * @rfc RFC-61 R4
+ */
+export function ReferenceLink({ reference }: { reference: LabelledReference & { id: string } }) {
   const label = referenceLabel(reference);
   const shown = truncate(label, ARTICLE_MAX);
   return (
@@ -159,99 +162,147 @@ export function RecordTable<T extends RecordItem>({
       </Thead>
       <Tbody>
         {records.map((record) => (
-          <Tr key={record.id} className="transition-colors hover:bg-mist-50">
-            {showSpecies ? (
-              <Td>
-                <Link
-                  to="/app/species/$id"
-                  params={{ id: record.species.id }}
-                  className="font-medium italic text-canopy-900 underline-offset-2 hover:underline"
-                >
-                  {record.species.canonicalName}
-                </Link>
-              </Td>
-            ) : null}
-            {showTrait ? <Td>{humaniseKey(record.trait.key)}</Td> : null}
-            <Td className="whitespace-nowrap tabular-nums">{record.recordCode}</Td>
-            <Td>
-              <button
-                type="button"
-                onClick={() => onSelect(record)}
-                className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
-              >
-                {recordValueLabel(record)}
-              </button>
-              {unitCaveat(record.unitStatus) ? (
-                <>
-                  {' '}
-                  <Badge tone="amber">{unitCaveat(record.unitStatus)}</Badge>
-                </>
-              ) : null}
-              {record.outlierFlag ? (
-                <>
-                  {' '}
-                  <span title={OUTLIER_LABELS[record.outlierFlag]}>
-                    <Badge tone="amber">Outlier</Badge>
-                    <span className="sr-only">{`: ${OUTLIER_LABELS[record.outlierFlag]}`}</span>
-                  </span>
-                </>
-              ) : null}
-              {record.dispersalPhase ? (
-                <>
-                  {' '}
-                  <Badge>{DISPERSAL_PHASE_LABELS[record.dispersalPhase]}</Badge>
-                </>
-              ) : null}
-            </Td>
-            <Td>
-              {record.references.length === 0
-                ? DASH
-                : record.references.map((reference, index) => (
-                    <Fragment key={reference.id}>
-                      {index > 0 ? '; ' : null}
-                      <ReferenceLink reference={reference} />
-                    </Fragment>
-                  ))}
-              {record.alsoReportedBy ? (
-                <span
-                  className="block text-meta text-mist-500"
-                  title={
-                    record.alsoReportedBy.length > ALSO_MAX ? record.alsoReportedBy : undefined
-                  }
-                >
-                  Also reported by {truncate(record.alsoReportedBy, ALSO_MAX)}
-                </span>
-              ) : null}
-            </Td>
-            <Td>
-              {record.secondaryReference ? (
-                <ReferenceLink reference={record.secondaryReference} />
-              ) : (
-                DASH
-              )}
-            </Td>
-            <Td>{record.origin}</Td>
-            <Td>
-              <HarmonisationBadge status={record.harmonisation} />
-            </Td>
-            <Td className="whitespace-nowrap">
-              <span className="flex flex-wrap items-center gap-1.5">
-                <span className="tabular-nums">
-                  <span aria-hidden="true">{`✓ ${record.validationCount} / ✗ ${record.contestCount}`}</span>
-                  <span className="sr-only">
-                    {` (${record.validationCount} ${record.validationCount === 1 ? 'validation' : 'validations'}, ${record.contestCount} ${record.contestCount === 1 ? 'contest' : 'contests'})`}
-                  </span>
-                </span>
-                {record.contested ? <Badge tone="red">Contested</Badge> : null}
-              </span>
-            </Td>
-            <Td className="whitespace-nowrap tabular-nums">
-              <time dateTime={record.createdAt}>{isoDate(record.createdAt)}</time>
-            </Td>
-            {extra ? <Td>{extra.cell(record)}</Td> : null}
-          </Tr>
+          <RecordRow
+            key={record.id}
+            record={record}
+            onSelect={onSelect}
+            showSpecies={showSpecies}
+            showTrait={showTrait}
+            extra={extra}
+          />
         ))}
       </Tbody>
     </Table>
+  );
+}
+
+/** The ✓ / ✗ counts of a record or a group of records, with a **Contested** badge (R-9). @rfc RFC-63 R8, R14, R18 */
+export function CountsCell({
+  validationCount,
+  contestCount,
+  contested,
+}: {
+  validationCount: number;
+  contestCount: number;
+  contested: boolean;
+}) {
+  return (
+    <Td className="whitespace-nowrap">
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span className="tabular-nums">
+          <span aria-hidden="true">{`✓ ${validationCount} / ✗ ${contestCount}`}</span>
+          <span className="sr-only">
+            {` (${validationCount} ${validationCount === 1 ? 'validation' : 'validations'}, ${contestCount} ${contestCount === 1 ? 'contest' : 'contests'})`}
+          </span>
+        </span>
+        {contested ? <Badge tone="red">Contested</Badge> : null}
+      </span>
+    </Td>
+  );
+}
+
+/**
+ * One record of {@link RecordTable}, also rendered alone and inside an
+ * expanded group by {@link RecordGroupTable}; `nested` indents its ID under
+ * the group's row.
+ * @rfc RFC-63 R8, R17, R18
+ */
+export function RecordRow<T extends RecordItem>({
+  record,
+  onSelect,
+  showSpecies = false,
+  showTrait = false,
+  extra,
+  nested = false,
+}: {
+  record: T;
+  onSelect: (record: T) => void;
+  showSpecies?: boolean;
+  showTrait?: boolean;
+  extra?: { header: string; cell: (record: T) => ReactNode };
+  nested?: boolean;
+}) {
+  return (
+    <Tr className="transition-colors hover:bg-mist-50">
+      {showSpecies ? (
+        <Td>
+          <Link
+            to="/app/species/$id"
+            params={{ id: record.species.id }}
+            className="font-medium italic text-canopy-900 underline-offset-2 hover:underline"
+          >
+            {record.species.canonicalName}
+          </Link>
+        </Td>
+      ) : null}
+      {showTrait ? <Td>{humaniseKey(record.trait.key)}</Td> : null}
+      <Td className={`whitespace-nowrap tabular-nums${nested ? ' pl-8' : ''}`}>
+        {record.recordCode}
+      </Td>
+      <Td>
+        <button
+          type="button"
+          onClick={() => onSelect(record)}
+          className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+        >
+          {recordValueLabel(record)}
+        </button>
+        {unitCaveat(record.unitStatus) ? (
+          <>
+            {' '}
+            <Badge tone="amber">{unitCaveat(record.unitStatus)}</Badge>
+          </>
+        ) : null}
+        {record.outlierFlag ? (
+          <>
+            {' '}
+            <span title={OUTLIER_LABELS[record.outlierFlag]}>
+              <Badge tone="amber">Outlier</Badge>
+              <span className="sr-only">{`: ${OUTLIER_LABELS[record.outlierFlag]}`}</span>
+            </span>
+          </>
+        ) : null}
+        {record.dispersalPhase ? (
+          <>
+            {' '}
+            <Badge>{DISPERSAL_PHASE_LABELS[record.dispersalPhase]}</Badge>
+          </>
+        ) : null}
+      </Td>
+      <Td>
+        {record.references.length === 0
+          ? DASH
+          : record.references.map((reference, index) => (
+              <Fragment key={reference.id}>
+                {index > 0 ? '; ' : null}
+                <ReferenceLink reference={reference} />
+              </Fragment>
+            ))}
+        {record.alsoReportedBy ? (
+          <span
+            className="block text-meta text-mist-500"
+            title={record.alsoReportedBy.length > ALSO_MAX ? record.alsoReportedBy : undefined}
+          >
+            Also reported by {truncate(record.alsoReportedBy, ALSO_MAX)}
+          </span>
+        ) : null}
+      </Td>
+      <Td>
+        {record.secondaryReference ? <ReferenceLink reference={record.secondaryReference} /> : DASH}
+      </Td>
+      <Td>{record.origin}</Td>
+      <Td>
+        <HarmonisationBadge status={record.harmonisation} />
+      </Td>
+      <CountsCell
+        validationCount={record.validationCount}
+        contestCount={record.contestCount}
+        contested={record.contested}
+      />
+      <Td className="whitespace-nowrap tabular-nums">
+        <time dateTime={record.createdAt}>{isoDate(record.createdAt)}</time>
+      </Td>
+      {extra ? <Td>{extra.cell(record)}</Td> : null}
+    </Tr>
   );
 }

@@ -108,8 +108,7 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await traitCard(page, traitName).click();
 
       const panel = page.getByRole('dialog', { name: traitName });
-      // issue #345: a categorical trait's drawer is grouped by level; open it.
-      await panel.getByRole('button', { name: new RegExp(`^${seededLevel.key} \\d`) }).click();
+      // issue #349: a group of one record is that record's own row.
       await panel.getByRole('button', { name: seededLevel.key, exact: true }).click();
 
       const drawer = page.getByRole('dialog', { name: 'Record', exact: true });

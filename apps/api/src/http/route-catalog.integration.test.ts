@@ -61,6 +61,10 @@ describe('RFC-82 R16 catalogued response schemas match what the routes actually 
     const gets: [keyof typeof ROUTE_CATALOG, string][] = [
       ['GET /api/records/pending/traits', '/api/records/pending/traits'],
       ['GET /api/records/pending', `/api/records/pending?traitId=${trait.id}`],
+      [
+        'GET /api/records/groups',
+        `/api/records/groups?speciesId=${species.id}&traitId=${trait.id}`,
+      ],
       ['GET /api/traits/:id', `/api/traits/${trait.id}`],
     ];
     for (const [key, path] of gets) {

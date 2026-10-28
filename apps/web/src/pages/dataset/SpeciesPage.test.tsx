@@ -44,6 +44,7 @@ const dataset = vi.hoisted(() => ({
   fetchSpecies: vi.fn(),
   fetchSpeciesTraits: vi.fn(),
   fetchRecords: vi.fn(),
+  fetchRecordGroups: vi.fn(),
   fetchRecord: vi.fn(),
   fetchDictionary: vi.fn(),
   searchReferences: vi.fn(),
@@ -98,6 +99,24 @@ beforeEach(() => {
   dataset.fetchSpecies.mockReset();
   dataset.fetchSpeciesTraits.mockReset();
   dataset.fetchRecords.mockReset();
+  // The categorical drawer reads groups (RFC-63 R18): here every record the
+  // records mock answers is a group of its own, so its row is the record's.
+  dataset.fetchRecordGroups.mockReset().mockImplementation(async (params) => {
+    const records = await dataset.fetchRecords(params);
+    return {
+      data: records.data.map((record: RecordItem) => ({
+        level: record.level,
+        secondaryReference: record.secondaryReference,
+        nRecords: 1,
+        nReferences: 1,
+        validationCount: record.validationCount,
+        contestCount: record.contestCount,
+        contested: record.contested,
+        record,
+      })),
+      meta: records.meta,
+    };
+  });
   dataset.fetchRecord.mockReset();
   dataset.fetchDictionary.mockReset();
   dataset.searchReferences.mockReset();
@@ -137,9 +156,7 @@ const ADD_ENTRIES = 'Add entries for another trait';
 /** Opens the sexual system drawer on its first level, dioecious (issue #345: grouped by level). */
 async function openTraitPanel() {
   await userEvent.click(screen.getByRole('button', { name: /^sexual system/ }));
-  const panel = await screen.findByRole('dialog', { name: 'sexual system' });
-  await userEvent.click(within(panel).getByRole('button', { name: /^dioecious \d/ }));
-  return panel;
+  return screen.findByRole('dialog', { name: 'sexual system' });
 }
 
 describe('RFC-60 R7 SpeciesPage header', () => {
@@ -236,12 +253,10 @@ describe('RFC-63 R8, R9 SpeciesPage trait panel and record drawer', () => {
     await openPage();
     const panel = await openTraitPanel();
     await waitFor(() =>
-      expect(dataset.fetchRecords).toHaveBeenCalledWith({
+      expect(dataset.fetchRecordGroups).toHaveBeenCalledWith({
         speciesId: SPECIES.id,
         traitId: SEXUAL_SYSTEM.id,
-        levelId: SEXUAL_SYSTEM_SUMMARY.levels?.[0]?.levelId,
-        sort: 'added',
-        order: 'desc',
+        dispersalPhase: undefined,
         cursor: undefined,
         limit: 50,
       }),

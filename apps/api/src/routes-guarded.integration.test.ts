@@ -152,6 +152,7 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'GET /api/references/:id',
         'PATCH /api/references/:id',
         'GET /api/records',
+        'GET /api/records/groups',
         'GET /api/records/:id',
         'POST /api/records',
         'GET /api/records/pending/traits',
