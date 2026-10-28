@@ -1,11 +1,12 @@
 #!/bin/sh
 # Installs pnpm into /usr/local/bin for the api, web and dev images.
-# pnpm 12 is a self-contained executable, published on npm once per platform as
-# @pnpm/exe.<platform>. Node 26 no longer bundles corepack, and OpenSSF Scorecard
-# reports every `npm install` in a Dockerfile as an unpinned dependency, so the
-# musl build for this machine's architecture is downloaded from the registry and
-# refused unless it matches the sha512 the registry publishes for it
-# (`dist.integrity`, as hex). Bump: docs/gotchas/docker.md "Bumping pnpm".
+# pnpm 12 is a single executable, published on npm once per platform as
+# @pnpm/exe.<platform> (without the node-gyp the `pnpm` package bundles).
+# Node 26 no longer bundles corepack, and OpenSSF Scorecard reports every
+# `npm install` in a Dockerfile as an unpinned dependency, so the musl build for
+# the image's architecture is downloaded from the registry and refused unless it
+# matches the sha512 the registry publishes for it (`dist.integrity`, as hex).
+# Bump: docs/gotchas/docker.md "Bumping pnpm".
 set -eu
 version=12.4.2
 case "$(uname -m)" in
