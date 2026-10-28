@@ -55,6 +55,7 @@ import {
   totpConfirmResponseSchema,
   totpSetupResponseSchema,
   traitDetailSchema,
+  traitMapsSchema,
   traitSchema,
   traitSpeciesItemSchema,
   userSchema,
@@ -495,6 +496,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/maps/values': {
     summary: "One trait map's regions, values, colours and legend",
     response: dataEnvelopeSchema(mapValuesSchema),
+  },
+  'GET /api/maps/trait-values': {
+    summary: 'Every map of one trait, each with its regions, values, colours and legend',
+    response: dataEnvelopeSchema(traitMapsSchema),
   },
 
   // plots

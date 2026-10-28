@@ -4,6 +4,7 @@ import {
   mapsResponseSchema,
   mapValuesSchema,
   type PermissionKey,
+  traitMapsSchema,
 } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
@@ -149,5 +150,42 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
     expect(await status(`traitId=${f.cat.id}&kind=mean`)).toBe(404);
     expect(await status(`traitId=${f.cat.id}&kind=prevalence`)).toBe(400);
     expect(await status(`traitId=${f.num.id}&kind=mean&levelId=${f.red}`)).toBe(400);
+  });
+
+  it("R9 a trait's maps in one answer, in R5 order, each equal to its R6 values", async () => {
+    const f = await fixture();
+    const { cookie } = await viewer();
+    const res = await call(t.app, 'GET', `/api/maps/trait-values?traitId=${f.num.id}`, { cookie });
+    expect(res.status).toBe(200);
+    const { data } = dataEnvelopeSchema(traitMapsSchema).parse(await res.json());
+    expect(data.computedAt).toBe('2026-10-23T03:00:00.000Z');
+    expect(data.maps.map((m) => [m.kind, m.levelId])).toEqual(
+      ['completeness', 'mean', 'median', 'sd', 'cv', 'min', 'max'].map((k) => [k, null]),
+    );
+    const one = await call(t.app, 'GET', `/api/maps/values?traitId=${f.num.id}&kind=max`, {
+      cookie,
+    });
+    const { computedAt: _, ...max } = dataEnvelopeSchema(mapValuesSchema).parse(
+      await one.json(),
+    ).data;
+    expect(data.maps.find((m) => m.kind === 'max')).toEqual({ kind: 'max', levelId: null, ...max });
+    const cat = await call(t.app, 'GET', `/api/maps/trait-values?traitId=${f.cat.id}`, { cookie });
+    const maps = dataEnvelopeSchema(traitMapsSchema).parse(await cat.json()).data.maps;
+    // blue has no map (below the species minimum), so only completeness and red
+    expect(maps.map((m) => [m.kind, m.levelId])).toEqual([
+      ['completeness', null],
+      ['prevalence', f.red],
+    ]);
+  });
+
+  it('R9 a trait with no visible maps is 404 MAP_NOT_FOUND; traitId is required', async () => {
+    const f = await fixture();
+    await t.db.update(traits).set({ active: false }).where(eq(traits.id, f.num.id));
+    const { cookie } = await viewer();
+    const status = async (query: string) =>
+      (await call(t.app, 'GET', `/api/maps/trait-values?${query}`, { cookie })).status;
+    expect(await status(`traitId=${f.num.id}`)).toBe(404);
+    expect(await status(`traitId=${(await createTrait(t.db, {})).id}`)).toBe(404);
+    expect(await status('')).toBe(400);
   });
 });

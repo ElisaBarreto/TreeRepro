@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAP_VALUES, mapEntry } from '../../test/map-fixtures.ts';
 import { MapViewer } from './MapViewer.tsx';
 
@@ -44,5 +45,37 @@ describe('RFC-76 R7 MapViewer', () => {
     // whatever height is left under the header, rather than the dialog's
     // `overflow-hidden` clipping it — the bug on a landscape phone (844×390).
     expect(frame?.className).toContain('min-h-0');
+  });
+});
+
+describe('RFC-76 R11 MapViewer download', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('offers no download without canDownload', () => {
+    render(<MapViewer items={ITEMS} index={0} onIndexChange={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Download SVG' })).not.toBeInTheDocument();
+  });
+
+  it('saves the shown map as an SVG named after its alt text', async () => {
+    const createObjectURL = vi.fn((_: Blob) => 'blob:map');
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(
+      <MapViewer
+        items={[{ ...ITEMS[0], caption: 'snapshot 2026-10-23' } as (typeof ITEMS)[number]]}
+        index={0}
+        onIndexChange={vi.fn()}
+        onClose={vi.fn()}
+        canDownload
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Download SVG' }));
+    expect(click).toHaveBeenCalledOnce();
+    const link = click.mock.contexts[0] as HTMLAnchorElement;
+    expect(link.download).toBe('data-completeness-map-of-x.svg');
+    const blob = createObjectURL.mock.calls[0]?.[0] as Blob;
+    expect(blob.type).toBe('image/svg+xml');
+    expect(await blob.text()).toContain('<title>Data completeness map of x</title>');
   });
 });

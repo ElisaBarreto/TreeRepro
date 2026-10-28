@@ -1,4 +1,4 @@
-openapi-sha256: 5f79444c619a4bc9fa365eb9670fcde5a640cf6602970fec1640df9161f69142
+openapi-sha256: 3a3543ee9c132f4d160d3ba3e34e374c9ce926d4ab4c5a406d104a5565d2d0ba
 
 # TreeRepro API guide
 
@@ -8,7 +8,7 @@ The external API is not a separate surface: it is the same `/api/*` routes the T
 
 Only a user holding the `admin` system role can create or use a key (RFC-82 R2), so this guide is written for that audience.
 
-- Most `/api/*` routes, including every one described below and `GET /api/docs/openapi.json`, take and answer JSON, wrapped in the same envelope the workspace uses (RFC-11 R2, R3): a success answers `{ "data": ... }` (a list also carries `"meta": { "nextCursor": ... }`); a failure answers `{ "error": { "code": "...", "message": "...", "details": [...] } }`, `details` present only for `VALIDATION_FAILED`. This does not hold for every route: `GET /api/health` and `GET /api/health/ready` answer a plain body with no envelope, `GET /api/export/dataset.zip` streams a ZIP file, `GET /api/maps/files/:name` streams an image, and `GET /api/docs` itself answers Markdown.
+- Most `/api/*` routes, including every one described below and `GET /api/docs/openapi.json`, take and answer JSON, wrapped in the same envelope the workspace uses (RFC-11 R2, R3): a success answers `{ "data": ... }` (a list also carries `"meta": { "nextCursor": ... }`); a failure answers `{ "error": { "code": "...", "message": "...", "details": [...] } }`, `details` present only for `VALIDATION_FAILED`. This does not hold for every route: `GET /api/health` and `GET /api/health/ready` answer a plain body with no envelope, `GET /api/export/dataset.zip` streams a ZIP file, and `GET /api/docs` itself answers Markdown.
 - The full machine-readable reference — every route, its schemas and its guard — is generated from the running code at `GET /api/docs/openapi.json`. This guide is served at `GET /api/docs`. Both need a key (RFC-82 R20).
 - Without a key at hand, **Settings › API keys** in the workspace lists every route a key reaches, with its summary and the permission it needs (RFC-82 R22).
 
@@ -416,6 +416,8 @@ for start in range(0, len(ops), 100):
 ```
 
 ## Changelog
+
+- 2026-10-28 — A trait's maps in one request (RFC-76 R9; issue #361): new `GET /api/maps/trait-values?traitId=` answers `{ maps: [{ kind, levelId, regions, legend }], computedAt }`, every map `GET /api/maps` lists for that trait, in its order, each as `GET /api/maps/values` would answer it; 404 `MAP_NOT_FOUND` when the trait has none. `GET /api/maps/values` is unchanged. (openapi 3a3543ee9c13)
 
 - 2026-10-28 — Every records column sorts (RFC-63 R9, R18; issue #351): `GET /api/records` and `GET /api/me/contributions?kind=records` take `sort=code|species|trait|secondary|harmonisation|counts` beside `value|references|origin|added`; `GET /api/records?referenceId=` takes `traitId` and `q`; `GET /api/records/groups` takes `sort` and `order`, its cursor now names them (one minted before answers 400 `VALIDATION_FAILED` on `cursor`), and a group gains `recordCode`, `origin`, `harmonisation` and `createdAt`. A reference's records list answers in under a second for its first page, filtered or not; sorting all of a very large reference (a compiled dataset's 100,000+ records) by another column takes a few seconds. (openapi 5f79444c619a)
 
