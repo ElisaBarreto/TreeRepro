@@ -318,6 +318,18 @@ describe('RFC-63 R8 RecordDrawer value fields, unit, unit status and provenance 
     'Outlier',
   ];
 
+  it('reads a plain-number value text at two decimals at most (issue #359)', async () => {
+    dataset.fetchRecord.mockResolvedValue({
+      ...RECORD_DETAIL,
+      level: null,
+      valueText: '0.02000',
+      numericValue: 0.02,
+    });
+    renderDrawer(<RecordDrawer recordId={RECORD.id} onClose={() => undefined} />, ME);
+    const label = await screen.findByText('Value', { selector: 'dt' });
+    expect(label.nextElementSibling?.textContent).toBe('0.02');
+  });
+
   it('shows each field by its name when present, and no statistic or folded records', async () => {
     dataset.fetchRecord.mockResolvedValue({
       ...RECORD_DETAIL,

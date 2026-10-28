@@ -4,6 +4,7 @@ import {
   fieldMeanParts,
   formatDateTime,
   formatNumber,
+  formatValueText,
   humaniseKey,
   isoDate,
   truncate,
@@ -47,10 +48,11 @@ describe('RFC-13 R9 format helpers', () => {
     expect(formatDateTime('2026-09-01T23:59:59.999Z')).toBe('2026-09-01 23:59');
   });
 
-  it('formatNumber shows integers plainly and at most three decimals', () => {
+  it('formatNumber shows integers plainly and at most two decimals (issue #359)', () => {
     expect(formatNumber(3)).toBe('3');
     expect(formatNumber(1.25)).toBe('1.25');
-    expect(formatNumber(0.123456)).toBe('0.123');
+    expect(formatNumber(0.123456)).toBe('0.12');
+    expect(formatNumber(0.02)).toBe('0.02');
     expect(formatNumber(12345.5)).toBe('12,345.5');
   });
 
@@ -59,7 +61,9 @@ describe('RFC-13 R9 format helpers', () => {
     expect(formatNumber(0)).toBe('0');
   });
 
-  it('formatNumber falls back to three significant digits for a non-zero value below 0.001, so a measurement never renders as a false 0', () => {
+  it('formatNumber falls back to three significant digits for a non-zero value below 0.01, so a measurement never renders as a false 0', () => {
+    expect(formatNumber(0.004)).toBe('0.004');
+    expect(formatNumber(0.00412345)).toBe('0.00412');
     expect(formatNumber(0.0004)).toBe('0.0004');
     expect(formatNumber(0.000123)).toBe('0.000123');
     expect(formatNumber(0.00000071)).toBe('0.00000071');
@@ -67,6 +71,16 @@ describe('RFC-13 R9 format helpers', () => {
     expect(formatNumber(0)).toBe('0');
     // Negatives mirror positives instead of the misleading -0 the default path would give.
     expect(formatNumber(-0.0004)).toBe('-0.0004');
+  });
+
+  it('formatValueText reads a plain-number text through formatNumber and leaves any other text as entered (issue #359)', () => {
+    expect(formatValueText('0.02000')).toBe('0.02');
+    expect(formatValueText(' 1234.5678 ')).toBe('1,234.57');
+    expect(formatValueText('-0.0004')).toBe('-0.0004');
+    expect(formatValueText('dioecious')).toBe('dioecious');
+    expect(formatValueText('0.5-1.2')).toBe('0.5-1.2');
+    expect(formatValueText('1e3')).toBe('1e3');
+    expect(formatValueText('')).toBe('');
   });
 
   it('truncate leaves short text alone and ends long text with an ellipsis at the limit', () => {

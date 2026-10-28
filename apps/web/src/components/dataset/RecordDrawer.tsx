@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { datasetKeys, fetchRecord } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
-import { formatNumber, humaniseKey, isoDate } from '../../lib/format.ts';
+import { formatNumber, formatValueText, humaniseKey, isoDate } from '../../lib/format.ts';
 import { referenceLabel } from '../../lib/references.ts';
 import { RecordActions } from '../curation/RecordActions.tsx';
 import { Alert, Badge, Drawer } from '../ui/index.ts';
@@ -175,7 +175,7 @@ function RecordBody({
         <Definitions
           rows={[
             { label: 'Record ID', value: record.recordCode },
-            { label: 'Value', value: record.valueText || DASH },
+            { label: 'Value', value: formatValueText(record.valueText) || DASH },
             ...(record.level ? [{ label: 'Level', value: record.level.key }] : []),
             ...(record.numericValue !== null
               ? [

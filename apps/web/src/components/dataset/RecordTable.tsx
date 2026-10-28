@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router';
 import type { DispersalPhase, OutlierFlag, RecordItem, UnitStatus } from '@treerepro/contracts';
 import { Fragment, type ReactNode } from 'react';
 import type { RecordSort, SortOrder } from '../../api/dataset.ts';
-import { formatNumber, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
+import { formatNumber, formatValueText, humaniseKey, isoDate, truncate } from '../../lib/format.ts';
 import { type LabelledReference, referenceLabel } from '../../lib/references.ts';
 import { Badge, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 import { HarmonisationBadge } from './HarmonisationBadge.tsx';
@@ -80,7 +80,7 @@ export function recordValueLabel(record: RecordItem): string {
       return `${parts.join(' · ')}${unit}${n}`;
     }
   }
-  return record.valueText || '(empty)';
+  return formatValueText(record.valueText) || '(empty)';
 }
 
 /**
