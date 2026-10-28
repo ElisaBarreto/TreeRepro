@@ -61,7 +61,8 @@ export async function recordGroups(
       anyText,
       anyText,
     ]) as [string, string, string, string, string, string];
-    after = sql`(k1, k2, k3, k4, k5, k6) > (${Number(k1)}::int, ${k2}, ${Number(k3)}::int, ${k4}, ${k5}, ${k6})`;
+    // `bigint`, the range `isInt` accepts: a forged key fails as a comparison, never as an overflow.
+    after = sql`(k1, k2, k3, k4, k5, k6) > (${k1}::bigint, ${k2}, ${k3}::bigint, ${k4}, ${k5}, ${k6})`;
   }
   const phase = input.dispersalPhase
     ? sql`${traitRecords.dispersalPhase} = ${input.dispersalPhase}`

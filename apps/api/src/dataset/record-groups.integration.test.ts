@@ -153,6 +153,17 @@ describe('RFC-63 R9, R18 records grouped by level × secondary reference (issue 
         cursor: 'not-a-cursor',
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    // a forged key past the int range is compared, not overflowed
+    const forged = Buffer.from(
+      JSON.stringify(['9999999999', 'biotic', '-9999999999', '', '', 'x']),
+    ).toString('base64url');
+    const page = await recordGroups(t.db, UNRESTRICTED, {
+      speciesId: f.sp.id,
+      traitId: f.trait.id,
+      limit: 2,
+      cursor: forged,
+    });
+    expect(page.data).toEqual([]);
   });
 
   it('secondaryReferenceId narrows the records list to one group (RFC-63 R9)', async () => {
