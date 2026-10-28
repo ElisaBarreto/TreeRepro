@@ -34,7 +34,7 @@ async function create<T>(admin: BrowserContext, path: string, body: unknown): Pr
 }
 
 test.describe('RFC-61 R4, R8, R9 the reference page: DOI link and trait chips (plan 10d)', () => {
-  test('the reference page links its DOI to the registry and a trait chip opens the trait page', async ({
+  test('the reference page links its DOI to the registry; a trait chip and a species search filter its records', async ({
     browser,
   }) => {
     // Reuses the seeded administrator's session (no invite-accept spent).
@@ -95,14 +95,26 @@ test.describe('RFC-61 R4, R8, R9 the reference page: DOI link and trait chips (p
       await expect(doiLink).toHaveAttribute('rel', 'noopener noreferrer');
 
       // ── A trait chip names the trait and how many records use it, and
-      // opens the trait page ────────────────────────────────────────────────
+      // filters this reference's records to it, never leaving the page
+      // (issue #351) ────────────────────────────────────────────────────────
       const traitsSection = page.getByRole('list', { name: 'Traits' });
-      const traitChip = traitsSection.getByRole('link', { name: new RegExp(traitName) });
+      const traitChip = traitsSection.getByRole('button', { name: new RegExp(traitName) });
       await expect(traitChip).toContainText(traitName);
       await expect(traitChip).toContainText('1 record');
+      await expect(traitChip).toHaveAttribute('aria-pressed', 'false');
       await traitChip.click();
-      await expect(page).toHaveURL(new RegExp(`/app/traits/${trait.id}(\\?|$)`));
-      await expect(page.getByRole('heading', { level: 1 })).toContainText(traitName);
+      await expect(traitChip).toHaveAttribute('aria-pressed', 'true');
+      await expect(page).toHaveURL(
+        new RegExp(`/app/references/${reference.id}\\?.*traitId=${trait.id}`),
+      );
+      const records = page.getByRole('table');
+      await expect(records.getByRole('link', { name: speciesName })).toBeVisible();
+
+      // ── The species search narrows the same table (issue #351) ──────────
+      await page.getByRole('searchbox', { name: 'Search species' }).fill('no such species');
+      await expect(page.getByText('No records match these filters.')).toBeVisible();
+      await page.getByRole('searchbox', { name: 'Search species' }).fill(`${stamp}`);
+      await expect(records.getByRole('link', { name: speciesName })).toBeVisible();
     } finally {
       await admin.close();
     }

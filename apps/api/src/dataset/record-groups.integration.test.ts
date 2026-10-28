@@ -155,7 +155,7 @@ describe('RFC-63 R9, R18 records grouped by level × secondary reference (issue 
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     // a forged key past the int range is compared, not overflowed
     const forged = Buffer.from(
-      JSON.stringify(['9999999999', 'biotic', '-9999999999', '', '', 'x']),
+      JSON.stringify(['default', 'asc', '9999999999', 'biotic', '-9999999999', '', '', 'x']),
     ).toString('base64url');
     const page = await recordGroups(t.db, UNRESTRICTED, {
       speciesId: f.sp.id,
@@ -180,5 +180,196 @@ describe('RFC-63 R9, R18 records grouped by level × secondary reference (issue 
       [f.a1.id, f.a2.id, f.a3.id].sort(),
     );
     expect((await list('none')).data.map((r) => r.id)).toEqual([f.c.id]);
+  });
+});
+
+describe('RFC-63 R9, R18 every column sorts; a reference list narrows by trait and species (issue #351)', () => {
+  const t = useTestDb();
+
+  it('the records list sorts by code (EB_9 before EB_10), secondary, harmonisation and counts, paging every sort', async () => {
+    const sp = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'dispersal_mode');
+    const biotic = await levelByKey(t.db, trait.id, 'biotic');
+    const ref = await createReference(t.db);
+    const sec = await createReference(t.db, { citationKey: `Z_${randomUUID()}` });
+    const batch = await createImportBatch(t.db);
+    const n = randomUUID().replace(/\D/g, '').slice(0, 6);
+    const make = (code: string, extra: object = {}) =>
+      createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        importBatchId: batch.id,
+        valueText: 'biotic',
+        levelId: biotic.id,
+        primaryReferenceId: ref.id,
+        recordCode: code,
+        ...extra,
+      } as Parameters<typeof createRecord>[1]);
+    const ten = await make(`EB_${n}10`);
+    const nine = await make(`EB_${n}9`, { secondaryReferenceId: sec.id });
+    const nineB = await make(`EB_${n}9b`, { rawValue: 'b' });
+    const pending = await make(`EB_${n}11`, { levelId: undefined, valueText: 'zoo' });
+    const ada = (await createUser(t.db, { name: 'Ada' })).user;
+    await t.db
+      .insert(recordAnnotations)
+      .values({ recordId: ten.id, actorId: ada.id, kind: 'confirm' });
+    const ids = async (sort: string, order: 'asc' | 'desc') => {
+      const out: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listRecords(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          sort: sort as never,
+          order,
+          limit: 1,
+          cursor,
+        });
+        out.push(...page.data.map((r) => r.id));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return out;
+    };
+    expect(await ids('code', 'asc')).toEqual([nine.id, nineB.id, ten.id, pending.id]);
+    expect(await ids('code', 'desc')).toEqual([pending.id, ten.id, nineB.id, nine.id]);
+    // no secondary sorts as '' — before the Z_ reference
+    expect((await ids('secondary', 'desc'))[0]).toBe(nine.id);
+    expect((await ids('harmonisation', 'asc')).at(-1)).toBe(pending.id);
+    expect((await ids('counts', 'desc'))[0]).toBe(ten.id);
+    for (const sort of ['species', 'trait']) {
+      expect((await ids(sort, 'asc')).sort()).toEqual(
+        [ten.id, nine.id, nineB.id, pending.id].sort(),
+      );
+    }
+  });
+
+  it('a reference list takes traitId and a species-name q', async () => {
+    const abies = await createSpecies(t.db, {
+      canonicalName: `Abies probe${randomUUID().slice(0, 6)}`,
+    });
+    const betula = await createSpecies(t.db);
+    const dispersal = await traitByKey(t.db, 'dispersal_mode');
+    const biotic = await levelByKey(t.db, dispersal.id, 'biotic');
+    const color = await traitByKey(t.db, 'flower_color');
+    const blue = await levelByKey(t.db, color.id, 'blue');
+    const ref = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const base = { primaryReferenceId: ref.id, importBatchId: batch.id };
+    const a1 = await createRecord(t.db, {
+      ...base,
+      speciesId: abies.id,
+      traitId: dispersal.id,
+      valueText: 'biotic',
+      levelId: biotic.id,
+    });
+    const a2 = await createRecord(t.db, {
+      ...base,
+      speciesId: abies.id,
+      traitId: color.id,
+      valueText: 'blue',
+      levelId: blue.id,
+    });
+    const b1 = await createRecord(t.db, {
+      ...base,
+      speciesId: betula.id,
+      traitId: dispersal.id,
+      valueText: 'biotic',
+      levelId: biotic.id,
+    });
+    const list = (extra: object) =>
+      listRecords(t.db, UNRESTRICTED, { referenceId: ref.id, limit: 10, ...extra });
+    expect((await list({ traitId: dispersal.id })).data.map((r) => r.id).sort()).toEqual(
+      [a1.id, b1.id].sort(),
+    );
+    expect((await list({ q: 'abies PROBE' })).data.map((r) => r.id).sort()).toEqual(
+      [a1.id, a2.id].sort(),
+    );
+    expect((await list({ q: 'abies probe', traitId: color.id })).data.map((r) => r.id)).toEqual([
+      a2.id,
+    ]);
+    expect((await list({ q: '100%' })).data).toEqual([]);
+  });
+
+  it('groups sort by every column under a cursor tied to its sort and order', async () => {
+    const sp = await createSpecies(t.db);
+    const trait = await traitByKey(t.db, 'dispersal_mode');
+    const biotic = await levelByKey(t.db, trait.id, 'biotic');
+    const abiotic = await levelByKey(t.db, trait.id, 'abiotic');
+    const p1 = await createReference(t.db);
+    const p2 = await createReference(t.db);
+    const sec = await createReference(t.db);
+    const batch = await createImportBatch(t.db);
+    const rec = (extra: object) =>
+      createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        importBatchId: batch.id,
+        valueText: 'biotic',
+        levelId: biotic.id,
+        primaryReferenceId: p1.id,
+        ...extra,
+      } as Parameters<typeof createRecord>[1]);
+    const g1 = await rec({ secondaryReferenceId: sec.id, createdAt: new Date('2026-01-01') });
+    await rec({
+      primaryReferenceId: p2.id,
+      secondaryReferenceId: sec.id,
+      createdAt: new Date('2026-03-01'),
+    });
+    const lone = await rec({
+      valueText: 'abiotic',
+      levelId: abiotic.id,
+      createdAt: new Date('2026-02-01'),
+    });
+    const groups = async (sort: string, order: 'asc' | 'desc') => {
+      const out: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await recordGroups(t.db, UNRESTRICTED, {
+          speciesId: sp.id,
+          traitId: trait.id,
+          sort: sort as never,
+          order,
+          limit: 1,
+          cursor,
+        });
+        out.push(...page.data.map((g) => g.record?.id ?? 'pair'));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return out;
+    };
+    expect(await groups('references', 'desc')).toEqual(['pair', lone.id]);
+    expect(await groups('added', 'asc')).toEqual([lone.id, 'pair']);
+    expect(await groups('value', 'asc')).toEqual([lone.id, 'pair']);
+    for (const sort of ['code', 'secondary', 'origin', 'harmonisation', 'counts']) {
+      expect((await groups(sort, 'asc')).sort()).toEqual(['pair', lone.id].sort());
+    }
+    const all = await recordGroups(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      limit: 10,
+    });
+    expect(all.data[0]).toMatchObject({
+      recordCode: g1.recordCode,
+      origin: 'import',
+      harmonisation: 'harmonised',
+      createdAt: '2026-03-01T00:00:00.000Z',
+    });
+    const first = await recordGroups(t.db, UNRESTRICTED, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      sort: 'added',
+      order: 'asc',
+      limit: 1,
+    });
+    await expect(
+      recordGroups(t.db, UNRESTRICTED, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        sort: 'added',
+        order: 'desc',
+        limit: 1,
+        cursor: first.nextCursor ?? undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 });

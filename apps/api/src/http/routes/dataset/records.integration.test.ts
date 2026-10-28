@@ -55,7 +55,7 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
     expect((await byRef.json()).data).toHaveLength(1);
     for (const bad of [
       `/api/records?speciesId=${sp1.id}`,
-      `/api/records?referenceId=${ref.id}&traitId=${trait.id}`,
+      `/api/records?referenceId=${ref.id}&speciesId=${sp1.id}&traitId=${trait.id}`,
       '/api/records',
     ]) {
       const res = await call(t.app, 'GET', bad, { cookie });
@@ -148,7 +148,7 @@ describe('RFC-63 R9, R10 record and summary routes', () => {
     const badSort = await call(
       t.app,
       'GET',
-      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&sort=species`,
+      `/api/records?speciesId=${sp1.id}&traitId=${trait.id}&sort=colour`,
       { cookie },
     );
     expect(badSort.status).toBe(400);

@@ -1,10 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import type { DispersalPhase, RecordGroup, RecordItem } from '@treerepro/contracts';
+import type {
+  DispersalPhase,
+  RecordGroup,
+  RecordGroupSort,
+  RecordItem,
+  SortOrder,
+} from '@treerepro/contracts';
 import { Fragment, useState } from 'react';
 import { datasetKeys, fetchRecordGroups, fetchRecords } from '../../api/dataset.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
+import { isoDate } from '../../lib/format.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
-import { Alert, EmptyState, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
+import { Alert, EmptyState, SortTh, Table, Tbody, Td, Thead, Tr } from '../ui/index.ts';
+import { HarmonisationBadge } from './HarmonisationBadge.tsx';
 import { Pagination } from './Pagination.tsx';
 import { CountsCell, RecordRow, ReferenceLink } from './RecordTable.tsx';
 
@@ -14,6 +22,17 @@ const DASH = <span className="text-mist-500">—</span>;
 const GROUP_ENTRIES = 200;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+const SORT_LABELS: Record<RecordGroupSort, string> = {
+  code: 'ID',
+  value: 'Value',
+  references: 'References',
+  secondary: 'Secondary article',
+  origin: 'Origin',
+  harmonisation: 'Harmonisation',
+  counts: 'Counts',
+  added: 'Added',
+};
 
 interface Scope {
   speciesId: string;
@@ -79,20 +98,27 @@ function GroupRow({
             <span aria-hidden="true">{open ? '▾' : '▸'} </span>
             {plural(group.nRecords, 'entry', 'entries')}
           </button>
+          <span className="block text-meta tabular-nums text-mist-500">
+            from {group.recordCode}
+          </span>
         </Td>
         <Td className="font-medium text-canopy-900">{group.level?.key ?? DASH}</Td>
         <Td>{plural(group.nReferences, 'reference', 'references')}</Td>
         <Td>
           {group.secondaryReference ? <ReferenceLink reference={group.secondaryReference} /> : DASH}
         </Td>
-        <Td>{DASH}</Td>
-        <Td>{DASH}</Td>
+        <Td>{group.origin ?? 'mixed'}</Td>
+        <Td>
+          {group.harmonisation ? <HarmonisationBadge status={group.harmonisation} /> : 'mixed'}
+        </Td>
         <CountsCell
           validationCount={group.validationCount}
           contestCount={group.contestCount}
           contested={group.contested}
         />
-        <Td>{DASH}</Td>
+        <Td className="whitespace-nowrap tabular-nums">
+          <time dateTime={group.createdAt}>{isoDate(group.createdAt)}</time>
+        </Td>
       </Tr>
       {open ? <GroupEntries scope={scope} group={group} onSelect={onSelect} /> : null}
     </>
@@ -103,7 +129,9 @@ function GroupRow({
  * A categorical trait's records as one table of groups (RFC-63 R18): a group
  * of one record is that record's row, a group of several — the entries one
  * secondary article gives for one level — a row of its totals that expands
- * into its entries, one page of groups at a time in the API's fixed order.
+ * into its entries, one page of groups at a time — in the API's own order
+ * until a header sorts it (a new column ascending, the same one again
+ * descending; issue #351).
  * @rfc RFC-63 R18
  */
 export function RecordGroupTable({
@@ -113,8 +141,23 @@ export function RecordGroupTable({
   onSelect,
 }: Scope & { onSelect: (record: RecordItem) => void }) {
   const scope = { speciesId, traitId, dispersalPhase };
-  const list = usePagedList(datasetKeys.recordGroups(scope), (cursor, limit) =>
-    fetchRecordGroups({ ...scope, cursor, limit }),
+  // No sort until a header is clicked: the API's own order (RFC-63 R18).
+  const [sort, setSort] = useState<{ by: RecordGroupSort; order: SortOrder } | null>(null);
+  const params = { ...scope, sort: sort?.by, order: sort?.order };
+  const list = usePagedList(datasetKeys.recordGroups(params), (cursor, limit) =>
+    fetchRecordGroups({ ...params, cursor, limit }),
+  );
+  const head = (by: RecordGroupSort) => (
+    <SortTh
+      label={SORT_LABELS[by]}
+      direction={sort?.by === by ? sort.order : null}
+      onSort={() =>
+        setSort((prev) => ({
+          by,
+          order: prev?.by === by && prev.order === 'asc' ? 'desc' : 'asc',
+        }))
+      }
+    />
   );
   return (
     <div className="flex flex-col gap-4">
@@ -129,14 +172,14 @@ export function RecordGroupTable({
         <Table>
           <Thead>
             <Tr>
-              <Th>ID</Th>
-              <Th>Value</Th>
-              <Th>References</Th>
-              <Th>Secondary article</Th>
-              <Th>Origin</Th>
-              <Th>Harmonisation</Th>
-              <Th>Counts</Th>
-              <Th>Added</Th>
+              {head('code')}
+              {head('value')}
+              {head('references')}
+              {head('secondary')}
+              {head('origin')}
+              {head('harmonisation')}
+              {head('counts')}
+              {head('added')}
             </Tr>
           </Thead>
           <Tbody>

@@ -1,0 +1,2 @@
+DROP INDEX "trait_records_secondary_reference_idx";--> statement-breakpoint
+CREATE INDEX "trait_records_secondary_reference_idx" ON "trait_records" USING btree ("secondary_reference_id","id" DESC NULLS LAST);

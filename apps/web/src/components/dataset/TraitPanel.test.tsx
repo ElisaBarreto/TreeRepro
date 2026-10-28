@@ -38,6 +38,10 @@ const [DIOECIOUS, MONOECIOUS] = SEXUAL_SYSTEM_SUMMARY.levels ?? [];
 const SEVERAL: RecordGroup = {
   level: { id: DIOECIOUS?.levelId ?? '', key: 'dioecious' },
   secondaryReference: GIFT,
+  recordCode: 'EB_1',
+  origin: 'import',
+  harmonisation: 'harmonised',
+  createdAt: '2026-10-28T00:00:00.000Z',
   nRecords: 3,
   nReferences: 2,
   validationCount: 1,
@@ -48,6 +52,10 @@ const SEVERAL: RecordGroup = {
 const ALONE: RecordGroup = {
   level: { id: MONOECIOUS?.levelId ?? '', key: 'monoecious' },
   secondaryReference: null,
+  recordCode: 'EB_9',
+  origin: 'import',
+  harmonisation: 'harmonised',
+  createdAt: '2026-10-28T00:00:00.000Z',
   nRecords: 1,
   nReferences: 1,
   validationCount: 0,
@@ -210,6 +218,42 @@ describe('RFC-63 R18 TraitPanel of a categorical trait: one table of groups (iss
     expect(within(panel).getByText('Also reported by Kleyer et al., 2008')).toBeInTheDocument();
     await userEvent.click(group);
     expect(within(panel).queryByText('EB_1')).not.toBeInTheDocument();
+  });
+
+  it('sorts the groups from any header: a new column ascending, the same one again descending (issue #351)', async () => {
+    mount(SEXUAL_SYSTEM_SUMMARY);
+    const panel = await screen.findByRole('dialog', { name: 'sexual system' });
+    const row = (await within(panel).findByRole('button', { name: /3 entries/ })).closest(
+      'tr',
+    ) as HTMLElement;
+    expect(row).toHaveTextContent('from EB_1');
+    expect(row).toHaveTextContent('import');
+    expect(row).toHaveTextContent('2026-10-28');
+    await userEvent.click(within(panel).getByRole('button', { name: /^References/ }));
+    await waitFor(() =>
+      expect(dataset.fetchRecordGroups).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'references', order: 'asc' }),
+      ),
+    );
+    await userEvent.click(within(panel).getByRole('button', { name: /^References/ }));
+    await waitFor(() =>
+      expect(dataset.fetchRecordGroups).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: 'references', order: 'desc' }),
+      ),
+    );
+    for (const name of [
+      'ID',
+      'Value',
+      'Secondary article',
+      'Origin',
+      'Harmonisation',
+      'Counts',
+      'Added',
+    ]) {
+      expect(
+        within(panel).getByRole('button', { name: new RegExp(`^${name}`) }),
+      ).toBeInTheDocument();
+    }
   });
 
   it('opens a group with no secondary article on the records that have none', async () => {
