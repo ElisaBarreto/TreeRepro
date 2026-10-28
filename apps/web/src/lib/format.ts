@@ -49,19 +49,30 @@ export function formatDateTime(timestamp: string): string {
 }
 
 /**
- * A number for display with thousands separators and at most three decimals
- * (`12,345` for a count, `1.25 mg` for a measurement). A non-zero value whose
- * absolute value is below `0.001` would round to `0` under that rule — a
+ * A number for display with thousands separators and at most two decimals
+ * (`12,345` for a count, `0.02 mg` for a measurement). A non-zero value whose
+ * absolute value is below `0.01` would round to `0` under that rule — a
  * false value, not a rounded one, since the measurement is real but too small
- * to survive three decimal places — so that case instead shows three
- * significant digits (`0.0004`, `0.000123`, `-0.0004`). Zero itself stays `0`.
+ * to survive two decimal places — so that case instead shows three
+ * significant digits (`0.004`, `0.000123`, `-0.0004`). Zero itself stays `0`.
  * @rfc RFC-13 R9
  */
 export function formatNumber(value: number): string {
-  if (value !== 0 && Math.abs(value) < 0.001) {
+  if (value !== 0 && Math.abs(value) < 0.01) {
     return value.toLocaleString('en-GB', { maximumSignificantDigits: 3 });
   }
-  return value.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  return value.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+}
+
+/**
+ * A record's value text as it reads: a plain decimal number (`0.02000`)
+ * through {@link formatNumber}, any other text as it was entered. The stored
+ * text is never changed (RFC-13 R9).
+ * @rfc RFC-13 R9
+ */
+export function formatValueText(text: string): string {
+  const trimmed = text.trim();
+  return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(trimmed) ? formatNumber(Number(trimmed)) : text;
 }
 
 // Record order and names, as `recordValueLabel` reads a record's fields.

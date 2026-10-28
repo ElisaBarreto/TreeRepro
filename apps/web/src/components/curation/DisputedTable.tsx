@@ -6,7 +6,7 @@ import type {
   RecordItem,
   SortOrder,
 } from '@treerepro/contracts';
-import { humaniseKey, isoDate } from '../../lib/format.ts';
+import { formatValueText, humaniseKey, isoDate } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { Badge, Button, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
@@ -123,7 +123,7 @@ export function DisputedTable({
                   onClick={() => onSelect((item.target as RecordItem).id)}
                   className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
                 >
-                  {item.target.valueText}
+                  {formatValueText(item.target.valueText)}
                 </button>
               ) : null}
             </Td>
@@ -139,7 +139,7 @@ export function DisputedTable({
                       onClick={() => onSelect(record.id)}
                       className="text-left font-medium text-canopy-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
                     >
-                      {record.valueText}
+                      {formatValueText(record.valueText)}
                     </button>
                   ))}
                 </div>
