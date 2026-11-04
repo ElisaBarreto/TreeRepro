@@ -13,6 +13,9 @@ allowBuilds:
 # so `pnpm audit` is clean. Drop when drizzle-kit drops @esbuild-kit (issue #15).
 overrides:
   "@esbuild-kit/core-utils>esbuild": "0.25.12"
+  # GHSA-97r2-qh9m-474h: TanStack Router pins 1.6.7; drop once it ships >=1.6.8.
+  seroval: "1.6.12"
+  seroval-plugins: "1.6.12"
 # Supply-chain guard: refuse versions published less than 7 days (10080 minutes) ago.
 # Mirrors Dependabot's cooldown in .github/dependabot.yml. Exclude a package only
 # for an urgent security patch, and remove the exclusion afterwards.
