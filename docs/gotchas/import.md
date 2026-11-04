@@ -113,16 +113,16 @@
    docker compose run --rm --no-deps -v /srv/imports:/imports:ro api node dist/cli/import-references.js --file /imports/references.import.csv
    ```
    Re-run the second query of step 3 and compare. Taxonomy proposals (`species_proposals`) are rebuilt by their own job.
-6b. **Rebuild the region snapshot** (RFC-78 R12) so the maps follow the new records at once instead of at the next weekly run:
+6b. **Rebuild the region snapshot** (RFC-78 R12) so the maps follow the new records at once instead of at the next weekly run. It reads only and the API runs it weekly itself, so it may run after step 8 instead, with users already back (the maps show the previous snapshot until it ends):
    ```sh
    docker compose run --rm --no-deps api node dist/cli/build-snapshot.js
    ```
 7. **Verify:**
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
-     "select (select count(*) from import_batches where kind = 'records'), (select count(*) from trait_records), (select count(*) from trait_records where record_code like 'EB_LEGACY_%'), (select count(*) from trait_records where record_code !~ '^EB_[0-9]+([a-z]+)?\$'), (select coalesce(sum(primary_count), 0) from bibliographic_references) = (select count(*) from trait_records where primary_reference_id is not null)"
+     "select (select count(*) from import_batches where kind = 'records'), (select count(*) from trait_records), (select count(*) from trait_records where record_code like 'EB_LEGACY_%'), (select count(*) from trait_records where record_code !~ '^EB_[0-9]+([a-z]+)?\$'), (select coalesce(sum(primary_count), 0) from bibliographic_references) = (select count(*) from trait_records where primary_reference_id is not null and counts_as_evidence)"
    ```
-   Expected: `1 <N> 0 0 t`, where `<N>` equals `inserted` in step 4's `Rows:` line.
+   Expected: `1 <N> 0 0 t`, where `<N>` equals `inserted` in step 4's `Rows:` line. The usage counters skip a copy of evidence another dataset gives (`counts_as_evidence` false, RFC-63 R17), so the comparison must skip it too.
 8. **Start the API:** `docker compose up -d api`, then `docker compose ps` shows it healthy.
 
 After this test phase, reimports use `--replace-imported` (plan 13k) instead of a total `--replace`, and `--discard-platform` is never passed again: once any platform data exists — a `TR_` record, an annotation or a contest created after this reimport — the total `--replace` without it is refused (RFC-64 R12).
@@ -203,10 +203,10 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
      docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
        "select (select count(*) from trait_records where origin = 'import' and record_code !~ '^EB_[0-9]+([a-z]+)?\$'),
                (select coalesce(sum(primary_count), 0) from bibliographic_references) =
-               (select count(*) from trait_records r where r.primary_reference_id is not null
+               (select count(*) from trait_records r where r.primary_reference_id is not null and r.counts_as_evidence
                   and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw'))
                + (select count(*) from record_references rr join trait_records r on r.id = rr.record_id
-                  where not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw'))"
+                  where r.counts_as_evidence and not exists (select 1 from record_annotations w where w.record_id = r.id and w.kind = 'withdraw'))"
      ```
 7. **Check the triggers are back on** (`O` = enabled):
    ```sh
