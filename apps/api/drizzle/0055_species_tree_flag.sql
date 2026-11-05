@@ -1,0 +1,2 @@
+ALTER TABLE "species" ADD COLUMN "tree_flag" text;--> statement-breakpoint
+ALTER TABLE "species" ADD CONSTRAINT "species_tree_flag_check" CHECK ("species"."tree_flag" in ('bgci_and_wcvp_tree', 'bgci_and_wcvp_mixed_form', 'bgci_wcvp_not_tree', 'bgci_no_wcvp_lifeform', 'wcvp_tree', 'wcvp_mixed_form', 'growth_form_unanimous', 'growth_form_majority'));

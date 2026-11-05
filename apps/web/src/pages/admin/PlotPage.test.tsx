@@ -57,6 +57,7 @@ const PLOT_DETAIL: PlotDetail = {
 const SPECIES_ITEM: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d42',
   canonicalName: 'Bowdichia virgilioides',
+  treeFlag: null,
   nameSource: 'gbif',
   genus: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d00', name: 'Bowdichia' },
   family: { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d01', name: 'Fabaceae' },

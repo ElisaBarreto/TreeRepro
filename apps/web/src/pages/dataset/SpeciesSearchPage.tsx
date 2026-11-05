@@ -5,6 +5,7 @@ import {
   type SpeciesSort,
   type SpeciesStatus,
   type TraitDataMode,
+  type TreeFlag,
 } from '@treerepro/contracts';
 import { useEffect, useState } from 'react';
 import { EXPORT_DATASET_URL, EXPORT_PLATFORM_URL } from '../../api/curation.ts';
@@ -51,6 +52,8 @@ export interface SpeciesSearch {
   categoryKey?: string;
   traitId?: string;
   traitData?: TraitDataMode;
+  /** Comma-separated tree flags, as the API takes them (RFC-60 R6). */
+  treeFlag?: string;
   sort?: SpeciesSort;
   order?: SortOrder;
 }
@@ -70,6 +73,7 @@ function toValue(search: SpeciesSearch): SpeciesSearchValue {
     categoryKey: search.categoryKey,
     traitId: search.traitId,
     traitData: search.traitData,
+    treeFlags: search.treeFlag ? (search.treeFlag.split(',') as TreeFlag[]) : undefined,
     sort: search.sort,
     order: search.order,
   };
@@ -93,6 +97,7 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
     categoryKey: value.categoryKey,
     traitId: value.traitId,
     traitData: value.traitData,
+    treeFlag: value.treeFlags?.join(','),
     sort: value.sort,
     order: value.order,
   };
@@ -120,6 +125,7 @@ function searchKey(value: SpeciesSearchValue): string {
     value.categoryKey ?? null,
     value.traitId ?? null,
     value.traitData ?? null,
+    value.treeFlags?.join(',') ?? null,
     value.sort ?? null,
     value.order ?? null,
   ]);
@@ -202,6 +208,7 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     categoryKey: form.categoryKey,
     traitId: form.traitId,
     traitData: form.traitData,
+    treeFlag: form.treeFlags?.join(','),
     // The Records column needs a trait: with the trait filter cleared, the
     // list falls back to its default order instead of a refused request.
     sort: form.sort === 'records' && !form.traitId ? undefined : form.sort,

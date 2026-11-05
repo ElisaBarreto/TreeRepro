@@ -54,6 +54,24 @@ export const OUTLIER_FLAGS = [
 /** A record's outlier flag. @rfc RFC-63 R1 */
 export type OutlierFlag = (typeof OUTLIER_FLAGS)[number];
 
+/**
+ * A species' tree basis: the evidence on which the owner's release counts it
+ * as a tree (BGCI GlobalTreeSearch, WCVP lifeform, or the growth-form fallback).
+ * @rfc RFC-60 R1
+ */
+export const TREE_FLAGS = [
+  'bgci_and_wcvp_tree',
+  'bgci_and_wcvp_mixed_form',
+  'bgci_wcvp_not_tree',
+  'bgci_no_wcvp_lifeform',
+  'wcvp_tree',
+  'wcvp_mixed_form',
+  'growth_form_unanimous',
+  'growth_form_majority',
+] as const;
+/** @rfc RFC-60 R1 */
+export type TreeFlag = (typeof TREE_FLAGS)[number];
+
 /** The flags a continuous species summary names (RFC-77 R5). @rfc RFC-77 R5 */
 export const SUMMARY_OUTLIER_FLAGS = ['unit_factor', 'trait_extreme', 'bounds_inverted'] as const;
 /** @rfc RFC-77 R5 */
@@ -183,6 +201,18 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
   categoryKey: z.string().trim().min(1).max(100).optional(),
   traitId: z.uuid().optional(),
   traitData: z.enum(TRAIT_DATA_MODES).optional(),
+  /** Comma-separated, 1–8 distinct flags; keeps species whose flag is any of them. */
+  treeFlag: z
+    .string()
+    .refine((v) => {
+      const flags = v.split(',');
+      return (
+        new Set(flags).size === flags.length &&
+        flags.every((f) => (TREE_FLAGS as readonly string[]).includes(f))
+      );
+    }, 'Expected distinct tree flags, comma-separated')
+    .transform((v) => v.split(',') as TreeFlag[])
+    .optional(),
   sort: z.enum(SPECIES_SORTS).optional(),
   order: z.enum(SORT_ORDERS).optional(),
 });
@@ -194,7 +224,7 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
  * (`matchedName`), else `null`. `unresolvedTaxon` is reviewer-only data
  * (RFC-33 R2): the flag for a `records.review` holder, `null` for every
  * other viewer.
- * @rfc RFC-60 R3, R6
+ * @rfc RFC-60 R1, R3, R6
  * @rfc RFC-33 R2, R7
  * @rfc RFC-69 R1
  */
@@ -210,6 +240,8 @@ export const speciesListItemSchema = z.strictObject({
   unresolvedTaxon: z.boolean().nullable(),
   traitCount: z.number().int().nonnegative(),
   traitRecordCount: z.number().int().nonnegative().nullable(),
+  /** RFC-60 R1: the tree basis, null when the file gave none. */
+  treeFlag: z.enum(TREE_FLAGS).nullable(),
 });
 
 /** An alternative name of a species: type, language (common names only) and source. @rfc RFC-60 R1, R4, R7 */

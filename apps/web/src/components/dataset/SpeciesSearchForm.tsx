@@ -1,12 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import type { SortOrder, SpeciesSort, SpeciesStatus, TraitDataMode } from '@treerepro/contracts';
-import { useId } from 'react';
+import {
+  type SortOrder,
+  type SpeciesSort,
+  type SpeciesStatus,
+  TREE_FLAGS,
+  type TraitDataMode,
+  type TreeFlag,
+} from '@treerepro/contracts';
+import { type KeyboardEvent, useId } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
 import { listPlots, plotKeys } from '../../api/plots.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { Field, Select } from '../ui/index.ts';
 import { FILTER_CHECK, FILTER_LEGEND, FilterGroup } from './FilterGroup.tsx';
+import { TREE_FLAG_LABELS } from './SpeciesList.tsx';
 import { TaxonomyFilters } from './TaxonomyFilters.tsx';
 
 export interface SpeciesSearchValue {
@@ -23,6 +31,8 @@ export interface SpeciesSearchValue {
   categoryKey?: string;
   traitId?: string;
   traitData?: TraitDataMode;
+  /** RFC-60 R6: the checked tree bases; absent when none is checked. */
+  treeFlags?: TreeFlag[];
   sort?: SpeciesSort;
   /** The table headers' direction (RFC-60 R6, RFC-13 R13). */
   order?: SortOrder;
@@ -53,7 +63,8 @@ export interface SpeciesSearchValue {
  * plus **Contested only** for everyone and **Has unknown levels** with
  * `records.review` (spec R-15); the unresolved toggle of the Taxonomy group
  * is shown with `records.review` only. The group itself always renders, so
- * the two checkboxes it offers every viewer are always reachable.
+ * the checkboxes it offers every viewer are always reachable. **Tree basis**
+ * ({@link TreeBasisFilter}) closes it.
  *
  * Below the groups, **Order by** chooses between the name order and
  * "Most incomplete first" (`sort=completeness`). Fully controlled — the page
@@ -299,6 +310,12 @@ export function SpeciesSearchForm({
             Has unknown levels
           </label>
         ) : null}
+        <TreeBasisFilter
+          value={value.treeFlags ?? []}
+          onChange={(flags) =>
+            onChange({ ...value, treeFlags: flags.length > 0 ? flags : undefined })
+          }
+        />
       </FilterGroup>
 
       <div className="md:w-64">
@@ -327,5 +344,62 @@ export function SpeciesSearchForm({
         </Field>
       </div>
     </div>
+  );
+}
+
+/**
+ * The tree basis filter (RFC-60 R6): a closed control dressed like the
+ * Family select that opens onto one checkbox per flag, in the dictionary's
+ * order. None checked — the default — keeps every species; checked ones keep
+ * the species whose flag is any of them. Up and down arrows move between the
+ * boxes, wrapping.
+ * @rfc RFC-60 R6
+ */
+function TreeBasisFilter({
+  value,
+  onChange,
+}: {
+  value: TreeFlag[];
+  onChange: (next: TreeFlag[]) => void;
+}) {
+  function moveFocus(event: KeyboardEvent<HTMLFieldSetElement>) {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const boxes = [...event.currentTarget.querySelectorAll<HTMLInputElement>('input')];
+    const at = boxes.indexOf(document.activeElement as HTMLInputElement);
+    if (at === -1) return;
+    event.preventDefault();
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    boxes[(at + step + boxes.length) % boxes.length]?.focus();
+  }
+  return (
+    <fieldset className="flex flex-col gap-2" onKeyDown={moveFocus}>
+      <legend className={FILTER_LEGEND}>Tree basis</legend>
+      <details className="relative">
+        <summary className="flex h-11 cursor-pointer list-none items-center rounded-[10px] border border-canopy-700/25 bg-white px-3.5 text-body text-canopy-950">
+          {value.length === 0
+            ? 'All tree bases'
+            : `${value.length} tree ${value.length === 1 ? 'basis' : 'bases'}`}
+        </summary>
+        <div className="absolute z-10 mt-1 flex w-max flex-col rounded-[10px] border border-canopy-700/15 bg-white px-3.5 py-1 shadow-sm">
+          {TREE_FLAGS.map((flag) => (
+            <label key={flag} className={FILTER_CHECK}>
+              <input
+                type="checkbox"
+                className="size-5 accent-canopy-700"
+                checked={value.includes(flag)}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? TREE_FLAGS.filter((f) => f === flag || value.includes(f))
+                      : value.filter((f) => f !== flag),
+                  )
+                }
+              />
+              {TREE_FLAG_LABELS[flag]}
+            </label>
+          ))}
+        </div>
+      </details>
+    </fieldset>
   );
 }

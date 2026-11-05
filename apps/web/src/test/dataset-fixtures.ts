@@ -39,6 +39,7 @@ export const GENUS = { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d02', name: 'Adenan
 export const SPECIES: Species = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d03',
   canonicalName: 'Adenanthera pavonina',
+  treeFlag: null,
   nameSource: 'wcvp',
   active: true,
   genus: GENUS,
@@ -64,6 +65,7 @@ export const SPECIES: Species = {
 export const UNRESOLVED_SPECIES: Species = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04',
   canonicalName: 'Adansonia digitata',
+  treeFlag: null,
   nameSource: 'gbif',
   active: true,
   genus: null,
@@ -645,6 +647,7 @@ export const SEED_LENGTH_DETAIL: TraitDetail = {
 export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   id: SPECIES.id,
   canonicalName: SPECIES.canonicalName,
+  treeFlag: null,
   nameSource: 'wcvp',
   active: true,
   genus: GENUS,

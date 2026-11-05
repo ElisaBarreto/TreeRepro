@@ -60,6 +60,7 @@ export function speciesRoutes(ctx: AuthContext) {
           categoryKey: q.categoryKey,
           traitId: q.traitId,
           traitData: q.traitData,
+          treeFlags: q.treeFlag,
           sort: q.sort,
           order: q.order,
           cursor: q.cursor,

@@ -240,6 +240,7 @@ describe('RFC-60 R6, R7 / RFC-33 R6 dataset contracts scope', () => {
       plots: [{ id: '019a0000-0000-7000-8000-000000000002', code: 'P1', name: 'Plot 1' }],
       recordCount: 0,
       traitCount: 0,
+      treeFlag: null,
     });
     expect(species.plots).toHaveLength(1);
   });

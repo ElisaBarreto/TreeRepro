@@ -6,10 +6,10 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { render, screen, within } from '@testing-library/react';
-import type { SpeciesListItem } from '@treerepro/contracts';
+import { type SpeciesListItem, TREE_FLAGS } from '@treerepro/contracts';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
-import { SpeciesList } from './SpeciesList.tsx';
+import { SpeciesList, TREE_FLAG_LABELS } from './SpeciesList.tsx';
 
 // The canonical name is a router `Link`, so the list mounts inside a
 // minimal router whose only page is the list itself.
@@ -41,6 +41,7 @@ const ADENANTHERA: SpeciesListItem = {
   unresolvedTaxon: false,
   traitCount: 12,
   traitRecordCount: null,
+  treeFlag: null,
 };
 
 describe('RFC-13 R2, RFC-33 R7 SpeciesList', () => {
@@ -98,7 +99,7 @@ describe('RFC-60 R6 SpeciesList coverage columns', () => {
     const table = await screen.findByRole('table');
     const row = within(table).getAllByRole('row')[1] as HTMLElement;
     const cells = within(row).getAllByRole('cell');
-    expect(cells).toHaveLength(6);
+    expect(cells).toHaveLength(7);
     expect(cells[3]).toHaveTextContent('12');
     expect(cells[4]).toHaveTextContent('—');
   });
@@ -144,5 +145,35 @@ describe('RFC-60 R6 SpeciesList match badge', () => {
     const row = within(table).getAllByRole('row')[1] as HTMLElement;
     expect(row).toHaveTextContent('—');
     expect(row).not.toHaveTextContent('found as:');
+  });
+});
+
+describe('RFC-60 R1, R6 SpeciesList tree basis (issue #372)', () => {
+  it('shows the meaning of the tree flag in a Tree basis column after Match, a dash when unset', async () => {
+    renderInRouter(
+      <SpeciesList
+        items={[
+          { ...ADENANTHERA, treeFlag: 'bgci_wcvp_not_tree' },
+          { ...ADENANTHERA, id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04', treeFlag: null },
+        ]}
+      />,
+    );
+    const headers = (await screen.findAllByRole('columnheader')).map((h) => h.textContent);
+    expect(headers.slice(-2)).toEqual(['Match', 'Tree basis']);
+    const [, flagged, unset] = screen.getAllByRole('row');
+    expect(
+      within(flagged as HTMLElement)
+        .getAllByRole('cell')
+        .at(-1),
+    ).toHaveTextContent('BGCI says tree, WCVP says e.g. “shrub”');
+    expect(
+      within(unset as HTMLElement)
+        .getAllByRole('cell')
+        .at(-1),
+    ).toHaveTextContent('—');
+  });
+
+  it('has a meaning for every flag', () => {
+    for (const flag of TREE_FLAGS) expect(TREE_FLAG_LABELS[flag]).toMatch(/\w/);
   });
 });
