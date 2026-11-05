@@ -222,6 +222,8 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   );
   // RFC-60 R12: the same filters, counted; order and paging do not change it.
   const { sort: _sort, order: _order, ...filters } = params;
+  // RFC-60 R11: the tree basis counts follow every filter but their own.
+  const { treeFlag: _treeFlag, ...treeFlagFilters } = filters;
   const total = useQuery({
     queryKey: datasetKeys.speciesCount(filters),
     queryFn: () => countSpecies(filters),
@@ -272,7 +274,7 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
         }
       />
       <div className="flex flex-col gap-6">
-        <SpeciesSearchForm value={form} onChange={setForm} />
+        <SpeciesSearchForm value={form} onChange={setForm} treeFlagFilters={treeFlagFilters} />
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading ? <p className="text-body text-mist-500">Searching…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (

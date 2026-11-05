@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MeResponse } from '@treerepro/contracts';
 import { useState } from 'react';
@@ -672,6 +672,23 @@ describe('RFC-60 R6 SpeciesSearchForm tree basis (issue #372)', () => {
     expect(box()).toBeVisible();
     await userEvent.keyboard('{Escape}');
     expect(box()).not.toBeVisible();
+  });
+
+  it('RFC-60 R11 asks for the counts under the filters it is given', async () => {
+    renderWithProviders(
+      <SpeciesSearchForm
+        value={{ q: '', unresolved: false, contested: true, unknownLevels: false }}
+        onChange={() => {}}
+        treeFlagFilters={{ contested: true, genusId: 'g1' }}
+      />,
+      { me: READER },
+    );
+    await waitFor(() =>
+      expect(dataset.fetchTreeFlagCounts).toHaveBeenLastCalledWith({
+        contested: true,
+        genusId: 'g1',
+      }),
+    );
   });
 
   it('moves between the boxes with the arrow keys', async () => {

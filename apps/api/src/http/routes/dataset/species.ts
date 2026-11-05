@@ -6,17 +6,26 @@ import {
   listSpeciesQuerySchema,
   speciesNameBodySchema,
   speciesTraitsQuerySchema,
+  type TreeFlag,
+  treeFlagCountsQuerySchema,
   updateSpeciesBodySchema,
   validateLevelBodySchema,
 } from '@treerepro/contracts';
 import { Hono } from 'hono';
+import type { z } from 'zod';
 import { userScopeOf, visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
 import { validateLevel, withdrawLevel } from '../../../dataset/curation.ts';
 import { resolveSourceRef } from '../../../dataset/sources.ts';
 import { speciesTraitSummary } from '../../../dataset/summary.ts';
-import { countSpecies, getSpecies, searchSpecies, treeFlagCounts } from '../../../dataset/taxa.ts';
+import {
+  countSpecies,
+  getSpecies,
+  type SpeciesListFilters,
+  searchSpecies,
+  treeFlagCounts,
+} from '../../../dataset/taxa.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
@@ -24,6 +33,34 @@ import { currentPermissions, requirePermission } from '../../middleware/require-
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 import { proposalRoutes } from './proposals.ts';
+
+/**
+ * The search filters of a species query (RFC-60 R6), shared by the list, its
+ * count (R12) and the tree basis counts (R11), whose query has no `treeFlag`.
+ * @rfc RFC-60 R6, R11, R12
+ */
+function filtersOf(
+  q: z.infer<typeof treeFlagCountsQuerySchema> & { treeFlag?: TreeFlag[] },
+  viewerPlotIds: string[],
+): SpeciesListFilters {
+  return {
+    q: q.q,
+    familyId: q.familyId,
+    genusId: q.genusId,
+    unresolved: q.unresolved === 'true',
+    contested: q.contested === 'true',
+    unknownLevels: q.unknownLevels === 'true',
+    outliers: q.outliers === 'true',
+    status: q.status,
+    scope: q.scope,
+    plotId: q.plotId,
+    viewerPlotIds,
+    categoryKey: q.categoryKey,
+    traitId: q.traitId,
+    traitData: q.traitData,
+    treeFlags: q.treeFlag,
+  };
+}
 
 /**
  * The species routes, with the proposals router (RFC-75 R2, R3) mounted on
@@ -48,21 +85,7 @@ export function speciesRoutes(ctx: AuthContext) {
           const viewerPlotIds = scope.plots.map((p) => p.id);
 
           const { data, nextCursor } = await searchSpecies(ctx.db, visibility, {
-            q: q.q,
-            familyId: q.familyId,
-            genusId: q.genusId,
-            unresolved: q.unresolved === 'true',
-            contested: q.contested === 'true',
-            unknownLevels: q.unknownLevels === 'true',
-            outliers: q.outliers === 'true',
-            status: q.status,
-            scope: q.scope,
-            plotId: q.plotId,
-            viewerPlotIds,
-            categoryKey: q.categoryKey,
-            traitId: q.traitId,
-            traitData: q.traitData,
-            treeFlags: q.treeFlag,
+            ...filtersOf(q, viewerPlotIds),
             sort: q.sort,
             order: q.order,
             cursor: q.cursor,
@@ -95,29 +118,32 @@ export function speciesRoutes(ctx: AuthContext) {
         async (c) => {
           const q = c.req.valid('query');
           const scope = await userScopeOf(ctx.db, c);
-          const count = await countSpecies(ctx.db, await visibilityOf(ctx, c), {
-            q: q.q,
-            familyId: q.familyId,
-            genusId: q.genusId,
-            unresolved: q.unresolved === 'true',
-            contested: q.contested === 'true',
-            unknownLevels: q.unknownLevels === 'true',
-            outliers: q.outliers === 'true',
-            status: q.status,
-            scope: q.scope,
-            plotId: q.plotId,
-            viewerPlotIds: scope.plots.map((p) => p.id),
-            categoryKey: q.categoryKey,
-            traitId: q.traitId,
-            traitData: q.traitData,
-            treeFlags: q.treeFlag,
-          });
+          const count = await countSpecies(
+            ctx.db,
+            await visibilityOf(ctx, c),
+            filtersOf(
+              q,
+              scope.plots.map((p) => p.id),
+            ),
+          );
           return c.json({ data: { count } });
         },
       )
       // RFC-60 R11: a literal segment, so it is registered before `/:id`.
-      .get('/tree-flags', requirePermission(ctx, 'dataset.read'), async (c) =>
-        c.json({ data: await treeFlagCounts(ctx.db, await visibilityOf(ctx, c)) }),
+      .get(
+        '/tree-flags',
+        requirePermission(ctx, 'dataset.read'),
+        validate('query', treeFlagCountsQuerySchema),
+        async (c) => {
+          const scope = await userScopeOf(ctx.db, c);
+          const filters = filtersOf(
+            c.req.valid('query'),
+            scope.plots.map((p) => p.id),
+          );
+          return c.json({
+            data: await treeFlagCounts(ctx.db, await visibilityOf(ctx, c), filters),
+          });
+        },
       )
       .get(
         '/:id',

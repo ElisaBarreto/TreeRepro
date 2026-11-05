@@ -269,6 +269,9 @@ export const countSpeciesQuerySchema = listSpeciesQuerySchema.omit({
   order: true,
 });
 
+/** The count's filters without `treeFlag`: what each box would add. @rfc RFC-60 R11 */
+export const treeFlagCountsQuerySchema = countSpeciesQuerySchema.omit({ treeFlag: true });
+
 /** @rfc RFC-60 R12 */
 export const speciesCountSchema = z.strictObject({ count: z.number().int().nonnegative() });
 

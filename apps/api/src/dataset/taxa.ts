@@ -677,19 +677,24 @@ export async function countSpecies(
 }
 
 /**
- * The size of every tree basis: the species the viewer can see per flag, in
- * the flags' own order, 0 for a flag no visible species carries.
+ * The size of every tree basis among the species the search's filters keep
+ * (all of them but `treeFlag`), per flag in the flags' own order, 0 for a
+ * flag none of them carries; without a filter, every visible species.
  * @rfc RFC-60 R11
  * @rfc RFC-33 R2, R3
  */
 export async function treeFlagCounts(
   db: DbExecutor,
   visibility: Visibility,
+  filters: Omit<SpeciesListFilters, 'cursor' | 'sort' | 'order' | 'treeFlags'> = {},
 ): Promise<TreeFlagCount[]> {
+  const { conditions } = await speciesListConditions(db, visibility, filters);
   const rows = await db
     .select({ treeFlag: species.treeFlag, n: count() })
     .from(species)
-    .where(and(isNotNull(species.treeFlag), speciesVisible(visibility)))
+    .leftJoin(genera, eq(genera.id, species.genusId))
+    .leftJoin(families, eq(families.id, genera.familyId))
+    .where(and(isNotNull(species.treeFlag), ...conditions))
     .groupBy(species.treeFlag);
   const byFlag = new Map(rows.map((r) => [r.treeFlag, r.n]));
   return TREE_FLAGS.map((treeFlag) => ({ treeFlag, speciesCount: byFlag.get(treeFlag) ?? 0 }));

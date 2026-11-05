@@ -26,6 +26,7 @@ const dataset = vi.hoisted(() => ({
   fetchGenera: vi.fn(),
   fetchDictionary: vi.fn(),
   countSpecies: vi.fn(),
+  fetchTreeFlagCounts: vi.fn(),
 }));
 const catalog = vi.hoisted(() => ({ createSpecies: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
@@ -89,6 +90,8 @@ beforeEach(() => {
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
   dataset.countSpecies.mockReset();
   dataset.countSpecies.mockResolvedValue(0);
+  dataset.fetchTreeFlagCounts.mockReset();
+  dataset.fetchTreeFlagCounts.mockResolvedValue([]);
 });
 
 const SEED_MASS_ID = DICTIONARY[1]?.traits[0]?.id as string;
@@ -157,6 +160,13 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     expect(dataset.countSpecies).toHaveBeenLastCalledWith(
       expect.objectContaining({ contested: true }),
     );
+    // RFC-60 R11: the tree basis counts follow the same filters, never treeFlag.
+    await waitFor(() =>
+      expect(dataset.fetchTreeFlagCounts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ contested: true }),
+      ),
+    );
+    expect(dataset.fetchTreeFlagCounts.mock.lastCall?.[0]).not.toHaveProperty('treeFlag');
   });
 
   it('says so when nothing matches, and only once the page arrived', async () => {
