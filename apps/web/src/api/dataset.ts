@@ -27,6 +27,7 @@ import {
   type SpeciesSort,
   type SpeciesStatus,
   type SpeciesTraits,
+  speciesCountSchema,
   speciesListItemSchema,
   speciesSchema,
   speciesTraitsSchema,
@@ -60,6 +61,7 @@ export type Page<T> = ListEnvelope<T>;
 export const datasetKeys = {
   species: (params: Params) => ['species', params] as const,
   treeFlagCounts: ['species', 'tree-flags'] as const,
+  speciesCount: (params: Params) => ['species', 'count', params] as const,
   speciesDetail: (id: string) => ['species', id] as const,
   // `missingOnly` is part of the key: the two responses (every trait with
   // data, or only the ones without) must never share a cache entry, or
@@ -114,6 +116,14 @@ export function searchSpecies(params: {
   limit?: number;
 }) {
   return apiFetch(withQuery('/species', params), listEnvelopeSchema(speciesListItemSchema));
+}
+/** How many species the search's filters match (RFC-60 R12). @rfc RFC-60 R12 */
+export async function countSpecies(
+  params: Omit<Parameters<typeof searchSpecies>[0], 'cursor' | 'limit' | 'sort' | 'order'>,
+): Promise<number> {
+  return (
+    await apiFetch(withQuery('/species/count', params), dataEnvelopeSchema(speciesCountSchema))
+  ).data.count;
 }
 /** The species per tree basis (RFC-60 R11). @rfc RFC-60 R11 */
 export async function fetchTreeFlagCounts(): Promise<TreeFlagCount[]> {

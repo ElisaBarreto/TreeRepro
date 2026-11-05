@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  countSpeciesQuerySchema,
   DISPERSAL_PHASES,
   HARMONISATION_STATUSES,
   IMPORT_BATCH_KINDS,
@@ -26,6 +27,7 @@ import {
   referenceSchema,
   SPECIES_SORTS,
   SUMMARY_SOURCES,
+  speciesCountSchema,
   speciesListItemSchema,
   speciesNameSchema,
   speciesTraitsSchema,
@@ -102,6 +104,20 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
     expect(speciesListItemSchema.safeParse({ ...item, treeFlag: null }).success).toBe(true);
     expect(speciesListItemSchema.safeParse({ ...item, treeFlag: 'tree' }).success).toBe(false);
     expect(speciesListItemSchema.safeParse(item).success).toBe(false);
+  });
+});
+
+describe('RFC-60 R12 countSpeciesQuerySchema', () => {
+  it("takes the list's filters but not its paging or order", () => {
+    expect(countSpeciesQuerySchema.parse({ q: 'ad', treeFlag: 'wcvp_tree' })).toEqual({
+      q: 'ad',
+      treeFlag: ['wcvp_tree'],
+    });
+    for (const extra of [{ cursor: 'x' }, { limit: '10' }, { sort: 'family' }, { order: 'desc' }]) {
+      expect(countSpeciesQuerySchema.safeParse(extra).success).toBe(false);
+    }
+    expect(speciesCountSchema.safeParse({ count: 3 }).success).toBe(true);
+    expect(speciesCountSchema.safeParse({ count: -1 }).success).toBe(false);
   });
 });
 

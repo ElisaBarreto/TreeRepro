@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
   createProposalBodySchema,
@@ -9,7 +10,7 @@ import {
 } from '@treerepro/contracts';
 import { useEffect, useState } from 'react';
 import { EXPORT_DATASET_URL, EXPORT_PLATFORM_URL } from '../../api/curation.ts';
-import { datasetKeys, searchSpecies } from '../../api/dataset.ts';
+import { countSpecies, datasetKeys, searchSpecies } from '../../api/dataset.ts';
 import { ProposeSpeciesDialog } from '../../components/catalog/ProposeSpeciesDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
@@ -26,6 +27,7 @@ import {
   PageHeader,
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
+import { formatNumber } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
@@ -153,9 +155,10 @@ function searchKey(value: SpeciesSearchValue): string {
  * With `taxa.manage`, "New species" opens the species editor and a created
  * species opens its own page (RFC-60 R9). The form's status filter is
  * carried through to the search and the query key (RFC-33 R7).
- * Scope and plotId filter per RFC-33 R6 and RFC-67 R8.
+ * Scope and plotId filter per RFC-33 R6 and RFC-67 R8. Above the table, the
+ * number of species the filters match (RFC-60 R12).
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-60 R6, R9
+ * @rfc RFC-60 R6, R9, R12
  * @rfc RFC-66 R8
  * @rfc RFC-33 R6, R7, R8
  */
@@ -217,6 +220,12 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   const list = usePagedList(datasetKeys.species(params), (cursor, limit) =>
     searchSpecies({ ...params, cursor, limit }),
   );
+  // RFC-60 R12: the same filters, counted; order and paging do not change it.
+  const { sort: _sort, order: _order, ...filters } = params;
+  const total = useQuery({
+    queryKey: datasetKeys.speciesCount(filters),
+    queryFn: () => countSpecies(filters),
+  });
   // The term the empty list actually answers — what was sent to the API, not
   // what the box holds this keystroke. Below the API's two-letter minimum
   // nothing was searched by name, so there is no term to name or to propose.
@@ -280,6 +289,9 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
               ) : undefined
             }
           />
+        ) : null}
+        {total.data !== undefined && list.items.length > 0 ? (
+          <p className="text-body text-canopy-900">{formatNumber(total.data)} species</p>
         ) : null}
         {list.items.length > 0 ? (
           <SpeciesList

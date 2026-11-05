@@ -656,6 +656,27 @@ export async function getSpecies(
 }
 
 /**
+ * How many species {@link searchSpecies} pages through for these filters and
+ * this viewer: the same conditions, search tier included, without a cursor.
+ * @rfc RFC-60 R12
+ * @rfc RFC-33 R2, R3
+ */
+export async function countSpecies(
+  db: DbExecutor,
+  visibility: Visibility,
+  filters: Omit<SpeciesListFilters, 'cursor' | 'sort' | 'order'>,
+): Promise<number> {
+  const { conditions } = await speciesListConditions(db, visibility, filters);
+  const [row] = await db
+    .select({ n: count() })
+    .from(species)
+    .leftJoin(genera, eq(genera.id, species.genusId))
+    .leftJoin(families, eq(families.id, genera.familyId))
+    .where(and(...conditions));
+  return row?.n ?? 0;
+}
+
+/**
  * The size of every tree basis: the species the viewer can see per flag, in
  * the flags' own order, 0 for a flag no visible species carries.
  * @rfc RFC-60 R11

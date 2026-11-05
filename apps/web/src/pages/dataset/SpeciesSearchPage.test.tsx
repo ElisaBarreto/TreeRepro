@@ -25,6 +25,7 @@ const dataset = vi.hoisted(() => ({
   fetchFamilies: vi.fn(),
   fetchGenera: vi.fn(),
   fetchDictionary: vi.fn(),
+  countSpecies: vi.fn(),
 }));
 const catalog = vi.hoisted(() => ({ createSpecies: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
@@ -86,6 +87,8 @@ beforeEach(() => {
   dataset.fetchFamilies.mockResolvedValue([FAMILY]);
   dataset.fetchGenera.mockResolvedValue({ data: [GENUS], meta: { nextCursor: null } });
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
+  dataset.countSpecies.mockReset();
+  dataset.countSpecies.mockResolvedValue(0);
 });
 
 const SEED_MASS_ID = DICTIONARY[1]?.traits[0]?.id as string;
@@ -139,6 +142,21 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
       ),
     );
     expect(dataset.searchSpecies).toHaveBeenCalledTimes(2);
+  });
+
+  it('RFC-60 R12 shows how many species the filters match, following them', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA, ADANSONIA], 'next'));
+    dataset.countSpecies.mockResolvedValueOnce(1234).mockResolvedValue(1);
+    await openPage();
+    expect(await screen.findByText('1,234 species')).toBeInTheDocument();
+    expect(dataset.countSpecies).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ cursor: expect.anything(), limit: expect.anything() }),
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Contested only' }));
+    expect(await screen.findByText('1 species')).toBeInTheDocument();
+    expect(dataset.countSpecies).toHaveBeenLastCalledWith(
+      expect.objectContaining({ contested: true }),
+    );
   });
 
   it('says so when nothing matches, and only once the page arrived', async () => {

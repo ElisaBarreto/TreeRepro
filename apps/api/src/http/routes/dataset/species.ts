@@ -1,4 +1,5 @@
 import {
+  countSpeciesQuerySchema,
   createSpeciesBodySchema,
   idParamSchema,
   levelActionParamSchema,
@@ -15,7 +16,7 @@ import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/c
 import { validateLevel, withdrawLevel } from '../../../dataset/curation.ts';
 import { resolveSourceRef } from '../../../dataset/sources.ts';
 import { speciesTraitSummary } from '../../../dataset/summary.ts';
-import { getSpecies, searchSpecies, treeFlagCounts } from '../../../dataset/taxa.ts';
+import { countSpecies, getSpecies, searchSpecies, treeFlagCounts } from '../../../dataset/taxa.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
@@ -28,7 +29,7 @@ import { proposalRoutes } from './proposals.ts';
  * The species routes, with the proposals router (RFC-75 R2, R3) mounted on
  * the literal `/proposals` segment **before** every `/:id` handler below, so
  * Hono can never read "proposals" as a species id.
- * @rfc RFC-60 R6, R7, R9, R10, R11
+ * @rfc RFC-60 R6, R7, R9, R10, R11, R12
  * @rfc RFC-63 R10
  * @rfc RFC-65 R13, R14
  * @rfc RFC-75 R2, R3
@@ -86,6 +87,34 @@ export function speciesRoutes(ctx: AuthContext) {
           ),
       )
       .route('/proposals', proposalRoutes(ctx))
+      // RFC-60 R12: the list's filters, counted; a literal segment, before `/:id`.
+      .get(
+        '/count',
+        requirePermission(ctx, 'dataset.read'),
+        validate('query', countSpeciesQuerySchema),
+        async (c) => {
+          const q = c.req.valid('query');
+          const scope = await userScopeOf(ctx.db, c);
+          const count = await countSpecies(ctx.db, await visibilityOf(ctx, c), {
+            q: q.q,
+            familyId: q.familyId,
+            genusId: q.genusId,
+            unresolved: q.unresolved === 'true',
+            contested: q.contested === 'true',
+            unknownLevels: q.unknownLevels === 'true',
+            outliers: q.outliers === 'true',
+            status: q.status,
+            scope: q.scope,
+            plotId: q.plotId,
+            viewerPlotIds: scope.plots.map((p) => p.id),
+            categoryKey: q.categoryKey,
+            traitId: q.traitId,
+            traitData: q.traitData,
+            treeFlags: q.treeFlag,
+          });
+          return c.json({ data: { count } });
+        },
+      )
       // RFC-60 R11: a literal segment, so it is registered before `/:id`.
       .get('/tree-flags', requirePermission(ctx, 'dataset.read'), async (c) =>
         c.json({ data: await treeFlagCounts(ctx.db, await visibilityOf(ctx, c)) }),
