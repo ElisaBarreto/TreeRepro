@@ -48,6 +48,7 @@ import {
   roleSchema,
   sessionSummarySchema,
   signedInSchema,
+  speciesCountSchema,
   speciesListItemSchema,
   speciesSchema,
   speciesTraitsSchema,
@@ -312,6 +313,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/species': {
     summary: 'Search species with taxonomy, trait and scope filters',
     response: listEnvelopeSchema(speciesListItemSchema),
+  },
+  'GET /api/species/count': {
+    summary: 'Count the species the search filters match',
+    response: dataEnvelopeSchema(speciesCountSchema),
   },
   'GET /api/species/tree-flags': {
     summary: 'Count the visible species of every tree basis',

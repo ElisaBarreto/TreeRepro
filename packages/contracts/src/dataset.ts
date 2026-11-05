@@ -261,6 +261,17 @@ export const speciesListItemSchema = z.strictObject({
   treeFlag: z.enum(TREE_FLAGS).nullable(),
 });
 
+/** The species list's filters, without its paging or order. @rfc RFC-60 R12 */
+export const countSpeciesQuerySchema = listSpeciesQuerySchema.omit({
+  cursor: true,
+  limit: true,
+  sort: true,
+  order: true,
+});
+
+/** @rfc RFC-60 R12 */
+export const speciesCountSchema = z.strictObject({ count: z.number().int().nonnegative() });
+
 /** How many visible species carry a tree flag. @rfc RFC-60 R11 */
 export const treeFlagCountSchema = z.strictObject({
   treeFlag: z.enum(TREE_FLAGS),

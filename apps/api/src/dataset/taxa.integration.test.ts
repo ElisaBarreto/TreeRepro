@@ -24,6 +24,7 @@ import { families, species } from '../db/schema/taxa.ts';
 import { encodeCompositeCursor } from '../http/cursor.ts';
 import { speciesTraitSummary } from './summary.ts';
 import {
+  countSpecies,
   getSpecies,
   likePattern,
   listFamilies,
@@ -167,6 +168,31 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
     expect(await list([])).toHaveLength(4);
     const [first] = await list(['bgci_and_wcvp_tree']);
     expect(first?.[0]).toBe(`Arbus b-${k}`);
+  });
+
+  it('R12 countSpecies counts what searchSpecies pages through, tier and filters included', async () => {
+    const k = tag();
+    const genus = await createGenus(t.db, { name: `Computus-${k}` });
+    for (const [name, treeFlag] of [
+      ['alba', 'wcvp_tree'],
+      ['albina', 'wcvp_tree'],
+      ['nigra', 'growth_form_majority'],
+    ] as const) {
+      await createSpecies(t.db, {
+        canonicalName: `Computus ${name}-${k}`,
+        genusId: genus.id,
+        treeFlag,
+      });
+    }
+    const both = async (filters: Parameters<typeof countSpecies>[2]) => [
+      await countSpecies(t.db, UNRESTRICTED, filters),
+      (await searchSpecies(t.db, UNRESTRICTED, { ...filters, limit: 200 })).data.length,
+    ];
+    expect(await both({ genusId: genus.id })).toEqual([3, 3]);
+    expect(await both({ genusId: genus.id, treeFlags: ['wcvp_tree'] })).toEqual([2, 2]);
+    // Tier 1: an exact canonical match answers alone; tier 2 is the substring.
+    expect(await both({ q: `computus alba-${k}` })).toEqual([1, 1]);
+    expect(await both({ q: `alb`, genusId: genus.id })).toEqual([2, 2]);
   });
 
   it('R11 counts the visible species of every flag, in R1 order, 0 for none', async () => {
