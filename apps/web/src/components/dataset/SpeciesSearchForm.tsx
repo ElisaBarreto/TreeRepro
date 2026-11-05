@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   type SortOrder,
   type SpeciesSort,
@@ -76,9 +76,12 @@ export interface SpeciesSearchValue {
 export function SpeciesSearchForm({
   value,
   onChange,
+  treeFlagFilters = {},
 }: {
   value: SpeciesSearchValue;
   onChange: (next: SpeciesSearchValue) => void;
+  /** The search's filters as sent, but `treeFlag`: what the tree basis counts follow (RFC-60 R11). */
+  treeFlagFilters?: Parameters<typeof fetchTreeFlagCounts>[0];
 }) {
   const me = useMe();
   const ids = {
@@ -311,6 +314,7 @@ export function SpeciesSearchForm({
           </label>
         ) : null}
         <TreeBasisFilter
+          filters={treeFlagFilters}
           value={value.treeFlags ?? []}
           onChange={(flags) =>
             onChange({ ...value, treeFlags: flags.length > 0 ? flags : undefined })
@@ -352,20 +356,28 @@ export function SpeciesSearchForm({
 /**
  * The tree basis filter (RFC-60 R6): a closed control dressed like the
  * Family select that opens onto one checkbox per flag, in the dictionary's
- * order, each with the number of species it holds (RFC-60 R11). None
+ * order, each with the number of species it holds among those the search's
+ * other filters keep (RFC-60 R11). None
  * checked — the default — keeps every species; checked ones keep the species
  * whose flag is any of them. Up and down arrows move between the boxes,
  * wrapping; a click outside the list or Escape closes it, as a select does.
  * @rfc RFC-60 R6, R11
  */
 function TreeBasisFilter({
+  filters,
   value,
   onChange,
 }: {
+  filters: Parameters<typeof fetchTreeFlagCounts>[0];
   value: TreeFlag[];
   onChange: (next: TreeFlag[]) => void;
 }) {
-  const counts = useQuery({ queryKey: datasetKeys.treeFlagCounts, queryFn: fetchTreeFlagCounts });
+  const counts = useQuery({
+    queryKey: datasetKeys.treeFlagCounts(filters ?? {}),
+    queryFn: () => fetchTreeFlagCounts(filters),
+    // The previous numbers stay on screen while the next filters' load.
+    placeholderData: keepPreviousData,
+  });
   const countOf = new Map(counts.data?.map((c) => [c.treeFlag, c.speciesCount]));
   const details = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);

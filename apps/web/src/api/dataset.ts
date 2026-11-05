@@ -60,7 +60,7 @@ export type Page<T> = ListEnvelope<T>;
 /** Query keys of the dataset pages; every fetcher below owns one. @rfc RFC-60 R6 */
 export const datasetKeys = {
   species: (params: Params) => ['species', params] as const,
-  treeFlagCounts: ['species', 'tree-flags'] as const,
+  treeFlagCounts: (params: Params) => ['species', 'tree-flags', params] as const,
   speciesCount: (params: Params) => ['species', 'count', params] as const,
   speciesDetail: (id: string) => ['species', id] as const,
   // `missingOnly` is part of the key: the two responses (every trait with
@@ -126,9 +126,15 @@ export async function countSpecies(
   ).data.count;
 }
 /** The species per tree basis (RFC-60 R11). @rfc RFC-60 R11 */
-export async function fetchTreeFlagCounts(): Promise<TreeFlagCount[]> {
-  return (await apiFetch('/species/tree-flags', dataEnvelopeSchema(z.array(treeFlagCountSchema))))
-    .data;
+export async function fetchTreeFlagCounts(
+  params: Omit<Parameters<typeof countSpecies>[0], 'treeFlag'> = {},
+): Promise<TreeFlagCount[]> {
+  return (
+    await apiFetch(
+      withQuery('/species/tree-flags', params),
+      dataEnvelopeSchema(z.array(treeFlagCountSchema)),
+    )
+  ).data;
 }
 /** @rfc RFC-60 R7 */
 export async function fetchSpecies(id: string): Promise<Species> {

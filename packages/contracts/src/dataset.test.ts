@@ -39,6 +39,7 @@ import {
   traitSchema,
   traitSpeciesItemSchema,
   treeFlagCountSchema,
+  treeFlagCountsQuerySchema,
 } from './dataset.ts';
 
 const uuid = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
@@ -118,6 +119,18 @@ describe('RFC-60 R12 countSpeciesQuerySchema', () => {
     }
     expect(speciesCountSchema.safeParse({ count: 3 }).success).toBe(true);
     expect(speciesCountSchema.safeParse({ count: -1 }).success).toBe(false);
+  });
+});
+
+describe('RFC-60 R11 treeFlagCountsQuerySchema', () => {
+  it("takes the count's filters but not treeFlag", () => {
+    expect(treeFlagCountsQuerySchema.parse({ genusId: uuid, contested: 'true' })).toEqual({
+      genusId: uuid,
+      contested: 'true',
+    });
+    for (const extra of [{ treeFlag: 'wcvp_tree' }, { cursor: 'x' }, { sort: 'family' }]) {
+      expect(treeFlagCountsQuerySchema.safeParse(extra).success).toBe(false);
+    }
   });
 });
 

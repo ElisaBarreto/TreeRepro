@@ -170,6 +170,38 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
     expect(first?.[0]).toBe(`Arbus b-${k}`);
   });
 
+  it('R11 the counts follow the search filters, never treeFlag', async () => {
+    const k = tag();
+    const genus = await createGenus(t.db, { name: `Facetus-${k}` });
+    for (const [name, treeFlag] of [
+      ['a', 'wcvp_tree'],
+      ['b', 'wcvp_tree'],
+      ['c', 'growth_form_majority'],
+      ['d', null],
+    ] as const) {
+      await createSpecies(t.db, {
+        canonicalName: `Facetus ${name}-${k}`,
+        genusId: genus.id,
+        treeFlag,
+      });
+    }
+    const counts = Object.fromEntries(
+      (await treeFlagCounts(t.db, UNRESTRICTED, { genusId: genus.id })).map((c) => [
+        c.treeFlag,
+        c.speciesCount,
+      ]),
+    );
+    expect(counts).toEqual({
+      ...Object.fromEntries(TREE_FLAGS.map((f) => [f, 0])),
+      wcvp_tree: 2,
+      growth_form_majority: 1,
+    });
+    const tier1 = await treeFlagCounts(t.db, UNRESTRICTED, { q: `facetus c-${k}` });
+    expect(tier1.filter((c) => c.speciesCount > 0)).toEqual([
+      { treeFlag: 'growth_form_majority', speciesCount: 1 },
+    ]);
+  });
+
   it('R12 countSpecies counts what searchSpecies pages through, tier and filters included', async () => {
     const k = tag();
     const genus = await createGenus(t.db, { name: `Computus-${k}` });
