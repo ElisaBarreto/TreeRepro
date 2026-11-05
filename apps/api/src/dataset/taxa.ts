@@ -66,6 +66,12 @@ export function likePattern(term: string, mode: 'substring' | 'prefix' | 'exact'
   return `%${escaped}%`;
 }
 
+// RFC-60 R6 tier 2: `search_key(q)` as a substring pattern. The key holds
+// letters and digits only, so it needs no LIKE escaping; it is folded to a
+// constant at plan time (the function is immutable), so the trigram indexes on
+// `search_key(...)` serve it.
+const keyPattern = (q: string): SQL => sql`'%' || search_key(${q}) || '%'`;
+
 /** Ordering by a text column and id needs both values in the cursor. */
 function afterNameCursor(cursor: string, nameCol: AnyPgColumn, idCol: AnyPgColumn): SQL {
   const [name, id] = decodeCompositeCursor(cursor, 2, [() => true, isUuid]) as [string, string];
@@ -476,9 +482,9 @@ export async function speciesListConditions(
           // can't turn an OR across two tables into an index-only lookup); a semi-join over
           // the UNION of both trigram lookups lets it bitmap-scan each gin index instead.
           sql`${species.id} in (
-        select s.id from ${species} s where s.canonical_name ilike ${likePattern(filters.q, 'substring')}
+        select s.id from ${species} s where search_key(s.canonical_name) like ${keyPattern(filters.q)}
         union
-        select sn.species_id from ${speciesNames} sn where sn.name ilike ${likePattern(filters.q, 'substring')})`,
+        select sn.species_id from ${speciesNames} sn where search_key(sn.name) like ${keyPattern(filters.q)})`,
     );
   }
   if (cursorInfo) conditions.push(cursorInfo.predicate);
@@ -503,7 +509,7 @@ export async function searchSpecies(
   // round. They change together. Tier 1's `q` matched the canonical name
   // exactly, so `matchedName`/`matchedNameType` are always null there (RFC-60
   // R6) — no pattern is even built.
-  const pattern = input.q && tier === 2 ? likePattern(input.q, 'substring') : undefined;
+  const pattern = input.q && tier === 2 ? keyPattern(input.q) : undefined;
   // The same choice the cursor predicate made in `speciesListConditions`.
   const sort = input.sort ?? 'name';
   const keyed = keyedSort(input);
@@ -515,12 +521,12 @@ export async function searchSpecies(
       >`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${input.traitId}::uuid), 0)`
     : sql<number | null>`null::int`;
   const matchedName = pattern
-    ? sql<string | null>`case when ${species.canonicalName} ilike ${pattern} then null
-        else (select sn.name from ${speciesNames} sn where sn.species_id = ${species.id} and sn.name ilike ${pattern} order by sn.name limit 1) end`
+    ? sql<string | null>`case when search_key(${species.canonicalName}) like ${pattern} then null
+        else (select sn.name from ${speciesNames} sn where sn.species_id = ${species.id} and search_key(sn.name) like ${pattern} order by sn.name limit 1) end`
     : sql<string | null>`null`;
   const matchedNameType = pattern
-    ? sql<NameType | null>`case when ${species.canonicalName} ilike ${pattern} then null
-        else (select sn.name_type from ${speciesNames} sn where sn.species_id = ${species.id} and sn.name ilike ${pattern} order by sn.name limit 1) end`
+    ? sql<NameType | null>`case when search_key(${species.canonicalName}) like ${pattern} then null
+        else (select sn.name_type from ${speciesNames} sn where sn.species_id = ${species.id} and search_key(sn.name) like ${pattern} order by sn.name limit 1) end`
     : sql<NameType | null>`null`;
   const rows = await db
     .select({

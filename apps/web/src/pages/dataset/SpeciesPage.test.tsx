@@ -221,6 +221,27 @@ describe('RFC-60 R4, R7 SpeciesPage name groups', () => {
     expect(screen.getByText('pt')).toBeInTheDocument();
   });
 
+  it('shows the first 10 common names, a name without a language with no chip, and a toggle for the rest', async () => {
+    const many = {
+      ...SPECIES_WITH_NAME_GROUPS,
+      names: Array.from({ length: 15 }, (_, i) => ({
+        name: `Common ${String(i).padStart(2, '0')}`,
+        nameType: 'common' as const,
+        language: null,
+        source: 'MMPND',
+        gbifUsageKey: null,
+      })),
+    };
+    dataset.fetchSpecies.mockResolvedValue(many);
+    await openPage(many);
+    expect(screen.getByText('Common 09')).toBeInTheDocument();
+    expect(screen.queryByText('Common 10')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show all 15' }));
+    expect(screen.getByText('Common 14')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show fewer' }));
+    expect(screen.queryByText('Common 14')).not.toBeInTheDocument();
+  });
+
   it('hides a name group with no names of that type', async () => {
     dataset.fetchSpecies.mockResolvedValue(SPECIES_WITH_SYNONYM_ONLY);
     await openPage(SPECIES_WITH_SYNONYM_ONLY);

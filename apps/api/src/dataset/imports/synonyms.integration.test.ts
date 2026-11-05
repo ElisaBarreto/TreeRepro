@@ -31,12 +31,14 @@ describe('RFC-68 R12 import:synonyms', () => {
       const other = await createSpecies(t.db);
       const synonymName = `Synonymus testus-${Math.random().toString(36).slice(2)}`;
       const commonName = `common-name-pt-${Math.random().toString(36).slice(2)}`;
+      const anyLanguage = `common-name-any-${Math.random().toString(36).slice(2)}`;
       const unknownName = `No such species-${Math.random().toString(36).slice(2)}`;
 
       const file = await csv([
         'wcvp_canonical_name,synonym_or_common_name,name_type,source',
         `${sp.canonicalName},${synonymName},synonym,WCVP`,
         `${sp.canonicalName},${commonName},common_pt,`,
+        `${sp.canonicalName},${anyLanguage},common,MMPND`,
         `${sp.canonicalName},Some other name,common_xx1,WCVP`,
         `${unknownName},Whatever,synonym,WCVP`,
         `${sp.canonicalName},${sp.canonicalName},synonym,WCVP`,
@@ -47,13 +49,13 @@ describe('RFC-68 R12 import:synonyms', () => {
       expect(batch.kind).toBe('synonyms');
       expect(batch.status).toBe('completed');
       // rule: rows_total = inserted + duplicate + rejected (RFC-68 R4) —
-      // 6 rows: 2 inserted, 2 duplicate (canonical-name row + repeated synonym), 2 rejected
+      // 7 rows: 3 inserted, 2 duplicate (canonical-name row + repeated synonym), 2 rejected
       expect([
         batch.rowsTotal,
         batch.rowsInserted,
         batch.rowsDuplicate,
         batch.rowsRejected,
-      ]).toEqual([6, 2, 2, 2]);
+      ]).toEqual([7, 3, 2, 2]);
 
       // rule: a synonym row is inserted with the file's source
       const [synonymRow] = await t.db
@@ -68,6 +70,13 @@ describe('RFC-68 R12 import:synonyms', () => {
         .from(speciesNames)
         .where(and(eq(speciesNames.speciesId, sp.id), eq(speciesNames.name, commonName)));
       expect(commonRow).toMatchObject({ nameType: 'common', language: 'pt', source: 'import' });
+
+      // rule: a bare `common` inserts a common name with no language
+      const [anyRow] = await t.db
+        .select()
+        .from(speciesNames)
+        .where(and(eq(speciesNames.speciesId, sp.id), eq(speciesNames.name, anyLanguage)));
+      expect(anyRow).toMatchObject({ nameType: 'common', language: null, source: 'MMPND' });
 
       // rule: name_type outside `synonym` / `common_<lang>` is invalid_value, and
       // an unknown species is unknown_species
@@ -90,7 +99,7 @@ describe('RFC-68 R12 import:synonyms', () => {
 
       const [entry] = await t.db.select().from(auditLog).where(eq(auditLog.targetId, batch.id));
       expect(entry?.action).toBe('imports.completed');
-      expect(entry?.metadata).toMatchObject({ kind: 'synonyms', rowsInserted: 2 });
+      expect(entry?.metadata).toMatchObject({ kind: 'synonyms', rowsInserted: 3 });
       expect(entry?.actorUserId).toBe(user.id);
 
       // unrelated species untouched, hygiene: only asserting on our own rows

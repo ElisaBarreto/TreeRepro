@@ -419,6 +419,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-05 — `GET /api/species?q=`: when no canonical name equals `q`, the substring match ignores case, accents, spaces, hyphens and other punctuation (`pau brasil` finds *Pau-brasil*, `ipe` finds *Ipê*), and so does `matchedName`. A common name in `names` may have `language: null` (RFC-60 R1, R6; issue #382). (openapi 7768bb91340d)
 - 2026-11-05 — `GET /api/species/tree-flags` takes the search's filters (those of `GET /api/species/count`, `treeFlag` excepted, which it refuses) and counts each flag among the species they keep; without a filter it answers as before (RFC-60 R11; issue #380). (openapi 7768bb91340d)
 - 2026-11-05 — New `GET /api/species/count` (`dataset.read`): the filters of `GET /api/species`, without its paging or order, answering `{ data: { count } }` (RFC-60 R12; issue #378). (openapi d59ab1f28739)
 - 2026-11-05 — New `GET /api/species/tree-flags` (`dataset.read`): `{ data: [{ treeFlag, speciesCount }] }`, the number of species visible to you per tree flag, every flag listed in a fixed order (RFC-60 R11; issue #376). (openapi f38ca35914eb)

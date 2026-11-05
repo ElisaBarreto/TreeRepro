@@ -21,22 +21,18 @@ describe('RFC-60 R1 species_names name_type, language and free-text source', () 
     });
   });
 
-  it('species_names_language_check: a common name needs a language', async () => {
+  it('species_names_language_check: a common name may have no language (an imported one, RFC-68 R12)', async () => {
     await withRollback(t.db, async (tx) => {
       const sp = await createSpecies(tx);
-      await expect(
-        unwrapDbError(
-          tx.transaction((sub) =>
-            sub
-              .insert(speciesNames)
-              .values({ speciesId: sp.id, name: `Coralwood-${tag()}`, nameType: 'common' }),
-          ),
-        ),
-      ).rejects.toMatchObject({ code: '23514' });
+      const [row] = await tx
+        .insert(speciesNames)
+        .values({ speciesId: sp.id, name: `Coralwood-${tag()}`, nameType: 'common' })
+        .returning();
+      expect(row).toMatchObject({ nameType: 'common', language: null });
     });
   });
 
-  it('species_names_language_check is an equivalence: a non-common name takes no language', async () => {
+  it('species_names_language_check: a non-common name takes no language', async () => {
     await withRollback(t.db, async (tx) => {
       const sp = await createSpecies(tx);
       await expect(

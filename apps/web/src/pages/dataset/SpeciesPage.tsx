@@ -27,6 +27,7 @@ import {
   PageHeader,
 } from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
+import { formatNumber } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
 function errorMessage(error: unknown): string {
@@ -63,6 +64,10 @@ function Legend() {
   );
 }
 
+// A species can carry over a thousand common names: the header lists the
+// first ones and a toggle for the rest.
+const COMMON_NAMES_SHOWN = 10;
+
 function SpeciesHeader({
   species,
   missing,
@@ -79,6 +84,8 @@ function SpeciesHeader({
   const gbifNames = species.names.filter((n) => n.nameType === 'gbif');
   const synonyms = species.names.filter((n) => n.nameType === 'synonym');
   const commonNames = species.names.filter((n) => n.nameType === 'common');
+  const [allCommon, setAllCommon] = useState(false);
+  const shownCommon = allCommon ? commonNames : commonNames.slice(0, COMMON_NAMES_SHOWN);
   return (
     <PageHeader
       title={
@@ -111,12 +118,21 @@ function SpeciesHeader({
           {commonNames.length > 0 ? (
             <span className="flex flex-wrap items-center gap-2">
               Common names
-              {commonNames.map((n) => (
+              {shownCommon.map((n) => (
                 <span key={n.name} className="inline-flex items-center gap-1.5">
                   <em>{n.name}</em>
                   {n.language ? <Chip>{n.language}</Chip> : null}
                 </span>
               ))}
+              {commonNames.length > COMMON_NAMES_SHOWN ? (
+                <button
+                  type="button"
+                  className="min-h-11 text-canopy-700 underline"
+                  onClick={() => setAllCommon(!allCommon)}
+                >
+                  {allCommon ? 'Show fewer' : `Show all ${formatNumber(commonNames.length)}`}
+                </button>
+              ) : null}
             </span>
           ) : null}
           <span className="block">
@@ -145,8 +161,9 @@ function SpeciesHeader({
 
 /**
  * One species: its taxonomy and names, grouped by type as "Also known as"
- * (gbif), "Synonyms" and "Common names" (the last with a language chip per
- * name; an empty group renders nothing) (RFC-60 R4, R7), and, per category in
+ * (gbif), "Synonyms" and "Common names" (the last with a language chip on a
+ * name that has one, the first 10 names and a Show all toggle; an empty group
+ * renders nothing) (RFC-60 R4, R7), and, per category in
  * dictionary order, a card per trait with the summary the API computed
  * (RFC-63 R10). A legend at the top names the three decisions (RFC-70 R9).
  * With `records.annotate`, each level of a categorical card and each row of a
