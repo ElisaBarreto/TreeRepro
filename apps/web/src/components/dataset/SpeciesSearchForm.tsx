@@ -3,6 +3,7 @@ import {
   type SortOrder,
   type SpeciesSort,
   type SpeciesStatus,
+  TREE_FLAG_LABELS,
   TREE_FLAGS,
   type TraitDataMode,
   type TreeFlag,
@@ -14,7 +15,6 @@ import { humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { Field, Select } from '../ui/index.ts';
 import { FILTER_CHECK, FILTER_LEGEND, FilterGroup } from './FilterGroup.tsx';
-import { TREE_FLAG_LABELS } from './SpeciesList.tsx';
 import { TaxonomyFilters } from './TaxonomyFilters.tsx';
 
 export interface SpeciesSearchValue {
@@ -338,7 +338,9 @@ export function SpeciesSearchForm({
             {/* A table header chose another column: named, so the select
                 does not claim the list is in name order. */}
             {value.sort && value.sort !== 'name' && value.sort !== 'completeness' ? (
-              <option value={value.sort}>The {value.sort} column</option>
+              <option value={value.sort}>
+                The {value.sort === 'treeBasis' ? 'tree basis' : value.sort} column
+              </option>
             ) : null}
           </Select>
         </Field>
@@ -380,12 +382,15 @@ function TreeBasisFilter({
             ? 'All tree bases'
             : `${value.length} tree ${value.length === 1 ? 'basis' : 'bases'}`}
         </summary>
-        <div className="absolute z-10 mt-1 flex w-max flex-col rounded-[10px] border border-canopy-700/15 bg-white px-3.5 py-1 shadow-sm">
+        <div className="absolute right-0 z-10 mt-1 flex w-max max-w-[calc(100vw-2rem)] flex-col rounded-[10px] border border-canopy-700/15 bg-white px-3.5 py-1 shadow-sm">
           {TREE_FLAGS.map((flag) => (
-            <label key={flag} className={FILTER_CHECK}>
+            <label
+              key={flag}
+              className="flex min-h-11 items-center gap-2.5 py-1 text-body text-canopy-900"
+            >
               <input
                 type="checkbox"
-                className="size-5 accent-canopy-700"
+                className="size-5 shrink-0 accent-canopy-700"
                 checked={value.includes(flag)}
                 onChange={(event) =>
                   onChange(

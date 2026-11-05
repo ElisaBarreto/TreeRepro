@@ -6,10 +6,11 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { render, screen, within } from '@testing-library/react';
-import { type SpeciesListItem, TREE_FLAGS } from '@treerepro/contracts';
+import userEvent from '@testing-library/user-event';
+import type { SpeciesListItem } from '@treerepro/contracts';
 import type { ReactElement } from 'react';
-import { describe, expect, it } from 'vitest';
-import { SpeciesList, TREE_FLAG_LABELS } from './SpeciesList.tsx';
+import { describe, expect, it, vi } from 'vitest';
+import { SpeciesList } from './SpeciesList.tsx';
 
 // The canonical name is a router `Link`, so the list mounts inside a
 // minimal router whose only page is the list itself.
@@ -173,7 +174,12 @@ describe('RFC-60 R1, R6 SpeciesList tree basis (issue #372)', () => {
     ).toHaveTextContent('—');
   });
 
-  it('has a meaning for every flag', () => {
-    for (const flag of TREE_FLAGS) expect(TREE_FLAG_LABELS[flag]).toMatch(/\w/);
+  it('sorts by its header like the other columns', async () => {
+    const onSort = vi.fn();
+    renderInRouter(
+      <SpeciesList items={[ADENANTHERA]} sort={{ by: 'name', order: 'asc', onSort }} />,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: /Tree basis/ }));
+    expect(onSort).toHaveBeenCalledWith('treeBasis');
   });
 });

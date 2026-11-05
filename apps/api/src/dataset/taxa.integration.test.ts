@@ -161,6 +161,44 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
     const [first] = await list(['bgci_and_wcvp_tree']);
     expect(first?.[0]).toBe(`Arbus b-${k}`);
   });
+
+  it('sort=treeBasis orders by the meaning of the flag, a species with none first ascending, and pages it', async () => {
+    const k = tag();
+    const genus = await createGenus(t.db, { name: `Ordo-${k}` });
+    // Meanings: "WCVP “tree”…", "Fallback, most…", "Fallback, every…", "BGCI + WCVP says “tree”".
+    const flags: (TreeFlag | null)[] = [
+      'wcvp_tree',
+      'growth_form_majority',
+      'growth_form_unanimous',
+      'bgci_and_wcvp_tree',
+      null,
+    ];
+    for (const [i, treeFlag] of flags.entries()) {
+      await createSpecies(t.db, { canonicalName: `Ordo s${i}-${k}`, genusId: genus.id, treeFlag });
+    }
+    const page = (order: 'asc' | 'desc', cursor?: string) =>
+      searchSpecies(t.db, UNRESTRICTED, {
+        genusId: genus.id,
+        sort: 'treeBasis',
+        order,
+        cursor,
+        limit: 3,
+      });
+    const first = await page('asc');
+    const second = await page('asc', first.nextCursor as string);
+    expect([...first.data, ...second.data].map((s) => s.treeFlag)).toEqual([
+      null,
+      'bgci_and_wcvp_tree',
+      'growth_form_unanimous',
+      'growth_form_majority',
+      'wcvp_tree',
+    ]);
+    expect((await page('desc')).data.map((s) => s.treeFlag)).toEqual([
+      'wcvp_tree',
+      'growth_form_majority',
+      'growth_form_unanimous',
+    ]);
+  });
 });
 
 describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)', () => {

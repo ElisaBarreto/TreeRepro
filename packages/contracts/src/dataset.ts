@@ -72,6 +72,22 @@ export const TREE_FLAGS = [
 /** @rfc RFC-60 R1 */
 export type TreeFlag = (typeof TREE_FLAGS)[number];
 
+/**
+ * What each tree flag means, as the owner states it: shown in the species
+ * list and its filter, and what `sort=treeBasis` orders by.
+ * @rfc RFC-60 R1, R6
+ */
+export const TREE_FLAG_LABELS: Record<TreeFlag, string> = {
+  bgci_and_wcvp_tree: 'BGCI + WCVP says “tree”',
+  bgci_and_wcvp_mixed_form: 'BGCI + WCVP says e.g. “shrub or tree”',
+  bgci_wcvp_not_tree: 'BGCI says tree, WCVP says e.g. “shrub”',
+  bgci_no_wcvp_lifeform: 'BGCI says tree, WCVP has no lifeform',
+  wcvp_tree: 'WCVP “tree”, not in BGCI',
+  wcvp_mixed_form: 'WCVP mixed form, not in BGCI',
+  growth_form_unanimous: 'Fallback, every source says tree',
+  growth_form_majority: 'Fallback, most sources say tree',
+};
+
 /** The flags a continuous species summary names (RFC-77 R5). @rfc RFC-77 R5 */
 export const SUMMARY_OUTLIER_FLAGS = ['unit_factor', 'trait_extreme', 'bounds_inverted'] as const;
 /** @rfc RFC-77 R5 */
@@ -178,6 +194,7 @@ export const SPECIES_SORTS = [
   'genus',
   'traits',
   'records',
+  'treeBasis',
 ] as const;
 export type SpeciesSort = (typeof SPECIES_SORTS)[number];
 

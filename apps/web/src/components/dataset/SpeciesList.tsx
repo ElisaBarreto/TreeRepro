@@ -1,10 +1,10 @@
 import { Link } from '@tanstack/react-router';
-import type {
-  NameType,
-  SortOrder,
-  SpeciesListItem,
-  SpeciesSort,
-  TreeFlag,
+import {
+  type NameType,
+  type SortOrder,
+  type SpeciesListItem,
+  type SpeciesSort,
+  TREE_FLAG_LABELS,
 } from '@treerepro/contracts';
 import { formatNumber } from '../../lib/format.ts';
 import { Badge, Chip, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
@@ -23,22 +23,6 @@ const MATCH_TYPE_LABELS: Record<NameType, string> = {
 };
 
 /**
- * What each tree basis means, as the owner states it (issue #372): the
- * Tree basis column and the species search's filter both show it.
- * @rfc RFC-60 R1, R6
- */
-export const TREE_FLAG_LABELS: Record<TreeFlag, string> = {
-  bgci_and_wcvp_tree: 'BGCI + WCVP says “tree”',
-  bgci_and_wcvp_mixed_form: 'BGCI + WCVP says e.g. “shrub or tree”',
-  bgci_wcvp_not_tree: 'BGCI says tree, WCVP says e.g. “shrub”',
-  bgci_no_wcvp_lifeform: 'BGCI says tree, WCVP has no lifeform',
-  wcvp_tree: 'WCVP “tree”, not in BGCI',
-  wcvp_mixed_form: 'WCVP mixed form, not in BGCI',
-  growth_form_unanimous: 'Fallback, every source says tree',
-  growth_form_majority: 'Fallback, most sources say tree',
-};
-
-/**
  * Rows of a species search. The canonical name opens the species page; a
  * species the API flags as `unresolvedTaxon` is marked unresolved (RFC-60 R6)
  * — `null` for a viewer without `records.review`, so the API decides who sees
@@ -53,7 +37,7 @@ export const TREE_FLAG_LABELS: Record<TreeFlag, string> = {
  * trait, so it only makes sense while a trait filter is set —
  * `showTraitRecords` adds the column, and a row whose `traitRecordCount` is
  * null (no trait filter reached the API) reads as a dash. **Tree basis**,
- * last, is what the species' tree flag means ({@link TREE_FLAG_LABELS}).
+ * last, is what the species' tree flag means (RFC-60 R1), and sorts by it.
  * @rfc RFC-13 R2
  * @rfc RFC-60 R1, R4, R6
  * @rfc RFC-33 R7
@@ -87,7 +71,7 @@ export function SpeciesList({
           {head('traits', 'Traits')}
           {showTraitRecords ? head('records', 'Records') : null}
           <Th>Match</Th>
-          <Th>Tree basis</Th>
+          {head('treeBasis', 'Tree basis')}
         </Tr>
       </Thead>
       <Tbody>
