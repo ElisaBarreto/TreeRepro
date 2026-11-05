@@ -85,8 +85,8 @@ describe('RFC-60 R6 searchSpecies', () => {
     expect(
       (second.data[0]?.canonicalName as string) > (first.data[1]?.canonicalName as string),
     ).toBe(true);
-    const literal = await searchSpecies(t.db, UNRESTRICTED, { q: `%-${k}`, limit: 10 });
-    expect(literal.data).toEqual([]); // '%' is literal, nothing contains it
+    const punctuation = await searchSpecies(t.db, UNRESTRICTED, { q: `%-${k}`, limit: 10 });
+    expect(punctuation.data).toHaveLength(3); // '%' is punctuation: ignored, never a wildcard
     expect(likePattern('a%b_c', 'substring')).toBe('%a\\%b\\_c%');
     expect(likePattern('Ab', 'prefix')).toBe('Ab%');
   });
@@ -454,6 +454,30 @@ describe('RFC-60 R6 search tiers', () => {
     expect(q3.data.map((s) => [s.id, s.matchedName, s.matchedNameType])).toEqual([
       [bySyn.id, `${stem} robur old`, 'synonym'],
     ]);
+  });
+
+  it('tier 2 ignores case, accents, spaces, hyphens and punctuation, on canonical and alternative names', async () => {
+    const stem = tag();
+    const pau = await createSpecies(t.db, {
+      canonicalName: `Paubrasilia ${stem}`,
+      names: [{ name: `Pau-brasil ${stem}`, nameType: 'common' }], // an imported name may have no language
+    });
+    const ipe = await createSpecies(t.db, {
+      canonicalName: `Handroanthus ${stem}`,
+      names: [{ name: `Ipê-amarelo ${stem}`, nameType: 'common', language: 'pt' }],
+    });
+    const hybrid = await createSpecies(t.db, { canonicalName: `Citrus × ${stem}` });
+    const found = async (q: string) =>
+      (await searchSpecies(t.db, UNRESTRICTED, { q, limit: 10 })).data.map((s) => [
+        s.id,
+        s.matchedName,
+        s.matchedNameType,
+      ]);
+    expect(await found(`pau brasil ${stem}`)).toEqual([[pau.id, `Pau-brasil ${stem}`, 'common']]);
+    expect(await found(`paubrasil${stem}`)).toEqual([[pau.id, `Pau-brasil ${stem}`, 'common']]);
+    expect(await found(`IPE AMARELO ${stem}`)).toEqual([[ipe.id, `Ipê-amarelo ${stem}`, 'common']]);
+    expect(await found(`amarelo ${stem}`)).toEqual([[ipe.id, `Ipê-amarelo ${stem}`, 'common']]);
+    expect(await found(`citrus ${stem}`)).toEqual([[hybrid.id, null, null]]);
   });
 
   it('the cursor stays within the tier', async () => {

@@ -68,6 +68,10 @@ export const species = pgTable(
   (t) => [
     uniqueIndex('species_canonical_name_idx').on(t.canonicalName),
     index('species_canonical_name_trgm_idx').using('gin', sql`${t.canonicalName} gin_trgm_ops`),
+    index('species_search_key_trgm_idx').using(
+      'gin',
+      sql`search_key(${t.canonicalName}) gin_trgm_ops`,
+    ),
     index('species_genus_idx').on(t.genusId),
     index('species_trait_count_idx').on(t.traitCount, t.canonicalName, t.id),
     check('species_name_source_check', sql`${t.nameSource} in ('wcvp', 'gbif', 'original')`),
@@ -87,8 +91,9 @@ export const species = pgTable(
  * defaults an omitted `source` to `'manual'` (RFC-60 R9) — the two differ on
  * purpose.
  *
- * `language` is an equivalence, not an implication: a common name carries one
- * and no other type may.
+ * Only a common name carries a `language`, and an imported one may have none
+ * (RFC-68 R12). `search_key` (migration 0056) is the accent-, case- and
+ * punctuation-free key the species search compares (RFC-60 R6).
  * @rfc RFC-60 R1, R4
  */
 export const speciesNames = pgTable(
@@ -108,11 +113,12 @@ export const speciesNames = pgTable(
   (t) => [
     uniqueIndex('species_names_species_name_idx').on(t.speciesId, t.name),
     index('species_names_name_trgm_idx').using('gin', sql`${t.name} gin_trgm_ops`),
-    check('species_names_type_check', sql`${t.nameType} in ('gbif', 'synonym', 'common')`),
-    check(
-      'species_names_language_check',
-      sql`(${t.nameType} = 'common') = (${t.language} is not null)`,
+    index('species_names_search_key_trgm_idx').using(
+      'gin',
+      sql`search_key(${t.name}) gin_trgm_ops`,
     ),
+    check('species_names_type_check', sql`${t.nameType} in ('gbif', 'synonym', 'common')`),
+    check('species_names_language_check', sql`${t.language} is null or ${t.nameType} = 'common'`),
     check('species_names_gbif_key_check', sql`${t.gbifUsageKey} is null or ${t.nameType} = 'gbif'`),
   ],
 );

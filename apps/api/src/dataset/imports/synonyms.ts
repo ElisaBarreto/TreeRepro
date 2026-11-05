@@ -13,8 +13,9 @@ export const SYNONYMS_HEADER = [
 /**
  * Kind `synonyms`: alternative names for existing species — synonyms and
  * common names — matched by their canonical name (RFC-60 R2, exact after
- * whitespace normalisation, case preserved). `name_type` is `synonym` or
- * `common_<lang>` (two lowercase letters); anything else is `invalid_value`.
+ * whitespace normalisation, case preserved). `name_type` is `synonym`,
+ * `common` (no language) or `common_<lang>` (two lowercase letters); anything
+ * else is `invalid_value`.
  * A name equal to the species' canonical name, or already stored for it
  * (whatever its type), is a duplicate; an empty `source` becomes `'import'`.
  * @rfc RFC-68 R12
@@ -49,7 +50,7 @@ export async function importSynonyms(
         update import_staging set
           parsed_type = case
             when trim(coalesce(name_type, '')) = 'synonym' then 'synonym'
-            when trim(coalesce(name_type, '')) ~ '^common_[a-z]{2}$' then 'common'
+            when trim(coalesce(name_type, '')) ~ '^common(_[a-z]{2})?$' then 'common'
             else null
           end,
           parsed_lang = case
