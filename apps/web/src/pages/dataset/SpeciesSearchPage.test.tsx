@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MeResponse, SpeciesListItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -646,6 +646,32 @@ describe('RFC-60 R6 SpeciesSearchPage trait filters, order and the URL', () => {
     );
     // The letters survived the URL catching up with them.
     expect(box).toHaveValue('ad');
+  });
+
+  it('keeps letters typed while its own URL write is still pending', async () => {
+    // The router applies a write a moment later; a keystroke rendered in that
+    // gap still sees the old URL, which is not a navigation from outside.
+    dataset.searchSpecies.mockResolvedValue(page([ADENANTHERA]));
+    const { router } = await openPage();
+    const navigate = router.navigate.bind(router);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(router, 'navigate').mockImplementation(async (options) => {
+      await gate;
+      return navigate(options);
+    });
+    const box = screen.getByLabelText('Search species');
+    await userEvent.type(box, 'pau ');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400))); // the name settles: one write
+    await userEvent.type(box, 'bra');
+    expect(box).toHaveValue('pau bra');
+    release();
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual(expect.objectContaining({ q: 'pau bra' })),
+    );
+    expect(box).toHaveValue('pau bra');
   });
 
   it('drops unknown and malformed search params', async () => {

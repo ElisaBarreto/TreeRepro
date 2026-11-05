@@ -574,7 +574,7 @@ export async function getSpecies(
   db: DbExecutor,
   visibility: Visibility,
   id: string,
-  opts: { viewerPlotIds?: string[]; allPlots?: boolean } = {},
+  opts: { viewerPlotIds?: string[] } = {},
 ): Promise<Species | null> {
   const [row] = await db
     .select({ ...speciesColumns, familyOrder: families.orderName })
@@ -586,14 +586,7 @@ export async function getSpecies(
   if (!row) return null;
 
   let speciesPlotsQuery: Promise<PlotRef[]>;
-  if (opts.allPlots) {
-    speciesPlotsQuery = db
-      .select({ id: plots.id, code: plots.code, name: plots.name })
-      .from(plotSpecies)
-      .innerJoin(plots, eq(plots.id, plotSpecies.plotId))
-      .where(eq(plotSpecies.speciesId, id))
-      .orderBy(asc(plots.code), asc(plots.id));
-  } else if (opts.viewerPlotIds && opts.viewerPlotIds.length > 0) {
+  if (opts.viewerPlotIds && opts.viewerPlotIds.length > 0) {
     speciesPlotsQuery = db
       .select({ id: plots.id, code: plots.code, name: plots.name })
       .from(plotSpecies)
