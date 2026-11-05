@@ -153,11 +153,9 @@ export function speciesRoutes(ctx: AuthContext) {
           const visibility = await visibilityOf(ctx, c);
           const scope = await userScopeOf(ctx.db, c);
           const viewerPlotIds = scope.plots.map((p) => p.id);
-          const allPlots = currentPermissions(c).has('plots.manage');
 
           const found = await getSpecies(ctx.db, visibility, c.req.valid('param').id, {
             viewerPlotIds,
-            allPlots,
           });
           if (!found) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
           return c.json({ data: found });

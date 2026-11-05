@@ -8,7 +8,7 @@ import {
   type TraitDataMode,
   type TreeFlag,
 } from '@treerepro/contracts';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EXPORT_DATASET_URL, EXPORT_PLATFORM_URL } from '../../api/curation.ts';
 import { countSpecies, datasetKeys, searchSpecies } from '../../api/dataset.ts';
 import { ProposeSpeciesDialog } from '../../components/catalog/ProposeSpeciesDialog.tsx';
@@ -107,7 +107,7 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
 
 // Everything the URL carries, in one comparable string: what the page last
 // wrote to the address bar, and what it finds there on the next render. The
-// name is part of it because `seenSearch` records exactly what was written,
+// name is part of it because the page records exactly what it wrote,
 // so a search differing at all — in `q` alone, as the sidebar's Species
 // entry does by carrying no search and clearing the whole one — came from
 // outside (that link, the back button, a pasted URL) and the form follows
@@ -167,15 +167,26 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   const navigate = useNavigate();
   const incoming = toValue(search);
   const [form, setForm] = useState<SpeciesSearchValue>(incoming);
-  const [seenSearch, setSeenSearch] = useState(() => searchKey(incoming));
   const incomingKey = searchKey(incoming);
-  if (incomingKey !== seenSearch) {
-    // The URL moved under the page (a sidebar link, the back button): adopt
-    // it during this render rather than in an effect, so the form and the
-    // search that follows it never disagree for a frame (React's
-    // adjust-state-during-render pattern).
-    setSeenSearch(incomingKey);
-    setForm(incoming);
+  // The URL as last seen, and the searches this page wrote itself. The router
+  // applies a write a moment later, so a keystroke in between still renders
+  // with the old URL: only a URL that actually changed, to a search this page
+  // did not write, is a navigation from outside.
+  const [lastIncoming, setLastIncoming] = useState(incomingKey);
+  const written = useRef(new Set<string>());
+  // What the URL holds or is about to hold: the last search written or adopted.
+  const target = useRef(incomingKey);
+  if (incomingKey !== lastIncoming) {
+    setLastIncoming(incomingKey);
+    if (!written.current.has(incomingKey)) {
+      // The URL moved under the page (a sidebar link, the back button): adopt
+      // it during this render rather than in an effect, so the form and the
+      // search that follows it never disagree for a frame (React's
+      // adjust-state-during-render pattern).
+      written.current.clear();
+      target.current = incomingKey;
+      setForm(incoming);
+    }
   }
   const [creating, setCreating] = useState(false);
   // The name the propose dialog opens with; `null` while it is closed.
@@ -191,12 +202,13 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
   const settled = term === form.q.trim();
   const formKey = searchKey(form);
   useEffect(() => {
-    if (!settled || formKey === seenSearch) return;
-    // Claim what is being written as already seen, so its own echo is not
-    // mistaken for an outside change.
-    setSeenSearch(formKey);
+    if (!settled || formKey === target.current) return;
+    // Remember what is being written, so its own echo is not mistaken for an
+    // outside change.
+    target.current = formKey;
+    written.current.add(formKey);
     void navigate({ to: '/app/species', search: toSearch(form), replace: true });
-  }, [settled, formKey, seenSearch, form, navigate]);
+  }, [settled, formKey, form, navigate]);
   const params = {
     q: term.length >= 2 ? term : undefined,
     familyId: form.familyId,

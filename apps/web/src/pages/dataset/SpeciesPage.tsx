@@ -79,8 +79,6 @@ function SpeciesHeader({
   onMissingChange: (missing: boolean) => void;
   actions?: ReactNode;
 }) {
-  const me = useMe();
-  const canManagePlots = hasPermission(me, 'plots.manage');
   const gbifNames = species.names.filter((n) => n.nameType === 'gbif');
   const synonyms = species.names.filter((n) => n.nameType === 'synonym');
   const commonNames = species.names.filter((n) => n.nameType === 'common');
@@ -100,8 +98,7 @@ function SpeciesHeader({
           <span className="block">{taxonomyLine(species)}</span>
           {species.plots && species.plots.length > 0 ? (
             <span className="block">
-              {canManagePlots ? 'Plots: ' : 'In your plots: '}
-              {species.plots.map((p) => p.name).join(', ')}
+              In your plots: {species.plots.map((p) => p.name).join(', ')}
             </span>
           ) : null}
           {gbifNames.length > 0 ? (

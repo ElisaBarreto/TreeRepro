@@ -537,15 +537,21 @@ describe('RFC-33 R6, RFC-67 R8 species scope and plot filter matrix', () => {
     const contributorPlots = (await contributorDetail.json()).data.plots;
     expect(contributorPlots.map((p: { id: string }) => p.id)).toEqual([plotA.id]);
 
-    // Manager with plots.manage sees every plot (plotA and plotB)
+    // plots.manage does not widen it: a manager assigned to no plot sees none,
+    // one assigned to plotB sees plotB only
     const managerDetail = await call(t.app, 'GET', `/api/species/${spInsideA.id}`, {
       cookie: managerCookie,
     });
     expect(managerDetail.status).toBe(200);
-    const managerPlots = (await managerDetail.json()).data.plots;
-    expect(managerPlots.map((p: { id: string }) => p.id).sort()).toEqual(
-      [plotA.id, plotB.id].sort(),
-    );
+    expect((await managerDetail.json()).data.plots).toEqual([]);
+    const { user: plotBManager } = await createUser(t.db, { roles: [managerRole.id] });
+    await assignPlots(t.db, plotBManager.id, [plotB.id], false);
+    const plotBDetail = await call(t.app, 'GET', `/api/species/${spInsideA.id}`, {
+      cookie: (await loginAs(t, plotBManager)).cookie,
+    });
+    expect((await plotBDetail.json()).data.plots.map((p: { id: string }) => p.id)).toEqual([
+      plotB.id,
+    ]);
   });
 });
 

@@ -743,7 +743,7 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
     expect(await screen.findByText(/Adenanthera polita/)).toBeInTheDocument();
   });
 
-  it('RFC-67 R8 shows In your plots for contributor and Plots for plots.manage', async () => {
+  it('RFC-67 R8 shows In your plots for every viewer, plots.manage included', async () => {
     auth.fetchMe.mockResolvedValue(READER);
     const withPlots = {
       ...SPECIES,
@@ -758,7 +758,7 @@ describe('RFC-60 R9 SpeciesPage taxa editing', () => {
 
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     renderAt(`/app/species/${SPECIES.id}`);
-    expect(await screen.findByText('Plots: Plot A, Plot B')).toBeInTheDocument();
+    expect(await screen.findByText('In your plots: Plot A, Plot B')).toBeInTheDocument();
   });
 });
 
