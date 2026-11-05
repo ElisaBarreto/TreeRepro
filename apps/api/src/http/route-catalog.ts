@@ -58,6 +58,7 @@ import {
   traitMapsSchema,
   traitSchema,
   traitSpeciesItemSchema,
+  treeFlagCountSchema,
   userSchema,
   validateLevelResultSchema,
   withdrawLevelResultSchema,
@@ -311,6 +312,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/species': {
     summary: 'Search species with taxonomy, trait and scope filters',
     response: listEnvelopeSchema(speciesListItemSchema),
+  },
+  'GET /api/species/tree-flags': {
+    summary: 'Count the visible species of every tree basis',
+    response: dataEnvelopeSchema(z.array(treeFlagCountSchema)),
   },
   'POST /api/species': { summary: 'Create a species', response: dataEnvelopeSchema(speciesSchema) },
   'POST /api/species/proposals': {

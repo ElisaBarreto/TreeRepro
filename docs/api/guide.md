@@ -1,4 +1,4 @@
-openapi-sha256: 5cdf29375498b64d4e9e5c27ff6bfdbebc04cb53c6a6c9e8cf29a6389e34c200
+openapi-sha256: f38ca35914eb9cfdabab83726884c418268fae3fa7c2e16fe883084e765c5767
 
 # TreeRepro API guide
 
@@ -156,7 +156,7 @@ The detail (`GET /api/records/:id`) adds the import provenance, each null when a
 
 A species' `family` on `GET /api/species/:id` carries its `order` (null when unknown); the list items of `GET /api/species` do not (RFC-60 R7).
 
-Every species carries `treeFlag`, the evidence on which the owner's release counts it as a tree: `bgci_and_wcvp_tree`, `bgci_and_wcvp_mixed_form`, `bgci_wcvp_not_tree` (BGCI GlobalTreeSearch lists it, WCVP's lifeform says e.g. shrub), `bgci_no_wcvp_lifeform`, `wcvp_tree`, `wcvp_mixed_form` (WCVP's lifeform alone), `growth_form_unanimous` or `growth_form_majority` (neither covers it; the other sources' growth form decides), or null. `GET /api/species?treeFlag=wcvp_tree,bgci_and_wcvp_tree` keeps the species whose flag is any of the comma-separated ones (RFC-60 R1, R6).
+Every species carries `treeFlag`, the evidence on which the owner's release counts it as a tree: `bgci_and_wcvp_tree`, `bgci_and_wcvp_mixed_form`, `bgci_wcvp_not_tree` (BGCI GlobalTreeSearch lists it, WCVP's lifeform says e.g. shrub), `bgci_no_wcvp_lifeform`, `wcvp_tree`, `wcvp_mixed_form` (WCVP's lifeform alone), `growth_form_unanimous` or `growth_form_majority` (neither covers it; the other sources' growth form decides), or null. `GET /api/species?treeFlag=wcvp_tree,bgci_and_wcvp_tree` keeps the species whose flag is any of the comma-separated ones (RFC-60 R1, R6). `GET /api/species/tree-flags` answers how many species you can see carry each flag, `{ data: [{ treeFlag, speciesCount }] }`, every flag listed, whatever the search (RFC-60 R11).
 
 ## Batch
 
@@ -419,6 +419,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-05 — New `GET /api/species/tree-flags` (`dataset.read`): `{ data: [{ treeFlag, speciesCount }] }`, the number of species visible to you per tree flag, every flag listed in a fixed order (RFC-60 R11; issue #376). (openapi f38ca35914eb)
 - 2026-11-05 — `GET /api/species` takes `sort=treeBasis`: by the meaning of the tree flag ("BGCI + WCVP says “tree”", "Fallback, every source says tree", …), a species with none first ascending, in `order` (RFC-60 R1, R6; issue #372). (openapi 5cdf29375498)
 - 2026-11-05 — Tree basis (RFC-60 R1, R6; issue #372): species items of `GET /api/species`, `GET /api/species/:id` and `GET /api/traits/:id/species` gain `treeFlag`, and `GET /api/species` takes `treeFlag`, a comma-separated list of flags, keeping the species whose flag is any of them. The import requires the release's `tree_flag` column (RFC-64 R2). (openapi adeb0bea2b44)
 - 2026-11-04 — The owner's release v1 of 2026-11-04 renames the trait `maturation_size` to `maturation_diameter` (trunk diameter at reproductive maturity, in m) and adds tree species; the dataset is reloaded with it, so every record and its `ID`, and the trait and level ids, change: read `GET /api/traits` again rather than keeping ids (RFC-62 R9, RFC-64 R12; issue #368). No route or shape changes. (openapi 3a3543ee9c13)

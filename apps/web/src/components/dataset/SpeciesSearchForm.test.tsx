@@ -12,6 +12,7 @@ const dataset = vi.hoisted(() => ({
   fetchFamilies: vi.fn(),
   fetchGenera: vi.fn(),
   fetchDictionary: vi.fn(),
+  fetchTreeFlagCounts: vi.fn(),
 }));
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -27,6 +28,8 @@ beforeEach(() => {
   dataset.fetchFamilies.mockResolvedValue([]);
   dataset.fetchGenera.mockResolvedValue({ data: [], meta: { nextCursor: null } });
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
+  dataset.fetchTreeFlagCounts.mockReset();
+  dataset.fetchTreeFlagCounts.mockResolvedValue([]);
 });
 
 // The form is fully controlled; this wrapper stands in for the page that
@@ -629,6 +632,46 @@ describe('RFC-60 R6 SpeciesSearchForm tree basis (issue #372)', () => {
       screen.getByRole('checkbox', { name: 'Fallback, most sources say tree' }),
     );
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ treeFlags: undefined }));
+  });
+
+  it('RFC-60 R11 shows the number of species beside each meaning', async () => {
+    dataset.fetchTreeFlagCounts.mockResolvedValue([
+      { treeFlag: 'bgci_and_wcvp_tree', speciesCount: 34941 },
+      { treeFlag: 'wcvp_tree', speciesCount: 0 },
+    ]);
+    renderWithProviders(
+      <Controlled initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }} />,
+      { me: READER },
+    );
+    await userEvent.click(screen.getByText('All tree bases'));
+    expect(
+      await screen.findByRole('checkbox', { name: 'BGCI + WCVP says “tree” (n = 34,941)' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: 'WCVP “tree”, not in BGCI (n = 0)' }),
+    ).toBeInTheDocument();
+    // A flag the answer leaves out shows its meaning alone.
+    expect(
+      screen.getByRole('checkbox', { name: 'Fallback, most sources say tree' }),
+    ).toBeInTheDocument();
+  });
+
+  it('closes on a click outside the list or on Escape, and stays open while boxes are ticked', async () => {
+    renderWithProviders(
+      <Controlled initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }} />,
+      { me: READER },
+    );
+    const box = () => screen.getByRole('checkbox', { name: 'WCVP “tree”, not in BGCI' });
+    await userEvent.click(screen.getByText('All tree bases'));
+    await userEvent.click(box());
+    expect(box()).toBeVisible();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Contested only' }));
+    expect(box()).not.toBeVisible();
+
+    await userEvent.click(screen.getByText('1 tree basis'));
+    expect(box()).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    expect(box()).not.toBeVisible();
   });
 
   it('moves between the boxes with the arrow keys', async () => {

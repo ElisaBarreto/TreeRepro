@@ -261,6 +261,14 @@ export const speciesListItemSchema = z.strictObject({
   treeFlag: z.enum(TREE_FLAGS).nullable(),
 });
 
+/** How many visible species carry a tree flag. @rfc RFC-60 R11 */
+export const treeFlagCountSchema = z.strictObject({
+  treeFlag: z.enum(TREE_FLAGS),
+  speciesCount: z.number().int().nonnegative(),
+});
+/** @rfc RFC-60 R11 */
+export type TreeFlagCount = z.infer<typeof treeFlagCountSchema>;
+
 /** An alternative name of a species: type, language (common names only) and source. @rfc RFC-60 R1, R4, R7 */
 export const speciesNameSchema = z.strictObject({
   name: z.string(),

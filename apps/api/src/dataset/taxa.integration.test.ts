@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { TreeFlag } from '@treerepro/contracts';
+import { TREE_FLAGS, type TreeFlag } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
@@ -23,7 +23,14 @@ import { traitCategories } from '../db/schema/dictionary.ts';
 import { families, species } from '../db/schema/taxa.ts';
 import { encodeCompositeCursor } from '../http/cursor.ts';
 import { speciesTraitSummary } from './summary.ts';
-import { getSpecies, likePattern, listFamilies, listGenera, searchSpecies } from './taxa.ts';
+import {
+  getSpecies,
+  likePattern,
+  listFamilies,
+  listGenera,
+  searchSpecies,
+  treeFlagCounts,
+} from './taxa.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -160,6 +167,40 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
     expect(await list([])).toHaveLength(4);
     const [first] = await list(['bgci_and_wcvp_tree']);
     expect(first?.[0]).toBe(`Arbus b-${k}`);
+  });
+
+  it('R11 counts the visible species of every flag, in R1 order, 0 for none', async () => {
+    const k = tag();
+    const before = {
+      restricted: await treeFlagCounts(t.db, RESTRICTED),
+      unrestricted: await treeFlagCounts(t.db, UNRESTRICTED),
+    };
+    expect(before.unrestricted.map((c) => c.treeFlag)).toEqual([...TREE_FLAGS]);
+    await createSpecies(t.db, { canonicalName: `Numerus a-${k}`, treeFlag: 'wcvp_tree' });
+    await createSpecies(t.db, { canonicalName: `Numerus b-${k}`, treeFlag: 'wcvp_tree' });
+    const hidden = await createSpecies(t.db, {
+      canonicalName: `Numerus c-${k}`,
+      treeFlag: 'wcvp_mixed_form',
+    });
+    await t.db.update(species).set({ active: false }).where(eq(species.id, hidden.id));
+    await createSpecies(t.db, { canonicalName: `Numerus d-${k}` });
+    const delta = async (visibility: Visibility, was: Awaited<ReturnType<typeof treeFlagCounts>>) =>
+      Object.fromEntries(
+        (await treeFlagCounts(t.db, visibility)).map((c, i) => [
+          c.treeFlag,
+          c.speciesCount - (was[i]?.speciesCount ?? 0),
+        ]),
+      );
+    expect(await delta(UNRESTRICTED, before.unrestricted)).toMatchObject({
+      wcvp_tree: 2,
+      wcvp_mixed_form: 1,
+      bgci_and_wcvp_tree: 0,
+    });
+    // RFC-33 R2: an inactive species counts only for a viewer who can see it.
+    expect(await delta(RESTRICTED, before.restricted)).toMatchObject({
+      wcvp_tree: 2,
+      wcvp_mixed_form: 0,
+    });
   });
 
   it('sort=treeBasis orders by the meaning of the flag, a species with none first ascending, and pages it', async () => {
