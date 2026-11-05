@@ -12,6 +12,7 @@ import type {
   TraitDataMode,
   TraitSpeciesSort,
   TreeFlag,
+  TreeFlagCount,
 } from '@treerepro/contracts';
 import { TREE_FLAG_LABELS, TREE_FLAGS } from '@treerepro/contracts';
 import {
@@ -23,6 +24,7 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   type SQL,
   sql,
 } from 'drizzle-orm';
@@ -651,6 +653,25 @@ export async function getSpecies(
     })),
     recordCount: counts?.recordCount ?? 0,
   };
+}
+
+/**
+ * The size of every tree basis: the species the viewer can see per flag, in
+ * the flags' own order, 0 for a flag no visible species carries.
+ * @rfc RFC-60 R11
+ * @rfc RFC-33 R2, R3
+ */
+export async function treeFlagCounts(
+  db: DbExecutor,
+  visibility: Visibility,
+): Promise<TreeFlagCount[]> {
+  const rows = await db
+    .select({ treeFlag: species.treeFlag, n: count() })
+    .from(species)
+    .where(and(isNotNull(species.treeFlag), speciesVisible(visibility)))
+    .groupBy(species.treeFlag);
+  const byFlag = new Map(rows.map((r) => [r.treeFlag, r.n]));
+  return TREE_FLAGS.map((treeFlag) => ({ treeFlag, speciesCount: byFlag.get(treeFlag) ?? 0 }));
 }
 
 /**

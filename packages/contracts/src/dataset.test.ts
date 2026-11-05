@@ -36,6 +36,7 @@ import {
   traitDetailSchema,
   traitSchema,
   traitSpeciesItemSchema,
+  treeFlagCountSchema,
 } from './dataset.ts';
 
 const uuid = '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d9e';
@@ -71,6 +72,16 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
   it('every flag has its meaning', () => {
     for (const flag of TREE_FLAGS) expect(TREE_FLAG_LABELS[flag]).toMatch(/\w/);
     expect(TREE_FLAG_LABELS.bgci_wcvp_not_tree).toBe('BGCI says tree, WCVP says e.g. “shrub”');
+  });
+
+  it('R11 a tree flag count is a known flag and a non-negative integer', () => {
+    expect(treeFlagCountSchema.safeParse({ treeFlag: 'wcvp_tree', speciesCount: 3 }).success).toBe(
+      true,
+    );
+    expect(treeFlagCountSchema.safeParse({ treeFlag: 'wcvp_tree', speciesCount: -1 }).success).toBe(
+      false,
+    );
+    expect(treeFlagCountSchema.safeParse({ treeFlag: null, speciesCount: 3 }).success).toBe(false);
   });
 
   it('a list item carries treeFlag, null or a known flag', () => {

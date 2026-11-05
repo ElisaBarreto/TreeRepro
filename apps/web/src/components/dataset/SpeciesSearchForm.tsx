@@ -8,10 +8,10 @@ import {
   type TraitDataMode,
   type TreeFlag,
 } from '@treerepro/contracts';
-import { type KeyboardEvent, useId } from 'react';
-import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import { datasetKeys, fetchDictionary, fetchTreeFlagCounts } from '../../api/dataset.ts';
 import { listPlots, plotKeys } from '../../api/plots.ts';
-import { humaniseKey } from '../../lib/format.ts';
+import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { Field, Select } from '../ui/index.ts';
 import { FILTER_CHECK, FILTER_LEGEND, FilterGroup } from './FilterGroup.tsx';
@@ -352,10 +352,11 @@ export function SpeciesSearchForm({
 /**
  * The tree basis filter (RFC-60 R6): a closed control dressed like the
  * Family select that opens onto one checkbox per flag, in the dictionary's
- * order. None checked — the default — keeps every species; checked ones keep
- * the species whose flag is any of them. Up and down arrows move between the
- * boxes, wrapping.
- * @rfc RFC-60 R6
+ * order, each with the number of species it holds (RFC-60 R11). None
+ * checked — the default — keeps every species; checked ones keep the species
+ * whose flag is any of them. Up and down arrows move between the boxes,
+ * wrapping; a click outside the list or Escape closes it, as a select does.
+ * @rfc RFC-60 R6, R11
  */
 function TreeBasisFilter({
   value,
@@ -364,7 +365,24 @@ function TreeBasisFilter({
   value: TreeFlag[];
   onChange: (next: TreeFlag[]) => void;
 }) {
+  const counts = useQuery({ queryKey: datasetKeys.treeFlagCounts, queryFn: fetchTreeFlagCounts });
+  const countOf = new Map(counts.data?.map((c) => [c.treeFlag, c.speciesCount]));
+  const details = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!details.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [open]);
   function moveFocus(event: KeyboardEvent<HTMLFieldSetElement>) {
+    if (event.key === 'Escape' && open) {
+      setOpen(false);
+      details.current?.querySelector('summary')?.focus();
+      return;
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const boxes = [...event.currentTarget.querySelectorAll<HTMLInputElement>('input')];
     const at = boxes.indexOf(document.activeElement as HTMLInputElement);
@@ -376,7 +394,12 @@ function TreeBasisFilter({
   return (
     <fieldset className="flex flex-col gap-2" onKeyDown={moveFocus}>
       <legend className={FILTER_LEGEND}>Tree basis</legend>
-      <details className="relative">
+      <details
+        ref={details}
+        className="relative"
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
         <summary className="flex h-11 cursor-pointer list-none items-center rounded-[10px] border border-canopy-700/25 bg-white px-3.5 text-body text-canopy-950">
           {value.length === 0
             ? 'All tree bases'
@@ -401,6 +424,7 @@ function TreeBasisFilter({
                 }
               />
               {TREE_FLAG_LABELS[flag]}
+              {countOf.has(flag) ? ` (n = ${formatNumber(countOf.get(flag) ?? 0)})` : null}
             </label>
           ))}
         </div>

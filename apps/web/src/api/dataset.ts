@@ -36,10 +36,13 @@ import {
   type TraitSpeciesMode,
   type TraitSpeciesSort,
   type TraitValueType,
+  type TreeFlagCount,
   taxonRefSchema,
   traitDetailSchema,
   traitSpeciesItemSchema,
+  treeFlagCountSchema,
 } from '@treerepro/contracts';
+import { z } from 'zod';
 import { apiFetch } from './client.ts';
 import { type QueryParams as Params, withQuery } from './query.ts';
 
@@ -56,6 +59,7 @@ export type Page<T> = ListEnvelope<T>;
 /** Query keys of the dataset pages; every fetcher below owns one. @rfc RFC-60 R6 */
 export const datasetKeys = {
   species: (params: Params) => ['species', params] as const,
+  treeFlagCounts: ['species', 'tree-flags'] as const,
   speciesDetail: (id: string) => ['species', id] as const,
   // `missingOnly` is part of the key: the two responses (every trait with
   // data, or only the ones without) must never share a cache entry, or
@@ -110,6 +114,11 @@ export function searchSpecies(params: {
   limit?: number;
 }) {
   return apiFetch(withQuery('/species', params), listEnvelopeSchema(speciesListItemSchema));
+}
+/** The species per tree basis (RFC-60 R11). @rfc RFC-60 R11 */
+export async function fetchTreeFlagCounts(): Promise<TreeFlagCount[]> {
+  return (await apiFetch('/species/tree-flags', dataEnvelopeSchema(z.array(treeFlagCountSchema))))
+    .data;
 }
 /** @rfc RFC-60 R7 */
 export async function fetchSpecies(id: string): Promise<Species> {
