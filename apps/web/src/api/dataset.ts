@@ -102,6 +102,8 @@ export function searchSpecies(params: {
   categoryKey?: string;
   traitId?: string;
   traitData?: TraitDataMode;
+  /** Comma-separated tree flags (RFC-60 R6). */
+  treeFlag?: string;
   sort?: SpeciesSort;
   order?: SortOrder;
   cursor?: string;

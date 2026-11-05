@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import type { TreeFlag } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
@@ -127,6 +128,38 @@ describe('RFC-60 R6 searchSpecies', () => {
     expect(flag(resolved.id)).toBe(false);
     expect(flag(noGenus.id)).toBe(true);
     expect(flag(gbif.id)).toBe(true);
+  });
+});
+
+describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
+  const t = useTestDb();
+
+  it('every item carries treeFlag; treeFlags keeps the species whose flag is any of them', async () => {
+    const k = tag();
+    const genus = await createGenus(t.db, { name: `Arbus-${k}` });
+    const make = (name: string, treeFlag: TreeFlag | null) =>
+      createSpecies(t.db, { canonicalName: `Arbus ${name}-${k}`, genusId: genus.id, treeFlag });
+    await make('a', 'wcvp_tree');
+    await make('b', 'bgci_and_wcvp_tree');
+    await make('c', 'growth_form_majority');
+    await make('d', null);
+    const list = async (treeFlags?: TreeFlag[]) =>
+      (await searchSpecies(t.db, RESTRICTED, { genusId: genus.id, treeFlags, limit: 10 })).data.map(
+        (s) => [s.canonicalName, s.treeFlag],
+      );
+    expect(await list()).toEqual([
+      [`Arbus a-${k}`, 'wcvp_tree'],
+      [`Arbus b-${k}`, 'bgci_and_wcvp_tree'],
+      [`Arbus c-${k}`, 'growth_form_majority'],
+      [`Arbus d-${k}`, null],
+    ]);
+    expect(await list(['wcvp_tree', 'growth_form_majority'])).toEqual([
+      [`Arbus a-${k}`, 'wcvp_tree'],
+      [`Arbus c-${k}`, 'growth_form_majority'],
+    ]);
+    expect(await list([])).toHaveLength(4);
+    const [first] = await list(['bgci_and_wcvp_tree']);
+    expect(first?.[0]).toBe(`Arbus b-${k}`);
   });
 });
 

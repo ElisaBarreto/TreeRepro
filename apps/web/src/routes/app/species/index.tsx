@@ -5,8 +5,9 @@ import {
   SPECIES_SORTS,
   SPECIES_STATUSES,
   TRAIT_DATA_MODES,
+  TREE_FLAGS,
 } from '@treerepro/contracts';
-import { enumParam, textParam, uuidParam } from '../../../lib/search-params.ts';
+import { enumListParam, enumParam, textParam, uuidParam } from '../../../lib/search-params.ts';
 import {
   type SpeciesSearch,
   SpeciesSearchPage,
@@ -23,7 +24,8 @@ import {
  * outside its enum or a key nobody knows never reaches a control or the API.
  * `?unresolved=true` opens the search with the unresolved-taxa toggle on
  * (RFC-65); `contested`, `unknownLevels` (RFC-60 R6, spec R-15) and `outliers` (#281); `scope`
- * and `plotId` per RFC-33 R6, RFC-67 R8.
+ * and `plotId` per RFC-33 R6, RFC-67 R8; `treeFlag` is a comma-separated list
+ * of tree flags (RFC-60 R6), unknown ones dropped.
  */
 function validateSearch(search: Record<string, unknown>): SpeciesSearch {
   return {
@@ -41,6 +43,7 @@ function validateSearch(search: Record<string, unknown>): SpeciesSearch {
     categoryKey: textParam(search.categoryKey, 100),
     traitId: uuidParam(search.traitId),
     traitData: enumParam(search.traitData, TRAIT_DATA_MODES),
+    treeFlag: enumListParam(search.treeFlag, TREE_FLAGS),
     sort: enumParam(search.sort, SPECIES_SORTS),
     order: enumParam(search.order, SORT_ORDERS),
   };

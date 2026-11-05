@@ -132,8 +132,15 @@ describe('RFC-64 R2 header validation', () => {
     for (const c of evidence) expect(message).toContain(c);
   });
 
-  it('R2 the used columns are the v1 names: the 36 of the old layout, renamed, plus species and the four evidence columns', () => {
-    expect(IMPORT_COLUMNS).toHaveLength(41);
+  it('R2 refuses a file without tree_flag, the tree basis of the species (issue #372)', () => {
+    expect(refusal(() => validateColumns(V1.filter((c) => c !== 'tree_flag')))).toContain(
+      'tree_flag',
+    );
+  });
+
+  it('R2 the used columns are the v1 names: the 36 of the old layout, renamed, plus species, the four evidence columns and tree_flag', () => {
+    expect(IMPORT_COLUMNS).toHaveLength(42);
+    expect(IMPORT_COLUMNS).toContain('tree_flag');
     expect(IMPORT_COLUMNS).toContain('species');
     expect(IMPORT_COLUMNS).toContain('primary_source_species_name');
     expect(IMPORT_COLUMNS).not.toContain('original_species_name');

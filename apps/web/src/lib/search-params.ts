@@ -27,3 +27,18 @@ export function enumParam<T extends string>(value: unknown, allowed: readonly T[
     ? (value as T)
     : undefined;
 }
+
+/**
+ * A comma-separated search param of enum values: the known ones, deduplicated,
+ * in their enum's order, joined again; `undefined` when none is known.
+ * @rfc RFC-13 R2
+ */
+export function enumListParam<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const given = new Set(value.split(','));
+  const kept = allowed.filter((v) => given.has(v));
+  return kept.length > 0 ? kept.join(',') : undefined;
+}

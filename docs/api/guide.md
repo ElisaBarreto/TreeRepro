@@ -1,4 +1,4 @@
-openapi-sha256: 3a3543ee9c132f4d160d3ba3e34e374c9ce926d4ab4c5a406d104a5565d2d0ba
+openapi-sha256: adeb0bea2b44c10c87c3d6d1ff56323c49823f3a9b765222a373027f4fffdb2e
 
 # TreeRepro API guide
 
@@ -155,6 +155,8 @@ Two kinds of quantitative summary coexist. `GET /api/species/:id/traits` gives t
 The detail (`GET /api/records/:id`) adds the import provenance, each null when absent: `sourceFolder`, `sourceFile`, `taxonomicStatus` (how the row's species name matched: exact match, resolved synonym, fuzzy match…), `gbifGenus` and `gbifFamily` (the genus and family the GBIF backbone accepts) and `taxonOrder` (the order the source reported), `summarySource` (`reported_by_study`, `derived_from_records` or `reported_and_derived`: whether the record's statistics were reported by its study or computed from the study's measurements) and `recordsBehindRow` (how many harmonised source records the imported row stands for; not a sample size, that is `quantitative.n`). The platform's own taxonomy stays the one of RFC-60.
 
 A species' `family` on `GET /api/species/:id` carries its `order` (null when unknown); the list items of `GET /api/species` do not (RFC-60 R7).
+
+Every species carries `treeFlag`, the evidence on which the owner's release counts it as a tree: `bgci_and_wcvp_tree`, `bgci_and_wcvp_mixed_form`, `bgci_wcvp_not_tree` (BGCI GlobalTreeSearch lists it, WCVP's lifeform says e.g. shrub), `bgci_no_wcvp_lifeform`, `wcvp_tree`, `wcvp_mixed_form` (WCVP's lifeform alone), `growth_form_unanimous` or `growth_form_majority` (neither covers it; the other sources' growth form decides), or null. `GET /api/species?treeFlag=wcvp_tree,bgci_and_wcvp_tree` keeps the species whose flag is any of the comma-separated ones (RFC-60 R1, R6).
 
 ## Batch
 
@@ -417,6 +419,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-05 — Tree basis (RFC-60 R1, R6; issue #372): species items of `GET /api/species`, `GET /api/species/:id` and `GET /api/traits/:id/species` gain `treeFlag`, and `GET /api/species` takes `treeFlag`, a comma-separated list of flags, keeping the species whose flag is any of them. The import requires the release's `tree_flag` column (RFC-64 R2). (openapi adeb0bea2b44)
 - 2026-11-04 — The owner's release v1 of 2026-11-04 renames the trait `maturation_size` to `maturation_diameter` (trunk diameter at reproductive maturity, in m) and adds tree species; the dataset is reloaded with it, so every record and its `ID`, and the trait and level ids, change: read `GET /api/traits` again rather than keeping ids (RFC-62 R9, RFC-64 R12; issue #368). No route or shape changes. (openapi 3a3543ee9c13)
 - 2026-10-28 — A trait's maps in one request (RFC-76 R9; issue #361): new `GET /api/maps/trait-values?traitId=` answers `{ maps: [{ kind, levelId, regions, legend }], computedAt }`, every map `GET /api/maps` lists for that trait, in its order, each as `GET /api/maps/values` would answer it; 404 `MAP_NOT_FOUND` when the trait has none. `GET /api/maps/values` is unchanged. (openapi 3a3543ee9c13)
 

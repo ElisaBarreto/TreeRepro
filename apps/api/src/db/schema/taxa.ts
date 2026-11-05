@@ -1,4 +1,4 @@
-import { NAME_SOURCES, NAME_TYPES } from '@treerepro/contracts';
+import { NAME_SOURCES, NAME_TYPES, TREE_FLAGS } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -60,6 +60,8 @@ export const species = pgTable(
     nameSource: text('name_source', { enum: NAME_SOURCES }).notNull(),
     active: boolean('active').notNull().default(true),
     traitCount: integer('trait_count').notNull().default(0),
+    /** RFC-60 R1: the tree basis, set by the import from the file's `tree_flag` (RFC-64 R5). */
+    treeFlag: text('tree_flag', { enum: TREE_FLAGS }),
     createdAt: ts('created_at').notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => users.id),
   },
@@ -69,6 +71,10 @@ export const species = pgTable(
     index('species_genus_idx').on(t.genusId),
     index('species_trait_count_idx').on(t.traitCount, t.canonicalName, t.id),
     check('species_name_source_check', sql`${t.nameSource} in ('wcvp', 'gbif', 'original')`),
+    check(
+      'species_tree_flag_check',
+      sql`${t.treeFlag} in ('bgci_and_wcvp_tree', 'bgci_and_wcvp_mixed_form', 'bgci_wcvp_not_tree', 'bgci_no_wcvp_lifeform', 'wcvp_tree', 'wcvp_mixed_form', 'growth_form_unanimous', 'growth_form_majority')`,
+    ),
   ],
 );
 

@@ -31,6 +31,7 @@ import {
   speciesTraitsSchema,
   TRAIT_DATA_MODES,
   TRAIT_SPECIES_MODES,
+  TREE_FLAGS,
   traitDetailSchema,
   traitSchema,
   traitSpeciesItemSchema,
@@ -48,6 +49,42 @@ describe('RFC-60 R6 listSpeciesQuerySchema', () => {
     expect(listSpeciesQuerySchema.safeParse({ q: 'a' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ familyId: 'nope' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ extra: 1 }).success).toBe(false);
+  });
+});
+
+describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
+  it('treeFlag is a comma-separated list of 1-8 distinct known flags, parsed to an array', () => {
+    expect(TREE_FLAGS).toHaveLength(8);
+    expect(listSpeciesQuerySchema.parse({ treeFlag: 'wcvp_tree,growth_form_majority' })).toEqual({
+      treeFlag: ['wcvp_tree', 'growth_form_majority'],
+      limit: 50,
+    });
+    for (const bad of ['', 'tree', 'wcvp_tree,wcvp_tree', 'wcvp_tree,']) {
+      const failed = listSpeciesQuerySchema.safeParse({ treeFlag: bad });
+      expect(failed.success ? [] : failed.error.issues.map((i) => i.path.join('.'))).toEqual([
+        'treeFlag',
+      ]);
+    }
+  });
+
+  it('a list item carries treeFlag, null or a known flag', () => {
+    const item = {
+      id: uuid,
+      canonicalName: 'Arbus a',
+      nameSource: 'wcvp',
+      active: true,
+      genus: null,
+      family: null,
+      matchedName: null,
+      matchedNameType: null,
+      unresolvedTaxon: null,
+      traitCount: 0,
+      traitRecordCount: null,
+    };
+    expect(speciesListItemSchema.safeParse({ ...item, treeFlag: 'wcvp_tree' }).success).toBe(true);
+    expect(speciesListItemSchema.safeParse({ ...item, treeFlag: null }).success).toBe(true);
+    expect(speciesListItemSchema.safeParse({ ...item, treeFlag: 'tree' }).success).toBe(false);
+    expect(speciesListItemSchema.safeParse(item).success).toBe(false);
   });
 });
 
@@ -624,6 +661,7 @@ describe('RFC-60 R6 species item carries active; status filter', () => {
       active: true,
       traitCount: 3,
       traitRecordCount: null,
+      treeFlag: null,
     };
     expect(speciesListItemSchema.safeParse({ ...ITEM, active: false }).success).toBe(true);
     const { active: _a, ...without } = { ...ITEM, active: true };
@@ -670,6 +708,7 @@ describe('RFC-60 R6, RFC-69 R1 speciesListItemSchema trait coverage fields', () 
       unresolvedTaxon: false,
       traitCount: 3,
       traitRecordCount: null,
+      treeFlag: null,
     };
     expect(speciesListItemSchema.parse(ITEM)).toEqual(ITEM);
     expect(speciesListItemSchema.safeParse({ ...ITEM, traitRecordCount: 5 }).success).toBe(true);
@@ -868,6 +907,7 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     unresolvedTaxon: false,
     traitCount: 3,
     traitRecordCount: null,
+    treeFlag: null,
   };
 
   it('everything is nullable for missing mode', () => {

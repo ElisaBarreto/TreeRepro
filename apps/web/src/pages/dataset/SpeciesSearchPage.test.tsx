@@ -43,6 +43,7 @@ const GENUS = { id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d02', name: 'Adenanthera',
 const ADENANTHERA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d03',
   canonicalName: 'Adenanthera pavonina',
+  treeFlag: null,
   nameSource: 'wcvp',
   active: true,
   genus: { id: GENUS.id, name: GENUS.name },
@@ -56,6 +57,7 @@ const ADENANTHERA: SpeciesListItem = {
 const ADANSONIA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04',
   canonicalName: 'Adansonia digitata',
+  treeFlag: null,
   nameSource: 'gbif',
   active: true,
   genus: null,

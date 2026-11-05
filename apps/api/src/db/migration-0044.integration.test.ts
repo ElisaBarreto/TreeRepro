@@ -2,12 +2,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import {
-  createReference,
-  createSpecies,
-  createTrait,
-  createTraitCategory,
-} from '../../test/helpers/dataset.ts';
+import { createReference, createTrait, createTraitCategory } from '../../test/helpers/dataset.ts';
 import { createDb, type Db } from './client.ts';
 import { migrationsFolder, runMigrations } from './migrator.ts';
 
@@ -56,8 +51,11 @@ describe('RFC-63 R3, R15 migration 0044 moves labelled values into their own fie
     const db = handle?.db as Db;
     const client = db.$client;
     // The other tables the helpers write are unchanged by 0044; trait_records is
-    // seeded in its 0043 shape, with `statistic`.
-    const sp = await createSpecies(db);
+    // seeded in its 0043 shape, with `statistic`. species gains tree_flag after
+    // 0043 (0055), so its row is written in the 0043 shape too.
+    const [sp] = (await client`
+      insert into species (canonical_name, name_source)
+      values ('Migratia m0044', 'wcvp') returning id`) as [{ id: string }];
     const ref = await createReference(db);
     // import_batches gains columns after 0043 (0048's rows_filtered), so its
     // row is written in the 0043 shape rather than through createImportBatch.

@@ -10,6 +10,7 @@ import type {
   RecordIntent,
   SummarySource,
   TraitValueType,
+  TreeFlag,
   UnitStatus,
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
@@ -62,6 +63,8 @@ export async function createSpecies(
     canonicalName?: string;
     nameSource?: NameSource;
     genusId?: string | null;
+    /** RFC-60 R1 tree basis; null by default, as for a species no file flags. */
+    treeFlag?: TreeFlag | null;
     names?: {
       name: string;
       nameType?: NameType;
@@ -77,6 +80,7 @@ export async function createSpecies(
       canonicalName: options.canonicalName ?? `Testus specimen-${suffix()}`,
       nameSource: options.nameSource ?? 'wcvp',
       genusId: options.genusId ?? null,
+      treeFlag: options.treeFlag ?? null,
     })
     .returning({ id: species.id, canonicalName: species.canonicalName });
   if (!row) throw new Error('createSpecies: no row');

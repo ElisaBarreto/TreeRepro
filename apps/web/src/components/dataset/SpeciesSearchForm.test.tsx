@@ -590,3 +590,60 @@ describe('RFC-60 R6 SpeciesSearchForm contested and unknownLevels filters', () =
     expect(screen.getByRole('checkbox', { name: 'Unresolved taxa only' })).toBeInTheDocument();
   });
 });
+
+describe('RFC-60 R6 SpeciesSearchForm tree basis (issue #372)', () => {
+  it('opens a list of one checkbox per flag, none checked; checking adds, unchecking removes', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    const toggle = screen.getByText('All tree bases');
+    expect(screen.getByRole('checkbox', { name: 'WCVP “tree”, not in BGCI' })).not.toBeVisible();
+    await userEvent.click(toggle);
+    const boxes = within(screen.getByRole('group', { name: 'Tree basis' })).getAllByRole(
+      'checkbox',
+    );
+    expect(boxes).toHaveLength(8);
+    for (const box of boxes) expect(box).not.toBeChecked();
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'WCVP “tree”, not in BGCI' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ treeFlags: ['wcvp_tree'] }),
+    );
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Fallback, most sources say tree' }),
+    );
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ treeFlags: ['wcvp_tree', 'growth_form_majority'] }),
+    );
+    expect(screen.getByText('2 tree bases')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'WCVP “tree”, not in BGCI' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ treeFlags: ['growth_form_majority'] }),
+    );
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Fallback, most sources say tree' }),
+    );
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ treeFlags: undefined }));
+  });
+
+  it('moves between the boxes with the arrow keys', async () => {
+    renderWithProviders(
+      <Controlled initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }} />,
+      { me: READER },
+    );
+    await userEvent.click(screen.getByText('All tree bases'));
+    const boxes = within(screen.getByRole('group', { name: 'Tree basis' })).getAllByRole(
+      'checkbox',
+    );
+    (boxes[0] as HTMLElement).focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(boxes[1]).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+    expect(boxes[7]).toHaveFocus();
+  });
+});

@@ -13,6 +13,7 @@ import {
   type ImportRejectSort,
   type ImportSort,
   type SortOrder,
+  TREE_FLAGS,
   type UserRef,
 } from '@treerepro/contracts';
 import { and, count, sql as dsql, eq } from 'drizzle-orm';
@@ -39,8 +40,9 @@ import { syncDictionary } from './seed.ts';
  * The columns the import reads, by name, from the owner's release v1
  * observation table (`TABLE_LAYOUT.md`, 2026-10-27): the 36 of the 2026-10-19
  * layout, `original_species_name` renamed `primary_source_species_name`, plus
- * `species` and the four evidence columns (RFC-63 R17). The file may hold them
- * in any order, among other columns.
+ * `species`, the four evidence columns (RFC-63 R17) and `tree_flag`, the
+ * species' tree basis (RFC-60 R1). The file may hold them in any order, among
+ * other columns.
  * @rfc RFC-64 R2
  */
 export const IMPORT_COLUMNS = [
@@ -85,6 +87,7 @@ export const IMPORT_COLUMNS = [
   'evidence_id',
   'also_reported_by',
   'dispersal_phase',
+  'tree_flag',
 ] as const;
 
 /** The column `--trees-only` reads (RFC-64 R4). @rfc RFC-64 R2 */
@@ -725,7 +728,7 @@ async function runImport(
           source_folder text, file_name text, wcvp_taxonomic_status text,
           gbif_order text, taxon_order text, records_behind_row text, outlier_flag text,
           counts_as_evidence text, evidence_id text, also_reported_by text, dispersal_phase text,
-          is_tree_species text
+          tree_flag text, is_tree_species text
         ) on commit drop`;
       const parquet = isParquet(input.filePath);
       const copied: readonly string[] = parquet
@@ -774,7 +777,7 @@ async function runImport(
           add column unit_text text, add column summary_text text, add column behind_text text,
           add column outlier_text text,
           add column counts_text text, add column evidence_text text,
-          add column also_text text, add column phase_text text,
+          add column also_text text, add column phase_text text, add column tree_text text,
           add column mean_text text, add column median_text text,
           add column min_text text, add column max_text text,
           add column sd_text text, add column se_text text,
@@ -818,6 +821,7 @@ async function runImport(
           evidence_text = ${collapsed('evidence_id')},
           also_text = ${collapsed('also_reported_by')},
           phase_text = ${collapsed('dispersal_phase')},
+          tree_text = ${collapsed('tree_flag')},
           mean_text = ${collapsed('mean')}, median_text = ${collapsed('median')},
           min_text = ${collapsed('min')}, max_text = ${collapsed('max')},
           sd_text = ${collapsed('sd')}, se_text = ${collapsed('se')}`;
@@ -853,6 +857,7 @@ async function runImport(
           or (s.counts_text is not null and lower(s.counts_text) not in ('true', 'false'))
           or (s.evidence_text is not null and s.evidence_text !~ '^EB_[0-9]+$')
           or (s.phase_text is not null and s.phase_text not in ('primary', 'secondary', 'unspecified'))
+          or (s.tree_text is not null and s.tree_text <> all(${[...TREE_FLAGS]}::text[]))
           or (t.value_type = 'quantitative' and (
             (s.mean_text is not null and s.mean_num is null)
             or (s.median_text is not null and s.median_num is null)
@@ -930,6 +935,16 @@ async function runImport(
         where s.species_name is not null
         order by s.species_name, (s.name_source = 'wcvp') desc, g.id nulls last
         on conflict (canonical_name) do nothing`;
+      // R5: the file owns the tree basis (RFC-60 R1): every species it names
+      // takes its first valid flag, rows already imported included, so sending
+      // a file again refreshes it without adding a record.
+      await tx`
+        update species sp set tree_flag = f.tree_text
+        from (select distinct on (species_name) species_name, tree_text from import_staging
+              where species_name is not null
+                and tree_text = any(${[...TREE_FLAGS]}::text[])
+              order by species_name, row_no) f
+        where sp.canonical_name = f.species_name and sp.tree_flag is distinct from f.tree_text`;
       await tx`
         insert into species_names (species_id, name, source, gbif_usage_key)
         select distinct on (sp.id, s.gbif_name) sp.id, s.gbif_name, 'gbif', nullif(trim(s.gbif_usage_key), '')
@@ -995,7 +1010,8 @@ async function runImport(
             'counts_as_evidence', coalesce(s.counts_as_evidence, ''),
             'evidence_id', coalesce(s.evidence_id, ''),
             'also_reported_by', coalesce(s.also_reported_by, ''),
-            'dispersal_phase', coalesce(s.dispersal_phase, ''))
+            'dispersal_phase', coalesce(s.dispersal_phase, ''),
+            'tree_flag', coalesce(s.tree_flag, ''))
         from import_staging s left join traits t on t.key = s.trait_key
         where not s.already_imported
           and (s.species_name is null or t.id is null

@@ -381,7 +381,7 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'overflow.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // A well-formed row (41 fields, the empty one being `species`; passes COPY and R7's checks) whose
+    // A well-formed row (42 fields, the empty one being `species`; passes COPY and R7's checks) whose
     // reference is too large — and incompressible, so TOAST can't shrink it
     // under the limit — to fit a btree index entry. The bibliographic
     // references insert runs after the species catalog insert, so its
@@ -392,7 +392,7 @@ describe('RFC-64 importRecords', () => {
     const hugeRef = randomBytes(3000).toString('hex');
     await writeFile(
       file,
-      `${header}\n${freshId()},,${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(22)}\n`,
+      `${header}\n${freshId()},,${hugeRef},${hugeRef},Overflowia numerica,,,,,,,,,Plant height,plant_height,plant_form,1,quantitative_or_text,1${','.repeat(23)}\n`,
     );
     await expect(importRecords(t.db, { filePath: file })).rejects.toThrow();
     const [batch] = await t.db
@@ -410,14 +410,14 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'broken.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // 42 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // 43 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
     // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
     // in import.ts); either the driver recovers on its own with the real
     // PostgresError, or the idle guard aborts it — both are acceptable here,
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
-      `${header}\n${freshId()},,Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(22)},EXTRA\n`,
+      `${header}\n${freshId()},,Fix_X,Fix_X,Broken sp,Fixturia,Fixturaceae,,,,,,,t,flower_color,flower_color,x,categorical,x${','.repeat(23)},EXTRA\n`,
     );
     await expect(
       importRecords(t.db, { filePath: file, copyIdleTimeoutMs: 2000 }),
@@ -1180,6 +1180,47 @@ describe('RFC-64 importRecords', () => {
         [`Rawia nuda-${k}`, 'original'],
         [`Fallbackia antiqua-${k}`, 'wcvp'],
       ]);
+    });
+
+    it('R5, R7 tree_flag: the first valid flag of the species, refreshed by a file sent again; an unknown one rejected (issue #372)', async () => {
+      const k = tag();
+      const ids = [freshId(), freshId(), freshId(), freshId(), freshId()] as const;
+      const flagOf = async (name: string) =>
+        (await t.db.select().from(species).where(eq(species.canonicalName, name)))[0]?.treeFlag;
+      const first = await importRecords(t.db, {
+        filePath: await writeCsv([
+          row({ ID: ids[0], species: `Arbor prima-${k}`, tree_flag: '' }),
+          row({ ID: ids[1], species: `Arbor prima-${k}`, tree_flag: ' wcvp_tree ' }),
+          row({ ID: ids[2], species: `Arbor prima-${k}`, tree_flag: 'growth_form_majority' }),
+          row({ ID: ids[3], species: `Arbor dubia-${k}`, tree_flag: 'tree_maybe' }),
+          row({ ID: ids[4], species: `Arbor nuda-${k}` }),
+        ]),
+      });
+      expect(first).toMatchObject({ status: 'completed', rowsRejected: 1 });
+      expect((await rejectsOf(first.id)).map((r) => [r.reason, r.raw?.tree_flag])).toEqual([
+        ['invalid_measurement', 'tree_maybe'],
+      ]);
+      expect(await flagOf(`Arbor prima-${k}`)).toBe('wcvp_tree');
+      expect(await flagOf(`Arbor dubia-${k}`)).toBeNull();
+      expect(await flagOf(`Arbor nuda-${k}`)).toBeNull();
+
+      // The same rows again, already imported: no record is added, but the file
+      // owns the flag, so a changed one is updated and a missing one filled.
+      const again = await importRecords(t.db, {
+        filePath: await writeCsv([
+          row({ ID: ids[1], species: `Arbor prima-${k}`, tree_flag: 'bgci_and_wcvp_tree' }),
+          row({ ID: ids[4], species: `Arbor nuda-${k}`, tree_flag: 'wcvp_mixed_form' }),
+        ]),
+      });
+      expect(again).toMatchObject({ status: 'completed', rowsInserted: 0, rowsAlreadyImported: 2 });
+      expect(await flagOf(`Arbor prima-${k}`)).toBe('bgci_and_wcvp_tree');
+      expect(await flagOf(`Arbor nuda-${k}`)).toBe('wcvp_mixed_form');
+
+      // A file that gives no flag leaves the stored one alone.
+      await importRecords(t.db, {
+        filePath: await writeCsv([row({ ID: freshId(), species: `Arbor nuda-${k}` })]),
+      });
+      expect(await flagOf(`Arbor nuda-${k}`)).toBe('wcvp_mixed_form');
     });
 
     it('R4 --trees-only stages every row and keeps only is_tree_species true, counting the rest as filtered', async () => {

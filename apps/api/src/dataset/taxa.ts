@@ -11,6 +11,7 @@ import type {
   TaxonRef,
   TraitDataMode,
   TraitSpeciesSort,
+  TreeFlag,
 } from '@treerepro/contracts';
 import {
   and,
@@ -210,6 +211,7 @@ interface SpeciesJoinedRow {
   matchedNameType: NameType | null;
   traitCount: number;
   traitRecordCount?: number | null;
+  treeFlag: TreeFlag | null;
 }
 
 /**
@@ -231,6 +233,7 @@ function toListItem(r: SpeciesJoinedRow, review: boolean): SpeciesListItem {
       : null,
     traitCount: r.traitCount,
     traitRecordCount: r.traitRecordCount ?? null,
+    treeFlag: r.treeFlag,
   };
 }
 
@@ -243,6 +246,7 @@ const speciesColumns = {
   genusName: genera.name,
   familyId: families.id,
   familyName: families.name,
+  treeFlag: species.treeFlag,
 };
 
 /**
@@ -269,6 +273,8 @@ export interface SpeciesListFilters {
   categoryKey?: string;
   traitId?: string;
   traitData?: TraitDataMode;
+  /** RFC-60 R6: keep species whose tree basis is any of these; empty or absent keeps all. */
+  treeFlags?: TreeFlag[];
   /** With `traitId`: a harmonised, live record of this level (RFC-62 R8). The caller validates the level. */
   traitLevelId?: string;
   /** `records` needs `traitId` (RFC-60 R6, RFC-62 R8). */
@@ -364,6 +370,7 @@ export async function speciesListConditions(
   if (status === 'inactive') conditions.push(eq(species.active, false));
   if (filters.familyId) conditions.push(eq(genera.familyId, filters.familyId));
   if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
+  if (filters.treeFlags?.length) conditions.push(inArray(species.treeFlag, filters.treeFlags));
   if (filters.unresolved && visibility.review) {
     conditions.push(
       sql`(${species.nameSource} <> 'wcvp' or ${species.genusId} is null or ${genera.familyId} is null)`,
