@@ -13,6 +13,7 @@ import type {
   TraitSpeciesSort,
   TreeFlag,
 } from '@treerepro/contracts';
+import { TREE_FLAG_LABELS, TREE_FLAGS } from '@treerepro/contracts';
 import {
   and,
   asc,
@@ -97,6 +98,12 @@ interface KeyedSort {
   cast: SQL;
 }
 
+// RFC-60 R6: `sort=treeBasis` orders by the flag's meaning (R1), '' for none.
+const treeBasisKey = sql`(case ${species.treeFlag} ${sql.join(
+  TREE_FLAGS.map((f) => sql`when ${f} then ${TREE_FLAG_LABELS[f]}`),
+  sql` `,
+)} else '' end)`;
+
 function keyedSort(filters: SpeciesListFilters): KeyedSort | null {
   const sort = filters.sort ?? 'name';
   const order = filters.order ?? 'asc';
@@ -109,13 +116,15 @@ function keyedSort(filters: SpeciesListFilters): KeyedSort | null {
   const key =
     sort === 'family'
       ? sql`coalesce(${families.name}, '')`
-      : sort === 'genus'
-        ? sql`coalesce(${genera.name}, '')`
-        : sort === 'traits'
-          ? sql`${species.traitCount}`
-          : sort === 'records'
-            ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
-            : sql`${species.canonicalName}`;
+      : sort === 'treeBasis'
+        ? treeBasisKey
+        : sort === 'genus'
+          ? sql`coalesce(${genera.name}, '')`
+          : sort === 'traits'
+            ? sql`${species.traitCount}`
+            : sort === 'records'
+              ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
+              : sql`${species.canonicalName}`;
   return {
     tag: `${sort}:${order}`,
     key,

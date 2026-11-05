@@ -31,6 +31,7 @@ import {
   speciesTraitsSchema,
   TRAIT_DATA_MODES,
   TRAIT_SPECIES_MODES,
+  TREE_FLAG_LABELS,
   TREE_FLAGS,
   traitDetailSchema,
   traitSchema,
@@ -65,6 +66,11 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
         'treeFlag',
       ]);
     }
+  });
+
+  it('every flag has its meaning', () => {
+    for (const flag of TREE_FLAGS) expect(TREE_FLAG_LABELS[flag]).toMatch(/\w/);
+    expect(TREE_FLAG_LABELS.bgci_wcvp_not_tree).toBe('BGCI says tree, WCVP says e.g. “shrub”');
   });
 
   it('a list item carries treeFlag, null or a known flag', () => {
@@ -690,7 +696,15 @@ describe('RFC-60 R6 species trait filters on listSpeciesQuerySchema', () => {
     expect(listSpeciesQuerySchema.safeParse({ traitData: 'nope' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);
     expect(TRAIT_DATA_MODES).toEqual(['with', 'missing']);
-    expect(SPECIES_SORTS).toEqual(['name', 'completeness', 'family', 'genus', 'traits', 'records']);
+    expect(SPECIES_SORTS).toEqual([
+      'name',
+      'completeness',
+      'family',
+      'genus',
+      'traits',
+      'records',
+      'treeBasis',
+    ]);
   });
 });
 
