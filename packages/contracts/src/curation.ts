@@ -39,6 +39,16 @@ export const recordValueSchema = z.union([
   z.strictObject({ quantitative: quantitativeValueSchema }),
 ]);
 
+/** An absolute http or https URL with a host. @rfc RFC-61 R11 */
+export function isWebUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== '';
+  } catch {
+    return false;
+  }
+}
+
 /** @rfc RFC-80 R1 */
 export const doiSchema = z.string().trim().min(7).max(300);
 /** An ISBN-10 or ISBN-13 as typed, hyphens and spaces allowed, with a valid check digit. @rfc RFC-61 R10 */
@@ -50,16 +60,23 @@ export const isbnSchema = z
   .refine((isbn) => isValidIsbn(isbn) !== null, { message: 'Invalid ISBN' });
 /** The citation a book is recorded under: authors, year, title. @rfc RFC-61 R10 */
 export const bookCitationSchema = z.string().trim().min(1).max(2000);
+/** A web page cited as a source: an absolute http or https URL. @rfc RFC-61 R11 */
+export const websiteUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(isWebUrl, { message: 'Give an http or https address' });
 /**
- * One source of a claim: a local reference, a DOI to resolve, or a book by
- * ISBN with its citation (never looked up).
+ * One source of a claim: a local reference, a DOI to resolve, a book by ISBN
+ * or a web page by URL, each with its citation (never looked up).
  * @rfc RFC-80 R5
- * @rfc RFC-61 R10
+ * @rfc RFC-61 R10, R11
  */
 export const sourceRefSchema = z.union([
   z.strictObject({ id: z.uuid() }),
   z.strictObject({ doi: doiSchema }),
   z.strictObject({ isbn: isbnSchema, citation: bookCitationSchema }),
+  z.strictObject({ url: websiteUrlSchema, citation: bookCitationSchema }),
 ]);
 /** @rfc RFC-70 R1 */
 export const sourcesSchema = z.union([

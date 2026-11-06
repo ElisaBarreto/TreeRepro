@@ -1,4 +1,4 @@
-openapi-sha256: 7768bb91340d9896a98e6dc2cb62c0382ccc38200a169d45150f0eb24a2f3e2d
+openapi-sha256: 99bb9bd5e45e411c6bcba393e99d07a63861344c19e6059ab3eed3f440928f0e
 
 # TreeRepro API guide
 
@@ -419,6 +419,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-06 — A source of `POST /api/records` and the `referenceSource` of a validation (`POST /api/records/:id/annotations`, `POST /api/species/:id/traits/:traitId/levels/:levelId/validate`) may be a website, `{ url, citation }`: an absolute http or https URL (at most 500 characters) and its citation. It resolves to the reference keyed `url:<normalised URL>`, created on first use and never fetched (RFC-61 R11; issue #386). (openapi 99bb9bd5e45e)
 - 2026-11-05 — `GET /api/species/:id`: `plots` lists only the plots you are assigned to, also when you hold `plots.manage` (it used to list every plot holding the species) (RFC-60 R7, RFC-67 R8; issue #384). (openapi 7768bb91340d)
 - 2026-11-05 — `GET /api/species?q=`: when no canonical name equals `q`, the substring match ignores case, accents, spaces, hyphens and other punctuation (`pau brasil` finds *Pau-brasil*, `ipe` finds *Ipê*), and so does `matchedName`. A common name in `names` may have `language: null` (RFC-60 R1, R6; issue #382). (openapi 7768bb91340d)
 - 2026-11-05 — `GET /api/species/tree-flags` takes the search's filters (those of `GET /api/species/count`, `treeFlag` excepted, which it refuses) and counts each flag among the species they keep; without a filter it answers as before (RFC-60 R11; issue #380). (openapi 7768bb91340d)

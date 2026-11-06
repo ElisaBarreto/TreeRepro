@@ -435,6 +435,37 @@ describe('RFC-60 R4, R9 speciesNameBodySchema', () => {
   });
 });
 
+describe('RFC-61 R11 a website among the sources', () => {
+  const citation = 'Flora e Funga do Brasil (2026). Paubrasilia echinata.';
+
+  it('takes an http or https URL with its citation, beside a DOI', () => {
+    expect(
+      sourcesSchema.safeParse({
+        references: [
+          { doi: '10.1111/geb.13000' },
+          { url: 'https://floradobrasil.jbrj.gov.br/FB1', citation },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(sourceRefSchema.safeParse({ url: 'http://example.org/a?b=1', citation }).success).toBe(
+      true,
+    );
+  });
+
+  it('refuses another scheme, a relative or over-long URL, and a missing or blank citation', () => {
+    for (const source of [
+      { url: 'ftp://example.org/x', citation },
+      { url: 'javascript:alert(1)', citation },
+      { url: 'example.org/x', citation },
+      { url: `https://example.org/${'x'.repeat(500)}`, citation },
+      { url: 'https://example.org/x' },
+      { url: 'https://example.org/x', citation: '   ' },
+    ]) {
+      expect(sourceRefSchema.safeParse(source).success).toBe(false);
+    }
+  });
+});
+
 describe('RFC-61 R10, RFC-80 R5 a book among the sources', () => {
   const citation = 'Doe, J. (2001). Seeds of the tropics.';
 
