@@ -237,6 +237,59 @@ describe('RFC-61 R7, R8, RFC-80 R4, R5 sources resolution', () => {
     ).toBe(id);
   });
 
+  it('RFC-61 R11 a website is one reference per normalised URL, never fetched', async () => {
+    const { user } = await createUser(t.db);
+    const ctx = { db: t.db, doi: fakeDoiClient() };
+    const citation = 'Flora e Funga do Brasil (2026). Paubrasilia echinata.';
+    const page = `https://floradobrasil.jbrj.gov.br/FB${Math.random().toString(36).slice(2)}`;
+    const [id] = await resolveSources(ctx, user.id, {
+      references: [
+        { url: `  ${page.replace('https://floradobrasil', 'HTTPS://FloraDoBrasil')}  `, citation },
+      ],
+    });
+    const byId = eq(bibliographicReferences.id, id ?? '');
+    const [row] = await t.db.select().from(bibliographicReferences).where(byId);
+    expect(row).toMatchObject({
+      kind: 'publication',
+      url: page,
+      citationKey: `url:${page}`,
+      fullCitation: citation,
+      shortCitation: citation,
+      doi: null,
+      createdBy: user.id,
+    });
+    // The same page again, with another citation: the same reference, its
+    // citation untouched, one audit entry.
+    expect(
+      await resolveSourceRef(ctx, user.id, { url: page, citation: 'Another text' }, 'reference'),
+    ).toBe(id);
+    const [again] = await t.db.select().from(bibliographicReferences).where(byId);
+    expect(again?.fullCitation).toBe(citation);
+    const audits = await t.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.targetId, id ?? ''));
+    expect(audits.map((a) => [a.action, a.metadata])).toEqual([
+      ['references.created', { source: 'url' }],
+    ]);
+    // Given twice in one claim, it is one source.
+    await expect(
+      resolveSources(ctx, user.id, {
+        references: [
+          { url: page, citation },
+          { url: page, citation },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: [{ path: 'sources.references.1.url' }],
+    });
+    // Only http and https.
+    await expect(
+      resolveSourceRef(ctx, user.id, { url: 'ftp://example.org/x', citation }, 'reference'),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: [{ path: 'reference.url' }] });
+  });
+
   it('RFC-61 R10 cuts a long citation to 200 characters for the short citation only', async () => {
     const { user } = await createUser(t.db);
     const ctx = { db: t.db, doi: fakeDoiClient() };

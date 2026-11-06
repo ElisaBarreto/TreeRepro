@@ -49,7 +49,7 @@ describe('RFC-70 R1 SourcesField', () => {
   it('explains once, however many rows there are, that a blank field is own field work', async () => {
     mount();
     const hint =
-      'Leave blank if this comes from your own field work or expert knowledge; otherwise give the DOI.';
+      'Leave blank if this comes from your own field work or expert knowledge; otherwise give the DOI, the book or the website.';
     expect(screen.getAllByText(hint)).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'What does this mean?' })).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Add another reference' }));
@@ -285,6 +285,38 @@ describe('RFC-70 R1 SourcesField', () => {
     expect(screen.getByRole('button', { name: 'Add a book (ISBN)' })).toBeInTheDocument();
   });
 
+  it('RFC-61 R11 takes a website by address and citation, with no DOI check', async () => {
+    const { onValidity } = mount();
+    await userEvent.click(screen.getByRole('button', { name: 'Add a website' }));
+    const address = screen.getByRole('textbox', { name: 'Web address' });
+    await userEvent.type(address, 'floradobrasil.jbrj.gov.br');
+    await userEvent.tab();
+    expect(screen.getByText('Give an http or https address')).toBeInTheDocument();
+    expect(screen.getByText('Give the citation of the page')).toBeInTheDocument();
+    expect(onValidity).toHaveBeenLastCalledWith(false);
+    await userEvent.clear(address);
+    await userEvent.type(address, 'https://floradobrasil.jbrj.gov.br/FB1');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Page citation' }),
+      'Flora e Funga do Brasil (2026). Paubrasilia echinata.',
+    );
+    await userEvent.tab();
+    await waitFor(() => expect(onValidity).toHaveBeenLastCalledWith(true));
+    expect(screen.queryByText('Give an http or https address')).not.toBeInTheDocument();
+    expect(curation.resolveDoi).not.toHaveBeenCalled();
+  });
+
+  it('shows the API error of a website under its field, counted after the books', async () => {
+    mount({ 'sources.references.1.url': 'Give an http or https address' });
+    await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'ISBN' }), '9780306406157');
+    await userEvent.click(screen.getByRole('button', { name: 'Add a website' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Web address' }), 'https://a.org');
+    expect(screen.getByRole('textbox', { name: 'Web address' })).toHaveAccessibleDescription(
+      expect.stringContaining('Give an http or https address'),
+    );
+  });
+
   it('shows the API error of a book under its field', async () => {
     mount({ 'sources.references.0.citation': 'Citation is too long.' });
     await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
@@ -318,6 +350,27 @@ describe('RFC-70 R1 sourcesToBody', () => {
     });
     expect(sourcesToBody({ dois: [''], books: [{ isbn: '', citation: '' }] })).toEqual({
       personalObservation: true,
+    });
+  });
+});
+
+describe('RFC-61 R11 sourcesToBody websites', () => {
+  it('sends the websites after the books, trimmed, and drops blank website rows', () => {
+    expect(
+      sourcesToBody({
+        dois: ['10.1/x'],
+        books: [{ isbn: '0-306-40615-2', citation: 'Doe' }],
+        websites: [
+          { url: ' https://a.org/p ', citation: ' Flora (2026). ' },
+          { url: '', citation: '' },
+        ],
+      }),
+    ).toEqual({
+      references: [
+        { doi: '10.1/x' },
+        { isbn: '0-306-40615-2', citation: 'Doe' },
+        { url: 'https://a.org/p', citation: 'Flora (2026).' },
+      ],
     });
   });
 });
@@ -363,6 +416,17 @@ describe('RFC-70 R4 SourcesField single', () => {
     render(<SingleHarness />);
     await userEvent.click(screen.getByRole('button', { name: 'Add a book (ISBN)' }));
     expect(screen.queryByRole('button', { name: 'Add a book (ISBN)' })).not.toBeInTheDocument();
+  });
+
+  it('a website replaces the DOI row too, and both buttons go once it exists', async () => {
+    render(<SingleHarness />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add a website' }));
+    expect(screen.queryByRole('textbox', { name: /doi/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Web address' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add a website' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add a book (ISBN)' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('textbox', { name: 'DOI' })).toBeInTheDocument();
   });
 
   it('restores the blank DOI row once the lone book is removed', async () => {

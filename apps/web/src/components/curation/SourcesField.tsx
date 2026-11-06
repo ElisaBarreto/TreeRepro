@@ -1,4 +1,9 @@
-import { type CreateRecordBody, isValidIsbn, type ResolveDoiResult } from '@treerepro/contracts';
+import {
+  type CreateRecordBody,
+  isValidIsbn,
+  isWebUrl,
+  type ResolveDoiResult,
+} from '@treerepro/contracts';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client.ts';
 import { resolveDoi } from '../../api/curation.ts';
@@ -8,12 +13,15 @@ import { type DoiCheck, DoiField, resolvedCheck } from './DoiField.tsx';
 
 /** A book among a claim's sources: its ISBN as typed and the citation it is recorded under. */
 export type BookSource = { isbn: string; citation: string };
+/** A web page among a claim's sources: its address as typed and its citation. */
+export type WebsiteSource = { url: string; citation: string };
 
 /**
  * The sources of a claim: the DOIs, one per row (`''` rows are blank ones),
- * and after them the books given by ISBN — absent until one is added.
+ * then the books given by ISBN and the websites given by address — each
+ * absent until one is added.
  */
-export type SourcesValue = { dois: string[]; books?: BookSource[] };
+export type SourcesValue = { dois: string[]; books?: BookSource[]; websites?: WebsiteSource[] };
 
 export interface SourcesFieldProps {
   value: SourcesValue;
@@ -38,41 +46,93 @@ export const EMPTY_SOURCES: SourcesValue = { dois: [''] };
 const MAX_ROWS = 10;
 const IDLE: DoiCheck = { status: 'idle' };
 const HINT =
-  'Leave blank if this comes from your own field work or expert knowledge; otherwise give the DOI.';
+  'Leave blank if this comes from your own field work or expert knowledge; otherwise give the DOI, the book or the website.';
 
-const bookFilled = (book: BookSource) => book.isbn.trim() !== '' || book.citation.trim() !== '';
-// A book is never looked up (RFC-61 R10): ready once its ISBN is well-formed
-// and it has a citation, or while the row is blank.
-const bookReady = (book: BookSource) =>
-  !bookFilled(book) || (isValidIsbn(book.isbn) !== null && book.citation.trim() !== '');
+/**
+ * A source given by a key and a citation, never looked up: a book by ISBN
+ * (RFC-61 R10) or a web page by address (R11). The row's labels and the
+ * sentences it says when something is missing or malformed.
+ */
+interface CitedKind {
+  label: string;
+  citationLabel: string;
+  hint: string;
+  citationHint: string;
+  placeholder: string;
+  maxLength: number;
+  valid(key: string): boolean;
+  missing: string;
+  invalid: string;
+  citationMissing: string;
+}
+type CitedSource = { key: string; citation: string };
+
+const BOOK: CitedKind = {
+  label: 'ISBN',
+  citationLabel: 'Citation',
+  hint: 'ISBN-10 or ISBN-13',
+  citationHint: 'Authors, year, title',
+  placeholder: '978-0-306-40615-7',
+  maxLength: 20,
+  valid: (isbn) => isValidIsbn(isbn) !== null,
+  missing: 'Give the ISBN of the book',
+  invalid: 'Not a valid ISBN',
+  citationMissing: 'Give the citation of the book',
+};
+const WEBSITE: CitedKind = {
+  label: 'Web address',
+  citationLabel: 'Page citation',
+  hint: 'The page address, starting with https://',
+  citationHint: 'Author or organisation, year, page title',
+  placeholder: 'https://',
+  maxLength: 500,
+  valid: (url) => isWebUrl(url.trim()),
+  missing: 'Give the address of the page',
+  invalid: 'Give an http or https address',
+  citationMissing: 'Give the citation of the page',
+};
+
+const citedFilled = (source: CitedSource) =>
+  source.key.trim() !== '' || source.citation.trim() !== '';
+// Never looked up: ready once its key is well-formed and it has a citation,
+// or while the row is blank.
+const citedReady = (kind: CitedKind, source: CitedSource) =>
+  !citedFilled(source) || (kind.valid(source.key) && source.citation.trim() !== '');
+const bookFilled = (book: BookSource) => citedFilled({ key: book.isbn, citation: book.citation });
+const websiteFilled = (page: WebsiteSource) =>
+  citedFilled({ key: page.url, citation: page.citation });
 
 /**
  * The `sources` of the claim: the DOIs the rows hold, trimmed, blank rows
  * dropped — and no DOI at all means the contributor's own field work, which
  * the API records as their personal-observation reference. The books follow
- * the DOIs, trimmed; a blank book row is dropped.
+ * the DOIs and the websites the books, trimmed; a blank row is dropped.
  * @rfc RFC-70 R1
  * @rfc RFC-80 R5
- * @rfc RFC-61 R10
+ * @rfc RFC-61 R10, R11
  */
 export function sourcesToBody(value: SourcesValue): CreateRecordBody['sources'] {
   const dois = value.dois.map((doi) => doi.trim()).filter((doi) => doi !== '');
   const books = (value.books ?? [])
     .filter(bookFilled)
     .map((book) => ({ isbn: book.isbn.trim(), citation: book.citation.trim() }));
-  return dois.length === 0 && books.length === 0
+  const websites = (value.websites ?? [])
+    .filter(websiteFilled)
+    .map((page) => ({ url: page.url.trim(), citation: page.citation.trim() }));
+  return dois.length === 0 && books.length === 0 && websites.length === 0
     ? { personalObservation: true }
-    : { references: [...dois.map((doi) => ({ doi })), ...books] };
+    : { references: [...dois.map((doi) => ({ doi })), ...books, ...websites] };
 }
 
 /**
- * One book among the sources: its ISBN and its citation. Once either field is
- * left, a row with any content says what it lacks — an ISBN, a valid one, a
- * citation; a blank row says nothing. The API checks both again (RFC-61 R10).
- * A book is never looked up, so it never waits on a check.
+ * One book or web page among the sources: its key (ISBN or address) and its
+ * citation. Once either field is left, a row with any content says what it
+ * lacks; a blank row says nothing. The API checks both again (RFC-61 R10,
+ * R11). It is never looked up, so it never waits on a check.
  */
-function BookRow({
+function CitedRow({
   id,
+  kind,
   number,
   value,
   onChange,
@@ -80,34 +140,34 @@ function BookRow({
   errors,
 }: {
   id: string;
+  kind: CitedKind;
   number: number;
-  value: BookSource;
-  onChange(v: BookSource): void;
+  value: CitedSource;
+  onChange(v: CitedSource): void;
   onRemove(): void;
-  errors: { isbn?: string; citation?: string };
+  errors: { key?: string; citation?: string };
 }) {
   const [left, setLeft] = useState(false);
-  const shown = left && bookFilled(value);
-  const isbnError =
-    errors.isbn ??
+  const shown = left && citedFilled(value);
+  const keyError =
+    errors.key ??
     (!shown
       ? undefined
-      : value.isbn.trim() === ''
-        ? 'Give the ISBN of the book'
-        : isValidIsbn(value.isbn) === null
-          ? 'Not a valid ISBN'
+      : value.key.trim() === ''
+        ? kind.missing
+        : !kind.valid(value.key)
+          ? kind.invalid
           : undefined);
   const citationError =
-    errors.citation ??
-    (shown && value.citation.trim() === '' ? 'Give the citation of the book' : undefined);
+    errors.citation ?? (shown && value.citation.trim() === '' ? kind.citationMissing : undefined);
   const suffix = number === 1 ? '' : ` ${number}`;
   return (
     <div className="flex flex-col gap-2">
       <Field
-        id={`${id}-isbn`}
-        label={`ISBN${suffix}`}
-        hint="ISBN-10 or ISBN-13"
-        error={isbnError}
+        id={`${id}-key`}
+        label={`${kind.label}${suffix}`}
+        hint={kind.hint}
+        error={keyError}
         trailing={
           <Button variant="secondary" size="sm" onClick={onRemove}>
             Remove
@@ -115,19 +175,19 @@ function BookRow({
         }
       >
         <Input
-          id={`${id}-isbn`}
-          value={value.isbn}
-          maxLength={20}
-          placeholder="978-0-306-40615-7"
-          onChange={(e) => onChange({ ...value, isbn: e.target.value })}
+          id={`${id}-key`}
+          value={value.key}
+          maxLength={kind.maxLength}
+          placeholder={kind.placeholder}
+          onChange={(e) => onChange({ ...value, key: e.target.value })}
           onBlur={() => setLeft(true)}
-          invalid={Boolean(isbnError)}
+          invalid={Boolean(keyError)}
         />
       </Field>
       <Field
         id={`${id}-citation`}
-        label={`Citation${suffix}`}
-        hint="Authors, year, title"
+        label={`${kind.citationLabel}${suffix}`}
+        hint={kind.citationHint}
         error={citationError}
       >
         <Input
@@ -161,10 +221,12 @@ function BookRow({
  * refuse the record anyway. **Add a book (ISBN)** appends a row with an ISBN
  * and a Citation field after the DOI rows; a book is never checked against
  * the registry, so it is ready once its ISBN is well-formed and it has a
- * citation. DOI and book rows share the limit of ten.
+ * citation. **Add a website** does the same with a Web address and a Page
+ * citation (RFC-61 R11), ready once the address is an http or https URL.
+ * DOI, book and website rows share the limit of ten.
  * @rfc RFC-70 R1
  * @rfc RFC-80 R4
- * @rfc RFC-61 R10
+ * @rfc RFC-61 R10, R11
  */
 export function SourcesField({
   value,
@@ -182,12 +244,15 @@ export function SourcesField({
   const rows = value.dois;
   const dois = rows.map((doi) => doi.trim());
   const books = value.books ?? [];
+  const websites = value.websites ?? [];
   const checkOf = (index: number): DoiCheck => {
     const doi = dois[index] ?? '';
     return (doi === '' ? undefined : checks.get(doi)) ?? IDLE;
   };
   const ready =
-    dois.every((doi) => doi === '' || checks.get(doi)?.status === 'ok') && books.every(bookReady);
+    dois.every((doi) => doi === '' || checks.get(doi)?.status === 'ok') &&
+    books.every((book) => citedReady(BOOK, { key: book.isbn, citation: book.citation })) &&
+    websites.every((page) => citedReady(WEBSITE, { key: page.url, citation: page.citation }));
 
   useEffect(() => onValidity(ready), [ready, onValidity]);
 
@@ -230,16 +295,19 @@ export function SourcesField({
     );
   }
 
-  // Books follow the filled DOIs in the body `sourcesToBody` sends, so a
-  // book's path counts every filled DOI and the filled books before it.
-  function bookErrors(index: number): { isbn?: string; citation?: string } {
-    const book = books[index];
-    if (book === undefined || !bookFilled(book)) return {};
-    const position =
-      dois.filter((doi) => doi !== '').length + books.slice(0, index).filter(bookFilled).length;
+  // Books follow the filled DOIs in the body `sourcesToBody` sends, and
+  // websites the filled books, so a row's path counts every filled row before
+  // it.
+  function citedErrors(position: number, field: string): { key?: string; citation?: string } {
     const path = `sources.references.${position}`;
-    return { isbn: errors[`${path}.isbn`] ?? errors[path], citation: errors[`${path}.citation`] };
+    return {
+      key: errors[`${path}.${field}`] ?? errors[path],
+      citation: errors[`${path}.citation`],
+    };
   }
+  const filledDois = dois.filter((doi) => doi !== '').length;
+  const filledBooks = books.filter(bookFilled).length;
+  const extras = books.length + websites.length;
 
   return (
     // The hint describes the rows as a group: it is about having no DOI at
@@ -279,25 +347,68 @@ export function SourcesField({
         {books.map((book, index) => {
           const rowId = `${baseId}-book-${index}`;
           return (
-            <BookRow
+            <CitedRow
               key={rowId}
               id={rowId}
+              kind={BOOK}
               number={index + 1}
-              value={book}
-              onChange={(next) =>
-                onChange({ ...value, books: books.map((b, i) => (i === index ? next : b)) })
-              }
+              value={{ key: book.isbn, citation: book.citation }}
+              onChange={(next) => {
+                const updated = { isbn: next.key, citation: next.citation };
+                onChange({ ...value, books: books.map((b, i) => (i === index ? updated : b)) });
+              }}
               onRemove={() =>
                 single
                   ? onChange({ dois: [''], books: [] })
                   : onChange({ ...value, books: books.filter((_, i) => i !== index) })
               }
-              errors={bookErrors(index)}
+              errors={
+                bookFilled(book)
+                  ? citedErrors(
+                      filledDois + books.slice(0, index).filter(bookFilled).length,
+                      'isbn',
+                    )
+                  : {}
+              }
+            />
+          );
+        })}
+        {websites.map((page, index) => {
+          const rowId = `${baseId}-website-${index}`;
+          return (
+            <CitedRow
+              key={rowId}
+              id={rowId}
+              kind={WEBSITE}
+              number={index + 1}
+              value={{ key: page.url, citation: page.citation }}
+              onChange={(next) => {
+                const updated = { url: next.key, citation: next.citation };
+                onChange({
+                  ...value,
+                  websites: websites.map((w, i) => (i === index ? updated : w)),
+                });
+              }}
+              onRemove={() =>
+                single
+                  ? onChange({ dois: [''], websites: [] })
+                  : onChange({ ...value, websites: websites.filter((_, i) => i !== index) })
+              }
+              errors={
+                websiteFilled(page)
+                  ? citedErrors(
+                      filledDois +
+                        filledBooks +
+                        websites.slice(0, index).filter(websiteFilled).length,
+                      'url',
+                    )
+                  : {}
+              }
             />
           );
         })}
       </div>
-      {(single ? books.length === 0 : rows.length + books.length < MAX_ROWS) ? (
+      {(single ? extras === 0 : rows.length + extras < MAX_ROWS) ? (
         <div className="flex flex-wrap gap-2">
           {single ? null : (
             <Button
@@ -322,9 +433,24 @@ export function SourcesField({
           >
             Add a book (ISBN)
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              // As a book: in single mode the website replaces the DOI row.
+              single
+                ? onChange({ dois: [], websites: [{ url: '', citation: '' }] })
+                : onChange({ ...value, websites: [...websites, { url: '', citation: '' }] })
+            }
+          >
+            Add a website
+          </Button>
         </div>
       ) : null}
-      {!single && dois.every((doi) => doi === '') && !books.some(bookFilled) ? (
+      {!single &&
+      dois.every((doi) => doi === '') &&
+      !books.some(bookFilled) &&
+      !websites.some(websiteFilled) ? (
         <p className="text-meta text-mist-500">
           This will be recorded as your personal observation
         </p>

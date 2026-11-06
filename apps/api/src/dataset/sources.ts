@@ -1,4 +1,4 @@
-import { isValidIsbn, type ResolveDoiResult } from '@treerepro/contracts';
+import { isValidIsbn, isWebUrl, type ResolveDoiResult } from '@treerepro/contracts';
 import type { DbExecutor } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import type { DoiClient } from '../integrations/doi.ts';
@@ -7,6 +7,7 @@ import {
   createReferenceFromDoi,
   ensureBookReference,
   ensurePersonalObservation,
+  ensureWebsiteReference,
   findReferenceByDoi,
   findReferenceKind,
 } from './references.ts';
@@ -14,7 +15,11 @@ import {
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
 
-export type SourceRefInput = { id: string } | { doi: string } | { isbn: string; citation: string };
+export type SourceRefInput =
+  | { id: string }
+  | { doi: string }
+  | { isbn: string; citation: string }
+  | { url: string; citation: string };
 
 export type SourceInput = { personalObservation: true } | { references: SourceRefInput[] };
 
@@ -22,9 +27,9 @@ export type SourceInput = { personalObservation: true } | { references: SourceRe
  * One source to a reference id. `path` names the field in the request, so the
  * detail paths a client gets back are the ones it sent (`reference.doi` on an
  * annotation, `sources.references.2.doi` on a record). A book resolves
- * locally, never looked up (RFC-61 R10).
+ * locally, never looked up (RFC-61 R10), and so does a web page (R11).
  * @rfc RFC-80 R5
- * @rfc RFC-61 R10
+ * @rfc RFC-61 R10, R11
  */
 export async function resolveSourceRef(
   ctx: { db: DbExecutor; doi: DoiClient },
@@ -61,6 +66,17 @@ export async function resolveSourceRef(
       actorId,
     });
     return book.id;
+  }
+
+  if ('url' in source) {
+    const url = source.url.trim();
+    if (!isWebUrl(url)) throw validation(`${path}.url`, 'Give an http or https address');
+    const page = await ensureWebsiteReference(ctx.db, {
+      url: new URL(url).href,
+      citation: source.citation.trim(),
+      actorId,
+    });
+    return page.id;
   }
 
   const doi = normaliseDoi(source.doi);
@@ -100,7 +116,8 @@ export async function resolveSources(
     const p = `${path}.references.${i}`;
     const id = await resolveSourceRef(ctx, actorId, source, p);
     if (seen.has(id)) {
-      const field = 'id' in source ? 'id' : 'isbn' in source ? 'isbn' : 'doi';
+      const field =
+        'id' in source ? 'id' : 'isbn' in source ? 'isbn' : 'url' in source ? 'url' : 'doi';
       throw validation(`${p}.${field}`, 'Duplicate reference');
     }
     seen.add(id);
