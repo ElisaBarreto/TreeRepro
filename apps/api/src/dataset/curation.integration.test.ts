@@ -17,7 +17,7 @@ import type { Visibility } from '../access/visibility.ts';
 import { contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
 import { recordAnnotations } from '../db/schema/curation.ts';
 import { traitLevels } from '../db/schema/dictionary.ts';
-import { recordReferences } from '../db/schema/records.ts';
+import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences } from '../db/schema/references.ts';
 import {
@@ -423,6 +423,103 @@ describe('RFC-70 R4, RFC-65 R3 annotateRecord (spec R-6, R-10, R-12)', () => {
     expect(secondRef?.annotations).toHaveLength(3);
     // One actor, however many confirms: counted once (RFC-63 R8).
     expect(secondRef?.validationCount).toBe(1);
+  });
+
+  /** The records `actorId` created, oldest first. */
+  const recordsBy = (actorId: string) =>
+    t.db
+      .select()
+      .from(traitRecords)
+      .where(eq(traitRecords.createdBy, actorId))
+      .orderBy(traitRecords.createdAt);
+
+  it('RFC-65 R17 a confirm adds the validator record: same level, their reference or personal observation, once per reference', async () => {
+    const f = await setup();
+    await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.imported.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+    });
+    const po = await ensurePersonalObservation(t.db, f.other.id);
+    let mine = await recordsBy(f.other.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({
+      speciesId: f.sp.id,
+      traitId: f.trait.id,
+      levelId: f.trait.levels[1]?.id,
+      valueText: 'b',
+      origin: 'manual',
+      harmonisation: 'harmonised',
+      intent: 'complement',
+      respondsToRecordId: f.imported.id,
+      primaryReferenceId: po.id,
+      secondaryReferenceId: null,
+    });
+    expect(mine[0]?.recordCode).toMatch(/^TR_\d+$/);
+    // Again without a reference: the claim key holds it, nothing new.
+    await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.imported.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+    });
+    // With a reference: a second record, under that reference.
+    await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: f.imported.id,
+      actorId: f.other.id,
+      kind: 'confirm',
+      referenceId: f.ref2.id,
+    });
+    mine = await recordsBy(f.other.id);
+    expect(mine.map((r) => r.primaryReferenceId)).toEqual([po.id, f.ref2.id]);
+    // The refused confirm on one's own record adds nothing.
+    await expect(
+      annotateRecord(t.db, UNRESTRICTED, {
+        ...base,
+        recordId: f.manual.id,
+        actorId: f.author.id,
+        kind: 'confirm',
+      }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    expect(await recordsBy(f.author.id)).toHaveLength(1);
+  });
+
+  it('RFC-65 R17 a quantitative confirm copies every field of the value, its unit audit included', async () => {
+    const { user: other } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const trait = await createTrait(t.db, { valueType: 'quantitative' });
+    const sp = await createSpecies(t.db);
+    const batch = await createImportBatch(t.db);
+    const rec = await createRecord(t.db, {
+      speciesId: sp.id,
+      traitId: trait.id,
+      valueText: 'median=4;se=0.5;n=3',
+      medianValue: 4,
+      seValue: 0.5,
+      n: 3,
+      unitStatus: 'needs_unit_check',
+      primaryReferenceId: ref.id,
+      importBatchId: batch.id,
+    });
+    await annotateRecord(t.db, UNRESTRICTED, {
+      ...base,
+      recordId: rec.id,
+      actorId: other.id,
+      kind: 'confirm',
+    });
+    const [mine] = await recordsBy(other.id);
+    expect(mine).toMatchObject({
+      levelId: null,
+      valueText: 'median=4;se=0.5;n=3',
+      medianValue: 4,
+      seValue: 0.5,
+      n: 3,
+      numericValue: null,
+      unitStatus: 'needs_unit_check',
+      respondsToRecordId: rec.id,
+    });
   });
 
   it('withdraw: the author, records.withdraw for manual, records.withdraw_imported for imported; answers null', async () => {
@@ -1202,6 +1299,26 @@ describe('RFC-65 R13, R14, RFC-70 R4 level actions', () => {
     const again = await validateLevel(t.db, UNRESTRICTED, { ...f.at, actorId: f.me.id });
     expect(again.validated).toEqual([]);
     expect((await getRecord(t.db, UNRESTRICTED, f.mine.id))?.annotations).toEqual([]);
+  });
+
+  it('RFC-65 R17 validateLevel adds one validator record of the level, responding to the first validated record; once per reference', async () => {
+    const f = await blueLevel();
+    const { user: third } = await createUser(t.db);
+    const own = await createReference(t.db);
+    // `theirs` already states blue under f.ref: the same claim, so no record.
+    await validateLevel(t.db, UNRESTRICTED, { ...f.at, actorId: third.id, referenceId: f.ref.id });
+    await validateLevel(t.db, UNRESTRICTED, { ...f.at, actorId: third.id, referenceId: own.id });
+    await validateLevel(t.db, UNRESTRICTED, { ...f.at, actorId: third.id, referenceId: own.id });
+    const mine = await t.db.select().from(traitRecords).where(eq(traitRecords.createdBy, third.id));
+    expect(mine).toHaveLength(1);
+    const first = [f.theirs.id, f.mine.id, f.imported.id].sort()[0];
+    expect(mine[0]).toMatchObject({
+      levelId: f.blue,
+      valueText: 'blue',
+      intent: 'complement',
+      respondsToRecordId: first,
+      primaryReferenceId: own.id,
+    });
   });
 
   it('R13 errors: species, trait, foreign or invisible level, no record, only own records', async () => {

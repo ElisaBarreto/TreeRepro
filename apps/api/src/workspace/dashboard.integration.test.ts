@@ -121,8 +121,11 @@ async function plotFixture(tx: DbTransaction) {
   // Confirmed: it holds a cell but never awaits the viewer's validation.
   const confirmed = await record(one.id, traitA, viewer.id);
   await createAnnotation(tx, { recordId: confirmed.id, actorId: manager.id, kind: 'confirm' });
-  // The one record awaiting validation.
-  const awaiting = await record(one.id, traitB, viewer.id);
+  // The one record awaiting validation: someone else's.
+  const awaiting = await record(one.id, traitB, manager.id);
+  // The viewer's own unvalidated record, on `confirmed`'s cell: never awaiting
+  // their validation, since they cannot validate it (RFC-65 R3, R17).
+  const ownUnvalidated = await record(one.id, traitA, viewer.id, secondReference.id);
   // Withdrawn: it shares `awaiting`'s cell, so it changes no count but the
   // one it must change — the other half of the predicate (RFC-72 R1, spec §7).
   const withdrawn = await record(one.id, traitB, manager.id, secondReference.id);
@@ -151,6 +154,7 @@ async function plotFixture(tx: DbTransaction) {
     secondReference,
     confirmed,
     awaiting,
+    ownUnvalidated,
     withdrawn,
     onInactiveTrait,
     onOutsideSpecies,

@@ -18,6 +18,7 @@ import { createRole, systemRoleId } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
 import { traitLevels } from '../../../db/schema/dictionary.ts';
+import { traitRecords } from '../../../db/schema/records.ts';
 
 describe('RFC-63 R9, R10 record and summary routes', () => {
   const t = useTestApp();
@@ -904,6 +905,12 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
     const reviewer = await scientist(t, ['records.annotate', 'records.review']);
     const ok = await annotate(reviewer.cookie, pending.id, { kind: 'confirm' });
     expect(ok.status).toBe(201);
+    // RFC-65 R17: a pending record states no value, so its validation adds no record.
+    const copies = await t.db
+      .select({ id: traitRecords.id })
+      .from(traitRecords)
+      .where(eq(traitRecords.createdBy, reviewer.user.id));
+    expect(copies).toEqual([]);
   });
 
   it('R4 the author withdraws a manual record; nothing more can be annotated afterwards', async () => {

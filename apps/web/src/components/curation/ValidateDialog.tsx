@@ -27,6 +27,7 @@ export interface ValidateDialogProps {
  * names a field this dialog does not lay out (`referenceSource.*`).
  * @rfc RFC-13 R6, R10
  * @rfc RFC-70 R4
+ * @rfc RFC-65 R17
  */
 export function ValidateDialog({ subject, speciesId, write, onClose }: ValidateDialogProps) {
   const [sources, setSources] = useState<SourcesValue>(EMPTY_SOURCES);
@@ -59,6 +60,10 @@ export function ValidateDialog({ subject, speciesId, write, onClose }: ValidateD
       <div className="flex flex-col gap-4">
         <p className="text-body text-canopy-900">Do you confirm that this record is correct?</p>
         <p className="text-meta text-mist-500">A supporting reference is optional.</p>
+        <p className="text-meta text-mist-500">
+          Your validation is added as your own record, under this reference or, without one, as your
+          personal observation.
+        </p>
         <SourcesField
           value={sources}
           onChange={setSources}
