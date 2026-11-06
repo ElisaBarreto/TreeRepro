@@ -48,6 +48,12 @@ describe('RFC-70 R4 ValidateDialog', () => {
     expect(
       within(dialog).getByText('Do you confirm that this record is correct?'),
     ).toBeInTheDocument();
+    // RFC-65 R17: a validation is a record too.
+    expect(
+      within(dialog).getByText(
+        'Your validation is added as your own record, under this reference or, without one, as your personal observation.',
+      ),
+    ).toBeInTheDocument();
     expect(
       within(dialog).queryByText('This will be recorded as your personal observation'),
     ).not.toBeInTheDocument();

@@ -25,6 +25,7 @@ import { AppError } from '../http/errors.ts';
 import { requireTrait, type TraitBrief } from './dictionary.ts';
 import { isHarmonisableNumber } from './import.ts';
 import { getRecord, itemQuery, recordVisible, toItem } from './records.ts';
+import { ensurePersonalObservation } from './references.ts';
 
 const validation = (path: string, message: string) =>
   new AppError('VALIDATION_FAILED', 'Request validation failed', [{ path, message }]);
@@ -245,6 +246,35 @@ async function confirmOnce(
     .values(
       missing.map((referenceId) => ({ recordId, actorId, kind: 'confirm' as const, referenceId })),
     );
+}
+
+/**
+ * The validator's record of a validation (RFC-65 R17): the validated value —
+ * its level, or its quantitative fields with their unit audit — under the
+ * supporting reference, else the validator's personal observation, as a
+ * complement responding to the validated record. The claim key makes it
+ * once per validator × value × reference. A pending record (a reviewer may
+ * validate one) states no value yet, so it gains none.
+ */
+async function addValidationRecord(
+  tx: DbExecutor,
+  validatedRecordId: string,
+  actorId: string,
+  referenceId: string | undefined,
+): Promise<void> {
+  const primary = referenceId ?? (await ensurePersonalObservation(tx, actorId)).id;
+  await tx.execute(sql`
+    insert into trait_records (species_id, trait_id, value_text, level_id, numeric_value,
+      min_value, max_value, mean_value, median_value, sd_value, se_value, n, unit, unit_status,
+      outlier_flag, harmonisation, primary_reference_id, origin, created_by, intent,
+      responds_to_record_id)
+    select r.species_id, r.trait_id, coalesce(l.key, r.value_text), r.level_id, r.numeric_value,
+      r.min_value, r.max_value, r.mean_value, r.median_value, r.sd_value, r.se_value, r.n, r.unit,
+      r.unit_status, r.outlier_flag, 'harmonised', ${primary}::uuid, 'manual', ${actorId}::uuid,
+      'complement', r.id
+    from trait_records r left join trait_levels l on l.id = r.level_id
+    where r.id = ${validatedRecordId}::uuid and r.harmonisation = 'harmonised'
+    on conflict on constraint trait_records_claim_key do nothing`);
 }
 
 interface CodeRow {
@@ -615,8 +645,9 @@ export async function lockSpeciesTrait(
  * (RFC-33 R2), so there is no detail left to answer with. `neutral`,
  * `dispute` and `resolve` never reach here — the route refuses them before
  * this is called (RFC-65 R3; Keep both moves to the contest routes, Task 7).
+ * A `confirm` also adds the validator's record (RFC-65 R17).
  * @rfc RFC-70 R3, R4
- * @rfc RFC-65 R3, R4
+ * @rfc RFC-65 R3, R4, R17
  * @rfc RFC-33 R2, R5
  */
 export async function annotateRecord(
@@ -677,6 +708,7 @@ export async function annotateRecord(
         throw new AppError('PERMISSION_DENIED', 'You cannot validate your own record');
       }
       await confirmOnce(tx, rec.id, input.actorId, input.referenceId ? [input.referenceId] : []);
+      await addValidationRecord(tx, rec.id, input.actorId, input.referenceId);
       return getRecord(tx, visibility, rec.id);
     }
 
@@ -768,8 +800,9 @@ const codeRef = (r: LevelRecord): RecordCodeRef => ({
  * Validate a level: one `confirm` on every visible record of the species ×
  * trait × level that the actor did not create and has not yet validated.
  * 403 when every visible record is the actor's own. `validated` lists the
- * records newly validated, empty when all already were.
- * @rfc RFC-65 R13
+ * records newly validated, empty when all already were. The level also gains
+ * the validator's record, once (R17).
+ * @rfc RFC-65 R13, R17
  * @rfc RFC-70 R4
  * @rfc RFC-33 R5
  */
@@ -808,6 +841,13 @@ export async function validateLevel(
         input.referenceId ? [input.referenceId] : [],
       );
     }
+    // `others` is in id order: the record responded to is the first.
+    await addValidationRecord(
+      tx,
+      (others[0] as LevelRecord).recordId,
+      input.actorId,
+      input.referenceId,
+    );
     return { validated: todo.map(codeRef) };
   });
 }

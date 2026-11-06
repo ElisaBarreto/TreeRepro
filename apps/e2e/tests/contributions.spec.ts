@@ -121,8 +121,9 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
 
       // ── …then contests it with a value of their own. Since spec R-11 a
       // contest writes nothing on the record it contests, so the contributor
-      // ends this step with one manual record (the contest) and one
-      // `confirm` annotation (the validation). ─────────────────────────────
+      // ends this step with two manual records — the validation's own
+      // complement (RFC-65 R17) and the contest — and one `confirm`
+      // annotation (the validation). ──────────────────────────────────────
       await drawer.getByRole('button', { name: 'Contest', exact: true }).click();
       const contest = page.getByRole('dialog', { name: `Add entries for ${traitName}` });
       // The drawer's Contest chooses nothing: the user still picks it (RFC-70 R9).
@@ -147,8 +148,8 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
       await page.goto('/app/contributions');
       await expect(page.getByRole('heading', { name: 'My contributions' })).toBeVisible();
 
-      // R4: the summary tiles count the record, the contest (a contest row of
-      // its own, RFC-63 R14) and the validation — this fresh contributor has
+      // R4: the summary tiles count the records, the contest (a contest row of
+      // its own, RFC-63 R14), the validation's complement and the validation — this fresh contributor has
       // done nothing else, so every other count stays zero. Label and value
       // are pinned separately (as StatTiles.test.tsx does with
       // toHaveTextContent), not as one exact string of the two stacked
@@ -160,18 +161,21 @@ test.describe('RFC-71 my contributions (plan 11a)', () => {
         await expect(item).toContainText(label);
         await expect(item).toContainText(value);
       };
-      await tileShows('Records', '1');
+      await tileShows('Records', '2');
       await tileShows('Contests', '1');
-      await tileShows('Complements', '0');
+      await tileShows('Complements', '1');
       await tileShows('Validations', '1');
 
-      // R2: the Records tab (open by default) lists the contest as the
-      // contributor's own manual record, badged with its intent; it is not
-      // validated by anyone.
+      // R2: the Records tab (open by default) lists the contest and the
+      // validation's complement as the contributor's own manual records,
+      // each badged with its intent; neither is validated by anyone.
       const recordsTable = page.getByRole('table');
-      const recordRow = recordsTable.getByRole('row').filter({ hasText: speciesName });
-      await expect(recordRow).toContainText(traitName);
-      await expect(recordRow.getByText('contest', { exact: true })).toBeVisible();
+      const recordRows = recordsTable.getByRole('row').filter({ hasText: speciesName });
+      await expect(recordRows).toHaveCount(2);
+      for (const intent of ['contest', 'complement']) {
+        const row = recordRows.filter({ has: page.getByText(intent, { exact: true }) });
+        await expect(row).toContainText(traitName);
+      }
 
       // R3: the Annotations tab lists the one annotation the contributor
       // wrote on the seeded record — the validation — naming the species and

@@ -184,8 +184,8 @@ interface AwaitingIds {
 
 /**
  * The records on the viewer's plot species that no scientist has confirmed or
- * withdrawn yet: the ids of the twenty newest, and how many there are in
- * total.
+ * withdrawn yet and that the viewer did not create: the ids of the twenty
+ * newest, and how many there are in total.
  *
  * Ids and not items, because this is what the per-viewer entry stores. A
  * record item carries `createdBy: { id, name }`, and `users.name` is an
@@ -201,8 +201,11 @@ async function awaitingValidation(
   db: DbExecutor,
   visibility: Visibility,
   plotIds: string[],
+  viewerId: string,
 ): Promise<AwaitingIds> {
   const where = and(
+    // The viewer cannot validate their own record (RFC-65 R3).
+    sql`trait_records.created_by is distinct from ${viewerId}::uuid`,
     speciesVisible(visibility),
     traitVisible(visibility),
     sql`exists (select 1 from plot_species ps
@@ -348,7 +351,7 @@ async function contributorSection(
 ): Promise<CachedContributor> {
   const [missingCells, awaiting, withData, summary] = await Promise.all([
     plotIds.length === 0 ? null : missingCellCount(ctx.db, visibility, plotIds),
-    plotIds.length === 0 ? null : awaitingValidation(ctx.db, visibility, plotIds),
+    plotIds.length === 0 ? null : awaitingValidation(ctx.db, visibility, plotIds, viewer.id),
     traitsWithData(ctx, visibility),
     contributionSummary(ctx.db, viewer.id),
   ]);
