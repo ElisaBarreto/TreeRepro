@@ -16,6 +16,10 @@ overrides:
   # GHSA-97r2-qh9m-474h: TanStack Router pins 1.6.7; drop once it ships >=1.6.8.
   seroval: "1.6.12"
   seroval-plugins: "1.6.12"
+  # GHSA-3g3m-2fjr-6pw4 (glob) and GHSA-g3hv-75wg-m249 (minimatch, via glob 10):
+  # archiver-utils 5 (testcontainers > archiver 7, dev only) pins glob ^10.
+  # glob 14 keeps the CJS `sync` it calls. Drop once testcontainers moves to archiver 8.
+  "archiver-utils>glob": "14.0.2"
 # Supply-chain guard: refuse versions published less than 7 days (10080 minutes) ago.
 # Mirrors Dependabot's cooldown in .github/dependabot.yml. Exclude a package only
 # for an urgent security patch, and remove the exclusion afterwards.
