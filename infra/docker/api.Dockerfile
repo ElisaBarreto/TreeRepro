@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS base
+FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS base
 # pnpm, pinned by version and by the sha512 of its native build
 # (docs/gotchas/docker.md "Bumping pnpm").
 COPY infra/docker/install-pnpm.sh /tmp/install-pnpm.sh
@@ -25,7 +25,7 @@ RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/api bui
 FROM manifests AS prod-deps
 RUN pnpm install --frozen-lockfile --prod --filter "@treerepro/api..."
 
-FROM node:26.12.1-alpine@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797 AS runtime
+FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS runtime
 # Pull Alpine security fixes the node image has not rebuilt with yet, and drop
 # the bundled npm: the runtime only executes `node dist/server.js`.
 RUN apk upgrade --no-cache \
