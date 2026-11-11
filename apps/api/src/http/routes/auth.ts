@@ -133,7 +133,7 @@ export function authRoutes(ctx: AuthContext) {
     })
     .get('/me', requireSession, async (c) => {
       const user = currentUser(c);
-      const permissions = [...(await resolvePermissions(ctx, user.id))].sort();
+      const permissions = [...(await resolvePermissions(ctx, user.id, c.get('platform')))].sort();
       const scope = await userScope(ctx.db, user.id);
       return c.json({ data: { user: toAuthUser(user), permissions, scope } });
     })

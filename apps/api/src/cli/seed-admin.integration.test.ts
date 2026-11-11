@@ -70,7 +70,11 @@ describe('RFC-20 R8 seed:admin', () => {
     expect(result.stderr).toMatch(/could not be sent/i);
     expect((await findUserByEmail(t.db, email))?.status).toBe('invited');
     const user = await findUserByEmail(t.db, email);
-    expect(await effectivePermissions(t.db, user?.id ?? '')).toEqual([...PERMISSION_KEYS].sort());
+    // RFC-31 R16: admin is held on both platforms.
+    for (const platform of ['treerepro', 'plantrepro'] as const)
+      expect(await effectivePermissions(t.db, user?.id ?? '', platform)).toEqual(
+        [...PERMISSION_KEYS].sort(),
+      );
 
     const result2 = spawnSync(
       'node',
@@ -109,7 +113,77 @@ describe('RFC-20 R8 seed:admin', () => {
       .select({ n: sql<number>`count(*)::int` })
       .from(userRoles)
       .where(eq(userRoles.userId, user?.id ?? ''));
-    expect(row?.n).toBe(1);
+    expect(row?.n).toBe(2);
+  });
+
+  it('--platform plantrepro links to PlantRepro and still assigns admin on both platforms', async () => {
+    const pg = inject('postgres');
+    const redis = inject('redis');
+    const dir = mkdtempSync(join(tmpdir(), 'treerepro-seed-'));
+    try {
+      for (const [name, value] of Object.entries({
+        db_app_password: pg.password,
+        redis_password: redis.password,
+        pii_encryption_key_v1: 'a'.repeat(64),
+        pii_hmac_key: Buffer.alloc(32, 7).toString('hex'),
+        session_secret: 'c'.repeat(64),
+      }))
+        writeFileSync(join(dir, name), value);
+      const run = (email: string, platform: string, plantDomain?: string) =>
+        spawnSync(
+          'node',
+          [
+            '--conditions=development',
+            'src/cli/seed-admin.ts',
+            '--email',
+            email,
+            '--name',
+            'Plant Admin',
+            '--platform',
+            platform,
+          ],
+          {
+            cwd: apiDir,
+            encoding: 'utf8',
+            env: {
+              PATH: process.env.PATH ?? '',
+              NODE_ENV: 'test',
+              APP_ORIGIN: 'http://localhost',
+              ...(plantDomain ? { PLANT_DOMAIN: plantDomain } : {}),
+              DB_HOST: pg.host,
+              DB_PORT: String(pg.port),
+              DB_NAME: pg.database,
+              DB_USER: pg.user,
+              REDIS_HOST: redis.host,
+              REDIS_PORT: String(redis.port),
+              SECRETS_DIR: dir,
+              SMTP_HOST: '127.0.0.1',
+              SMTP_PORT: '1',
+              SMTP_FROM: 'TreeRepro <no-reply@localhost>',
+            },
+            timeout: 30_000,
+          },
+        );
+      expect(run(randomEmail(), 'other').status).toBe(2);
+      // RFC-14 R3: no PlantRepro host, so nothing is written.
+      const homeless = randomEmail();
+      const refused = run(homeless, 'plantrepro');
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toMatch(/PLANT_DOMAIN/);
+      expect(await findUserByEmail(t.db, homeless)).toBeNull();
+
+      const email = randomEmail();
+      const result = run(email, 'plantrepro', 'plantrepro.localhost');
+      expect(result.status).toBe(1);
+      expect(result.stdout).toMatch(/http:\/\/plantrepro\.localhost\/invite\/[A-Za-z0-9_-]{43}/);
+      const user = await findUserByEmail(t.db, email);
+      for (const platform of ['treerepro', 'plantrepro'] as const)
+        expect(await effectivePermissions(t.db, user?.id ?? '', platform)).toEqual(
+          [...PERMISSION_KEYS].sort(),
+        );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('refuses to run without --email and --name', () => {

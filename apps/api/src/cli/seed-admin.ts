@@ -1,10 +1,13 @@
-// `pnpm seed:admin --email <email> --name <name>` — invites the first user
-// and assigns the `admin` role (RFC-20 R8, RFC-31 R9). Runs `inviteUser`
+// `pnpm seed:admin --email <email> --name <name> [--platform <platform>]` —
+// invites the first user for that platform (default treerepro; the link goes
+// to its origin) and assigns the `admin` role, held on both platforms
+// (RFC-20 R8, RFC-31 R9, R16). Runs `inviteUser`
 // with a null actor and prints the invitation link to stdout in addition to
 // sending the email, so the flow works without a mailbox; the role is
 // assigned whether or not the email send succeeds. Exit codes: 0 sent, 1
 // invitation exists but the email failed (or any other error), 2 usage.
 import { parseArgs } from 'node:util';
+import { PLATFORMS, type Platform } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { createPermissionCache } from '../access/permissions.ts';
 import { setUserRoles } from '../access/roles.ts';
@@ -26,15 +29,29 @@ import { configurePii } from '../security/pii.ts';
 import { APP_VERSION } from '../version.ts';
 
 const { values } = parseArgs({
-  options: { email: { type: 'string' }, name: { type: 'string' } },
+  options: {
+    email: { type: 'string' },
+    name: { type: 'string' },
+    platform: { type: 'string', default: 'treerepro' },
+  },
   strict: true,
 });
-if (!values.email || !values.name) {
-  process.stderr.write('usage: seed-admin --email <email> --name <name>\n');
+const isPlatform = (v: string): v is Platform => (PLATFORMS as readonly string[]).includes(v);
+if (!values.email || !values.name || !isPlatform(values.platform)) {
+  process.stderr.write(
+    `usage: seed-admin --email <email> --name <name> [--platform ${PLATFORMS.join('|')}]\n`,
+  );
   process.exit(2);
 }
+const platform = values.platform;
 
 const config = loadConfig();
+try {
+  originOf(config, platform); // RFC-14 R3: PlantRepro has no origin while PLANT_DOMAIN is unset
+} catch (err) {
+  process.stderr.write(`${(err as Error).message}\n`);
+  process.exit(1);
+}
 const logger = createLogger({ level: config.logLevel });
 configurePii(config.pii.keyring.expose(), config.pii.hmacKey.expose());
 const { db, close } = createDb(config.db.url.expose(), { max: 1 });
@@ -55,9 +72,8 @@ const ctx: AuthContext = {
   // This CLI never proposes a species; the WCVP source is left disabled
   // rather than spending a start-up network call it does not need.
   taxonomy: createTaxonomyClient({ wcvpDatasetKey: null, version: APP_VERSION }),
-  // RFC-14 R4: this command has no request; its link goes to TreeRepro until
-  // it takes a platform (plan 15c).
-  originOf: (platform) => originOf(config, platform),
+  // RFC-14 R4: this command has no request; --platform names the link's origin.
+  originOf: (p) => originOf(config, p),
   inviteContactEmail: config.inviteContactEmail,
   now: Date.now,
 };
@@ -69,7 +85,8 @@ async function assignAdmin(userId: string): Promise<void> {
     .where(eq(roles.name, ADMIN_ROLE_NAME))
     .limit(1);
   if (!admin) throw new Error('admin role missing: run the migrations first');
-  await setUserRoles(ctx, { userId, roleIds: [admin.id], actorUserId: null });
+  // Admin is written on both platforms whichever one is named (RFC-31 R16).
+  await setUserRoles(ctx, { userId, platform, roleIds: [admin.id], actorUserId: null });
 }
 
 let exitCode = 0;
@@ -78,7 +95,7 @@ try {
     email: values.email,
     name: values.name,
     actorUserId: null,
-    platform: 'treerepro',
+    platform,
   });
   await assignAdmin(user.id);
   process.stdout.write(

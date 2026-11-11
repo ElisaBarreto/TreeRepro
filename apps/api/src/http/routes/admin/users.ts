@@ -94,14 +94,15 @@ export function adminUserRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'users.invite'),
       validate('json', createUserBodySchema),
       async (c) => {
-        const { email, name, roles } = c.req.valid('json');
+        const { email, name, roles, platform } = c.req.valid('json');
         const { user } = await inviting(() =>
           inviteUser(ctx, {
             email,
             name,
             roleIds: roles,
             actorUserId: currentUser(c).id,
-            platform: c.get('platform'),
+            // RFC-50 R3: the invitation's platform, the request's by default.
+            platform: platform ?? c.get('platform'),
           }),
         );
         return c.json({ data: await getUser(ctx.db, user.id) }, 201);
@@ -123,12 +124,13 @@ export function adminUserRoutes(ctx: AuthContext) {
       validate('param', userIdParamSchema),
       validate('json', updateUserBodySchema),
       async (c) => {
-        const { name, roles } = c.req.valid('json');
+        const { name, roles, platform } = c.req.valid('json');
         const data = await updateUser(ctx, {
           ...actor(c),
           id: c.req.valid('param').id,
           name,
           roleIds: roles,
+          platform: platform ?? c.get('platform'),
         });
         return c.json({ data });
       },
@@ -180,11 +182,7 @@ export function adminUserRoutes(ctx: AuthContext) {
       async (c) =>
         c.json({
           data: await inviting(() =>
-            resendInvite(ctx, {
-              ...actor(c),
-              id: c.req.valid('param').id,
-              platform: c.get('platform'),
-            }),
+            resendInvite(ctx, { ...actor(c), id: c.req.valid('param').id }),
           ),
         }),
     )

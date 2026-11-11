@@ -28,7 +28,10 @@ describe('RFC-20 R5 issueToken / consumeToken', () => {
       const [row] = await tx.select().from(authTokens).where(eq(authTokens.userId, userId));
       expect(row?.tokenHash).toBe(hashToken(raw));
       expect(JSON.stringify(row)).not.toContain(raw);
-      expect(await consumeToken(tx, { raw, kind: 'invite', now })).toEqual({ userId });
+      expect(await consumeToken(tx, { raw, kind: 'invite', now })).toEqual({
+        userId,
+        platform: 'treerepro',
+      });
       expect(await consumeToken(tx, { raw, kind: 'invite', now })).toBeNull();
     });
   });
@@ -54,8 +57,12 @@ describe('RFC-20 R5 issueToken / consumeToken', () => {
       const reset = await issueToken(tx, { userId, kind: 'password_reset' });
       const second = await issueToken(tx, { userId, kind: 'invite' });
       expect(await consumeToken(tx, { raw: first.raw, kind: 'invite' })).toBeNull();
-      expect(await consumeToken(tx, { raw: second.raw, kind: 'invite' })).toEqual({ userId });
+      expect(await consumeToken(tx, { raw: second.raw, kind: 'invite' })).toEqual({
+        userId,
+        platform: 'treerepro',
+      });
       expect(await consumeToken(tx, { raw: reset.raw, kind: 'password_reset' })).toEqual({
+        platform: 'treerepro',
         userId,
       });
     });

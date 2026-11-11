@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import type { Platform } from '@treerepro/contracts';
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { DbExecutor, DbTransaction } from '../db/client.ts';
 import { type AuthTokenKind, authTokens } from '../db/schema/auth-tokens.ts';
@@ -22,13 +23,14 @@ export function hashToken(raw: string): string {
 }
 
 /**
+ * `platform` is recorded on an invitation (RFC-20 R5).
  * Must run inside a transaction; takes a per-user, per-kind advisory lock so
  * concurrent issuance cannot leave two unconsumed tokens.
  * @rfc RFC-20 R5
  */
 export async function issueToken(
   db: DbTransaction,
-  input: { userId: string; kind: AuthTokenKind; now?: Date },
+  input: { userId: string; kind: AuthTokenKind; now?: Date; platform?: Platform },
 ): Promise<{ raw: string; expiresAt: Date }> {
   const now = input.now ?? new Date();
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${input.kind}:${input.userId}`}))`);
@@ -50,15 +52,20 @@ export async function issueToken(
     tokenHash: hashToken(raw),
     expiresAt,
     createdAt: now,
+    platform: input.platform ?? null,
   });
   return { raw, expiresAt };
 }
 
-/** One statement, so a token is redeemed at most once. @rfc RFC-20 R5 */
+/**
+ * One statement, so a token is redeemed at most once. `platform` is the
+ * invitation's, `treerepro` for one issued before it was recorded.
+ * @rfc RFC-20 R5
+ */
 export async function consumeToken(
   db: DbExecutor,
   input: { raw: string; kind: AuthTokenKind; now?: Date },
-): Promise<{ userId: string } | null> {
+): Promise<{ userId: string; platform: Platform } | null> {
   const now = input.now ?? new Date();
   const [row] = await db
     .update(authTokens)
@@ -71,8 +78,8 @@ export async function consumeToken(
         gt(authTokens.expiresAt, now),
       ),
     )
-    .returning({ userId: authTokens.userId });
-  return row ?? null;
+    .returning({ userId: authTokens.userId, platform: authTokens.platform });
+  return row ? { userId: row.userId, platform: row.platform ?? 'treerepro' } : null;
 }
 
 /**

@@ -573,8 +573,17 @@ describe('RFC-74 R4 digestRecipients', () => {
         createUser(tx, { password: null, roles: [contributor] }),
         createUser(tx, { password: null }),
       ]);
+      // RFC-31 R16: a manager on PlantRepro only reviews there, not here.
+      const plantManager = await createUser(tx, {
+        password: null,
+        roles: [manager],
+        platform: 'plantrepro',
+      });
+      expect((await digestRecipients(tx, 'plantrepro')).map((r) => r.id)).toContain(
+        plantManager.user.id,
+      );
 
-      const recipients = await digestRecipients(tx);
+      const recipients = await digestRecipients(tx, 'treerepro');
       const ids = recipients.map((r) => r.id);
 
       expect(ids).toContain(seededManager.user.id);
@@ -588,6 +597,7 @@ describe('RFC-74 R4 digestRecipients', () => {
       expect(ids).not.toContain(invitedManager.user.id);
       expect(ids).not.toContain(plainContributor.user.id);
       expect(ids).not.toContain(roleless.user.id);
+      expect(ids).not.toContain(plantManager.user.id);
       // Two qualifying roles are still one recipient, and so one e-mail (R5).
       expect(ids.filter((id) => id === both.user.id)).toHaveLength(1);
 
@@ -846,6 +856,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -853,7 +864,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
 
       // Every active reviewer of the dataset is mailed, so the count is the
       // query's answer in this snapshot — the two below are mine within it.
-      const recipients = await digestRecipients(tx);
+      const recipients = await digestRecipients(tx, 'treerepro');
       expect(result).toMatchObject({
         status: 'completed',
         recipients: recipients.length,
@@ -929,6 +940,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -981,12 +993,13 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
       });
 
-      const recipients = await digestRecipients(tx);
+      const recipients = await digestRecipients(tx, 'treerepro');
       // R5: the run completes when every send was ATTEMPTED; one refusal is a
       // number in `detail.failed`, never a `failed` run.
       expect(result).toMatchObject({
@@ -1044,6 +1057,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1091,6 +1105,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1120,6 +1135,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: false,
       });
@@ -1127,6 +1143,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: false,
       });
@@ -1158,7 +1175,14 @@ describe('RFC-74 R2, R5 runDigest', () => {
       await twoRecipients(tx);
       const mailer = createFakeMailer();
       const { logger } = captureLogger();
-      const tick = { db: tx, mailer: mailer.mailer, appOrigin: APP_ORIGIN, logger, enabled: true };
+      const tick = {
+        db: tx,
+        mailer: mailer.mailer,
+        appOrigin: APP_ORIGIN,
+        platform: 'treerepro' as const,
+        logger,
+        enabled: true,
+      };
 
       const first = await runDigest({ ...tick, now });
       expect(first.status).toBe('completed');
@@ -1203,6 +1227,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1250,6 +1275,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1283,6 +1309,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1315,6 +1342,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
           db: dbWithFailingQueries(tx, error),
           mailer: mailer.mailer,
           appOrigin: APP_ORIGIN,
+          platform: 'treerepro',
           logger,
           enabled: true,
           now,
@@ -1352,6 +1380,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
           db: dbFailingAuditInsert(tx, auditFailure),
           mailer: mailer.mailer,
           appOrigin: APP_ORIGIN,
+          platform: 'treerepro',
           logger,
           enabled: true,
           now,
@@ -1402,6 +1431,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now: nextTick,
@@ -1442,6 +1472,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1450,7 +1481,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
       expect(result.status).toBe('completed');
       // Containment plus a live count, never a literal set: `digestRecipients`
       // is dataset-wide, so sibling suites' review holders are mailed too.
-      const all = await digestRecipients(tx);
+      const all = await digestRecipients(tx, 'treerepro');
       expect(mailer.sent).toHaveLength(all.length);
       expect(mailer.sent.map((m) => m.to)).toEqual(
         expect.arrayContaining(recipients.map((r) => r.email)),
@@ -1497,6 +1528,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1530,6 +1562,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
@@ -1570,6 +1603,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
         db: tx,
         mailer: mailer.mailer,
         appOrigin: APP_ORIGIN,
+        platform: 'treerepro',
         logger,
         enabled: true,
         now,
