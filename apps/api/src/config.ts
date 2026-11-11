@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
+import type { Platform } from '@treerepro/contracts';
 import { z } from 'zod';
 import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
 
@@ -30,6 +31,18 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
   APP_ORIGIN: originSchema,
+  // RFC-14 R3: the PlantRepro host, bare (no scheme, no port); empty or unset
+  // means PlantRepro has no host and every request for it is refused.
+  PLANT_DOMAIN: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim().toLowerCase() || null)
+    .pipe(
+      z
+        .string()
+        .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/)
+        .nullable(),
+    ),
   ...dbHostSchema,
   DB_USER: z.string().min(1),
   REDIS_HOST: z.string().min(1),
@@ -132,7 +145,10 @@ export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
   logLevel: LogLevel;
+  /** TreeRepro's origin; `originOf` gives each platform's. */
   appOrigin: string;
+  /** `PLANT_DOMAIN`; null when unset. @rfc RFC-14 R3 */
+  plantDomain: string | null;
   db: { url: Secret<string> };
   redis: { url: Secret<string> };
   pii: { keyring: Secret<PiiKeyring>; hmacKey: Secret<Buffer> };
@@ -149,6 +165,23 @@ export interface AppConfig {
 
 export interface MigratorConfig {
   db: { url: Secret<string> };
+}
+
+/**
+ * The origin of a platform: TreeRepro's is `APP_ORIGIN`; PlantRepro's keeps
+ * its scheme and port with `PLANT_DOMAIN` as host. Throws when PlantRepro has
+ * no host, which a request can never reach (RFC-14 R3).
+ * @rfc RFC-14 R4
+ */
+export function originOf(
+  config: Pick<AppConfig, 'appOrigin' | 'plantDomain'>,
+  platform: Platform,
+): string {
+  if (platform === 'treerepro') return config.appOrigin;
+  if (!config.plantDomain) throw new ConfigError('PlantRepro has no origin: PLANT_DOMAIN is unset');
+  const url = new URL(config.appOrigin);
+  url.hostname = config.plantDomain;
+  return url.origin;
 }
 
 /** @rfc RFC-10 R5 */
@@ -244,6 +277,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: e.PORT,
     logLevel: e.LOG_LEVEL,
     appOrigin: e.APP_ORIGIN,
+    plantDomain: e.PLANT_DOMAIN,
     db: {
       url: new Secret(
         buildDbUrl({

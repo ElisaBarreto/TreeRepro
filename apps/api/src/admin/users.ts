@@ -1,4 +1,5 @@
 import type {
+  Platform,
   PlotRef,
   SortOrder,
   User,
@@ -392,7 +393,7 @@ export async function reactivateUser(
 /** Re-runs the invitation flow for an invited user; may throw InvitationMailError. @rfc RFC-50 R8 */
 export async function resendInvite(
   ctx: AuthContext,
-  input: AdminActor & { id: string },
+  input: AdminActor & { id: string; platform: Platform },
 ): Promise<User> {
   const current = await findUserById(ctx.db, input.id);
   if (!current) throw notFound();
@@ -401,6 +402,7 @@ export async function resendInvite(
     email: current.email,
     name: current.name,
     actorUserId: input.actorUserId,
+    platform: input.platform,
   });
   return withRoles(ctx.db, user);
 }

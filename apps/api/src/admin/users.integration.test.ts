@@ -228,7 +228,11 @@ describe('RFC-50 R8 resendInvite', () => {
     const { user: admin } = await createUser(t.db);
     const { user, email } = await createUser(t.db, { status: 'invited', password: null });
     const sentBefore = t.mail.sent.length;
-    const result = await resendInvite(ctxOf(t), { ...meta(admin.id), id: user.id });
+    const result = await resendInvite(ctxOf(t), {
+      ...meta(admin.id),
+      id: user.id,
+      platform: 'treerepro',
+    });
     expect(result.status).toBe('invited');
     expect(t.mail.sent).toHaveLength(sentBefore + 1);
     expect(t.mail.sent.at(-1)?.to).toBe(email);
@@ -238,9 +242,11 @@ describe('RFC-50 R8 resendInvite', () => {
     });
     expect((await findUserByEmail(t.db, email))?.id).toBe(user.id);
     const { user: active } = await createUser(t.db);
-    expect(await code(resendInvite(ctxOf(t), { ...meta(admin.id), id: active.id }))).toBe(
-      'USER_INVALID_STATUS',
-    );
+    expect(
+      await code(
+        resendInvite(ctxOf(t), { ...meta(admin.id), id: active.id, platform: 'treerepro' }),
+      ),
+    ).toBe('USER_INVALID_STATUS');
   });
 });
 

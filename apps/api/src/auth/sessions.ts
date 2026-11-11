@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from 'node:crypto';
+import { PLATFORMS, type Platform } from '@treerepro/contracts';
 import type { Redis } from '../redis/client.ts';
 import { getPii } from '../security/pii.ts';
 
@@ -16,6 +17,8 @@ export interface SessionRecord {
   /** HMAC form of the raw id; safe to expose (RFC-22 R4). */
   id: string;
   userId: string;
+  /** Where it was created; it authenticates only there (RFC-14 R5). */
+  platform: Platform;
   createdAt: number;
   lastSeenAt: number;
   ip: string;
@@ -23,7 +26,7 @@ export interface SessionRecord {
 }
 
 export interface SessionStore {
-  create(input: { userId: string; ip: string; userAgent: string }): Promise<{
+  create(input: { userId: string; ip: string; userAgent: string; platform: Platform }): Promise<{
     rawId: string;
     record: SessionRecord;
   }>;
@@ -53,9 +56,12 @@ const indexKey = (userId: string) => `user_sessions:${userId}`;
 function parse(id: string, raw: Record<string, string>): SessionRecord | null {
   if (!raw.userId || !raw.createdAt || !raw.lastSeenAt) return null;
   const pii = getPii();
+  // A record written before platforms existed has no field: it is TreeRepro's.
+  const platform = PLATFORMS.find((p) => p === raw.platform) ?? 'treerepro';
   return {
     id,
     userId: raw.userId,
+    platform,
     createdAt: Number(raw.createdAt),
     lastSeenAt: Number(raw.lastSeenAt),
     ip: pii.decrypt(raw.ip ?? '', AAD_IP),
@@ -63,7 +69,10 @@ function parse(id: string, raw: Record<string, string>): SessionRecord | null {
   };
 }
 
-/** @rfc RFC-22 R4, R6, R11 */
+/**
+ * @rfc RFC-22 R4, R6, R11
+ * @rfc RFC-14 R5
+ */
 export function createSessionStore(
   redis: Redis,
   secret: Buffer,
@@ -83,6 +92,7 @@ export function createSessionStore(
         .multi()
         .hset(sessionKey(id), {
           userId: input.userId,
+          platform: input.platform,
           createdAt: String(t),
           lastSeenAt: String(t),
           ip: pii.encrypt(input.ip, AAD_IP),
@@ -96,6 +106,7 @@ export function createSessionStore(
         record: {
           id,
           userId: input.userId,
+          platform: input.platform,
           createdAt: t,
           lastSeenAt: t,
           ip: input.ip,

@@ -5,6 +5,7 @@ import {
   cookieFrom,
   randomIp,
   setCookieLine,
+  TEST_PLANT_ORIGIN,
   useTestApp,
 } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
@@ -17,6 +18,24 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   const t = useTestApp();
   const login = (body: unknown, options = {}) =>
     call(t.app, 'POST', '/api/auth/login', { body, ...options });
+
+  it('RFC-14 R5 a sign-in on PlantRepro opens a PlantRepro session', async () => {
+    const { user, email } = await createUser(t.db);
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/login', {
+      body: { email, password: DEFAULT_PASSWORD },
+      origin: TEST_PLANT_ORIGIN,
+    });
+    expect(res.status).toBe(200);
+    const cookie = cookieFrom(res, '__Host-session') ?? '';
+    const plant = await call(t.app, 'GET', 'http://plantrepro.localhost/api/auth/me', { cookie });
+    expect((await plant.json()).data.user.id).toBe(user.id);
+    expect((await call(t.app, 'GET', '/api/auth/me', { cookie })).status).toBe(401);
+    // RFC-02 R3: PlantRepro's form posts with PlantRepro's origin, not TreeRepro's.
+    const crossed = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/login', {
+      body: { email, password: DEFAULT_PASSWORD },
+    });
+    expect((await crossed.json()).error.code).toBe('SECURITY_INVALID_ORIGIN');
+  });
 
   it('opens a session for a correct password and audits success', async () => {
     const { user, email } = await createUser(t.db);

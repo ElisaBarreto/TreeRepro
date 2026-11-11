@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import type { MiddlewareHandler } from 'hono';
 import { bearerToken } from '../auth/api-keys.ts';
 import type { AppEnv } from './env.ts';
@@ -8,8 +9,9 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 /**
  * @rfc RFC-02 R3
  * @rfc RFC-82 R5
+ * @rfc RFC-14 R4
  */
-export function originCheck(appOrigin: string): MiddlewareHandler<AppEnv> {
+export function originCheck(originOf: (platform: Platform) => string): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     // RFC-82 R5: a Bearer header with no Cookie header cannot be a browser's
     // cross-site request, so it is exempt from the Origin check. This runs
@@ -19,7 +21,9 @@ export function originCheck(appOrigin: string): MiddlewareHandler<AppEnv> {
     // attempt by resolveSession afterwards, never treated as anonymous.
     const bearerOnly =
       bearerToken(c.req.header('authorization')) !== null && !c.req.header('cookie');
-    if (!bearerOnly && !SAFE_METHODS.has(c.req.method) && c.req.header('origin') !== appOrigin) {
+    // The health routes carry no platform (RFC-14 R3) and are safe methods anyway.
+    const expected = originOf(c.get('platform') ?? 'treerepro');
+    if (!bearerOnly && !SAFE_METHODS.has(c.req.method) && c.req.header('origin') !== expected) {
       throw new AppError('SECURITY_INVALID_ORIGIN', 'Request origin is not allowed');
     }
     await next();

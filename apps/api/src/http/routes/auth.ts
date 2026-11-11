@@ -76,6 +76,7 @@ export function authRoutes(ctx: AuthContext) {
       const body = c.req.valid('json');
       const { user, sessionRawId } = await acceptInvitation(ctx, {
         ...body,
+        platform: c.get('platform'),
         ip: clientIp(c),
         userAgent: userAgent(c),
       });
@@ -84,7 +85,12 @@ export function authRoutes(ctx: AuthContext) {
     })
     .post('/login', loginLimit, validate('json', loginBodySchema), async (c) => {
       const body = c.req.valid('json');
-      const result = await login(ctx, { ...body, ip: clientIp(c), userAgent: userAgent(c) });
+      const result = await login(ctx, {
+        ...body,
+        platform: c.get('platform'),
+        ip: clientIp(c),
+        userAgent: userAgent(c),
+      });
       if (result.status === 'totp_required') {
         setMfaCookie(c, result.mfaRawId);
         return c.json({ data: { status: 'totp_required' as const } });
@@ -98,6 +104,7 @@ export function authRoutes(ctx: AuthContext) {
         const { user, sessionRawId } = await loginTotp(ctx, {
           mfaRawId: readMfaCookie(c),
           ...body,
+          platform: c.get('platform'),
           ip: clientIp(c),
           userAgent: userAgent(c),
         });
@@ -137,6 +144,7 @@ export function authRoutes(ctx: AuthContext) {
       async (c) => {
         await forgotPassword(ctx, {
           ...c.req.valid('json'),
+          platform: c.get('platform'),
           ip: clientIp(c),
           userAgent: userAgent(c),
         });

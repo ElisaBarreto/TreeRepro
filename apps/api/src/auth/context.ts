@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import type { PermissionCache } from '../access/permissions.ts';
 import type { Db } from '../db/client.ts';
 import type { DoiClient } from '../integrations/doi.ts';
@@ -24,7 +25,8 @@ export interface AuthContext {
   doi: DoiClient;
   /** @rfc RFC-81 R1 */
   taxonomy: TaxonomyClient;
-  appOrigin: string;
+  /** The origin links are built on, per platform (RFC-14 R4). */
+  originOf: (platform: Platform) => string;
   /** Who the invitation names for a new one (RFC-20 R4). */
   inviteContactEmail?: string | undefined;
   now: () => number;

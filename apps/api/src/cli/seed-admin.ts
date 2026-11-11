@@ -14,7 +14,7 @@ import { InvitationMailError, inviteUser } from '../auth/flows/invitation.ts';
 import { createMfaStore } from '../auth/mfa.ts';
 import { createRateLimiter } from '../auth/rate-limit.ts';
 import { createSessionStore } from '../auth/sessions.ts';
-import { loadConfig } from '../config.ts';
+import { loadConfig, originOf } from '../config.ts';
 import { createDb } from '../db/client.ts';
 import { ADMIN_ROLE_NAME, roles } from '../db/schema/roles.ts';
 import { createDoiClient } from '../integrations/doi.ts';
@@ -55,7 +55,9 @@ const ctx: AuthContext = {
   // This CLI never proposes a species; the WCVP source is left disabled
   // rather than spending a start-up network call it does not need.
   taxonomy: createTaxonomyClient({ wcvpDatasetKey: null, version: APP_VERSION }),
-  appOrigin: config.appOrigin,
+  // RFC-14 R4: this command has no request; its link goes to TreeRepro until
+  // it takes a platform (plan 15c).
+  originOf: (platform) => originOf(config, platform),
   inviteContactEmail: config.inviteContactEmail,
   now: Date.now,
 };
@@ -76,6 +78,7 @@ try {
     email: values.email,
     name: values.name,
     actorUserId: null,
+    platform: 'treerepro',
   });
   await assignAdmin(user.id);
   process.stdout.write(

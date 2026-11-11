@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import type { UserRow } from '../../src/db/schema/users.ts';
 import type { TestApp } from './app.ts';
 
@@ -5,12 +6,13 @@ import type { TestApp } from './app.ts';
 export async function loginAs(
   t: Pick<TestApp, 'sessions'>,
   user: Pick<UserRow, 'id'>,
-  meta: { ip?: string; userAgent?: string } = {},
+  meta: { ip?: string; userAgent?: string; platform?: Platform } = {},
 ): Promise<{ cookie: string; rawId: string; id: string }> {
   const { rawId, record } = await t.sessions.create({
     userId: user.id,
     ip: meta.ip ?? '10.0.0.1',
     userAgent: meta.userAgent ?? 'test-agent',
+    platform: meta.platform ?? 'treerepro',
   });
   return { cookie: `__Host-session=${rawId}`, rawId, id: record.id };
 }

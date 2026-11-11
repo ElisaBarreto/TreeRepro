@@ -96,7 +96,13 @@ export function adminUserRoutes(ctx: AuthContext) {
       async (c) => {
         const { email, name, roles } = c.req.valid('json');
         const { user } = await inviting(() =>
-          inviteUser(ctx, { email, name, roleIds: roles, actorUserId: currentUser(c).id }),
+          inviteUser(ctx, {
+            email,
+            name,
+            roleIds: roles,
+            actorUserId: currentUser(c).id,
+            platform: c.get('platform'),
+          }),
         );
         return c.json({ data: await getUser(ctx.db, user.id) }, 201);
       },
@@ -174,7 +180,11 @@ export function adminUserRoutes(ctx: AuthContext) {
       async (c) =>
         c.json({
           data: await inviting(() =>
-            resendInvite(ctx, { ...actor(c), id: c.req.valid('param').id }),
+            resendInvite(ctx, {
+              ...actor(c),
+              id: c.req.valid('param').id,
+              platform: c.get('platform'),
+            }),
           ),
         }),
     )

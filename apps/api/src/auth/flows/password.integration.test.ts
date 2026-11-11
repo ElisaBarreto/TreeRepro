@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, randomIp, useTestApp } from '../../../test/helpers/app.ts';
+import { call, randomIp, TEST_PLANT_ORIGIN, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
@@ -13,6 +13,19 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
   const t = useTestApp();
   const forgot = (email: string, options = {}) =>
     call(t.app, 'POST', '/api/auth/password/forgot', { body: { email }, ...options });
+
+  it('RFC-14 R4 links to the platform the reset was asked on', async () => {
+    const { email } = await createUser(t.db);
+    const before = t.mail.sent.length;
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/password/forgot', {
+      body: { email },
+      origin: TEST_PLANT_ORIGIN,
+    });
+    expect(res.status).toBe(200);
+    expect(t.mail.sent[before]?.text).toMatch(
+      /http:\/\/plantrepro\.localhost\/reset-password\/[A-Za-z0-9_-]{43}/,
+    );
+  });
 
   it('answers the same 200 for known and unknown emails; emails a 1 h link only to active users', async () => {
     const { user, email } = await createUser(t.db, { name: 'Ada' });
