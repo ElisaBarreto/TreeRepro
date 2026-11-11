@@ -1,20 +1,25 @@
 import { randomBytes } from 'node:crypto';
 import type { Platform } from '@treerepro/contracts';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, TEST_PLANT_ORIGIN, useTestApp } from '../../test/helpers/app.ts';
 import {
+  createContest,
   createFamily,
   createGenus,
+  createPlot,
   createRecord,
   createReference,
   createSpecies,
   createTrait,
 } from '../../test/helpers/dataset.ts';
+import { withRollback } from '../../test/helpers/db.ts';
 import { unzip } from '../../test/helpers/export.ts';
 import { adminRoleId } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
 import { speciesNames } from '../db/schema/taxa.ts';
+import { computeDatasetStats, dashboardKeys } from '../workspace/dashboard.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -103,11 +108,9 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
       const traitPage = await send('GET', `/api/traits/${s.trait.id}`);
       expect((await traitPage.json()).data.speciesWithData).toBe(shown.length);
 
-      const dictionary = await send('GET', `/api/traits?q=${s.trait.key}`);
-      const entry = (await dictionary.json()).data
-        .flatMap((c: { traits: { id: string; speciesCount: number }[] }) => c.traits)
-        .find((x: { id: string }) => x.id === s.trait.id);
-      expect(entry.speciesCount).toBe(shown.length);
+      // The dictionary's counts are the same globalSpeciesVisible scan behind a
+      // ten-minute key every test shares, so a fresh trait reads 0 there until
+      // it expires (RFC-62 R5); the trait page above is keyed by this trait.
 
       const genera = await send('GET', `/api/genera?q=${encodeURIComponent(s.genus.name)}`);
       expect((await genera.json()).data.map((g: { id: string }) => g.id)).toEqual([s.genus.id]);
@@ -151,8 +154,18 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
       value: { levelIds: [level] },
       sources: { personalObservation: true },
     });
+    const plot = await createPlot(t.db);
     for (const sp of [s.herb, s.proposed]) {
+      const contest = await createContest(t.db, {
+        speciesId: sp.id,
+        traitId: s.trait.id,
+        createdBy: s.user.id,
+        levelIds: [level],
+      });
       const writes: [string, string, unknown][] = [
+        ['POST', `/api/plots/${plot.id}/species`, { speciesId: sp.id }],
+        ['POST', `/api/contests/${contest.id}/resolve`, {}],
+        ['POST', `/api/contests/${contest.id}/withdraw`, {}],
         ['POST', '/api/records', record(sp.id)],
         ['PATCH', `/api/species/${sp.id}`, { active: false }],
         ['POST', `/api/species/${sp.id}/names`, { name: `Alius ${tag()}`, nameType: 'synonym' }],
@@ -197,6 +210,22 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
       expect(error.details).toBeUndefined();
       expect(JSON.stringify(error)).not.toContain(s.herb.id);
     };
+    // The approval of a proposal made before the species was hidden refuses it too (RFC-75 R4).
+    const open = await tree('POST', '/api/species/proposals', { name: `Herba futura ${tag()}` });
+    const proposalId = (await open.json()).data.id;
+    await refused(
+      await tree('POST', `/api/species/proposals/${proposalId}/approve`, {
+        canonicalName: s.herb.canonicalName,
+        nameSource: 'original',
+      }),
+    )();
+    await refused(
+      await tree('POST', `/api/species/proposals/${proposalId}/approve`, {
+        canonicalName: `Arbor nova ${tag()}`,
+        nameSource: 'original',
+        alternativeNames: [{ name: synonym, nameType: 'synonym' }],
+      }),
+    )();
     for (const name of [s.herb.canonicalName, synonym.toUpperCase(), s.proposed.canonicalName]) {
       await refused(await tree('POST', '/api/species/proposals', { name }))();
       await refused(
@@ -215,5 +244,42 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
       plantType: 'not_tree',
     });
     expect((await plant.json()).error.details).toEqual([{ path: 'name', message: s.herb.id }]);
+  });
+});
+
+describe("RFC-72 R1 the dataset counts are the platform's", () => {
+  const t = useTestApp();
+
+  it('computeDatasetStats counts a non-tree and its records on PlantRepro only', async () => {
+    await withRollback(t.db, async (tx) => {
+      // Sibling files create species meanwhile: compare inside one snapshot.
+      await tx.execute(sql`set transaction isolation level repeatable read`);
+      const before = {
+        tree: await computeDatasetStats(tx, 'treerepro'),
+        plant: await computeDatasetStats(tx, 'plantrepro'),
+      };
+      const { user } = await createUser(tx);
+      const trait = await createTrait(tx, { levels: ['one'] });
+      const herb = await createSpecies(tx, { plantType: 'not_tree' });
+      await createRecord(tx, {
+        speciesId: herb.id,
+        traitId: trait.id,
+        valueText: 'one',
+        levelId: trait.levels[0]?.id,
+        primaryReferenceId: (await createReference(tx)).id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+      const tree = await computeDatasetStats(tx, 'treerepro');
+      const plant = await computeDatasetStats(tx, 'plantrepro');
+      expect(tree.speciesCount).toBe(before.tree.speciesCount);
+      expect(tree.recordCount).toBe(before.tree.recordCount);
+      expect(plant.speciesCount).toBe(before.plant.speciesCount + 1);
+      expect(plant.recordCount).toBe(before.plant.recordCount + 1);
+    });
+  });
+
+  it("a write drops the viewer's dashboard entry on both platforms", () => {
+    expect(dashboardKeys('u-1')).toEqual(['dashboard:treerepro:u-1', 'dashboard:plantrepro:u-1']);
   });
 });

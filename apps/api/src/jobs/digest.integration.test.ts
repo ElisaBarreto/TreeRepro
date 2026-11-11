@@ -563,6 +563,19 @@ describe('RFC-74 R3 computeDigest', () => {
       expect(plant.counts.plantTypes).toBe(plantBaseline.counts.plantTypes + 1);
       expect(tree.counts.contestedNow).toBe(after.counts.contestedNow);
       expect(plant.counts.contestedNow).toBe(plantBaseline.counts.contestedNow + 1);
+
+      // A contest inside the window on the not-tree is listed on PlantRepro only.
+      await createContest(tx, {
+        speciesId: herb.id,
+        traitId: s.trait.id,
+        createdBy: user.id,
+        levelIds: [s.level('alpha')],
+        createdAt: at,
+      });
+      const treeListed = await computeDigest(tx, windowAround(at), 'treerepro');
+      const plantListed = await computeDigest(tx, windowAround(at), 'plantrepro');
+      expect(treeListed.contests.map((c) => c.speciesId)).not.toContain(herb.id);
+      expect(plantListed.contests.map((c) => c.speciesId)).toContain(herb.id);
     });
   });
 });

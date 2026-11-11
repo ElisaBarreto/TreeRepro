@@ -65,7 +65,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `LEVEL_NOT_FOUND` | 404 | Level id does not exist for this trait (RFC-62 R6). |
 | `FAMILY_NAME_TAKEN` | 409 | Another family has this name (RFC-60 R9). |
 | `GENUS_NAME_TAKEN` | 409 | Another genus has this name (RFC-60 R9). |
-| `SPECIES_NAME_TAKEN` | 409 | Another species has this canonical name, or the species already carries this name (RFC-60 R9). |
+| `SPECIES_NAME_TAKEN` | 409 | Another species has this canonical name, or the species already carries this name (RFC-60 R9), or a species the platform hides holds it (RFC-60 R13). |
 | `TRAIT_KEY_TAKEN` | 409 | Another trait has this key (RFC-62 R6). |
 | `LEVEL_KEY_TAKEN` | 409 | The trait already has this level, case-insensitively (RFC-62 R6). |
 | `REFERENCE_KEY_TAKEN` | 409 | Another reference has this citation key (RFC-61 R6). |
@@ -112,3 +112,4 @@ None.
 - 2026-09-26 — MAP_NOT_FOUND, and `MAP_` admitted to R1's prefix list (RFC-76 R5, issue #197).
 - 2026-11-11 — UNKNOWN_HOST (RFC-14 R3, plan 15b).
 - 2026-11-11 — PLATFORM_ACCESS_DENIED, and `PLATFORM_` admitted to R1's prefix list (RFC-22 R13, plan 15c).
+- 2026-11-11 — `SPECIES_NAME_TAKEN` also answers a name a species hidden on the platform holds (RFC-60 R13, plan 15e, issue #399).
