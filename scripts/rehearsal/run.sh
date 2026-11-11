@@ -46,7 +46,8 @@ case "$r2_endpoint" in https://*) ;; *) echo "rehearsal: R2_ENDPOINT must be htt
 work="$(mktemp -d)"
 chmod 700 "$work"
 out="${REHEARSAL_OUT:-$(mktemp -d)}"
-mkdir -p "$out"
+(umask 077; mkdir -p "$out")
+chmod 700 "$out"
 export REHEARSAL_SECRETS_DIR="$work/secrets"
 
 # Always this project name: a bare `docker compose down -v` would take the dev stack's.
@@ -101,6 +102,15 @@ checks() {
     < "$here/checks.sql"
 }
 
+# The image's init phase serves the socket (so the healthcheck passes) while
+# 01-roles.sh still runs, then restarts. Only the final server listens on TCP.
+for _ in $(seq 60); do
+  psql_as treerepro_migrator db_migrator_password -h 127.0.0.1 -qAt -c 'select 1' >/dev/null 2>&1 && break
+  sleep 1
+done
+psql_as treerepro_migrator db_migrator_password -h 127.0.0.1 -qAt -c 'select 1' >/dev/null \
+  || { echo "rehearsal: postgres did not accept the migrator over TCP" >&2; exit 1; }
+
 # As the migrator, so it owns every table (docs/gotchas/infra.md, "Restoring a backup").
 echo "rehearsal: restoring"
 age -d -i "$work/identity" "$work/dump.sql.gz.age" | gunzip \
@@ -123,6 +133,7 @@ echo "rehearsal: after checks"
 checks > "$out/after.txt"
 
 echo "rehearsal: diff (outputs in $out)"
-if diff -u "$out/before.txt" "$out/after.txt"; then
+# -U0: no context lines, so an unchanged id line is never printed.
+if diff -U0 "$out/before.txt" "$out/after.txt"; then
   echo "rehearsal: no difference"
 fi
