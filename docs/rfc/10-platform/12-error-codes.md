@@ -35,6 +35,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `AUTH_TOTP_INVALID` | 401 | TOTP or recovery code rejected (RFC-23 R3, R6, R7). |
 | `AUTH_MFA_EXPIRED` | 401 | MFA challenge missing, expired or exhausted (RFC-23 R6). |
 | `AUTH_ACCOUNT_SUSPENDED` | 403 | Password verified but the account is suspended (RFC-22 R2). |
+| `PLATFORM_ACCESS_DENIED` | 403 | Credentials verified but the user holds no role on the request's platform, or an invitation is accepted on the other platform; `details` at path `platforms` list the platforms the user holds a role on (RFC-22 R13). |
 | `AUTH_TOKEN_INVALID` | 400 | Invitation or reset token unknown, expired or consumed (RFC-20 R6, RFC-21 R6). |
 | `AUTH_PASSWORD_WEAK` | 400 | Password too short or breached; `details` names the reason (RFC-21 R2). |
 | `AUTH_TOTP_ALREADY_ENABLED` | 409 | TOTP setup requested while enabled (RFC-23 R2). |
@@ -110,3 +111,4 @@ None.
 - 2026-09-26 — HELP_TOPIC_NOT_FOUND, HELP_SECTION_NOT_FOUND, HELP_SLUG_TAKEN, HELP_ANCHOR_TAKEN (RFC-73 R6, issue #172).
 - 2026-09-26 — MAP_NOT_FOUND, and `MAP_` admitted to R1's prefix list (RFC-76 R5, issue #197).
 - 2026-11-11 — UNKNOWN_HOST (RFC-14 R3, plan 15b).
+- 2026-11-11 — PLATFORM_ACCESS_DENIED (RFC-22 R13, plan 15c).
