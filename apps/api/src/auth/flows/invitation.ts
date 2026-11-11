@@ -83,6 +83,7 @@ export async function inviteUser(
     expiresAt: result.expiresAt,
     appOrigin: origin,
     contactEmail: ctx.inviteContactEmail,
+    platform: input.platform,
   });
   try {
     await ctx.mailer.send({ to: result.user.email, ...mail });

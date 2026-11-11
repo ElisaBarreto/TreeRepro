@@ -1,9 +1,8 @@
 import { randomBytes } from 'node:crypto';
+import { PLATFORM_NAMES, type Platform } from '@treerepro/contracts';
 import { Secret, TOTP } from 'otpauth';
 import { getPii } from '../security/pii.ts';
 
-/** @rfc RFC-23 R1 */
-export const TOTP_ISSUER = 'TreeRepro';
 /** @rfc RFC-23 R1 */
 export const TOTP_PERIOD = 30;
 /** @rfc RFC-23 R1 */
@@ -15,9 +14,9 @@ export const RECOVERY_CODE_COUNT = 10;
 
 const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
 
-function totp(secret: string, label = ''): TOTP {
+function totp(secret: string, label = '', platform: Platform = 'treerepro'): TOTP {
   return new TOTP({
-    issuer: TOTP_ISSUER,
+    issuer: PLATFORM_NAMES[platform],
     label,
     algorithm: 'SHA1',
     digits: TOTP_DIGITS,
@@ -31,9 +30,9 @@ export function generateTotpSecret(): string {
   return new Secret({ size: 20 }).base32;
 }
 
-/** @rfc RFC-23 R1 */
-export function totpUri(secret: string, email: string): string {
-  return totp(secret, email).toString();
+/** The issuer is the platform the user enrols on. @rfc RFC-23 R1 */
+export function totpUri(secret: string, email: string, platform?: Platform): string {
+  return totp(secret, email, platform).toString();
 }
 
 /** Used by tests and by nothing else in production. @rfc RFC-23 R1 */
