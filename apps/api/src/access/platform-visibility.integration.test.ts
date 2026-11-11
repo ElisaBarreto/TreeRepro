@@ -142,6 +142,46 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
     }
   });
 
+  it('R3 families and genera whose species are all hidden are omitted on TreeRepro, even for an admin; empty ones stay listed', async () => {
+    const s = await scene();
+    const hiddenFamily = await createFamily(t.db);
+    const hiddenGenus = await createGenus(t.db, { familyId: hiddenFamily.id });
+    await createSpecies(t.db, { genusId: hiddenGenus.id, plantType: 'not_tree' });
+    await createSpecies(t.db, { genusId: hiddenGenus.id, plantTypeStatus: 'proposed' });
+    const emptyFamily = await createFamily(t.db);
+    const emptyGenus = await createGenus(t.db, { familyId: emptyFamily.id });
+
+    for (const platform of ['treerepro', 'plantrepro'] as const) {
+      const send = s.on(platform);
+      const genusIds = async (name: string) =>
+        (await (await send('GET', `/api/genera?q=${encodeURIComponent(name)}`)).json()).data.map(
+          (g: { id: string }) => g.id,
+        );
+      expect(await genusIds(hiddenGenus.name)).toEqual(
+        platform === 'treerepro' ? [] : [hiddenGenus.id],
+      );
+      expect(await genusIds(emptyGenus.name)).toEqual([emptyGenus.id]);
+      expect(await genusIds(s.genus.name)).toEqual([s.genus.id]);
+
+      const familyIds: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const res = await send(
+          'GET',
+          `/api/families?limit=200${cursor ? `&cursor=${cursor}` : ''}`,
+        );
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        familyIds.push(...body.data.map((f: { id: string }) => f.id));
+        cursor = body.meta.nextCursor;
+      } while (cursor);
+      expect(familyIds).toContain(s.family.id);
+      expect(familyIds).toContain(emptyFamily.id);
+      if (platform === 'treerepro') expect(familyIds).not.toContain(hiddenFamily.id);
+      else expect(familyIds).toContain(hiddenFamily.id);
+    }
+  });
+
   it('on TreeRepro a write naming a hidden species answers 404 and changes nothing', async () => {
     const s = await scene();
     const tree = s.on('treerepro');

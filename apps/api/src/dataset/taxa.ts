@@ -713,6 +713,18 @@ export async function treeFlagCounts(
 }
 
 /**
+ * RFC-33 R3: a family or genus is listed when it holds a visible species
+ * (`visible`). A viewer with `dataset.read_inactive` and no plot restriction
+ * also sees one holding no species at all (`any` false), so a catalog editor
+ * can fill one just created; on PlantRepro that viewer sees every one.
+ */
+function taxonScope(visibility: Visibility, visible: SQL, any: SQL): SQL | null {
+  if (!visibility.inactive || visibility.plotIds !== null) return visible;
+  if (visibility.platform === 'plantrepro') return null;
+  return sql`(not ${any} or ${visible})`;
+}
+
+/**
  * @rfc RFC-60 R8
  * @rfc RFC-33 R3
  */
@@ -723,13 +735,10 @@ export async function listFamilies(
 ): Promise<{ data: TaxonRef[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
   if (input.cursor) conditions.push(afterNameCursor(input.cursor, families.name, families.id));
-  // For an unrestricted viewer `speciesVisible` is `true`, so this `exists` would become
-  // "has any species" — a family without species would vanish for admins too.
-  if (!visibility.inactive || visibility.plotIds !== null) {
-    conditions.push(
-      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, 's')})`,
-    );
-  }
+  const visible = sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, 's')})`;
+  const any = sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id})`;
+  const scope = taxonScope(visibility, visible, any);
+  if (scope) conditions.push(scope);
   const rows = await db
     .select({ id: families.id, name: families.name })
     .from(families)
@@ -775,12 +784,12 @@ export async function listGenera(
     cursor: input.cursor,
   });
   if (keyset.where) conditions.push(keyset.where);
-  // Same guard as listFamilies: only push for a restricted viewer.
-  if (!visibility.inactive || visibility.plotIds !== null) {
-    conditions.push(
-      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, 's')})`,
-    );
-  }
+  const scope = taxonScope(
+    visibility,
+    sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, 's')})`,
+    sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id})`,
+  );
+  if (scope) conditions.push(scope);
   const rows = await db
     .select({
       id: genera.id,
