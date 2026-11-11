@@ -9,3 +9,13 @@ export const PLATFORM_NAMES: Record<Platform, string> = {
   treerepro: 'TreeRepro',
   plantrepro: 'PlantRepro',
 };
+
+/**
+ * What each platform covers, singular (`tree species`); the copy adds the
+ * plural `s` (`how trees reproduce`).
+ * @rfc RFC-13 R14
+ */
+export const PLATFORM_SUBJECTS: Record<Platform, 'tree' | 'plant'> = {
+  treerepro: 'tree',
+  plantrepro: 'plant',
+};
