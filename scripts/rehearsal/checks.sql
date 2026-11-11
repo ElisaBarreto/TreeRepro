@@ -10,6 +10,14 @@ select count(*) > 0 as has_role_platform from information_schema.columns
   where table_schema = 'public' and table_name = 'user_roles' and column_name = 'platform' \gset
 select count(*) > 0 as has_plant_type from information_schema.columns
   where table_schema = 'public' and table_name = 'species' and column_name = 'plant_type' \gset
+select
+  coalesce(bool_or(table_name = 'region_snapshot'), false) as has_snapshot_platform,
+  coalesce(bool_or(table_name = 'region_completeness'), false) as has_completeness_platform,
+  coalesce(bool_or(table_name = 'region_continuous'), false) as has_continuous_platform,
+  coalesce(bool_or(table_name = 'region_categorical'), false) as has_categorical_platform
+  from information_schema.columns
+  where table_schema = 'public' and column_name = 'platform'
+    and table_name in ('region_snapshot', 'region_completeness', 'region_continuous', 'region_categorical') \gset
 
 -- Changes exactly when the branch applies a migration: on a gated branch an
 -- unchanged line means the migration never ran.
@@ -25,11 +33,14 @@ select 'user_roles.role_platform', r.name || '/' || ur.platform, count(*)
   group by r.name, ur.platform order by r.name, ur.platform;
 \endif
 
--- Spec 2026-11-11 §2: an active user with no role would be locked out once a role
--- is required per platform. A nonzero list goes to the owner before 15c merges.
-select 'users.active_without_role', u.id, '' from users u
-  where u.status = 'active' and not exists (select 1 from user_roles ur where ur.user_id = u.id)
-  order by u.id;
+-- What the roles grant, not only who holds them: a migration that drops or
+-- swaps a grant keeps every user_roles row, so only these lines show it (15c).
+select 'roles', name, is_system::text from roles order by name;
+select 'role_permissions.role', r.name, count(*) from role_permissions rp
+  join roles r on r.id = rp.role_id group by r.name order by r.name;
+select 'role_permissions', 'checksum',
+  md5(string_agg(r.name || ':' || rp.permission_key, ',' order by r.name, rp.permission_key))
+  from role_permissions rp join roles r on r.id = rp.role_id;
 
 select 'species.active', active::text, count(*) from species group by active order by active;
 select 'species.tree_flag', coalesce(tree_flag, '(null)'), count(*) from species
@@ -45,6 +56,24 @@ select 'contests', 'all', count(*) from contests;
 select 'contest_events.kind', kind, count(*) from contest_events group by kind order by kind;
 select 'api_keys', 'unrevoked', count(*) from api_keys where revoked_at is null;
 select 'audit_log', 'all', count(*) from audit_log;
+
+-- The map snapshot (RFC-78 R12); plan 15f gives these tables a platform.
+select 'region_snapshot', 'rows', count(*) from region_snapshot;
+select 'region_completeness', 'rows', count(*) from region_completeness;
+select 'region_continuous', 'rows', count(*) from region_continuous;
+select 'region_categorical', 'rows', count(*) from region_categorical;
+\if :has_snapshot_platform
+select 'region_snapshot.platform', platform, count(*) from region_snapshot group by platform order by platform;
+\endif
+\if :has_completeness_platform
+select 'region_completeness.platform', platform, count(*) from region_completeness group by platform order by platform;
+\endif
+\if :has_continuous_platform
+select 'region_continuous.platform', platform, count(*) from region_continuous group by platform order by platform;
+\endif
+\if :has_categorical_platform
+select 'region_categorical.platform', platform, count(*) from region_categorical group by platform order by platform;
+\endif
 
 -- The columns `records.csv` exports today (apps/api/src/dataset/export.ts,
 -- recordsCsv), named one by one so a column a migration adds does not change
@@ -79,3 +108,10 @@ select 'export.records', count(*), md5(string_agg(md5(x::text), '' order by x.id
   join trait_categories c on c.key = t.category_key
   left join trait_levels l on l.id = r.level_id
 ) x;
+
+-- Last, so no other section's diff context can print an id line.
+-- Spec 2026-11-11 §2: an active user with no role would be locked out once a role
+-- is required per platform. A nonzero list goes to the owner before 15c merges.
+select 'users.active_without_role', u.id, '' from users u
+  where u.status = 'active' and not exists (select 1 from user_roles ur where ur.user_id = u.id)
+  order by u.id;
