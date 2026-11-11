@@ -32,3 +32,4 @@ None.
 - 2026-11-11 — R4 amended, R8 added: roles per platform, explicit platform for mail without a request (RFC-14, plan 15c, issue #397).
 - 2026-11-11 — R9 added: the plant type, and TreeRepro registering only trees (plan 15d, issue #398).
 - 2026-11-11 — R9: the platform's scope and the plant-type queue (RFC-33 R2, RFC-65 R20, plan 15e, issue #399).
+- 2026-11-11 — Maps: the region snapshot is built per platform and each platform's maps read their own rows (RFC-76, RFC-78, plan 15f, issue #400).
