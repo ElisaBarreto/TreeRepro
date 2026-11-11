@@ -70,6 +70,11 @@
 **Cause:** `__Host-` cookies require `Secure`, and browsers accept `Secure` cookies only from secure contexts: `https://…` or `http://localhost`. `http://192.168.x.y` is not one.
 **Fix:** Open the dev stack through `http://localhost` (Caddy on :80) or serve TLS. Do not weaken the cookie (RFC-22 R5).
 
+## The dev stack answers 421 when reached by IP
+**Symptom:** `curl http://127.0.0.1/api/...` (through Caddy) or `curl http://127.0.0.1:3000/api/...` (the API port `compose.dev.yml` publishes) answers 421 `UNKNOWN_HOST`, GET included; only `/api/health` and `/api/health/ready` still answer.
+**Cause:** The API resolves the platform from the request's host and refuses any host that is neither the host of `APP_ORIGIN` nor `PLANT_DOMAIN` (RFC-14 R3). `127.0.0.1` is neither.
+**Fix:** Reach the dev stack as `localhost` (TreeRepro) or `plantrepro.localhost` (PlantRepro), never by IP; with curl against the published port, send the host: `curl -H 'Host: localhost' http://127.0.0.1:3000/api/...`.
+
 ## `docker compose cp` into a tmpfs mount silently does nothing
 **Symptom:** `docker compose cp ./records.csv api:/tmp/records.csv` exits 0, but the file is not there — `docker compose exec api ls /tmp` never shows it, and a later `import:records --file /tmp/records.csv` fails with `ENOENT`.
 **Cause:** `api`'s `/tmp` is a `tmpfs` mount (`read_only: true`, `tmpfs: [/tmp]`, RFC-02 R11). `docker compose cp` writes through the container's *image* filesystem layer via the Docker API, not through a live process inside the container; on a path that is actually a separate `tmpfs` mount, the copy either errors or (depending on the Compose/Docker version) reports success while writing nowhere the running container can see.
