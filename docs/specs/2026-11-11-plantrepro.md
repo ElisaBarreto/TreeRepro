@@ -55,7 +55,7 @@ These would make the project a failure even if it technically worked:
 | Topic | Decision |
 |---|---|
 | Name and address | `PlantRepro` at `plantrepro.elisabarreto.com.br`, next to `treerepro.elisabarreto.com.br` (default accepted). |
-| Identity | Own emblem and colours, clearly different. First version: the TreeRepro tree in a small forest (conifer, flower, fern, grass) on a **plum** disc (mockup option A, “Bloom”). To be refined later. |
+| Identity | Own emblem and colours, clearly different. First version: the TreeRepro tree in a small forest (conifer, flower, fern, grass) on a **terracotta** disc (colours of mockup option C, “Earth”; plum, option A, dropped by the owner on 2026-11-11). To be refined later. |
 | Codebase | One SPA and one API serve both platforms. The host decides the platform. No feature is exclusive. |
 | Login | Separate session per site, same credentials. Password managers should offer the same login on both sites. |
 | Roles | One account. `admin` is admin of both. Other roles per platform. Admins grant and revoke access. |
@@ -153,7 +153,7 @@ These would make the project a failure even if it technically worked:
 ### 7. Branding
 
 - One SPA build. The SPA decides the platform from `location.hostname`: a first label of `plantrepro` means PlantRepro, anything else TreeRepro. It then sets `data-platform` on `<html>` before first paint, so the wrong brand never flashes.
-- Theme tokens (canopy/pollen today) get a plum set under `[data-platform="plantrepro"]`. The colour difference must hold in light and dark mode, the header and the emblem at the very least.
+- Theme tokens (canopy/pollen today) get a terracotta set under `[data-platform="plantrepro"]`. The colour difference must hold in light and dark mode, the header and the emblem at the very least.
 - The forest emblem from the mockup becomes `Emblem` variant `plantrepro` and a second favicon. The page title, the landing page copy (“trees” becomes “plants”) and the e-mail templates (name, sender display name and links per platform) all follow the platform.
 - The TOTP issuer, OpenAPI title and User-Agent strings follow the platform where that is visible to the user. Otherwise they stay neutral.
 - **Password managers.** Both hosts serve `/.well-known/assetlinks.json`, declaring each other with `delegate_permission/common.get_login_creds`. Google Password Manager then offers one login for both sites, and Bitwarden and 1Password already match by base domain.
@@ -203,6 +203,6 @@ These would make the project a failure even if it technically worked:
 - How `admin`'s platform-independence is stored, within the requirement in section 2.
 - The exact names of codes, columns and the new RFC number.
 - The order of the plans. Suggested order: platform resolution and roles → plant type and visibility → maps and export → branding → infra and rollout.
-- The exact plum palette within the chosen direction, and the emblem drawing details.
+- The exact terracotta palette within the chosen direction, and the emblem drawing details.
 - The digest details within section 6.
 - Calls marked “my call” in the list handed to the owner with this document.

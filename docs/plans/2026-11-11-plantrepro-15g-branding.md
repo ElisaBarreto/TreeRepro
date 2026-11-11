@@ -1,6 +1,6 @@
 # Plan 15g — PlantRepro identity
 
-**Spec:** `docs/specs/2026-11-11-plantrepro.md` §7. **Epic plan:** `docs/plans/2026-11-11-plantrepro.md`. Visual reference: the plum “Bloom” mockup chosen on 2026-11-11 (forest emblem: the TreeRepro tree, a conifer, a pink flower, a fern, grass, on a plum disc).
+**Spec:** `docs/specs/2026-11-11-plantrepro.md` §7. **Epic plan:** `docs/plans/2026-11-11-plantrepro.md`. Visual reference: the terracotta “Earth” mockup (option C; the owner dropped plum on 2026-11-11) chosen on 2026-11-11 (forest emblem: the TreeRepro tree, a conifer, a pink flower, a fern, grass, on a plum disc).
 
 **After merge, TreeRepro users see nothing new.**
 
@@ -11,7 +11,7 @@
    - `apps/web/src/lib/platform.ts`: `currentPlatform(): Platform`.
    - An inline snippet in `index.html` sets `document.documentElement.dataset.platform` before the bundle loads. The CSP is `script-src 'self'`, so it goes in a small same-origin `platform.js` loaded first, not inline.
    - Unit test the hostname rule.
-3. **Theme.** Plum tokens under `[data-platform="plantrepro"]` in `styles.css` override the canopy tokens, in both light and dark. Check the contrast of the text tokens against the WCAG AA level the current palette meets.
+3. **Theme.** Terracotta tokens under `[data-platform="plantrepro"]` in `styles.css` override the canopy tokens, in both light and dark. Check the contrast of the text tokens against the WCAG AA level the current palette meets.
 4. **Emblem and favicon.**
    - `Emblem` gains `variant: Platform`, and the forest drawing for `plantrepro`.
    - `public/favicon-plantrepro.svg`, swapped by `platform.js`.
