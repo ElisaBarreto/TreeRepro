@@ -30,16 +30,19 @@ describe('RFC-13 R5 Emblem', () => {
   });
 });
 
+/** The markup with `useId`'s ids, which depend on render order, replaced. */
+const markup = (el: Element) => el.innerHTML.replaceAll(/_r_\w+_|«r\w+»|:r\w+:/g, 'ID');
+
 describe('RFC-13 R14 Emblem per platform', () => {
   it('draws the tree for TreeRepro and the forest for PlantRepro', () => {
     const tree = render(<Emblem size={40} variant="treerepro" />);
     expect(screen.getByRole('img', { name: 'TreeRepro emblem: a tree in fruit' })).toBeVisible();
-    expect(tree.container.innerHTML).toMatchSnapshot('treerepro');
+    expect(markup(tree.container)).toMatchSnapshot('treerepro');
     tree.unmount();
 
     const forest = render(<Emblem size={40} variant="plantrepro" />);
     expect(screen.getByRole('img', { name: /^PlantRepro emblem/ })).toBeVisible();
-    expect(forest.container.innerHTML).toMatchSnapshot('plantrepro');
+    expect(markup(forest.container)).toMatchSnapshot('plantrepro');
   });
 
   it('the forest keeps the canopy and the five fruits for the sign-in reveal', () => {
