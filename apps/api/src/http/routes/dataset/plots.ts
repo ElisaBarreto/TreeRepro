@@ -144,7 +144,7 @@ export function plotRoutes(ctx: AuthContext) {
       validate('param', plotSpeciesMemberParamSchema),
       async (c) => {
         const { id, speciesId } = c.req.valid('param');
-        await removePlotSpeciesMember(ctx.db, id, speciesId, currentUser(c).id);
+        await removePlotSpeciesMember(ctx.db, id, speciesId, currentUser(c).id, c.get('platform'));
         const plot = await getPlot(ctx.db, id, { withUserCount: true });
         return c.json({ data: plot }, 200);
       },

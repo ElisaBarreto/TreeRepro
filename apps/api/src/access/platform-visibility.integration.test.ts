@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, TEST_PLANT_ORIGIN, useTestApp } from '../../test/helpers/app.ts';
 import {
+  addPlotSpecies,
   createContest,
   createFamily,
   createGenus,
@@ -195,6 +196,9 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
       sources: { personalObservation: true },
     });
     const plot = await createPlot(t.db);
+    // A member already, so removing it would succeed if the platform were ignored.
+    const member = await createPlot(t.db);
+    await addPlotSpecies(t.db, member.id, [s.herb.id, s.proposed.id]);
     for (const sp of [s.herb, s.proposed]) {
       const contest = await createContest(t.db, {
         speciesId: sp.id,
@@ -204,6 +208,7 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
       });
       const writes: [string, string, unknown][] = [
         ['POST', `/api/plots/${plot.id}/species`, { speciesId: sp.id }],
+        ['DELETE', `/api/plots/${member.id}/species/${sp.id}`, undefined],
         ['POST', `/api/contests/${contest.id}/resolve`, {}],
         ['POST', `/api/contests/${contest.id}/withdraw`, {}],
         ['POST', '/api/records', record(sp.id)],
@@ -218,6 +223,8 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
         expect([path, res.status]).toEqual([path, 404]);
       }
       // The same species is reachable on PlantRepro, and unchanged.
+      const members = await plant('GET', `/api/plots/${member.id}/species`);
+      expect((await members.json()).data.map((m: { id: string }) => m.id)).toContain(sp.id);
       const detail = await plant('GET', `/api/species/${sp.id}`);
       expect((await detail.json()).data).toMatchObject({ active: true, names: [] });
     }

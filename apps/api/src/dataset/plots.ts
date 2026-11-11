@@ -397,7 +397,7 @@ export async function addPlotSpeciesMember(
 }
 
 /**
- * Removes a species from a field plot.
+ * Removes a species from a field plot; one outside the platform's scope is not found (RFC-33 R5).
  * @rfc RFC-67 R5
  */
 export async function removePlotSpeciesMember(
@@ -405,6 +405,7 @@ export async function removePlotSpeciesMember(
   plotId: string,
   speciesId: string,
   actorId: string,
+  platform: Platform,
 ): Promise<void> {
   return db.transaction(async (tx) => {
     const [plot] = await tx
@@ -416,7 +417,14 @@ export async function removePlotSpeciesMember(
 
     const deleted = await tx
       .delete(plotSpecies)
-      .where(and(eq(plotSpecies.plotId, plotId), eq(plotSpecies.speciesId, speciesId)))
+      .where(
+        and(
+          eq(plotSpecies.plotId, plotId),
+          eq(plotSpecies.speciesId, speciesId),
+          // RFC-33 R5: a species outside the platform's scope is not found.
+          sql`exists (select 1 from ${species} where ${species.id} = ${speciesId} and ${platformScope(platform)})`,
+        ),
+      )
       .returning({ speciesId: plotSpecies.speciesId });
 
     if (deleted.length === 0) {

@@ -240,21 +240,29 @@ describe('RFC-67 R3, R5 plots service', () => {
     ).rejects.toMatchObject({ code: 'SPECIES_NOT_FOUND', status: 404 });
 
     // Remove species
-    await removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id);
+    await removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id, 'treerepro');
 
     const removedAudit = await lastAudit(t.db, 'plots.species_removed', { targetId: plot.id });
     expect(removedAudit).toBeDefined();
     expect(removedAudit?.metadata).toMatchObject({ speciesId: sp.id });
 
     // Removing when not a member throws 404
-    await expect(removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id)).rejects.toMatchObject({
+    await expect(
+      removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id, 'treerepro'),
+    ).rejects.toMatchObject({
       code: 'SPECIES_NOT_FOUND',
       status: 404,
     });
 
     // Unknown plot on removal throws 404 PLOT_NOT_FOUND
     await expect(
-      removePlotSpeciesMember(t.db, '00000000-0000-0000-0000-000000000000', sp.id, actor.id),
+      removePlotSpeciesMember(
+        t.db,
+        '00000000-0000-0000-0000-000000000000',
+        sp.id,
+        actor.id,
+        'treerepro',
+      ),
     ).rejects.toMatchObject({ code: 'PLOT_NOT_FOUND', status: 404 });
   });
 
