@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
   <title>PlantRepro</title>
   <!-- The PlantRepro Emblem (components/ui/Emblem.tsx, variant plantrepro),
-       simplified for small sizes: plum disc, conifer, tree, pink flower. -->
+       simplified for small sizes: terracotta disc, conifer, tree, pink flower. -->
   <defs>
     <radialGradient id="disc" cx="38%" cy="30%" r="80%">
-      <stop offset="0%" stop-color="#c060a3"/>
-      <stop offset="60%" stop-color="#74225c"/>
-      <stop offset="100%" stop-color="#2a0b21"/>
+      <stop offset="0%" stop-color="#e08a4f"/>
+      <stop offset="60%" stop-color="#9c4320"/>
+      <stop offset="100%" stop-color="#4a1c0c"/>
     </radialGradient>
     <radialGradient id="c1" cx="35%" cy="30%" r="75%">
       <stop offset="0%" stop-color="#3faa86"/>

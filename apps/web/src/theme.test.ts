@@ -27,7 +27,7 @@ function contrast(a: string, b: string): number {
 
 const theme = canopy(css.slice(css.indexOf('@theme'), css.indexOf('}', css.indexOf('@theme'))));
 const plantStart = css.indexOf('[data-platform="plantrepro"]');
-const plum = canopy(css.slice(plantStart, css.indexOf('}', plantStart)));
+const terracotta = canopy(css.slice(plantStart, css.indexOf('}', plantStart)));
 const MIST_50 = /--color-mist-50:\s*(#[0-9a-f]{6})/i.exec(css)?.[1] as string;
 /** Every mist and pollen text token, and white. */
 const TEXT_TOKENS: Record<string, string> = {
@@ -37,31 +37,31 @@ const TEXT_TOKENS: Record<string, string> = {
   white: '#ffffff',
 };
 
-describe('RFC-13 R14 PlantRepro plum tokens', () => {
+describe('RFC-13 R14 PlantRepro terracotta tokens', () => {
   it('override every canopy token', () => {
-    expect(Object.keys(plum).sort()).toEqual(Object.keys(theme).sort());
+    expect(Object.keys(terracotta).sort()).toEqual(Object.keys(theme).sort());
   });
 
   // Every pair of a canopy shade with a surface (white, mist-50, canopy-900)
   // that meets WCAG AA text (4.5:1) or large-text (3:1) contrast on TreeRepro
-  // meets it with the plum set too.
+  // meets it with the terracotta set too.
   it.each(Object.keys(theme))('canopy-%s keeps the contrast level it reaches', (shade) => {
     const surfaces = (set: Record<string, string>) => ['#ffffff', MIST_50, set['900'] as string];
     surfaces(theme).forEach((surface, i) => {
       const before = contrast(theme[shade] as string, surface);
-      const after = contrast(plum[shade] as string, surfaces(plum)[i] as string);
+      const after = contrast(terracotta[shade] as string, surfaces(terracotta)[i] as string);
       for (const level of [4.5, 3])
         if (before >= level) expect(after, `${shade} on ${surface}`).toBeGreaterThanOrEqual(level);
     });
   });
 
-  // The plum surfaces under text (canopy 950, 900, 800, 700): every text
+  // The terracotta surfaces under text (canopy 950, 900, 800, 700): every text
   // token that meets AA (4.5:1) or large-text (3:1) contrast on a canopy
-  // surface meets it on the plum one.
+  // surface meets it on the terracotta one.
   it.each(['950', '900', '800', '700'])('text tokens keep their contrast on canopy-%s', (shade) => {
     for (const [name, token] of Object.entries(TEXT_TOKENS)) {
       const before = contrast(token, theme[shade] as string);
-      const after = contrast(token, plum[shade] as string);
+      const after = contrast(token, terracotta[shade] as string);
       for (const level of [4.5, 3])
         if (before >= level)
           expect(after, `${name} on canopy-${shade}`).toBeGreaterThanOrEqual(level);

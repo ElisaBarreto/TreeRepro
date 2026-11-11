@@ -64,21 +64,21 @@
 }
 
 /*
- * PlantRepro (RFC-13 R14): plum in place of the canopy greens, each shade
+ * PlantRepro (RFC-13 R14): terracotta in place of the canopy greens, each shade
  * matched to its canopy shade's luminance, so every text/surface pair keeps
  * its contrast (src/theme.test.ts). `platform.js` sets `data-platform` on
  * <html> before first paint. Unlayered, so it beats the theme layer.
  */
 [data-platform="plantrepro"] {
-  --color-canopy-950: #310e26;
-  --color-canopy-900: #2a0b21;
-  --color-canopy-800: #74225c;
-  --color-canopy-700: #872c6c;
-  --color-canopy-600: #c060a3;
-  --color-canopy-500: #cb80b5;
-  --color-canopy-400: #d899c6;
-  --color-canopy-300: #e5b1d6;
-  --color-canopy-200: #f3d7eb;
+  --color-canopy-950: #2d150b;
+  --color-canopy-900: #261209;
+  --color-canopy-800: #713017;
+  --color-canopy-700: #883a1c;
+  --color-canopy-600: #cc6034;
+  --color-canopy-500: #d9825f;
+  --color-canopy-400: #e39c7f;
+  --color-canopy-300: #ebb59f;
+  --color-canopy-200: #f6d9cd;
 }
 
 @layer base {

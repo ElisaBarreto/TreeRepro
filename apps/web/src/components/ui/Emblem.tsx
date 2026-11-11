@@ -27,10 +27,10 @@ const TREE_PAINT: Paint = {
   fruit: ['var(--color-pollen-300)', 'var(--color-pollen-500)'],
 };
 
-// PlantRepro's canopy tokens are plum, so the forest's greens are written out
-// (TreeRepro's canopy hexes) and its disc is the plum set's.
+// PlantRepro's canopy tokens are terracotta, so the forest's greens are written out
+// (TreeRepro's canopy hexes) and its disc is terracotta.
 const FOREST_PAINT: Paint = {
-  disc: ['#c060a3', '#74225c', '#2a0b21'],
+  disc: ['#e08a4f', '#9c4320', '#4a1c0c'],
   c1: ['#3faa86', '#1b6b57'],
   c3: ['#b5ebc9', '#5fbf8a'],
   trunk: ['#8a5426', '#c1863f'],
@@ -45,7 +45,7 @@ const NAMES: Record<Platform, string> = {
 /**
  * The platform's emblem as a still image: TreeRepro's tree in fruit inside a
  * disc, or PlantRepro's forest — the same tree, smaller, among a conifer, a
- * pink flower, a fern and grass on a plum disc (RFC-13 R14).
+ * pink flower, a fern and grass on a terracotta disc (RFC-13 R14).
  * The landing page wraps it in motion (`TreeEmblem`); the workspace shows
  * it as is in the sidebar. Gradient ids come from `useId` so several
  * emblems on one page do not share (and hijack) each other's paint. The
