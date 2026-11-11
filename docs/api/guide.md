@@ -1,4 +1,4 @@
-openapi-sha256: 6961dc167d882c3f78ac00d6e4df2032b4df205be351bd4680fc1c7f0b5526e3
+openapi-sha256: c85dc47d1b8700e30e237298c024c84c178dd556c8f890f26987c8447889cc29
 
 # TreeRepro API guide
 
@@ -15,6 +15,8 @@ Only a user holding the `admin` system role can create or use a key (RFC-82 R2),
 ## Two hosts
 
 The same API answers on two hosts, one per platform (RFC-14): `https://treerepro.elisabarreto.com.br/api/...` acts on TreeRepro and `https://plantrepro.elisabarreto.com.br/api/...` on PlantRepro. Every route, rule and shape is the same on both. A key is not bound to either: send it to the host of the platform you mean, and the request — every operation of a `POST /api/batch` included — acts on that platform (RFC-14 R6). Any other host, an IP address included, answers 421 `UNKNOWN_HOST`. Until PlantRepro opens, its host answers 421 too.
+
+Roles are held per platform (RFC-31 R16), and a request is checked against the permissions its owner holds on the platform of its host. The `admin` system role, the only one that can hold a key, is held on both platforms, so a key reaches the same routes on either host.
 
 ## Authentication and the key lifecycle
 
@@ -236,6 +238,7 @@ Every error follows the same envelope: `{ "error": { "code", "message", "details
 | `VALIDATION_INVALID_JSON` | 400 | The request body is not valid JSON. |
 | `REQUEST_TOO_LARGE` | 413 | The request body exceeds 1 MiB. |
 | `UNKNOWN_HOST` | 421 | The request was sent to a host that is neither platform's (see Two hosts). Fix the base URL. |
+| `PLATFORM_ACCESS_DENIED` | 403 | Sign-in only: the account holds no role on the host's platform. A key never meets it. |
 | `NOT_FOUND` | 404 | An unknown route, or an id-based lookup whose route has no more specific not-found code. |
 | `RATE_LIMITED` | 429 | Too many requests for this key; see Limits above. |
 | `INTERNAL_ERROR` | 500 | Unexpected failure on the server; safe to retry later, not immediately. |
@@ -424,6 +427,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-11 — Roles per platform (RFC-31 R16, RFC-32 R1; issue #397): a role is held on TreeRepro or PlantRepro, and permissions are those held on the platform of the host the request is sent to. `admin` is held on both, so a key keeps working on both hosts. In `GET /api/admin/users*` every entry of a user's `roles` gains `platform`, and `admin` appears once per platform. `GET /api/admin/users` takes `platform=` (the users holding a role there). `POST /api/admin/users` takes an optional `platform`; it defaults to the request's, and the invitation links to that platform. `PATCH /api/admin/users/:id` takes an optional `platform`, the platform whose roles `roles` replaces, also defaulting to the request's; these three stay unreachable with a key. Signing in on a platform where the account holds no role answers 403 `PLATFORM_ACCESS_DENIED`, a new error code. (openapi c85dc47d1b87)
 - 2026-11-11 — Two hosts (RFC-14; issue #396): the API also answers on the PlantRepro host, acting on PlantRepro, with the same routes and shapes; a key works on both. A request to any other host answers 421 `UNKNOWN_HOST`, a new error code. No route changes. (openapi 6961dc167d88)
 - 2026-11-06 — A validation (`POST /api/records/:id/annotations` with `confirm`, `POST /api/species/:id/traits/:traitId/levels/:levelId/validate`) also adds the validator's record. It has the same level, or the same quantitative fields, under the supporting reference, or the validator's personal observation without one. It is a complement responding to the validated record, at most once per validator × value × reference, and counts in references, sources and summaries. Response shapes are unchanged (RFC-65 R17; issue #388). (openapi 99bb9bd5e45e)
 - 2026-11-06 — A source of `POST /api/records` and the `referenceSource` of a validation (`POST /api/records/:id/annotations`, `POST /api/species/:id/traits/:traitId/levels/:levelId/validate`) may be a website, `{ url, citation }`: an absolute http or https URL (at most 500 characters) and its citation. It resolves to the reference keyed `url:<normalised URL>`, created on first use and never fetched (RFC-61 R11; issue #386). (openapi 99bb9bd5e45e)
