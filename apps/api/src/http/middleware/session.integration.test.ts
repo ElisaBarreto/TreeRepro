@@ -68,6 +68,19 @@ describe('RFC-22 R5, R7, R8 session middleware', () => {
     expect(await t.sessions.get(rawId)).not.toBeNull();
   });
 
+  it('RFC-14 R3, R5 a signed-in browser calling health keeps its session', async () => {
+    const { user } = await createUser(t.db);
+    for (const platform of ['treerepro', 'plantrepro'] as const) {
+      const { cookie } = await loginAs(t, user, { platform });
+      const host = platform === 'plantrepro' ? 'http://plantrepro.localhost' : '';
+      const health = await call(t.app, 'GET', `${host}/api/health`, { cookie });
+      expect(health.status).toBe(200);
+      expect(setCookieLine(health, '__Host-session'), platform).toBe('');
+      const me = await call(t.app, 'GET', `${host}/api/auth/me`, { cookie });
+      expect(me.status, platform).toBe(200);
+    }
+  });
+
   it('RFC-14 R5 a session recorded before platforms existed authenticates on TreeRepro', async () => {
     const { user } = await createUser(t.db);
     const { cookie, id } = await loginAs(t, user);

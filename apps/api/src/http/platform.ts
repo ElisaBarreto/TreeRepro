@@ -33,15 +33,17 @@ export function platformOfHost(
 
 /**
  * Sets `c.var.platform` from the request URL's host (the forwarded `Host`),
- * or answers 421 `UNKNOWN_HOST`; the health routes pass with no platform.
+ * or answers 421 `UNKNOWN_HOST`; the health routes answer any host.
  * @rfc RFC-14 R3
  */
 export function resolvePlatform(domains: PlatformDomains): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    if (HEALTH.test(c.req.path)) return next();
     const platform = platformOfHost(new URL(c.req.url).host, domains);
-    if (!platform) throw new AppError('UNKNOWN_HOST', 'This host is not served here');
-    c.set('platform', platform);
+    // Health answers any host; it still gets the platform when the host has
+    // one, so a browser's session cookie is not taken for another platform's.
+    if (platform) c.set('platform', platform);
+    else if (!HEALTH.test(c.req.path))
+      throw new AppError('UNKNOWN_HOST', 'This host is not served here');
     await next();
   };
 }
