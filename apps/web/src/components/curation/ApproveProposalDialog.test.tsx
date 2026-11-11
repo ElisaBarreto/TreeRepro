@@ -119,4 +119,15 @@ describe('RFC-75 R4 ApproveProposalDialog', () => {
     expect(alert).toHaveTextContent('This proposal has already been decided. Reload the page.');
     expect(within(alert).queryByRole('link')).not.toBeInTheDocument();
   });
+
+  it('RFC-75 R6 on TreeRepro a not-tree proposal states its type and cannot be approved', async () => {
+    mount({ ...PROPOSAL, plantType: 'not_tree' });
+    const form = await dialog();
+    expect(within(form).getByRole('textbox', { name: /plant type/i })).toHaveValue('Not a tree');
+    expect(within(form).getByText(/approve it on PlantRepro/i)).toBeInTheDocument();
+    const approve = within(form).getByRole('button', { name: 'Approve and create' });
+    expect(approve).toBeDisabled();
+    await userEvent.click(approve);
+    expect(proposals.approveProposal).not.toHaveBeenCalled();
+  });
 });
