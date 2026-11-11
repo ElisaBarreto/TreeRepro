@@ -1,4 +1,5 @@
 import {
+  changePlantTypeBodySchema,
   countSpeciesQuerySchema,
   createSpeciesBodySchema,
   idParamSchema,
@@ -15,7 +16,13 @@ import { Hono } from 'hono';
 import type { z } from 'zod';
 import { userScopeOf, visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
-import { addSpeciesName, createSpecies, updateSpecies } from '../../../dataset/catalog.ts';
+import {
+  addSpeciesName,
+  changePlantType,
+  createSpecies,
+  plantTypeFor,
+  updateSpecies,
+} from '../../../dataset/catalog.ts';
 import { validateLevel, withdrawLevel } from '../../../dataset/curation.ts';
 import { resolveSourceRef } from '../../../dataset/sources.ts';
 import { speciesTraitSummary } from '../../../dataset/summary.ts';
@@ -59,6 +66,7 @@ function filtersOf(
     traitId: q.traitId,
     traitData: q.traitData,
     treeFlags: q.treeFlag,
+    plantType: q.plantType,
   };
 }
 
@@ -68,7 +76,7 @@ function filtersOf(
  * Hono can never read "proposals" as a species id.
  * @rfc RFC-60 R6, R7, R9, R10, R11, R12
  * @rfc RFC-63 R10
- * @rfc RFC-65 R13, R14
+ * @rfc RFC-65 R13, R14, R18, R19
  * @rfc RFC-75 R2, R3
  */
 export function speciesRoutes(ctx: AuthContext) {
@@ -98,16 +106,17 @@ export function speciesRoutes(ctx: AuthContext) {
         '/',
         requirePermission(ctx, 'taxa.manage'),
         validate('json', createSpeciesBodySchema),
-        async (c) =>
-          c.json(
-            {
-              data: await createSpecies(ctx.db, {
-                ...c.req.valid('json'),
-                actorId: currentUser(c).id,
-              }),
-            },
-            201,
-          ),
+        async (c) => {
+          const { plantType, ...body } = c.req.valid('json');
+          const data = await createSpecies(ctx.db, {
+            ...body,
+            // RFC-65 R18: the platform fixes or requires the type; the creator's review decides the status.
+            plantType: plantTypeFor(c.get('platform'), plantType),
+            plantTypeStatus: currentPermissions(c).has('records.review') ? 'reviewed' : 'proposed',
+            actorId: currentUser(c).id,
+          });
+          return c.json({ data }, 201);
+        },
       )
       .route('/proposals', proposalRoutes(ctx))
       // RFC-60 R12: the list's filters, counted; a literal segment, before `/:id`.
@@ -190,6 +199,20 @@ export function speciesRoutes(ctx: AuthContext) {
           if (!summary) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
           return c.json({ data: summary });
         },
+      )
+      .post(
+        '/:id/plant-type',
+        requirePermission(ctx, 'records.review'),
+        validate('param', idParamSchema),
+        validate('json', changePlantTypeBodySchema),
+        async (c) =>
+          c.json({
+            data: await changePlantType(ctx.db, await visibilityOf(ctx, c), {
+              id: c.req.valid('param').id,
+              plantType: c.req.valid('json').plantType,
+              actorId: currentUser(c).id,
+            }),
+          }),
       )
       .post(
         '/:id/names',

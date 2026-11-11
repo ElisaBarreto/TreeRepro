@@ -117,6 +117,7 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
           value: { levelIds: [level] },
         },
       },
+      'POST /api/species/:id/plant-type': { body: { plantType: 'tree' } },
       'GET /api/me/contributions': { query: 'kind=records' },
       'GET /api/maps/values': { query: `traitId=${fx.activeTrait.id}&kind=completeness` },
       'GET /api/maps/trait-values': { query: `traitId=${fx.activeTrait.id}` },

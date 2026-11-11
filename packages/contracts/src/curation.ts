@@ -13,8 +13,8 @@ import {
   userRefSchema,
 } from './dataset.ts';
 import { isValidIsbn } from './isbn.ts';
-import { PLANT_TYPES } from './platform.ts';
 import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
+import { PLANT_TYPES } from './platform.ts';
 
 /** Free text attached to a write: 1–2,000 characters, trimmed. @rfc RFC-65 R1 */
 export const curationNoteSchema = z.string().trim().min(1).max(2000);

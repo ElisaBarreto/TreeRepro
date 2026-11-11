@@ -365,6 +365,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
     summary: "Get a species' trait summaries by category",
     response: dataEnvelopeSchema(speciesTraitsSchema),
   },
+  'POST /api/species/:id/plant-type': {
+    summary: 'Set a species plant type and mark it reviewed',
+    response: dataEnvelopeSchema(speciesSchema),
+  },
   'POST /api/species/:id/names': {
     summary: 'Add an alternative name to a species',
     response: dataEnvelopeSchema(speciesSchema),

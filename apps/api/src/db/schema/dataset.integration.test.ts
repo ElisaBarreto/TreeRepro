@@ -39,7 +39,13 @@ describe('RFC-60 R1 taxonomy tables', () => {
         .returning();
       const [sp1] = await tx
         .insert(species)
-        .values({ canonicalName: `Gen sp-${rand()}`, nameSource: 'wcvp', genusId: genus?.id })
+        .values({
+          plantType: 'tree',
+          plantTypeStatus: 'reviewed',
+          canonicalName: `Gen sp-${rand()}`,
+          nameSource: 'wcvp',
+          genusId: genus?.id,
+        })
         .returning();
       expect(sp1?.id).toMatch(/^[0-9a-f-]{36}$/);
       expect(sp1?.createdBy).toBeNull();
@@ -48,7 +54,12 @@ describe('RFC-60 R1 taxonomy tables', () => {
           tx.transaction((sp) =>
             sp
               .insert(species)
-              .values({ canonicalName: `X-${rand()}`, nameSource: 'guess' as never }),
+              .values({
+                plantType: 'tree',
+                plantTypeStatus: 'reviewed',
+                canonicalName: `X-${rand()}`,
+                nameSource: 'guess' as never,
+              }),
           ),
         ),
       ).rejects.toMatchObject({ code: '23514' });
@@ -64,7 +75,12 @@ describe('RFC-60 R1 taxonomy tables', () => {
       expect(genus?.familyId).toBeNull();
       const [sp1] = await tx
         .insert(species)
-        .values({ canonicalName: `Orphan-${rand()}`, nameSource: 'original' })
+        .values({
+          plantType: 'tree',
+          plantTypeStatus: 'reviewed',
+          canonicalName: `Orphan-${rand()}`,
+          nameSource: 'original',
+        })
         .returning();
       expect(sp1?.genusId).toBeNull();
     });
@@ -74,7 +90,12 @@ describe('RFC-60 R1 taxonomy tables', () => {
     await withRollback(t.db, async (tx) => {
       const [sp1] = await tx
         .insert(species)
-        .values({ canonicalName: `Alt-${rand()}`, nameSource: 'wcvp' })
+        .values({
+          plantType: 'tree',
+          plantTypeStatus: 'reviewed',
+          canonicalName: `Alt-${rand()}`,
+          nameSource: 'wcvp',
+        })
         .returning();
       const [alt] = await tx
         .insert(speciesNames)
@@ -125,7 +146,12 @@ describe('RFC-60 R1 taxonomy tables', () => {
     await withRollback(t.db, async (tx) => {
       const [sp1] = await tx
         .insert(species)
-        .values({ canonicalName: `Act-${rand()}`, nameSource: 'wcvp' })
+        .values({
+          plantType: 'tree',
+          plantTypeStatus: 'reviewed',
+          canonicalName: `Act-${rand()}`,
+          nameSource: 'wcvp',
+        })
         .returning();
       expect(sp1?.active).toBe(true);
     });

@@ -1,6 +1,8 @@
 import type {
   Genus,
   NameType,
+  PlantType,
+  PlantTypeStatus,
   PlotRef,
   SortOrder,
   Species,
@@ -126,13 +128,15 @@ function keyedSort(filters: SpeciesListFilters): KeyedSort | null {
       ? sql`coalesce(${families.name}, '')`
       : sort === 'treeBasis'
         ? treeBasisKey
-        : sort === 'genus'
-          ? sql`coalesce(${genera.name}, '')`
-          : sort === 'traits'
-            ? sql`${species.traitCount}`
-            : sort === 'records'
-              ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
-              : sql`${species.canonicalName}`;
+        : sort === 'plantType'
+          ? sql`${species.plantType}`
+          : sort === 'genus'
+            ? sql`coalesce(${genera.name}, '')`
+            : sort === 'traits'
+              ? sql`${species.traitCount}`
+              : sort === 'records'
+                ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
+                : sql`${species.canonicalName}`;
   return {
     tag: `${sort}:${order}`,
     key,
@@ -229,6 +233,8 @@ interface SpeciesJoinedRow {
   traitCount: number;
   traitRecordCount?: number | null;
   treeFlag: TreeFlag | null;
+  plantType: PlantType;
+  plantTypeStatus: PlantTypeStatus;
 }
 
 /**
@@ -251,6 +257,8 @@ function toListItem(r: SpeciesJoinedRow, review: boolean): SpeciesListItem {
     traitCount: r.traitCount,
     traitRecordCount: r.traitRecordCount ?? null,
     treeFlag: r.treeFlag,
+    plantType: r.plantType,
+    plantTypeStatus: r.plantTypeStatus,
   };
 }
 
@@ -264,6 +272,8 @@ const speciesColumns = {
   familyId: families.id,
   familyName: families.name,
   treeFlag: species.treeFlag,
+  plantType: species.plantType,
+  plantTypeStatus: species.plantTypeStatus,
 };
 
 /**
@@ -292,6 +302,8 @@ export interface SpeciesListFilters {
   traitData?: TraitDataMode;
   /** RFC-60 R6: keep species whose tree basis is any of these; empty or absent keeps all. */
   treeFlags?: TreeFlag[];
+  /** RFC-60 R6: keep species of this plant type, whatever its status. */
+  plantType?: PlantType;
   /** With `traitId`: a harmonised, live record of this level (RFC-62 R8). The caller validates the level. */
   traitLevelId?: string;
   /** `records` needs `traitId` (RFC-60 R6, RFC-62 R8). */
@@ -388,6 +400,7 @@ export async function speciesListConditions(
   if (filters.familyId) conditions.push(eq(genera.familyId, filters.familyId));
   if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
   if (filters.treeFlags?.length) conditions.push(inArray(species.treeFlag, filters.treeFlags));
+  if (filters.plantType) conditions.push(eq(species.plantType, filters.plantType));
   if (filters.unresolved && visibility.review) {
     conditions.push(
       sql`(${species.nameSource} <> 'wcvp' or ${species.genusId} is null or ${genera.familyId} is null)`,
