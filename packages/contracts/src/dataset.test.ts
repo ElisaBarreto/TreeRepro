@@ -100,6 +100,8 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
       unresolvedTaxon: null,
       traitCount: 0,
       traitRecordCount: null,
+      plantType: 'tree',
+      plantTypeStatus: 'reviewed',
     };
     expect(speciesListItemSchema.safeParse({ ...item, treeFlag: 'wcvp_tree' }).success).toBe(true);
     expect(speciesListItemSchema.safeParse({ ...item, treeFlag: null }).success).toBe(true);
@@ -708,6 +710,8 @@ describe('RFC-60 R6 species item carries active; status filter', () => {
       traitCount: 3,
       traitRecordCount: null,
       treeFlag: null,
+      plantType: 'tree',
+      plantTypeStatus: 'reviewed',
     };
     expect(speciesListItemSchema.safeParse({ ...ITEM, active: false }).success).toBe(true);
     const { active: _a, ...without } = { ...ITEM, active: true };
@@ -735,6 +739,8 @@ describe('RFC-60 R6 species trait filters on listSpeciesQuerySchema', () => {
     expect(listSpeciesQuerySchema.safeParse({ sort: 'nope' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ traitData: 'nope' }).success).toBe(false);
     expect(listSpeciesQuerySchema.safeParse({ categoryKey: '' }).success).toBe(false);
+    expect(listSpeciesQuerySchema.parse({ plantType: 'not_tree' }).plantType).toBe('not_tree');
+    expect(listSpeciesQuerySchema.safeParse({ plantType: 'shrub' }).success).toBe(false);
     expect(TRAIT_DATA_MODES).toEqual(['with', 'missing']);
     expect(SPECIES_SORTS).toEqual([
       'name',
@@ -744,6 +750,7 @@ describe('RFC-60 R6 species trait filters on listSpeciesQuerySchema', () => {
       'traits',
       'records',
       'treeBasis',
+      'plantType',
     ]);
   });
 });
@@ -763,6 +770,8 @@ describe('RFC-60 R6, RFC-69 R1 speciesListItemSchema trait coverage fields', () 
       traitCount: 3,
       traitRecordCount: null,
       treeFlag: null,
+      plantType: 'tree',
+      plantTypeStatus: 'reviewed',
     };
     expect(speciesListItemSchema.parse(ITEM)).toEqual(ITEM);
     expect(speciesListItemSchema.safeParse({ ...ITEM, traitRecordCount: 5 }).success).toBe(true);
@@ -962,6 +971,8 @@ describe('RFC-62 R8 traitSpeciesItemSchema', () => {
     traitCount: 3,
     traitRecordCount: null,
     treeFlag: null,
+    plantType: 'tree',
+    plantTypeStatus: 'reviewed',
   };
 
   it('everything is nullable for missing mode', () => {

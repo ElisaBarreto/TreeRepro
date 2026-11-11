@@ -40,6 +40,7 @@ const proposal = {
   decidedBy: null,
   decidedAt: null,
   decisionNote: null,
+  plantType: 'tree',
   createdAt: '2026-09-19T00:00:00.000Z',
 };
 
@@ -202,5 +203,21 @@ describe('RFC-81 R4 taxonomyMatchQuerySchema', () => {
       name: 'Quercus robur',
     });
     expect(taxonomyMatchQuerySchema.safeParse({ name: 'Qu' }).success).toBe(false);
+  });
+});
+
+describe('RFC-65 R18 plant type on the proposal and approval bodies', () => {
+  it('takes an optional known plant type', () => {
+    expect(
+      createProposalBodySchema.parse({ name: 'Quercus robur', plantType: 'not_tree' }).plantType,
+    ).toBe('not_tree');
+    expect(
+      createProposalBodySchema.safeParse({ name: 'Quercus robur', plantType: 'shrub' }).success,
+    ).toBe(false);
+    const approve = { canonicalName: 'Quercus robur', nameSource: 'wcvp' };
+    expect(approveProposalBodySchema.parse(approve).plantType).toBeUndefined();
+    expect(approveProposalBodySchema.parse({ ...approve, plantType: 'tree' }).plantType).toBe(
+      'tree',
+    );
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
+import { PLANT_TYPE_STATUSES, PLANT_TYPES } from './platform.ts';
 import { plotRefSchema, SPECIES_SCOPES } from './plots.ts';
 
 /** @rfc RFC-60 R1, R3 */
@@ -195,6 +196,7 @@ export const SPECIES_SORTS = [
   'traits',
   'records',
   'treeBasis',
+  'plantType',
 ] as const;
 export type SpeciesSort = (typeof SPECIES_SORTS)[number];
 
@@ -230,6 +232,8 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
     }, 'Expected distinct tree flags, comma-separated')
     .transform((v) => v.split(',') as TreeFlag[])
     .optional(),
+  /** RFC-60 R6: keeps the species of this plant type, whatever its status. */
+  plantType: z.enum(PLANT_TYPES).optional(),
   sort: z.enum(SPECIES_SORTS).optional(),
   order: z.enum(SORT_ORDERS).optional(),
 });
@@ -259,6 +263,9 @@ export const speciesListItemSchema = z.strictObject({
   traitRecordCount: z.number().int().nonnegative().nullable(),
   /** RFC-60 R1: the tree basis, null when the file gave none. */
   treeFlag: z.enum(TREE_FLAGS).nullable(),
+  /** RFC-60 R1: the plant type and whether it has been reviewed. */
+  plantType: z.enum(PLANT_TYPES),
+  plantTypeStatus: z.enum(PLANT_TYPE_STATUSES),
 });
 
 /** The species list's filters, without its paging or order. @rfc RFC-60 R12 */

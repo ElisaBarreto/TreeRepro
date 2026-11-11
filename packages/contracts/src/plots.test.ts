@@ -241,6 +241,8 @@ describe('RFC-60 R6, R7 / RFC-33 R6 dataset contracts scope', () => {
       recordCount: 0,
       traitCount: 0,
       treeFlag: null,
+      plantType: 'tree',
+      plantTypeStatus: 'reviewed',
     });
     expect(species.plots).toHaveLength(1);
   });

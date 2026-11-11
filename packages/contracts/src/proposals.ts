@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { catalogNameSchema, curationNoteSchema, speciesNameBodySchema } from './curation.ts';
 import { NAME_SOURCES, userRefSchema } from './dataset.ts';
 import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
+import { PLANT_TYPES } from './platform.ts';
 
 /**
  * The `species_proposals.status` values the table CHECK constraint allows.
@@ -58,6 +59,8 @@ export const proposalSchema = z.strictObject({
   decidedBy: userRefSchema.nullable(),
   decidedAt: z.iso.datetime().nullable(),
   decisionNote: z.string().nullable(),
+  /** RFC-75 R6: the stated plant type; null on a proposal made before migration 0058. */
+  plantType: z.enum(PLANT_TYPES).nullable(),
   createdAt: z.iso.datetime(),
 });
 
@@ -65,6 +68,8 @@ export const proposalSchema = z.strictObject({
 export const createProposalBodySchema = z.strictObject({
   name: z.string().trim().min(3).max(200),
   note: curationNoteSchema.optional(),
+  /** RFC-65 R18: always `tree` on TreeRepro (omitted means `tree`), required on PlantRepro. */
+  plantType: z.enum(PLANT_TYPES).optional(),
 });
 
 /** The proposals lists' sorts (RFC-75 R3, R5). @rfc RFC-75 R3 */
@@ -90,6 +95,8 @@ export const approveProposalBodySchema = z.strictObject({
   genusName: catalogNameSchema.optional(),
   familyName: catalogNameSchema.optional(),
   alternativeNames: z.array(speciesNameBodySchema).max(20).optional(),
+  /** RFC-75 R4: the approver's type; omitted keeps the proposal's stated one. */
+  plantType: z.enum(PLANT_TYPES).optional(),
 });
 
 /** `POST /api/species/proposals/:id/reject` body. @rfc RFC-75 R4 */

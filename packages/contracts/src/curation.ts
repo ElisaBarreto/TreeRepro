@@ -13,6 +13,7 @@ import {
   userRefSchema,
 } from './dataset.ts';
 import { isValidIsbn } from './isbn.ts';
+import { PLANT_TYPES } from './platform.ts';
 import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
 
 /** Free text attached to a write: 1–2,000 characters, trimmed. @rfc RFC-65 R1 */
@@ -285,7 +286,11 @@ export const createSpeciesBodySchema = z.strictObject({
   canonicalName: catalogNameSchema,
   nameSource: z.enum(NAME_SOURCES),
   genusId: z.uuid().optional(),
+  /** RFC-65 R18: always `tree` on TreeRepro (omitted means `tree`), required on PlantRepro. */
+  plantType: z.enum(PLANT_TYPES).optional(),
 });
+/** `POST /api/species/:id/plant-type`. @rfc RFC-65 R19 */
+export const changePlantTypeBodySchema = z.strictObject({ plantType: z.enum(PLANT_TYPES) });
 /** @rfc RFC-60 R9 */
 export const updateSpeciesBodySchema = nonEmpty(
   {
@@ -414,6 +419,8 @@ export type FamilyBody = z.infer<typeof familyBodySchema>;
 export type CreateGenusBody = z.infer<typeof createGenusBodySchema>;
 export type UpdateGenusBody = z.infer<typeof updateGenusBodySchema>;
 export type CreateSpeciesBody = z.infer<typeof createSpeciesBodySchema>;
+/** @rfc RFC-65 R19 */
+export type ChangePlantTypeBody = z.infer<typeof changePlantTypeBodySchema>;
 export type UpdateSpeciesBody = z.infer<typeof updateSpeciesBodySchema>;
 export type SpeciesNameBody = z.infer<typeof speciesNameBodySchema>;
 export type CreateReferenceBody = z.infer<typeof createReferenceBodySchema>;
