@@ -86,7 +86,9 @@ describe('RFC-50 R2–R5, R11 request schemas', () => {
     expect(updateUserBodySchema.safeParse({ roles: [] }).success).toBe(true);
     expect(updateUserBodySchema.safeParse({ roles: ['admin'] }).success).toBe(false);
     expect(updateUserBodySchema.safeParse({ email: 'x@example.test' }).success).toBe(false);
-    expect(updateUserBodySchema.safeParse({ roles: [], platform: 'plantrepro' }).success).toBe(true);
+    expect(updateUserBodySchema.safeParse({ roles: [], platform: 'plantrepro' }).success).toBe(
+      true,
+    );
     expect(updateUserBodySchema.safeParse({ roles: [], platform: 'other' }).success).toBe(false);
   });
 
