@@ -29,6 +29,7 @@ import {
 } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { formatNumber } from '../../lib/format.ts';
+import { currentPlatform } from '../../lib/platform.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { useDebouncedValue } from '../../lib/use-debounced-value.ts';
 import { usePagedList } from '../../lib/use-paged-list.ts';
@@ -194,6 +195,7 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     }
   }
   const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   // The name the propose dialog opens with; `null` while it is closed.
   const [proposing, setProposing] = useState<string | null>(null);
   const term = useDebouncedValue(form.q.trim(), 300);
@@ -293,6 +295,7 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
       />
       <div className="flex flex-col gap-6">
         <SpeciesSearchForm value={form} onChange={setForm} treeFlagFilters={treeFlagFilters} />
+        {notice ? <Alert tone="info">{notice}</Alert> : null}
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
         {list.isLoading ? <p className="text-body text-mist-500">Searching…</p> : null}
         {!list.isLoading && !list.error && list.items.length === 0 ? (
@@ -350,6 +353,14 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
           onClose={() => setCreating(false)}
           onSaved={(s) => {
             setCreating(false);
+            // RFC-65 R18, RFC-33 R2: a species created without `records.review`
+            // starts `proposed`, which TreeRepro hides: its page would be a 404.
+            if (s.plantTypeStatus === 'proposed' && currentPlatform() === 'treerepro') {
+              setNotice(
+                `${s.canonicalName} was created. Its plant type awaits review; its page opens once a reviewer confirms it as a tree.`,
+              );
+              return;
+            }
             navigate({ to: '/app/species/$id', params: { id: s.id } });
           }}
         />
