@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
   createProposalBodySchema,
+  type PlantType,
   type SortOrder,
   type SpeciesSort,
   type SpeciesStatus,
@@ -56,6 +57,7 @@ export interface SpeciesSearch {
   traitData?: TraitDataMode;
   /** Comma-separated tree flags, as the API takes them (RFC-60 R6). */
   treeFlag?: string;
+  plantType?: PlantType;
   sort?: SpeciesSort;
   order?: SortOrder;
 }
@@ -76,6 +78,7 @@ function toValue(search: SpeciesSearch): SpeciesSearchValue {
     traitId: search.traitId,
     traitData: search.traitData,
     treeFlags: search.treeFlag ? (search.treeFlag.split(',') as TreeFlag[]) : undefined,
+    plantType: search.plantType,
     sort: search.sort,
     order: search.order,
   };
@@ -100,6 +103,7 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
     traitId: value.traitId,
     traitData: value.traitData,
     treeFlag: value.treeFlags?.join(','),
+    plantType: value.plantType,
     sort: value.sort,
     order: value.order,
   };
@@ -128,6 +132,7 @@ function searchKey(value: SpeciesSearchValue): string {
     value.traitId ?? null,
     value.traitData ?? null,
     value.treeFlags?.join(',') ?? null,
+    value.plantType ?? null,
     value.sort ?? null,
     value.order ?? null,
   ]);
@@ -224,6 +229,7 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     traitId: form.traitId,
     traitData: form.traitData,
     treeFlag: form.treeFlags?.join(','),
+    plantType: form.plantType,
     // The Records column needs a trait: with the trait filter cleared, the
     // list falls back to its default order instead of a refused request.
     sort: form.sort === 'records' && !form.traitId ? undefined : form.sort,

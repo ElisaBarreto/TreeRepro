@@ -43,6 +43,8 @@ const ADENANTHERA: SpeciesListItem = {
   traitCount: 12,
   traitRecordCount: null,
   treeFlag: null,
+  plantType: 'tree',
+  plantTypeStatus: 'reviewed',
 };
 
 describe('RFC-13 R2, RFC-33 R7 SpeciesList', () => {
@@ -100,7 +102,7 @@ describe('RFC-60 R6 SpeciesList coverage columns', () => {
     const table = await screen.findByRole('table');
     const row = within(table).getAllByRole('row')[1] as HTMLElement;
     const cells = within(row).getAllByRole('cell');
-    expect(cells).toHaveLength(7);
+    expect(cells).toHaveLength(8);
     expect(cells[3]).toHaveTextContent('12');
     expect(cells[4]).toHaveTextContent('—');
   });
@@ -181,5 +183,35 @@ describe('RFC-60 R1, R6 SpeciesList tree basis (issue #372)', () => {
     );
     await userEvent.click(await screen.findByRole('button', { name: /Tree basis/ }));
     expect(onSort).toHaveBeenCalledWith('treeBasis');
+  });
+});
+
+describe('RFC-60 R1, R6 SpeciesList plant type', () => {
+  it('shows the plant type after Traits, marking a proposed one, and sorts by its header', async () => {
+    const onSort = vi.fn();
+    renderInRouter(
+      <SpeciesList
+        items={[
+          ADENANTHERA,
+          {
+            ...ADENANTHERA,
+            id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d05',
+            plantType: 'not_tree',
+            plantTypeStatus: 'proposed',
+          },
+        ]}
+        sort={{ by: 'name', order: 'asc', onSort }}
+      />,
+    );
+    const headers = (await screen.findAllByRole('columnheader')).map((h) => h.textContent ?? '');
+    const at = (label: string) => headers.findIndex((h) => h.startsWith(label));
+    expect(at('Plant type')).toBe(at('Traits') + 1);
+    const [, tree, herb] = screen.getAllByRole('row');
+    const cell = (row: unknown) =>
+      within(row as HTMLElement).getAllByRole('cell')[at('Plant type')];
+    expect(cell(tree)).toHaveTextContent(/^Tree$/);
+    expect(cell(herb)).toHaveTextContent('Not a tree (proposed)');
+    await userEvent.click(screen.getByRole('button', { name: /Plant type/ }));
+    expect(onSort).toHaveBeenCalledWith('plantType');
   });
 });

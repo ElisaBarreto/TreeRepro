@@ -1,5 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
+  PLANT_TYPE_LABELS,
+  PLANT_TYPES,
+  type PlantType,
   type SortOrder,
   type SpeciesSort,
   type SpeciesStatus,
@@ -33,6 +36,8 @@ export interface SpeciesSearchValue {
   traitData?: TraitDataMode;
   /** RFC-60 R6: the checked tree bases; absent when none is checked. */
   treeFlags?: TreeFlag[];
+  /** RFC-60 R6: one plant type; absent shows every type. */
+  plantType?: PlantType;
   sort?: SpeciesSort;
   /** The table headers' direction (RFC-60 R6, RFC-13 R13). */
   order?: SortOrder;
@@ -86,6 +91,7 @@ export function SpeciesSearchForm({
   const me = useMe();
   const ids = {
     status: useId(),
+    plantType: useId(),
     plot: useId(),
     category: useId(),
     trait: useId(),
@@ -313,6 +319,25 @@ export function SpeciesSearchForm({
             Has unknown levels
           </label>
         ) : null}
+        <Field id={ids.plantType} label="Plant type">
+          <Select
+            id={ids.plantType}
+            value={value.plantType ?? ''}
+            onChange={(event) =>
+              onChange({
+                ...value,
+                plantType: (event.target.value || undefined) as PlantType | undefined,
+              })
+            }
+          >
+            <option value="">All</option>
+            {PLANT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {PLANT_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <TreeBasisFilter
           filters={treeFlagFilters}
           value={value.treeFlags ?? []}

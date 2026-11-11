@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import {
+  PLANT_TYPES,
   SORT_ORDERS,
   SPECIES_SCOPES,
   SPECIES_SORTS,
@@ -25,7 +26,7 @@ import {
  * `?unresolved=true` opens the search with the unresolved-taxa toggle on
  * (RFC-65); `contested`, `unknownLevels` (RFC-60 R6, spec R-15) and `outliers` (#281); `scope`
  * and `plotId` per RFC-33 R6, RFC-67 R8; `treeFlag` is a comma-separated list
- * of tree flags (RFC-60 R6), unknown ones dropped.
+ * of tree flags (RFC-60 R6), unknown ones dropped; `plantType` one plant type.
  */
 function validateSearch(search: Record<string, unknown>): SpeciesSearch {
   return {
@@ -44,6 +45,7 @@ function validateSearch(search: Record<string, unknown>): SpeciesSearch {
     traitId: uuidParam(search.traitId),
     traitData: enumParam(search.traitData, TRAIT_DATA_MODES),
     treeFlag: enumListParam(search.treeFlag, TREE_FLAGS),
+    plantType: enumParam(search.plantType, PLANT_TYPES),
     sort: enumParam(search.sort, SPECIES_SORTS),
     order: enumParam(search.order, SORT_ORDERS),
   };
