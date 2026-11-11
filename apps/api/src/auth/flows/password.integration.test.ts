@@ -1,11 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, randomIp, TEST_PLANT_ORIGIN, useTestApp } from '../../../test/helpers/app.ts';
+import { call, ctxOf, randomIp, TEST_PLANT_ORIGIN, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
+import { createRole } from '../../../test/helpers/roles.ts';
 import { createMember, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
 import { consumeToken, issueToken } from '../tokens.ts';
+import { inviteUser } from './invitation.ts';
 
 const NEW_PASSWORD = 'another perfectly fine passphrase';
 
@@ -151,6 +153,34 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
     expect(await lastAudit(t.db, 'auth.password.reset', { actorUserId: user.id })).toMatchObject({
       targetId: user.id,
     });
+  });
+
+  it('RFC-22 R13 activates an invitee of the other platform; the platform is checked at login', async () => {
+    const email = randomEmail();
+    await inviteUser(ctxOf(t), {
+      email,
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'plantrepro',
+      roleIds: [(await createRole(t.db)).id],
+    });
+    const before = t.mail.sent.length;
+    await call(t.app, 'POST', '/api/auth/password/forgot', { body: { email } });
+    const token =
+      /reset-password\/([A-Za-z0-9_-]{43})/.exec(t.mail.sent[before]?.text ?? '')?.[1] ?? '';
+    expect((await reset({ token, newPassword: NEW_PASSWORD })).status).toBe(200);
+    const here = await call(t.app, 'POST', '/api/auth/login', {
+      body: { email, password: NEW_PASSWORD },
+    });
+    expect((await here.json()).error).toMatchObject({
+      code: 'PLATFORM_ACCESS_DENIED',
+      details: [{ path: 'platforms', message: 'plantrepro' }],
+    });
+    const plant = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/login', {
+      body: { email, password: NEW_PASSWORD },
+      origin: TEST_PLANT_ORIGIN,
+    });
+    expect(plant.status).toBe(200);
   });
 
   it('a weak password is refused without consuming the token; invalid tokens answer 400', async () => {
