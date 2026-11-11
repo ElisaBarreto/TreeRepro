@@ -12,7 +12,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 
 ## Rules
 
-- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, `MAP_`, or a generic word for cross-cutting codes).
+- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, `MAP_`, `PLATFORM_`, or a generic word for cross-cutting codes).
 - **R2** A code is never renamed, reused with a different meaning, or given a different status once published. Retiring a code keeps its row with "(retired)".
 - **R3** The catalog below is mirrored exactly by `ERROR_CODES` in `packages/contracts/src/error-codes.ts`; a test parses this table and fails on any difference.
 - **R4** Each code maps to exactly one HTTP status (RFC-11 R4).
@@ -111,4 +111,4 @@ None.
 - 2026-09-26 — HELP_TOPIC_NOT_FOUND, HELP_SECTION_NOT_FOUND, HELP_SLUG_TAKEN, HELP_ANCHOR_TAKEN (RFC-73 R6, issue #172).
 - 2026-09-26 — MAP_NOT_FOUND, and `MAP_` admitted to R1's prefix list (RFC-76 R5, issue #197).
 - 2026-11-11 — UNKNOWN_HOST (RFC-14 R3, plan 15b).
-- 2026-11-11 — PLATFORM_ACCESS_DENIED (RFC-22 R13, plan 15c).
+- 2026-11-11 — PLATFORM_ACCESS_DENIED, and `PLATFORM_` admitted to R1's prefix list (RFC-22 R13, plan 15c).
