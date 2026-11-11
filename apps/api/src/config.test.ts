@@ -121,6 +121,12 @@ describe('RFC-14 R3, R4 PLANT_DOMAIN and originOf', () => {
       );
   });
 
+  it('rejects a PLANT_DOMAIN equal to the host of APP_ORIGIN, ignoring case', () => {
+    expect(() =>
+      loadConfig(env({ APP_ORIGIN: 'http://localhost:8080', PLANT_DOMAIN: 'LocalHost' })),
+    ).toThrow(new ConfigError('invalid environment: PLANT_DOMAIN'));
+  });
+
   it('gives each platform its origin: PlantRepro keeps the scheme and port of APP_ORIGIN', () => {
     const dev = { appOrigin: 'http://localhost', plantDomain: 'plantrepro.localhost' };
     expect(originOf(dev, 'treerepro')).toBe('http://localhost');
