@@ -60,6 +60,26 @@ describe('RFC-20 R4 inviteUser', () => {
     expect(token?.platform).toBe('plantrepro');
   });
 
+  it('RFC-20 R7 a re-invite keeps the platform of the latest invitation, where its roles are', async () => {
+    const email = randomEmail();
+    const role = await createRole(t.db);
+    await inviteUser(ctxOf(t), {
+      email,
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'plantrepro',
+      roleIds: [role.id],
+    });
+    const again = await inviteUser(ctxOf(t), {
+      email,
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'treerepro',
+    });
+    expect(again.link).toMatch(/^http:\/\/plantrepro\.localhost\/invite\//);
+    expect(t.mail.sent.at(-1)?.subject).toBe('You have been invited to PlantRepro');
+  });
+
   it('RFC-20 R4 refuses a platform with no host before writing anything', async () => {
     const ctx = {
       ...ctxOf(t),

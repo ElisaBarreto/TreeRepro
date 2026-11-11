@@ -95,6 +95,10 @@ export function InviteUserDialog({
       : undefined);
   const nameError = localErrors.name ?? serverErrors.name;
   const roleError = localErrors.roles ?? serverErrors.roles;
+  // RFC-50 R3: a platform with no host (PlantRepro before it opens) is refused.
+  const platformError = serverErrors.platform
+    ? 'This platform is not open yet; invite to it once it has its address.'
+    : undefined;
   const formError =
     invite.isError &&
     !isValidationError(invite.error) &&
@@ -147,8 +151,13 @@ export function InviteUserDialog({
             invalid={Boolean(nameError)}
           />
         </Field>
-        <Field id={ids.platform} label="Platform">
-          <Select id={ids.platform} name="platform" defaultValue={currentPlatform()}>
+        <Field id={ids.platform} label="Platform" error={platformError}>
+          <Select
+            id={ids.platform}
+            name="platform"
+            defaultValue={currentPlatform()}
+            invalid={Boolean(platformError)}
+          >
             {PLATFORMS.map((p) => (
               <option key={p} value={p}>
                 {PLATFORM_NAMES[p]}

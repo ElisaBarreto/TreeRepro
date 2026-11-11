@@ -7,7 +7,7 @@ import type {
   UserSort,
   UserStatus,
 } from '@treerepro/contracts';
-import { and, asc, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { assertNotLastAdmin, recordingRefusal, setUserRoles } from '../access/roles.ts';
 import { recordAudit } from '../audit/audit.ts';
 import { revokeAllApiKeys } from '../auth/api-keys.ts';
@@ -16,7 +16,6 @@ import { inviteUser } from '../auth/flows/invitation.ts';
 import { consumeUserTokens } from '../auth/tokens.ts';
 import { findUserById, updateName } from '../auth/users.ts';
 import type { DbExecutor } from '../db/client.ts';
-import { authTokens } from '../db/schema/auth-tokens.ts';
 import { plots, userPlots } from '../db/schema/plots.ts';
 import { roles } from '../db/schema/roles.ts';
 import { userRoles } from '../db/schema/user-roles.ts';
@@ -417,29 +416,23 @@ export async function reactivateUser(
 }
 
 /**
- * Re-runs the invitation flow for an invited user, for the platform of their
- * latest invitation; may throw InvitationMailError.
+ * Re-runs the invitation flow for an invited user, which keeps the platform
+ * of their latest invitation (RFC-20 R7); may throw InvitationMailError.
  * @rfc RFC-50 R8
  * @rfc RFC-20 R7
  */
 export async function resendInvite(
   ctx: AuthContext,
-  input: AdminActor & { id: string },
+  input: AdminActor & { id: string; platform: Platform },
 ): Promise<User> {
   const current = await findUserById(ctx.db, input.id);
   if (!current) throw notFound();
   if (current.status !== 'invited') throw invalidStatus('Only an invited user can be re-invited');
-  const [latest] = await ctx.db
-    .select({ platform: authTokens.platform })
-    .from(authTokens)
-    .where(and(eq(authTokens.userId, current.id), eq(authTokens.kind, 'invite')))
-    .orderBy(desc(authTokens.id))
-    .limit(1);
   const { user } = await inviteUser(ctx, {
     email: current.email,
     name: current.name,
     actorUserId: input.actorUserId,
-    platform: latest?.platform ?? 'treerepro',
+    platform: input.platform,
   });
   return withRoles(ctx.db, user);
 }

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Platform } from '@treerepro/contracts';
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { DbExecutor, DbTransaction } from '../db/client.ts';
 import { type AuthTokenKind, authTokens } from '../db/schema/auth-tokens.ts';
 
@@ -101,4 +101,19 @@ export async function consumeUserTokens(
         isNull(authTokens.consumedAt),
       ),
     );
+}
+
+/**
+ * The platform of the user's latest invitation; `treerepro` for one issued
+ * before it was recorded, or none at all.
+ * @rfc RFC-20 R5, R7
+ */
+export async function latestInvitePlatform(db: DbExecutor, userId: string): Promise<Platform> {
+  const [row] = await db
+    .select({ platform: authTokens.platform })
+    .from(authTokens)
+    .where(and(eq(authTokens.userId, userId), eq(authTokens.kind, 'invite')))
+    .orderBy(desc(authTokens.createdAt), desc(authTokens.id))
+    .limit(1);
+  return row?.platform ?? 'treerepro';
 }

@@ -44,7 +44,13 @@ export async function forgotPassword(
   try {
     await ctx.mailer.send({
       to: user.email,
-      ...passwordResetEmail({ name: user.name, link, expiresAt, appOrigin: origin }),
+      ...passwordResetEmail({
+        name: user.name,
+        link,
+        expiresAt,
+        appOrigin: origin,
+        platform: input.platform,
+      }),
     });
   } catch (err) {
     ctx.logger.error(

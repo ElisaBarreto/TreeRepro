@@ -95,6 +95,20 @@ describe('RFC-50 R3 InviteUserDialog', () => {
     );
   });
 
+  it('RFC-50 R3 says so under Platform when that platform has no host yet', async () => {
+    admin.inviteUser.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'x', [{ path: 'platform', message: 'plantrepro' }]),
+    );
+    mount();
+    await userEvent.selectOptions(screen.getByLabelText('Platform'), 'PlantRepro');
+    await fillAndSubmit('bea@example.org', 'Bea');
+    expect(
+      await screen.findByText(
+        'This platform is not open yet; invite to it once it has its address.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('reports MAIL_SEND_FAILED with a null user and mailFailed true', async () => {
     admin.inviteUser.mockRejectedValue(new ApiError(502, 'MAIL_SEND_FAILED', 'x'));
     const { onInvited } = mount();

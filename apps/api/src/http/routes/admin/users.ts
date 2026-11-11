@@ -182,7 +182,11 @@ export function adminUserRoutes(ctx: AuthContext) {
       async (c) =>
         c.json({
           data: await inviting(() =>
-            resendInvite(ctx, { ...actor(c), id: c.req.valid('param').id }),
+            resendInvite(ctx, {
+              ...actor(c),
+              id: c.req.valid('param').id,
+              platform: c.get('platform'),
+            }),
           ),
         }),
     )

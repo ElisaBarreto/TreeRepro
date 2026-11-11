@@ -8,7 +8,7 @@ import { inviteEmail } from '../../mail/templates.ts';
 import type { AuthContext, RequestMeta } from '../context.ts';
 import { checkPasswordPolicy, hashPassword, passwordWeakError } from '../password.ts';
 import { assertHoldsPlatform, PlatformDeniedError, platformsHeld } from '../platform-access.ts';
-import { consumeToken, issueToken } from '../tokens.ts';
+import { consumeToken, issueToken, latestInvitePlatform } from '../tokens.ts';
 import { activateUser, createInvitedUser, findUserByEmail, UserEmailTakenError } from '../users.ts';
 import { auditPlatformDenied } from './login.ts';
 
@@ -19,7 +19,11 @@ export interface InviteInput {
   roleIds?: string[];
   /** Null for the seed command. */
   actorUserId: string | null;
-  /** The link goes to this platform's origin (RFC-14 R4). */
+  /**
+   * The platform of a new user's invitation: its roles are assigned there and
+   * the link goes to its origin (RFC-14 R4). A re-invite keeps the platform of
+   * the user's latest invitation instead (RFC-20 R7), where its roles are.
+   */
   platform: Platform;
 }
 
@@ -53,14 +57,17 @@ export async function inviteUser(
   input: InviteInput,
 ): Promise<{ user: UserRow; link: string; expiresAt: Date }> {
   const now = new Date(ctx.now());
+  const invited = await findUserByEmail(ctx.db, input.email);
+  const platform =
+    invited?.status === 'invited' ? await latestInvitePlatform(ctx.db, invited.id) : input.platform;
   // RFC-14 R3: a platform with no host cannot be linked to; refuse before writing.
   let origin: string;
   try {
-    origin = ctx.originOf(input.platform);
+    origin = ctx.originOf(platform);
   } catch (err) {
     if (!(err instanceof ConfigError)) throw err;
     throw new AppError('VALIDATION_FAILED', 'This platform has no host configured', [
-      { path: 'platform', message: input.platform },
+      { path: 'platform', message: platform },
     ]);
   }
   // `recordingRefusal` on the root connection, as in `updateUser`: a refused
@@ -75,7 +82,7 @@ export async function inviteUser(
         userId: user.id,
         kind: 'invite',
         now,
-        platform: input.platform,
+        platform,
       });
       await recordAudit(tx, {
         actorUserId: input.actorUserId,
@@ -89,7 +96,7 @@ export async function inviteUser(
           { ...ctx, db: tx },
           {
             userId: user.id,
-            platform: input.platform,
+            platform,
             roleIds: input.roleIds,
             actorUserId: input.actorUserId,
           },
@@ -105,6 +112,7 @@ export async function inviteUser(
     expiresAt: result.expiresAt,
     appOrigin: origin,
     contactEmail: ctx.inviteContactEmail,
+    platform,
   });
   try {
     await ctx.mailer.send({ to: result.user.email, ...mail });
