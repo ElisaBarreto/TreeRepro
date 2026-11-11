@@ -1,6 +1,7 @@
 import type { Dashboard } from '@treerepro/contracts';
-import { CONTACT_EMAIL, PROJECT_HEADLINE, projectDescription } from '../../content/project.ts';
+import { CONTACT_EMAIL, projectDescription, projectHeadline } from '../../content/project.ts';
 import { formatNumber } from '../../lib/format.ts';
+import { platformCopy } from '../../lib/platform.ts';
 import { QuickActions } from './QuickActions.tsx';
 
 const LINK_CLASS = 'font-semibold text-pollen-300 underline-offset-2 hover:underline';
@@ -49,7 +50,7 @@ const STAT_BORDERS = ['lg:pl-14', 'border-l', 'border-t @lg:border-t-0 @lg:borde
 
 /**
  * The dashboard's opening card and the page's h1 (RFC-72 R3): the greeting
- * by first name, the headline, what TreeRepro is with the dataset's live
+ * by first name, the headline, what the platform is with the dataset's live
  * counts substituted into the fixed copy, the quick actions under the text,
  * and those counts again as a band along the bottom.
  * @rfc RFC-72 R3
@@ -63,7 +64,7 @@ export function IntroCard({ dataset, name }: { dataset: Dashboard['dataset']; na
   ];
   return (
     <section
-      aria-label="About TreeRepro"
+      aria-label={`About ${platformCopy().name}`}
       className="@container relative flex flex-col gap-7 overflow-hidden rounded-3xl bg-canopy-950 px-6 pt-8 text-mist-50 lg:px-14 lg:pt-12"
     >
       <Rings />
@@ -71,7 +72,7 @@ export function IntroCard({ dataset, name }: { dataset: Dashboard['dataset']; na
         <p className="text-label font-bold tracking-[0.12em] text-pollen-300 uppercase">
           Welcome back, {firstName}
         </p>
-        <h1 className="font-display text-title font-bold">{PROJECT_HEADLINE}</h1>
+        <h1 className="font-display text-title font-bold">{projectHeadline()}</h1>
       </div>
       <div className="relative">
         <Description text={projectDescription(dataset)} />

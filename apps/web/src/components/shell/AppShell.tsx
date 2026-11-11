@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { Fragment, type ReactNode, useEffect, useState } from 'react';
 import { logout } from '../../api/auth.ts';
+import { platformCopy } from '../../lib/platform.ts';
 import { forgetSession, hasPermission, useMe } from '../../lib/session.ts';
 import { Alert, Button, Drawer, Emblem, Icon } from '../ui/index.ts';
 import { BreadcrumbProvider, type Crumb, useCrumbs } from './Breadcrumb.tsx';
@@ -230,7 +231,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Emblem size={40} className="[view-transition-name:tr-emblem]" />
             <span className="flex flex-col">
               <span className="font-display text-card font-bold tracking-[-0.01em] text-white">
-                TreeRepro
+                {platformCopy().name}
               </span>
               <span className="text-label font-semibold uppercase tracking-[0.14em] text-mist-400">
                 Workspace

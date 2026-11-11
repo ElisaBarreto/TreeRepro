@@ -1,4 +1,6 @@
+import type { Platform } from '@treerepro/contracts';
 import { formatNumber } from '../lib/format.ts';
+import { platformCopy } from '../lib/platform.ts';
 
 /**
  * TreeRepro's public contact address (RFC-72 R3): the project's own inbox,
@@ -11,10 +13,14 @@ export const CONTACT_EMAIL = 'elisabpereira@gmail.com';
 
 /**
  * The headline of the workspace home's intro card, and the page's h1
- * (RFC-72 R3). Beside the description so the owner edits both in one place.
+ * (RFC-72 R3), naming what the platform covers (RFC-13 R14). Beside the
+ * description so the owner edits both in one place.
  * @rfc RFC-72 R3
+ * @rfc RFC-13 R14
  */
-export const PROJECT_HEADLINE = 'Help complete what we know about how trees reproduce.';
+export function projectHeadline(platform?: Platform): string {
+  return `Help complete what we know about how ${platformCopy(platform).subject}s reproduce.`;
+}
 
 /**
  * The dataset counts {@link projectDescription} substitutes into the fixed
@@ -35,12 +41,15 @@ export interface ProjectCounts {
  * touching a component; the contact e-mail is rendered as a link by the
  * caller, not by this module, which carries only the words. The counts are
  * written with `formatNumber`'s thousands separators (RFC-13 R9).
+ * On PlantRepro it names PlantRepro and plants (RFC-13 R14).
  * @rfc RFC-72 R3
  * @rfc RFC-13 R9
+ * @rfc RFC-13 R14
  */
-export function projectDescription(counts: ProjectCounts): string {
+export function projectDescription(counts: ProjectCounts, platform?: Platform): string {
+  const { name, subject } = platformCopy(platform);
   return (
-    'TreeRepro is a collective data assembly of reproductive trait data for trees, ' +
+    `${name} is a collective data assembly of reproductive trait data for ${subject}s, ` +
     'covering traits across all reproductive stages — flower, fruits, and seeds. ' +
     'Its core data comes from open-source papers and data repositories spanning ' +
     `${formatNumber(counts.primaryReferenceCount)} primary references, ` +
