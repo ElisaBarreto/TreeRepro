@@ -5,6 +5,7 @@ import {
   type Genus,
   type Lookup,
   type NameSource,
+  type PlantType,
   type Species,
   type UpdateSpeciesBody,
   updateSpeciesBodySchema,
@@ -38,6 +39,7 @@ import {
   genusCreateErrorMessage,
   speciesErrorMessage,
 } from './errors.ts';
+import { PlantTypeField } from './PlantTypeField.tsx';
 import { SpeciesNameFields } from './SpeciesNameFields.tsx';
 
 const LOCAL_MESSAGES: Record<string, string> = { canonicalName: 'Enter the canonical name.' };
@@ -77,6 +79,7 @@ function genusOption(genus: Genus): ComboboxOption {
  * which is all they genuinely have in common.
  * @rfc RFC-13 R3, R6
  * @rfc RFC-60 R9
+ * @rfc RFC-65 R18
  * @rfc RFC-33 R7
  * @rfc RFC-81 R4
  */
@@ -108,6 +111,8 @@ export function SpeciesDialog({
   // Edit mode only: create has no `active` in its body, and a fresh species
   // is always active by the API's default.
   const [active, setActive] = useState(species?.active ?? true);
+  // Create mode only (RFC-65 R18); a type is changed on the species page (R19).
+  const [plantType, setPlantType] = useState<PlantType | undefined>(undefined);
   const [family, setFamily] = useState(species?.family?.id ?? '');
   const [newFamily, setNewFamily] = useState<string | null>(null);
   const [familyError, setFamilyError] = useState<string | undefined>(undefined);
@@ -283,6 +288,7 @@ export function SpeciesDialog({
         canonicalName: name,
         nameSource,
         ...(genusId === null ? {} : { genusId }),
+        ...(plantType ? { plantType } : {}),
       });
       if (!parsed.success) return showIssues(parsed.error);
       setLocal({});
@@ -340,6 +346,9 @@ export function SpeciesDialog({
             <Alert tone="error">The taxonomy lookup could not be completed. Try again.</Alert>
           ) : null}
         </SpeciesNameFields>
+        {species === undefined ? (
+          <PlantTypeField value={plantType} onChange={setPlantType} error={errors.plantType} />
+        ) : null}
         {newFamily === null ? (
           <Field
             id={ids.family}

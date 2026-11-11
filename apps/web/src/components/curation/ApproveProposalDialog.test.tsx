@@ -57,6 +57,7 @@ describe('RFC-75 R4 ApproveProposalDialog', () => {
         nameSource: 'wcvp',
         genusName: 'Quercus',
         familyName: 'Fagaceae',
+        plantType: 'tree',
       }),
     );
     expect(catalog.invalidateAfterCatalogWrite).toHaveBeenCalledWith(expect.anything(), 'taxa');
@@ -94,6 +95,7 @@ describe('RFC-75 R4 ApproveProposalDialog', () => {
       expect(proposals.approveProposal).toHaveBeenCalledWith(PROPOSAL_LOOKUP_FAILED.id, {
         canonicalName: 'Pinus sylvestris',
         nameSource: 'original',
+        plantType: 'tree',
       }),
     );
   });

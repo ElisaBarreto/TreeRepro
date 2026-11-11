@@ -42,6 +42,8 @@ describe('RFC-75 R2 ProposeSpeciesDialog', () => {
     expect(within(form).getByRole('textbox', { name: /species name/i })).toHaveValue(
       'Quercus robur',
     );
+    // RFC-65 R18: TreeRepro registers only trees, so the type is fixed text and not sent.
+    expect(within(form).getByLabelText('Plant type')).toHaveValue('Tree');
     await userEvent.type(within(form).getByRole('textbox', { name: /note/i }), 'Seen on plot A12.');
     await userEvent.click(within(form).getByRole('button', { name: 'Propose' }));
     await waitFor(() =>

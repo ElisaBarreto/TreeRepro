@@ -4,6 +4,7 @@ import {
   type ApproveProposalBody,
   approveProposalBodySchema,
   type NameSource,
+  type PlantType,
   type Proposal,
 } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
@@ -11,6 +12,7 @@ import { invalidateAfterCatalogWrite } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
 import { approveProposal, invalidateAfterProposalWrite } from '../../api/proposals.ts';
 import { fieldErrors, isValidationError } from '../../lib/errors.ts';
+import { PlantTypeField } from '../catalog/PlantTypeField.tsx';
 import { SpeciesNameFields } from '../catalog/SpeciesNameFields.tsx';
 import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
 import { decideErrorMessage } from './proposal-errors.ts';
@@ -40,6 +42,7 @@ const LOCAL_MESSAGES: Record<string, string> = { canonicalName: 'Enter the canon
  * for the name instead of a bare conflict.
  * @rfc RFC-13 R5, R6, R10
  * @rfc RFC-75 R4
+ * @rfc RFC-65 R18
  */
 export function ApproveProposalDialog({
   proposal,
@@ -57,6 +60,10 @@ export function ApproveProposalDialog({
   const [nameSource, setNameSource] = useState<NameSource>(prefill.nameSource);
   const [genusName, setGenusName] = useState(prefill.genusName);
   const [familyName, setFamilyName] = useState(prefill.familyName);
+  // RFC-75 R4: the proposal's stated type, which the approver may change.
+  const [plantType, setPlantType] = useState<PlantType | undefined>(
+    proposal.plantType ?? undefined,
+  );
   const [local, setLocal] = useState<Record<string, string>>({});
 
   const approve = useMutation({
@@ -81,6 +88,7 @@ export function ApproveProposalDialog({
       nameSource,
       ...(genusName.trim() === '' ? {} : { genusName: genusName.trim() }),
       ...(familyName.trim() === '' ? {} : { familyName: familyName.trim() }),
+      ...(plantType ? { plantType } : {}),
     });
     if (!parsed.success) {
       approve.reset();
@@ -106,6 +114,7 @@ export function ApproveProposalDialog({
           onNameSourceChange={setNameSource}
           errors={{ canonicalName: errors.canonicalName, nameSource: errors.nameSource }}
         />
+        <PlantTypeField value={plantType} onChange={setPlantType} error={errors.plantType} />
         <Field
           id={ids.family}
           label="Family"

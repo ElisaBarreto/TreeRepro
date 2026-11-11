@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { Proposal, ProposalStatus } from '@treerepro/contracts';
+import { PLANT_TYPE_LABELS } from '@treerepro/contracts';
 import { useId, useState } from 'react';
 import { invalidateAfterProposalWrite, rejectProposal } from '../../api/proposals.ts';
 import { isoDate } from '../../lib/format.ts';
@@ -100,6 +101,9 @@ export function ProposalDrawer({
             </div>
             <Line label="Proposer">{proposal.proposer.name}</Line>
             <Line label="Proposed on">{isoDate(proposal.createdAt)}</Line>
+            {proposal.plantType ? (
+              <Line label="Plant type">{PLANT_TYPE_LABELS[proposal.plantType]}</Line>
+            ) : null}
             {proposal.note ? <p className="text-body text-canopy-900">{proposal.note}</p> : null}
           </DrawerSection>
 
