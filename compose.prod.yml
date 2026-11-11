@@ -9,6 +9,10 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      # RFC-14 R7: the PlantRepro site address. Unset, it repeats DOMAIN, which
+      # Caddy folds into one address: no certificate is requested for a name
+      # that has no DNS yet, and the API refuses PlantRepro (421) until set.
+      PLANT_DOMAIN: ${PLANT_DOMAIN:-${DOMAIN:?set DOMAIN in .env}}
     volumes:
       # Access log, 30 days (Caddyfile.prod, docs/gotchas/infra.md).
       - caddy-logs:/var/log/caddy
@@ -23,6 +27,8 @@ services:
       # The browser origin is the site itself; deriving it from DOMAIN keeps the
       # two from drifting (a mismatch answers 403 SECURITY_INVALID_ORIGIN, RFC-02 R3).
       APP_ORIGIN: https://${DOMAIN:?set DOMAIN in .env}
+      # RFC-14 R3: the PlantRepro host, bare; empty refuses PlantRepro (421).
+      PLANT_DOMAIN: ${PLANT_DOMAIN:-}
       # Production mail goes through a transactional provider (docs/gotchas/infra.md).
       # All required: the compose.yml defaults point at the dev Mailpit (port 1025, no auth).
       SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}

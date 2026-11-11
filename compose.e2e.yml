@@ -6,6 +6,8 @@ services:
   api:
     environment:
       APP_ORIGIN: http://localhost:8080
+      # RFC-14 R7: PlantRepro's host, bare; its origin is http://plantrepro.localhost:8080.
+      PLANT_DOMAIN: plantrepro.localhost
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       # RFC-74 R6: the E2E stack never mails a digest — the suite drives the
@@ -28,6 +30,7 @@ services:
       # An http:// site address turns automatic HTTPS off; the port is the
       # listener inside the container.
       DOMAIN: http://localhost:8080
+      PLANT_DOMAIN: http://plantrepro.localhost:8080
     ports:
       - "127.0.0.1:8080:8080"
     read_only: true
