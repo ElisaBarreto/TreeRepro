@@ -11,6 +11,10 @@ select count(*) > 0 as has_role_platform from information_schema.columns
 select count(*) > 0 as has_plant_type from information_schema.columns
   where table_schema = 'public' and table_name = 'species' and column_name = 'plant_type' \gset
 
+-- Changes exactly when the branch applies a migration: on a gated branch an
+-- unchanged line means the migration never ran.
+select 'drizzle.migrations', 'applied', count(*) from drizzle.__drizzle_migrations;
+
 select 'users.status', status, count(*) from users group by status order by status;
 
 select 'user_roles.role', r.name, count(*) from user_roles ur join roles r on r.id = ur.role_id
