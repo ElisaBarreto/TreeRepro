@@ -9,6 +9,7 @@ import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
 import { speciesProposals } from '../../../db/schema/proposals.ts';
+import { species } from '../../../db/schema/taxa.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -264,6 +265,25 @@ describe('RFC-65 R18, R19 / RFC-75 R2, R4 / RFC-60 R6 plant type', () => {
       plantType: 'shrub',
     });
     expect(invalid.status).toBe(400);
+  });
+
+  it('RFC-33 R2 POST /api/species/:id/plant-type on a species the reviewer cannot see is a 404 that changes nothing', async () => {
+    // REVIEW holds no dataset.read_inactive, so an inactive species is invisible.
+    const reviewer = await actor('treerepro', REVIEW);
+    const sp = await createSpecies(t.db, { plantTypeStatus: 'proposed' });
+    await t.db.update(species).set({ active: false }).where(eq(species.id, sp.id));
+
+    const hidden = await reviewer.send('POST', `/api/species/${sp.id}/plant-type`, {
+      plantType: 'not_tree',
+    });
+    expect(hidden.status).toBe(404);
+    expect((await hidden.json()).error.code).toBe('SPECIES_NOT_FOUND');
+    const [row] = await t.db
+      .select({ plantType: species.plantType, plantTypeStatus: species.plantTypeStatus })
+      .from(species)
+      .where(eq(species.id, sp.id));
+    expect(row).toEqual({ plantType: 'tree', plantTypeStatus: 'proposed' });
+    expect(await lastAudit(t.db, 'taxa.updated', { targetId: sp.id })).toBeUndefined();
   });
 
   it('GET /api/species filters and sorts by plant type and carries it on the item', async () => {
