@@ -57,7 +57,8 @@ export function assignableRoles(roles: Role[], permissions: readonly string[]): 
 }
 
 /**
- * Email, name, platform (this one by default, RFC-50 R3) and role;
+ * Email, name, platform (this one by default, RFC-50 R3; offered to an admin
+ * only, RFC-50 R14) and role;
  * `POST /api/admin/users`. Only the roles within the
  * actor's delegation ceiling are offered (RFC-31 R14). A `MAIL_SEND_FAILED` answer still
  * created the user (RFC-50 R3), so the dialog closes and the page says how
@@ -66,6 +67,7 @@ export function assignableRoles(roles: Role[], permissions: readonly string[]): 
  * @rfc RFC-50 R3
  * @rfc RFC-13 R6
  * @rfc RFC-31 R14, R16
+ * @rfc RFC-50 R14
  */
 export function InviteUserDialog({
   onClose,
@@ -78,6 +80,8 @@ export function InviteUserDialog({
   const ids = { email: useId(), name: useId(), platform: useId(), role: useId() };
   const roles = useQuery({ queryKey: adminKeys.roles, queryFn: listRoles });
   const offered = assignableRoles(roles.data ?? [], me.permissions);
+  // RFC-50 R14: a non-admin's ceiling on the other platform is unknown here.
+  const actorIsAdmin = PERMISSION_KEYS.every((key) => me.permissions.includes(key));
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
   const invite = useMutation({
     mutationFn: (body: CreateUserBody) => inviteUser(body),
@@ -151,20 +155,24 @@ export function InviteUserDialog({
             invalid={Boolean(nameError)}
           />
         </Field>
-        <Field id={ids.platform} label="Platform" error={platformError}>
-          <Select
-            id={ids.platform}
-            name="platform"
-            defaultValue={currentPlatform()}
-            invalid={Boolean(platformError)}
-          >
-            {PLATFORMS.map((p) => (
-              <option key={p} value={p}>
-                {PLATFORM_NAMES[p]}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        {actorIsAdmin ? (
+          <Field id={ids.platform} label="Platform" error={platformError}>
+            <Select
+              id={ids.platform}
+              name="platform"
+              defaultValue={currentPlatform()}
+              invalid={Boolean(platformError)}
+            >
+              {PLATFORMS.map((p) => (
+                <option key={p} value={p}>
+                  {PLATFORM_NAMES[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <input type="hidden" name="platform" value={currentPlatform()} />
+        )}
         <Field id={ids.role} label="Role" error={roleError}>
           <Select
             id={ids.role}

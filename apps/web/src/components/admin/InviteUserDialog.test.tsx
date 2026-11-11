@@ -144,4 +144,19 @@ describe('RFC-31 R14 InviteUserDialog offers only the roles within the ceiling',
     mount({ ...ADMIN_ME, permissions: ['users.invite', 'users.read', 'roles.read'] });
     expect(await optionNames()).toEqual(['Readers']);
   });
+
+  it('RFC-50 R14 offers a non-admin no platform choice: they invite to this platform', async () => {
+    admin.inviteUser.mockResolvedValue(INVITED_USER);
+    mount({ ...ADMIN_ME, permissions: ['users.invite', 'users.read', 'roles.read'] });
+    expect(screen.queryByLabelText('Platform')).toBeNull();
+    await fillAndSubmit('bea@example.org', 'Bea');
+    await waitFor(() =>
+      expect(admin.inviteUser).toHaveBeenCalledWith({
+        email: 'bea@example.org',
+        name: 'Bea',
+        platform: 'treerepro',
+        roles: [ROLE_READERS.id],
+      }),
+    );
+  });
 });
