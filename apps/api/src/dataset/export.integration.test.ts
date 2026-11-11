@@ -57,6 +57,8 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       s.genus.name,
       s.sp.canonicalName,
       'wcvp',
+      'tree',
+      'reviewed',
       expect.any(String),
       s.cat.key,
       '',
@@ -95,15 +97,15 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       expect.stringMatching(ISO),
     ]);
     // RFC-63 R14: a categorical contest applies to every record of the level it names.
-    expect(byCode.get(s.code.r1b)?.slice(24, 27)).toEqual(['true', '0', '1']);
+    expect(byCode.get(s.code.r1b)?.slice(26, 29)).toEqual(['true', '0', '1']);
     // k2 created no record and still contests blue.
-    expect(byCode.get(s.code.r2)?.slice(24, 27)).toEqual(['true', '0', '1']);
+    expect(byCode.get(s.code.r2)?.slice(26, 29)).toEqual(['true', '0', '1']);
     // c1 is a blue record of k1: no responds_to, and itself on a level k2 contests.
-    expect(byCode.get(s.code.c1)?.slice(9, 10)).toEqual(['blue']);
-    expect(byCode.get(s.code.c1)?.slice(22, 27)).toEqual(['contest', '', 'true', '0', '1']);
+    expect(byCode.get(s.code.c1)?.slice(11, 12)).toEqual(['blue']);
+    expect(byCode.get(s.code.c1)?.slice(24, 29)).toEqual(['contest', '', 'true', '0', '1']);
     // Six quantitative fields in single, mean, median, min, max, sd, se, n
     // order; a resolved contest no longer flags, but still counts.
-    expect(byCode.get(s.code.r3)?.slice(8, 20)).toEqual([
+    expect(byCode.get(s.code.r3)?.slice(10, 22)).toEqual([
       'mm',
       '',
       '12.5',
@@ -117,11 +119,11 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
       '',
       '',
     ]);
-    expect(byCode.get(s.code.r3)?.slice(24, 27)).toEqual(['false', '0', '1']);
-    expect(byCode.get(s.code.c2)?.slice(10, 11)).toEqual(['99']);
-    expect(byCode.get(s.code.c2)?.slice(22, 27)).toEqual(['contest', s.code.r3, 'false', '0', '0']);
+    expect(byCode.get(s.code.r3)?.slice(26, 29)).toEqual(['false', '0', '1']);
+    expect(byCode.get(s.code.c2)?.slice(12, 13)).toEqual(['99']);
+    expect(byCode.get(s.code.c2)?.slice(24, 29)).toEqual(['contest', s.code.r3, 'false', '0', '0']);
     // Pending shown to a reviewer, with its raw value.
-    expect(byCode.get(s.code.p)?.slice(9, 20)).toEqual([
+    expect(byCode.get(s.code.p)?.slice(11, 22)).toEqual([
       '',
       '',
       '',
@@ -142,7 +144,9 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
   it('R3 records.csv orders one species by trait key, then record_code', async () => {
     const s = await exportScene(t.db);
     const csv = parseCsv(await readAll(recordsCsv(t.db, UNRESTRICTED, { scope: 'all' })));
-    const mine = csv.rows.filter((r) => r[4] === s.sp.canonicalName).map((r) => `${r[7]} ${r[0]}`);
+    const mine = csv.rows
+      .filter((r) => r[4] === s.sp.canonicalName)
+      .map((r) => `${r[RECORD_COLUMNS.indexOf('trait')]} ${r[0]}`);
     expect(mine).toHaveLength(7);
     expect(mine).toEqual([...mine].sort());
   });
@@ -175,7 +179,11 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
   it('R2 exports order, the value fields, unit_status and import provenance', async () => {
     const family = await createFamily(t.db, { orderName: 'Fabales' });
     const genus = await createGenus(t.db, { familyId: family.id });
-    const sp = await createSpecies(t.db, { genusId: genus.id });
+    const sp = await createSpecies(t.db, {
+      genusId: genus.id,
+      plantType: 'not_tree',
+      plantTypeStatus: 'proposed',
+    });
     const trait = await createTrait(t.db, { valueType: 'quantitative' });
     const ref = await createReference(t.db);
     const batch = await createImportBatch(t.db);
@@ -202,6 +210,8 @@ describe('RFC-66 R2, R3 records.csv and annotations.csv', () => {
     const at = (name: (typeof RECORD_COLUMNS)[number]) => row?.[RECORD_COLUMNS.indexOf(name)];
     expect(row).toHaveLength(RECORD_COLUMNS.length);
     expect(at('order')).toBe('Fabales');
+    expect(at('plant_type')).toBe('not_tree');
+    expect(at('plant_type_status')).toBe('proposed');
     expect(at('value_single')).toBe('');
     expect(at('value_mean')).toBe('9.3');
     expect(at('value_median')).toBe('9');

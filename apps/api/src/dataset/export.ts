@@ -23,6 +23,8 @@ export const RECORD_COLUMNS = [
   'genus',
   'species',
   'name_source',
+  'plant_type',
+  'plant_type_status',
   'category',
   'trait',
   'unit',
@@ -222,6 +224,8 @@ interface RecordRow {
   genus: string | null;
   species: string;
   name_source: string;
+  plant_type: string;
+  plant_type_status: string;
   category: string;
   trait: string;
   unit: string | null;
@@ -265,7 +269,7 @@ interface RecordRow {
  * their raw value; `platform` keeps the `TR_` records.
  * `contested` and `n_contests` are RFC-63 R14's, `n_validations` counts
  * distinct validators (RFC-63 R8). `order` is the species' family's
- * `order_name` (RFC-60 R1); `unit` is the record's own unit, else the trait's;
+ * `order_name` (RFC-60 R1), and `plant_type` and `plant_type_status` the species' (RFC-60 R1); `unit` is the record's own unit, else the trait's;
  * each value column is one stored field (RFC-63 R15); `unit_status`,
  * `source_folder`, `source_file`, `taxonomic_status`, `gbif_genus`,
  * `gbif_family`, `taxon_order`, `summary_source`, `records_behind_row` and
@@ -282,7 +286,7 @@ export function recordsCsv(
 ): ReadableStream<Uint8Array> {
   const query = sql`
     select r.record_code, f.order_name as "order", f.name as family, g.name as genus,
-      s.canonical_name as species, s.name_source,
+      s.canonical_name as species, s.name_source, s.plant_type, s.plant_type_status,
       c.key as category, t.key as trait, coalesce(r.unit, t.unit) as unit, l.key as level,
       r.numeric_value::text as value_single, r.mean_value::text as value_mean,
       r.median_value::text as value_median, r.min_value::text as value_min,
@@ -323,6 +327,8 @@ export function recordsCsv(
         r.genus,
         r.species,
         r.name_source,
+        r.plant_type,
+        r.plant_type_status,
         r.category,
         r.trait,
         r.unit,
