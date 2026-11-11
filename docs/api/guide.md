@@ -1,4 +1,4 @@
-openapi-sha256: 99bb9bd5e45e411c6bcba393e99d07a63861344c19e6059ab3eed3f440928f0e
+openapi-sha256: 6961dc167d882c3f78ac00d6e4df2032b4df205be351bd4680fc1c7f0b5526e3
 
 # TreeRepro API guide
 
@@ -11,6 +11,10 @@ Only a user holding the `admin` system role can create or use a key (RFC-82 R2),
 - Most `/api/*` routes, including every one described below and `GET /api/docs/openapi.json`, take and answer JSON, wrapped in the same envelope the workspace uses (RFC-11 R2, R3): a success answers `{ "data": ... }` (a list also carries `"meta": { "nextCursor": ... }`); a failure answers `{ "error": { "code": "...", "message": "...", "details": [...] } }`, `details` present only for `VALIDATION_FAILED`. This does not hold for every route: `GET /api/health` and `GET /api/health/ready` answer a plain body with no envelope, `GET /api/export/dataset.zip` streams a ZIP file, and `GET /api/docs` itself answers Markdown.
 - The full machine-readable reference — every route, its schemas and its guard — is generated from the running code at `GET /api/docs/openapi.json`. This guide is served at `GET /api/docs`. Both need a key (RFC-82 R20).
 - Without a key at hand, **Settings › API keys** in the workspace lists every route a key reaches, with its summary and the permission it needs (RFC-82 R22).
+
+## Two hosts
+
+The same API answers on two hosts, one per platform (RFC-14): `https://treerepro.elisabarreto.com.br/api/...` acts on TreeRepro and `https://plantrepro.elisabarreto.com.br/api/...` on PlantRepro. Every route, rule and shape is the same on both. A key is not bound to either: send it to the host of the platform you mean, and the request — every operation of a `POST /api/batch` included — acts on that platform (RFC-14 R6). Any other host, an IP address included, answers 421 `UNKNOWN_HOST`. Until PlantRepro opens, its host answers 421 too.
 
 ## Authentication and the key lifecycle
 
@@ -231,6 +235,7 @@ Every error follows the same envelope: `{ "error": { "code", "message", "details
 | `VALIDATION_FAILED` | 400 | The request failed schema validation. `details` is an array of `{ path, message }`, one per failing field (`details[0].path`, for example). |
 | `VALIDATION_INVALID_JSON` | 400 | The request body is not valid JSON. |
 | `REQUEST_TOO_LARGE` | 413 | The request body exceeds 1 MiB. |
+| `UNKNOWN_HOST` | 421 | The request was sent to a host that is neither platform's (see Two hosts). Fix the base URL. |
 | `NOT_FOUND` | 404 | An unknown route, or an id-based lookup whose route has no more specific not-found code. |
 | `RATE_LIMITED` | 429 | Too many requests for this key; see Limits above. |
 | `INTERNAL_ERROR` | 500 | Unexpected failure on the server; safe to retry later, not immediately. |
@@ -419,6 +424,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-11 — Two hosts (RFC-14; issue #396): the API also answers on the PlantRepro host, acting on PlantRepro, with the same routes and shapes; a key works on both. A request to any other host answers 421 `UNKNOWN_HOST`, a new error code. No route changes. (openapi 6961dc167d88)
 - 2026-11-06 — A validation (`POST /api/records/:id/annotations` with `confirm`, `POST /api/species/:id/traits/:traitId/levels/:levelId/validate`) also adds the validator's record. It has the same level, or the same quantitative fields, under the supporting reference, or the validator's personal observation without one. It is a complement responding to the validated record, at most once per validator × value × reference, and counts in references, sources and summaries. Response shapes are unchanged (RFC-65 R17; issue #388). (openapi 99bb9bd5e45e)
 - 2026-11-06 — A source of `POST /api/records` and the `referenceSource` of a validation (`POST /api/records/:id/annotations`, `POST /api/species/:id/traits/:traitId/levels/:levelId/validate`) may be a website, `{ url, citation }`: an absolute http or https URL (at most 500 characters) and its citation. It resolves to the reference keyed `url:<normalised URL>`, created on first use and never fetched (RFC-61 R11; issue #386). (openapi 99bb9bd5e45e)
 - 2026-11-05 — `GET /api/species/:id`: `plots` lists only the plots you are assigned to, also when you hold `plots.manage` (it used to list every plot holding the species) (RFC-60 R7, RFC-67 R8; issue #384). (openapi 7768bb91340d)

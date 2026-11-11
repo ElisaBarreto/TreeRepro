@@ -9,7 +9,8 @@ import { requireApiKey } from '../middleware/session.ts';
 import { SELF_SERVICE_ROUTES } from '../self-service-routes.ts';
 import { validate } from '../validate.ts';
 
-// Any host works: the URL only carries the path to the same application.
+// Paths are checked against a fixed base; each operation then runs on the
+// batch's own host, so on its platform (RFC-14 R6).
 const BASE = 'http://batch.internal';
 // `x-request-id`: `requestId()` reuses it, so each operation logs under the batch's id.
 const FORWARDED = ['authorization', 'user-agent', 'x-forwarded-for', 'x-request-id'] as const;
@@ -68,7 +69,8 @@ async function run(
     init.body = JSON.stringify(op.body);
   }
   try {
-    const res = await batchDispatch.run(true, () => dispatch(new Request(checked.url, init)));
+    const target = new URL(`${checked.url.pathname}${checked.url.search}`, c.req.url);
+    const res = await batchDispatch.run(true, () => dispatch(new Request(target, init)));
     if (/^application\/json\b/i.test(res.headers.get('content-type') ?? '')) {
       return { ref, status: res.status, body: await res.json() };
     }
@@ -89,6 +91,7 @@ async function run(
  * `dispatch` is the root application's `fetch`, so each operation passes every
  * middleware and route exactly as a single call does.
  * @rfc RFC-82 R10, R11, R13, R14
+ * @rfc RFC-14 R6
  */
 export function batchRoutes(ctx: AuthContext, dispatch: (request: Request) => Promise<Response>) {
   return new Hono<AppEnv>().post(

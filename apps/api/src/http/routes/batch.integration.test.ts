@@ -2,7 +2,7 @@ import { and, eq, isNotNull, like } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { createAdminKey } from '../../../test/helpers/api-keys.ts';
-import { call, useTestApp } from '../../../test/helpers/app.ts';
+import { call, TEST_DOMAINS, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import {
   createImportBatch,
@@ -20,6 +20,7 @@ import { RATE_LIMITS } from '../../auth/rate-limit.ts';
 import { traitRecords } from '../../db/schema/records.ts';
 import { families } from '../../db/schema/taxa.ts';
 import type { AppEnv } from '../env.ts';
+import { resolvePlatform } from '../platform.ts';
 import { batchRoutes } from './batch.ts';
 
 const ZERO = '00000000-0000-0000-0000-000000000000';
@@ -259,5 +260,46 @@ describe('RFC-82 R10-R15 POST /api/batch', () => {
     expect(
       lines.filter((l) => (l as { msg?: string }).msg === 'batch operation failed'),
     ).toHaveLength(3);
+  });
+
+  it("RFC-14 R6 runs the operations on the platform of the batch's host", async () => {
+    const probe = new Hono<AppEnv>()
+      .use(resolvePlatform(TEST_DOMAINS))
+      .get('/api/probe', (c) => c.json({ data: c.get('platform') }));
+    const app = new Hono<AppEnv>()
+      .use(resolvePlatform(TEST_DOMAINS))
+      .use(async (c, next) => {
+        c.set('logger', captureLogger().logger);
+        c.set('apiKey', { id: `key-${rand()}` });
+        await next();
+      })
+      .route(
+        '/api/batch',
+        batchRoutes({ limiter: t.limiter } as AuthContext, (r) => Promise.resolve(probe.fetch(r))),
+      );
+    const op = { method: 'GET', path: '/api/probe' };
+    for (const [host, platform] of [
+      ['plantrepro.localhost', 'plantrepro'],
+      ['localhost:8080', 'treerepro'],
+    ]) {
+      const res = await app.request(`http://${host}/api/batch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ops: [op] }),
+      });
+      const { data } = await res.json();
+      expect(data.results, host).toEqual([{ ref: null, status: 200, body: { data: platform } }]);
+    }
+  });
+
+  it('RFC-14 R6 a key works through the app on the PlantRepro host', async () => {
+    const { headers } = await createAdminKey(t);
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/batch', {
+      headers,
+      origin: null,
+      body: { ops: [{ method: 'GET', path: '/api/families' }] },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.results[0].status).toBe(200);
   });
 });

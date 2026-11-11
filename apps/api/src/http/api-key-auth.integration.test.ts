@@ -41,6 +41,22 @@ describe('RFC-82 R3-R6, R8, R9 Bearer authentication', () => {
     expect(res.status).toBe(200);
   });
 
+  it('RFC-14 R6 a key authenticates on either platform host', async () => {
+    const { raw } = await adminWithKey();
+    for (const host of ['localhost', 'plantrepro.localhost']) {
+      const res = await call(t.app, 'GET', `http://${host}/api/admin/roles`, {
+        headers: bearer(raw),
+        origin: null,
+      });
+      expect(res.status, host).toBe(200);
+    }
+    const unknown = await call(t.app, 'GET', 'http://evil.example/api/admin/roles', {
+      headers: bearer(raw),
+      origin: null,
+    });
+    expect(unknown.status).toBe(421);
+  });
+
   it('R3 an unknown key answers 401 even on a public route', async () => {
     const res = await call(t.app, 'POST', '/api/auth/login', {
       headers: bearer('tr_live_nope'),
