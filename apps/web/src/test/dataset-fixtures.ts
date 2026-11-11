@@ -1132,7 +1132,7 @@ export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
   // float quotient rounded in the browser answers 57 and 28. The fixture is
   // chosen so an assertion can tell the two apart.
   coverage: { cells: 200, withData: 115, validated: 57, percentWithData: 58, percentValidated: 29 },
-  queues: { pendingGroups: 3, contested: 1, proposals: 0 },
+  queues: { pendingGroups: 3, contested: 1, proposals: 0, plantTypes: 0 },
 };
 
 /** The whole dashboard answer for a contributor with plots and no review permission. @rfc RFC-72 R1 */

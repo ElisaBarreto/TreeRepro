@@ -175,6 +175,15 @@ export function CurationCards({
           <li>
             <QueueTile label="Contested" value={queues.contested} to="/app/curation/disputed" />
           </li>
+          {queues.plantTypes > 0 ? (
+            <li>
+              <QueueTile
+                label="Plant types"
+                value={queues.plantTypes}
+                to="/app/curation/plant-types"
+              />
+            </li>
+          ) : null}
           {queues.proposals > 0 ? (
             <li>
               <QueueTile label="Proposals" value={queues.proposals} to="/app/curation/proposals" />
