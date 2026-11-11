@@ -24,6 +24,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `VALIDATION_FAILED` | 400 | Request failed schema validation; `details` lists failing fields (RFC-02 R2). |
 | `VALIDATION_INVALID_JSON` | 400 | Request body is not valid JSON (RFC-11 R7). |
 | `SECURITY_INVALID_ORIGIN` | 403 | Mutating request without a valid `Origin` header (RFC-02 R3). |
+| `UNKNOWN_HOST` | 421 | The request's host is neither platform's host (RFC-14 R3). |
 | `NOT_FOUND` | 404 | Route or resource does not exist (RFC-11 R8). |
 | `REQUEST_TOO_LARGE` | 413 | Body exceeds 1 MiB (RFC-02 R4). |
 | `RATE_LIMITED` | 429 | Too many requests; `Retry-After` header is set. |
@@ -108,3 +109,4 @@ None.
 - 2026-09-25 — RECORD_DUPLICATE, RECORD_WITHDRAWN and RECORD_NOT_WITHDRAWABLE retired: a claim-key collision is reported in `duplicates` (RFC-70 R3), a withdrawn record answers 404 `RECORD_NOT_FOUND` (RFC-65 R3), and the withdrawal permission split answers 403 `PERMISSION_DENIED` (RFC-65 R4) (plan 13g).
 - 2026-09-26 — HELP_TOPIC_NOT_FOUND, HELP_SECTION_NOT_FOUND, HELP_SLUG_TAKEN, HELP_ANCHOR_TAKEN (RFC-73 R6, issue #172).
 - 2026-09-26 — MAP_NOT_FOUND, and `MAP_` admitted to R1's prefix list (RFC-76 R5, issue #197).
+- 2026-11-11 — UNKNOWN_HOST (RFC-14 R3, plan 15b).
