@@ -8,6 +8,7 @@ import {
   createContest,
   createFamily,
   createGenus,
+  createImportBatch,
   createPlot,
   createRecord,
   createReference,
@@ -19,8 +20,11 @@ import { unzip } from '../../test/helpers/export.ts';
 import { adminRoleId } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { speciesCountsByTrait } from '../dataset/dictionary.ts';
+import { countContested, countPendingGroups } from '../dataset/queues.ts';
 import { speciesNames } from '../db/schema/taxa.ts';
 import { computeDatasetStats, dashboardKeys } from '../workspace/dashboard.ts';
+import { viewerClass } from './visibility.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -183,6 +187,75 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
     }
   });
 
+  it("the dictionary's species counts and the pending and contested queues omit the hidden species on TreeRepro only", async () => {
+    const s = await scene();
+    const all = [s.tree, s.herb, s.proposed];
+    const level = s.trait.levels[0]?.id as string;
+    const pendingTrait = await createTrait(t.db, { levels: ['one'] });
+    const batch = await createImportBatch(t.db);
+    const pendingReference = await createReference(t.db);
+    const contests = new Map<string, string>();
+    for (const sp of all) {
+      await createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: pendingTrait.id,
+        valueText: 'stray',
+        primaryReferenceId: pendingReference.id,
+        importBatchId: batch.id,
+        harmonisation: 'unknown_level',
+      });
+      const contest = await createContest(t.db, {
+        speciesId: sp.id,
+        traitId: s.trait.id,
+        createdBy: s.user.id,
+        levelIds: [level],
+      });
+      contests.set(contest.id, sp.id);
+    }
+
+    // RFC-62 R5: one cache entry per platform. Forget both, then read them back
+    // to back, so an entry shared by the platforms would answer the same count.
+    const viewer = (platform: Platform) => ({ inactive: true, plotIds: null, platform });
+    await t.redis.del(
+      `dictionary:species-counts:${viewerClass(viewer('treerepro'))}`,
+      `dictionary:species-counts:${viewerClass(viewer('plantrepro'))}`,
+    );
+    const ctx = { db: t.db, redis: t.redis };
+    expect((await speciesCountsByTrait(ctx, viewer('treerepro'))).get(s.trait.id)).toBe(1);
+    expect((await speciesCountsByTrait(ctx, viewer('plantrepro'))).get(s.trait.id)).toBe(3);
+
+    for (const platform of ['treerepro', 'plantrepro'] as const) {
+      const send = s.on(platform);
+      const shown = platform === 'treerepro' ? [s.tree.id] : all.map((sp) => sp.id);
+
+      const traits = (await (await send('GET', '/api/records/pending/traits')).json()).data;
+      expect(
+        traits.find((r: { trait: { id: string } }) => r.trait.id === pendingTrait.id),
+      ).toMatchObject({ count: shown.length });
+      const groups = await send('GET', `/api/records/pending?traitId=${pendingTrait.id}`);
+      expect((await groups.json()).data).toMatchObject([
+        { valueText: 'stray', count: shown.length },
+      ]);
+
+      const standing: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const res = await send(
+          'GET',
+          `/api/records/disputed?limit=200${cursor ? `&cursor=${cursor}` : ''}`,
+        );
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        for (const item of body.data as { id: string }[]) {
+          const speciesId = contests.get(item.id);
+          if (speciesId) standing.push(speciesId);
+        }
+        cursor = body.meta.nextCursor;
+      } while (cursor);
+      expect(standing.sort()).toEqual([...shown].sort());
+    }
+  });
+
   it('on TreeRepro a write naming a hidden species answers 404 and changes nothing', async () => {
     const s = await scene();
     const tree = s.on('treerepro');
@@ -323,6 +396,50 @@ describe("RFC-72 R1 the dataset counts are the platform's", () => {
       expect(tree.recordCount).toBe(before.tree.recordCount);
       expect(plant.speciesCount).toBe(before.plant.speciesCount + 1);
       expect(plant.recordCount).toBe(before.plant.recordCount + 1);
+    });
+  });
+
+  it("the dashboard's pending and contested counts count a non-tree on PlantRepro only", async () => {
+    await withRollback(t.db, async (tx) => {
+      await tx.execute(sql`set transaction isolation level repeatable read`);
+      const viewer = (platform: Platform) => ({ inactive: true, plotIds: null, platform });
+      const counts = async (platform: Platform) => ({
+        pending: await countPendingGroups(tx, viewer(platform)),
+        contested: await countContested(tx, viewer(platform)),
+      });
+      const before = { tree: await counts('treerepro'), plant: await counts('plantrepro') };
+      const { user } = await createUser(tx);
+      const trait = await createTrait(tx, { levels: ['one'] });
+      const herb = await createSpecies(tx, { plantType: 'not_tree' });
+      await createRecord(tx, {
+        speciesId: herb.id,
+        traitId: trait.id,
+        valueText: 'stray',
+        primaryReferenceId: (await createReference(tx)).id,
+        importBatchId: (await createImportBatch(tx)).id,
+        harmonisation: 'unknown_level',
+      });
+      // A contest stands against a level the species has a record for.
+      await createRecord(tx, {
+        speciesId: herb.id,
+        traitId: trait.id,
+        valueText: 'one',
+        levelId: trait.levels[0]?.id,
+        primaryReferenceId: (await createReference(tx)).id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+      await createContest(tx, {
+        speciesId: herb.id,
+        traitId: trait.id,
+        createdBy: user.id,
+        levelIds: [trait.levels[0]?.id as string],
+      });
+      expect(await counts('treerepro')).toEqual(before.tree);
+      expect(await counts('plantrepro')).toEqual({
+        pending: before.plant.pending + 1,
+        contested: before.plant.contested + 1,
+      });
     });
   });
 
