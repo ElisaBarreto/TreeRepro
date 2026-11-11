@@ -54,7 +54,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `sessions.revoked` | A session revoked by an admin. |
 | `admin.accessed` | Admin area opened. |
 | `taxa.created` | Family, genus, species or alternative name created (RFC-60 R10). |
-| `taxa.updated` | Family, genus or species changed (RFC-60 R10). |
+| `taxa.updated` | Family, genus or species changed (RFC-60 R10), its plant type included (RFC-65 R19). |
 | `references.created` | Bibliographic reference created (RFC-61 R6). |
 | `references.updated` | Bibliographic reference changed (RFC-61 R6). |
 | `traits.created` | Trait created (RFC-62 R6). |
@@ -97,3 +97,4 @@ None.
 - 2026-09-26 — auth.api_key.created, auth.api_key.revoked (RFC-82 R8, plan 14a).
 - 2026-09-26 — auth.api_key.revoked: may be written by an administrator, carries `metadata.reason` (RFC-82 R3).
 - 2026-11-11 — auth.platform_denied (RFC-22 R13, plan 15c).
+- 2026-11-11 — `taxa.updated` covers a plant type change (RFC-65 R19, plan 15d, issue #398).

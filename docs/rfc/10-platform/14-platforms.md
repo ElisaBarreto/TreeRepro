@@ -20,6 +20,7 @@ Design: `docs/specs/2026-11-11-plantrepro.md` §1, §8, §9 (epic #404, plan 15b
 - **R6** An API key is not bound to a platform: it authenticates on either host, and the request acts on the platform of the host it is sent to (RFC-82 R1). A `POST /api/batch` runs its operations on the platform of the batch's own host (RFC-82 R11).
 - **R7** Hosts. Production: `treerepro.elisabarreto.com.br` (`DOMAIN`) and `plantrepro.elisabarreto.com.br` (`PLANT_DOMAIN`), served by one Caddy site block, one API process and one database. Development and end-to-end: `localhost` and `plantrepro.localhost`, which browsers resolve to loopback.
 - **R8** Roles are assigned per platform and `admin` holds both (RFC-31 R16); permissions are resolved per platform (RFC-32 R1); a user with no role on a platform cannot sign in there (RFC-22 R13). People management acts on every account whatever its platforms (RFC-32 R9).
+- **R9** Every species has a plant type, `tree` or `not_tree`, and a status, `proposed` or `reviewed` (RFC-60 R1). TreeRepro registers only trees: a species created, proposed or approved there is `tree`, while on PlantRepro the person registering it states the type (RFC-65 R18, RFC-75 R2, R4). This is scope, not an exclusive feature: the same form and route serve both, and the platform fixes the value. Which species each platform shows follows from the type (plan 15e).
 
 ## Open questions
 
@@ -29,3 +30,4 @@ None.
 
 - 2026-11-11 — created: platforms, host resolution, per-platform origin, sessions and keys (plan 15b, issue #396).
 - 2026-11-11 — R4 amended, R8 added: roles per platform, explicit platform for mail without a request (RFC-14, plan 15c, issue #397).
+- 2026-11-11 — R9 added: the plant type, and TreeRepro registering only trees (plan 15d, issue #398).
