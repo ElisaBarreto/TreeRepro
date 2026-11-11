@@ -3,6 +3,8 @@ import {
   type CreateUserBody,
   createUserBodySchema,
   PERMISSION_KEYS,
+  PLATFORM_NAMES,
+  PLATFORMS,
   type Role,
   type User,
 } from '@treerepro/contracts';
@@ -10,6 +12,7 @@ import { type FormEvent, useId, useState } from 'react';
 import { adminKeys, inviteUser, listRoles } from '../../api/admin.ts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
+import { currentPlatform } from '../../lib/platform.ts';
 import { useMe } from '../../lib/session.ts';
 import { Alert, Button, Dialog, Field, Input, Select } from '../ui/index.ts';
 
@@ -54,14 +57,15 @@ export function assignableRoles(roles: Role[], permissions: readonly string[]): 
 }
 
 /**
- * Email, name and role; `POST /api/admin/users`. Only the roles within the
+ * Email, name, platform (this one by default, RFC-50 R3) and role;
+ * `POST /api/admin/users`. Only the roles within the
  * actor's delegation ceiling are offered (RFC-31 R14). A `MAIL_SEND_FAILED` answer still
  * created the user (RFC-50 R3), so the dialog closes and the page says how
  * to resend; `USER_EMAIL_TAKEN` stays under the email field. Mounted only
  * while open.
  * @rfc RFC-50 R3
  * @rfc RFC-13 R6
- * @rfc RFC-31 R14
+ * @rfc RFC-31 R14, R16
  */
 export function InviteUserDialog({
   onClose,
@@ -71,7 +75,7 @@ export function InviteUserDialog({
   onInvited: (user: User | null, mailFailed: boolean) => void;
 }) {
   const me = useMe();
-  const ids = { email: useId(), name: useId(), role: useId() };
+  const ids = { email: useId(), name: useId(), platform: useId(), role: useId() };
   const roles = useQuery({ queryKey: adminKeys.roles, queryFn: listRoles });
   const offered = assignableRoles(roles.data ?? [], me.permissions);
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
@@ -104,6 +108,7 @@ export function InviteUserDialog({
     const parsed = createUserBodySchema.safeParse({
       email: String(form.get('email') ?? ''),
       name: String(form.get('name') ?? ''),
+      platform: String(form.get('platform') ?? ''),
       roles: form.get('role') ? [String(form.get('role'))] : [],
     });
     if (!parsed.success) {
@@ -141,6 +146,15 @@ export function InviteUserDialog({
             maxLength={120}
             invalid={Boolean(nameError)}
           />
+        </Field>
+        <Field id={ids.platform} label="Platform">
+          <Select id={ids.platform} name="platform" defaultValue={currentPlatform()}>
+            {PLATFORMS.map((p) => (
+              <option key={p} value={p}>
+                {PLATFORM_NAMES[p]}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field id={ids.role} label="Role" error={roleError}>
           <Select

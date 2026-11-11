@@ -96,7 +96,9 @@ describe("RFC-32 R1 permissions are resolved on the request's platform", () => {
     const { user } = await createUser(t.db, { roles: [contributor] });
     const tree = await loginAs(t, user);
     const plant = await loginAs(t, user, { platform: 'plantrepro' });
-    expect((await call(t.app, 'GET', '/api/me/dashboard', { cookie: tree.cookie })).status).toBe(200);
+    expect((await call(t.app, 'GET', '/api/me/dashboard', { cookie: tree.cookie })).status).toBe(
+      200,
+    );
     const refused = await call(t.app, 'GET', 'http://plantrepro.localhost/api/me/dashboard', {
       cookie: plant.cookie,
     });

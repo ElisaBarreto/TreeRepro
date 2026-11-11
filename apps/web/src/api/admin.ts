@@ -8,6 +8,7 @@ import {
   listEnvelopeSchema,
   okStatusSchema,
   type PermissionEntry,
+  type Platform,
   type PlatformHealth,
   permissionEntrySchema,
   platformHealthSchema,
@@ -47,6 +48,7 @@ export const adminKeys = {
 /** @rfc RFC-50 R2 */
 export function listUsers(params: {
   status?: UserStatus;
+  platform?: Platform;
   sort?: UserSort;
   order?: SortOrder;
   cursor?: string;

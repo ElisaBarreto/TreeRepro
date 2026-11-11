@@ -292,7 +292,7 @@ test.describe('RFC-01 R6, RFC-13 R8 critical flow (issue #20)', () => {
 
     await page.getByRole('link', { name: B_NAME }).click();
     await expect(page.getByRole('heading', { name: B_NAME })).toBeVisible();
-    const roles = page.getByRole('region', { name: 'Roles' });
+    const roles = page.getByRole('region', { name: 'TreeRepro roles' });
     await expect(roles.getByRole('checkbox', { name: /^Readers\b/ })).toBeChecked();
   });
 

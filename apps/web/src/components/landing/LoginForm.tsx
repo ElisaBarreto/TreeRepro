@@ -2,6 +2,7 @@ import type { AuthUser } from '@treerepro/contracts';
 import { type FormEvent, type ReactNode, useId, useState } from 'react';
 import { login, loginTotp } from '../../api/auth.ts';
 import { ApiError } from '../../api/client.ts';
+import { currentPlatform, platformDeniedMessage } from '../../lib/platform.ts';
 import './landing.css';
 
 interface LoginFormProps {
@@ -16,6 +17,7 @@ type Step = 'credentials' | 'totp';
  * @rfc RFC-22 R2
  * @rfc RFC-23 R6
  * @rfc RFC-24 R2
+ * @rfc RFC-22 R13
  */
 export function loginErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Something went wrong. Try again.';
@@ -24,6 +26,8 @@ export function loginErrorMessage(error: unknown): string {
       return 'Email or password is incorrect.';
     case 'AUTH_ACCOUNT_SUSPENDED':
       return 'This account is suspended. Contact your project coordinator.';
+    case 'PLATFORM_ACCESS_DENIED':
+      return platformDeniedMessage(error, currentPlatform()) ?? 'Something went wrong. Try again.';
     case 'RATE_LIMITED':
       return 'Too many attempts. Wait a moment and try again.';
     case 'AUTH_TOTP_INVALID':

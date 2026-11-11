@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MeResponse } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,7 +57,7 @@ async function fillAndSubmit(email: string, name: string, role: string | null = 
 
 const optionNames = async () => {
   await screen.findByRole('option', { name: 'Readers' });
-  return screen
+  return within(screen.getByLabelText('Role'))
     .getAllByRole('option')
     .map((o) => o.textContent)
     .filter((n) => n !== 'Choose a role');
@@ -72,10 +72,27 @@ describe('RFC-50 R3 InviteUserDialog', () => {
       expect(admin.inviteUser).toHaveBeenCalledWith({
         email: 'bea@example.org',
         name: 'Bea',
+        platform: 'treerepro',
         roles: [ROLE_READERS.id],
       }),
     );
     expect(onInvited).toHaveBeenCalledWith(INVITED_USER, false);
+  });
+
+  it('RFC-50 R3 invites to the platform chosen, this one by default', async () => {
+    admin.inviteUser.mockResolvedValue(INVITED_USER);
+    mount();
+    expect(screen.getByLabelText('Platform')).toHaveValue('treerepro');
+    await userEvent.selectOptions(screen.getByLabelText('Platform'), 'PlantRepro');
+    await fillAndSubmit('bea@example.org', 'Bea');
+    await waitFor(() =>
+      expect(admin.inviteUser).toHaveBeenCalledWith({
+        email: 'bea@example.org',
+        name: 'Bea',
+        platform: 'plantrepro',
+        roles: [ROLE_READERS.id],
+      }),
+    );
   });
 
   it('reports MAIL_SEND_FAILED with a null user and mailFailed true', async () => {

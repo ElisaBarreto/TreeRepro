@@ -60,7 +60,11 @@ export const ADMIN_USER: User = {
   name: USER.name,
   status: 'active',
   totpEnabled: false,
-  roles: [{ id: ROLE_ADMIN.id, name: ROLE_ADMIN.name }],
+  // `admin` is held on both platforms (RFC-31 R16).
+  roles: [
+    { id: ROLE_ADMIN.id, name: ROLE_ADMIN.name, platform: 'treerepro' },
+    { id: ROLE_ADMIN.id, name: ROLE_ADMIN.name, platform: 'plantrepro' },
+  ],
   plots: [],
   restrictToAssignedPlots: false,
   createdAt: AT,
@@ -90,7 +94,7 @@ export const SUSPENDED_USER: User = {
   name: 'Cid',
   status: 'suspended',
   totpEnabled: true,
-  roles: [{ id: ROLE_READERS.id, name: ROLE_READERS.name }],
+  roles: [{ id: ROLE_READERS.id, name: ROLE_READERS.name, platform: 'treerepro' }],
   plots: [],
   restrictToAssignedPlots: false,
   createdAt: '2026-09-11T08:00:00.000Z',
