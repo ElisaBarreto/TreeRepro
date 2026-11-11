@@ -29,3 +29,27 @@ describe('RFC-13 R5 Emblem', () => {
     expect(container.querySelectorAll('g.tr-canopy > circle.tr-fruit')).toHaveLength(5);
   });
 });
+
+describe('RFC-13 R14 Emblem per platform', () => {
+  it('draws the tree for TreeRepro and the forest for PlantRepro', () => {
+    const tree = render(<Emblem size={40} variant="treerepro" />);
+    expect(screen.getByRole('img', { name: 'TreeRepro emblem: a tree in fruit' })).toBeVisible();
+    expect(tree.container.innerHTML).toMatchSnapshot('treerepro');
+    tree.unmount();
+
+    const forest = render(<Emblem size={40} variant="plantrepro" />);
+    expect(screen.getByRole('img', { name: /^PlantRepro emblem/ })).toBeVisible();
+    expect(forest.container.innerHTML).toMatchSnapshot('plantrepro');
+  });
+
+  it('the forest keeps the canopy and the five fruits for the sign-in reveal', () => {
+    const { container } = render(<Emblem size={40} variant="plantrepro" />);
+    expect(container.querySelector('g.tr-canopy')).not.toBeNull();
+    expect(container.querySelectorAll('g.tr-canopy > circle.tr-fruit')).toHaveLength(5);
+  });
+
+  it('follows the current platform when no variant is given (jsdom: localhost)', () => {
+    render(<Emblem size={40} />);
+    expect(screen.getByRole('img', { name: /^TreeRepro emblem/ })).toBeVisible();
+  });
+});
