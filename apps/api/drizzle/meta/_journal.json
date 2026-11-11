@@ -414,6 +414,13 @@
       "when": 1794411463942,
       "tag": "0058_species_plant_type",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794416197621,
+      "tag": "0059_region_snapshot_platform",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -11,6 +12,10 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { traitLevels, traits } from './dictionary.ts';
+import { PLATFORMS_SQL } from './user-roles.ts';
+
+/** The platform whose scope a snapshot row was computed over (RFC-78 R7, R8). */
+const platform = () => text('platform').$type<Platform>().notNull();
 
 /**
  * Completeness of the weekly snapshot, one row per trait × region with data;
@@ -20,6 +25,7 @@ import { traitLevels, traits } from './dictionary.ts';
 export const regionCompleteness = pgTable(
   'region_completeness',
   {
+    platform: platform(),
     traitId: uuid('trait_id')
       .notNull()
       .references(() => traits.id, { onDelete: 'cascade' }),
@@ -28,13 +34,17 @@ export const regionCompleteness = pgTable(
     wcvpSpecies: integer('wcvp_species').notNull(),
     wcvpTreeSpecies: integer('wcvp_tree_species').notNull(),
   },
-  (t) => [primaryKey({ columns: [t.traitId, t.areaCodeL3] })],
+  (t) => [
+    primaryKey({ columns: [t.platform, t.traitId, t.areaCodeL3] }),
+    check('region_completeness_platform_check', sql`${t.platform} in (${PLATFORMS_SQL})`),
+  ],
 );
 
 /** Statistics of the species medians, one row per quantitative trait × region. @rfc RFC-78 R7, R10 */
 export const regionContinuous = pgTable(
   'region_continuous',
   {
+    platform: platform(),
     traitId: uuid('trait_id')
       .notNull()
       .references(() => traits.id, { onDelete: 'cascade' }),
@@ -47,13 +57,17 @@ export const regionContinuous = pgTable(
     max: doublePrecision('max').notNull(),
     cv: doublePrecision('cv'),
   },
-  (t) => [primaryKey({ columns: [t.traitId, t.areaCodeL3] })],
+  (t) => [
+    primaryKey({ columns: [t.platform, t.traitId, t.areaCodeL3] }),
+    check('region_continuous_platform_check', sql`${t.platform} in (${PLATFORMS_SQL})`),
+  ],
 );
 
 /** Species holding each state, one row per categorical trait × state × region. @rfc RFC-78 R7, R11 */
 export const regionCategorical = pgTable(
   'region_categorical',
   {
+    platform: platform(),
     traitId: uuid('trait_id')
       .notNull()
       .references(() => traits.id, { onDelete: 'cascade' }),
@@ -64,15 +78,23 @@ export const regionCategorical = pgTable(
     nSpeciesWithLevel: integer('n_species_with_level').notNull(),
     nSpeciesWithTrait: integer('n_species_with_trait').notNull(),
   },
-  (t) => [primaryKey({ columns: [t.traitId, t.levelId, t.areaCodeL3] })],
+  (t) => [
+    primaryKey({ columns: [t.platform, t.traitId, t.levelId, t.areaCodeL3] }),
+    check('region_categorical_platform_check', sql`${t.platform} in (${PLATFORMS_SQL})`),
+  ],
 );
 
-/** When the current snapshot was computed; one row at most. @rfc RFC-78 R7, R12 */
+/** When each platform's current snapshot was computed; one row per platform at most. @rfc RFC-78 R7, R12 */
 export const regionSnapshot = pgTable(
   'region_snapshot',
   {
-    id: boolean('id').primaryKey().default(true),
+    id: boolean('id').notNull().default(true),
+    platform: platform(),
     computedAt: timestamp('computed_at', { withTimezone: true, mode: 'date' }).notNull(),
   },
-  (t) => [check('region_snapshot_one_row', sql`${t.id}`)],
+  (t) => [
+    primaryKey({ columns: [t.id, t.platform] }),
+    check('region_snapshot_one_row', sql`${t.id}`),
+    check('region_snapshot_platform_check', sql`${t.platform} in (${PLATFORMS_SQL})`),
+  ],
 );
