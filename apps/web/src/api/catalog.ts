@@ -10,6 +10,7 @@ import {
   type FamilyBody,
   type Genus,
   genusSchema,
+  type PlantType,
   type ReferenceDetail,
   referenceDetailSchema,
   type Species,
@@ -66,6 +67,10 @@ export function createSpecies(body: CreateSpeciesBody): Promise<Species> {
 /** @rfc RFC-60 R9 */
 export function updateSpecies(id: string, body: UpdateSpeciesBody): Promise<Species> {
   return patch(`/species/${id}`, body, speciesSchema);
+}
+/** @rfc RFC-65 R19 */
+export function changePlantType(id: string, plantType: PlantType): Promise<Species> {
+  return post(`/species/${id}/plant-type`, { plantType }, speciesSchema);
 }
 /** @rfc RFC-60 R9 */
 export function addSpeciesName(id: string, body: SpeciesNameBody): Promise<Species> {
