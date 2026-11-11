@@ -52,3 +52,4 @@ None.
 - 2026-09-26 — R3: drops the interim `records.csv` route now that `dataset.zip` is the only export (RFC-66 R8, retired); accepted (plan 13i).
 - 2026-10-27 — R2: a record that does not count as evidence (RFC-63 R17) is visible to no viewer; R3: the counters leave it out too (issue #345).
 - 2026-11-11 — R1: `Visibility.platform`; R2: the platform's plant-type scope; R3: the plant-type queue, and the dictionary counts keep the platform; R5: a write on a species outside the platform's scope answers 404; R9: the two-platform fixture; R11: the bypasses (RFC-14, plan 15e, issue #399).
+- 2026-11-11 — R3: a family or genus whose species are all outside the platform's scope is omitted for an unrestricted viewer too, an empty one stays listed for them; R5: removing a species from a plot checks the platform condition; R11: a plot's species count is shared by both platforms (plan 15e review, issue #399).

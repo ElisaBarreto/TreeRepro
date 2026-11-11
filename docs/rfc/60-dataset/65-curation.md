@@ -56,3 +56,4 @@ None.
 - 2026-11-06 — R3, R13 amended, R17 added: a validation also adds the validator's record, so it counts as a reference and a source (owner ruling; issue #388).
 - 2026-11-11 — R18, R19 added: stating the plant type on creation, and changing it (RFC-60 R1, RFC-14 R9, plan 15d, issue #398).
 - 2026-11-11 — R19: the reclassified species' answer, and 404 outside the platform; R20 added: the plant-type review queue (RFC-33 R11, plan 15e, issue #399).
+- 2026-11-11 — R18: on TreeRepro the species list stays put after creating a `proposed` species (plan 15e review, issue #399).

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Platform } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, inject, it } from 'vitest';
 import { call, TEST_PLANT_ORIGIN, useTestApp } from '../../test/helpers/app.ts';
 import {
   addPlotSpecies,
@@ -23,6 +23,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
 import { countContested, countPendingGroups } from '../dataset/queues.ts';
 import { speciesNames } from '../db/schema/taxa.ts';
+import { createRedis } from '../redis/client.ts';
 import { computeDatasetStats, dashboardKeys } from '../workspace/dashboard.ts';
 import { viewerClass } from './visibility.ts';
 
@@ -213,16 +214,24 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
       contests.set(contest.id, sp.id);
     }
 
-    // RFC-62 R5: one cache entry per platform. Forget both, then read them back
-    // to back, so an entry shared by the platforms would answer the same count.
+    // RFC-62 R5: one cache entry per platform. On a Redis database of this
+    // test's own (database 0's keys are shared by every suite, and the
+    // dictionary suite seeds them), emptied first, the two are read back to
+    // back, so an entry shared by the platforms would answer the same count.
     const viewer = (platform: Platform) => ({ inactive: true, plotIds: null, platform });
-    await t.redis.del(
-      `dictionary:species-counts:${viewerClass(viewer('treerepro'))}`,
-      `dictionary:species-counts:${viewerClass(viewer('plantrepro'))}`,
-    );
-    const ctx = { db: t.db, redis: t.redis };
-    expect((await speciesCountsByTrait(ctx, viewer('treerepro'))).get(s.trait.id)).toBe(1);
-    expect((await speciesCountsByTrait(ctx, viewer('plantrepro'))).get(s.trait.id)).toBe(3);
+    const redis = createRedis(`${inject('redisUrl')}/2`);
+    await redis.connect();
+    try {
+      await redis.flushdb();
+      const ctx = { db: t.db, redis };
+      expect((await speciesCountsByTrait(ctx, viewer('treerepro'))).get(s.trait.id)).toBe(1);
+      expect((await speciesCountsByTrait(ctx, viewer('plantrepro'))).get(s.trait.id)).toBe(3);
+      expect(
+        await redis.exists(`dictionary:species-counts:${viewerClass(viewer('treerepro'))}`),
+      ).toBe(1);
+    } finally {
+      await redis.quit();
+    }
 
     for (const platform of ['treerepro', 'plantrepro'] as const) {
       const send = s.on(platform);

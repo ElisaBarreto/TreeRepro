@@ -176,7 +176,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
-    // A Redis logical database of this suite's own. Every test below calls
+    // A Redis logical database of this suite's own (platform-visibility uses 2). Every test below calls
     // `getDashboard` inside a frozen, rolled-back transaction, and
     // `getDashboard` fills fixed keys every suite shares —
     // `dictionary:species-counts:r` (read by `traitsWithData` for every
