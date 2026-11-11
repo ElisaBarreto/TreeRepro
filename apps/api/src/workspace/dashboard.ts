@@ -16,7 +16,7 @@ import { contributionSummary } from '../dataset/contributions.ts';
 import { coverageTotals } from '../dataset/coverage.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
-import { countContested, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups, countPlantTypeQueue } from '../dataset/queues.ts';
 import { itemQuery, recordVisible, toItem } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
@@ -400,7 +400,7 @@ async function curationSection(
   viewer: DashboardViewer,
 ): Promise<Dashboard['curation']> {
   if (!viewer.permissions.has('records.review')) return null;
-  const [coverage, pendingGroups, contested, proposals] = await Promise.all([
+  const [coverage, pendingGroups, contested, proposals, plantTypes] = await Promise.all([
     coverageTotals(ctx, visibility),
     countPendingGroups(ctx.db, visibility),
     countContested(ctx.db, visibility),
@@ -411,8 +411,10 @@ async function curationSection(
     // `records.review` the record queues beside it are gated on: a number
     // for a queue whose API would answer 403 is worse than no number.
     viewer.permissions.has('taxa.manage') ? countOpenProposals(ctx.db) : 0,
+    // RFC-65 R20: the plant-type queue is the same on both platforms (RFC-33 R11).
+    countPlantTypeQueue(ctx.db, visibility),
   ]);
-  return { coverage, queues: { pendingGroups, contested, proposals } };
+  return { coverage, queues: { pendingGroups, contested, proposals, plantTypes } };
 }
 
 /**

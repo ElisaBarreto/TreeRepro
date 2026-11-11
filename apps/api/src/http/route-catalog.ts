@@ -3,6 +3,7 @@ import {
   apiKeyListSchema,
   auditLogEntrySchema,
   batchResponseSchema,
+  confirmPlantTypeResultSchema,
   contestedQueueItemSchema,
   contributionAnnotationSchema,
   contributionRecordSchema,
@@ -34,6 +35,7 @@ import {
   pendingGroupSchema,
   pendingTraitSchema,
   permissionEntrySchema,
+  plantTypeQueueItemSchema,
   platformHealthSchema,
   plotDetailSchema,
   plotSchema,
@@ -369,6 +371,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
     summary: 'Set a species plant type and mark it reviewed',
     response: dataEnvelopeSchema(speciesSchema),
   },
+  'POST /api/species/:id/plant-type/confirm': {
+    summary: 'Confirm a proposed plant type, optionally changing it',
+    response: dataEnvelopeSchema(confirmPlantTypeResultSchema),
+  },
   'POST /api/species/:id/names': {
     summary: 'Add an alternative name to a species',
     response: dataEnvelopeSchema(speciesSchema),
@@ -461,6 +467,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/records/disputed': {
     summary: 'List the standing contests',
     response: listEnvelopeSchema(contestedQueueItemSchema),
+  },
+  'GET /api/curation/plant-types': {
+    summary: 'List the species awaiting a plant-type review',
+    response: listEnvelopeSchema(plantTypeQueueItemSchema),
   },
   'POST /api/records/:id/annotations': {
     summary: 'Confirm or withdraw a record',

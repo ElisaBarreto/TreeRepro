@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   annotateRecordBodySchema,
+  confirmPlantTypeBodySchema,
+  confirmPlantTypeResultSchema,
   contestedQueueItemSchema,
   contestParamSchema,
   createLevelBodySchema,
@@ -10,6 +12,7 @@ import {
   levelActionParamSchema,
   mapPendingBodySchema,
   pendingGroupsQuerySchema,
+  plantTypeQueueItemSchema,
   resolveDoiResultSchema,
   sourceRefSchema,
   sourcesSchema,
@@ -526,5 +529,38 @@ describe('RFC-65 R13, R14, R16 level and contest actions', () => {
       true,
     );
     expect(withdrawLevelResultSchema.safeParse({ withdrawn: [ref] }).success).toBe(false);
+  });
+});
+
+describe('RFC-65 R20 plant-type queue', () => {
+  it('confirm takes an optional plant type and nothing else', () => {
+    expect(confirmPlantTypeBodySchema.parse({})).toEqual({});
+    expect(confirmPlantTypeBodySchema.parse({ plantType: 'not_tree' })).toEqual({
+      plantType: 'not_tree',
+    });
+    expect(confirmPlantTypeBodySchema.safeParse({ plantType: 'shrub' }).success).toBe(false);
+    expect(confirmPlantTypeBodySchema.safeParse({ plantType: 'tree', x: 1 }).success).toBe(false);
+  });
+
+  it('an item names the species, its taxa, the stated type, the proposer and the note', () => {
+    const item = {
+      id: '019a0000-0000-7000-8000-000000000001',
+      canonicalName: 'Herba nova',
+      genus: null,
+      family: { id: '019a0000-0000-7000-8000-000000000002', name: 'Poaceae' },
+      plantType: 'not_tree',
+      createdBy: { id: '019a0000-0000-7000-8000-000000000003', name: 'Ana' },
+      createdAt: '2026-11-11T00:00:00.000Z',
+      note: null,
+    };
+    expect(plantTypeQueueItemSchema.parse(item)).toEqual(item);
+    expect(plantTypeQueueItemSchema.safeParse({ ...item, active: true }).success).toBe(false);
+    expect(
+      confirmPlantTypeResultSchema.parse({
+        id: item.id,
+        plantType: 'tree',
+        plantTypeStatus: 'reviewed',
+      }),
+    ).toMatchObject({ plantTypeStatus: 'reviewed' });
   });
 });

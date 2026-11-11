@@ -33,6 +33,7 @@ const ZERO: DigestCounts = {
   proposals: 0,
   pendingGroups: 0,
   contestedNow: 0,
+  plantTypes: 0,
 };
 
 describe('RFC-74 R2 isDigestDue', () => {
@@ -212,7 +213,7 @@ describe('RFC-74 R3, R4 hasActivity', () => {
     expect(hasActivity({ ...ZERO, [key]: 1 })).toBe(true);
   });
 
-  it.each(['pendingGroups', 'contestedNow'] as const)(
+  it.each(['pendingGroups', 'contestedNow', 'plantTypes'] as const)(
     'the current queue size %s is not activity: R4 sums the window only',
     (key) => {
       expect(hasActivity({ ...ZERO, [key]: 7 })).toBe(false);

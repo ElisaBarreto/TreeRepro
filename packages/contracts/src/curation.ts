@@ -9,12 +9,13 @@ import {
   recordSchema,
   referenceSchema,
   TRAIT_VALUE_TYPES,
+  taxonRefSchema,
   traitRefSchema,
   userRefSchema,
 } from './dataset.ts';
 import { isValidIsbn } from './isbn.ts';
 import { cursorQuerySchema, SORT_ORDERS } from './pagination.ts';
-import { PLANT_TYPES } from './platform.ts';
+import { PLANT_TYPE_STATUSES, PLANT_TYPES } from './platform.ts';
 
 /** Free text attached to a write: 1–2,000 characters, trimmed. @rfc RFC-65 R1 */
 export const curationNoteSchema = z.string().trim().min(1).max(2000);
@@ -291,6 +292,33 @@ export const createSpeciesBodySchema = z.strictObject({
 });
 /** `POST /api/species/:id/plant-type`. @rfc RFC-65 R19 */
 export const changePlantTypeBodySchema = z.strictObject({ plantType: z.enum(PLANT_TYPES) });
+/** `POST /api/species/:id/plant-type/confirm`: the type, unchanged when omitted. @rfc RFC-65 R20 */
+export const confirmPlantTypeBodySchema = z.strictObject({
+  plantType: z.enum(PLANT_TYPES).optional(),
+});
+/** What a confirmation answers: never the species detail (RFC-65 R20). @rfc RFC-65 R20 */
+export const confirmPlantTypeResultSchema = z.strictObject({
+  id: z.uuid(),
+  plantType: z.enum(PLANT_TYPES),
+  plantTypeStatus: z.enum(PLANT_TYPE_STATUSES),
+});
+/** `GET /api/curation/plant-types` query. @rfc RFC-65 R20 */
+export const plantTypeQueueQuerySchema = cursorQuerySchema;
+/**
+ * One species awaiting a plant-type review: what the queue needs and no more
+ * (RFC-33 R11). `note` is the note of the proposal that created it.
+ * @rfc RFC-65 R20
+ */
+export const plantTypeQueueItemSchema = z.strictObject({
+  id: z.uuid(),
+  canonicalName: z.string(),
+  genus: taxonRefSchema.nullable(),
+  family: taxonRefSchema.nullable(),
+  plantType: z.enum(PLANT_TYPES),
+  createdBy: userRefSchema.nullable(),
+  createdAt: z.iso.datetime(),
+  note: z.string().nullable(),
+});
 /** @rfc RFC-60 R9 */
 export const updateSpeciesBodySchema = nonEmpty(
   {
@@ -421,6 +449,14 @@ export type UpdateGenusBody = z.infer<typeof updateGenusBodySchema>;
 export type CreateSpeciesBody = z.infer<typeof createSpeciesBodySchema>;
 /** @rfc RFC-65 R19 */
 export type ChangePlantTypeBody = z.infer<typeof changePlantTypeBodySchema>;
+/** @rfc RFC-65 R20 */
+export type ConfirmPlantTypeBody = z.infer<typeof confirmPlantTypeBodySchema>;
+/** @rfc RFC-65 R20 */
+export type ConfirmPlantTypeResult = z.infer<typeof confirmPlantTypeResultSchema>;
+/** @rfc RFC-65 R20 */
+export type PlantTypeQueueItem = z.infer<typeof plantTypeQueueItemSchema>;
+/** @rfc RFC-65 R20 */
+export type PlantTypeQueueQuery = z.infer<typeof plantTypeQueueQuerySchema>;
 export type UpdateSpeciesBody = z.infer<typeof updateSpeciesBodySchema>;
 export type SpeciesNameBody = z.infer<typeof speciesNameBodySchema>;
 export type CreateReferenceBody = z.infer<typeof createReferenceBodySchema>;

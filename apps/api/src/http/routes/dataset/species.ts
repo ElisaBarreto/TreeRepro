@@ -1,5 +1,6 @@
 import {
   changePlantTypeBodySchema,
+  confirmPlantTypeBodySchema,
   countSpeciesQuerySchema,
   createSpeciesBodySchema,
   idParamSchema,
@@ -19,6 +20,7 @@ import type { AuthContext } from '../../../auth/context.ts';
 import {
   addSpeciesName,
   changePlantType,
+  confirmPlantType,
   createSpecies,
   plantTypeFor,
   updateSpecies,
@@ -77,7 +79,7 @@ function filtersOf(
  * Hono can never read "proposals" as a species id.
  * @rfc RFC-60 R6, R7, R9, R10, R11, R12
  * @rfc RFC-63 R10
- * @rfc RFC-65 R13, R14, R18, R19
+ * @rfc RFC-65 R13, R14, R18, R19, R20
  * @rfc RFC-75 R2, R3
  */
 export function speciesRoutes(ctx: AuthContext) {
@@ -211,6 +213,21 @@ export function speciesRoutes(ctx: AuthContext) {
         async (c) =>
           c.json({
             data: await changePlantType(ctx.db, await visibilityOf(ctx, c), {
+              id: c.req.valid('param').id,
+              plantType: c.req.valid('json').plantType,
+              actorId: currentUser(c).id,
+            }),
+          }),
+      )
+      // RFC-65 R20: the plant-type queue's Confirm (RFC-33 R11).
+      .post(
+        '/:id/plant-type/confirm',
+        requirePermission(ctx, 'records.review'),
+        validate('param', idParamSchema),
+        validate('json', confirmPlantTypeBodySchema),
+        async (c) =>
+          c.json({
+            data: await confirmPlantType(ctx.db, await visibilityOf(ctx, c), {
               id: c.req.valid('param').id,
               plantType: c.req.valid('json').plantType,
               actorId: currentUser(c).id,

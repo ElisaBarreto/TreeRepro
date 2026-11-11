@@ -17,7 +17,7 @@ import { createUser } from '../../test/helpers/users.ts';
 import { RESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
-import { countContested, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups, countPlantTypeQueue } from '../dataset/queues.ts';
 import type { DbTransaction } from '../db/client.ts';
 import { speciesProposals } from '../db/schema/proposals.ts';
 import { species } from '../db/schema/taxa.ts';
@@ -346,6 +346,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
         pendingGroups: await countPendingGroups(tx, f.visibility),
         contested: contestedBefore + 1,
         proposals: openBefore + 1,
+        plantTypes: await countPlantTypeQueue(tx, f.visibility),
       });
       // The contract is strict at every nested object, so parsing a viewer who
       // has all four sections populated is what proves the answer carries no
