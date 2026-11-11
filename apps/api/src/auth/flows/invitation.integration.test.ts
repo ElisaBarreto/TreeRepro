@@ -1,6 +1,13 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, cookieFrom, ctxOf, randomIp, useTestApp } from '../../../test/helpers/app.ts';
+import {
+  call,
+  cookieFrom,
+  ctxOf,
+  randomIp,
+  TEST_PLANT_ORIGIN,
+  useTestApp,
+} from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { createUser, randomEmail } from '../../../test/helpers/users.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
@@ -103,6 +110,19 @@ describe('RFC-20 R6 POST /api/auth/invite/accept', () => {
     });
     return { user, email, token: link.split('/').at(-1) ?? '' };
   }
+
+  it('RFC-14 R5 accepting on PlantRepro opens a PlantRepro session', async () => {
+    const { user, token } = await invite();
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/invite/accept', {
+      body: { token, password: GOOD_PASSWORD },
+      origin: TEST_PLANT_ORIGIN,
+    });
+    expect(res.status).toBe(200);
+    const cookie = cookieFrom(res, '__Host-session') ?? '';
+    const plant = await call(t.app, 'GET', 'http://plantrepro.localhost/api/auth/me', { cookie });
+    expect((await plant.json()).data.user.id).toBe(user.id);
+    expect((await call(t.app, 'GET', '/api/auth/me', { cookie })).status).toBe(401);
+  });
 
   it('activates the user, consumes the token, opens a session and audits', async () => {
     const { user, token } = await invite();

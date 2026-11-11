@@ -163,6 +163,31 @@ describe('RFC-23 R6 POST /api/auth/login/totp', () => {
   const totp = (cookie: string, body: unknown) =>
     call(t.app, 'POST', '/api/auth/login/totp', { body, cookie });
 
+  it('RFC-14 R5 completing the TOTP step on PlantRepro opens a PlantRepro session', async () => {
+    const secret = generateTotpSecret();
+    const { user, email } = await createUser(t.db, { totpSecret: secret });
+    const plant = (path: string, body: unknown, cookie?: string) =>
+      call(t.app, 'POST', `http://plantrepro.localhost${path}`, {
+        body,
+        cookie,
+        origin: TEST_PLANT_ORIGIN,
+      });
+    const first = await plant('/api/auth/login', { email, password: DEFAULT_PASSWORD });
+    const mfaCookie = cookieFrom(first, '__Host-mfa') ?? '';
+    const res = await plant(
+      '/api/auth/login/totp',
+      {
+        code: generateTotpCode(secret, t.clock.now),
+      },
+      mfaCookie,
+    );
+    expect(res.status).toBe(200);
+    const cookie = cookieFrom(res, '__Host-session') ?? '';
+    const me = await call(t.app, 'GET', 'http://plantrepro.localhost/api/auth/me', { cookie });
+    expect((await me.json()).data.user.id).toBe(user.id);
+    expect((await call(t.app, 'GET', '/api/auth/me', { cookie })).status).toBe(401);
+  });
+
   it('completes login with a valid code, clears the MFA cookie and rejects a replay', async () => {
     const { user, secret, mfaCookie } = await challenge();
     const code = generateTotpCode(secret, t.clock.now);
