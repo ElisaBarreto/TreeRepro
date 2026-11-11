@@ -21,6 +21,7 @@ import {
 import { recordGroups } from '../../../dataset/record-groups.ts';
 import { getRecord, listRecords } from '../../../dataset/records.ts';
 import { resolveSourceRef, resolveSources } from '../../../dataset/sources.ts';
+import { dashboardKeys } from '../../../workspace/dashboard.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
@@ -67,7 +68,7 @@ export function recordRoutes(ctx: AuthContext) {
         // contributor section counts what was just written, and the services
         // stay free of Redis (RFC-72 R1). Best-effort, since the mutation
         // already committed.
-        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
           actorId: actor.id,
         });
         return c.json({ data: result }, 201);
@@ -100,7 +101,7 @@ export function recordRoutes(ctx: AuthContext) {
           canWithdrawAny: permissions.has('records.withdraw'),
           canWithdrawImported: permissions.has('records.withdraw_imported'),
         });
-        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
           actorId: actor.id,
         });
         // A withdraw leaves nothing visible to answer with (RFC-33 R2, plan
@@ -178,7 +179,7 @@ export function recordRoutes(ctx: AuthContext) {
         // Mapping a group creates records with `created_by = actor` (RFC-65
         // R9), so it invalidates the actor's own dashboard exactly as
         // creating one by hand does (RFC-72 R1).
-        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
           actorId: actor.id,
         });
         return c.json({ data: result });

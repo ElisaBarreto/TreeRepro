@@ -38,6 +38,7 @@ describe('RFC-60 R9 addSpeciesName persists the name type, language and source',
       nameType: 'common',
       language: 'pt',
       source: 'Flora e Funga do Brasil',
+      platform: 'treerepro',
       actorId: user.id,
     });
     expect(await namesOf(sp.id)).toEqual([
@@ -59,6 +60,7 @@ describe('RFC-60 R9 addSpeciesName persists the name type, language and source',
       speciesId: sp.id,
       name,
       nameType: 'synonym',
+      platform: 'treerepro',
       actorId: user.id,
     });
     expect(await namesOf(sp.id)).toEqual([
@@ -75,6 +77,7 @@ describe('RFC-60 R9 addSpeciesName persists the name type, language and source',
       name,
       nameType: 'gbif',
       gbifUsageKey: `key-${tag()}`,
+      platform: 'treerepro',
       actorId: user.id,
     });
     const [row] = await namesOf(sp.id);

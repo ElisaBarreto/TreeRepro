@@ -18,18 +18,22 @@ import { speciesVisible, traitVisible, type Visibility, visibilityFor } from './
 
 describe('RFC-33 R1 visibilityFor', () => {
   it('reads dataset.read_inactive and plot settings', () => {
-    expect(visibilityFor(new Set(['dataset.read']))).toEqual({
+    expect(visibilityFor(new Set(['dataset.read']), 'treerepro')).toEqual({
       inactive: false,
       plotIds: null,
       review: false,
+      platform: 'treerepro',
     });
-    expect(visibilityFor(new Set(['dataset.read', 'dataset.read_inactive']))).toEqual({
-      inactive: true,
-      plotIds: null,
-      review: false,
-    });
+    expect(visibilityFor(new Set(['dataset.read', 'dataset.read_inactive']), 'plantrepro')).toEqual(
+      {
+        inactive: true,
+        plotIds: null,
+        review: false,
+        platform: 'plantrepro',
+      },
+    );
     expect(
-      visibilityFor(new Set(['dataset.read']), {
+      visibilityFor(new Set(['dataset.read']), 'treerepro', {
         restricted: true,
         plotIds: ['019a0000-0000-7000-8000-000000000001'],
       }),
@@ -37,11 +41,13 @@ describe('RFC-33 R1 visibilityFor', () => {
       inactive: false,
       plotIds: ['019a0000-0000-7000-8000-000000000001'],
       review: false,
+      platform: 'treerepro',
     });
-    expect(visibilityFor(new Set(['dataset.read', 'records.review']))).toEqual({
+    expect(visibilityFor(new Set(['dataset.read', 'records.review']), 'treerepro')).toEqual({
       inactive: false,
       plotIds: null,
       review: true,
+      platform: 'treerepro',
     });
   });
 });
@@ -82,7 +88,7 @@ describe('RFC-33 R2 predicates', () => {
     const outside = await createSpecies(t.db);
     await addPlotSpecies(t.db, plot.id, [inside.id]);
 
-    const boundVisibility = { inactive: false, plotIds: [plot.id] };
+    const boundVisibility = { inactive: false, plotIds: [plot.id], platform: 'treerepro' as const };
     const rows = async (v: Visibility) =>
       (
         await t.db
@@ -92,7 +98,7 @@ describe('RFC-33 R2 predicates', () => {
       ).map((r) => r.id);
 
     expect(await rows(boundVisibility)).toEqual([inside.id]);
-    expect(await rows({ inactive: false, plotIds: [] })).toEqual([]);
+    expect(await rows({ inactive: false, plotIds: [], platform: 'treerepro' })).toEqual([]);
     expect((await rows(UNRESTRICTED)).sort()).toEqual([inside.id, outside.id].sort());
   });
 

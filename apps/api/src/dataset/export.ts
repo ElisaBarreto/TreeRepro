@@ -189,7 +189,7 @@ function csvStream<Row extends object>(
  * nothing else does (RFC-63 R17).
  */
 function visibleRecord(v: Visibility, copies = false): SQL {
-  return sql`${speciesVisible(v, sql`s.active`, sql`s.id`)}
+  return sql`${speciesVisible(v, 's')}
     and ${traitVisible(v, sql`t.active`)}
     and ${recordVisible(v, sql`r.id`, sql`r.harmonisation`, { copies })}`;
 }

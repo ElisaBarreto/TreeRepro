@@ -102,7 +102,7 @@ export function countedRecordsSql(
       ${traitId ? sql`and r.trait_id = ${traitId}::uuid` : sql``}
       and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
       and ${traitVisible(visibility, sql`t.active`)}
-      and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}`;
+      and ${speciesVisible(visibility, 's')}`;
 }
 
 /**

@@ -727,7 +727,7 @@ export async function listFamilies(
   // "has any species" — a family without species would vanish for admins too.
   if (!visibility.inactive || visibility.plotIds !== null) {
     conditions.push(
-      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
+      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, 's')})`,
     );
   }
   const rows = await db
@@ -778,7 +778,7 @@ export async function listGenera(
   // Same guard as listFamilies: only push for a restricted viewer.
   if (!visibility.inactive || visibility.plotIds !== null) {
     conditions.push(
-      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
+      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, 's')})`,
     );
   }
   const rows = await db

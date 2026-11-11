@@ -491,7 +491,7 @@ describe('RFC-50 R13, RFC-67 R6 PUT /api/admin/users/:id/plots', () => {
     });
     const targetCookie = (await loginAs(t, user)).cookie;
     const p1 = await createPlot(t.db);
-    const key = `dashboard:${user.id}`;
+    const key = `dashboard:treerepro:${user.id}`;
 
     try {
       // Warm the target's own cache entry while they still have no plots.

@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { resolveContest, withdrawContest } from '../../../dataset/contest-actions.ts';
+import { dashboardKeys } from '../../../workspace/dashboard.ts';
 import type { AppEnv } from '../../env.ts';
 import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
@@ -27,7 +28,7 @@ export function contestRoutes(ctx: AuthContext) {
           contestId: c.req.valid('param').id,
           actorId: actor.id,
         });
-        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
           actorId: actor.id,
         });
         return c.json({ data: null }, 200);
@@ -45,7 +46,7 @@ export function contestRoutes(ctx: AuthContext) {
           actorId: actor.id,
           canWithdrawAny: currentPermissions(c).has('records.withdraw'),
         });
-        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
           actorId: actor.id,
         });
         return c.json({ data: null }, 200);

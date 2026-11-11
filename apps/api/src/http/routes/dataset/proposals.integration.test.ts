@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { Lookup } from '@treerepro/contracts';
+import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
 import { createSpecies } from '../../../../test/helpers/dataset.ts';
@@ -230,10 +231,16 @@ describe('RFC-75 R4 decisions', () => {
     expect(body.data.status).toBe('approved');
     expect(body.data.species.canonicalName).toBe(name);
 
+    // The approver holds no records.review, so the tree starts proposed and
+    // shows on PlantRepro only (RFC-65 R18, RFC-33 R2).
     const species = await call(t.app, 'GET', `/api/species/${body.data.species.id}`, {
       cookie: boss.cookie,
     });
-    expect(species.status).toBe(200);
+    expect(species.status).toBe(404);
+    const [row] = await t.db.execute<{ plant_type_status: string }>(
+      sql`select plant_type_status from species where id = ${body.data.species.id}`,
+    );
+    expect(row?.plant_type_status).toBe('proposed');
 
     const again = await call(t.app, 'POST', `/api/species/proposals/${id}/reject`, {
       cookie: boss.cookie,

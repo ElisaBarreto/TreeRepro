@@ -20,11 +20,12 @@ import { pageOf, type SortKey, sortedKeyset } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import type { TaxonomyClient, TaxonomyLookup } from '../integrations/taxonomy.ts';
 import {
-  addSpeciesName,
   createFamily,
   createGenus,
   createSpecies,
+  insertSpeciesName,
   plantTypeFor,
+  refuseHiddenName,
 } from './catalog.ts';
 import { normaliseName } from './names.ts';
 
@@ -182,6 +183,7 @@ export async function createProposal(
       { path: 'name', message: takenBy },
     ]);
   }
+  await refuseHiddenName(ctx.db, visibility, name);
   const alreadyOpen = await openProposalNamed(ctx.db, name);
   if (alreadyOpen) {
     throw new AppError('PROPOSAL_EXISTS', 'This species has already been proposed', [
@@ -402,16 +404,18 @@ export async function approveProposal(
       genusId,
       plantType,
       plantTypeStatus: input.review ? 'reviewed' : 'proposed',
+      platform: input.platform,
       actorId: input.actorId,
     });
     for (const alternative of input.body.alternativeNames ?? []) {
-      await addSpeciesName(tx, {
+      await insertSpeciesName(tx, {
         speciesId: created.id,
         name: alternative.name,
         nameType: alternative.nameType,
         language: alternative.language,
         source: alternative.source,
         gbifUsageKey: alternative.gbifUsageKey,
+        platform: input.platform,
         actorId: input.actorId,
       });
     }

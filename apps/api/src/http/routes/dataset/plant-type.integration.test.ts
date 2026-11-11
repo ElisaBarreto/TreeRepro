@@ -205,16 +205,26 @@ describe('RFC-65 R18, R19 / RFC-75 R2, R4 / RFC-60 R6 plant type', () => {
     });
     expect(asTree.status).toBe(200);
     const id = (await asTree.json()).data.species.id;
-    expect((await (await approver.send('GET', `/api/species/${id}`)).json()).data).toMatchObject({
+    // Tree but proposed, so hidden on TreeRepro (RFC-33 R2): read it on PlantRepro.
+    expect((await approver.send('GET', `/api/species/${id}`)).status).toBe(404);
+    expect(
+      (await (await plantApprover.send('GET', `/api/species/${id}`)).json()).data,
+    ).toMatchObject({
       plantType: 'tree',
       plantTypeStatus: 'proposed',
     });
   });
 
   it('POST /api/species/:id/plant-type needs records.review, sets reviewed and audits the old and new values', async () => {
-    const plain = await actor('treerepro', MANAGE);
-    const reviewer = await actor('treerepro', REVIEW);
+    // A proposed species is outside TreeRepro's scope (RFC-33 R2): it is reviewed on PlantRepro.
+    const plain = await actor('plantrepro', MANAGE);
+    const reviewer = await actor('plantrepro', REVIEW);
+    const treeReviewer = await actor('treerepro', REVIEW);
     const sp = await createSpecies(t.db, { plantTypeStatus: 'proposed' });
+    expect(
+      (await treeReviewer.send('POST', `/api/species/${sp.id}/plant-type`, { plantType: 'tree' }))
+        .status,
+    ).toBe(404);
 
     const denied = await plain.send('POST', `/api/species/${sp.id}/plant-type`, {
       plantType: 'tree',
@@ -237,11 +247,13 @@ describe('RFC-65 R18, R19 / RFC-75 R2, R4 / RFC-60 R6 plant type', () => {
       to: { plantType: 'tree', plantTypeStatus: 'reviewed' },
     });
 
-    // A manager on TreeRepro may reclassify a tree.
-    const reclassified = await reviewer.send('POST', `/api/species/${sp.id}/plant-type`, {
+    // A manager on TreeRepro may reclassify a tree; it then leaves TreeRepro.
+    const reclassified = await treeReviewer.send('POST', `/api/species/${sp.id}/plant-type`, {
       plantType: 'not_tree',
     });
+    expect(reclassified.status).toBe(200);
     expect((await reclassified.json()).data.plantType).toBe('not_tree');
+    expect((await treeReviewer.send('GET', `/api/species/${sp.id}`)).status).toBe(404);
     const audit = await lastAudit(t.db, 'taxa.updated', { targetId: sp.id });
     expect(audit?.metadata).toMatchObject({
       from: { plantType: 'tree', plantTypeStatus: 'reviewed' },
@@ -287,7 +299,8 @@ describe('RFC-65 R18, R19 / RFC-75 R2, R4 / RFC-60 R6 plant type', () => {
   });
 
   it('GET /api/species filters and sorts by plant type and carries it on the item', async () => {
-    const reader = await actor('treerepro', ['dataset.read']);
+    // PlantRepro, whose scope shows the proposed not-tree too (RFC-33 R2).
+    const reader = await actor('plantrepro', ['dataset.read']);
     const k = tag();
     const tree = await createSpecies(t.db, { canonicalName: `Typus ${k} a` });
     const herb = await createSpecies(t.db, {

@@ -54,7 +54,7 @@ function pendingWhere(visibility: Visibility, traitId?: string): SQL {
   const scope = traitId === undefined ? sql`true` : sql`r.trait_id = ${traitId}::uuid`;
   return sql`${PENDING}
     and ${scope}
-    and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
+    and ${speciesVisible(visibility, 's')}
     and ${traitVisible(visibility, sql`t.active`)}`;
 }
 
@@ -310,7 +310,7 @@ export async function mapPending(
           coalesce(r.raw_value, r.value_text) as raw_value
         from trait_records r
         join species s on s.id = r.species_id
-        where ${group} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}),
+        where ${group} and ${speciesVisible(visibility, 's')}),
       chosen as (${chosen}),
       ins as (
         insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,

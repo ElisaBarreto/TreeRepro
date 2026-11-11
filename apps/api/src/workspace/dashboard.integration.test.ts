@@ -140,7 +140,7 @@ async function plotFixture(tx: DbTransaction) {
     permissions: permissions('dataset.read'),
     scope: { plots: [plot], restricted: true },
   };
-  const visibility: Visibility = { inactive: false, plotIds: [plot.id] };
+  const visibility: Visibility = { inactive: false, plotIds: [plot.id], platform: 'treerepro' };
   return {
     viewer,
     manager,
@@ -296,7 +296,10 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       // The ranking is plot-blind (Spec note 3): restricting a viewer to zero
       // plots narrows nothing here, the same as `GET /api/traits`.
       const unbound = await traitsWithData({ db: tx, redis }, RESTRICTED);
-      const noPlots = await traitsWithData({ db: tx, redis }, { inactive: false, plotIds: [] });
+      const noPlots = await traitsWithData(
+        { db: tx, redis },
+        { inactive: false, plotIds: [], platform: 'treerepro' },
+      );
       const bound = await traitsWithData({ db: tx, redis }, f.visibility);
       expect(noPlots.some((r) => r.trait.id === f.traitA.id)).toBe(true);
       expect(noPlots).toEqual(unbound);
@@ -418,8 +421,8 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
         permissions: permissions('dataset.read'),
         scope: { plots: [plot], restricted: true },
       };
-      const visibility: Visibility = { inactive: false, plotIds: [plot.id] };
-      const key = `dashboard:${viewer.id}`;
+      const visibility: Visibility = { inactive: false, plotIds: [plot.id], platform: 'treerepro' };
+      const key = `dashboard:treerepro:${viewer.id}`;
 
       try {
         const first = await getDashboard({ db: tx, redis }, visibility, viewerScope);
@@ -455,7 +458,7 @@ describe('RFC-72 R1 getDashboard over the viewer plots', () => {
       const f = await plotFixture(tx);
       // `dashboard:<viewer id>` is keyed by a user this test created, so no
       // other caller in the run can write or read it.
-      const key = `dashboard:${f.viewer.id}`;
+      const key = `dashboard:treerepro:${f.viewer.id}`;
       try {
         const first = await getDashboard({ db: tx, redis }, f.visibility, f.viewerScope);
         expect(first.contributor.summary.records).toBe(2);
@@ -561,7 +564,7 @@ describe('RFC-72 R1 the dataset counts', () => {
       await freezeSnapshot(tx);
       // The counts are dataset-wide: only the delta around this fixture can be
       // asserted, and the frozen snapshot keeps a sibling's commits out of it.
-      const before = await computeDatasetStats(tx);
+      const before = await computeDatasetStats(tx, 'treerepro');
       const { user } = await createUser(tx);
       const reference = await createReference(tx);
       const secondary = await createReference(tx);
@@ -584,7 +587,7 @@ describe('RFC-72 R1 the dataset counts', () => {
         });
       }
 
-      const after = await computeDatasetStats(tx);
+      const after = await computeDatasetStats(tx, 'treerepro');
       expect(after.speciesCount - before.speciesCount).toBe(1);
       expect(after.referenceCount - before.referenceCount).toBe(3);
       // Spec R-18: a reference counts once per role it holds, however many
@@ -608,7 +611,7 @@ describe('RFC-72 R1 the dataset counts', () => {
     let computed = 0;
     const compute = () => {
       computed += 1;
-      return computeDatasetStats(t.db);
+      return computeDatasetStats(t.db, 'treerepro');
     };
     try {
       const first = await cachedJson(redis, key, 3600, compute);
@@ -636,11 +639,11 @@ describe('RFC-72 R1 the dataset counts', () => {
       // that the second call did not recompute its own.
       expect(second.dataset.computedAt).toBe(first.dataset.computedAt);
       expect(second.dataset).toEqual(first.dataset);
-      const ttl = await redis.ttl('stats:dataset');
+      const ttl = await redis.ttl('stats:dataset:treerepro');
       expect(ttl).toBeGreaterThan(0);
       expect(ttl).toBeLessThanOrEqual(3600);
     } finally {
-      await forgetCached(redis, `dashboard:${user.id}`);
+      await forgetCached(redis, `dashboard:treerepro:${user.id}`);
     }
   });
 });

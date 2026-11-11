@@ -33,6 +33,7 @@ import {
   searchSpecies,
   treeFlagCounts,
 } from '../../../dataset/taxa.ts';
+import { dashboardKeys } from '../../../workspace/dashboard.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
@@ -113,6 +114,7 @@ export function speciesRoutes(ctx: AuthContext) {
             // RFC-65 R18: the platform fixes or requires the type; the creator's review decides the status.
             plantType: plantTypeFor(c.get('platform'), plantType),
             plantTypeStatus: currentPermissions(c).has('records.review') ? 'reviewed' : 'proposed',
+            platform: c.get('platform'),
             actorId: currentUser(c).id,
           });
           return c.json({ data }, 201);
@@ -180,6 +182,7 @@ export function speciesRoutes(ctx: AuthContext) {
             data: await updateSpecies(ctx.db, {
               id: c.req.valid('param').id,
               ...c.req.valid('json'),
+              platform: c.get('platform'),
               actorId: currentUser(c).id,
             }),
           }),
@@ -225,6 +228,7 @@ export function speciesRoutes(ctx: AuthContext) {
               data: await addSpeciesName(ctx.db, {
                 speciesId: c.req.valid('param').id,
                 ...c.req.valid('json'),
+                platform: c.get('platform'),
                 actorId: currentUser(c).id,
               }),
             },
@@ -256,7 +260,7 @@ export function speciesRoutes(ctx: AuthContext) {
             actorId: actor.id,
             referenceId,
           });
-          await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
             actorId: actor.id,
           });
           return c.json({ data }, 201);
@@ -279,7 +283,7 @@ export function speciesRoutes(ctx: AuthContext) {
             canWithdrawAny: permissions.has('records.withdraw'),
             canWithdrawImported: permissions.has('records.withdraw_imported'),
           });
-          await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
             actorId: actor.id,
           });
           return c.json({ data }, 201);

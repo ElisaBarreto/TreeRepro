@@ -5,6 +5,7 @@ import {
   levelVisible,
   traitVisible,
   type Visibility,
+  viewerClass,
 } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories, traitLevels, traits } from '../db/schema/dictionary.ts';
@@ -127,7 +128,7 @@ export async function dictionaryCategories(
 /**
  * The visible species count per trait, keyed by trait id: a scan of
  * `species_trait_coverage` joined to visible species, cached 10 minutes per
- * viewer class under `dictionary:species-counts:<u|r>` (RFC-62 R5) — the
+ * viewer class under `dictionary:species-counts:<platform>:<u|r>` (RFC-62 R5) — the
  * table is millions of rows, so this is not recomputed per request.
  *
  * Exported for the workspace dashboard (RFC-72 R1), whose `topTraitsWithData`
@@ -141,13 +142,13 @@ export async function speciesCountsByTrait(
   ctx: { db: DbExecutor; redis: Redis },
   visibility: Visibility,
 ): Promise<Map<string, number>> {
-  const key = `dictionary:species-counts:${visibility.inactive ? 'u' : 'r'}`;
+  const key = `dictionary:species-counts:${viewerClass(visibility)}`;
   const { value } = await cachedJson(ctx.redis, key, 600, async () => {
     const rows = (await ctx.db.execute(sql`
       select c.trait_id as trait_id, count(*)::int as species_count
       from species_trait_coverage c
       join species s on s.id = c.species_id
-      where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+      where ${globalSpeciesVisible(visibility, 's')}
       group by c.trait_id
     `)) as unknown as { trait_id: string; species_count: number }[];
     return rows.map((r) => [r.trait_id, r.species_count] as [string, number]);
@@ -236,7 +237,7 @@ export async function getTrait(
     select count(*)::int as species_count
     from species_trait_coverage c
     join species s on s.id = c.species_id
-    where c.trait_id = ${id} and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+    where c.trait_id = ${id} and ${globalSpeciesVisible(visibility, 's')}
   `)) as unknown as { species_count: number }[];
   return {
     id: t.id,

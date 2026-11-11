@@ -20,11 +20,11 @@ import { sanitizeError } from './errors.ts';
 export async function forgetCachedBestEffort(
   logger: Logger,
   redis: Redis,
-  key: string,
+  key: string | readonly string[],
   context: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await forgetCached(redis, key);
+    await forgetCached(redis, ...(typeof key === 'string' ? [key] : key));
   } catch (err) {
     logger.warn(
       { key, ...context, err: sanitizeError(err instanceof Error ? err : new Error(String(err))) },

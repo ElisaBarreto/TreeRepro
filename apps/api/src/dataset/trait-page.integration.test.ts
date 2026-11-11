@@ -23,10 +23,11 @@ import { forgetCached } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
 import { getTraitDetail, listTraitSpecies } from './trait-page.ts';
 
-/** Both viewer classes of RFC-62 R7's distribution cache, for a `finally`. */
+/** The viewer classes of RFC-62 R7's distribution cache these tests use, for a `finally`. */
 const cacheKeys = (traitId: string) => [
-  `trait:${traitId}:distribution:v4:u`,
-  `trait:${traitId}:distribution:v4:r`,
+  `trait:${traitId}:distribution:v4:plantrepro:u`,
+  `trait:${traitId}:distribution:v4:treerepro:r`,
+  `trait:${traitId}:distribution:v4:treerepro:u`,
 ];
 
 type Actor = { id: string };
@@ -356,15 +357,22 @@ describe('RFC-62 R7 getTraitDetail', () => {
             all?.n,
           );
 
+          // Compared on one platform: TreeRepro's scope is the reviewed trees (RFC-33 R2).
+          const treeUnrestricted = await getTraitDetail(
+            { db: tx, redis },
+            { ...UNRESTRICTED, platform: 'treerepro' },
+            trait.id,
+          );
           const [inactive] = (await tx.execute(
-            sql`select count(*)::int as n from species where not active`,
+            sql`select count(*)::int as n from species where not active
+              and plant_type = 'tree' and plant_type_status = 'reviewed'`,
           )) as unknown as { n: number }[];
           expect(inactive?.n).toBeGreaterThan(0);
           // A restricted viewer never sees an inactive species, so the whole
           // difference between the two viewers' missing counts is exactly
           // the inactive species — `hidden` among them.
           const restricted = await getTraitDetail({ db: tx, redis }, RESTRICTED, trait.id);
-          expect((unrestricted?.speciesMissing ?? 0) - (restricted?.speciesMissing ?? 0)).toBe(
+          expect((treeUnrestricted?.speciesMissing ?? 0) - (restricted?.speciesMissing ?? 0)).toBe(
             inactive?.n,
           );
         },
@@ -731,7 +739,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
       const second = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(second?.computedAt).toBe(first?.computedAt);
 
-      await forgetCached(redis, `trait:${trait.id}:distribution:v4:u`);
+      await forgetCached(redis, `trait:${trait.id}:distribution:v4:plantrepro:u`);
       const third = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
       expect(third?.computedAt).not.toBe(first?.computedAt);
     } finally {
@@ -827,7 +835,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
         async (tx) => {
           const plotBound = await getTraitDetail(
             { db: tx, redis },
-            { inactive: false, plotIds: [plot.id] },
+            { inactive: false, plotIds: [plot.id], platform: 'treerepro' },
             trait.id,
           );
           expect(plotBound?.speciesWithData).toBe(2);
@@ -1042,7 +1050,7 @@ describe('RFC-62 R8 listTraitSpecies', () => {
       });
     }
 
-    const plotBound = { inactive: false, plotIds: [plot.id] };
+    const plotBound = { inactive: false, plotIds: [plot.id], platform: 'treerepro' as const };
     const withData = await listTraitSpecies(t.db, plotBound, trait.id, {
       mode: 'with',
       viewerPlotIds: [plot.id],
