@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { parquetWriteBuffer } from 'hyparquet-writer';
 import { describe, expect, it } from 'vitest';
-import { createImportBatch } from '../../test/helpers/dataset.ts';
+import { createImportBatch, createSpecies } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
 import { importBatches, importRejects } from '../db/schema/imports.ts';
@@ -1260,6 +1260,62 @@ describe('RFC-64 importRecords', () => {
         rowsRejected: 0,
       });
       expect((await speciesOf(trees.id)).map((r) => r.name)).toEqual([`Arboria alta-${k}`]);
+    });
+
+    it('R5 a created species takes its plant type from is_tree_species, reviewed; an existing one keeps its own (plan 15d)', async () => {
+      const k = tag();
+      const typeOf = async (name: string) => {
+        const [r] = await t.db
+          .select({ type: species.plantType, status: species.plantTypeStatus })
+          .from(species)
+          .where(eq(species.canonicalName, name));
+        return r ? `${r.type}/${r.status}` : null;
+      };
+      // An existing species, proposed as a herb, that the file calls a tree.
+      await createSpecies(t.db, {
+        canonicalName: `Typia vetus-${k}`,
+        plantType: 'not_tree',
+        plantTypeStatus: 'proposed',
+      });
+      await importRecords(t.db, {
+        filePath: await writeCsv([
+          row({ ID: freshId(), species: `Typia arbor-${k}`, is_tree_species: 'TRUE' }),
+          row({ ID: freshId(), species: `Typia herba-${k}`, is_tree_species: 'FALSE' }),
+          row({ ID: freshId(), species: `Typia ignota-${k}`, is_tree_species: null }),
+          row({ ID: freshId(), species: `Typia vetus-${k}`, is_tree_species: 'TRUE' }),
+        ]),
+      });
+      expect(await typeOf(`Typia arbor-${k}`)).toBe('tree/reviewed');
+      expect(await typeOf(`Typia herba-${k}`)).toBe('not_tree/reviewed');
+      expect(await typeOf(`Typia ignota-${k}`)).toBe('not_tree/reviewed');
+      expect(await typeOf(`Typia vetus-${k}`)).toBe('not_tree/proposed');
+
+      // --trees-only creates only reviewed trees.
+      await importRecords(t.db, {
+        filePath: await writeCsv([
+          row({ ID: freshId(), species: `Typia sola-${k}`, is_tree_species: 'TRUE' }),
+          row({ ID: freshId(), species: `Typia omissa-${k}`, is_tree_species: 'FALSE' }),
+        ]),
+        treesOnly: true,
+      });
+      expect(await typeOf(`Typia sola-${k}`)).toBe('tree/reviewed');
+      expect(await typeOf(`Typia omissa-${k}`)).toBeNull();
+
+      // A file without the column gives trees, as every import did before.
+      const { is_tree_species: _dropped, ...plain } = row({
+        ID: freshId(),
+        species: `Typia antiqua-${k}`,
+      });
+      await importRecords(t.db, { filePath: await writeCsv([plain]) });
+      expect(await typeOf(`Typia antiqua-${k}`)).toBe('tree/reviewed');
+
+      // Parquet without --trees-only still reads the column.
+      await importRecords(t.db, {
+        filePath: await writeParquet([
+          row({ ID: freshId(), species: `Typia parquet-${k}`, is_tree_species: false }),
+        ]),
+      });
+      expect(await typeOf(`Typia parquet-${k}`)).toBe('not_tree/reviewed');
     });
 
     it('R2 --trees-only without an is_tree_species column is refused before any batch row', async () => {

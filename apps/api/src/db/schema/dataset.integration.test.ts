@@ -52,14 +52,12 @@ describe('RFC-60 R1 taxonomy tables', () => {
       await expect(
         unwrapDbError(
           tx.transaction((sp) =>
-            sp
-              .insert(species)
-              .values({
-                plantType: 'tree',
-                plantTypeStatus: 'reviewed',
-                canonicalName: `X-${rand()}`,
-                nameSource: 'guess' as never,
-              }),
+            sp.insert(species).values({
+              plantType: 'tree',
+              plantTypeStatus: 'reviewed',
+              canonicalName: `X-${rand()}`,
+              nameSource: 'guess' as never,
+            }),
           ),
         ),
       ).rejects.toMatchObject({ code: '23514' });
