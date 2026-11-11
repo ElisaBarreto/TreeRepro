@@ -27,3 +27,11 @@ export const PLANT_TYPE_STATUSES = ['proposed', 'reviewed'] as const;
 
 /** @rfc RFC-60 R1 */
 export type PlantTypeStatus = (typeof PLANT_TYPE_STATUSES)[number];
+
+/**
+ * The message of the 409 `SPECIES_NAME_TAKEN` that refuses a name a species
+ * hidden on TreeRepro holds; the web app shows it as it is (RFC-60 R13).
+ * @rfc RFC-60 R13
+ */
+export const HIDDEN_SPECIES_NAME_MESSAGE =
+  'This species already exists, but it is not classified as a tree on TreeRepro. A manager can review its type.';

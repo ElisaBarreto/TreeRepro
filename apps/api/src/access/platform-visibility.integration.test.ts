@@ -14,6 +14,7 @@ import { unzip } from '../../test/helpers/export.ts';
 import { adminRoleId } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser } from '../../test/helpers/users.ts';
+import { speciesNames } from '../db/schema/taxa.ts';
 
 const tag = () => randomBytes(4).toString('hex');
 
@@ -176,5 +177,43 @@ describe('RFC-33 R2, R5, R9 visibility per platform', () => {
     expect(added.status).toBe(201);
     const seen = await tree('GET', `/api/species/${s.tree.id}`);
     expect((await seen.json()).data.names).toHaveLength(1);
+  });
+
+  it('RFC-60 R13 on TreeRepro a name a hidden species holds is refused with no link; on PlantRepro it is the usual collision', async () => {
+    const s = await scene();
+    const tree = s.on('treerepro');
+    const synonym = `Herba synonyma ${tag()}`;
+    await t.db.insert(speciesNames).values({
+      speciesId: s.herb.id,
+      name: synonym,
+      nameType: 'synonym',
+      source: 'manual',
+    });
+    const refused = (res: Response) => async () => {
+      expect(res.status).toBe(409);
+      const { error } = await res.json();
+      expect(error.code).toBe('SPECIES_NAME_TAKEN');
+      expect(error.message).toMatch(/not classified as a tree on TreeRepro/);
+      expect(error.details).toBeUndefined();
+      expect(JSON.stringify(error)).not.toContain(s.herb.id);
+    };
+    for (const name of [s.herb.canonicalName, synonym.toUpperCase(), s.proposed.canonicalName]) {
+      await refused(await tree('POST', '/api/species/proposals', { name }))();
+      await refused(
+        await tree('POST', '/api/species', { canonicalName: name, nameSource: 'original' }),
+      )();
+      await refused(
+        await tree('POST', `/api/species/${s.tree.id}/names`, { name, nameType: 'synonym' }),
+      )();
+    }
+    // A visible species keeps the answer that links to it (RFC-75 R2).
+    const visible = await tree('POST', '/api/species/proposals', { name: s.tree.canonicalName });
+    expect((await visible.json()).error.details).toEqual([{ path: 'name', message: s.tree.id }]);
+    // On PlantRepro nothing is hidden: the proposal links to the species.
+    const plant = await s.on('plantrepro')('POST', '/api/species/proposals', {
+      name: s.herb.canonicalName,
+      plantType: 'not_tree',
+    });
+    expect((await plant.json()).error.details).toEqual([{ path: 'name', message: s.herb.id }]);
   });
 });

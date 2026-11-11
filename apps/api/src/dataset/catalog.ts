@@ -1,5 +1,6 @@
 import {
   type Genus,
+  HIDDEN_SPECIES_NAME_MESSAGE,
   isValidIsbn,
   type NameSource,
   type NameType,
@@ -99,10 +100,7 @@ export async function refuseHiddenName(
     )
     .limit(1);
   if (row)
-    throw new AppError(
-      'SPECIES_NAME_TAKEN',
-      'This species already exists, but it is not classified as a tree on TreeRepro. A manager can review its type.',
-    );
+    throw new AppError('SPECIES_NAME_TAKEN', HIDDEN_SPECIES_NAME_MESSAGE);
 }
 
 async function taxaAudit(
