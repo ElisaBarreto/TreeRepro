@@ -29,6 +29,13 @@ const theme = canopy(css.slice(css.indexOf('@theme'), css.indexOf('}', css.index
 const plantStart = css.indexOf('[data-platform="plantrepro"]');
 const plum = canopy(css.slice(plantStart, css.indexOf('}', plantStart)));
 const MIST_50 = /--color-mist-50:\s*(#[0-9a-f]{6})/i.exec(css)?.[1] as string;
+/** Every mist and pollen text token, and white. */
+const TEXT_TOKENS: Record<string, string> = {
+  ...Object.fromEntries(
+    [...css.matchAll(/--color-((?:mist|pollen)-\d+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]),
+  ),
+  white: '#ffffff',
+};
 
 describe('RFC-13 R14 PlantRepro plum tokens', () => {
   it('override every canopy token', () => {
@@ -46,5 +53,18 @@ describe('RFC-13 R14 PlantRepro plum tokens', () => {
       for (const level of [4.5, 3])
         if (before >= level) expect(after, `${shade} on ${surface}`).toBeGreaterThanOrEqual(level);
     });
+  });
+
+  // The plum surfaces under text (canopy 950, 900, 800, 700): every text
+  // token that meets AA (4.5:1) or large-text (3:1) contrast on a canopy
+  // surface meets it on the plum one.
+  it.each(['950', '900', '800', '700'])('text tokens keep their contrast on canopy-%s', (shade) => {
+    for (const [name, token] of Object.entries(TEXT_TOKENS)) {
+      const before = contrast(token, theme[shade] as string);
+      const after = contrast(token, plum[shade] as string);
+      for (const level of [4.5, 3])
+        if (before >= level)
+          expect(after, `${name} on canopy-${shade}`).toBeGreaterThanOrEqual(level);
+    }
   });
 });
