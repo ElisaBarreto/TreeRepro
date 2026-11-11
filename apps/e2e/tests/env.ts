@@ -1,6 +1,14 @@
 import { randomBytes } from 'node:crypto';
 
 export const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:8080';
+/** PlantRepro on the same stack: `plantrepro.` before BASE_URL's host (RFC-14 R7, compose.e2e.yml). */
+export const PLANT_URL =
+  process.env.E2E_PLANT_URL ??
+  (() => {
+    const url = new URL(BASE_URL);
+    url.hostname = `plantrepro.${url.hostname}`;
+    return url.origin;
+  })();
 export const MAILPIT_URL = process.env.E2E_MAILPIT_URL ?? 'http://localhost:8026';
 export const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@e2e.test';
 /** `storageState` written by `global-setup.ts`, relative to `apps/e2e` (the suite's cwd); `adminContext()` reads it to start a spec file already signed in. */
