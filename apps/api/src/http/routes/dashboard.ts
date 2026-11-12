@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { userScopeOf, visibilityOf } from '../../access/visibility.ts';
 import type { AuthContext } from '../../auth/context.ts';
-import { getDashboard } from '../../workspace/dashboard.ts';
+import { cacheGeneration } from '../../redis/cache.ts';
+import { dashboardKey, getDashboard } from '../../workspace/dashboard.ts';
 import type { AppEnv } from '../env.ts';
 import { currentPermissions, requirePermission } from '../middleware/require-permission.ts';
 import { currentUser } from '../middleware/session.ts';
@@ -16,6 +17,9 @@ import { currentUser } from '../middleware/session.ts';
 export function dashboardRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>().get('/dashboard', requirePermission(ctx, 'dataset.read'), async (c) => {
     const user = currentUser(c);
+    // Before the scope is read: a plot assignment committed in between drops
+    // the entry, and this request must then not store what it computes (#417).
+    const generation = cacheGeneration(ctx.redis, dashboardKey(c.get('platform'), user.id));
     // Sequential on purpose: `visibilityOf` resolves the scope itself and
     // leaves it on the request, so the second call is a hit rather than a
     // second query racing the first to fill the same slot.
@@ -25,6 +29,7 @@ export function dashboardRoutes(ctx: AuthContext) {
       id: user.id,
       permissions: currentPermissions(c),
       scope,
+      generation,
     });
     return c.json({ data });
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
-import { cachedJson, forgetCached } from './cache.ts';
+import { cachedJson, cacheGeneration, forgetCached } from './cache.ts';
 
 /**
  * One-shot signal. As `started`, a `compute` opens it on entry so the test
@@ -175,5 +175,20 @@ describe('RFC-10 R15 cachedJson', () => {
     fill.open();
     await stale;
     expect(await t.redis.get(key)).toBeNull();
+  });
+
+  it('a call whose inputs predate a forget answers them but stores nothing', async () => {
+    const key = `${prefix()}:generation`;
+    const generation = cacheGeneration(t.redis, key);
+    // The write commits and drops the key while the caller is still reading its inputs.
+    await forgetCached(t.redis, key);
+    const answer = await cachedJson(t.redis, key, 60, async () => 'stale inputs', { generation });
+    expect(answer.value).toBe('stale inputs');
+    expect(await t.redis.get(key)).toBeNull();
+    // A call that reads its inputs now caches as usual.
+    const fresh = await cachedJson(t.redis, key, 60, async () => 'fresh inputs', {
+      generation: cacheGeneration(t.redis, key),
+    });
+    expect(JSON.parse((await t.redis.get(key)) ?? 'null')).toEqual(fresh);
   });
 });
