@@ -16,7 +16,7 @@ The same application also runs as **PlantRepro**, its sister site for every plan
 
 ## Who it is for
 
-TreeRepro is invitation only. It serves the researchers taking part in the project, organised by role: contributors, managers and administrators. A role is held on one site, so taking part in TreeRepro does not by itself open PlantRepro. If you would like to take part, contact the project coordinator at elisabpereira@gmail.com.
+TreeRepro is invitation only. It serves the researchers taking part in the project, organised by role: contributors, managers and administrators. Roles are given per site (administrators hold both), so taking part in TreeRepro does not by itself open PlantRepro. If you would like to take part, contact the project coordinator at elisabpereira@gmail.com.
 
 ## Under the hood
 
