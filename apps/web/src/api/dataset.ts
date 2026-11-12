@@ -146,7 +146,7 @@ export async function fetchTreeFlagCounts(
     )
   ).data;
 }
-/** Every WCVP botanical country with its region and continent (RFC-60 R13). @rfc RFC-60 R13 */
+/** Every WCVP botanical country with its region and continent (RFC-60 R14). @rfc RFC-60 R14 */
 export async function fetchWcvpRegions(): Promise<WcvpRegion[]> {
   return (await apiFetch('/species/regions', dataEnvelopeSchema(z.array(wcvpRegionSchema)))).data;
 }

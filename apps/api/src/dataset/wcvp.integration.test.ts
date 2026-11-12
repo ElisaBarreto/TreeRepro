@@ -231,7 +231,7 @@ describe('RFC-78 import:wcvp', () => {
 // The geographic filters read the WCVP tables, which `import:wcvp` truncates:
 // they live in this file, the only one that loads them, so no parallel file
 // can replace the load under them.
-describe('RFC-60 R6, R12, R13 geographic species filters over the WCVP load', () => {
+describe('RFC-60 R6, R12, R14 geographic species filters over the WCVP load', () => {
   const t = useTestApp();
   const tag = randomUUID().slice(0, 8);
   const native = `Geoa ${tag}`;
@@ -313,7 +313,7 @@ describe('RFC-60 R6, R12, R13 geographic species filters over the WCVP load', ()
     expect((await res.json()).data).toEqual({ count: 2 });
   });
 
-  it('R13 lists every level-3 region with its region and continent', async () => {
+  it('R14 lists every level-3 region with its region and continent', async () => {
     const res = await call(t.app, 'GET', '/api/species/regions', { cookie });
     expect(res.status).toBe(200);
     expect((await res.json()).data).toEqual([

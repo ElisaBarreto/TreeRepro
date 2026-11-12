@@ -421,6 +421,13 @@
       "when": 1794416197621,
       "tag": "0059_region_snapshot_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794483570294,
+      "tag": "0060_wcvp_introduced_levels",
+      "breakpoints": true
     }
   ]
 }

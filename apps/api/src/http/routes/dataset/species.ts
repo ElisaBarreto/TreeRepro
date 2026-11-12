@@ -82,7 +82,7 @@ function filtersOf(
  * The species routes, with the proposals router (RFC-75 R2, R3) mounted on
  * the literal `/proposals` segment **before** every `/:id` handler below, so
  * Hono can never read "proposals" as a species id.
- * @rfc RFC-60 R6, R7, R9, R10, R11, R12, R13
+ * @rfc RFC-60 R6, R7, R9, R10, R11, R12, R14
  * @rfc RFC-63 R10
  * @rfc RFC-65 R13, R14, R18, R19, R20
  * @rfc RFC-75 R2, R3
@@ -163,7 +163,7 @@ export function speciesRoutes(ctx: AuthContext) {
           });
         },
       )
-      // RFC-60 R13: reference geography, the same for every viewer; before `/:id`.
+      // RFC-60 R14: reference geography, the same for every viewer; before `/:id`.
       .get('/regions', requirePermission(ctx, 'dataset.read'), async (c) =>
         c.json({ data: await listWcvpRegions(ctx.db) }),
       )

@@ -750,7 +750,7 @@ describe('RFC-60 R6 SpeciesSearchForm plant type filter', () => {
   });
 });
 
-describe('RFC-60 R6, R13 SpeciesSearchForm geography', () => {
+describe('RFC-60 R6, R14 SpeciesSearchForm geography', () => {
   const EMPTY: SpeciesSearchValue = {
     q: '',
     unresolved: false,

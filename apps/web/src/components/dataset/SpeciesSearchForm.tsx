@@ -415,11 +415,11 @@ function distinct(rows: WcvpRegion[], code: 'continentCode' | 'regionCode') {
 
 /**
  * The geography filters (RFC-60 R6): Continent, Region and Botanical country
- * selects over the WCVP regions (R13), each narrower one listing what the
+ * selects over the WCVP regions (R14), each narrower one listing what the
  * wider choice holds (grouped by continent while none is chosen). A wider
  * choice drops the narrower ones; **Include introduced occurrences** is off
  * by default, disabled until a place is chosen, and dropped with it.
- * @rfc RFC-60 R6, R13
+ * @rfc RFC-60 R6, R14
  */
 function GeographyFilters({
   value,

@@ -28,6 +28,6 @@ export const VISIBILITY_EXEMPT_ROUTES: readonly string[] = [
   // Plots are the recruitment structure, not scientific data (RFC-67 R3).
   'GET /api/plots',
   'GET /api/plots/:id',
-  // WCVP regions are reference geography, not dataset data (RFC-60 R13).
+  // WCVP regions are reference geography, not dataset data (RFC-60 R14).
   'GET /api/species/regions',
 ];

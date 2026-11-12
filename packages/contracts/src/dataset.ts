@@ -301,7 +301,7 @@ export const treeFlagCountsQuerySchema = countSpeciesQuerySchema.omit({ treeFlag
 /** @rfc RFC-60 R12 */
 export const speciesCountSchema = z.strictObject({ count: z.number().int().nonnegative() });
 
-/** A WCVP level-3 region with its level-2 region and level-1 continent. @rfc RFC-60 R13 */
+/** A WCVP level-3 region with its level-2 region and level-1 continent. @rfc RFC-60 R14 */
 export const wcvpRegionSchema = z.strictObject({
   code: z.string(),
   name: z.string(),
@@ -310,7 +310,7 @@ export const wcvpRegionSchema = z.strictObject({
   continentCode: z.string().nullable(),
   continent: z.string().nullable(),
 });
-/** @rfc RFC-60 R13 */
+/** @rfc RFC-60 R14 */
 export type WcvpRegion = z.infer<typeof wcvpRegionSchema>;
 
 /** How many visible species carry a tree flag. @rfc RFC-60 R11 */

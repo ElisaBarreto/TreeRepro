@@ -871,7 +871,7 @@ export async function getGenus(db: DbExecutor, id: string): Promise<Genus | null
 /**
  * Every WCVP level-3 region with its region and continent, ordered by
  * continent code, region code (numerically, a null last), then name.
- * @rfc RFC-60 R13
+ * @rfc RFC-60 R14
  */
 export async function listWcvpRegions(db: DbExecutor): Promise<WcvpRegion[]> {
   return (await db.execute(sql`
