@@ -1,4 +1,4 @@
-openapi-sha256: 6961dc167d882c3f78ac00d6e4df2032b4df205be351bd4680fc1c7f0b5526e3
+openapi-sha256: 0c95d8fb4e4bb522c9ba5b1c8a09173dd820e957527cdf91c2fad6ef483f136c
 
 # TreeRepro API guide
 
@@ -424,6 +424,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-12 — PlantRepro branding (RFC-13 R14, RFC-82 R17; issue #401): the generated reference (`GET /api/docs/openapi.json`) is titled `TreeRepro / PlantRepro API`, one document for both hosts. On the PlantRepro host, `POST /api/auth/totp/setup` answers an `otpauthUri` whose issuer is `PlantRepro` (RFC-23 R1), and the invitation and password-reset e-mails name PlantRepro. No route or shape changes. (openapi 0c95d8fb4e4b)
 - 2026-11-12 — Two hosts (RFC-14; issue #396): the API also answers on the PlantRepro host, acting on PlantRepro, with the same routes and shapes; a key works on both. A request to any other host answers 421 `UNKNOWN_HOST`, a new error code. No route changes. (openapi 6961dc167d88)
 - 2026-11-12 — `POST /api/records`: a categorical level that matches existing records is created as your record too, besides validating them. Your own matching record is reported in `duplicates`, and nothing is created, only when it has the same first source (primary reference); under another source the level is created. An identical claim held by a record the same level validated is named once, in `validated`. A contest's levels that already have records are created as contest records too (RFC-70 R3, RFC-63 R14; issue #411). (openapi 99bb9bd5e45e)
 - 2026-11-06 — A validation (`POST /api/records/:id/annotations` with `confirm`, `POST /api/species/:id/traits/:traitId/levels/:levelId/validate`) also adds the validator's record. It has the same level, or the same quantitative fields, under the supporting reference, or the validator's personal observation without one. It is a complement responding to the validated record, at most once per validator × value × reference, and counts in references, sources and summaries. Response shapes are unchanged (RFC-65 R17; issue #388). (openapi 99bb9bd5e45e)

@@ -33,6 +33,40 @@ describe('RFC-20 R4, RFC-21 R5 email templates', () => {
   });
 });
 
+describe('RFC-10 R16 the account e-mails name their platform', () => {
+  const input = {
+    name: 'Ada',
+    link: 'http://plantrepro.localhost/x',
+    expiresAt,
+    appOrigin: ORIGIN,
+  };
+
+  it('an invitation sent for PlantRepro names PlantRepro and plants, never TreeRepro', () => {
+    const mail = inviteEmail({ ...input, platform: 'plantrepro' });
+    expect(mail.subject).toBe('You have been invited to PlantRepro');
+    expect(mail.platform).toBe('plantrepro');
+    expect(mail.text).toContain('You have been invited to PlantRepro.');
+    expect(mail.html).toContain('Welcome to PlantRepro, Ada');
+    expect(mail.html).toContain('plant reproductive traits');
+    expect(`${mail.text}${mail.html}`).not.toMatch(/TreeRepro|tree reproductive/);
+  });
+
+  it('a password reset sent for PlantRepro names PlantRepro, never TreeRepro', () => {
+    const mail = passwordResetEmail({ ...input, platform: 'plantrepro' });
+    expect(mail.subject).toBe('Reset your PlantRepro password');
+    expect(mail.platform).toBe('plantrepro');
+    expect(`${mail.text}${mail.html}`).not.toContain('TreeRepro');
+  });
+
+  it('TreeRepro is the default and reads as before', () => {
+    expect(inviteEmail({ ...input, platform: 'treerepro' })).toEqual({
+      ...inviteEmail(input),
+      platform: 'treerepro',
+    });
+    expect(passwordResetEmail(input).platform).toBe('treerepro');
+  });
+});
+
 describe('RFC-10 R16 HTML parts of the account e-mails', () => {
   it('the invitation welcomes by name and links the button and the fallback to the invite', () => {
     const mail = inviteEmail({

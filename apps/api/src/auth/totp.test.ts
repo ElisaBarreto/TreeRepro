@@ -26,6 +26,16 @@ describe('RFC-23 R1 secret and URI', () => {
     expect(uri).toContain('digits=6');
     expect(uri).toContain('period=30');
   });
+
+  it('RFC-23 R1 names the platform the user enrols on as the issuer', () => {
+    const secret = generateTotpSecret();
+    const uri = totpUri(secret, 'ada@example.test', 'plantrepro');
+    expect(uri.startsWith('otpauth://totp/PlantRepro:ada%40example.test?')).toBe(true);
+    expect(uri).toContain('issuer=PlantRepro');
+    expect(totpUri(secret, 'ada@example.test', 'treerepro')).toBe(
+      totpUri(secret, 'ada@example.test'),
+    );
+  });
 });
 
 describe('RFC-23 R4 verification window', () => {

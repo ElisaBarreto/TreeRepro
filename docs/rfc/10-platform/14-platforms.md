@@ -27,3 +27,4 @@ None.
 ## Changelog
 
 - 2026-11-11 — created: platforms, host resolution, per-platform origin, sessions and keys (plan 15b, issue #396).
+- 2026-11-11 — branding lands: RFC-13 R14, R15; mail RFC-10 R16; TOTP issuer RFC-23 R1 (plan 15g, issue #401).

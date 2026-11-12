@@ -37,6 +37,16 @@ vi.mock('../../api/maps.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/maps.ts')>()),
   ...maps,
 }));
+// RFC-13 R14: TreeRepro unless a test switches it.
+const platform = vi.hoisted(() => ({ value: 'treerepro' as 'treerepro' | 'plantrepro' }));
+vi.mock('../../lib/platform.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/platform.ts')>();
+  return {
+    ...actual,
+    currentPlatform: () => platform.value,
+    platformCopy: (p?: 'treerepro' | 'plantrepro') => actual.platformCopy(p ?? platform.value),
+  };
+});
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
 
@@ -303,6 +313,26 @@ describe('RFC-76 R7 MapsPage maps of the selected trait', () => {
     expect(
       screen.getByRole('img', { name: 'Prevalence map of flower colour: blue' }),
     ).toBeInTheDocument();
+  });
+
+  it('RFC-13 R14 names plant species on PlantRepro', async () => {
+    platform.value = 'plantrepro';
+    try {
+      await openPage('/app/maps?category=flower');
+      await tabs();
+      expect(
+        screen.getByText(
+          'Share of plant species with data for this trait in each TDWG level-3 region.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Share of the region's plant species with data for this trait that hold each level; a species with several levels counts under each.",
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      platform.value = 'treerepro';
+    }
   });
 
   it('leaves the completeness section out when the trait has no completeness map', async () => {

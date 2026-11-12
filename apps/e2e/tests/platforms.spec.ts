@@ -13,6 +13,39 @@ test.describe('RFC-14 two platform hosts', () => {
     }
   });
 
+  // RFC-13 R15: password managers that honour Digital Asset Links share the login.
+  test('both hosts serve the same assetlinks.json as JSON', async ({ request }) => {
+    const bodies = [];
+    for (const origin of [BASE_URL, PLANT_URL]) {
+      const res = await request.get(`${origin}/.well-known/assetlinks.json`);
+      expect(res.status(), origin).toBe(200);
+      expect(res.headers()['content-type'], origin).toContain('application/json');
+      bodies.push(await res.json());
+    }
+    expect(bodies[0]).toEqual(bodies[1]);
+    expect(bodies[0]).toContainEqual({
+      relation: ['delegate_permission/common.get_login_creds'],
+      target: { namespace: 'web', site: 'https://plantrepro.elisabarreto.com.br' },
+    });
+  });
+
+  // RFC-13 R14: each host wears its own brand before the bundle runs.
+  test('each host shows its own name, title and favicon', async ({ page }) => {
+    for (const [origin, name, icon] of [
+      [BASE_URL, 'TreeRepro', '/favicon.svg'],
+      [PLANT_URL, 'PlantRepro', '/favicon-plantrepro.svg'],
+    ] as const) {
+      await page.goto(`${origin}/`);
+      await expect(page, origin).toHaveTitle(name);
+      await expect(page.locator('html'), origin).toHaveAttribute(
+        'data-platform',
+        name.toLowerCase(),
+      );
+      await expect(page.locator('link[rel="icon"]'), origin).toHaveAttribute('href', icon);
+      await expect(page.getByRole('heading', { name, exact: true }), origin).toBeVisible();
+    }
+  });
+
   test('one account signs in on each host separately', async ({ browser }) => {
     // A fresh user rather than the seeded admin: the admin holds TOTP after
     // critical-flow, and its login budget (RFC-24 R3) is spent by that spec.
