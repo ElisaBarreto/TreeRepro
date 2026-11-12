@@ -3,6 +3,9 @@ import {
   isValidIsbn,
   type NameSource,
   type NameType,
+  type PlantType,
+  type PlantTypeStatus,
+  type Platform,
   type ReferenceDetail,
   type Species,
   type TaxonRef,
@@ -10,7 +13,7 @@ import {
   type TraitValueType,
 } from '@treerepro/contracts';
 import { and, eq, sql } from 'drizzle-orm';
-import { UNRESTRICTED } from '../access/visibility.ts';
+import { UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation, violatedConstraint } from '../db/errors.ts';
@@ -63,7 +66,13 @@ async function taxaAudit(
   action: 'taxa.created' | 'taxa.updated',
   targetType: string,
   targetId: string,
-  metadata: { kind: TaxonKind; fields?: string[]; speciesId?: string },
+  metadata: {
+    kind: TaxonKind;
+    fields?: string[];
+    speciesId?: string;
+    from?: { plantType: PlantType; plantTypeStatus: PlantTypeStatus };
+    to?: { plantType: PlantType; plantTypeStatus: PlantTypeStatus };
+  },
 ): Promise<void> {
   await recordAudit(db, { actorUserId: actorId, action, targetType, targetId, metadata });
 }
@@ -181,10 +190,47 @@ export async function updateGenus(
   });
 }
 
-/** @rfc RFC-60 R9, R10 */
+/**
+ * The plant type a registration on `platform` gets: TreeRepro registers only
+ * trees, so an omitted type is `tree` and any other one is refused; PlantRepro
+ * requires it.
+ * @rfc RFC-65 R18
+ * @rfc RFC-14 R9
+ */
+export function plantTypeFor(
+  platform: Platform,
+  requested: PlantType | null | undefined,
+): PlantType {
+  if (platform === 'treerepro') {
+    if (requested && requested !== 'tree')
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'plantType', message: 'TreeRepro registers only trees' },
+      ]);
+    return 'tree';
+  }
+  if (!requested)
+    throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+      { path: 'plantType', message: 'Required' },
+    ]);
+  return requested;
+}
+
+/**
+ * `plantTypeStatus` is `reviewed` when the creator holds `records.review` on
+ * the request's platform (RFC-65 R18); the caller decides it.
+ * @rfc RFC-60 R1, R9, R10
+ * @rfc RFC-65 R18
+ */
 export async function createSpecies(
   db: DbExecutor,
-  input: { canonicalName: string; nameSource: NameSource; genusId?: string; actorId: string },
+  input: {
+    canonicalName: string;
+    nameSource: NameSource;
+    genusId?: string;
+    plantType: PlantType;
+    plantTypeStatus: PlantTypeStatus;
+    actorId: string;
+  },
 ): Promise<Species> {
   const canonicalName = normaliseName(input.canonicalName);
   return db.transaction(async (tx) => {
@@ -197,6 +243,8 @@ export async function createSpecies(
           canonicalName,
           nameSource: input.nameSource,
           genusId: input.genusId ?? null,
+          plantType: input.plantType,
+          plantTypeStatus: input.plantTypeStatus,
           createdBy: input.actorId,
         })
         .returning({ id: species.id });
@@ -274,6 +322,43 @@ export async function updateSpecies(
     }
     const updated = await getSpecies(tx, UNRESTRICTED, input.id);
     if (!updated) throw new Error('updateSpecies: species vanished');
+    return updated;
+  });
+}
+
+/**
+ * Sets a visible species' plant type and marks it `reviewed`, auditing the old
+ * and new values when either changes. Not forced to `tree` on TreeRepro: a
+ * manager there may reclassify a tree.
+ * @rfc RFC-65 R19
+ * @rfc RFC-60 R10
+ */
+export async function changePlantType(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: { id: string; plantType: PlantType; actorId: string },
+): Promise<Species> {
+  return db.transaction(async (tx) => {
+    if (!(await getSpecies(tx, visibility, input.id)))
+      throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
+    const [current] = await tx
+      .select({ plantType: species.plantType, plantTypeStatus: species.plantTypeStatus })
+      .from(species)
+      .where(eq(species.id, input.id))
+      .for('update');
+    if (!current) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
+    const to = { plantType: input.plantType, plantTypeStatus: 'reviewed' as const };
+    if (current.plantType !== to.plantType || current.plantTypeStatus !== to.plantTypeStatus) {
+      await tx.update(species).set(to).where(eq(species.id, input.id));
+      await taxaAudit(tx, input.actorId, 'taxa.updated', 'species', input.id, {
+        kind: 'species',
+        fields: ['plantType'],
+        from: current,
+        to,
+      });
+    }
+    const updated = await getSpecies(tx, visibility, input.id);
+    if (!updated) throw new Error('changePlantType: species vanished');
     return updated;
   });
 }

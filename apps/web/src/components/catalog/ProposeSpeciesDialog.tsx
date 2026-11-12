@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import {
   type CreateProposalBody,
   createProposalBodySchema,
+  type PlantType,
   type Proposal,
 } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
@@ -11,6 +12,7 @@ import { createProposal, invalidateAfterProposalWrite } from '../../api/proposal
 import { fieldErrors, isValidationError } from '../../lib/errors.ts';
 import { proposeErrorMessage, takenSpeciesId } from '../curation/proposal-errors.ts';
 import { Alert, Button, Dialog, Field, Input, Textarea } from '../ui/index.ts';
+import { PlantTypeField } from './PlantTypeField.tsx';
 
 const LOCAL_MESSAGES: Record<string, string> = {
   name: 'Enter at least three characters of the species name.',
@@ -29,6 +31,7 @@ const LOCAL_MESSAGES: Record<string, string> = {
  * the queue already holds the name.
  * @rfc RFC-13 R5, R6
  * @rfc RFC-75 R2
+ * @rfc RFC-65 R18
  */
 export function ProposeSpeciesDialog({
   name: initialName,
@@ -43,6 +46,7 @@ export function ProposeSpeciesDialog({
   const ids = { name: useId(), note: useId() };
   const [name, setName] = useState(initialName);
   const [note, setNote] = useState('');
+  const [plantType, setPlantType] = useState<PlantType | undefined>(undefined);
   const [local, setLocal] = useState<Record<string, string>>({});
 
   const propose = useMutation({
@@ -65,6 +69,7 @@ export function ProposeSpeciesDialog({
     const parsed = createProposalBodySchema.safeParse({
       name: name.trim(),
       ...(trimmedNote === '' ? {} : { note: trimmedNote }),
+      ...(plantType ? { plantType } : {}),
     });
     if (!parsed.success) {
       propose.reset();
@@ -97,6 +102,7 @@ export function ProposeSpeciesDialog({
             invalid={Boolean(errors.name)}
           />
         </Field>
+        <PlantTypeField value={plantType} onChange={setPlantType} error={errors.plantType} />
         <Field
           id={ids.note}
           label="Note (optional)"

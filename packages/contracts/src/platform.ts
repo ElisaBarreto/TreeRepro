@@ -10,6 +10,24 @@ export const PLATFORM_NAMES: Record<Platform, string> = {
   plantrepro: 'PlantRepro',
 };
 
+/** A species' plant type; the list may grow (RFC-60 R1). @rfc RFC-60 R1 */
+export const PLANT_TYPES = ['tree', 'not_tree'] as const;
+
+/** @rfc RFC-60 R1 */
+export type PlantType = (typeof PLANT_TYPES)[number];
+
+/** @rfc RFC-60 R1 */
+export const PLANT_TYPE_LABELS: Record<PlantType, string> = {
+  tree: 'Tree',
+  not_tree: 'Not a tree',
+};
+
+/** Whether a `records.review` holder has reviewed the plant type (RFC-60 R1). @rfc RFC-60 R1 */
+export const PLANT_TYPE_STATUSES = ['proposed', 'reviewed'] as const;
+
+/** @rfc RFC-60 R1 */
+export type PlantTypeStatus = (typeof PLANT_TYPE_STATUSES)[number];
+
 /**
  * What each platform covers, singular (`tree species`); the copy adds the
  * plural `s` (`how trees reproduce`).

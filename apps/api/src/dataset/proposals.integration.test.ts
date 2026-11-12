@@ -92,6 +92,7 @@ describe('RFC-75 R2 createProposal', () => {
     const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name,
       note: 'Found in plot 3',
+      plantType: 'tree',
       proposerId: user.id,
     });
 
@@ -129,6 +130,7 @@ describe('RFC-75 R2 createProposal', () => {
     const error = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       // Case-insensitively the same name: R2 compares names, not spellings.
       name: existing.canonicalName.toUpperCase(),
+      plantType: 'tree',
       proposerId: user.id,
     }).catch((e: unknown) => e);
 
@@ -146,6 +148,7 @@ describe('RFC-75 R2 createProposal', () => {
 
     const error = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: synonym,
+      plantType: 'tree',
       proposerId: user.id,
     }).catch((e: unknown) => e);
 
@@ -162,6 +165,7 @@ describe('RFC-75 R2 createProposal', () => {
 
     const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, ACTIVE_ONLY, {
       name: hidden.canonicalName,
+      plantType: 'tree',
       proposerId: user.id,
     });
 
@@ -175,11 +179,13 @@ describe('RFC-75 R2 createProposal', () => {
     const name = aName();
     const first = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name,
+      plantType: 'tree',
       proposerId: user.id,
     });
 
     const error = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: name.toUpperCase(),
+      plantType: 'tree',
       proposerId: other.user.id,
     }).catch((e: unknown) => e);
 
@@ -201,6 +207,7 @@ describe('RFC-75 R2 createProposal', () => {
       match: async () => {
         await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
           name,
+          plantType: 'tree',
           proposerId: interloper.user.id,
         });
         return failedLookup;
@@ -209,6 +216,7 @@ describe('RFC-75 R2 createProposal', () => {
 
     const error = await createProposal({ db: t.db, taxonomy: racing }, UNRESTRICTED, {
       name,
+      plantType: 'tree',
       proposerId: user.id,
     }).catch((e: unknown) => e);
 
@@ -226,7 +234,7 @@ describe('RFC-75 R2 createProposal', () => {
     const proposal = await createProposal(
       { db: t.db, taxonomy: { match: async () => failedLookup } },
       UNRESTRICTED,
-      { name, proposerId: user.id },
+      { name, plantType: 'tree', proposerId: user.id },
     );
 
     expect(proposal.status).toBe('open');
@@ -243,14 +251,17 @@ describe('RFC-75 R3 listProposals and getProposal', () => {
     const manager = await createUser(t.db);
     const older = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
     const newer = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
     const decided = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
     await rejectProposal(t.db, { id: decided.id, note: 'Not a tree', actorId: manager.user.id });
@@ -272,10 +283,12 @@ describe('RFC-75 R3 listProposals and getProposal', () => {
     const { user } = await createUser(t.db);
     const first = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
     const second = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
 
@@ -295,6 +308,7 @@ describe('RFC-75 R3 listProposals and getProposal', () => {
     for (const suffix of ['charlie', 'alpha', 'bravo']) {
       await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
         name: `${stem} ${suffix}`,
+        plantType: 'tree',
         proposerId: user.id,
       });
     }
@@ -331,6 +345,7 @@ describe('RFC-75 R4 approveProposal', () => {
     const name = aName();
     const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name,
+      plantType: 'tree',
       proposerId: user.id,
     });
     const familyName = `Testaceae-${tag()}`;
@@ -338,6 +353,8 @@ describe('RFC-75 R4 approveProposal', () => {
     const synonym = `Testus obsoletus ${tag()}`;
 
     const approved = await approveProposal(t.db, {
+      platform: 'treerepro',
+      review: true,
       id: proposal.id,
       actorId: manager.user.id,
       body: {
@@ -421,6 +438,7 @@ describe('RFC-75 R4 approveProposal', () => {
     const name = aName();
     const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name,
+      plantType: 'tree',
       proposerId: user.id,
     });
     // The catalog already holds the genus, under a family of its own.
@@ -435,6 +453,8 @@ describe('RFC-75 R4 approveProposal', () => {
     const disagreeingFamily = `Otheraceae-${tag()}`;
 
     const approved = await approveProposal(t.db, {
+      platform: 'treerepro',
+      review: true,
       id: proposal.id,
       actorId: manager.user.id,
       body: {
@@ -472,6 +492,7 @@ describe('RFC-75 R4 approveProposal', () => {
     const manager = await createUser(t.db);
     const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
     await rejectProposal(t.db, {
@@ -482,6 +503,8 @@ describe('RFC-75 R4 approveProposal', () => {
 
     await expect(
       approveProposal(t.db, {
+        platform: 'treerepro',
+        review: true,
         id: proposal.id,
         actorId: manager.user.id,
         body: { canonicalName: aName(), nameSource: 'original' },
@@ -511,6 +534,7 @@ describe('RFC-75 R4 approveProposal', () => {
     // The pre-check is visibility-scoped, so the proposal is created.
     const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, ACTIVE_ONLY, {
       name: hidden.canonicalName,
+      plantType: 'tree',
       proposerId: user.id,
     });
 
@@ -520,6 +544,8 @@ describe('RFC-75 R4 approveProposal', () => {
     const genusName = `Testus-${tag()}`;
 
     const error = await approveProposal(t.db, {
+      platform: 'treerepro',
+      review: true,
       id: proposal.id,
       actorId: manager.user.id,
       body: {
@@ -552,6 +578,7 @@ describe('RFC-75 R4 approveProposal', () => {
     const manager = await createUser(t.db);
     const proposal = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
 
@@ -583,15 +610,18 @@ describe('RFC-75 R5 listMyProposals', () => {
     const manager = await createUser(t.db);
     const open = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
     const rejected = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: user.id,
     });
     await rejectProposal(t.db, { id: rejected.id, note: 'No', actorId: manager.user.id });
     const someoneElse = await createProposal({ db: t.db, taxonomy: t.taxonomy }, UNRESTRICTED, {
       name: aName(),
+      plantType: 'tree',
       proposerId: stranger.user.id,
     });
 
@@ -630,10 +660,12 @@ describe('RFC-75 R7 counts for the dashboard and the digest', () => {
 
       const first = await createProposal({ db: tx, taxonomy: t.taxonomy }, UNRESTRICTED, {
         name: aName(),
+        plantType: 'tree',
         proposerId: user.id,
       });
       await createProposal({ db: tx, taxonomy: t.taxonomy }, UNRESTRICTED, {
         name: aName(),
+        plantType: 'tree',
         proposerId: user.id,
       });
       expect(await countOpenProposals(tx)).toBe(before + 2);
@@ -652,6 +684,7 @@ describe('RFC-75 R7 counts for the dashboard and the digest', () => {
 
       const created = await createProposal({ db: tx, taxonomy: t.taxonomy }, UNRESTRICTED, {
         name: aName(),
+        plantType: 'tree',
         proposerId: user.id,
       });
       expect(await countProposalsCreated(tx, { start, end: new Date(Date.now() + 60_000) })).toBe(

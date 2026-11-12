@@ -7,6 +7,8 @@ import type {
   NameSource,
   NameType,
   OutlierFlag,
+  PlantType,
+  PlantTypeStatus,
   RecordIntent,
   SummarySource,
   TraitValueType,
@@ -65,6 +67,9 @@ export async function createSpecies(
     genusId?: string | null;
     /** RFC-60 R1 tree basis; null by default, as for a species no file flags. */
     treeFlag?: TreeFlag | null;
+    /** RFC-60 R1: a reviewed tree by default, as migration 0058 made every species. */
+    plantType?: PlantType;
+    plantTypeStatus?: PlantTypeStatus;
     names?: {
       name: string;
       nameType?: NameType;
@@ -81,6 +86,8 @@ export async function createSpecies(
       nameSource: options.nameSource ?? 'wcvp',
       genusId: options.genusId ?? null,
       treeFlag: options.treeFlag ?? null,
+      plantType: options.plantType ?? 'tree',
+      plantTypeStatus: options.plantTypeStatus ?? 'reviewed',
     })
     .returning({ id: species.id, canonicalName: species.canonicalName });
   if (!row) throw new Error('createSpecies: no row');

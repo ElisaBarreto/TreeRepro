@@ -12,6 +12,7 @@ import {
   importRejectSchema,
   type ListEnvelope,
   listEnvelopeSchema,
+  type PlantType,
   type RecordDetail,
   type RecordGroupSort,
   type RecordSort,
@@ -110,6 +111,7 @@ export function searchSpecies(params: {
   traitData?: TraitDataMode;
   /** Comma-separated tree flags (RFC-60 R6). */
   treeFlag?: string;
+  plantType?: PlantType;
   sort?: SpeciesSort;
   order?: SortOrder;
   cursor?: string;

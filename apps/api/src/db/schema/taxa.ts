@@ -1,4 +1,10 @@
-import { NAME_SOURCES, NAME_TYPES, TREE_FLAGS } from '@treerepro/contracts';
+import {
+  NAME_SOURCES,
+  NAME_TYPES,
+  PLANT_TYPE_STATUSES,
+  PLANT_TYPES,
+  TREE_FLAGS,
+} from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -62,6 +68,9 @@ export const species = pgTable(
     traitCount: integer('trait_count').notNull().default(0),
     /** RFC-60 R1: the tree basis, set by the import from the file's `tree_flag` (RFC-64 R5). */
     treeFlag: text('tree_flag', { enum: TREE_FLAGS }),
+    /** RFC-60 R1: no default (migration 0058 backfilled `tree` / `reviewed`), so every insert states both. */
+    plantType: text('plant_type', { enum: PLANT_TYPES }).notNull(),
+    plantTypeStatus: text('plant_type_status', { enum: PLANT_TYPE_STATUSES }).notNull(),
     createdAt: ts('created_at').notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => users.id),
   },
@@ -74,6 +83,9 @@ export const species = pgTable(
     ),
     index('species_genus_idx').on(t.genusId),
     index('species_trait_count_idx').on(t.traitCount, t.canonicalName, t.id),
+    index('species_plant_type_idx').on(t.plantType, t.plantTypeStatus),
+    check('species_plant_type_check', sql`${t.plantType} in ('tree', 'not_tree')`),
+    check('species_plant_type_status_check', sql`${t.plantTypeStatus} in ('proposed', 'reviewed')`),
     check('species_name_source_check', sql`${t.nameSource} in ('wcvp', 'gbif', 'original')`),
     check(
       'species_tree_flag_check',

@@ -707,3 +707,26 @@ describe('RFC-60 R6 SpeciesSearchForm tree basis (issue #372)', () => {
     expect(boxes[7]).toHaveFocus();
   });
 });
+
+describe('RFC-60 R6 SpeciesSearchForm plant type filter', () => {
+  it('offers All, Tree and Not a tree to every viewer, and clears back to all', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    const select = screen.getByLabelText('Plant type');
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['All', 'Tree', 'Not a tree']);
+    await userEvent.selectOptions(select, 'not_tree');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ plantType: 'not_tree' }));
+    await userEvent.selectOptions(select, '');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ plantType: undefined }));
+  });
+});

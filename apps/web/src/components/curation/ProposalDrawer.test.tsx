@@ -66,6 +66,7 @@ describe('RFC-75 R6 ProposalDrawer', () => {
     expect(panel).toHaveTextContent('Quercus robur');
     expect(panel).toHaveTextContent('Ada');
     expect(panel).toHaveTextContent('Seen on plot A12, not in the catalog.');
+    expect(panel).toHaveTextContent('Plant type: Tree');
     expect(within(panel).getByRole('region', { name: 'GBIF backbone' })).toBeInTheDocument();
     expect(within(panel).getByRole('region', { name: 'WCVP' })).toBeInTheDocument();
     expect(within(panel).getByText('exact match')).toBeInTheDocument();
@@ -100,6 +101,7 @@ describe('RFC-75 R6 ProposalDrawer', () => {
         nameSource: 'wcvp',
         genusName: 'Quercus',
         familyName: 'Fagaceae',
+        plantType: 'tree',
       }),
     );
     expect(proposals.invalidateAfterProposalWrite).toHaveBeenCalled();

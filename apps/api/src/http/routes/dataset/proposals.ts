@@ -9,6 +9,7 @@ import {
 import { Hono } from 'hono';
 import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
+import { plantTypeFor } from '../../../dataset/catalog.ts';
 import {
   approveProposal,
   createProposal,
@@ -19,7 +20,7 @@ import {
 } from '../../../dataset/proposals.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
-import { requirePermission } from '../../middleware/require-permission.ts';
+import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
 
@@ -29,6 +30,7 @@ import { validate } from '../../validate.ts';
  * to sit under `/api/species` and the literal segment has to be registered
  * before the parameter that would otherwise read it as a species id.
  * @rfc RFC-75 R2, R3, R4
+ * @rfc RFC-65 R18
  */
 export function proposalRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
@@ -41,7 +43,12 @@ export function proposalRoutes(ctx: AuthContext) {
         const data = await createProposal(
           { db: ctx.db, taxonomy: ctx.taxonomy },
           await visibilityOf(ctx, c),
-          { name: body.name, note: body.note, proposerId: currentUser(c).id },
+          {
+            name: body.name,
+            note: body.note,
+            plantType: plantTypeFor(c.get('platform'), body.plantType),
+            proposerId: currentUser(c).id,
+          },
         );
         return c.json({ data }, 201);
       },
@@ -85,6 +92,8 @@ export function proposalRoutes(ctx: AuthContext) {
           data: await approveProposal(ctx.db, {
             id: c.req.valid('param').id,
             body: c.req.valid('json'),
+            platform: c.get('platform'),
+            review: currentPermissions(c).has('records.review'),
             actorId: currentUser(c).id,
           }),
         }),

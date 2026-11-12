@@ -4,6 +4,8 @@ import {
   type ApproveProposalBody,
   approveProposalBodySchema,
   type NameSource,
+  PLANT_TYPE_LABELS,
+  type PlantType,
   type Proposal,
 } from '@treerepro/contracts';
 import { type FormEvent, useId, useState } from 'react';
@@ -11,6 +13,8 @@ import { invalidateAfterCatalogWrite } from '../../api/catalog.ts';
 import { ApiError } from '../../api/client.ts';
 import { approveProposal, invalidateAfterProposalWrite } from '../../api/proposals.ts';
 import { fieldErrors, isValidationError } from '../../lib/errors.ts';
+import { currentPlatform } from '../../lib/platform.ts';
+import { PlantTypeField } from '../catalog/PlantTypeField.tsx';
 import { SpeciesNameFields } from '../catalog/SpeciesNameFields.tsx';
 import { Alert, Button, Dialog, Field, Input } from '../ui/index.ts';
 import { decideErrorMessage } from './proposal-errors.ts';
@@ -38,8 +42,13 @@ const LOCAL_MESSAGES: Record<string, string> = { canonicalName: 'Enter the canon
  * holds. The API cannot name that species — the answer carries no id, by
  * design — so the sentence says what happened and offers a catalog search
  * for the name instead of a bare conflict.
+ *
+ * The queue serves both platforms, so on TreeRepro a `not_tree` proposal
+ * made on PlantRepro can reach this form; the API refuses it there, so the
+ * form states the type, points to PlantRepro and disables Approve (R6).
  * @rfc RFC-13 R5, R6, R10
- * @rfc RFC-75 R4
+ * @rfc RFC-75 R4, R6
+ * @rfc RFC-65 R18
  */
 export function ApproveProposalDialog({
   proposal,
@@ -51,13 +60,18 @@ export function ApproveProposalDialog({
   onApproved: (proposal: Proposal) => void;
 }) {
   const queryClient = useQueryClient();
-  const ids = { family: useId(), genus: useId() };
+  const ids = { family: useId(), genus: useId(), plantType: useId() };
   const [prefill] = useState(() => proposalPrefill(proposal));
   const [canonicalName, setCanonicalName] = useState(prefill.canonicalName);
   const [nameSource, setNameSource] = useState<NameSource>(prefill.nameSource);
   const [genusName, setGenusName] = useState(prefill.genusName);
   const [familyName, setFamilyName] = useState(prefill.familyName);
+  // RFC-75 R4: the proposal's stated type, which the approver may change.
+  const [plantType, setPlantType] = useState<PlantType | undefined>(
+    proposal.plantType ?? undefined,
+  );
   const [local, setLocal] = useState<Record<string, string>>({});
+  const notTreeHere = currentPlatform() === 'treerepro' && proposal.plantType === 'not_tree';
 
   const approve = useMutation({
     mutationFn: (body: ApproveProposalBody) => approveProposal(proposal.id, body),
@@ -81,6 +95,7 @@ export function ApproveProposalDialog({
       nameSource,
       ...(genusName.trim() === '' ? {} : { genusName: genusName.trim() }),
       ...(familyName.trim() === '' ? {} : { familyName: familyName.trim() }),
+      ...(plantType ? { plantType } : {}),
     });
     if (!parsed.success) {
       approve.reset();
@@ -106,6 +121,17 @@ export function ApproveProposalDialog({
           onNameSourceChange={setNameSource}
           errors={{ canonicalName: errors.canonicalName, nameSource: errors.nameSource }}
         />
+        {notTreeHere ? (
+          <Field
+            id={ids.plantType}
+            label="Plant type"
+            hint="TreeRepro registers only trees: approve it on PlantRepro."
+          >
+            <Input id={ids.plantType} value={PLANT_TYPE_LABELS.not_tree} readOnly />
+          </Field>
+        ) : (
+          <PlantTypeField value={plantType} onChange={setPlantType} error={errors.plantType} />
+        )}
         <Field
           id={ids.family}
           label="Family"
@@ -156,7 +182,7 @@ export function ApproveProposalDialog({
           <Button variant="secondary" onClick={onClose} disabled={approve.isPending}>
             Cancel
           </Button>
-          <Button type="submit" pending={approve.isPending}>
+          <Button type="submit" pending={approve.isPending} disabled={notTreeHere}>
             Approve and create
           </Button>
         </div>
