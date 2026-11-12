@@ -1,30 +1,41 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { User } from '@treerepro/contracts';
+import { PLATFORM_NAMES, type Platform, type User } from '@treerepro/contracts';
 import { useState } from 'react';
 import { adminKeys, listRoles, updateUser } from '../../api/admin.ts';
 import { Alert, Badge, Button, Section } from '../ui/index.ts';
 import { userErrorMessage } from './user-errors.ts';
 
 /**
- * The user's roles: checkboxes over `GET /api/admin/roles` for `users.update`
- * (saved as the full id list, RFC-50 R5), badges otherwise. The checked set
- * starts from the user and is re-seeded whenever the user's roles change
- * (a save, or another section's write).
- * @rfc RFC-50 R5
- * @rfc RFC-31 R6, R7
+ * The user's roles on one platform (RFC-31 R16): checkboxes over
+ * `GET /api/admin/roles` for `users.update` (saved as the platform's full id
+ * list, RFC-50 R5), badges otherwise. The checked set starts from the user
+ * and is re-seeded whenever the user's roles change (a save, or another
+ * section's write).
+ * @rfc RFC-50 R5, R14
+ * @rfc RFC-31 R6, R7, R16
  * @rfc RFC-13 R3, R6
  */
-export function UserRolesSection({ user, canEdit }: { user: User; canEdit: boolean }) {
+export function UserRolesSection({
+  user,
+  platform,
+  canEdit,
+}: {
+  user: User;
+  platform: Platform;
+  canEdit: boolean;
+}) {
   const queryClient = useQueryClient();
   const roles = useQuery({ queryKey: adminKeys.roles, queryFn: listRoles, enabled: canEdit });
-  const seed = user.roles
+  const held = user.roles.filter((r) => r.platform === platform);
+  const seed = held
     .map((r) => r.id)
     .sort()
     .join(',');
-  const [state, setState] = useState({ seed, checked: new Set(user.roles.map((r) => r.id)) });
-  if (state.seed !== seed) setState({ seed, checked: new Set(user.roles.map((r) => r.id)) });
+  const [state, setState] = useState({ seed, checked: new Set(held.map((r) => r.id)) });
+  if (state.seed !== seed) setState({ seed, checked: new Set(held.map((r) => r.id)) });
+  const name = PLATFORM_NAMES[platform];
   const save = useMutation({
-    mutationFn: (ids: string[]) => updateUser(user.id, { roles: ids }),
+    mutationFn: (ids: string[]) => updateUser(user.id, { roles: ids, platform }),
     onSuccess: (next) => {
       queryClient.setQueryData(adminKeys.user(user.id), next);
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
@@ -44,19 +55,19 @@ export function UserRolesSection({ user, canEdit }: { user: User; canEdit: boole
 
   return (
     <Section
-      id="roles"
-      title="Roles"
-      description="What this user may do. The admin role grants every permission."
+      id={`roles-${platform}`}
+      title={`${name} roles`}
+      description={`What this user may do on ${name}. The admin role grants every permission, on both platforms.`}
     >
       {!canEdit ? (
-        user.roles.length > 0 ? (
+        held.length > 0 ? (
           <div className="flex flex-wrap gap-2">
-            {user.roles.map((r) => (
+            {held.map((r) => (
               <Badge key={r.id}>{r.name}</Badge>
             ))}
           </div>
         ) : (
-          <p className="text-body text-mist-500">No roles.</p>
+          <p className="text-body text-mist-500">No roles on {name}.</p>
         )
       ) : (
         <form

@@ -1,4 +1,4 @@
-openapi-sha256: 0c95d8fb4e4bb522c9ba5b1c8a09173dd820e957527cdf91c2fad6ef483f136c
+openapi-sha256: 1a14537579981643dd7112b78ec51b8d5d2d30d929d4e352b04b02770227b5bd
 
 # TreeRepro API guide
 
@@ -15,6 +15,8 @@ Only a user holding the `admin` system role can create or use a key (RFC-82 R2),
 ## Two hosts
 
 The same API answers on two hosts, one per platform (RFC-14): `https://treerepro.elisabarreto.com.br/api/...` acts on TreeRepro and `https://plantrepro.elisabarreto.com.br/api/...` on PlantRepro. Every route, rule and shape is the same on both. A key is not bound to either: send it to the host of the platform you mean, and the request — every operation of a `POST /api/batch` included — acts on that platform (RFC-14 R6). Any other host, an IP address included, answers 421 `UNKNOWN_HOST`. Until PlantRepro opens, its host answers 421 too.
+
+Roles are held per platform (RFC-31 R16), and a request is checked against the permissions its owner holds on the platform of its host. The `admin` system role, the only one that can hold a key, is held on both platforms, so a key reaches the same routes on either host.
 
 ## Authentication and the key lifecycle
 
@@ -236,6 +238,7 @@ Every error follows the same envelope: `{ "error": { "code", "message", "details
 | `VALIDATION_INVALID_JSON` | 400 | The request body is not valid JSON. |
 | `REQUEST_TOO_LARGE` | 413 | The request body exceeds 1 MiB. |
 | `UNKNOWN_HOST` | 421 | The request was sent to a host that is neither platform's (see Two hosts). Fix the base URL. |
+| `PLATFORM_ACCESS_DENIED` | 403 | Sign-in only: the account holds no role on the host's platform. A key never meets it. |
 | `NOT_FOUND` | 404 | An unknown route, or an id-based lookup whose route has no more specific not-found code. |
 | `RATE_LIMITED` | 429 | Too many requests for this key; see Limits above. |
 | `INTERNAL_ERROR` | 500 | Unexpected failure on the server; safe to retry later, not immediately. |
@@ -424,6 +427,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-12 — Roles per platform (RFC-31 R16, RFC-32 R1; issue #397): a role is held on TreeRepro or PlantRepro, and permissions are those held on the platform of the host the request is sent to. `admin` is held on both, so a key keeps working on both hosts. In `GET /api/admin/users*` every entry of a user's `roles` gains `platform`, and `admin` appears once per platform. `GET /api/admin/users` takes `platform=` (the users holding a role there). `POST /api/admin/users` takes an optional `platform`; it defaults to the request's, and the invitation links to that platform. `PATCH /api/admin/users/:id` takes an optional `platform`, the platform whose roles `roles` replaces, also defaulting to the request's; these three stay unreachable with a key. Signing in on a platform where the account holds no role answers 403 `PLATFORM_ACCESS_DENIED`, a new error code. (openapi 1a1453757998)
 - 2026-11-12 — PlantRepro branding (RFC-13 R14, RFC-82 R17; issue #401): the generated reference (`GET /api/docs/openapi.json`) is titled `TreeRepro / PlantRepro API`, one document for both hosts. On the PlantRepro host, `POST /api/auth/totp/setup` answers an `otpauthUri` whose issuer is `PlantRepro` (RFC-23 R1), and the invitation and password-reset e-mails name PlantRepro. No route or shape changes. (openapi 0c95d8fb4e4b)
 - 2026-11-12 — Two hosts (RFC-14; issue #396): the API also answers on the PlantRepro host, acting on PlantRepro, with the same routes and shapes; a key works on both. A request to any other host answers 421 `UNKNOWN_HOST`, a new error code. No route changes. (openapi 6961dc167d88)
 - 2026-11-12 — `POST /api/records`: a categorical level that matches existing records is created as your record too, besides validating them. Your own matching record is reported in `duplicates`, and nothing is created, only when it has the same first source (primary reference); under another source the level is created. An identical claim held by a record the same level validated is named once, in `validated`. A contest's levels that already have records are created as contest records too (RFC-70 R3, RFC-63 R14; issue #411). (openapi 99bb9bd5e45e)

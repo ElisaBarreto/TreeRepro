@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import source from '../../public/platform.js?raw';
-import { currentPlatform } from './platform.ts';
+import { ApiError } from '../api/client.ts';
+import { currentPlatform, platformDeniedMessage } from './platform.ts';
 
 const TABLE = [
   ['localhost', 'treerepro'],
@@ -49,5 +50,29 @@ describe('RFC-13 R14 platform of the hostname', () => {
 
   it('defaults to the window hostname (jsdom: localhost)', () => {
     expect(currentPlatform()).toBe('treerepro');
+  });
+});
+
+describe('RFC-22 R13 platformDeniedMessage', () => {
+  const denied = (held: string[]) =>
+    new ApiError(
+      403,
+      'PLATFORM_ACCESS_DENIED',
+      'x',
+      held.map((message) => ({ path: 'platforms', message })),
+    );
+
+  it('names the platform refused and the other one the user holds', () => {
+    expect(platformDeniedMessage(denied(['treerepro']), 'plantrepro')).toBe(
+      'You have no access to PlantRepro. Your account has access to TreeRepro.',
+    );
+    expect(platformDeniedMessage(denied([]), 'treerepro')).toBe('You have no access to TreeRepro.');
+  });
+
+  it('is null for any other error', () => {
+    expect(
+      platformDeniedMessage(new ApiError(401, 'AUTH_INVALID_CREDENTIALS', 'x'), 'treerepro'),
+    ).toBeNull();
+    expect(platformDeniedMessage(new Error('x'), 'treerepro')).toBeNull();
   });
 });

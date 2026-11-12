@@ -243,11 +243,17 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
     summary: 'List the permission catalog',
     response: dataEnvelopeSchema(z.array(permissionEntrySchema)),
   },
-  'GET /api/admin/users': { summary: 'List users', response: listEnvelopeSchema(userSchema) },
-  'POST /api/admin/users': { summary: 'Invite a user', response: dataEnvelopeSchema(userSchema) },
+  'GET /api/admin/users': {
+    summary: 'List users, optionally those holding a role on a platform',
+    response: listEnvelopeSchema(userSchema),
+  },
+  'POST /api/admin/users': {
+    summary: 'Invite a user to a platform',
+    response: dataEnvelopeSchema(userSchema),
+  },
   'GET /api/admin/users/:id': { summary: 'Get a user', response: dataEnvelopeSchema(userSchema) },
   'PATCH /api/admin/users/:id': {
-    summary: "Update a user's name or roles",
+    summary: "Update a user's name or their roles on a platform",
     response: dataEnvelopeSchema(userSchema),
   },
   'PUT /api/admin/users/:id/plots': {

@@ -1,6 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import {
+  PLATFORM_NAMES,
+  PLATFORMS,
+  type Platform,
   type SortOrder,
   USER_STATUSES,
   type User,
@@ -39,21 +42,23 @@ type Notice = { tone: 'success' | 'error'; text: string } | null;
 
 /**
  * Everyone with an account, newest first (the API's order, RFC-50 R2),
- * filtered by status; "Invite user" with `users.invite` and `roles.read`
+ * filtered by status and by platform (RFC-50 R2, R14); "Invite user" with `users.invite` and `roles.read`
  * (its role picker lists `GET /api/admin/roles`).
  * @rfc RFC-13 R2, R3, R4
- * @rfc RFC-50 R2, R3
+ * @rfc RFC-50 R2, R3, R14
  */
 export function UsersPage() {
   const me = useMe();
   const queryClient = useQueryClient();
   const statusId = useId();
+  const platformId = useId();
   const [status, setStatus] = useState<UserStatus | ''>('');
+  const [platform, setPlatform] = useState<Platform | ''>('');
   const [inviting, setInviting] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   // Newest first until a header is clicked (RFC-50 R2, RFC-13 R13).
   const sort = useServerSort<UserSort>({ sort: 'created', order: 'desc' });
-  const filter = { status: status || undefined, ...sort.params };
+  const filter = { status: status || undefined, platform: platform || undefined, ...sort.params };
   const list = usePagedList(adminKeys.users(filter), (cursor, limit) =>
     listUsers({ ...filter, cursor, limit }),
   );
@@ -70,21 +75,39 @@ export function UsersPage() {
         }
       />
       <div className="flex flex-col gap-6">
-        <div className="max-w-xs">
-          <Field id={statusId} label="Status">
-            <Select
-              id={statusId}
-              value={status}
-              onChange={(event) => setStatus(event.target.value as UserStatus | '')}
-            >
-              <option value="">All</option>
-              {USER_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </Select>
-          </Field>
+        <div className="flex flex-wrap gap-4">
+          <div className="w-full max-w-xs">
+            <Field id={statusId} label="Status">
+              <Select
+                id={statusId}
+                value={status}
+                onChange={(event) => setStatus(event.target.value as UserStatus | '')}
+              >
+                <option value="">All</option>
+                {USER_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="w-full max-w-xs">
+            <Field id={platformId} label="Platform">
+              <Select
+                id={platformId}
+                value={platform}
+                onChange={(event) => setPlatform(event.target.value as Platform | '')}
+              >
+                <option value="">All</option>
+                {PLATFORMS.map((p) => (
+                  <option key={p} value={p}>
+                    {PLATFORM_NAMES[p]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
         </div>
         {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
         {list.error ? <Alert tone="error">{pageErrorMessage(list.error)}</Alert> : null}
@@ -151,11 +174,28 @@ function UserTable({
             <Td>
               <UserStatusBadge status={user.status} />
             </Td>
-            <Td>{user.roles.length > 0 ? user.roles.map((r) => r.name).join(', ') : DASH}</Td>
+            <Td>{user.roles.length > 0 ? <RolesByPlatform roles={user.roles} /> : DASH}</Td>
             <Td className="whitespace-nowrap">{isoDate(user.createdAt)}</Td>
           </Tr>
         ))}
       </Tbody>
     </Table>
+  );
+}
+
+/** One line per platform the user holds a role on (RFC-31 R16). */
+function RolesByPlatform({ roles }: { roles: User['roles'] }) {
+  return (
+    <>
+      {PLATFORMS.filter((p) => roles.some((r) => r.platform === p)).map((p) => (
+        <div key={p}>
+          <span className="text-mist-500">{PLATFORM_NAMES[p]}:</span>{' '}
+          {roles
+            .filter((r) => r.platform === p)
+            .map((r) => r.name)
+            .join(', ')}
+        </div>
+      ))}
+    </>
   );
 }

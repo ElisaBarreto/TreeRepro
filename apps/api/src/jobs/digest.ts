@@ -1,4 +1,4 @@
-import type { PermissionKey } from '@treerepro/contracts';
+import type { PermissionKey, Platform } from '@treerepro/contracts';
 import { and, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import { UNRESTRICTED } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
@@ -418,10 +418,14 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
  * One query over `user_roles` and `role_permissions`; a user qualifying twice
  * is deduplicated here rather than with `distinct`, which would compare the
  * encrypted name and address columns (RFC-40 R11).
+ * Only the roles held on `platform` count (RFC-31 R16).
  * @rfc RFC-74 R4
- * @rfc RFC-31 R2
+ * @rfc RFC-31 R2, R16
  */
-export async function digestRecipients(db: DbExecutor): Promise<DigestRecipient[]> {
+export async function digestRecipients(
+  db: DbExecutor,
+  platform: Platform,
+): Promise<DigestRecipient[]> {
   const rows = await db
     .select({ id: users.id, email: users.email, name: users.name })
     .from(users)
@@ -437,6 +441,7 @@ export async function digestRecipients(db: DbExecutor): Promise<DigestRecipient[
     .where(
       and(
         eq(users.status, 'active'),
+        eq(userRoles.platform, platform),
         or(
           isNotNull(rolePermissions.permissionKey),
           and(eq(roles.isSystem, true), eq(roles.name, ADMIN_ROLE_NAME)),
@@ -466,7 +471,10 @@ export interface DigestRunResult {
 export interface RunDigestInput {
   db: DbExecutor;
   mailer: Mailer;
+  /** The origin of `platform`, for the links. */
   appOrigin: string;
+  /** The platform this digest is for; no request host exists (RFC-14 R4). */
+  platform: Platform;
   logger: Logger;
   /**
    * `DIGEST_ENABLED` (R6). REQUIRED, not optional: an omitted flag would
@@ -548,7 +556,7 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
       return { runId, status: 'skipped', recipients: 0, failed: 0 };
     }
 
-    const recipients = await digestRecipients(db);
+    const recipients = await digestRecipients(db, input.platform);
     if (recipients.length === 0) {
       // R4 says nothing else: the run still completes and audits normally.
       // But activity happened and nobody was told — every `records.review`

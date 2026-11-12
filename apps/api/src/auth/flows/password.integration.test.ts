@@ -1,11 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, randomIp, TEST_PLANT_ORIGIN, useTestApp } from '../../../test/helpers/app.ts';
+import { call, ctxOf, randomIp, TEST_PLANT_ORIGIN, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
+import { createRole } from '../../../test/helpers/roles.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
-import { createUser, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
+import { createMember, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
 import { consumeToken, issueToken } from '../tokens.ts';
+import { inviteUser } from './invitation.ts';
 
 const NEW_PASSWORD = 'another perfectly fine passphrase';
 
@@ -15,7 +17,7 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
     call(t.app, 'POST', '/api/auth/password/forgot', { body: { email }, ...options });
 
   it('RFC-14 R4 links to the platform the reset was asked on', async () => {
-    const { email } = await createUser(t.db);
+    const { email } = await createMember(t.db);
     const before = t.mail.sent.length;
     const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/password/forgot', {
       body: { email },
@@ -29,7 +31,7 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
   });
 
   it('answers the same 200 for known and unknown emails; emails a 1 h link only to active users', async () => {
-    const { user, email } = await createUser(t.db, { name: 'Ada' });
+    const { user, email } = await createMember(t.db, { name: 'Ada' });
     const before = t.mail.sent.length;
     const known = await forgot(email);
     const unknown = await forgot(randomEmail());
@@ -53,7 +55,7 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
   });
 
   it('emails an invited user a reset link', async () => {
-    const invited = await createUser(t.db, { status: 'invited', password: null });
+    const invited = await createMember(t.db, { status: 'invited', password: null });
     const before = t.mail.sent.length;
     expect((await forgot(invited.email)).status).toBe(200);
     expect(t.mail.sent[before]?.to).toBe(invited.email);
@@ -62,13 +64,13 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
 
   it('sends nothing for suspended users', async () => {
     const before = t.mail.sent.length;
-    const suspended = await createUser(t.db, { status: 'suspended' });
+    const suspended = await createMember(t.db, { status: 'suspended' });
     expect((await forgot(suspended.email)).status).toBe(200);
     expect(t.mail.sent.length).toBe(before);
   });
 
   it('logs a mail failure without the address and still answers 200', async () => {
-    const { email } = await createUser(t.db);
+    const { email } = await createMember(t.db);
     t.mail.failNext(new Error('ECONNREFUSED'));
     expect((await forgot(email)).status).toBe(200);
     const line = t.lines.find((l) => (l as { msg: string }).msg === 'password reset email failed');
@@ -91,7 +93,7 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
   const t = useTestApp();
 
   async function requestReset() {
-    const created = await createUser(t.db);
+    const created = await createMember(t.db);
     const before = t.mail.sent.length;
     await call(t.app, 'POST', '/api/auth/password/forgot', { body: { email: created.email } });
     const token =
@@ -132,7 +134,7 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
   });
 
   it('activates an invited user and kills the pending invitation', async () => {
-    const { user, email } = await createUser(t.db, { status: 'invited', password: null });
+    const { user, email } = await createMember(t.db, { status: 'invited', password: null });
     const invite = await t.db.transaction((tx) =>
       issueToken(tx, { userId: user.id, kind: 'invite' }),
     );
@@ -154,6 +156,34 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
     });
   });
 
+  it('RFC-22 R13 activates an invitee of the other platform; the platform is checked at login', async () => {
+    const email = randomEmail();
+    await inviteUser(ctxOf(t), {
+      email,
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'plantrepro',
+      roleIds: [(await createRole(t.db)).id],
+    });
+    const before = t.mail.sent.length;
+    await call(t.app, 'POST', '/api/auth/password/forgot', { body: { email } });
+    const token =
+      /reset-password\/([A-Za-z0-9_-]{43})/.exec(t.mail.sent[before]?.text ?? '')?.[1] ?? '';
+    expect((await reset({ token, newPassword: NEW_PASSWORD })).status).toBe(200);
+    const here = await call(t.app, 'POST', '/api/auth/login', {
+      body: { email, password: NEW_PASSWORD },
+    });
+    expect((await here.json()).error).toMatchObject({
+      code: 'PLATFORM_ACCESS_DENIED',
+      details: [{ path: 'platforms', message: 'plantrepro' }],
+    });
+    const plant = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/login', {
+      body: { email, password: NEW_PASSWORD },
+      origin: TEST_PLANT_ORIGIN,
+    });
+    expect(plant.status).toBe(200);
+  });
+
   it('a weak password is refused without consuming the token; invalid tokens answer 400', async () => {
     const { token } = await requestReset();
     const weak = await reset({ token, newPassword: 'short' });
@@ -165,7 +195,7 @@ describe('RFC-21 R6 POST /api/auth/password/reset', () => {
   });
 
   it('R8 keeps TOTP enabled', async () => {
-    const { email } = await createUser(t.db, { totpSecret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' });
+    const { email } = await createMember(t.db, { totpSecret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' });
     const before = t.mail.sent.length;
     await call(t.app, 'POST', '/api/auth/password/forgot', { body: { email } });
     const token =
@@ -184,7 +214,7 @@ describe('RFC-21 R7 POST /api/auth/password/change', () => {
     call(t.app, 'POST', '/api/auth/password/change', { body, cookie });
 
   it('requires the current password, keeps the current session and revokes the others', async () => {
-    const { user, email } = await createUser(t.db);
+    const { user, email } = await createMember(t.db);
     const current = await loginAs(t, user);
     const other = await loginAs(t, user);
     const wrong = await change(current.cookie, {

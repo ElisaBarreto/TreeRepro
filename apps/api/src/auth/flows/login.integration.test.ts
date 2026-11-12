@@ -9,7 +9,13 @@ import {
   useTestApp,
 } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
-import { createUser, DEFAULT_PASSWORD, randomEmail } from '../../../test/helpers/users.ts';
+import { adminRoleId } from '../../../test/helpers/roles.ts';
+import {
+  createMember,
+  createUser,
+  DEFAULT_PASSWORD,
+  randomEmail,
+} from '../../../test/helpers/users.ts';
 import { generateTotpCode, generateTotpSecret } from '../totp.ts';
 
 vi.mock('@node-rs/argon2', { spy: true });
@@ -20,7 +26,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
     call(t.app, 'POST', '/api/auth/login', { body, ...options });
 
   it('RFC-14 R5 a sign-in on PlantRepro opens a PlantRepro session', async () => {
-    const { user, email } = await createUser(t.db);
+    const { user, email } = await createMember(t.db, { platform: 'plantrepro' });
     const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/login', {
       body: { email, password: DEFAULT_PASSWORD },
       origin: TEST_PLANT_ORIGIN,
@@ -38,7 +44,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   });
 
   it('opens a session for a correct password and audits success', async () => {
-    const { user, email } = await createUser(t.db);
+    const { user, email } = await createMember(t.db);
     const ip = randomIp();
     const res = await login(
       { email, password: DEFAULT_PASSWORD },
@@ -68,7 +74,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   });
 
   it('answers the same 401 for an unknown email and a wrong password, and still runs argon2', async () => {
-    const { email } = await createUser(t.db);
+    const { email } = await createMember(t.db);
     const wrong = await login({ email, password: 'not the password' });
     const unknown = await login({ email: randomEmail(), password: 'not the password' });
     expect(wrong.status).toBe(401);
@@ -86,7 +92,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   });
 
   it('treats invited users as invalid credentials with reason not_active', async () => {
-    const invited = await createUser(t.db, { status: 'invited', password: null });
+    const invited = await createMember(t.db, { status: 'invited', password: null });
     expect((await login({ email: invited.email, password: DEFAULT_PASSWORD })).status).toBe(401);
     expect(
       await lastAudit(t.db, 'auth.login.failure', { targetId: invited.user.id }),
@@ -97,7 +103,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   });
 
   it('discloses suspension only with the correct password', async () => {
-    const { email, user } = await createUser(t.db, { status: 'suspended' });
+    const { email, user } = await createMember(t.db, { status: 'suspended' });
     const right = await login({ email, password: DEFAULT_PASSWORD });
     expect(right.status).toBe(403);
     expect((await right.json()).error.code).toBe('AUTH_ACCOUNT_SUSPENDED');
@@ -110,7 +116,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   });
 
   it('R3 answers totp_required with the MFA cookie and no session for a TOTP user', async () => {
-    const { user, email } = await createUser(t.db, { totpSecret: generateTotpSecret() });
+    const { user, email } = await createMember(t.db, { totpSecret: generateTotpSecret() });
     const res = await login({ email, password: DEFAULT_PASSWORD });
     expect(res.status).toBe(200);
     expect((await res.json()).data).toEqual({ status: 'totp_required' });
@@ -121,7 +127,7 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   });
 
   it('RFC-24 R3, R6 limits 5 attempts per email+IP and 20 per IP, auditing rate_limited', async () => {
-    const { email } = await createUser(t.db);
+    const { email } = await createMember(t.db);
     const ip = randomIp();
     for (let i = 0; i < 5; i++)
       expect((await login({ email, password: 'wrong' }, { ip })).status).toBe(401);
@@ -149,12 +155,76 @@ describe('RFC-22 R2, R3 POST /api/auth/login', () => {
   });
 });
 
+describe('RFC-22 R13 platform access', () => {
+  const t = useTestApp();
+  const plant = (path: string, body: unknown, cookie?: string) =>
+    call(t.app, 'POST', `http://plantrepro.localhost${path}`, {
+      body,
+      cookie,
+      origin: TEST_PLANT_ORIGIN,
+    });
+
+  it('refuses a user with no role on the platform after the password, naming the other one', async () => {
+    const { user, email } = await createMember(t.db);
+    const res = await plant('/api/auth/login', { email, password: DEFAULT_PASSWORD });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error.code).toBe('PLATFORM_ACCESS_DENIED');
+    expect(body.error.details).toEqual([{ path: 'platforms', message: 'treerepro' }]);
+    expect(setCookieLine(res, '__Host-session')).toBe('');
+    expect(await t.sessions.list(user.id)).toEqual([]);
+    expect(await lastAudit(t.db, 'auth.platform_denied', { targetId: user.id })).toMatchObject({
+      metadata: { platform: 'plantrepro', reason: 'no_role' },
+    });
+    expect(
+      (
+        await call(t.app, 'POST', '/api/auth/login', {
+          body: { email, password: DEFAULT_PASSWORD },
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  it('never discloses anything before the password is verified', async () => {
+    const { email } = await createMember(t.db);
+    const res = await plant('/api/auth/login', { email, password: 'wrong password entirely' });
+    expect((await res.json()).error.code).toBe('AUTH_INVALID_CREDENTIALS');
+  });
+
+  it('refuses at the TOTP step, not the password step', async () => {
+    const secret = generateTotpSecret();
+    const { email } = await createMember(t.db, { totpSecret: secret });
+    const first = await plant('/api/auth/login', { email, password: DEFAULT_PASSWORD });
+    expect((await first.json()).data.status).toBe('totp_required');
+    const res = await plant(
+      '/api/auth/login/totp',
+      { code: generateTotpCode(secret, t.clock.now) },
+      cookieFrom(first, '__Host-mfa') ?? '',
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error.code).toBe('PLATFORM_ACCESS_DENIED');
+    expect(setCookieLine(res, '__Host-session')).toBe('');
+  });
+
+  it('lists no platform for a user with no role anywhere; an admin signs in on both', async () => {
+    const { email } = await createUser(t.db);
+    const res = await call(t.app, 'POST', '/api/auth/login', {
+      body: { email, password: DEFAULT_PASSWORD },
+    });
+    expect((await res.json()).error).toMatchObject({ code: 'PLATFORM_ACCESS_DENIED', details: [] });
+    const admin = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const body = { email: admin.email, password: DEFAULT_PASSWORD };
+    expect((await call(t.app, 'POST', '/api/auth/login', { body })).status).toBe(200);
+    expect((await plant('/api/auth/login', body)).status).toBe(200);
+  });
+});
+
 describe('RFC-23 R6 POST /api/auth/login/totp', () => {
   const t = useTestApp();
 
   async function challenge() {
     const secret = generateTotpSecret();
-    const { user, email } = await createUser(t.db, { totpSecret: secret });
+    const { user, email } = await createMember(t.db, { totpSecret: secret });
     const res = await call(t.app, 'POST', '/api/auth/login', {
       body: { email, password: DEFAULT_PASSWORD },
     });
@@ -165,7 +235,10 @@ describe('RFC-23 R6 POST /api/auth/login/totp', () => {
 
   it('RFC-14 R5 completing the TOTP step on PlantRepro opens a PlantRepro session', async () => {
     const secret = generateTotpSecret();
-    const { user, email } = await createUser(t.db, { totpSecret: secret });
+    const { user, email } = await createMember(t.db, {
+      totpSecret: secret,
+      platform: 'plantrepro',
+    });
     const plant = (path: string, body: unknown, cookie?: string) =>
       call(t.app, 'POST', `http://plantrepro.localhost${path}`, {
         body,
@@ -209,7 +282,7 @@ describe('RFC-23 R6 POST /api/auth/login/totp', () => {
 
   it('R4 rejects a replayed code on a fresh challenge', async () => {
     const secret = generateTotpSecret();
-    const { email } = await createUser(t.db, { totpSecret: secret });
+    const { email } = await createMember(t.db, { totpSecret: secret });
     const first =
       cookieFrom(
         await call(t.app, 'POST', '/api/auth/login', {

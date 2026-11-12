@@ -1,11 +1,13 @@
 import type { Platform } from '@treerepro/contracts';
 import { and, eq, isNull } from 'drizzle-orm';
 import { recordAudit } from '../../audit/audit.ts';
+import type { DbExecutor } from '../../db/client.ts';
 import { totpRecoveryCodes } from '../../db/schema/totp-recovery-codes.ts';
 import type { UserRow } from '../../db/schema/users.ts';
 import { AppError } from '../../http/errors.ts';
 import type { AuthContext, RequestMeta } from '../context.ts';
 import { dummyPasswordHash, verifyPassword } from '../password.ts';
+import { assertHoldsPlatform, PlatformDeniedError } from '../platform-access.ts';
 import { hashRecoveryCode, verifyTotpCode } from '../totp.ts';
 import { findUserByEmail, findUserById } from '../users.ts';
 
@@ -47,7 +49,7 @@ const canLogIn = (user: UserRow | null): user is UserRow & { passwordHash: strin
   (user.status === 'active' || user.status === 'suspended');
 
 /**
- * @rfc RFC-22 R2, R3
+ * @rfc RFC-22 R2, R3, R13
  * @rfc RFC-21 R4
  * @rfc RFC-14 R5
  */
@@ -91,6 +93,25 @@ async function openSession(
   platform: Platform,
   extraAudit?: 'auth.totp.recovery_used',
 ): Promise<{ user: UserRow; sessionRawId: string }> {
+  try {
+    await assertHoldsPlatform(ctx.db, user.id, platform);
+  } catch (err) {
+    if (err instanceof PlatformDeniedError) {
+      await ctx.db.transaction(async (tx) => {
+        await auditPlatformDenied(tx, err, meta);
+        // The recovery code is spent even though no session opens.
+        if (extraAudit)
+          await recordAudit(tx, {
+            actorUserId: user.id,
+            action: extraAudit,
+            targetType: 'user',
+            targetId: user.id,
+            ...meta,
+          });
+      });
+    }
+    throw err;
+  }
   const { rawId } = await ctx.sessions.create({
     userId: user.id,
     ip: meta.ip,
@@ -118,11 +139,28 @@ async function openSession(
   return { user, sessionRawId: rawId };
 }
 
+/** @rfc RFC-22 R13 */
+export async function auditPlatformDenied(
+  db: DbExecutor,
+  err: PlatformDeniedError,
+  meta: RequestMeta,
+): Promise<void> {
+  await recordAudit(db, {
+    actorUserId: err.userId,
+    action: 'auth.platform_denied',
+    targetType: 'user',
+    targetId: err.userId,
+    ...meta,
+    metadata: { platform: err.platform, reason: err.reason },
+  });
+}
+
 const MFA_EXPIRED = () =>
   new AppError('AUTH_MFA_EXPIRED', 'Login challenge has expired; start again');
 
 /**
  * @rfc RFC-23 R4, R5, R6
+ * @rfc RFC-22 R13
  * @rfc RFC-14 R5
  */
 export async function loginTotp(

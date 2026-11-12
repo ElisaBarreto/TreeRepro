@@ -112,7 +112,26 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
     const cid = within(rows[3] as HTMLElement).getAllByRole('cell');
     expect(cid[2]).toHaveTextContent('suspended');
     expect(cid[3]).toHaveTextContent('Readers');
-    expect(within(rows[2] as HTMLElement).getAllByRole('cell')[3]).toHaveTextContent('admin');
+    expect(cid[3]).toHaveTextContent('TreeRepro: Readers');
+    // RFC-31 R16: admin is held on both platforms.
+    expect(within(rows[2] as HTMLElement).getAllByRole('cell')[3]).toHaveTextContent(
+      'TreeRepro: adminPlantRepro: admin',
+    );
+  });
+
+  it('RFC-50 R2 filters by platform', async () => {
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    admin.listUsers.mockResolvedValue(page([ADMIN_USER]));
+    await openPage();
+    await screen.findByRole('table');
+    await userEvent.selectOptions(screen.getByLabelText('Platform'), 'PlantRepro');
+    await waitFor(() =>
+      expect(admin.listUsers).toHaveBeenLastCalledWith({
+        platform: 'plantrepro',
+        cursor: undefined,
+        limit: 50,
+      }),
+    );
   });
 
   it('filters by status and starts over at page 1', async () => {
@@ -181,6 +200,7 @@ describe('RFC-13 R2, RFC-50 R2 UsersPage', () => {
       expect(admin.inviteUser).toHaveBeenCalledWith({
         email: 'bea@example.org',
         name: 'Bea',
+        platform: 'treerepro',
         roles: [ROLE_READERS.id],
       }),
     );

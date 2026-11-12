@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { PermissionKey } from '@treerepro/contracts';
+import { type PermissionKey, PLATFORMS, type Platform } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import type { DbExecutor } from '../../src/db/client.ts';
 import { rolePermissions } from '../../src/db/schema/role-permissions.ts';
@@ -33,11 +33,25 @@ export async function createRole(
   return role;
 }
 
-export async function grantRoles(db: DbExecutor, userId: string, roleIds: string[]): Promise<void> {
+/**
+ * Grants roles on `platform` (default TreeRepro); `admin` on both, as
+ * `setUserRoles` stores it (RFC-31 R16).
+ */
+export async function grantRoles(
+  db: DbExecutor,
+  userId: string,
+  roleIds: string[],
+  platform: Platform = 'treerepro',
+): Promise<void> {
   if (roleIds.length === 0) return;
+  const admin = await adminRoleId(db);
   await db
     .insert(userRoles)
-    .values(roleIds.map((roleId) => ({ userId, roleId })))
+    .values(
+      roleIds.flatMap((roleId) =>
+        (roleId === admin ? PLATFORMS : [platform]).map((p) => ({ userId, roleId, platform: p })),
+      ),
+    )
     .onConflictDoNothing();
 }
 

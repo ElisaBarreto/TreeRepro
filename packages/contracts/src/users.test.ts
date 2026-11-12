@@ -15,7 +15,7 @@ const user = {
   name: 'Ada',
   status: 'active',
   totpEnabled: false,
-  roles: [{ id: '019a0000-0000-7000-8000-000000000002', name: 'admin' }],
+  roles: [{ id: '019a0000-0000-7000-8000-000000000002', name: 'admin', platform: 'treerepro' }],
   plots: [],
   restrictToAssignedPlots: false,
   createdAt: '2026-09-12T00:00:00.000Z',
@@ -29,6 +29,10 @@ describe('RFC-50 R1 user representation', () => {
     expect(userSchema.safeParse({ ...user, passwordHash: 'x' }).success).toBe(false);
     expect(userSchema.safeParse({ ...user, status: 'deleted' }).success).toBe(false);
     expect(userSchema.safeParse({ ...user, suspendedAt: undefined }).success).toBe(false);
+    // RFC-31 R16: every role names its platform.
+    expect(
+      userSchema.safeParse({ ...user, roles: [{ id: user.roles[0]?.id, name: 'admin' }] }).success,
+    ).toBe(false);
   });
 
   it('name is trimmed and 1–120 characters', () => {
@@ -46,6 +50,11 @@ describe('RFC-50 R2–R5, R11 request schemas', () => {
     });
     expect(listUsersQuerySchema.safeParse({ status: 'deleted' }).success).toBe(false);
     expect(listUsersQuerySchema.safeParse({ q: 'ada' }).success).toBe(false);
+    expect(listUsersQuerySchema.parse({ platform: 'plantrepro' })).toEqual({
+      platform: 'plantrepro',
+      limit: 50,
+    });
+    expect(listUsersQuerySchema.safeParse({ platform: 'other' }).success).toBe(false);
   });
 
   it('id params are uuids', () => {
@@ -67,6 +76,8 @@ describe('RFC-50 R2–R5, R11 request schemas', () => {
       expect(parsed.error?.issues[0]?.path[0]).toBe('roles');
     }
     expect(createUserBodySchema.safeParse({ ...ok, extra: 1 }).success).toBe(false);
+    expect(createUserBodySchema.safeParse({ ...ok, platform: 'plantrepro' }).success).toBe(true);
+    expect(createUserBodySchema.safeParse({ ...ok, platform: 'other' }).success).toBe(false);
   });
 
   it('update needs at least one of name and roles; roles are uuids', () => {
@@ -75,6 +86,10 @@ describe('RFC-50 R2–R5, R11 request schemas', () => {
     expect(updateUserBodySchema.safeParse({ roles: [] }).success).toBe(true);
     expect(updateUserBodySchema.safeParse({ roles: ['admin'] }).success).toBe(false);
     expect(updateUserBodySchema.safeParse({ email: 'x@example.test' }).success).toBe(false);
+    expect(updateUserBodySchema.safeParse({ roles: [], platform: 'plantrepro' }).success).toBe(
+      true,
+    );
+    expect(updateUserBodySchema.safeParse({ roles: [], platform: 'other' }).success).toBe(false);
   });
 
   it('me update takes name only', () => {

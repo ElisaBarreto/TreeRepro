@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client.ts';
 import { USER } from '../test/fixtures.ts';
 import { renderWithProviders } from '../test/render.tsx';
-import { InvitePage } from './InvitePage.tsx';
+import { InvitePage, inviteErrorMessage } from './InvitePage.tsx';
 
 // fetchMe stays in the factory even though this file never calls it: `session.ts`
 // (imported transitively via `renderWithProviders`) reads it at module scope.
@@ -52,5 +52,13 @@ describe('RFC-20 R6 InvitePage', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Set password and sign in' }));
     expect(await screen.findByText('This password appears in a breach')).toBeInTheDocument();
+  });
+});
+
+describe('RFC-22 R13 inviteErrorMessage', () => {
+  it('says the platform refused the invitation', () => {
+    expect(inviteErrorMessage(new ApiError(403, 'PLATFORM_ACCESS_DENIED', 'x', []))).toBe(
+      'You have no access to TreeRepro.',
+    );
   });
 });

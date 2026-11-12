@@ -56,7 +56,7 @@ describe('RFC-31 R1, R2 roles tables', () => {
         ),
       ).rejects.toMatchObject({ code: '23503' });
       const { user } = await createUser(tx);
-      await tx.insert(userRoles).values({ userId: user.id, roleId });
+      await tx.insert(userRoles).values({ userId: user.id, roleId, platform: 'treerepro' });
       await tx.delete(roles).where(eq(roles.id, roleId));
       const [rp] = await tx
         .select({ n: sql<number>`count(*)::int` })

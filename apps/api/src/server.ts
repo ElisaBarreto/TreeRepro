@@ -6,7 +6,7 @@ import { createHibpChecker } from './auth/breach-check.ts';
 import { createMfaStore } from './auth/mfa.ts';
 import { createRateLimiter } from './auth/rate-limit.ts';
 import { createSessionStore } from './auth/sessions.ts';
-import { loadConfig } from './config.ts';
+import { loadConfig, originOf } from './config.ts';
 import { createDb } from './db/client.ts';
 import { createHealthChecks } from './http/health-checks.ts';
 import { createDoiClient } from './integrations/doi.ts';
@@ -86,7 +86,9 @@ const digest = startDigestTimer({
     runDigest({
       db,
       mailer,
-      appOrigin: config.appOrigin,
+      // RFC-74 R4: the digest states its platform; PlantRepro's comes with plan 15e.
+      platform: 'treerepro',
+      appOrigin: originOf(config, 'treerepro'),
       logger,
       enabled: config.digestEnabled,
     }),

@@ -3,9 +3,11 @@ import {
   isPermissionKey,
   PERMISSION_KEYS,
   type PermissionKey,
+  PLATFORMS,
+  type Platform,
   type Role,
 } from '@treerepro/contracts';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { recordAudit } from '../audit/audit.ts';
 import { revokeAllApiKeys } from '../auth/api-keys.ts';
 import type { DbExecutor } from '../db/client.ts';
@@ -16,7 +18,7 @@ import { userRoles } from '../db/schema/user-roles.ts';
 import { users } from '../db/schema/users.ts';
 import { AppError } from '../http/errors.ts';
 import type { AccessContext } from './context.ts';
-import { effectivePermissions } from './permissions.ts';
+import { effectivePermissions, heldRoles } from './permissions.ts';
 
 export interface RoleInput {
   name: string;
@@ -93,23 +95,25 @@ interface RefusalEntry {
   actorUserId: string;
   targetType: 'user' | 'role';
   targetId?: string;
-  metadata: { reason: RefusalReason; added?: string[]; removed?: string[] };
+  metadata: { reason: RefusalReason; platform?: Platform; added?: string[]; removed?: string[] };
 }
 
-/** What the actor may delegate: their roles, whether one of them is `admin`, and their effective permissions. @rfc RFC-31 R12 */
+/**
+ * What the actor may delegate on `platform` (either platform when omitted,
+ * for role writes): their roles, whether one of them is `admin`, and their
+ * effective permissions.
+ * @rfc RFC-31 R12, R16
+ */
 async function actorStanding(
   db: DbExecutor,
   actorUserId: string,
+  platform?: Platform,
 ): Promise<{ admin: boolean; roleIds: string[]; permissions: ReadonlySet<string> }> {
-  const held = await db
-    .select({ id: roles.id, name: roles.name, isSystem: roles.isSystem })
-    .from(userRoles)
-    .innerJoin(roles, eq(userRoles.roleId, roles.id))
-    .where(eq(userRoles.userId, actorUserId));
+  const held = await heldRoles(db, actorUserId, platform);
   return {
     admin: held.some(isAdmin),
     roleIds: held.map((r) => r.id),
-    permissions: new Set(await effectivePermissions(db, actorUserId)),
+    permissions: new Set(await effectivePermissions(db, actorUserId, platform)),
   };
 }
 
@@ -156,6 +160,7 @@ async function assertMayAssignRoles(
   db: DbExecutor,
   input: {
     userId: string;
+    platform: Platform;
     added: string[];
     removed: string[];
     admin: RoleRow | null;
@@ -164,16 +169,16 @@ async function assertMayAssignRoles(
 ): Promise<void> {
   if (input.actorUserId === null) return;
   const actorUserId = input.actorUserId;
-  const { added, removed } = input;
+  const { added, removed, platform } = input;
   const deny = (reason: RefusalReason) =>
     new DelegationRefusedError({
       actorUserId,
       targetType: 'user',
       targetId: input.userId,
-      metadata: { reason, added, removed },
+      metadata: { reason, platform, added, removed },
     });
   if (input.userId === actorUserId) throw deny('own_roles');
-  const actor = await actorStanding(db, actorUserId);
+  const actor = await actorStanding(db, actorUserId, platform);
   if (actor.admin) return;
   if (input.admin && (added.includes(input.admin.id) || removed.includes(input.admin.id)))
     throw deny('admin_role');
@@ -236,10 +241,10 @@ export async function listRoles(db: DbExecutor): Promise<Role[]> {
   return rows.map((row) => toRole(row, byRole.get(row.id) ?? []));
 }
 
-/** @rfc RFC-31 R4, R5 */
+/** Each holder once, whatever the platforms they hold it on. @rfc RFC-31 R4, R5, R16 */
 export async function userIdsWithRole(db: DbExecutor, roleId: string): Promise<string[]> {
   const rows = await db
-    .select({ userId: userRoles.userId })
+    .selectDistinct({ userId: userRoles.userId })
     .from(userRoles)
     .where(eq(userRoles.roleId, roleId));
   return rows.map((r) => r.userId);
@@ -415,8 +420,9 @@ export async function assertNotLastAdmin(db: DbExecutor, userId: string): Promis
   await db.execute(sql`select pg_advisory_xact_lock(hashtext('roles:admin-holders'))`);
   const admin = await adminRole(db);
   if (!admin) return;
+  // Distinct: admin is stored once per platform (RFC-31 R16).
   const holders = await db
-    .select({ userId: userRoles.userId })
+    .selectDistinct({ userId: userRoles.userId })
     .from(userRoles)
     .innerJoin(users, eq(users.id, userRoles.userId))
     .where(and(eq(userRoles.roleId, admin.id), eq(users.status, 'active')));
@@ -427,12 +433,14 @@ export async function assertNotLastAdmin(db: DbExecutor, userId: string): Promis
 }
 
 /**
- * @rfc RFC-31 R6, R7, R12, R13, R14
+ * Replaces the user's roles on `platform`; `admin` is written or removed on
+ * both platforms together. The only writer of `user_roles`.
+ * @rfc RFC-31 R6, R7, R12, R13, R14, R16
  * @rfc RFC-82 R3
  */
 export async function setUserRoles(
   ctx: AccessContext,
-  input: { userId: string; roleIds: string[]; actorUserId: string | null },
+  input: { userId: string; platform: Platform; roleIds: string[]; actorUserId: string | null },
 ): Promise<{ added: string[]; removed: string[] }> {
   const wanted = [...new Set(input.roleIds)];
   const now = new Date(ctx.now());
@@ -455,13 +463,14 @@ export async function setUserRoles(
         await tx
           .select({ roleId: userRoles.roleId })
           .from(userRoles)
-          .where(eq(userRoles.userId, input.userId))
+          .where(and(eq(userRoles.userId, input.userId), eq(userRoles.platform, input.platform)))
       ).map((r) => r.roleId);
       const added = wanted.filter((id) => !current.includes(id));
       const removed = current.filter((id) => !wanted.includes(id));
       const admin = await adminRole(tx);
       await assertMayAssignRoles(tx, {
         userId: input.userId,
+        platform: input.platform,
         added,
         removed,
         admin,
@@ -477,20 +486,41 @@ export async function setUserRoles(
           now,
         });
       }
+      // `admin` lives on both platforms or neither (R16); every other role on this one.
+      const platformsOf = (roleId: string) => (roleId === admin?.id ? PLATFORMS : [input.platform]);
       if (removed.length > 0)
         await tx
           .delete(userRoles)
-          .where(and(eq(userRoles.userId, input.userId), inArray(userRoles.roleId, removed)));
+          .where(
+            and(
+              eq(userRoles.userId, input.userId),
+              inArray(userRoles.roleId, removed),
+              or(
+                eq(userRoles.platform, input.platform),
+                admin ? eq(userRoles.roleId, admin.id) : undefined,
+              ),
+            ),
+          );
       if (added.length > 0)
         await tx
           .insert(userRoles)
-          .values(added.map((roleId) => ({ userId: input.userId, roleId, createdAt: now })));
+          .values(
+            added.flatMap((roleId) =>
+              platformsOf(roleId).map((platform) => ({
+                userId: input.userId,
+                roleId,
+                platform,
+                createdAt: now,
+              })),
+            ),
+          )
+          .onConflictDoNothing();
       await recordAudit(tx, {
         actorUserId: input.actorUserId,
         action: 'users.roles_changed',
         targetType: 'user',
         targetId: input.userId,
-        metadata: { added, removed },
+        metadata: { platform: input.platform, added, removed },
       });
       return { added, removed };
     }),

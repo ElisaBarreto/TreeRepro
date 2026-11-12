@@ -28,7 +28,8 @@ export const KEY_REFUSED_PERMISSIONS: ReadonlySet<PermissionKey> = new Set<Permi
 const DENIED = () => new AppError('PERMISSION_DENIED', 'You do not have permission to do this');
 
 /**
- * @rfc RFC-32 R4, R7
+ * Checks the permission on the request's platform (RFC-32 R1).
+ * @rfc RFC-32 R1, R4, R7
  * @rfc RFC-82 R6
  */
 export function requirePermission(
@@ -40,7 +41,7 @@ export function requirePermission(
     async (c, next) => {
       const user = c.get('user');
       if (!user) throw new AppError('AUTH_UNAUTHENTICATED', 'Authentication required');
-      const permissions = await resolvePermissions(ctx, user.id);
+      const permissions = await resolvePermissions(ctx, user.id, c.get('platform'));
       if (!permissions.has(key)) throw DENIED();
       if (c.get('apiKey') && KEY_REFUSED_PERMISSIONS.has(key)) throw DENIED();
       if (options.resource && !(await options.resource(c))) throw DENIED();
