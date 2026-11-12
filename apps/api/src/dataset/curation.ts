@@ -527,7 +527,8 @@ export async function createRecords(
 
     // One sequence number for the records actually created; a collision
     // below leaves a gap, which RFC-63 R12 accepts.
-    const codes = toCreate.length === 0 ? [] : await nextRecordCodes(tx, visibility.platform, toCreate.length);
+    const codes =
+      toCreate.length === 0 ? [] : await nextRecordCodes(tx, visibility.platform, toCreate.length);
     const createdIds: string[] = [];
     for (const [i, value] of toCreate.entries()) {
       const valueText: string | SQL<string> =

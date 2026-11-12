@@ -227,7 +227,12 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
       const [mapped] = await t.db
         .select({ recordCode: traitRecords.recordCode })
         .from(traitRecords)
-        .where(and(eq(traitRecords.createdBy, other.id), eq(traitRecords.levelId, trait.levels[1]?.id as string)));
+        .where(
+          and(
+            eq(traitRecords.createdBy, other.id),
+            eq(traitRecords.levelId, trait.levels[1]?.id as string),
+          ),
+        );
       expect(mapped?.recordCode).toMatch(code);
     }
   });
