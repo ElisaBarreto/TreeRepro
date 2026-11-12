@@ -56,7 +56,10 @@ function validateSearch(search: Record<string, unknown>): SpeciesSearch {
     plantType: enumParam(search.plantType, PLANT_TYPES),
     continent: codeParam(search.continent, /^\d{1,2}$/),
     region: codeParam(search.region, /^\d{1,3}$/),
-    area: codeParam(search.area, /^[A-Z]{3}$/),
+    area: codeParam(
+      typeof search.area === 'string' ? search.area.toUpperCase() : search.area,
+      /^[A-Z]{3}$/,
+    ),
     introduced: search.introduced === true || search.introduced === 'true' ? true : undefined,
     sort: enumParam(search.sort, SPECIES_SORTS),
     order: enumParam(search.order, SORT_ORDERS),
