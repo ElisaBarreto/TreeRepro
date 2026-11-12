@@ -162,14 +162,79 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
   const t = useTestDb();
 
   it('RFC-63 R12 nextRecordCodes takes one sequence number: bare for one record, lettered for several', async () => {
-    const [one] = await nextRecordCodes(t.db, 1);
+    const [one] = await nextRecordCodes(t.db, 'treerepro', 1);
     expect(one).toMatch(/^TR_\d+$/);
-    const three = await nextRecordCodes(t.db, 3);
+    const three = await nextRecordCodes(t.db, 'plantrepro', 3);
     const base = three[0]?.slice(0, -1);
-    expect(base).toMatch(/^TR_\d+$/);
-    expect(base).not.toBe(one);
+    expect(base).toMatch(/^PR_\d+$/);
+    // One sequence for both prefixes: the number is never used twice.
+    expect(base?.slice(3)).not.toBe(one?.slice(3));
     expect(three).toEqual([`${base}a`, `${base}b`, `${base}c`]);
-    await expect(nextRecordCodes(t.db, 0)).rejects.toThrow();
+    await expect(nextRecordCodes(t.db, 'treerepro', 0)).rejects.toThrow();
+  });
+
+  it('RFC-63 R12 every record created on the platform takes its prefix: TR_ on TreeRepro, PR_ on PlantRepro', async () => {
+    const prefixes = { treerepro: 'TR_', plantrepro: 'PR_' } as const;
+    for (const platform of ['treerepro', 'plantrepro'] as const) {
+      const v: Visibility = { ...UNRESTRICTED, platform };
+      const code = new RegExp(`^${prefixes[platform]}\\d+$`);
+      const { user } = await createUser(t.db);
+      const { user: other } = await createUser(t.db);
+      const trait = await createTrait(t.db, { levels: ['a', 'b'] });
+      const sp = await createSpecies(t.db);
+      const ref = await createReference(t.db);
+
+      // RFC-70 R3: an entry.
+      const entry = await createRecords(t.db, v, {
+        actorId: user.id,
+        speciesId: sp.id,
+        traitId: trait.id,
+        value: { levelIds: [trait.levels[0]?.id as string] },
+        referenceIds: [ref.id],
+      });
+      expect(entry.created[0]?.recordCode).toMatch(code);
+
+      // RFC-65 R17: the validator's record of a validation.
+      await annotateRecord(t.db, v, {
+        recordId: entry.created[0]?.id as string,
+        actorId: other.id,
+        kind: 'confirm',
+        canWithdrawAny: false,
+        canWithdrawImported: false,
+      });
+      const [validator] = await t.db
+        .select({ recordCode: traitRecords.recordCode })
+        .from(traitRecords)
+        .where(eq(traitRecords.createdBy, other.id));
+      expect(validator?.recordCode).toMatch(code);
+
+      // RFC-65 R9: a harmonised pending record.
+      await createRecord(t.db, {
+        speciesId: sp.id,
+        traitId: trait.id,
+        valueText: 'unmapped',
+        primaryReferenceId: ref.id,
+        harmonisation: 'unknown_level',
+        origin: 'manual',
+        createdBy: user.id,
+      });
+      await mapPending(t.db, v, {
+        actorId: other.id,
+        traitId: trait.id,
+        valueText: 'unmapped',
+        value: { levelIds: [trait.levels[1]?.id as string] },
+      });
+      const [mapped] = await t.db
+        .select({ recordCode: traitRecords.recordCode })
+        .from(traitRecords)
+        .where(
+          and(
+            eq(traitRecords.createdBy, other.id),
+            eq(traitRecords.levelId, trait.levels[1]?.id as string),
+          ),
+        );
+      expect(mapped?.recordCode).toMatch(code);
+    }
   });
 
   it('spec R-4 creates one record per value: first reference primary, the rest in record_references', async () => {
@@ -190,7 +255,7 @@ describe('RFC-70 R1-R6 createRecords and annotateRecord', () => {
     expect(res.created).toHaveLength(1);
     expect(res.duplicates).toEqual([]);
     const record = res.created[0];
-    expect(record?.recordCode).toMatch(/^TR_\d+$/);
+    expect(record?.recordCode).toMatch(/^PR_\d+$/);
     expect(record?.primaryReference?.id).toBe(ref1.id);
     const extras = [ref2, ref3]
       .sort((x, y) => x.citationKey.localeCompare(y.citationKey))
@@ -456,7 +521,7 @@ describe('RFC-70 R4, RFC-65 R3 annotateRecord (spec R-6, R-10, R-12)', () => {
       primaryReferenceId: po.id,
       secondaryReferenceId: null,
     });
-    expect(mine[0]?.recordCode).toMatch(/^TR_\d+$/);
+    expect(mine[0]?.recordCode).toMatch(/^PR_\d+$/); // UNRESTRICTED is PlantRepro.
     // Again without a reference: the claim key holds it, nothing new.
     await annotateRecord(t.db, UNRESTRICTED, {
       ...base,
@@ -700,14 +765,14 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     expect(result.validated).toEqual([]);
     expect(result.duplicates).toEqual([]);
     const [a, b] = result.created.map((r) => r.recordCode);
-    const n = a?.match(/^TR_(\d+)a$/)?.[1];
+    const n = a?.match(/^PR_(\d+)a$/)?.[1];
     expect(n).toBeDefined();
-    expect(b).toBe(`TR_${n}b`);
+    expect(b).toBe(`PR_${n}b`);
     for (const r of result.created) {
       expect(r.references.map((x) => x.id)).toEqual([f.ref.id, f.ref2.id]);
     }
     const single = await createRecords(t.db, UNRESTRICTED, f.input(['blue']));
-    expect(single.created[0]?.recordCode).toMatch(/^TR_\d+$/);
+    expect(single.created[0]?.recordCode).toMatch(/^PR_\d+$/);
   });
 
   it('RFC-70 R3 a matched level is created too, sharing the entry code number', async () => {
@@ -716,8 +781,8 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     const result = await createRecords(t.db, UNRESTRICTED, f.input(['blue', 'red']));
     expect(result.validated).toHaveLength(1);
     expect(result.created.map((r) => r.level?.key)).toEqual(['blue', 'red']);
-    const n = result.created[0]?.recordCode.match(/^TR_(\d+)a$/)?.[1];
-    expect(result.created[1]?.recordCode).toBe(`TR_${n}b`);
+    const n = result.created[0]?.recordCode.match(/^PR_(\d+)a$/)?.[1];
+    expect(result.created[1]?.recordCode).toBe(`PR_${n}b`);
   });
 
   it("RFC-65 R13 a match validates the whole level: every other contributor's record, one confirm per reference; the level is created once; re-entry is idempotent", async () => {

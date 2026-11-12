@@ -32,7 +32,7 @@ import { users } from './users.ts';
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
-/** Numbers the platform's record codes: `TR_<n>`, gaps accepted (spec R-2). @rfc RFC-63 R12 */
+/** Numbers the platform's record codes, `TR_<n>` and `PR_<n>` alike, gaps accepted (spec R-2). @rfc RFC-63 R12 */
 export const recordCodeTrSeq = pgSequence('record_code_tr_seq');
 
 /**
@@ -44,7 +44,7 @@ export const traitRecords = pgTable(
   'trait_records',
   {
     id: uuid('id').primaryKey().default(sql`uuidv7()`),
-    /** `EB_<n>` from the import file, `TR_<n>` for anything created on the platform (RFC-63 R12). */
+    /** `EB_<n>` from the import file, `TR_<n>` or `PR_<n>` for anything created on TreeRepro or PlantRepro (RFC-63 R12). */
     recordCode: text('record_code')
       .notNull()
       .unique('trait_records_record_code_key')

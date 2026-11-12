@@ -687,7 +687,7 @@ async function runImport(
         if (platform) {
           throw new ImportRefusedError(
             'platform_records_exist',
-            'Platform data (TR_ records, annotations or contests) exists and --replace would delete it; use --replace-imported (RFC-64 R15), or, in the test phase only, --replace --discard-platform',
+            'Platform data (TR_ or PR_ records, annotations or contests) exists and --replace would delete it; use --replace-imported (RFC-64 R15), or, in the test phase only, --replace --discard-platform',
           );
         }
       }

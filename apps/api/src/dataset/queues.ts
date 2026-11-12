@@ -31,7 +31,7 @@ import {
 } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { contestStandingSql, contestVisibleSql, levelContestedSql } from './contests.ts';
-import { requireTrait, resolveValue } from './curation.ts';
+import { newRecordCode, requireTrait, resolveValue } from './curation.ts';
 import { itemQuery, recordVisible, toItem } from './records.ts';
 
 /**
@@ -317,9 +317,10 @@ export async function mapPending(
         where ${group} and ${speciesVisible(visibility, 's')}),
       chosen as (${chosen}),
       ins as (
-        insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
-          raw_value, primary_reference_id, secondary_reference_id, origin, created_by, note, supersedes_record_id)
-        select p.species_id, ${input.traitId}, c.level_id, ${numeric}::numeric,
+        insert into trait_records (record_code, species_id, trait_id, level_id, numeric_value, value_text,
+          harmonisation, raw_value, primary_reference_id, secondary_reference_id, origin, created_by, note,
+          supersedes_record_id)
+        select ${newRecordCode(visibility.platform)}, p.species_id, ${input.traitId}, c.level_id, ${numeric}::numeric,
           coalesce(c.level_key, (${numeric}::numeric)::text), 'harmonised', p.raw_value,
           p.primary_reference_id, p.secondary_reference_id, 'manual', ${input.actorId}, ${input.note ?? null}, p.id
         from pending p cross join chosen c
