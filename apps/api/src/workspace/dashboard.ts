@@ -38,6 +38,12 @@ export interface DashboardViewer {
   id: string;
   permissions: ReadonlySet<PermissionKey>;
   scope: { plots: PlotRef[]; restricted: boolean };
+  /**
+   * `cacheGeneration` of the viewer's entry, read before `scope` and the
+   * visibility were, so an entry computed from inputs a write has since
+   * changed is never stored (RFC-10 R15).
+   */
+  generation?: number;
 }
 
 /** One entry of the traits-with-data ranking. @rfc RFC-72 R1 */
@@ -137,7 +143,12 @@ export async function datasetStats(
  * @rfc RFC-72 R1
  */
 export function dashboardKeys(userId: string): string[] {
-  return PLATFORMS.map((platform) => `dashboard:${platform}:${userId}`);
+  return PLATFORMS.map((platform) => dashboardKey(platform, userId));
+}
+
+/** One platform's entry of a viewer's dashboard. @rfc RFC-72 R1 */
+export function dashboardKey(platform: Platform, userId: string): string {
+  return `dashboard:${platform}:${userId}`;
 }
 
 /** The viewer's plots with the visible species each holds, or null when they have none. */
@@ -448,8 +459,12 @@ export async function getDashboard(
   const [dataset, scope, contributor, curation] = await Promise.all([
     datasetStats(ctx, visibility.platform),
     scopeSection(ctx.db, visibility, viewer.scope),
-    cachedJson(ctx.redis, `dashboard:${visibility.platform}:${viewer.id}`, 300, () =>
-      contributorSection(ctx, visibility, viewer, plotIds),
+    cachedJson(
+      ctx.redis,
+      dashboardKey(visibility.platform, viewer.id),
+      300,
+      () => contributorSection(ctx, visibility, viewer, plotIds),
+      { generation: viewer.generation },
     ).then(async (entry) => ({
       ...entry.value,
       awaitingValidation: await hydrateAwaiting(ctx.db, visibility, entry.value.awaitingValidation),

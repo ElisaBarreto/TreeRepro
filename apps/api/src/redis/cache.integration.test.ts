@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
-import { cachedJson, forgetCached } from './cache.ts';
+import { cachedJson, cacheGeneration, forgetCached } from './cache.ts';
 
 /**
  * One-shot signal. As `started`, a `compute` opens it on entry so the test
@@ -136,5 +136,75 @@ describe('RFC-10 R15 cachedJson', () => {
 
     slow.open();
     expect((await slowPending).value).toBe('slow');
+  });
+
+  it('a forget during a fill discards it: it stores nothing, and a later call computes afresh', async () => {
+    const key = `${prefix()}:forgotten`;
+    const started = gate();
+    const fill = gate();
+    const stale = cachedJson(t.redis, key, 60, async () => {
+      started.open();
+      await fill.wait;
+      return 'before the write';
+    });
+    await started.wait;
+    await forgetCached(t.redis, key);
+
+    // Arrives after the forget: it must not join the discarded fill.
+    const fresh = await cachedJson(t.redis, key, 60, async () => 'after the write');
+    expect(fresh.value).toBe('after the write');
+
+    fill.open();
+    // The caller that joined before the forget still gets its answer…
+    expect((await stale).value).toBe('before the write');
+    // …but it is never written back over the fresh entry.
+    expect(JSON.parse((await t.redis.get(key)) ?? 'null')).toEqual(fresh);
+  });
+
+  it('a forget during a fill with no later call leaves the key empty', async () => {
+    const key = `${prefix()}:forgotten-alone`;
+    const started = gate();
+    const fill = gate();
+    const stale = cachedJson(t.redis, key, 60, async () => {
+      started.open();
+      await fill.wait;
+      return 'before the write';
+    });
+    await started.wait;
+    await forgetCached(t.redis, key);
+    fill.open();
+    await stale;
+    expect(await t.redis.get(key)).toBeNull();
+  });
+
+  it('a call whose inputs predate a forget answers them but stores nothing', async () => {
+    const key = `${prefix()}:generation`;
+    const generation = cacheGeneration(t.redis, key);
+    // The write commits and drops the key while the caller is still reading its inputs.
+    await forgetCached(t.redis, key);
+    const answer = await cachedJson(t.redis, key, 60, async () => 'stale inputs', { generation });
+    expect(answer.value).toBe('stale inputs');
+    expect(await t.redis.get(key)).toBeNull();
+    // A call that reads its inputs now caches as usual.
+    const fresh = await cachedJson(t.redis, key, 60, async () => 'fresh inputs', {
+      generation: cacheGeneration(t.redis, key),
+    });
+    expect(JSON.parse((await t.redis.get(key)) ?? 'null')).toEqual(fresh);
+  });
+
+  it('a forget during the GET keeps a fresh call from joining the stale fill', async () => {
+    const key = `${prefix()}:forget-during-get`;
+    // The stale call sends its GET in this tick; the forget is queued behind it.
+    const stale = cachedJson(t.redis, key, 60, async () => 'stale inputs', {
+      generation: cacheGeneration(t.redis, key),
+    });
+    const forgotten = forgetCached(t.redis, key);
+    const fresh = cachedJson(t.redis, key, 60, async () => 'fresh inputs', {
+      generation: cacheGeneration(t.redis, key),
+    });
+    await forgotten;
+    expect((await stale).value).toBe('stale inputs');
+    expect((await fresh).value).toBe('fresh inputs');
+    expect(JSON.parse((await t.redis.get(key)) ?? 'null')?.value).toBe('fresh inputs');
   });
 });
