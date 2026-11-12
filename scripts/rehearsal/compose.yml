@@ -1,0 +1,27 @@
+# The rehearsal database (plan 15a): compose.yml's postgres alone, as the
+# Compose project "treerepro-rehearsal", on a random loopback port, with secrets
+# generated into a temp directory by scripts/rehearsal/run.sh.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1::5432"
+
+secrets:
+  db_superuser_password:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/db_superuser_password
+  db_app_password:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/db_app_password
+  db_migrator_password:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/db_migrator_password
+  db_backup_password:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/db_backup_password
+  redis_password:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/redis_password
+  pii_encryption_key_v1:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/pii_encryption_key_v1
+  pii_hmac_key:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/pii_hmac_key
+  session_secret:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/session_secret
+  smtp_password:
+    file: ${REHEARSAL_SECRETS_DIR:?set by scripts/rehearsal/run.sh}/smtp_password
