@@ -31,6 +31,12 @@ main() {
 
   docker compose build --pull
   docker compose up -d --remove-orphans --wait
+  # A migration that adds a column leaves it with no planner statistics, and
+  # autovacuum never fills them because no row was modified. The planner then
+  # guesses, and one such guess made the snapshot take 39 min instead of 15 s
+  # (issue #420). Analyze only what has no statistics, so this costs seconds.
+  docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/secrets/db_superuser_password)" \
+    vacuumdb -h 127.0.0.1 -U postgres -d treerepro --analyze-only --missing-stats-only --quiet'
   # cachedJson entries outlive the API container and may hold the previous release's
   # shape (#163). Sessions, login/rate-limit counters, TOTP setup and perms are kept.
   docker compose exec -T redis sh -c '
