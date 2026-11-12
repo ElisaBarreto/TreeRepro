@@ -137,4 +137,43 @@ describe('RFC-10 R15 cachedJson', () => {
     slow.open();
     expect((await slowPending).value).toBe('slow');
   });
+
+  it('a forget during a fill discards it: it stores nothing, and a later call computes afresh', async () => {
+    const key = `${prefix()}:forgotten`;
+    const started = gate();
+    const fill = gate();
+    const stale = cachedJson(t.redis, key, 60, async () => {
+      started.open();
+      await fill.wait;
+      return 'before the write';
+    });
+    await started.wait;
+    await forgetCached(t.redis, key);
+
+    // Arrives after the forget: it must not join the discarded fill.
+    const fresh = await cachedJson(t.redis, key, 60, async () => 'after the write');
+    expect(fresh.value).toBe('after the write');
+
+    fill.open();
+    // The caller that joined before the forget still gets its answer…
+    expect((await stale).value).toBe('before the write');
+    // …but it is never written back over the fresh entry.
+    expect(JSON.parse((await t.redis.get(key)) ?? 'null')).toEqual(fresh);
+  });
+
+  it('a forget during a fill with no later call leaves the key empty', async () => {
+    const key = `${prefix()}:forgotten-alone`;
+    const started = gate();
+    const fill = gate();
+    const stale = cachedJson(t.redis, key, 60, async () => {
+      started.open();
+      await fill.wait;
+      return 'before the write';
+    });
+    await started.wait;
+    await forgetCached(t.redis, key);
+    fill.open();
+    await stale;
+    expect(await t.redis.get(key)).toBeNull();
+  });
 });

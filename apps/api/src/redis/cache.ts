@@ -50,17 +50,31 @@ export async function cachedJson<T>(
   if (cached !== null) return JSON.parse(cached) as CachedEntry<T>;
   const pending = fills.get(key);
   if (pending) return pending as Promise<CachedEntry<T>>;
-  const fill = (async () => {
+  // `fill` is read only after the first `await`, once it is assigned.
+  const run = async (): Promise<CachedEntry<T>> => {
     const entry: CachedEntry<T> = { value: await compute(), computedAt: new Date().toISOString() };
-    await redis.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
+    // A `forgetCached` while computing removed this fill: its result predates
+    // the write that caused the forget, so it must not be stored (issue #417).
+    if (fills.get(key) === fill) await redis.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
     return entry;
-  })().finally(() => fills.delete(key));
+  };
+  const fill = run().finally(() => {
+    if (fills.get(key) === fill) fills.delete(key);
+  });
   fills.set(key, fill);
   return fill;
 }
 
-/** Deletes the given keys so the next `cachedJson` call recomputes. @rfc RFC-10 R15 */
+/**
+ * Deletes the given keys so the next `cachedJson` call recomputes, and
+ * discards their fills in flight in this process: they store nothing, and
+ * later calls do not join them. The fills are dropped before the `DEL` is
+ * sent, so a `SET` already on the connection is deleted by it.
+ * @rfc RFC-10 R15
+ */
 export async function forgetCached(redis: Redis, ...keys: string[]): Promise<void> {
   if (keys.length === 0) return;
+  const fills = fillsOf(redis);
+  for (const key of keys) fills.delete(key);
   await redis.del(...keys);
 }
