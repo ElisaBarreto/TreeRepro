@@ -18,7 +18,7 @@ const auth = vi.hoisted(() => ({
   totpConfirm: vi.fn(),
   totpDisable: vi.fn(),
 }));
-const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn() }));
+const dataset = vi.hoisted(() => ({ fetchDictionary: vi.fn(), fetchTrait: vi.fn() }));
 // `useMaps` is mocked directly, not `fetchMaps`: it is defined in the same
 // module as `fetchMaps` and calls it through its own closure, a same-module
 // reference `vi.mock`'s replacement of the exported binding never reaches —
@@ -140,6 +140,8 @@ beforeEach(() => {
   maps.usePrefetchTraitMaps.mockReset();
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
+  dataset.fetchTrait.mockReset();
+  dataset.fetchTrait.mockResolvedValue({ speciesWithData: 312973 });
   maps.useMaps.mockReturnValue(queryResult(MAP_ENTRIES));
   maps.useMapValues.mockReturnValue({ isPending: false, isError: false, data: MAP_VALUES });
 });
@@ -189,6 +191,19 @@ describe('RFC-76 R6 MapsPage', () => {
     expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
     expect(screen.getByRole('heading', { level: 3, name: 'seed mass' })).toBeInTheDocument();
     expect(screen.getByText('Quantitative')).toBeInTheDocument();
+  });
+
+  it("RFC-76 R7 shows the trait's number of species with data, the trait page's own", async () => {
+    await openPage();
+    expect(await screen.findByText('312,973 species with data')).toBeInTheDocument();
+    expect(dataset.fetchTrait).toHaveBeenCalledWith(SEED_MASS.id);
+  });
+
+  it('RFC-76 R7 shows no number while the trait loads', async () => {
+    dataset.fetchTrait.mockReturnValue(new Promise(() => {}));
+    await openPage();
+    expect(await screen.findByRole('link', { name: 'Trait details' })).toBeInTheDocument();
+    expect(screen.queryByText(/^[0-9,]+ species with data$/)).not.toBeInTheDocument();
   });
 
   it('links Trait details to the trait page', async () => {

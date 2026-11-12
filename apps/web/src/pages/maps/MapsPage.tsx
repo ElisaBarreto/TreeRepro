@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { MapEntry, Trait } from '@treerepro/contracts';
 import { type KeyboardEvent, useState } from 'react';
-import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
+import { datasetKeys, fetchDictionary, fetchTrait } from '../../api/dataset.ts';
 import {
   MAP_KIND_LABELS,
   mapAlt,
@@ -13,7 +13,7 @@ import { MapFigure } from '../../components/maps/MapFigure.tsx';
 import { MapViewer, type MapViewerItem } from '../../components/maps/MapViewer.tsx';
 import { Alert, Badge, ButtonLink, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
-import { humaniseKey, TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
+import { formatNumber, humaniseKey, TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
 import { platformCopy } from '../../lib/platform.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
@@ -285,6 +285,11 @@ function TraitMaps({
   canDownload: boolean;
 }) {
   const [open, setOpen] = useState<number | null>(null);
+  // R7: the trait page's own count, so the two pages agree; none while it loads.
+  const detail = useQuery({
+    queryKey: datasetKeys.trait(trait.id),
+    queryFn: () => fetchTrait(trait.id),
+  });
   const { completeness, details } = traitMaps(trait, entries);
   const items = (completeness ? [completeness, ...details] : details).map((map) => ({
     ...map,
@@ -301,6 +306,11 @@ function TraitMaps({
             {humaniseKey(trait.key)}
           </h3>
           <Badge>{TRAIT_VALUE_TYPE_LABELS[trait.valueType]}</Badge>
+          {detail.data ? (
+            <span className="text-meta text-mist-500">
+              {`${formatNumber(detail.data.speciesWithData)} species with data`}
+            </span>
+          ) : null}
         </div>
         <ButtonLink to="/app/traits/$id" params={{ id: trait.id }} size="sm">
           Trait details
