@@ -794,10 +794,26 @@ describe('RFC-60 R6, R14 SpeciesSearchForm geography', () => {
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ continents: ['4', '8'], regions: ['84'], areas: ['BZN', 'BZS'] }),
     );
+    // Brazil narrows Southern America only: Asia-Tropical's countries stay listed.
+    expect(boxes('Botanical country')).toEqual(['Nepal', 'Brazil North', 'Brazil South']);
+    await check('Botanical country', 'Nepal');
     // Unchecking a continent drops what it held.
     await check('Continent', 'Southern America');
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ continents: ['4'], regions: undefined, areas: undefined }),
+      expect.objectContaining({ continents: ['4'], regions: undefined, areas: ['NEP'] }),
+    );
+  });
+
+  it('keeps every choice when a change comes before the regions load', async () => {
+    const onChange = vi.fn();
+    dataset.fetchWcvpRegions.mockReturnValue(new Promise(() => {}));
+    renderWithProviders(
+      <Controlled initial={{ ...EMPTY, regions: ['84'], areas: ['BZN'] }} onChange={onChange} />,
+      { me: READER },
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Include introduced occurrences' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ regions: ['84'], areas: ['BZN'], introduced: true }),
     );
   });
 

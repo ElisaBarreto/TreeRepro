@@ -419,9 +419,9 @@ const orNone = (codes: string[]) => (codes.length > 0 ? codes : undefined);
 /**
  * The geography filters (RFC-60 R6): Continent, Region and Botanical country
  * checkbox lists over the WCVP regions (R14). Region lists the regions of
- * the checked continents, else every one; Botanical country those of the
- * checked regions, else of the checked continents, else every one; each is
- * grouped under its continent. After any change a narrower choice no longer
+ * the checked continents, else every one; Botanical country the botanical
+ * countries of those continents, narrowed in each continent to its checked
+ * regions when it has any; each is grouped under its continent. After any change a narrower choice no longer
  * listed is dropped. **Include introduced occurrences** is off by default,
  * disabled until a place is checked, and dropped with the last one.
  * @rfc RFC-60 R6, R14
@@ -444,13 +444,24 @@ function GeographyFilters({
     const r = g.regions ?? [];
     const inContinents =
       c.length > 0 ? rows.filter((x) => c.includes(x.continentCode ?? '')) : rows;
-    const inRegions =
-      r.length > 0 ? inContinents.filter((x) => r.includes(x.regionCode ?? '')) : inContinents;
+    // A checked region narrows its own continent only (RFC-60 R6).
+    const narrowed = new Set(
+      rows.filter((x) => r.includes(x.regionCode ?? '')).map((x) => x.continentCode),
+    );
+    const inRegions = inContinents.filter(
+      (x) => !narrowed.has(x.continentCode) || r.includes(x.regionCode ?? ''),
+    );
     return { inContinents, inRegions };
   };
   const { inContinents, inRegions } = listed(value);
   const set = (next: Geography) => {
-    // Drop what the narrower lists no longer show, level by level.
+    // Drop what the narrower lists no longer show, level by level — once the
+    // regions are known, so a change made before they load keeps every choice.
+    if (!regions.data) {
+      const placed = Boolean(next.continents ?? next.regions ?? next.areas);
+      onChange({ ...next, introduced: placed && next.introduced ? true : undefined });
+      return;
+    }
     const regionCodes = new Set(
       listed({ continents: next.continents }).inContinents.map((x) => x.regionCode),
     );
