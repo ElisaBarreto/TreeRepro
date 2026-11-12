@@ -69,9 +69,11 @@ export async function cachedJson<T>(
   const since = options?.generation ?? cacheGeneration(redis, key);
   // The caller read its inputs before a forget: answer from them, but share
   // and store nothing, since they may predate the write (issue #417).
-  if (since !== cacheGeneration(redis, key)) {
-    return { value: await compute(), computedAt: new Date().toISOString() };
-  }
+  const uncached = async (): Promise<CachedEntry<T>> => ({
+    value: await compute(),
+    computedAt: new Date().toISOString(),
+  });
+  if (since !== cacheGeneration(redis, key)) return uncached();
   // Before the GET as well as after it: a caller that enters while the key is
   // being filled joins that fill outright. Reading Redis first would let a
   // fill that fails while the GET is pending release the key, so the GET's
@@ -80,6 +82,9 @@ export async function cachedJson<T>(
   if (active) return active as Promise<CachedEntry<T>>;
   const cached = await redis.get(key);
   if (cached !== null) return JSON.parse(cached) as CachedEntry<T>;
+  // Again after the GET: a forget during it must not let this call register a
+  // fill that a caller with fresh inputs would then join.
+  if (since !== cacheGeneration(redis, key)) return uncached();
   const pending = fills.get(key);
   if (pending) return pending as Promise<CachedEntry<T>>;
   // `fill` is read only after the first `await`, once it is assigned.

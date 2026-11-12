@@ -191,4 +191,20 @@ describe('RFC-10 R15 cachedJson', () => {
     });
     expect(JSON.parse((await t.redis.get(key)) ?? 'null')).toEqual(fresh);
   });
+
+  it('a forget during the GET keeps a fresh call from joining the stale fill', async () => {
+    const key = `${prefix()}:forget-during-get`;
+    // The stale call sends its GET in this tick; the forget is queued behind it.
+    const stale = cachedJson(t.redis, key, 60, async () => 'stale inputs', {
+      generation: cacheGeneration(t.redis, key),
+    });
+    const forgotten = forgetCached(t.redis, key);
+    const fresh = cachedJson(t.redis, key, 60, async () => 'fresh inputs', {
+      generation: cacheGeneration(t.redis, key),
+    });
+    await forgotten;
+    expect((await stale).value).toBe('stale inputs');
+    expect((await fresh).value).toBe('fresh inputs');
+    expect(JSON.parse((await t.redis.get(key)) ?? 'null')?.value).toBe('fresh inputs');
+  });
 });
