@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTACT_EMAIL, projectDescription } from './project.ts';
+import { CONTACT_EMAIL, projectDescription, projectHeadline } from './project.ts';
 
 const COUNTS = {
   primaryReferenceCount: 38,
@@ -55,6 +55,23 @@ describe('RFC-72 R3 projectDescription', () => {
       }),
     ).toContain(
       'spanning 1,715 primary references, 125 secondary references and 14,534 records over 10,316 species.',
+    );
+  });
+});
+
+describe('RFC-72 R3, RFC-13 R14 the copy per platform', () => {
+  it('reads TreeRepro and trees on TreeRepro (the default on localhost)', () => {
+    expect(projectHeadline()).toBe('Help complete what we know about how trees reproduce.');
+    expect(projectHeadline('treerepro')).toBe(projectHeadline());
+    expect(projectDescription(COUNTS, 'treerepro')).toBe(projectDescription(COUNTS));
+  });
+
+  it('reads PlantRepro and plants on PlantRepro', () => {
+    expect(projectHeadline('plantrepro')).toBe(
+      'Help complete what we know about how plants reproduce.',
+    );
+    expect(projectDescription(COUNTS, 'plantrepro')).toMatch(
+      /^PlantRepro is a collective data assembly of reproductive trait data for plants, covering/,
     );
   });
 });

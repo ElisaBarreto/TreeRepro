@@ -28,12 +28,7 @@ const maps = vi.hoisted(() => ({
   useMapValues: vi.fn(),
   usePrefetchTraitMaps: vi.fn(),
 }));
-const platform = vi.hoisted(() => ({ currentPlatform: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
-vi.mock('../../lib/platform.ts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../lib/platform.ts')>()),
-  ...platform,
-}));
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
   ...dataset,
@@ -42,6 +37,16 @@ vi.mock('../../api/maps.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/maps.ts')>()),
   ...maps,
 }));
+// RFC-13 R14: TreeRepro unless a test switches it.
+const platform = vi.hoisted(() => ({ value: 'treerepro' as 'treerepro' | 'plantrepro' }));
+vi.mock('../../lib/platform.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/platform.ts')>();
+  return {
+    ...actual,
+    currentPlatform: () => platform.value,
+    platformCopy: (p?: 'treerepro' | 'plantrepro') => actual.platformCopy(p ?? platform.value),
+  };
+});
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
 
@@ -137,7 +142,6 @@ beforeEach(() => {
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
   maps.useMaps.mockReturnValue(queryResult(MAP_ENTRIES));
   maps.useMapValues.mockReturnValue({ isPending: false, isError: false, data: MAP_VALUES });
-  platform.currentPlatform.mockReturnValue('treerepro');
 });
 
 async function openPage(path = '/app/maps') {
@@ -311,25 +315,30 @@ describe('RFC-76 R7 MapsPage maps of the selected trait', () => {
     ).toBeInTheDocument();
   });
 
+  it('RFC-13 R14 names plant species on PlantRepro', async () => {
+    platform.value = 'plantrepro';
+    try {
+      await openPage('/app/maps?category=flower');
+      await tabs();
+      expect(
+        screen.getByText(
+          'Share of plant species with data for this trait in each TDWG level-3 region.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Share of the region's plant species with data for this trait that hold each level; a species with several levels counts under each.",
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      platform.value = 'treerepro';
+    }
+  });
+
   it('leaves the completeness section out when the trait has no completeness map', async () => {
     await openPage('/app/maps?trait=leaf_area');
     await tabs();
     expect(headingTexts(4)).toEqual(['Summary statistics']);
-  });
-
-  it('names species, not tree species, in the descriptions on PlantRepro (R3 denominator)', async () => {
-    platform.currentPlatform.mockReturnValue('plantrepro');
-    await openPage('/app/maps?category=flower');
-    await tabs();
-    expect(
-      screen.getByText('Share of species with data for this trait in each TDWG level-3 region.'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Share of the region's species with data for this trait that hold each level; a species with several levels counts under each.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/tree species/)).not.toBeInTheDocument();
   });
 });
 

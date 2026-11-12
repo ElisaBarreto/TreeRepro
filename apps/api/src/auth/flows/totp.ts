@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import { and, eq, isNull } from 'drizzle-orm';
 import { recordAudit } from '../../audit/audit.ts';
 import { totpRecoveryCodes } from '../../db/schema/totp-recovery-codes.ts';
@@ -15,11 +16,14 @@ import {
 } from '../totp.ts';
 import { updateTotp } from '../users.ts';
 
-/** @rfc RFC-23 R2 */
+/**
+ * @rfc RFC-23 R1, R2
+ */
 export async function startTotpSetup(
   ctx: AuthContext,
   user: UserRow,
   password: string,
+  platform: Platform,
 ): Promise<{ secret: string; otpauthUri: string }> {
   if (user.totpEnabledAt !== null) {
     throw new AppError('AUTH_TOTP_ALREADY_ENABLED', 'Two-factor authentication is already enabled');
@@ -29,7 +33,7 @@ export async function startTotpSetup(
   if (!verified) throw new AppError('AUTH_INVALID_CREDENTIALS', 'Password is incorrect');
   const secret = generateTotpSecret();
   await ctx.mfa.putSetupSecret(user.id, secret);
-  return { secret, otpauthUri: totpUri(secret, user.email) };
+  return { secret, otpauthUri: totpUri(secret, user.email, platform) };
 }
 
 /** @rfc RFC-23 R3, R5 */

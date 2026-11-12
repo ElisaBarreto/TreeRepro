@@ -231,7 +231,11 @@ export function buildOpenApi(routes: readonly RouteEntry[]): Record<string, unkn
 
   return {
     openapi: '3.1.0',
-    info: { title: 'TreeRepro API', version: '1', description: 'Guide: GET /api/docs' },
+    info: {
+      title: 'TreeRepro / PlantRepro API',
+      version: '1',
+      description: 'Guide: GET /api/docs',
+    },
     components: {
       securitySchemes: {
         bearerKey: {

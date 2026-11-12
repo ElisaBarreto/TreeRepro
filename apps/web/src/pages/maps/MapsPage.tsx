@@ -14,7 +14,7 @@ import { MapViewer, type MapViewerItem } from '../../components/maps/MapViewer.t
 import { Alert, Badge, ButtonLink, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey, TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
-import { currentPlatform } from '../../lib/platform.ts';
+import { platformCopy } from '../../lib/platform.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
 /** The page's search params (RFC-76 R6): a category key and a trait key. @rfc RFC-76 R6 */
@@ -36,12 +36,11 @@ const EYEBROW = 'text-label font-bold uppercase tracking-[0.08em] text-canopy-80
 const SECTION_HEADING = 'font-display text-body font-semibold text-canopy-950';
 const NOTE = 'text-meta text-mist-500';
 
-// R3: TreeRepro's denominator is the region's tree species, PlantRepro's every species.
-const speciesNoun = () => (currentPlatform() === 'plantrepro' ? 'species' : 'tree species');
+// RFC-13 R14: the subject is the platform's (trees, plants).
 const completenessLegend = () =>
-  `Share of ${speciesNoun()} with data for this trait in each TDWG level-3 region.`;
+  `Share of ${platformCopy().subject} species with data for this trait in each TDWG level-3 region.`;
 const prevalenceLegend = () =>
-  `Share of the region's ${speciesNoun()} with data for this trait that hold each level; a species with several levels counts under each.`;
+  `Share of the region's ${platformCopy().subject} species with data for this trait that hold each level; a species with several levels counts under each.`;
 const SUMMARY_KINDS = [
   { kind: 'mean', note: 'Mean of the species medians in the region.' },
   { kind: 'median', note: 'Median of the species medians in the region.' },

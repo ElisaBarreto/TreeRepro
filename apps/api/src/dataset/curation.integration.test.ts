@@ -710,15 +710,17 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     expect(single.created[0]?.recordCode).toMatch(/^TR_\d+$/);
   });
 
-  it('a matched level consumes no code: the one created record keeps the bare number', async () => {
+  it('RFC-70 R3 a matched level is created too, sharing the entry code number', async () => {
     const f = await setup();
     await f.rec('blue');
     const result = await createRecords(t.db, UNRESTRICTED, f.input(['blue', 'red']));
     expect(result.validated).toHaveLength(1);
-    expect(result.created.map((r) => r.recordCode)).toEqual([expect.stringMatching(/^TR_\d+$/)]);
+    expect(result.created.map((r) => r.level?.key)).toEqual(['blue', 'red']);
+    const n = result.created[0]?.recordCode.match(/^TR_(\d+)a$/)?.[1];
+    expect(result.created[1]?.recordCode).toBe(`TR_${n}b`);
   });
 
-  it("RFC-65 R13 a match validates the whole level: every other contributor's record, one confirm per reference; the actor's own are duplicates; re-entry is idempotent", async () => {
+  it("RFC-65 R13 a match validates the whole level: every other contributor's record, one confirm per reference; the level is created once; re-entry is idempotent", async () => {
     const f = await setup();
     const { user: third } = await createUser(t.db);
     const x = await f.rec('blue');
@@ -726,16 +728,21 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     const mine = await f.rec('blue', f.me.id, (await createReference(t.db)).id);
     const entry = f.input(['blue'], { referenceIds: [f.ref.id, f.ref2.id] });
     const result = await createRecords(t.db, UNRESTRICTED, entry);
-    expect(result.created).toEqual([]);
+    // RFC-70 R3: the level is the actor's record too; their own other record
+    // (another reference) is no duplicate.
+    expect(result.created.map((r) => r.level?.key)).toEqual(['blue']);
+    const created = result.created[0]?.id as string;
     expect(result.validated.map((v) => v.recordId).sort()).toEqual([x.id, y.id].sort());
     expect(result.validated.every((v) => /^TR_\d+/.test(v.recordCode))).toBe(true);
-    expect(result.duplicates.map((d) => d.recordId)).toEqual([mine.id]);
+    expect(result.duplicates).toEqual([]);
     expect(await confirmsBy(x.id, f.me.id)).toEqual([f.ref.id, f.ref2.id].sort());
     expect(await confirmsBy(mine.id, f.me.id)).toEqual([]);
     expect((await getRecord(t.db, UNRESTRICTED, x.id))?.validationCount).toBe(1);
 
     // RFC-65 R3: the same entry again inserts nothing and answers the same.
     const again = await createRecords(t.db, UNRESTRICTED, entry);
+    expect(again.created).toEqual([]);
+    expect(again.duplicates.map((d) => d.recordId)).toEqual([created]);
     expect(again.validated.map((v) => v.recordId).sort()).toEqual([x.id, y.id].sort());
     expect(await confirmsBy(x.id, f.me.id)).toEqual([f.ref.id, f.ref2.id].sort());
     expect(await confirmsBy(y.id, f.me.id)).toEqual([f.ref.id, f.ref2.id].sort());
@@ -746,9 +753,22 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     const existing = await f.rec('blue');
     const po = await ensurePersonalObservation(t.db, f.me.id);
     const entry = f.input(['blue'], { referenceIds: [po.id] });
-    expect((await createRecords(t.db, UNRESTRICTED, entry)).validated).toHaveLength(1);
-    await createRecords(t.db, UNRESTRICTED, entry);
+    const first = await createRecords(t.db, UNRESTRICTED, entry);
+    expect(first.validated).toHaveLength(1);
+    expect(first.created[0]?.references.map((r) => r.id)).toEqual([po.id]);
+    expect((await createRecords(t.db, UNRESTRICTED, entry)).created).toEqual([]);
     expect(await confirmsBy(existing.id, f.me.id)).toEqual([null]);
+  });
+
+  it('RFC-70 R3 a matched record already stating the claim under the same reference is named once, in validated', async () => {
+    const f = await setup();
+    const same = await f.rec('blue', f.other.id, f.ref.id);
+    const result = await createRecords(t.db, UNRESTRICTED, f.input(['blue']));
+    expect(result).toEqual({
+      created: [],
+      validated: [{ recordId: same.id, recordCode: same.recordCode }],
+      duplicates: [],
+    });
   });
 
   it('RFC-63 R13 a withdrawn record is no match', async () => {
@@ -829,7 +849,7 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     }
   });
 
-  it('RFC-63 R14 a contest giving red validates red and contests blue and yellow; stored with no record, and a later level is not contested by it', async () => {
+  it('RFC-63 R14 a contest giving red creates and validates red and contests blue and yellow; a later level is not contested by it', async () => {
     const f = await setup();
     const red = await f.rec('red');
     const blue = await f.rec('blue');
@@ -842,10 +862,14 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
         contestedLevelIds: [f.level('yellow'), f.level('blue')],
       }),
     );
-    expect(result.created).toEqual([]);
+    expect(result.created.map((r) => [r.level?.key, r.intent])).toEqual([['red', 'contest']]);
     expect(result.validated.map((v) => v.recordId)).toEqual([red.id]);
     expect(await contestsOf(f.sp.id, f.trait.id)).toEqual([
-      { createdBy: f.me.id, levelIds: [f.level('blue'), f.level('yellow')].sort(), recordIds: [] },
+      {
+        createdBy: f.me.id,
+        levelIds: [f.level('blue'), f.level('yellow')].sort(),
+        recordIds: [result.created[0]?.id],
+      },
     ]);
     // No generated annotation on the contested records (RFC-70 R5 retired).
     expect(await confirmsBy(blue.id, f.me.id)).toEqual([]);
@@ -855,6 +879,22 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     expect((await getRecord(t.db, UNRESTRICTED, red.id))?.contested).toBe(false);
     const green = await f.rec('green');
     expect((await getRecord(t.db, UNRESTRICTED, green.id))?.contested).toBe(false);
+  });
+
+  it('RFC-63 R14 a contest level the author already states under the same primary reference is a duplicate, not a contest record', async () => {
+    const f = await setup();
+    const mine = await f.rec('red', f.me.id, f.ref.id);
+    await f.rec('blue');
+    const result = await createRecords(
+      t.db,
+      UNRESTRICTED,
+      f.input(['red'], { intent: 'contest', contestedLevelIds: [f.level('blue')] }),
+    );
+    expect(result.created).toEqual([]);
+    expect(result.duplicates.map((d) => d.recordId)).toEqual([mine.id]);
+    expect(await contestsOf(f.sp.id, f.trait.id)).toEqual([
+      { createdBy: f.me.id, levelIds: [f.level('blue')], recordIds: [] },
+    ]);
   });
 
   it('RFC-63 R14 a contest giving only green creates a green contest record and contests every existing level', async () => {

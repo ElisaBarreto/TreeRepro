@@ -1,13 +1,19 @@
-import { PLATFORM_NAMES, PLATFORMS, type Platform } from '@treerepro/contracts';
+import { PLATFORM_NAMES, PLATFORM_SUBJECTS, PLATFORMS, type Platform } from '@treerepro/contracts';
 import { ApiError } from '../api/client.ts';
 
 /**
- * The platform this page is served for: a first host label of `plantrepro`
- * is PlantRepro, anything else TreeRepro (one SPA build serves both).
- * @rfc RFC-14 R7
+ * The platform of a hostname: a first label of `plantrepro` is PlantRepro,
+ * anything else TreeRepro. `public/platform.js` applies the same rule before
+ * first paint; a test runs both over one table.
+ * @rfc RFC-13 R14
  */
 export function currentPlatform(hostname: string = window.location.hostname): Platform {
-  return hostname.split('.')[0] === 'plantrepro' ? 'plantrepro' : 'treerepro';
+  return hostname.split('.')[0]?.toLowerCase() === 'plantrepro' ? 'plantrepro' : 'treerepro';
+}
+
+/** The current platform's display name and subject (`tree`, `plant`). @rfc RFC-13 R14 */
+export function platformCopy(platform: Platform = currentPlatform()) {
+  return { platform, name: PLATFORM_NAMES[platform], subject: PLATFORM_SUBJECTS[platform] };
 }
 
 /**
