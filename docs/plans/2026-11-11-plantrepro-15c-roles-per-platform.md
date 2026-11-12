@@ -31,7 +31,7 @@
    - The audit entry carries the platform.
    - Tests cover each rule per platform.
 5. **Login refusal.** After a successful password and TOTP check, a user with no role on `c.var.platform` gets 403 `PLATFORM_ACCESS_DENIED`. No session is created, and `auth.platform_denied` is audited.
-   - Covers password login, invitation acceptance and password reset completion.
+   - Covers password login and invitation acceptance. Password reset completion creates no session (RFC-22 R13), so it needs no check.
    - The SPA shows “You have no access to PlantRepro.” (or TreeRepro), naming the other platform when the user holds a role there.
 6. **People management is account-wide.** `users.*`, `roles.manage`, `sessions.revoke`, `admin.access` and the audit routes list and act on every user, whatever their platform. Test: an admin on PlantRepro lists a user who holds only TreeRepro roles.
 7. **Admin UI** (`/app/admin/users`, `/app/admin/users/$id`):
