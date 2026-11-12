@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { call, randomIp, useTestApp } from '../../../test/helpers/app.ts';
+import { call, randomIp, TEST_DOMAINS, useTestApp } from '../../../test/helpers/app.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import { RATE_LIMITS } from '../../auth/rate-limit.ts';
 import type { AppEnv } from '../env.ts';
 import { createErrorHandler } from '../errors.ts';
+import { resolvePlatform } from '../platform.ts';
 import { emailIpKey, globalRateLimit, ipKey, rateLimit } from './rate-limit.ts';
 import { resolveSession } from './session.ts';
 
@@ -63,6 +64,7 @@ describe('RFC-24 R4, R5 rate-limit middleware', () => {
   it('R4 globalRateLimit keys by session when present, by IP otherwise, and exempts health', async () => {
     const a = new Hono<AppEnv>()
       .basePath('/api')
+      .use(resolvePlatform(TEST_DOMAINS))
       .use(resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }))
       .use(globalRateLimit(t.limiter))
       .get('/health', (c) => c.json({ ok: true }))

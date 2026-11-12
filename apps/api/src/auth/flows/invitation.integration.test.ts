@@ -1,6 +1,13 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, cookieFrom, ctxOf, randomIp, useTestApp } from '../../../test/helpers/app.ts';
+import {
+  call,
+  cookieFrom,
+  ctxOf,
+  randomIp,
+  TEST_PLANT_ORIGIN,
+  useTestApp,
+} from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { createUser, randomEmail } from '../../../test/helpers/users.ts';
 import { authTokens } from '../../db/schema/auth-tokens.ts';
@@ -20,6 +27,7 @@ describe('RFC-20 R4 inviteUser', () => {
       email,
       name: 'Ada',
       actorUserId: null,
+      platform: 'treerepro',
     });
     expect(user.status).toBe('invited');
     expect(link).toMatch(/^http:\/\/localhost\/invite\/[A-Za-z0-9_-]{43}$/);
@@ -34,7 +42,12 @@ describe('RFC-20 R4 inviteUser', () => {
   it('names the configured contact for an expired link in both parts of the email', async () => {
     const ctx = { ...ctxOf(t), inviteContactEmail: 'help@treerepro.test' };
     const before = t.mail.sent.length;
-    await inviteUser(ctx, { email: randomEmail(), name: 'Ada', actorUserId: null });
+    await inviteUser(ctx, {
+      email: randomEmail(),
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'treerepro',
+    });
     const mail = t.mail.sent[before];
     expect(mail?.text).toContain('ask help@treerepro.test for a new invitation');
     expect(mail?.html).toContain('ask help@treerepro.test for a new invitation');
@@ -43,11 +56,17 @@ describe('RFC-20 R4 inviteUser', () => {
   it('R7 re-inviting an invited user supersedes the token; any other status is refused', async () => {
     const ctx = ctxOf(t);
     const email = randomEmail();
-    const first = await inviteUser(ctx, { email, name: 'Ada', actorUserId: null });
+    const first = await inviteUser(ctx, {
+      email,
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'treerepro',
+    });
     const second = await inviteUser(ctx, {
       email: email.toUpperCase(),
       name: 'Ada',
       actorUserId: null,
+      platform: 'treerepro',
     });
     expect(second.user.id).toBe(first.user.id);
     const tokens = await t.db
@@ -57,7 +76,7 @@ describe('RFC-20 R4 inviteUser', () => {
     expect(tokens.filter((x) => x.consumedAt === null)).toHaveLength(1);
     const { email: activeEmail } = await createUser(t.db);
     await expect(
-      inviteUser(ctx, { email: activeEmail, name: 'X', actorUserId: null }),
+      inviteUser(ctx, { email: activeEmail, name: 'X', actorUserId: null, platform: 'treerepro' }),
     ).rejects.toBeInstanceOf(UserEmailTakenError);
   });
 
@@ -65,9 +84,12 @@ describe('RFC-20 R4 inviteUser', () => {
     const ctx = ctxOf(t);
     const email = randomEmail();
     t.mail.failNext(new Error('ECONNREFUSED'));
-    const err = await inviteUser(ctx, { email, name: 'Ada', actorUserId: null }).catch(
-      (e: unknown) => e,
-    );
+    const err = await inviteUser(ctx, {
+      email,
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'treerepro',
+    }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(InvitationMailError);
     expect((err as InvitationMailError).link).toMatch(/\/invite\/[A-Za-z0-9_-]{43}$/);
     expect(((err as InvitationMailError).cause as Error).message).toBe('ECONNREFUSED');
@@ -80,9 +102,27 @@ describe('RFC-20 R6 POST /api/auth/invite/accept', () => {
 
   async function invite() {
     const email = randomEmail();
-    const { user, link } = await inviteUser(ctxOf(t), { email, name: 'Ada', actorUserId: null });
+    const { user, link } = await inviteUser(ctxOf(t), {
+      email,
+      name: 'Ada',
+      actorUserId: null,
+      platform: 'treerepro',
+    });
     return { user, email, token: link.split('/').at(-1) ?? '' };
   }
+
+  it('RFC-14 R5 accepting on PlantRepro opens a PlantRepro session', async () => {
+    const { user, token } = await invite();
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/invite/accept', {
+      body: { token, password: GOOD_PASSWORD },
+      origin: TEST_PLANT_ORIGIN,
+    });
+    expect(res.status).toBe(200);
+    const cookie = cookieFrom(res, '__Host-session') ?? '';
+    const plant = await call(t.app, 'GET', 'http://plantrepro.localhost/api/auth/me', { cookie });
+    expect((await plant.json()).data.user.id).toBe(user.id);
+    expect((await call(t.app, 'GET', '/api/auth/me', { cookie })).status).toBe(401);
+  });
 
   it('activates the user, consumes the token, opens a session and audits', async () => {
     const { user, token } = await invite();

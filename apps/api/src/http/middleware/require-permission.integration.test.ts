@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { call, useTestApp } from '../../../test/helpers/app.ts';
+import { call, TEST_DOMAINS, useTestApp } from '../../../test/helpers/app.ts';
 import { adminRoleId, createRole } from '../../../test/helpers/roles.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import type { AppEnv } from '../env.ts';
 import { createErrorHandler } from '../errors.ts';
 import { guardKind } from '../guards.ts';
+import { resolvePlatform } from '../platform.ts';
 import { currentPermissions, requirePermission } from './require-permission.ts';
 import { resolveSession } from './session.ts';
 
@@ -21,7 +22,9 @@ describe('RFC-32 R4 requirePermission', () => {
 
   function app() {
     const a = new Hono<AppEnv>();
-    a.use(resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }));
+    a.use(resolvePlatform(TEST_DOMAINS)).use(
+      resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }),
+    );
     a.get('/read', requirePermission(ctx(), 'users.read'), (c) =>
       c.json({ permissions: [...currentPermissions(c)] }),
     );

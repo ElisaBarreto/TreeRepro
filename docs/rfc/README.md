@@ -23,6 +23,7 @@ RFCs are the source of truth for how TreeRepro behaves. Process: RFC-00.
 | RFC-11 | API conventions | accepted |
 | RFC-12 | Error codes | accepted |
 | RFC-13 | Presentation layer | accepted |
+| RFC-14 | Platforms | draft |
 | RFC-40 | PII encryption | accepted |
 | RFC-41 | Audit log | accepted |
 | RFC-20 | Users and invitations | accepted |

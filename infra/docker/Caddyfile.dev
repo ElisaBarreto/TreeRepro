@@ -2,6 +2,8 @@
 	auto_https off
 }
 
+# Any host: http://localhost is TreeRepro and http://plantrepro.localhost
+# PlantRepro (RFC-14 R7); the API decides the platform from the Host.
 :80 {
 	route {
 		@ready path /api/health/ready

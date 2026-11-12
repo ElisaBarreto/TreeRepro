@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import { recordingRefusal, setUserRoles } from '../../access/roles.ts';
 import { recordAudit } from '../../audit/audit.ts';
 import type { UserRow } from '../../db/schema/users.ts';
@@ -15,6 +16,8 @@ export interface InviteInput {
   roleIds?: string[];
   /** Null for the seed command. */
   actorUserId: string | null;
+  /** The link goes to this platform's origin (RFC-14 R4). */
+  platform: Platform;
 }
 
 /**
@@ -38,6 +41,7 @@ export class InvitationMailError extends Error {
 
 /**
  * @rfc RFC-20 R4, R7
+ * @rfc RFC-14 R4
  * @rfc RFC-50 R3
  * @rfc RFC-31 R14
  */
@@ -71,12 +75,13 @@ export async function inviteUser(
       return { user, raw, expiresAt };
     }),
   );
-  const link = `${ctx.appOrigin}/invite/${result.raw}`;
+  const origin = ctx.originOf(input.platform);
+  const link = `${origin}/invite/${result.raw}`;
   const mail = inviteEmail({
     name: result.user.name,
     link,
     expiresAt: result.expiresAt,
-    appOrigin: ctx.appOrigin,
+    appOrigin: origin,
     contactEmail: ctx.inviteContactEmail,
   });
   try {
@@ -87,10 +92,13 @@ export async function inviteUser(
   return { user: result.user, link, expiresAt: result.expiresAt };
 }
 
-/** @rfc RFC-20 R6 */
+/**
+ * @rfc RFC-20 R6
+ * @rfc RFC-14 R5
+ */
 export async function acceptInvitation(
   ctx: AuthContext,
-  input: { token: string; password: string } & RequestMeta,
+  input: { token: string; password: string; platform: Platform } & RequestMeta,
 ): Promise<{ user: UserRow; sessionRawId: string }> {
   const weakness = await checkPasswordPolicy(input.password, ctx.breachChecker);
   if (weakness) throw passwordWeakError(weakness);
@@ -117,6 +125,7 @@ export async function acceptInvitation(
     userId: user.id,
     ip: input.ip,
     userAgent: input.userAgent,
+    platform: input.platform,
   });
   return { user, sessionRawId: rawId };
 }

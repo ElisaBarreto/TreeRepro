@@ -35,7 +35,7 @@ afterAll(async () => {
   if (secretsDir) rmSync(secretsDir, { recursive: true, force: true });
 });
 
-describe('RFC-10 R5, R10, R11 server boot', () => {
+describe('RFC-10 R5, R10, R11, RFC-14 R3 server boot', () => {
   it('starts from TypeScript source, serves /api/health and /api/health/ready, and shuts down on SIGTERM', async () => {
     const pg = inject('postgres');
     const redis = inject('redis');
@@ -79,6 +79,13 @@ describe('RFC-10 R5, R10, R11 server boot', () => {
 
     const ready = await fetch(`http://127.0.0.1:${port}/api/health/ready`);
     expect(ready.status).toBe(200);
+
+    // RFC-14 R3: the Compose healthcheck's host is no platform's; only health answers it.
+    const other = await fetch(`http://127.0.0.1:${port}/api/auth/me`);
+    expect(other.status).toBe(421);
+    expect((await other.json()).error.code).toBe('UNKNOWN_HOST');
+    const tree = await fetch(`http://localhost:${port}/api/auth/me`);
+    expect(tree.status).toBe(401);
 
     const exit = new Promise<number | null>((r) => child?.once('exit', (code) => r(code)));
     child.kill('SIGTERM');

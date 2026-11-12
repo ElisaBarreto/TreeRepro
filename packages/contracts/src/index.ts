@@ -17,6 +17,7 @@ export * from './isbn.ts';
 export * from './maps.ts';
 export * from './pagination.ts';
 export * from './permissions.ts';
+export * from './platform.ts';
 export * from './plots.ts';
 export * from './proposals.ts';
 export * from './roles.ts';

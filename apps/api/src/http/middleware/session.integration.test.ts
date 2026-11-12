@@ -1,13 +1,20 @@
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { call, cookieFrom, setCookieLine, useTestApp } from '../../../test/helpers/app.ts';
+import {
+  call,
+  cookieFrom,
+  setCookieLine,
+  TEST_DOMAINS,
+  useTestApp,
+} from '../../../test/helpers/app.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import { users } from '../../db/schema/users.ts';
 import type { AppEnv } from '../env.ts';
 import { createErrorHandler } from '../errors.ts';
 import { isGuard } from '../guards.ts';
+import { resolvePlatform } from '../platform.ts';
 import { currentUser, requireSession, resolveSession, setSessionCookie } from './session.ts';
 
 describe('RFC-22 R5, R7, R8 session middleware', () => {
@@ -15,6 +22,7 @@ describe('RFC-22 R5, R7, R8 session middleware', () => {
 
   function app() {
     const a = new Hono<AppEnv>();
+    a.use(resolvePlatform(TEST_DOMAINS));
     a.use(resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }));
     a.get('/who', (c) =>
       c.json({ user: c.get('user')?.id ?? null, session: c.get('session')?.id ?? null }),
@@ -46,6 +54,41 @@ describe('RFC-22 R5, R7, R8 session middleware', () => {
     const bad = await call(app(), 'GET', '/who', { cookie: `__Host-session=${'A'.repeat(43)}` });
     expect(await bad.json()).toEqual({ user: null, session: null });
     expect(setCookieLine(bad, '__Host-session')).toContain('Max-Age=0');
+  });
+
+  it('RFC-14 R5 a session authenticates only on its platform, and is kept', async () => {
+    const { user } = await createUser(t.db);
+    const { cookie, id, rawId } = await loginAs(t, user, { platform: 'plantrepro' });
+    const plant = await call(app(), 'GET', 'http://plantrepro.localhost/who', { cookie });
+    expect(await plant.json()).toEqual({ user: user.id, session: id });
+    const tree = await call(app(), 'GET', '/who', { cookie });
+    expect(await tree.json()).toEqual({ user: null, session: null });
+    expect(setCookieLine(tree, '__Host-session')).toContain('Max-Age=0');
+    expect((await call(app(), 'GET', '/private', { cookie })).status).toBe(401);
+    expect(await t.sessions.get(rawId)).not.toBeNull();
+  });
+
+  it('RFC-14 R3, R5 a signed-in browser calling health keeps its session', async () => {
+    const { user } = await createUser(t.db);
+    for (const platform of ['treerepro', 'plantrepro'] as const) {
+      const { cookie } = await loginAs(t, user, { platform });
+      const host = platform === 'plantrepro' ? 'http://plantrepro.localhost' : '';
+      const health = await call(t.app, 'GET', `${host}/api/health`, { cookie });
+      expect(health.status).toBe(200);
+      expect(setCookieLine(health, '__Host-session'), platform).toBe('');
+      const me = await call(t.app, 'GET', `${host}/api/auth/me`, { cookie });
+      expect(me.status, platform).toBe(200);
+    }
+  });
+
+  it('RFC-14 R5 a session recorded before platforms existed authenticates on TreeRepro', async () => {
+    const { user } = await createUser(t.db);
+    const { cookie, id } = await loginAs(t, user);
+    await t.redis.hdel(`session:${id}`, 'platform');
+    const res = await call(app(), 'GET', '/who', { cookie });
+    expect(await res.json()).toEqual({ user: user.id, session: id });
+    const plant = await call(app(), 'GET', 'http://plantrepro.localhost/who', { cookie });
+    expect(await plant.json()).toEqual({ user: null, session: null });
   });
 
   it('R7 logs out a user that is no longer active and clears the cookie', async () => {

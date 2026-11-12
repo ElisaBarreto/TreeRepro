@@ -27,7 +27,12 @@ describe('RFC-22 R4, R6 session store', () => {
   it('creates a record under the HMAC key with encrypted ip and user agent', async () => {
     const store = createSessionStore(redis, SECRET, () => clock.now);
     const userId = uid();
-    const { rawId, record } = await store.create({ userId, ip: '203.0.113.7', userAgent: 'UA/1' });
+    const { rawId, record } = await store.create({
+      userId,
+      ip: '203.0.113.7',
+      userAgent: 'UA/1',
+      platform: 'treerepro',
+    });
     expect(record.id).toBe(deriveKeyId(SECRET, rawId));
     expect(await redis.exists(`session:${rawId}`)).toBe(0);
     const raw = await redis.hgetall(`session:${record.id}`);
@@ -45,7 +50,12 @@ describe('RFC-22 R4, R6 session store', () => {
   it('returns null for unknown ids and refreshes the idle TTL at most once a minute', async () => {
     const store = createSessionStore(redis, SECRET, () => clock.now);
     expect(await store.get('A'.repeat(43))).toBeNull();
-    const { rawId, record } = await store.create({ userId: uid(), ip: '1.1.1.1', userAgent: 'x' });
+    const { rawId, record } = await store.create({
+      userId: uid(),
+      ip: '1.1.1.1',
+      userAgent: 'x',
+      platform: 'treerepro',
+    });
     await redis.pexpire(`session:${record.id}`, 1000);
     clock.now += SESSION_TOUCH_INTERVAL_MS - 1;
     await store.get(rawId);
@@ -59,7 +69,12 @@ describe('RFC-22 R4, R6 session store', () => {
   it('deletes a session at exactly the absolute limit', async () => {
     const store = createSessionStore(redis, SECRET, () => clock.now);
     const userId = uid();
-    const { rawId, record } = await store.create({ userId, ip: '1.1.1.1', userAgent: 'x' });
+    const { rawId, record } = await store.create({
+      userId,
+      ip: '1.1.1.1',
+      userAgent: 'x',
+      platform: 'treerepro',
+    });
     clock.now += SESSION_ABSOLUTE_TTL_MS;
     expect(await store.get(rawId)).toBeNull();
     expect(await redis.exists(`session:${record.id}`)).toBe(0);
@@ -69,11 +84,11 @@ describe('RFC-22 R4, R6 session store', () => {
   it('lists, revokes one and revokes all except the current', async () => {
     const store = createSessionStore(redis, SECRET, () => clock.now);
     const userId = uid();
-    const a = await store.create({ userId, ip: '1.1.1.1', userAgent: 'a' });
+    const a = await store.create({ userId, ip: '1.1.1.1', userAgent: 'a', platform: 'treerepro' });
     clock.now += 10;
-    const b = await store.create({ userId, ip: '2.2.2.2', userAgent: 'b' });
+    const b = await store.create({ userId, ip: '2.2.2.2', userAgent: 'b', platform: 'treerepro' });
     clock.now += 10;
-    const c = await store.create({ userId, ip: '3.3.3.3', userAgent: 'c' });
+    const c = await store.create({ userId, ip: '3.3.3.3', userAgent: 'c', platform: 'treerepro' });
     expect((await store.list(userId)).map((s) => s.userAgent)).toEqual(['c', 'b', 'a']);
     expect(await store.revoke(b.record.id)).toBe(true);
     expect(await store.revoke(b.record.id)).toBe(false);
@@ -88,9 +103,34 @@ describe('RFC-22 R4, R6 session store', () => {
   it('list prunes index members whose record expired', async () => {
     const store = createSessionStore(redis, SECRET, () => clock.now);
     const userId = uid();
-    const { record } = await store.create({ userId, ip: '1.1.1.1', userAgent: 'x' });
+    const { record } = await store.create({
+      userId,
+      ip: '1.1.1.1',
+      userAgent: 'x',
+      platform: 'treerepro',
+    });
     await redis.del(`session:${record.id}`);
     expect(await store.list(userId)).toEqual([]);
     expect(await redis.scard(`user_sessions:${userId}`)).toBe(0);
+  });
+
+  it('RFC-14 R5 records the platform; a record without one reads as treerepro', async () => {
+    const store = createSessionStore(redis, SECRET, () => clock.now);
+    const plant = await store.create({
+      userId: uid(),
+      ip: '1.1.1.1',
+      userAgent: 'x',
+      platform: 'plantrepro',
+    });
+    expect(plant.record.platform).toBe('plantrepro');
+    expect((await store.get(plant.rawId))?.platform).toBe('plantrepro');
+    const legacy = await store.create({
+      userId: uid(),
+      ip: '1.1.1.1',
+      userAgent: 'x',
+      platform: 'plantrepro',
+    });
+    await redis.hdel(`session:${legacy.record.id}`, 'platform');
+    expect((await store.get(legacy.rawId))?.platform).toBe('treerepro');
   });
 });

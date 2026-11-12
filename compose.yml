@@ -5,6 +5,9 @@ x-api-env: &api-env
   LOG_LEVEL: ${LOG_LEVEL:-info}
   # Development default; compose.prod.yml derives it from DOMAIN (issue #10).
   APP_ORIGIN: ${APP_ORIGIN:-http://localhost}
+  # RFC-14 R3: the PlantRepro host. Development default; compose.prod.yml
+  # replaces it with the production value, empty (PlantRepro refused) when unset.
+  PLANT_DOMAIN: ${PLANT_DOMAIN:-plantrepro.localhost}
   DB_HOST: postgres
   DB_PORT: "5432"
   DB_NAME: treerepro

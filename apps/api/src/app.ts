@@ -8,7 +8,7 @@ import type { AuthContext } from './auth/context.ts';
 import type { MfaStore } from './auth/mfa.ts';
 import type { RateLimiter } from './auth/rate-limit.ts';
 import type { SessionStore } from './auth/sessions.ts';
-import type { AppConfig } from './config.ts';
+import { type AppConfig, originOf } from './config.ts';
 import type { Db } from './db/client.ts';
 import type { AppEnv } from './http/env.ts';
 import { createErrorHandler, errorBody } from './http/errors.ts';
@@ -16,6 +16,7 @@ import { globalRateLimit } from './http/middleware/rate-limit.ts';
 import { resolveSession } from './http/middleware/session.ts';
 import type { RouteEntry } from './http/openapi.ts';
 import { originCheck } from './http/origin-check.ts';
+import { resolvePlatform } from './http/platform.ts';
 import { requestLogger } from './http/request-logger.ts';
 import { adminRoutes } from './http/routes/admin/index.ts';
 import { authRoutes } from './http/routes/auth.ts';
@@ -36,7 +37,7 @@ import type { Mailer } from './mail/mailer.ts';
 import type { Redis } from './redis/client.ts';
 
 export interface AppDeps {
-  config: Pick<AppConfig, 'appOrigin' | 'inviteContactEmail'>;
+  config: Pick<AppConfig, 'appOrigin' | 'plantDomain' | 'inviteContactEmail'>;
   logger: Logger;
   doi: DoiClient;
   taxonomy: TaxonomyClient;
@@ -66,6 +67,7 @@ export const BODY_LIMIT_BYTES = 1024 * 1024;
  * @rfc RFC-24 R4
  * @rfc RFC-76 R1
  * @rfc RFC-82 R11, R20
+ * @rfc RFC-14 R3, R4
  */
 export function createApp(deps: AppDeps) {
   const ctx: AuthContext = {
@@ -80,7 +82,7 @@ export function createApp(deps: AppDeps) {
     logger: deps.logger,
     doi: deps.doi,
     taxonomy: deps.taxonomy,
-    appOrigin: deps.config.appOrigin,
+    originOf: (platform) => originOf(deps.config, platform),
     inviteContactEmail: deps.config.inviteContactEmail,
     now: deps.now ?? Date.now,
   };
@@ -101,7 +103,14 @@ export function createApp(deps: AppDeps) {
 
   const app = root.basePath('/api');
   app.use(requestLogger(deps.logger));
-  app.use(originCheck(deps.config.appOrigin));
+  // RFC-14 R3: before the origin check, which compares against the platform's origin.
+  app.use(
+    resolvePlatform({
+      tree: new URL(deps.config.appOrigin).hostname,
+      plant: deps.config.plantDomain,
+    }),
+  );
+  app.use(originCheck(ctx.originOf));
   app.use(bodyLimit({ maxSize: BODY_LIMIT_BYTES }));
   app.use(
     resolveSession({ sessions: deps.sessions, db: deps.db, limiter: deps.limiter, now: deps.now }),

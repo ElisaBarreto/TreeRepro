@@ -7,7 +7,7 @@ import {
 } from '@treerepro/contracts';
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, useTestApp } from '../../../../test/helpers/app.ts';
+import { call, TEST_PLANT_ORIGIN, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
 import {
   createAnnotation,
@@ -74,6 +74,29 @@ describe('RFC-50 R2 GET /api/admin/users', () => {
 
 describe('RFC-50 R3, R8 invitations over HTTP', () => {
   const t = useTestApp();
+
+  it('RFC-14 R5 an invitation and its resend sent from PlantRepro link to PlantRepro', async () => {
+    const { user } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const { cookie } = await loginAs(t, user, { platform: 'plantrepro' });
+    const role = await createRole(t.db, { permissions: ['users.read'] });
+    const link = /^http:\/\/plantrepro\.localhost\/invite\/[A-Za-z0-9_-]{43}$/m;
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/admin/users', {
+      cookie,
+      origin: TEST_PLANT_ORIGIN,
+      body: { email: randomEmail(), name: 'Grace', roles: [role.id] },
+    });
+    expect(res.status).toBe(201);
+    expect(t.mail.sent.at(-1)?.text).toMatch(link);
+    const { data } = await res.json();
+    const resend = await call(
+      t.app,
+      'POST',
+      `http://plantrepro.localhost/api/admin/users/${data.id}/resend-invite`,
+      { cookie, origin: TEST_PLANT_ORIGIN },
+    );
+    expect(resend.status).toBe(200);
+    expect(t.mail.sent.at(-1)?.text).toMatch(link);
+  });
 
   it('invites with 201, audits with the admin as actor, and refuses a taken email', async () => {
     const { admin, cookie } = await adminCookie(t);

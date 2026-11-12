@@ -56,6 +56,7 @@ export function readMfaCookie(c: Context<AppEnv>): string | undefined {
  * hash and a database lookup, same as a real attempt (RFC-24 R4). Never
  * rejects a request that carries neither a Bearer header nor a cookie.
  * @rfc RFC-22 R7
+ * @rfc RFC-14 R5
  * @rfc RFC-82 R3, R4
  * @rfc RFC-24 R4
  */
@@ -91,7 +92,10 @@ export function resolveSession(deps: {
     if (rawId) {
       const session = await deps.sessions.get(rawId);
       const user = session ? await findUserById(deps.db, session.userId) : null;
-      if (session && user && user.status === 'active') {
+      if (session && session.platform !== c.get('platform')) {
+        // RFC-14 R5: valid on its own platform, so it is kept, only not used here.
+        clearSessionCookie(c);
+      } else if (session && user && user.status === 'active') {
         c.set('session', session);
         c.set('user', user);
       } else {
