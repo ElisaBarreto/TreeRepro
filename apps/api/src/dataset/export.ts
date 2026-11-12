@@ -94,7 +94,7 @@ export function csvRow(fields: ReadonlyArray<string | number | null | undefined>
   return `${fields.map(csvField).join(',')}\r\n`;
 }
 
-/** `all` is the whole dataset; `platform` keeps the `TR_` records of records.csv. @rfc RFC-66 R9 */
+/** `all` is the whole dataset; `platform` keeps the platform (`TR_`, `PR_`) records of records.csv. @rfc RFC-66 R9 */
 export type ExportScope = (typeof EXPORT_SCOPES)[number];
 
 /**
@@ -266,7 +266,7 @@ interface RecordRow {
 /**
  * `records.csv`: every record visible to the viewer, and every copy of
  * evidence that would be (RFC-63 R17), pending ones (for a reviewer) with
- * their raw value; `platform` keeps the `TR_` records.
+ * their raw value; `platform` keeps the platform (`TR_`, `PR_`) records.
  * `contested` and `n_contests` are RFC-63 R14's, `n_validations` counts
  * distinct validators (RFC-63 R8). `order` is the species' family's
  * `order_name` (RFC-60 R1), and `plant_type` and `plant_type_status` the species' (RFC-60 R1); `unit` is the record's own unit, else the trait's;

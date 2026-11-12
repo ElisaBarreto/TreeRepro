@@ -1034,7 +1034,7 @@ export const listImportRejectsQuerySchema = cursorQuerySchema.extend({
   order: z.enum(SORT_ORDERS).optional(),
 });
 
-/** `all` is the whole dataset (the default); `platform` keeps the `TR_` records. @rfc RFC-66 R9 */
+/** `all` is the whole dataset (the default); `platform` keeps the platform (`TR_`, `PR_`) records. @rfc RFC-66 R9 */
 export const EXPORT_SCOPES = ['all', 'platform'] as const;
 
 /** @rfc RFC-66 R9 */

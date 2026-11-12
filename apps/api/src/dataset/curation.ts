@@ -1,5 +1,6 @@
 import type {
   CreateRecordsResult as ContractCreateRecordsResult,
+  Platform,
   QuantitativeValue,
   RecordCodeRef,
   RecordDetail,
@@ -157,22 +158,37 @@ export function quantitativeText(q: QuantitativeValue): SQL<string> {
   )})`;
 }
 
+const CODE_PREFIX: Record<Platform, string> = { treerepro: 'TR_', plantrepro: 'PR_' };
+
 /**
- * The record codes of one entry (RFC-63 R12): one `record_code_tr_seq`
- * number, bare for a single record (`TR_5`) and lettered for several
- * (`TR_7a`, `TR_7b`, …, `record_code_suffix` of migration 0035). A lone
- * insert may rely on the column default instead; a form that creates several
- * records (plan 13g) names the codes this returns.
+ * A new platform record's code (RFC-63 R12): the prefix of the platform it is
+ * entered on and the next number of the one sequence both prefixes share.
+ * Every insert of a platform record names it; the column default is `TR_`.
  * @rfc RFC-63 R12
  */
-export async function nextRecordCodes(db: DbExecutor, count: number): Promise<string[]> {
+export function newRecordCode(platform: Platform): SQL<string> {
+  return sql<string>`${CODE_PREFIX[platform]}::text || nextval('record_code_tr_seq')`;
+}
+
+/**
+ * The record codes of one entry (RFC-63 R12): the platform's prefix and one
+ * `record_code_tr_seq` number, bare for a single record (`TR_5`) and lettered
+ * for several (`PR_7a`, `PR_7b`, …, `record_code_suffix` of migration 0035),
+ * for a form that creates several records (plan 13g).
+ * @rfc RFC-63 R12
+ */
+export async function nextRecordCodes(
+  db: DbExecutor,
+  platform: Platform,
+  count: number,
+): Promise<string[]> {
   if (!Number.isInteger(count) || count < 1) {
     throw new Error('nextRecordCodes: count must be a positive integer');
   }
   // The FROM subquery holds a volatile call, so PostgreSQL evaluates it once:
   // every code of the entry shares one number.
   const rows = (await db.execute(sql`
-    select 'TR_' || s.v || case when ${count}::int = 1 then '' else record_code_suffix(g) end as code
+    select ${CODE_PREFIX[platform]}::text || s.v || case when ${count}::int = 1 then '' else record_code_suffix(g) end as code
     from (select nextval('record_code_tr_seq') as v) s
     cross join generate_series(1, ${count}::int) g
     order by g`)) as unknown as { code: string }[];
@@ -261,6 +277,7 @@ async function addValidationRecord(
   validatedRecordId: string,
   actorId: string,
   referenceId: string | undefined,
+  platform: Platform,
 ): Promise<void> {
   // Checked first, so a pending record does not create the personal
   // observation it would never cite.
@@ -271,11 +288,12 @@ async function addValidationRecord(
   if (validated?.harmonisation !== 'harmonised') return;
   const primary = referenceId ?? (await ensurePersonalObservation(tx, actorId)).id;
   await tx.execute(sql`
-    insert into trait_records (species_id, trait_id, value_text, level_id, numeric_value,
+    insert into trait_records (record_code, species_id, trait_id, value_text, level_id, numeric_value,
       min_value, max_value, mean_value, median_value, sd_value, se_value, n, unit, unit_status,
       outlier_flag, harmonisation, primary_reference_id, origin, created_by, intent,
       responds_to_record_id)
-    select r.species_id, r.trait_id, coalesce(l.key, r.value_text), r.level_id, r.numeric_value,
+    select ${newRecordCode(platform)}, r.species_id, r.trait_id, coalesce(l.key, r.value_text),
+      r.level_id, r.numeric_value,
       r.min_value, r.max_value, r.mean_value, r.median_value, r.sd_value, r.se_value, r.n, r.unit,
       r.unit_status, r.outlier_flag, 'harmonised', ${primary}::uuid, 'manual', ${actorId}::uuid,
       'complement', r.id
@@ -509,7 +527,7 @@ export async function createRecords(
 
     // One sequence number for the records actually created; a collision
     // below leaves a gap, which RFC-63 R12 accepts.
-    const codes = toCreate.length === 0 ? [] : await nextRecordCodes(tx, toCreate.length);
+    const codes = toCreate.length === 0 ? [] : await nextRecordCodes(tx, visibility.platform, toCreate.length);
     const createdIds: string[] = [];
     for (const [i, value] of toCreate.entries()) {
       const valueText: string | SQL<string> =
@@ -719,7 +737,7 @@ export async function annotateRecord(
         throw new AppError('PERMISSION_DENIED', 'You cannot validate your own record');
       }
       await confirmOnce(tx, rec.id, input.actorId, input.referenceId ? [input.referenceId] : []);
-      await addValidationRecord(tx, rec.id, input.actorId, input.referenceId);
+      await addValidationRecord(tx, rec.id, input.actorId, input.referenceId, visibility.platform);
       return getRecord(tx, visibility, rec.id);
     }
 
@@ -858,6 +876,7 @@ export async function validateLevel(
       (others[0] as LevelRecord).recordId,
       input.actorId,
       input.referenceId,
+      visibility.platform,
     );
     return { validated: todo.map(codeRef) };
   });
