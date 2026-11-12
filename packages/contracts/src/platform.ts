@@ -35,3 +35,13 @@ export type PlantTypeStatus = (typeof PLANT_TYPE_STATUSES)[number];
  */
 export const HIDDEN_SPECIES_NAME_MESSAGE =
   'This species already exists, but it is not classified as a tree on TreeRepro. A manager can review its type.';
+
+/**
+ * What each platform covers, singular (`tree species`); the copy adds the
+ * plural `s` (`how trees reproduce`).
+ * @rfc RFC-13 R14
+ */
+export const PLATFORM_SUBJECTS: Record<Platform, 'tree' | 'plant'> = {
+  treerepro: 'tree',
+  plantrepro: 'plant',
+};

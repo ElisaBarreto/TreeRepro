@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.get_login_creds"],
+    "target": { "namespace": "web", "site": "https://treerepro.elisabarreto.com.br" }
+  },
+  {
+    "relation": ["delegate_permission/common.get_login_creds"],
+    "target": { "namespace": "web", "site": "https://plantrepro.elisabarreto.com.br" }
+  }
+]

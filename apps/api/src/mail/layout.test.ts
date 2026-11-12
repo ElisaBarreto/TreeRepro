@@ -26,6 +26,20 @@ describe('RFC-10 R16 e-mail layout', () => {
     expect(html).toContain('Pre');
   });
 
+  it('RFC-10 R16 names PlantRepro in the wordmark of a PlantRepro mail', () => {
+    const html = emailLayout({
+      appOrigin: APP_ORIGIN,
+      title: 'Hi',
+      preheader: 'Pre',
+      body: '<p>Body</p>',
+      footer: 'Why',
+      platform: 'plantrepro',
+    });
+    expect(html).toContain('alt="PlantRepro"');
+    expect(html).toContain('>PlantRepro</td>');
+    expect(html).not.toContain('TreeRepro');
+  });
+
   it('loads nothing remote but its own images and fonts from the app origin', () => {
     const html = emailLayout({
       appOrigin: APP_ORIGIN,

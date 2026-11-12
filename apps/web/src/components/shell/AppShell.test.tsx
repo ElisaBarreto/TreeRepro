@@ -74,6 +74,34 @@ const location = vi.hoisted(() => ({
 }));
 const auth = vi.hoisted(() => ({ logout: vi.fn(), fetchMe: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
+// RFC-13 R14: TreeRepro unless a test switches it.
+const platform = vi.hoisted(() => ({ value: 'treerepro' as 'treerepro' | 'plantrepro' }));
+vi.mock('../../lib/platform.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/platform.ts')>();
+  return {
+    ...actual,
+    currentPlatform: () => platform.value,
+    platformCopy: (p?: 'treerepro' | 'plantrepro') => actual.platformCopy(p ?? platform.value),
+  };
+});
+
+describe('RFC-13 R14 AppShell brand', () => {
+  it('names TreeRepro on TreeRepro and PlantRepro, with its emblem, on PlantRepro', () => {
+    const tree = renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+    expect(screen.getAllByText('TreeRepro').length).toBeGreaterThan(0);
+    tree.unmount();
+
+    platform.value = 'plantrepro';
+    try {
+      renderWithProviders(<AppShell>child</AppShell>, { me: ME });
+      expect(screen.getAllByText('PlantRepro').length).toBeGreaterThan(0);
+      expect(screen.queryByText('TreeRepro')).toBeNull();
+      expect(screen.getAllByRole('img', { name: /^PlantRepro emblem/ }).length).toBeGreaterThan(0);
+    } finally {
+      platform.value = 'treerepro';
+    }
+  });
+});
 
 describe('RFC-13 R3 AppShell navigation', () => {
   it('shows Workspace and Settings to everyone, Admin only with admin.access, and the user name', () => {

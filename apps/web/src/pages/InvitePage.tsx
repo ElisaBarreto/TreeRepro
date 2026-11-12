@@ -4,7 +4,7 @@ import { ApiError } from '../api/client.ts';
 import { AuthFrame, DarkAlert, DarkSubmit } from '../components/auth/AuthFrame.tsx';
 import { PasswordFields, readPasswords } from '../components/auth/PasswordFields.tsx';
 import { fieldErrors, GENERIC_MESSAGE, isValidationError } from '../lib/errors.ts';
-import { currentPlatform, platformDeniedMessage } from '../lib/platform.ts';
+import { currentPlatform, platformCopy, platformDeniedMessage } from '../lib/platform.ts';
 
 /**
  * @rfc RFC-13 R6
@@ -55,7 +55,10 @@ export function InvitePage({ token, onAccepted }: { token: string; onAccepted: (
   }
 
   return (
-    <AuthFrame title="Welcome to TreeRepro" subtitle="Choose a password to activate your account.">
+    <AuthFrame
+      title={`Welcome to ${platformCopy().name}`}
+      subtitle="Choose a password to activate your account."
+    >
       <form onSubmit={submit} className="flex flex-col gap-6" noValidate>
         <PasswordFields ids={ids} errors={errors} />
         {alert ? <DarkAlert tone="error">{alert}</DarkAlert> : null}

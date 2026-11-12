@@ -27,6 +27,7 @@ describe('RFC-21 R5 POST /api/auth/password/forgot', () => {
     expect(t.mail.sent[before]?.text).toMatch(
       /http:\/\/plantrepro\.localhost\/reset-password\/[A-Za-z0-9_-]{43}/,
     );
+    expect(t.mail.sent[before]?.subject).toBe('Reset your PlantRepro password');
   });
 
   it('answers the same 200 for known and unknown emails; emails a 1 h link only to active users', async () => {

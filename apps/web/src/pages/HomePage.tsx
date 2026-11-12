@@ -6,6 +6,7 @@ import { type RevealPhase, runReveal, travelOffset } from '../components/landing
 import { TreeEmblem } from '../components/landing/TreeEmblem.tsx';
 import { prefersReducedMotion } from '../lib/motion.ts';
 import '../components/landing/landing.css';
+import { platformCopy } from '../lib/platform.ts';
 
 /**
  * How the page leaves once sign-in resolves: `reveal` after the landing beats
@@ -29,6 +30,7 @@ interface HomePageProps {
  * @rfc RFC-22 R7
  */
 export function HomePage({ onSignedIn }: HomePageProps) {
+  const brand = platformCopy();
   const stageRef = useRef<HTMLDivElement>(null);
   const travelRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLElement>(null);
@@ -72,7 +74,7 @@ export function HomePage({ onSignedIn }: HomePageProps) {
 
       <section
         ref={cardRef}
-        aria-label="Sign in to TreeRepro"
+        aria-label={`Sign in to ${brand.name}`}
         className={`${cardPhase} tr-rise relative z-10 flex w-[1100px] max-w-full flex-col md:min-h-[640px] md:flex-row`}
       >
         {/* The card's surface is its own layer so the reveal can fade it while the emblem, a child of the card, travels on. */}
@@ -96,13 +98,13 @@ export function HomePage({ onSignedIn }: HomePageProps) {
         >
           <header className="tr-rise tr-rise-1 flex flex-col gap-1.5">
             <h1 className="font-display text-xs font-semibold uppercase tracking-[0.28em] text-mist-400">
-              TreeRepro
+              {brand.name}
             </h1>
             <h2 className="font-display text-[28px] font-bold tracking-tight text-white md:text-[34px]">
               Welcome back
             </h2>
             <p className="font-display text-base font-semibold text-pollen-500">
-              Tracking how trees reproduce.
+              Tracking how {brand.subject}s reproduce.
             </p>
           </header>
 
@@ -111,7 +113,9 @@ export function HomePage({ onSignedIn }: HomePageProps) {
           </div>
 
           <footer className="tr-rise tr-rise-3 flex justify-center border-t border-white/12 pt-5 text-xs text-mist-400">
-            <span>© {new Date().getFullYear()} TreeRepro</span>
+            <span>
+              © {new Date().getFullYear()} {brand.name}
+            </span>
           </footer>
         </div>
       </section>
