@@ -44,11 +44,13 @@ export function enumListParam<T extends string>(
 }
 
 /**
- * A code matching `pattern`, or `undefined`. The router parses `?continent=8`
- * as the number 8, so a number is read as its digits.
+ * A comma-separated list of the distinct codes matching `pattern`, or
+ * `undefined` when none does; unknown ones are dropped. The router parses
+ * `?continent=8` as the number 8, so a number is read as its digits.
  * @rfc RFC-60 R6
  */
-export function codeParam(value: unknown, pattern: RegExp): string | undefined {
-  const text = typeof value === 'number' ? String(value) : textParam(value, 8);
-  return text !== undefined && pattern.test(text) ? text : undefined;
+export function codeListParam(value: unknown, pattern: RegExp): string | undefined {
+  const text = typeof value === 'number' ? String(value) : textParam(value, 500);
+  const kept = [...new Set(text?.split(',') ?? [])].filter((c) => pattern.test(c));
+  return kept.length > 0 ? kept.join(',') : undefined;
 }

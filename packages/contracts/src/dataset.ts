@@ -201,6 +201,27 @@ export const SPECIES_SORTS = [
 export type SpeciesSort = (typeof SPECIES_SORTS)[number];
 
 /**
+ * A comma-separated list of 1–100 distinct WCVP codes matching `pattern`,
+ * parsed into an array; `upper` upper-cases the list first.
+ * @rfc RFC-60 R6
+ */
+function geoCodes(pattern: RegExp, upper = false) {
+  const codes = (v: string) => (upper ? v.toUpperCase() : v).split(',');
+  return z
+    .string()
+    .refine((v) => {
+      const list = codes(v);
+      return (
+        list.length <= 100 &&
+        new Set(list).size === list.length &&
+        list.every((c) => pattern.test(c))
+      );
+    }, 'Expected 1–100 distinct codes, comma-separated')
+    .transform(codes)
+    .optional();
+}
+
+/**
  * `traitData` without `traitId` or `categoryKey` is still accepted here; the
  * API decides what to do with it (it ignores it), and so is `introduced`
  * without a geographic code.
@@ -235,22 +256,12 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
     .optional(),
   /** RFC-60 R6: keeps the species of this plant type, whatever its status. */
   plantType: z.enum(PLANT_TYPES).optional(),
-  /** WCVP level-1 continent code (RFC-78 R1). */
-  continent: z
-    .string()
-    .regex(/^\d{1,2}$/)
-    .optional(),
-  /** WCVP level-2 region code. */
-  region: z
-    .string()
-    .regex(/^\d{1,3}$/)
-    .optional(),
-  /** WCVP level-3 botanical country code, upper-cased. */
-  area: z
-    .string()
-    .regex(/^[A-Za-z]{3}$/)
-    .transform((v) => v.toUpperCase())
-    .optional(),
+  /** WCVP level-1 continent codes (RFC-78 R1). */
+  continent: geoCodes(/^\d{1,2}$/),
+  /** WCVP level-2 region codes. */
+  region: geoCodes(/^\d{1,3}$/),
+  /** WCVP level-3 botanical country codes, upper-cased. */
+  area: geoCodes(/^[A-Z]{3}$/, true),
   /** Count introduced occurrences too; natives only without it. */
   introduced: z.enum(['true', 'false']).optional(),
   sort: z.enum(SPECIES_SORTS).optional(),

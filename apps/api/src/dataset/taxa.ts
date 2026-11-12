@@ -305,10 +305,10 @@ export interface SpeciesListFilters {
   treeFlags?: TreeFlag[];
   /** RFC-60 R6: keep species of this plant type, whatever its status. */
   plantType?: PlantType;
-  /** RFC-60 R6: WCVP level-1, level-2 and level-3 codes; every one given applies. */
-  continent?: string;
-  region?: string;
-  area?: string;
+  /** RFC-60 R6: WCVP level-1, level-2 and level-3 codes; the most specific choice in each branch is a place. */
+  continents?: string[];
+  regions?: string[];
+  areas?: string[];
   /** With a geographic code: count introduced occurrences too. */
   introduced?: boolean;
   /** With `traitId`: a harmonised, live record of this level (RFC-62 R8). The caller validates the level. */
@@ -344,9 +344,9 @@ export interface SpeciesListFilters {
  * visible record whose `harmonisation` is `unknown_level`; like `unresolved`,
  * it applies only for a `records.review` holder and is ignored otherwise.
  * `outliers`, open to every viewer, keeps species with a visible record on a
- * visible trait whose `outlier_flag` is set (RFC-63 R1). `continent`, `region`
- * and `area` keep species occurring in a matching WCVP region, natively unless
- * `introduced` (RFC-60 R6, RFC-78 R4).
+ * visible trait whose `outlier_flag` is set (RFC-63 R1). `continents`,
+ * `regions` and `areas` keep species occurring in any chosen place, natively
+ * unless `introduced` (RFC-60 R6, RFC-78 R4).
  * @rfc RFC-60 R3, R4, R6
  * @rfc RFC-33 R2, R3, R6
  * @rfc RFC-62 R8
@@ -411,20 +411,26 @@ export async function speciesListConditions(
   if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
   if (filters.treeFlags?.length) conditions.push(inArray(species.treeFlag, filters.treeFlags));
   if (filters.plantType) conditions.push(eq(species.plantType, filters.plantType));
-  // RFC-60 R6: where the species' WCVP match (RFC-78 R6) occurs; an unmatched
-  // species is kept by no geographic filter.
-  const geo = [
-    filters.continent ? sql`gr.continent_code_l1 = ${filters.continent}` : null,
-    filters.region ? sql`gr.region_code_l2 = ${filters.region}` : null,
-    filters.area ? sql`gr.area_code_l3 = ${filters.area}` : null,
-  ].filter((c) => c !== null);
-  if (geo.length > 0) {
-    if (!filters.introduced) geo.push(sql`not gd.introduced`);
+  // RFC-60 R6: where the species' WCVP match (RFC-78 R6) occurs, in any
+  // chosen place; a region narrowed by one of its chosen botanical countries,
+  // or a continent narrowed by one of its chosen regions or botanical
+  // countries, is not a place itself. An unmatched species is kept by none.
+  const continents = filters.continents ?? [];
+  const regions = filters.regions ?? [];
+  const areas = filters.areas ?? [];
+  if (continents.length + regions.length + areas.length > 0) {
+    const list = (codes: string[]) => sql`${sql.param(codes)}::text[]`;
+    const places = sql`gr.area_code_l3 = any(${list(areas)})
+      or (gr.region_code_l2 = any(${list(regions)}) and not exists (select 1 from wcvp_regions nx
+        where nx.region_code_l2 = gr.region_code_l2 and nx.area_code_l3 = any(${list(areas)})))
+      or (gr.continent_code_l1 = any(${list(continents)}) and not exists (select 1 from wcvp_regions nx
+        where nx.continent_code_l1 = gr.continent_code_l1
+          and (nx.area_code_l3 = any(${list(areas)}) or nx.region_code_l2 = any(${list(regions)}))))`;
     conditions.push(
       sql`${species.id} in (select gm.species_id from wcvp_species_match gm
         join wcvp_distribution gd using (plant_name_id)
         join wcvp_regions gr using (area_code_l3)
-        where ${sql.join(geo, sql` and `)})`,
+        where (${places})${filters.introduced ? sql`` : sql` and not gd.introduced`})`,
     );
   }
   if (filters.unresolved && visibility.review) {

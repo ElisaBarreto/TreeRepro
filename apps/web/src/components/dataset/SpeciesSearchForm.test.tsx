@@ -757,60 +757,66 @@ describe('RFC-60 R6, R14 SpeciesSearchForm geography', () => {
     contested: false,
     unknownLevels: false,
   };
-  const options = (label: string) =>
-    within(screen.getByLabelText(label))
-      .getAllByRole('option')
-      .map((o) => o.textContent);
+  const list = (legend: string) => screen.getByRole('group', { name: legend });
+  const boxes = (legend: string) =>
+    within(list(legend))
+      .getAllByRole('checkbox')
+      .map((b) => b.closest('label')?.textContent);
+  const check = (legend: string, name: string) =>
+    userEvent.click(within(list(legend)).getByRole('checkbox', { name }));
 
-  it('lists continents, then narrows regions and botanical countries to the choice above', async () => {
+  it('lists continents, then narrows regions and botanical countries to the checked places', async () => {
     const onChange = vi.fn();
     renderWithProviders(<Controlled initial={EMPTY} onChange={onChange} />, { me: READER });
-    await waitFor(() =>
-      expect(options('Continent')).toEqual(['All continents', 'Asia-Tropical', 'Southern America']),
-    );
-    expect(options('Region')).toHaveLength(4);
-    expect(options('Botanical country')).toHaveLength(5);
+    await waitFor(() => expect(boxes('Continent')).toEqual(['Asia-Tropical', 'Southern America']));
+    expect(boxes('Region')).toHaveLength(3);
+    expect(boxes('Botanical country')).toHaveLength(4);
+    expect(within(list('Region')).getByText('Asia-Tropical')).toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByLabelText('Continent'), '8');
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ continent: '8' }));
-    expect(options('Region')).toEqual(['All regions', 'Central America', 'Brazil']);
-    expect(options('Botanical country')).toEqual([
-      'All botanical countries',
-      'Costa Rica',
-      'Brazil North',
-      'Brazil South',
-    ]);
+    await check('Continent', 'Southern America');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ continents: ['8'] }));
+    expect(boxes('Region')).toEqual(['Central America', 'Brazil']);
+    expect(boxes('Botanical country')).toEqual(['Costa Rica', 'Brazil North', 'Brazil South']);
 
-    await userEvent.selectOptions(screen.getByLabelText('Region'), '84');
-    expect(options('Botanical country')).toEqual([
-      'All botanical countries',
-      'Brazil North',
-      'Brazil South',
-    ]);
-    await userEvent.selectOptions(screen.getByLabelText('Botanical country'), 'BZS');
+    await check('Region', 'Brazil');
+    expect(boxes('Botanical country')).toEqual(['Brazil North', 'Brazil South']);
+    await check('Botanical country', 'Brazil South');
+    await check('Botanical country', 'Brazil North');
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ continent: '8', region: '84', area: 'BZS' }),
+      expect.objectContaining({ continents: ['8'], regions: ['84'], areas: ['BZN', 'BZS'] }),
     );
+    expect(
+      within(list('Botanical country')).getByText('2 botanical countries'),
+    ).toBeInTheDocument();
 
-    // A wider choice drops the narrower ones.
-    await userEvent.selectOptions(screen.getByLabelText('Continent'), '4');
+    // A second continent adds places and keeps the narrower choices.
+    await check('Continent', 'Asia-Tropical');
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ continent: '4', region: undefined, area: undefined }),
+      expect.objectContaining({ continents: ['4', '8'], regions: ['84'], areas: ['BZN', 'BZS'] }),
+    );
+    // Unchecking a continent drops what it held.
+    await check('Continent', 'Southern America');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ continents: ['4'], regions: undefined, areas: undefined }),
     );
   });
 
-  it('offers introduced occurrences only once a place is chosen, unchecked by default', async () => {
+  it('offers introduced occurrences only once a place is checked, and drops it with the last one', async () => {
     const onChange = vi.fn();
     renderWithProviders(<Controlled initial={EMPTY} onChange={onChange} />, { me: READER });
     const box = await screen.findByRole('checkbox', { name: 'Include introduced occurrences' });
     expect(box).toBeDisabled();
     expect(box).not.toBeChecked();
-    await waitFor(() => expect(options('Continent')).toHaveLength(3));
-    await userEvent.selectOptions(screen.getByLabelText('Continent'), '8');
+    await waitFor(() => expect(boxes('Continent')).toHaveLength(2));
+    await check('Botanical country', 'Nepal');
     expect(box).toBeEnabled();
     await userEvent.click(box);
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ continent: '8', introduced: true }),
+      expect.objectContaining({ areas: ['NEP'], introduced: true }),
+    );
+    await check('Botanical country', 'Nepal');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ areas: undefined, introduced: undefined }),
     );
   });
 });
