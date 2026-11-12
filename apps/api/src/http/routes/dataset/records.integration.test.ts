@@ -1,5 +1,5 @@
 import { contestedQueueItemSchema, type PermissionKey } from '@treerepro/contracts';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { TestApp } from '../../../../test/helpers/app.ts';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
@@ -19,6 +19,7 @@ import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
 import { traitLevels } from '../../../db/schema/dictionary.ts';
 import { traitRecords } from '../../../db/schema/records.ts';
+import { bibliographicReferences } from '../../../db/schema/references.ts';
 
 describe('RFC-63 R9, R10 record and summary routes', () => {
   const t = useTestApp();
@@ -345,7 +346,8 @@ describe('RFC-65 R1, R2 POST /api/records', () => {
     const first = await call(t.app, 'POST', '/api/records', { cookie, body });
     expect(first.status).toBe(201);
     const created = (await first.json()).data.created[0];
-    // A different raw value of the same level still matches (RFC-70 R3).
+    // A different raw value of the same level, same primary reference, is
+    // still the actor's own record (RFC-70 R3).
     for (const again of [body, { ...body, rawValue: 'a.' }]) {
       const res = await call(t.app, 'POST', '/api/records', { cookie, body: again });
       expect(res.status).toBe(201);
@@ -911,6 +913,17 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
       .from(traitRecords)
       .where(eq(traitRecords.createdBy, reviewer.user.id));
     expect(copies).toEqual([]);
+    // Nor a personal observation it would never cite.
+    const observations = await t.db
+      .select({ id: bibliographicReferences.id })
+      .from(bibliographicReferences)
+      .where(
+        and(
+          eq(bibliographicReferences.kind, 'personal_observation'),
+          eq(bibliographicReferences.observerUserId, reviewer.user.id),
+        ),
+      );
+    expect(observations).toEqual([]);
   });
 
   it('R4 the author withdraws a manual record; nothing more can be annotated afterwards', async () => {
@@ -1134,19 +1147,19 @@ describe('RFC-70 R1-R3 POST /api/records answers created, validated and duplicat
     return { user, other, trait, sp, la, lb, lc, recA, post };
   }
 
-  it('201 for a mix: a matched level is a validation, a new level creates; again, the own record is a duplicate', async () => {
+  it('201 for a mix: a matched level is a validation and created, a new level creates; again, the own record is a duplicate', async () => {
     const f = await fixture();
     const both = await f.post({ value: { levelIds: [f.la, f.lb] } });
     expect(both.status).toBe(201);
     const body = (await both.json()).data;
-    expect(body.created.map((r: { level: { id: string } }) => r.level.id)).toEqual([f.lb]);
+    expect(body.created.map((r: { level: { id: string } }) => r.level.id)).toEqual([f.la, f.lb]);
     expect(body.validated).toEqual([{ recordId: f.recA.id, recordCode: expect.any(String) }]);
     const again = await f.post({ value: { levelIds: [f.lb] } });
     expect(again.status).toBe(201);
     expect((await again.json()).data).toEqual({
       created: [],
       validated: [],
-      duplicates: [{ recordId: body.created[0].id, recordCode: body.created[0].recordCode }],
+      duplicates: [{ recordId: body.created[1].id, recordCode: body.created[1].recordCode }],
     });
   });
 
