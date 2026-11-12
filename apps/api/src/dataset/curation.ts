@@ -262,6 +262,13 @@ async function addValidationRecord(
   actorId: string,
   referenceId: string | undefined,
 ): Promise<void> {
+  // Checked first, so a pending record does not create the personal
+  // observation it would never cite.
+  const [validated] = await tx
+    .select({ harmonisation: traitRecords.harmonisation })
+    .from(traitRecords)
+    .where(eq(traitRecords.id, validatedRecordId));
+  if (validated?.harmonisation !== 'harmonised') return;
   const primary = referenceId ?? (await ensurePersonalObservation(tx, actorId)).id;
   await tx.execute(sql`
     insert into trait_records (species_id, trait_id, value_text, level_id, numeric_value,
@@ -273,7 +280,7 @@ async function addValidationRecord(
       r.unit_status, r.outlier_flag, 'harmonised', ${primary}::uuid, 'manual', ${actorId}::uuid,
       'complement', r.id
     from trait_records r left join trait_levels l on l.id = r.level_id
-    where r.id = ${validatedRecordId}::uuid and r.harmonisation = 'harmonised'
+    where r.id = ${validatedRecordId}::uuid
     on conflict on constraint trait_records_claim_key do nothing`);
 }
 

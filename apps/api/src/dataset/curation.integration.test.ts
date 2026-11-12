@@ -881,6 +881,22 @@ describe('RFC-70 R1-R3, RFC-63 R14 createRecords: one record per level, matches,
     expect((await getRecord(t.db, UNRESTRICTED, green.id))?.contested).toBe(false);
   });
 
+  it('RFC-63 R14 a contest level the author already states under the same primary reference is a duplicate, not a contest record', async () => {
+    const f = await setup();
+    const mine = await f.rec('red', f.me.id, f.ref.id);
+    await f.rec('blue');
+    const result = await createRecords(
+      t.db,
+      UNRESTRICTED,
+      f.input(['red'], { intent: 'contest', contestedLevelIds: [f.level('blue')] }),
+    );
+    expect(result.created).toEqual([]);
+    expect(result.duplicates.map((d) => d.recordId)).toEqual([mine.id]);
+    expect(await contestsOf(f.sp.id, f.trait.id)).toEqual([
+      { createdBy: f.me.id, levelIds: [f.level('blue')], recordIds: [] },
+    ]);
+  });
+
   it('RFC-63 R14 a contest giving only green creates a green contest record and contests every existing level', async () => {
     const f = await setup();
     await f.rec('red');
