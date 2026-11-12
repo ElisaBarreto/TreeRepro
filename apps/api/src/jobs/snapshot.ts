@@ -133,15 +133,18 @@ async function writeSnapshot(db: Db, now: Date): Promise<Record<Platform, Snapsh
         ),
         sql` union all `,
       )}`);
+    // R8, R9: native occurrences only; introduced ones never reach the maps.
     await tx.execute(sql`
       create temporary table snap_regions on commit drop as
       select m.species_id, d.area_code_l3
-      from wcvp_species_match m join wcvp_distribution d using (plant_name_id)`);
+      from wcvp_species_match m join wcvp_distribution d using (plant_name_id)
+      where not d.introduced`);
     await tx.execute(sql`
       create temporary table snap_denominators on commit drop as
       select d.area_code_l3, count(*)::int as wcvp_species,
         count(*) filter (where w.is_tree)::int as wcvp_tree_species
       from wcvp_distribution d join wcvp_species w using (plant_name_id)
+      where not d.introduced
       group by d.area_code_l3`);
     await tx.execute(sql`delete from region_completeness`);
     await tx.execute(sql`delete from region_continuous`);

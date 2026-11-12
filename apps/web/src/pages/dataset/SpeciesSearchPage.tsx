@@ -59,6 +59,10 @@ export interface SpeciesSearch {
   /** Comma-separated tree flags, as the API takes them (RFC-60 R6). */
   treeFlag?: string;
   plantType?: PlantType;
+  continent?: string;
+  region?: string;
+  area?: string;
+  introduced?: boolean;
   sort?: SpeciesSort;
   order?: SortOrder;
 }
@@ -80,6 +84,10 @@ function toValue(search: SpeciesSearch): SpeciesSearchValue {
     traitData: search.traitData,
     treeFlags: search.treeFlag ? (search.treeFlag.split(',') as TreeFlag[]) : undefined,
     plantType: search.plantType,
+    continent: search.continent,
+    region: search.region,
+    area: search.area,
+    introduced: search.introduced === true,
     sort: search.sort,
     order: search.order,
   };
@@ -105,6 +113,10 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
     traitData: value.traitData,
     treeFlag: value.treeFlags?.join(','),
     plantType: value.plantType,
+    continent: value.continent,
+    region: value.region,
+    area: value.area,
+    introduced: value.introduced ? true : undefined,
     sort: value.sort,
     order: value.order,
   };
@@ -134,6 +146,10 @@ function searchKey(value: SpeciesSearchValue): string {
     value.traitData ?? null,
     value.treeFlags?.join(',') ?? null,
     value.plantType ?? null,
+    value.continent ?? null,
+    value.region ?? null,
+    value.area ?? null,
+    value.introduced === true,
     value.sort ?? null,
     value.order ?? null,
   ]);
@@ -232,6 +248,10 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     traitData: form.traitData,
     treeFlag: form.treeFlags?.join(','),
     plantType: form.plantType,
+    continent: form.continent,
+    region: form.region,
+    area: form.area,
+    introduced: form.introduced === true,
     // The Records column needs a trait: with the trait filter cleared, the
     // list falls back to its default order instead of a refused request.
     sort: form.sort === 'records' && !form.traitId ? undefined : form.sort,
@@ -263,7 +283,7 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     <>
       <PageHeader
         title="Species"
-        description="Browse the taxonomy catalog, or narrow it by name, family, genus or trait."
+        description="Browse the taxonomy catalog, or narrow it by name, family, genus, trait or geography."
         actions={
           hasPermission(me, 'taxa.manage') || hasPermission(me, 'dataset.export') ? (
             <>

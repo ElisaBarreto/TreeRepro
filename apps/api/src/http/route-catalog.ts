@@ -64,6 +64,7 @@ import {
   treeFlagCountSchema,
   userSchema,
   validateLevelResultSchema,
+  wcvpRegionSchema,
   withdrawLevelResultSchema,
 } from '@treerepro/contracts';
 import { z } from 'zod';
@@ -319,7 +320,7 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
 
   // species
   'GET /api/species': {
-    summary: 'Search species with taxonomy, trait and scope filters',
+    summary: 'Search species with taxonomy, trait, geography and scope filters',
     response: listEnvelopeSchema(speciesListItemSchema),
   },
   'GET /api/species/count': {
@@ -329,6 +330,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/species/tree-flags': {
     summary: 'Count the visible species of every tree basis',
     response: dataEnvelopeSchema(z.array(treeFlagCountSchema)),
+  },
+  'GET /api/species/regions': {
+    summary: 'List the WCVP botanical countries with their region and continent',
+    response: dataEnvelopeSchema(z.array(wcvpRegionSchema)),
   },
   'POST /api/species': { summary: 'Create a species', response: dataEnvelopeSchema(speciesSchema) },
   'POST /api/species/proposals': {

@@ -50,8 +50,15 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
         ('5', 'Snapa epsilon', true, 5), ('6', 'Snapa zeta', false, 6), ('7', 'Snapa eta', true, 7)`;
     await db.$client`insert into wcvp_regions (area_code_l3, name) values ('RG1', 'Region one'), ('RG2', 'Region two')`;
     await db.$client`
-      insert into wcvp_distribution (plant_name_id, area_code_l3) values
-        ('1', 'RG1'), ('1', 'RG2'), ('2', 'RG1'), ('3', 'RG1'), ('5', 'RG1'), ('6', 'RG2'), ('7', 'RG1')`;
+      insert into wcvp_distribution (plant_name_id, area_code_l3, introduced) values
+        ('1', 'RG1', false), ('1', 'RG2', false), ('2', 'RG1', false), ('3', 'RG1', false),
+        ('5', 'RG1', false), ('6', 'RG2', false), ('7', 'RG1', false)`;
+    // Introduced occurrences never reach the region tables (R8, R9): beta in
+    // RG2 and alpha in RG3 change no count, and RG3 gets no row.
+    await db.$client`insert into wcvp_regions (area_code_l3, name) values ('RG3', 'Region three')`;
+    await db.$client`
+      insert into wcvp_distribution (plant_name_id, area_code_l3, introduced) values
+        ('2', 'RG2', true), ('1', 'RG3', true)`;
 
     const petal = await traitByKey(db, 'petal_length');
     const colour = await traitByKey(db, 'flower_color');

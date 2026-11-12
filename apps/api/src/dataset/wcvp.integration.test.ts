@@ -3,15 +3,28 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { call, useTestApp } from '../../test/helpers/app.ts';
 import { createSpecies } from '../../test/helpers/dataset.ts';
 import { useTestDb } from '../../test/helpers/db.ts';
+import { createRole } from '../../test/helpers/roles.ts';
+import { loginAs } from '../../test/helpers/session.ts';
+import { createUser } from '../../test/helpers/users.ts';
 import { importWcvp } from './wcvp.ts';
 
 const NAMES_HEADER =
   'plant_name_id|ipni_id|taxon_rank|taxon_status|family|genus|species|lifeform_description|taxon_name|taxon_authors';
 const DIST_HEADER =
-  'plant_locality_id|plant_name_id|continent_code_l1|area_code_l3|area|introduced|extinct|location_doubtful';
+  'plant_locality_id|plant_name_id|continent_code_l1|continent|region_code_l2|region|area_code_l3|area|introduced|extinct|location_doubtful';
+
+/** Level 1 and level 2 of each test code, as WCVP gives them. */
+const LEVELS: Record<string, string> = {
+  BZN: '8|SOUTHERN AMERICA|84|Brazil',
+  NEP: '4|ASIA-TROPICAL|40|Indian Subcontinent',
+  COS: '8|SOUTHERN AMERICA|80|Central America',
+  VEN: '8|SOUTHERN AMERICA|82|Northern South America',
+  AGE: '8|SOUTHERN AMERICA|85|Southern South America',
+};
 
 async function file(name: string, lines: string[], eol = '\n'): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'wcvp-'));
@@ -27,7 +40,8 @@ function n(id: string, rank: string, status: string, life: string, name: string)
 
 /** A distribution row in DIST_HEADER order. */
 function d(id: string, code: string, area: string, intro = '0', ext = '0', doubt = '0'): string {
-  return `${randomUUID()}|${id}|1|${code}|${area}|${intro}|${ext}|${doubt}`;
+  const levels = LEVELS[code.toUpperCase()] ?? '|||';
+  return `${randomUUID()}|${id}|${levels}|${code}|${area}|${intro}|${ext}|${doubt}`;
 }
 
 describe('RFC-78 import:wcvp', () => {
@@ -68,6 +82,8 @@ describe('RFC-78 import:wcvp', () => {
         d('1', 'BZN', 'Brazil North'),
         d('1', 'BZN', 'Brazil North'), // duplicate occurrence
         d('1', 'nep', ''), // lower-case code, no name
+        d('2', 'NEP', 'Nepal', '1'), // introduced
+        d('2', 'NEP', 'Nepal'), // also native there: native wins
         d('1', 'NEP', 'Nepal'),
         d('2', 'BZN', 'Brazil North'),
         d('2', 'COS', 'Costa Rica', '1'), // introduced
@@ -80,7 +96,7 @@ describe('RFC-78 import:wcvp', () => {
     };
   }
 
-  it('keeps accepted species, native regions and region names; flags trees by whole word', async () => {
+  it('keeps accepted species, regions with their levels and every extant occurrence; flags trees by whole word', async () => {
     const files = await load();
     const counts = await importWcvp(t.db, {
       namesPath: files.names,
@@ -90,7 +106,7 @@ describe('RFC-78 import:wcvp', () => {
       acceptedSpecies: 7,
       treeSpecies: 5,
       regions: 5,
-      distributionRows: 4,
+      distributionRows: 6,
     });
     const species = await t.db.execute(
       sql`select plant_name_id, taxon_name, is_tree, file_order from wcvp_species order by file_order`,
@@ -105,23 +121,35 @@ describe('RFC-78 import:wcvp', () => {
       ['9', names.tree, true],
     ]);
     const regions = await t.db.execute(
-      sql`select area_code_l3, name from wcvp_regions order by area_code_l3`,
+      sql`select area_code_l3, name, region_code_l2, region, continent_code_l1, continent
+          from wcvp_regions order by area_code_l3`,
     );
-    expect(regions.map((r) => [r.area_code_l3, r.name])).toEqual([
-      ['BZN', 'Brazil North'],
-      ['COS', 'Costa Rica'],
-      ['NEP', 'Nepal'],
-      ['VEN', 'Venezuela'],
-      ['XXX', 'XXX'],
+    expect(
+      regions.map((r) => [
+        r.area_code_l3,
+        r.name,
+        r.region_code_l2,
+        r.region,
+        r.continent_code_l1,
+        r.continent,
+      ]),
+    ).toEqual([
+      ['BZN', 'Brazil North', '84', 'Brazil', '8', 'SOUTHERN AMERICA'],
+      ['COS', 'Costa Rica', '80', 'Central America', '8', 'SOUTHERN AMERICA'],
+      ['NEP', 'Nepal', '40', 'Indian Subcontinent', '4', 'ASIA-TROPICAL'],
+      ['VEN', 'Venezuela', '82', 'Northern South America', '8', 'SOUTHERN AMERICA'],
+      ['XXX', 'XXX', null, null, null, null],
     ]);
     const dist = await t.db.execute(
-      sql`select plant_name_id, area_code_l3 from wcvp_distribution order by 1, 2`,
+      sql`select plant_name_id, area_code_l3, introduced from wcvp_distribution order by 1, 2`,
     );
-    expect(dist.map((r) => [r.plant_name_id, r.area_code_l3])).toEqual([
-      ['1', 'BZN'],
-      ['1', 'NEP'],
-      ['2', 'BZN'],
-      ['6', 'XXX'],
+    expect(dist.map((r) => [r.plant_name_id, r.area_code_l3, r.introduced])).toEqual([
+      ['1', 'BZN', false],
+      ['1', 'NEP', false],
+      ['2', 'BZN', false],
+      ['2', 'COS', true],
+      ['2', 'NEP', false],
+      ['6', 'XXX', false],
     ]);
   });
 
@@ -197,5 +225,130 @@ describe('RFC-78 import:wcvp', () => {
       [tree.id]: '1',
       [shrub.id]: '2',
     });
+  });
+});
+
+// The geographic filters read the WCVP tables, which `import:wcvp` truncates:
+// they live in this file, the only one that loads them, so no parallel file
+// can replace the load under them.
+describe('RFC-60 R6, R12, R13 geographic species filters over the WCVP load', () => {
+  const t = useTestApp();
+  const tag = randomUUID().slice(0, 8);
+  const native = `Geoa ${tag}`;
+  const spread = `Geob ${tag}`;
+  let ids: { native: string; spread: string; unmatched: string };
+  let cookie: string;
+
+  beforeAll(async () => {
+    await importWcvp(t.db, {
+      namesPath: await file('n.csv', [
+        NAMES_HEADER,
+        n('g1', 'Species', 'Accepted', 'tree', native),
+        n('g2', 'Species', 'Accepted', 'tree', spread),
+      ]),
+      distributionPath: await file('d.csv', [
+        DIST_HEADER,
+        d('g1', 'BZN', 'Brazil North'),
+        d('g2', 'NEP', 'Nepal'),
+        d('g2', 'COS', 'Costa Rica', '1'), // introduced
+        d('g2', 'XXX', ''), // a region with no levels
+      ]),
+    });
+    ids = {
+      native: (await createSpecies(t.db, { canonicalName: native })).id,
+      spread: (await createSpecies(t.db, { canonicalName: spread })).id,
+      unmatched: (await createSpecies(t.db, { canonicalName: `Geoc ${tag}` })).id,
+    };
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id] });
+    cookie = (await loginAs(t, user)).cookie;
+  });
+
+  async function found(query: string): Promise<string[]> {
+    const res = await call(t.app, 'GET', `/api/species?q=${tag}&${query}`, { cookie });
+    expect(res.status).toBe(200);
+    return ((await res.json()).data as { id: string }[]).map((s) => s.id);
+  }
+
+  it('R6 filters by continent, region and botanical country, natives only by default', async () => {
+    expect(await found('continent=8')).toEqual([ids.native]);
+    expect(await found('continent=4')).toEqual([ids.spread]);
+    expect(await found('region=84')).toEqual([ids.native]);
+    expect(await found('area=bzn')).toEqual([ids.native]);
+    expect(await found('area=COS')).toEqual([]);
+    expect(await found('continent=4&area=BZN')).toEqual([]);
+    expect(await found('area=ZZZ')).toEqual([]);
+    expect(await found('')).toEqual([ids.native, ids.spread, ids.unmatched]);
+  });
+
+  it('R6 introduced=true counts introduced occurrences too', async () => {
+    expect(await found('area=COS&introduced=true')).toEqual([ids.spread]);
+    expect(await found('continent=8&introduced=true')).toEqual([ids.native, ids.spread]);
+    expect(await found('introduced=true')).toEqual([ids.native, ids.spread, ids.unmatched]);
+  });
+
+  it('R6 refuses a malformed code with its path', async () => {
+    for (const [query, path] of [
+      ['area=BZ1', 'area'],
+      ['region=north', 'region'],
+      ['continent=123', 'continent'],
+    ]) {
+      const res = await call(t.app, 'GET', `/api/species?${query}`, { cookie });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path })]),
+      );
+    }
+  });
+
+  it('R12 counts with the same filters', async () => {
+    const res = await call(
+      t.app,
+      'GET',
+      `/api/species/count?q=${tag}&continent=8&introduced=true`,
+      {
+        cookie,
+      },
+    );
+    expect((await res.json()).data).toEqual({ count: 2 });
+  });
+
+  it('R13 lists every level-3 region with its region and continent', async () => {
+    const res = await call(t.app, 'GET', '/api/species/regions', { cookie });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([
+      {
+        code: 'NEP',
+        name: 'Nepal',
+        regionCode: '40',
+        region: 'Indian Subcontinent',
+        continentCode: '4',
+        continent: 'ASIA-TROPICAL',
+      },
+      {
+        code: 'COS',
+        name: 'Costa Rica',
+        regionCode: '80',
+        region: 'Central America',
+        continentCode: '8',
+        continent: 'SOUTHERN AMERICA',
+      },
+      {
+        code: 'BZN',
+        name: 'Brazil North',
+        regionCode: '84',
+        region: 'Brazil',
+        continentCode: '8',
+        continent: 'SOUTHERN AMERICA',
+      },
+      {
+        code: 'XXX',
+        name: 'XXX',
+        regionCode: null,
+        region: null,
+        continentCode: null,
+        continent: null,
+      },
+    ]);
   });
 });
