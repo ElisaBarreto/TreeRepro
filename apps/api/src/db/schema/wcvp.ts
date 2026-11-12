@@ -26,13 +26,21 @@ export const wcvpSpecies = pgTable(
   (t) => [index('wcvp_species_taxon_name_idx').on(t.taxonName, t.fileOrder)],
 );
 
-/** WCVP / TDWG level-3 regions of the last load. @rfc RFC-78 R1, R5 */
+/**
+ * WCVP / TDWG level-3 regions (botanical countries) of the last load, with the
+ * level-2 region and level-1 continent each belongs to.
+ * @rfc RFC-78 R1, R5
+ */
 export const wcvpRegions = pgTable('wcvp_regions', {
   areaCodeL3: text('area_code_l3').primaryKey(),
   name: text('name').notNull(),
+  regionCodeL2: text('region_code_l2'),
+  region: text('region'),
+  continentCodeL1: text('continent_code_l1'),
+  continent: text('continent'),
 });
 
-/** Native, extant, non-doubtful occurrences of accepted species. @rfc RFC-78 R1, R4 */
+/** Extant, non-doubtful occurrences of accepted species, native or introduced. @rfc RFC-78 R1, R4 */
 export const wcvpDistribution = pgTable(
   'wcvp_distribution',
   {
@@ -42,6 +50,7 @@ export const wcvpDistribution = pgTable(
     areaCodeL3: text('area_code_l3')
       .notNull()
       .references(() => wcvpRegions.areaCodeL3),
+    introduced: boolean('introduced').notNull().default(false),
   },
   (t) => [
     primaryKey({ columns: [t.plantNameId, t.areaCodeL3] }),

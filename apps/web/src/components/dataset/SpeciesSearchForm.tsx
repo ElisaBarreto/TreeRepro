@@ -10,9 +10,15 @@ import {
   TREE_FLAGS,
   type TraitDataMode,
   type TreeFlag,
+  type WcvpRegion,
 } from '@treerepro/contracts';
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import { datasetKeys, fetchDictionary, fetchTreeFlagCounts } from '../../api/dataset.ts';
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import {
+  datasetKeys,
+  fetchDictionary,
+  fetchTreeFlagCounts,
+  fetchWcvpRegions,
+} from '../../api/dataset.ts';
 import { listPlots, plotKeys } from '../../api/plots.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
@@ -38,6 +44,12 @@ export interface SpeciesSearchValue {
   treeFlags?: TreeFlag[];
   /** RFC-60 R6: one plant type; absent shows every type. */
   plantType?: PlantType;
+  /** RFC-60 R6: WCVP level-1, level-2 and level-3 codes. */
+  continent?: string;
+  region?: string;
+  area?: string;
+  /** Count introduced occurrences too. */
+  introduced?: boolean;
   sort?: SpeciesSort;
   /** The table headers' direction (RFC-60 R6, RFC-13 R13). */
   order?: SortOrder;
@@ -62,6 +74,9 @@ export interface SpeciesSearchValue {
  * both of its companions. The radio shows "Has data" while nothing is
  * chosen because that is the API's default mode; the value only carries
  * `traitData` once the contributor picks a side.
+ *
+ * **Geography** ({@link GeographyFilters}) — continent, region and
+ * botanical country, with introduced occurrences on request.
  *
  * **Scope** — the plot select, the outside-plots toggle and, with
  * `dataset.read_inactive`, the Status select (RFC-33 R6, R7, RFC-67 R8),
@@ -245,6 +260,8 @@ export function SpeciesSearchForm({
         </fieldset>
       </FilterGroup>
 
+      <GeographyFilters value={value} onChange={(next) => onChange({ ...value, ...next })} />
+
       <FilterGroup title="Scope" columns="md:grid-cols-[1fr_1fr_auto]">
         {showScopeGroup ? (
           <Field id={ids.plot} label="Plot">
@@ -375,6 +392,142 @@ export function SpeciesSearchForm({
         </Field>
       </div>
     </div>
+  );
+}
+
+type Geography = Pick<SpeciesSearchValue, 'continent' | 'region' | 'area' | 'introduced'>;
+
+/** WCVP writes continents in capitals: `SOUTHERN AMERICA` reads `Southern America`. */
+function titleCase(name: string): string {
+  return name.toLowerCase().replace(/(^|[\s-])\p{L}/gu, (m) => m.toUpperCase());
+}
+
+/** The distinct `[code, name]` pairs of `rows`, in their order, dropping null codes. */
+function distinct(rows: WcvpRegion[], code: 'continentCode' | 'regionCode') {
+  const name = code === 'continentCode' ? 'continent' : 'region';
+  const seen = new Map<string, string>();
+  for (const r of rows) {
+    const c = r[code];
+    if (c !== null && !seen.has(c)) seen.set(c, r[name] ?? c);
+  }
+  return [...seen];
+}
+
+/**
+ * The geography filters (RFC-60 R6): Continent, Region and Botanical country
+ * selects over the WCVP regions (R14), each narrower one listing what the
+ * wider choice holds (grouped by continent while none is chosen). A wider
+ * choice drops the narrower ones; **Include introduced occurrences** is off
+ * by default, disabled until a place is chosen, and dropped with it.
+ * @rfc RFC-60 R6, R14
+ */
+function GeographyFilters({
+  value,
+  onChange,
+}: {
+  value: Geography;
+  onChange: (next: Geography) => void;
+}) {
+  const ids = { continent: useId(), region: useId(), area: useId() };
+  const regions = useQuery({
+    queryKey: datasetKeys.regions,
+    queryFn: fetchWcvpRegions,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const rows = regions.data ?? [];
+  const inContinent = value.continent
+    ? rows.filter((r) => r.continentCode === value.continent)
+    : rows;
+  const inRegion = value.region
+    ? inContinent.filter((r) => r.regionCode === value.region)
+    : inContinent;
+  const continents = distinct(rows, 'continentCode');
+  // Grouped by continent while no continent narrows the list.
+  const grouped = (list: WcvpRegion[], render: (list: WcvpRegion[]) => ReactNode) =>
+    value.continent
+      ? render(list)
+      : continents.map(([code, name]) => (
+          <optgroup key={code} label={titleCase(name)}>
+            {render(list.filter((r) => r.continentCode === code))}
+          </optgroup>
+        ));
+  const set = (next: Geography) => {
+    const placed = Boolean(next.continent ?? next.region ?? next.area);
+    onChange({ ...next, introduced: placed && next.introduced ? true : undefined });
+  };
+  const placed = Boolean(value.continent ?? value.region ?? value.area);
+  return (
+    <FilterGroup title="Geography" columns="md:grid-cols-[1fr_1fr_1fr_auto]">
+      <Field
+        id={ids.continent}
+        label="Continent"
+        error={regions.isError ? 'Could not load the WCVP regions.' : undefined}
+      >
+        <Select
+          id={ids.continent}
+          value={value.continent ?? ''}
+          onChange={(event) =>
+            set({
+              ...value,
+              continent: event.target.value || undefined,
+              region: undefined,
+              area: undefined,
+            })
+          }
+        >
+          <option value="">All continents</option>
+          {continents.map(([code, name]) => (
+            <option key={code} value={code}>
+              {titleCase(name)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field id={ids.region} label="Region">
+        <Select
+          id={ids.region}
+          value={value.region ?? ''}
+          onChange={(event) =>
+            set({ ...value, region: event.target.value || undefined, area: undefined })
+          }
+        >
+          <option value="">All regions</option>
+          {grouped(inContinent, (list) =>
+            distinct(list, 'regionCode').map(([code, name]) => (
+              <option key={code} value={code}>
+                {name}
+              </option>
+            )),
+          )}
+        </Select>
+      </Field>
+      <Field id={ids.area} label="Botanical country">
+        <Select
+          id={ids.area}
+          value={value.area ?? ''}
+          onChange={(event) => set({ ...value, area: event.target.value || undefined })}
+        >
+          <option value="">All botanical countries</option>
+          {grouped(inRegion, (list) =>
+            list.map((r) => (
+              <option key={r.code} value={r.code}>
+                {r.name}
+              </option>
+            )),
+          )}
+        </Select>
+      </Field>
+      <label className={FILTER_CHECK}>
+        <input
+          type="checkbox"
+          className="size-5 accent-canopy-700"
+          disabled={!placed}
+          checked={value.introduced === true}
+          onChange={(event) => set({ ...value, introduced: event.target.checked })}
+        />
+        Include introduced occurrences
+      </label>
+    </FilterGroup>
   );
 }
 

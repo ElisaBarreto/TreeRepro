@@ -202,7 +202,8 @@ export type SpeciesSort = (typeof SPECIES_SORTS)[number];
 
 /**
  * `traitData` without `traitId` or `categoryKey` is still accepted here; the
- * API decides what to do with it (it ignores it).
+ * API decides what to do with it (it ignores it), and so is `introduced`
+ * without a geographic code.
  * @rfc RFC-60 R6
  * @rfc RFC-33 R6, R7
  */
@@ -234,6 +235,24 @@ export const listSpeciesQuerySchema = cursorQuerySchema.extend({
     .optional(),
   /** RFC-60 R6: keeps the species of this plant type, whatever its status. */
   plantType: z.enum(PLANT_TYPES).optional(),
+  /** WCVP level-1 continent code (RFC-78 R1). */
+  continent: z
+    .string()
+    .regex(/^\d{1,2}$/)
+    .optional(),
+  /** WCVP level-2 region code. */
+  region: z
+    .string()
+    .regex(/^\d{1,3}$/)
+    .optional(),
+  /** WCVP level-3 botanical country code, upper-cased. */
+  area: z
+    .string()
+    .regex(/^[A-Za-z]{3}$/)
+    .transform((v) => v.toUpperCase())
+    .optional(),
+  /** Count introduced occurrences too; natives only without it. */
+  introduced: z.enum(['true', 'false']).optional(),
   sort: z.enum(SPECIES_SORTS).optional(),
   order: z.enum(SORT_ORDERS).optional(),
 });
@@ -281,6 +300,18 @@ export const treeFlagCountsQuerySchema = countSpeciesQuerySchema.omit({ treeFlag
 
 /** @rfc RFC-60 R12 */
 export const speciesCountSchema = z.strictObject({ count: z.number().int().nonnegative() });
+
+/** A WCVP level-3 region with its level-2 region and level-1 continent. @rfc RFC-60 R14 */
+export const wcvpRegionSchema = z.strictObject({
+  code: z.string(),
+  name: z.string(),
+  regionCode: z.string().nullable(),
+  region: z.string().nullable(),
+  continentCode: z.string().nullable(),
+  continent: z.string().nullable(),
+});
+/** @rfc RFC-60 R14 */
+export type WcvpRegion = z.infer<typeof wcvpRegionSchema>;
 
 /** How many visible species carry a tree flag. @rfc RFC-60 R11 */
 export const treeFlagCountSchema = z.strictObject({

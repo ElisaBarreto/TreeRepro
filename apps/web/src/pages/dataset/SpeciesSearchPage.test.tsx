@@ -119,6 +119,7 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
       contested: false,
       unknownLevels: false,
       outliers: false,
+      introduced: false,
       cursor: undefined,
       limit: 50,
     });

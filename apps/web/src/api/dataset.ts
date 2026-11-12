@@ -43,6 +43,8 @@ import {
   traitDetailSchema,
   traitSpeciesItemSchema,
   treeFlagCountSchema,
+  type WcvpRegion,
+  wcvpRegionSchema,
 } from '@treerepro/contracts';
 import { z } from 'zod';
 import { apiFetch } from './client.ts';
@@ -62,6 +64,7 @@ export type Page<T> = ListEnvelope<T>;
 export const datasetKeys = {
   species: (params: Params) => ['species', params] as const,
   treeFlagCounts: (params: Params) => ['species', 'tree-flags', params] as const,
+  regions: ['species', 'regions'] as const,
   speciesCount: (params: Params) => ['species', 'count', params] as const,
   speciesDetail: (id: string) => ['species', id] as const,
   // `missingOnly` is part of the key: the two responses (every trait with
@@ -112,6 +115,11 @@ export function searchSpecies(params: {
   /** Comma-separated tree flags (RFC-60 R6). */
   treeFlag?: string;
   plantType?: PlantType;
+  /** WCVP level-1, level-2 and level-3 codes (RFC-60 R6). */
+  continent?: string;
+  region?: string;
+  area?: string;
+  introduced?: boolean;
   sort?: SpeciesSort;
   order?: SortOrder;
   cursor?: string;
@@ -137,6 +145,10 @@ export async function fetchTreeFlagCounts(
       dataEnvelopeSchema(z.array(treeFlagCountSchema)),
     )
   ).data;
+}
+/** Every WCVP botanical country with its region and continent (RFC-60 R14). @rfc RFC-60 R14 */
+export async function fetchWcvpRegions(): Promise<WcvpRegion[]> {
+  return (await apiFetch('/species/regions', dataEnvelopeSchema(z.array(wcvpRegionSchema)))).data;
 }
 /** @rfc RFC-60 R7 */
 export async function fetchSpecies(id: string): Promise<Species> {
