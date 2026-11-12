@@ -1,11 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONTRIBUTION_SUMMARY, ZERO_CONTRIBUTION_SUMMARY } from '../../test/dataset-fixtures.ts';
 import { renderSettled, withRouter } from '../../test/router.tsx';
 import { GettingStartedCard } from './GettingStartedCard.tsx';
-
-const STORAGE_KEY = 'treerepro.gettingStarted.hidden';
 
 function hrefUrl(href: string | null) {
   return new URL(href ?? '', 'https://example.org');
@@ -66,16 +63,10 @@ describe('RFC-73 R3 GettingStartedCard', () => {
     expect(screen.queryByText(/A few places to start/)).not.toBeInTheDocument();
   });
 
-  it('writes the hidden flag and unmounts the card in the same interaction when "Hide this card" is clicked', async () => {
-    const user = userEvent.setup();
+  it('offers no way to hide the card', async () => {
     render(withRouter(<GettingStartedCard summary={ZERO_CONTRIBUTION_SUMMARY} />));
     await screen.findByRole('heading', { name: 'Getting started' });
-
-    expect(window.localStorage.getItem(STORAGE_KEY)).not.toBe('true');
-    await user.click(screen.getByRole('button', { name: 'Hide this card' }));
-
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('true');
-    expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /hide/i })).not.toBeInTheDocument();
   });
 
   it('never renders when the summary has any non-zero count', async () => {
@@ -101,9 +92,9 @@ describe('RFC-73 R3 GettingStartedCard', () => {
     },
   );
 
-  it('never renders when the hidden flag is already set, even with an all-zero summary', async () => {
-    window.localStorage.setItem(STORAGE_KEY, 'true');
-    await renderSettled(<GettingStartedCard summary={ZERO_CONTRIBUTION_SUMMARY} />);
-    expect(screen.queryByRole('heading', { name: 'Getting started' })).not.toBeInTheDocument();
+  it('shows again to a viewer who hid it before the button was removed', async () => {
+    window.localStorage.setItem('treerepro.gettingStarted.hidden', 'true');
+    render(withRouter(<GettingStartedCard summary={ZERO_CONTRIBUTION_SUMMARY} />));
+    expect(await screen.findByRole('heading', { name: 'Getting started' })).toBeInTheDocument();
   });
 });
