@@ -1,10 +1,13 @@
+import type { Platform } from '@treerepro/contracts';
 import { and, eq, isNull } from 'drizzle-orm';
 import { recordAudit } from '../../audit/audit.ts';
+import type { DbExecutor } from '../../db/client.ts';
 import { totpRecoveryCodes } from '../../db/schema/totp-recovery-codes.ts';
 import type { UserRow } from '../../db/schema/users.ts';
 import { AppError } from '../../http/errors.ts';
 import type { AuthContext, RequestMeta } from '../context.ts';
 import { dummyPasswordHash, verifyPassword } from '../password.ts';
+import { assertHoldsPlatform, PlatformDeniedError } from '../platform-access.ts';
 import { hashRecoveryCode, verifyTotpCode } from '../totp.ts';
 import { findUserByEmail, findUserById } from '../users.ts';
 
@@ -46,12 +49,13 @@ const canLogIn = (user: UserRow | null): user is UserRow & { passwordHash: strin
   (user.status === 'active' || user.status === 'suspended');
 
 /**
- * @rfc RFC-22 R2, R3
+ * @rfc RFC-22 R2, R3, R13
  * @rfc RFC-21 R4
+ * @rfc RFC-14 R5
  */
 export async function login(
   ctx: AuthContext,
-  input: { email: string; password: string } & RequestMeta,
+  input: { email: string; password: string; platform: Platform } & RequestMeta,
 ): Promise<LoginResult> {
   const user = await findUserByEmail(ctx.db, input.email);
   const loginable = canLogIn(user);
@@ -79,19 +83,40 @@ export async function login(
     const { rawId } = await ctx.mfa.createChallenge(user.id);
     return { status: 'totp_required', mfaRawId: rawId };
   }
-  return { status: 'ok', ...(await openSession(ctx, user, meta)) };
+  return { status: 'ok', ...(await openSession(ctx, user, meta, input.platform)) };
 }
 
 async function openSession(
   ctx: AuthContext,
   user: UserRow,
   meta: RequestMeta,
+  platform: Platform,
   extraAudit?: 'auth.totp.recovery_used',
 ): Promise<{ user: UserRow; sessionRawId: string }> {
+  try {
+    await assertHoldsPlatform(ctx.db, user.id, platform);
+  } catch (err) {
+    if (err instanceof PlatformDeniedError) {
+      await ctx.db.transaction(async (tx) => {
+        await auditPlatformDenied(tx, err, meta);
+        // The recovery code is spent even though no session opens.
+        if (extraAudit)
+          await recordAudit(tx, {
+            actorUserId: user.id,
+            action: extraAudit,
+            targetType: 'user',
+            targetId: user.id,
+            ...meta,
+          });
+      });
+    }
+    throw err;
+  }
   const { rawId } = await ctx.sessions.create({
     userId: user.id,
     ip: meta.ip,
     userAgent: meta.userAgent,
+    platform,
   });
   await ctx.db.transaction(async (tx) => {
     await recordAudit(tx, {
@@ -114,13 +139,38 @@ async function openSession(
   return { user, sessionRawId: rawId };
 }
 
+/** @rfc RFC-22 R13 */
+export async function auditPlatformDenied(
+  db: DbExecutor,
+  err: PlatformDeniedError,
+  meta: RequestMeta,
+): Promise<void> {
+  await recordAudit(db, {
+    actorUserId: err.userId,
+    action: 'auth.platform_denied',
+    targetType: 'user',
+    targetId: err.userId,
+    ...meta,
+    metadata: { platform: err.platform, reason: err.reason },
+  });
+}
+
 const MFA_EXPIRED = () =>
   new AppError('AUTH_MFA_EXPIRED', 'Login challenge has expired; start again');
 
-/** @rfc RFC-23 R4, R5, R6 */
+/**
+ * @rfc RFC-23 R4, R5, R6
+ * @rfc RFC-22 R13
+ * @rfc RFC-14 R5
+ */
 export async function loginTotp(
   ctx: AuthContext,
-  input: { mfaRawId: string | undefined; code?: string; recoveryCode?: string } & RequestMeta,
+  input: {
+    mfaRawId: string | undefined;
+    code?: string;
+    recoveryCode?: string;
+    platform: Platform;
+  } & RequestMeta,
 ): Promise<{ user: UserRow; sessionRawId: string }> {
   if (!input.mfaRawId) throw MFA_EXPIRED();
   const challenge = await ctx.mfa.getChallenge(input.mfaRawId);
@@ -166,5 +216,11 @@ export async function loginTotp(
     throw new AppError('AUTH_TOTP_INVALID', 'Code is not valid');
   }
   await ctx.mfa.deleteChallenge(input.mfaRawId);
-  return openSession(ctx, user, meta, usedRecovery ? 'auth.totp.recovery_used' : undefined);
+  return openSession(
+    ctx,
+    user,
+    meta,
+    input.platform,
+    usedRecovery ? 'auth.totp.recovery_used' : undefined,
+  );
 }

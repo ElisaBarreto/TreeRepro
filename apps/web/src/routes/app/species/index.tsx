@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import {
+  PLANT_TYPES,
   SORT_ORDERS,
   SPECIES_SCOPES,
   SPECIES_SORTS,
@@ -7,7 +8,13 @@ import {
   TRAIT_DATA_MODES,
   TREE_FLAGS,
 } from '@treerepro/contracts';
-import { enumListParam, enumParam, textParam, uuidParam } from '../../../lib/search-params.ts';
+import {
+  codeListParam,
+  enumListParam,
+  enumParam,
+  textParam,
+  uuidParam,
+} from '../../../lib/search-params.ts';
 import {
   type SpeciesSearch,
   SpeciesSearchPage,
@@ -25,7 +32,9 @@ import {
  * `?unresolved=true` opens the search with the unresolved-taxa toggle on
  * (RFC-65); `contested`, `unknownLevels` (RFC-60 R6, spec R-15) and `outliers` (#281); `scope`
  * and `plotId` per RFC-33 R6, RFC-67 R8; `treeFlag` is a comma-separated list
- * of tree flags (RFC-60 R6), unknown ones dropped.
+ * of tree flags (RFC-60 R6), unknown ones dropped; `plantType` one plant type;
+ * `continent`, `region` and `area` are comma-separated WCVP codes and `introduced` counts
+ * introduced occurrences.
  */
 function validateSearch(search: Record<string, unknown>): SpeciesSearch {
   return {
@@ -44,6 +53,14 @@ function validateSearch(search: Record<string, unknown>): SpeciesSearch {
     traitId: uuidParam(search.traitId),
     traitData: enumParam(search.traitData, TRAIT_DATA_MODES),
     treeFlag: enumListParam(search.treeFlag, TREE_FLAGS),
+    plantType: enumParam(search.plantType, PLANT_TYPES),
+    continent: codeListParam(search.continent, /^\d{1,2}$/),
+    region: codeListParam(search.region, /^\d{1,3}$/),
+    area: codeListParam(
+      typeof search.area === 'string' ? search.area.toUpperCase() : search.area,
+      /^[A-Z]{3}$/,
+    ),
+    introduced: search.introduced === true || search.introduced === 'true' ? true : undefined,
     sort: enumParam(search.sort, SPECIES_SORTS),
     order: enumParam(search.order, SORT_ORDERS),
   };

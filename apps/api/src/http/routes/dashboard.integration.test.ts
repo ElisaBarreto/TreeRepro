@@ -42,7 +42,7 @@ describe('RFC-72 R1, R2 GET /api/me/dashboard', () => {
       expect(body.data.contributor.awaitingValidation).toBeNull();
       expect(body.data.curation).toBeNull();
     } finally {
-      await forgetCached(t.redis, `dashboard:${user.id}`);
+      await forgetCached(t.redis, `dashboard:treerepro:${user.id}`);
     }
   });
 
@@ -57,7 +57,7 @@ describe('RFC-72 R1, R2 GET /api/me/dashboard', () => {
     const species = await createSpecies(t.db);
     const trait = await createTrait(t.db, { levels: ['alpha', 'beta'] });
     const reference = await createReference(t.db);
-    const key = `dashboard:${user.id}`;
+    const key = `dashboard:treerepro:${user.id}`;
     try {
       expect((await call(t.app, 'GET', '/api/me/dashboard', { cookie })).status).toBe(200);
       expect(await t.redis.get(key)).not.toBeNull();
@@ -120,7 +120,7 @@ describe('RFC-72 R1, R2 GET /api/me/dashboard', () => {
       origin: 'manual',
       createdBy: user.id,
     });
-    const key = `dashboard:${user.id}`;
+    const key = `dashboard:treerepro:${user.id}`;
     try {
       expect((await call(t.app, 'GET', '/api/me/dashboard', { cookie })).status).toBe(200);
       expect(await t.redis.get(key)).not.toBeNull();

@@ -117,8 +117,8 @@ describe('RFC-31 R3, R4, R5 role services', () => {
     });
     const a = await createUser(t.db, { roles: [role.id] });
     const b = await createUser(t.db, { roles: [role.id] });
-    expect([...(await resolvePermissions(ctx(), a.user.id))]).toEqual(['users.read']);
-    expect([...(await resolvePermissions(ctx(), b.user.id))]).toEqual(['users.read']);
+    expect([...(await resolvePermissions(ctx(), a.user.id, 'treerepro'))]).toEqual(['users.read']);
+    expect([...(await resolvePermissions(ctx(), b.user.id, 'treerepro'))]).toEqual(['users.read']);
     const updated = await updateRole(ctx(), {
       id: role.id,
       description: 'Edits',
@@ -132,8 +132,8 @@ describe('RFC-31 R3, R4, R5 role services', () => {
       targetId: role.id,
       metadata: { changes: ['description', 'permissions'] },
     });
-    expect([...(await resolvePermissions(ctx(), a.user.id))]).toEqual(['audit.read']);
-    expect([...(await resolvePermissions(ctx(), b.user.id))]).toEqual(['audit.read']);
+    expect([...(await resolvePermissions(ctx(), a.user.id, 'treerepro'))]).toEqual(['audit.read']);
+    expect([...(await resolvePermissions(ctx(), b.user.id, 'treerepro'))]).toEqual(['audit.read']);
     expect((await userIdsWithRole(t.db, role.id)).sort()).toEqual([a.user.id, b.user.id].sort());
     await updateRole(ctx(), {
       id: role.id,
@@ -213,10 +213,10 @@ describe('RFC-31 R3, R4, R5 role services', () => {
       actorUserId: null,
     });
     const { user } = await createUser(t.db, { roles: [role.id] });
-    await resolvePermissions(ctx(), user.id);
+    await resolvePermissions(ctx(), user.id, 'treerepro');
     await deleteRole(ctx(), { id: role.id, actorUserId: null });
     expect(await getRole(t.db, role.id)).toBeNull();
-    expect([...(await resolvePermissions(ctx(), user.id))]).toEqual([]);
+    expect([...(await resolvePermissions(ctx(), user.id, 'treerepro'))]).toEqual([]);
     expect(await lastAudit(t.db, 'roles.deleted', { targetId: role.id })).toMatchObject({
       targetId: role.id,
     });
@@ -250,14 +250,15 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
     const r1 = await insertRole(t.db, { permissions: ['users.read'] });
     const r2 = await insertRole(t.db, { permissions: ['audit.read'] });
     const { user } = await createUser(t.db, { roles: [r1.id] });
-    await resolvePermissions(ctx(), user.id);
+    await resolvePermissions(ctx(), user.id, 'treerepro');
     const result = await setUserRoles(ctx(), {
+      platform: 'treerepro',
       userId: user.id,
       roleIds: [r2.id],
       actorUserId: null,
     });
     expect(result).toEqual({ added: [r2.id], removed: [r1.id] });
-    expect([...(await resolvePermissions(ctx(), user.id))]).toEqual(['audit.read']);
+    expect([...(await resolvePermissions(ctx(), user.id, 'treerepro'))]).toEqual(['audit.read']);
     expect(await lastAudit(t.db, 'users.roles_changed', { targetId: user.id })).toMatchObject({
       targetType: 'user',
       targetId: user.id,
@@ -266,6 +267,7 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
     expect(
       await code(
         setUserRoles(ctx(), {
+          platform: 'treerepro',
           userId: user.id,
           roleIds: ['019b4a2e-5f3c-7c8e-8d1a-2f3b4c5d6e7f'],
           actorUserId: null,
@@ -275,6 +277,7 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
     expect(
       await code(
         setUserRoles(ctx(), {
+          platform: 'treerepro',
           userId: '019b4a2e-5f3c-7c8e-8d1a-2f3b4c5d6e7f',
           roleIds: [],
           actorUserId: null,
@@ -298,21 +301,49 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
       };
       const a = await createUser(tx, { roles: [admin] });
       expect(
-        await code(setUserRoles(c, { userId: a.user.id, roleIds: [], actorUserId: null })),
+        await code(
+          setUserRoles(c, {
+            platform: 'treerepro',
+            userId: a.user.id,
+            roleIds: [],
+            actorUserId: null,
+          }),
+        ),
       ).toBe('ROLE_LAST_ADMIN');
       expect(await code(assertNotLastAdmin(tx, a.user.id))).toBe('ROLE_LAST_ADMIN');
       const suspended = await createUser(tx, { status: 'suspended', roles: [admin] });
       expect(
-        await code(setUserRoles(c, { userId: a.user.id, roleIds: [], actorUserId: null })),
+        await code(
+          setUserRoles(c, {
+            platform: 'treerepro',
+            userId: a.user.id,
+            roleIds: [],
+            actorUserId: null,
+          }),
+        ),
       ).toBe('ROLE_LAST_ADMIN');
       expect(await code(assertNotLastAdmin(tx, suspended.user.id))).toBe('ok');
       const b = await createUser(tx, { roles: [admin] });
       expect(await code(assertNotLastAdmin(tx, a.user.id))).toBe('ok');
       expect(
-        await code(setUserRoles(c, { userId: a.user.id, roleIds: [], actorUserId: null })),
+        await code(
+          setUserRoles(c, {
+            platform: 'treerepro',
+            userId: a.user.id,
+            roleIds: [],
+            actorUserId: null,
+          }),
+        ),
       ).toBe('ok');
       expect(
-        await code(setUserRoles(c, { userId: b.user.id, roleIds: [], actorUserId: null })),
+        await code(
+          setUserRoles(c, {
+            platform: 'treerepro',
+            userId: b.user.id,
+            roleIds: [],
+            actorUserId: null,
+          }),
+        ),
       ).toBe('ROLE_LAST_ADMIN');
       const nobody = await createUser(tx);
       expect(await code(assertNotLastAdmin(tx, nobody.user.id))).toBe('ok');
@@ -335,6 +366,8 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
           .where(
             and(
               eq(userRoles.roleId, admin),
+              // admin is stored once per platform (RFC-31 R16): count holders once.
+              eq(userRoles.platform, 'treerepro'),
               eq(users.status, 'active'),
               exclude.length > 0 ? notInArray(userRoles.userId, exclude) : undefined,
             ),
@@ -345,10 +378,15 @@ describe('RFC-31 R6, R7 assignment and anti-lockout', () => {
       await second.db.execute(sql`select 1`); // connect now, so both calls start together
       const othersBefore = (await activeAdmins(t.db, pair)).length;
       const results = await Promise.allSettled([
-        setUserRoles(ctx(), { userId: a.user.id, roleIds: [], actorUserId: null }),
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: a.user.id,
+          roleIds: [],
+          actorUserId: null,
+        }),
         setUserRoles(
           { ...ctx(), db: second.db },
-          { userId: b.user.id, roleIds: [], actorUserId: null },
+          { platform: 'treerepro', userId: b.user.id, roleIds: [], actorUserId: null },
         ),
       ]);
       const othersAfter = (await activeAdmins(t.db, pair)).length;
@@ -391,7 +429,12 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     const admin = await adminRoleId(t.db);
     expect(
       await code(
-        setUserRoles(ctx(), { userId: target.id, roleIds: [admin], actorUserId: actor.id }),
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: target.id,
+          roleIds: [admin],
+          actorUserId: actor.id,
+        }),
       ),
     ).toBe('PERMISSION_DENIED');
     expect(await userIdsWithRole(t.db, admin)).not.toContain(target.id);
@@ -410,7 +453,14 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     const admin = await adminRoleId(t.db);
     const { user: target } = await createUser(t.db, { roles: [admin] });
     expect(
-      await code(setUserRoles(ctx(), { userId: target.id, roleIds: [], actorUserId: actor.id })),
+      await code(
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: target.id,
+          roleIds: [],
+          actorUserId: actor.id,
+        }),
+      ),
     ).toBe('PERMISSION_DENIED');
     expect(await userIdsWithRole(t.db, admin)).toContain(target.id);
     expect(
@@ -422,7 +472,12 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     const admin = await adminRoleId(t.db);
     const { user: actor } = await createUser(t.db, { roles: [admin] });
     const { user: target } = await createUser(t.db);
-    await setUserRoles(ctx(), { userId: target.id, roleIds: [admin], actorUserId: actor.id });
+    await setUserRoles(ctx(), {
+      platform: 'treerepro',
+      userId: target.id,
+      roleIds: [admin],
+      actorUserId: actor.id,
+    });
     expect(await userIdsWithRole(t.db, admin)).toContain(target.id);
   });
 
@@ -434,6 +489,7 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     expect(
       await code(
         setUserRoles(ctx(), {
+          platform: 'treerepro',
           userId: target.id,
           roleIds: [beyond.id, within.id],
           actorUserId: actor.id,
@@ -443,7 +499,12 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     const { user: other } = await createUser(t.db);
     expect(
       await code(
-        setUserRoles(ctx(), { userId: other.id, roleIds: [beyond.id], actorUserId: actor.id }),
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: other.id,
+          roleIds: [beyond.id],
+          actorUserId: actor.id,
+        }),
       ),
     ).toBe('PERMISSION_DENIED');
     expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: other.id })).toMatchObject(
@@ -451,7 +512,14 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     );
     expect(await userIdsWithRole(t.db, beyond.id)).not.toContain(other.id);
     expect(
-      await code(setUserRoles(ctx(), { userId: target.id, roleIds: [], actorUserId: actor.id })),
+      await code(
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: target.id,
+          roleIds: [],
+          actorUserId: actor.id,
+        }),
+      ),
     ).toBe('ok');
     expect(await userIdsWithRole(t.db, beyond.id)).not.toContain(target.id);
   });
@@ -460,7 +528,12 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     const { user: actor, role } = await delegator();
     expect(
       await code(
-        setUserRoles(ctx(), { userId: actor.id, roleIds: [role.id], actorUserId: actor.id }),
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: actor.id,
+          roleIds: [role.id],
+          actorUserId: actor.id,
+        }),
       ),
     ).toBe('PERMISSION_DENIED');
     expect(await lastAudit(t.db, 'roles.delegation_refused', { targetId: actor.id })).toMatchObject(
@@ -471,6 +544,7 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     expect(
       await code(
         setUserRoles(ctx(), {
+          platform: 'treerepro',
           userId: adminActor.id,
           roleIds: [admin],
           actorUserId: adminActor.id,
@@ -561,11 +635,23 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
     const unknown = '019b4a2e-5f3c-7c8e-8d1a-2f3b4c5d6e7f';
     expect(
       await code(
-        setUserRoles(ctx(), { userId: actor.id, roleIds: [unknown], actorUserId: actor.id }),
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: actor.id,
+          roleIds: [unknown],
+          actorUserId: actor.id,
+        }),
       ),
     ).toBe('ROLE_NOT_FOUND');
     expect(
-      await code(setUserRoles(ctx(), { userId: unknown, roleIds: [], actorUserId: actor.id })),
+      await code(
+        setUserRoles(ctx(), {
+          platform: 'treerepro',
+          userId: unknown,
+          roleIds: [],
+          actorUserId: actor.id,
+        }),
+      ),
     ).toBe('NOT_FOUND');
     expect(
       await code(
@@ -590,11 +676,144 @@ describe('RFC-31 R12, R13, R14 delegation ceiling and self-change', () => {
   it('R12 the null actor (CLI) is unrestricted', async () => {
     const admin = await adminRoleId(t.db);
     const { user: target } = await createUser(t.db);
-    await setUserRoles(ctx(), { userId: target.id, roleIds: [admin], actorUserId: null });
+    await setUserRoles(ctx(), {
+      platform: 'treerepro',
+      userId: target.id,
+      roleIds: [admin],
+      actorUserId: null,
+    });
     expect(await userIdsWithRole(t.db, admin)).toContain(target.id);
     // Every key a custom role may hold (R15 keeps the admin-only ones out).
     const all = PERMISSION_KEYS.filter((k) => !ADMIN_ONLY_PERMISSIONS.includes(k));
     const role = await createRole(ctx(), { name: uniq(), permissions: all, actorUserId: null });
     expect(role.permissions).toEqual([...all].sort());
+  });
+});
+
+describe('RFC-31 R16 roles per platform', () => {
+  const t = useTestApp();
+  const ctx = () => ({
+    db: t.db,
+    permissionCache: t.permissionCache,
+    logger: t.deps.logger,
+    now: () => t.clock.now,
+  });
+  const rowsOf = async (userId: string) =>
+    (
+      await t.db
+        .select({ roleId: userRoles.roleId, platform: userRoles.platform })
+        .from(userRoles)
+        .where(eq(userRoles.userId, userId))
+    )
+      .map((r) => `${r.roleId}:${r.platform}`)
+      .sort();
+
+  it('replaces the roles of one platform only and audits the platform', async () => {
+    const tree = await insertRole(t.db, { permissions: ['dataset.read'] });
+    const plant = await insertRole(t.db, { permissions: ['audit.read'] });
+    const { user } = await createUser(t.db, { roles: [tree.id] });
+    await setUserRoles(ctx(), {
+      userId: user.id,
+      platform: 'plantrepro',
+      roleIds: [plant.id],
+      actorUserId: null,
+    });
+    expect(await rowsOf(user.id)).toEqual(
+      [`${tree.id}:treerepro`, `${plant.id}:plantrepro`].sort(),
+    );
+    expect(await lastAudit(t.db, 'users.roles_changed', { targetId: user.id })).toMatchObject({
+      metadata: { platform: 'plantrepro', added: [plant.id], removed: [] },
+    });
+    expect([...(await resolvePermissions(ctx(), user.id, 'plantrepro'))]).toEqual(['audit.read']);
+    await setUserRoles(ctx(), {
+      userId: user.id,
+      platform: 'plantrepro',
+      roleIds: [],
+      actorUserId: null,
+    });
+    expect(await rowsOf(user.id)).toEqual([`${tree.id}:treerepro`]);
+  });
+
+  it('admin is written and removed on both platforms, whichever the call names', async () => {
+    const admin = await adminRoleId(t.db);
+    const other = await createUser(t.db, { roles: [admin] }); // never the last admin
+    const { user } = await createUser(t.db);
+    await setUserRoles(ctx(), {
+      userId: user.id,
+      platform: 'plantrepro',
+      roleIds: [admin],
+      actorUserId: other.user.id,
+    });
+    expect(await rowsOf(user.id)).toEqual([`${admin}:plantrepro`, `${admin}:treerepro`]);
+    expect((await userIdsWithRole(t.db, admin)).filter((id) => id === user.id)).toHaveLength(1);
+    // Keeping admin on TreeRepro while naming the other roles keeps both rows.
+    await setUserRoles(ctx(), {
+      userId: user.id,
+      platform: 'treerepro',
+      roleIds: [admin],
+      actorUserId: other.user.id,
+    });
+    expect(await rowsOf(user.id)).toEqual([`${admin}:plantrepro`, `${admin}:treerepro`]);
+    const result = await setUserRoles(ctx(), {
+      userId: user.id,
+      platform: 'treerepro',
+      roleIds: [],
+      actorUserId: other.user.id,
+    });
+    expect(result).toEqual({ added: [], removed: [admin] });
+    expect(await rowsOf(user.id)).toEqual([]);
+  });
+
+  it('R12 the ceiling is the actor’s permissions on the platform being assigned', async () => {
+    const delegating = await insertRole(t.db, {
+      permissions: ['users.update', 'users.read', 'dataset.read'],
+    });
+    const { user: actor } = await createUser(t.db, { roles: [delegating.id] });
+    const readers = await insertRole(t.db, { permissions: ['dataset.read'] });
+    const { user: target } = await createUser(t.db);
+    expect(
+      await code(
+        setUserRoles(ctx(), {
+          userId: target.id,
+          platform: 'plantrepro',
+          roleIds: [readers.id],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('PERMISSION_DENIED');
+    expect(
+      await lastAudit(t.db, 'roles.delegation_refused', { targetId: target.id }),
+    ).toMatchObject({ metadata: { reason: 'ceiling', platform: 'plantrepro' } });
+    expect(
+      await code(
+        setUserRoles(ctx(), {
+          userId: target.id,
+          platform: 'treerepro',
+          roleIds: [readers.id],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('ok');
+  });
+
+  it('R13 an actor never changes their own roles on the other platform either', async () => {
+    const delegating = await insertRole(t.db, { permissions: ['users.update', 'users.read'] });
+    const { user: actor } = await createUser(t.db, { roles: [delegating.id] });
+    await setUserRoles(ctx(), {
+      userId: actor.id,
+      platform: 'plantrepro',
+      roleIds: [delegating.id],
+      actorUserId: null,
+    });
+    expect(
+      await code(
+        setUserRoles(ctx(), {
+          userId: actor.id,
+          platform: 'plantrepro',
+          roleIds: [],
+          actorUserId: actor.id,
+        }),
+      ),
+    ).toBe('PERMISSION_DENIED');
   });
 });

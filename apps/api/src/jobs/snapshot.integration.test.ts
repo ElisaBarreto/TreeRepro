@@ -1,4 +1,5 @@
-import { eq } from 'drizzle-orm';
+import type { PlantType, PlantTypeStatus } from '@treerepro/contracts';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   createImportBatch,
@@ -49,8 +50,15 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
         ('5', 'Snapa epsilon', true, 5), ('6', 'Snapa zeta', false, 6), ('7', 'Snapa eta', true, 7)`;
     await db.$client`insert into wcvp_regions (area_code_l3, name) values ('RG1', 'Region one'), ('RG2', 'Region two')`;
     await db.$client`
-      insert into wcvp_distribution (plant_name_id, area_code_l3) values
-        ('1', 'RG1'), ('1', 'RG2'), ('2', 'RG1'), ('3', 'RG1'), ('5', 'RG1'), ('6', 'RG2'), ('7', 'RG1')`;
+      insert into wcvp_distribution (plant_name_id, area_code_l3, introduced) values
+        ('1', 'RG1', false), ('1', 'RG2', false), ('2', 'RG1', false), ('3', 'RG1', false),
+        ('5', 'RG1', false), ('6', 'RG2', false), ('7', 'RG1', false)`;
+    // Introduced occurrences never reach the region tables (R8, R9): beta in
+    // RG2 and alpha in RG3 change no count, and RG3 gets no row.
+    await db.$client`insert into wcvp_regions (area_code_l3, name) values ('RG3', 'Region three')`;
+    await db.$client`
+      insert into wcvp_distribution (plant_name_id, area_code_l3, introduced) values
+        ('2', 'RG2', true), ('1', 'RG3', true)`;
 
     const petal = await traitByKey(db, 'petal_length');
     const colour = await traitByKey(db, 'flower_color');
@@ -63,12 +71,17 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
     const ref = await createReference(db);
     const batch = await createImportBatch(db);
     let row = 0;
-    const record = async (name: string, cells: Record<string, unknown>) => {
+    const record = async (
+      name: string,
+      cells: Record<string, unknown>,
+      scope: { plantType?: PlantType; plantTypeStatus?: PlantTypeStatus } = {},
+    ) => {
       const [existing] = await db
         .select({ id: species.id })
         .from(species)
         .where(eq(species.canonicalName, name));
-      const speciesId = existing?.id ?? (await createSpecies(db, { canonicalName: name })).id;
+      const speciesId =
+        existing?.id ?? (await createSpecies(db, { canonicalName: name, ...scope })).id;
       ids[name] = speciesId;
       await createRecord(db, {
         speciesId,
@@ -93,6 +106,10 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
     await record('Snapa gamma', value(10));
     // no WCVP match: counted nowhere
     await record('Snapa delta', state(red));
+    // PlantRepro only (R8, RFC-33 R2): a reviewed not-tree in RG2 and a
+    // proposed tree in RG1; TreeRepro's numbers below are those it had before.
+    await record('Snapa zeta', value(6), { plantType: 'not_tree' });
+    await record('Snapa epsilon', state(blue), { plantTypeStatus: 'proposed' });
     // an inactive species is left out (R8)
     await record('Snapa eta', value(1000));
     await db
@@ -107,11 +124,14 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
     await admin?.close();
   });
 
-  it('R9-R11 computes completeness, continuous and categorical tables, and records a completed run', async () => {
+  it('R9-R11 computes TreeRepro’s completeness, continuous and categorical tables, and records a completed run', async () => {
     const result = await runSnapshot({ db, now: new Date('2026-10-23T03:00:00Z') });
     expect(result.status).toBe('completed');
 
-    const completeness = await db.select().from(regionCompleteness);
+    const completeness = await db
+      .select()
+      .from(regionCompleteness)
+      .where(eq(regionCompleteness.platform, 'treerepro'));
     const c = (trait: string, area: string) =>
       completeness.find((r) => r.traitId === ids[trait] && r.areaCodeL3 === area);
     expect(c('petal', 'RG1')).toMatchObject({
@@ -128,7 +148,10 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
     expect(c('colour', 'RG2')).toMatchObject({ speciesWithData: 1 });
     expect(completeness).toHaveLength(4);
 
-    const continuous = await db.select().from(regionContinuous);
+    const continuous = await db
+      .select()
+      .from(regionContinuous)
+      .where(eq(regionContinuous.platform, 'treerepro'));
     const rg1 = continuous.find((r) => r.areaCodeL3 === 'RG1');
     const mean = 16 / 3;
     const sd = Math.sqrt(((2 - mean) ** 2 + (4 - mean) ** 2 + (10 - mean) ** 2) / 2);
@@ -144,7 +167,10 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
       cv: null,
     });
 
-    const categorical = await db.select().from(regionCategorical);
+    const categorical = await db
+      .select()
+      .from(regionCategorical)
+      .where(eq(regionCategorical.platform, 'treerepro'));
     const k = (level: string, area: string) =>
       categorical.find((r) => r.levelId === ids[level] && r.areaCodeL3 === area);
     expect(k('blue', 'RG1')).toMatchObject({ nSpeciesWithLevel: 2, nSpeciesWithTrait: 2 });
@@ -153,20 +179,67 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
     expect(k('red', 'RG2')).toMatchObject({ nSpeciesWithLevel: 1, nSpeciesWithTrait: 1 });
     expect(categorical).toHaveLength(4);
 
-    const [snapshot] = await db.select().from(regionSnapshot);
-    expect(snapshot?.computedAt.toISOString()).toBe('2026-10-23T03:00:00.000Z');
+    const snapshots = await db.select().from(regionSnapshot);
+    expect(snapshots.map((r) => [r.platform, r.computedAt.toISOString()]).sort()).toEqual([
+      ['plantrepro', '2026-10-23T03:00:00.000Z'],
+      ['treerepro', '2026-10-23T03:00:00.000Z'],
+    ]);
     const [run] = await db
       .select()
       .from(jobRuns)
       .where(eq(jobRuns.id, result.runId as string));
     expect(run).toMatchObject({ kind: 'snapshot', status: 'completed' });
-    expect(run?.detail).toMatchObject({ completeness: 4, continuous: 2, categorical: 4 });
+    expect(run?.detail).toEqual({
+      treerepro: { completeness: 4, continuous: 2, categorical: 4 },
+      plantrepro: { completeness: 4, continuous: 2, categorical: 4 },
+    });
+  });
+
+  it('R8, R9 PlantRepro counts every species of its scope and keeps both denominators', async () => {
+    await runSnapshot({ db, now: new Date('2026-10-23T03:00:00Z') });
+    const completeness = await db
+      .select()
+      .from(regionCompleteness)
+      .where(eq(regionCompleteness.platform, 'plantrepro'));
+    const c = (trait: string, area: string) =>
+      completeness.find((r) => r.traitId === ids[trait] && r.areaCodeL3 === area);
+    // zeta (a not-tree) joins alpha in RG2; epsilon (a proposed tree) joins RG1's colour.
+    expect(c('petal', 'RG1')).toMatchObject({
+      speciesWithData: 3,
+      wcvpSpecies: 5,
+      wcvpTreeSpecies: 4,
+    });
+    expect(c('petal', 'RG2')).toMatchObject({
+      speciesWithData: 2,
+      wcvpSpecies: 2,
+      wcvpTreeSpecies: 1,
+    });
+    expect(c('colour', 'RG1')).toMatchObject({ speciesWithData: 3 });
+    expect(c('colour', 'RG2')).toMatchObject({ speciesWithData: 1 });
+    expect(completeness).toHaveLength(4);
+
+    const [rg2] = await db
+      .select()
+      .from(regionContinuous)
+      .where(
+        and(eq(regionContinuous.platform, 'plantrepro'), eq(regionContinuous.areaCodeL3, 'RG2')),
+      );
+    expect(rg2).toMatchObject({ nSpecies: 2, mean: 4, median: 4, min: 2, max: 6 });
+
+    const categorical = await db
+      .select()
+      .from(regionCategorical)
+      .where(eq(regionCategorical.platform, 'plantrepro'));
+    const k = (level: string, area: string) =>
+      categorical.find((r) => r.levelId === ids[level] && r.areaCodeL3 === area);
+    expect(k('blue', 'RG1')).toMatchObject({ nSpeciesWithLevel: 3, nSpeciesWithTrait: 3 });
+    expect(k('red', 'RG1')).toMatchObject({ nSpeciesWithLevel: 1, nSpeciesWithTrait: 3 });
   });
 
   it('R12 a second run replaces the snapshot, never adding to it', async () => {
     await runSnapshot({ db, now: new Date('2026-10-24T03:00:00Z') });
-    expect(await db.select().from(regionCompleteness)).toHaveLength(4);
-    expect(await db.select().from(regionSnapshot)).toHaveLength(1);
+    expect(await db.select().from(regionCompleteness)).toHaveLength(8);
+    expect(await db.select().from(regionSnapshot)).toHaveLength(2);
   });
 
   it('R12 a run that finds the lock held records itself skipped and changes nothing', async () => {
@@ -180,8 +253,8 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
         .from(jobRuns)
         .where(eq(jobRuns.id, result.runId as string));
       expect(run).toMatchObject({ kind: 'snapshot', status: 'skipped' });
-      const [snapshot] = await db.select().from(regionSnapshot);
-      expect(snapshot?.computedAt.toISOString()).toBe('2026-10-24T03:00:00.000Z');
+      for (const snapshot of await db.select().from(regionSnapshot))
+        expect(snapshot.computedAt.toISOString()).toBe('2026-10-24T03:00:00.000Z');
     } finally {
       await lock`select pg_advisory_unlock(4665)`;
       lock.release();

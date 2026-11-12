@@ -50,6 +50,8 @@ export const dashboardSchema = z.strictObject({
         pendingGroups: z.number().int().nonnegative(),
         contested: z.number().int().nonnegative(),
         proposals: z.number().int().nonnegative(),
+        /** RFC-65 R20: species awaiting a plant-type review, on both platforms. */
+        plantTypes: z.number().int().nonnegative(),
       }),
     })
     .nullable(),

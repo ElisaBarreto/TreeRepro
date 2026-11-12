@@ -1,4 +1,5 @@
 import type {
+  Platform,
   PlotRef,
   SortOrder,
   User,
@@ -47,18 +48,31 @@ export function toUser(row: UserRow, roleRefs: UserRoleRef[], userPlotRefs: Plot
   };
 }
 
-/** Roles of each user, by name case-insensitively. @rfc RFC-50 R1 */
+/**
+ * Roles of each user, per platform (`treerepro` first) then by name
+ * case-insensitively.
+ * @rfc RFC-50 R1
+ * @rfc RFC-31 R16
+ */
 async function rolesOf(db: DbExecutor, userIds: string[]): Promise<Map<string, UserRoleRef[]>> {
   const byUser = new Map<string, UserRoleRef[]>();
   if (userIds.length === 0) return byUser;
   const rows = await db
-    .select({ userId: userRoles.userId, id: roles.id, name: roles.name })
+    .select({
+      userId: userRoles.userId,
+      id: roles.id,
+      name: roles.name,
+      platform: userRoles.platform,
+    })
     .from(userRoles)
     .innerJoin(roles, eq(roles.id, userRoles.roleId))
     .where(inArray(userRoles.userId, userIds))
-    .orderBy(asc(sql`lower(${roles.name})`));
+    .orderBy(asc(sql`${userRoles.platform} <> 'treerepro'`), asc(sql`lower(${roles.name})`));
   for (const r of rows) {
-    byUser.set(r.userId, [...(byUser.get(r.userId) ?? []), { id: r.id, name: r.name }]);
+    byUser.set(r.userId, [
+      ...(byUser.get(r.userId) ?? []),
+      { id: r.id, name: r.name, platform: r.platform },
+    ]);
   }
   return byUser;
 }
@@ -124,6 +138,7 @@ export async function listUsers(
   db: DbExecutor,
   input: {
     status?: UserStatus;
+    platform?: Platform;
     sort?: UserSort;
     order?: SortOrder;
     cursor?: string;
@@ -134,6 +149,11 @@ export async function listUsers(
   const order = input.order ?? (input.sort ? 'asc' : 'desc');
   const conditions: SQL[] = [];
   if (input.status) conditions.push(eq(users.status, input.status));
+  // RFC-50 R2: users holding at least one role on the platform.
+  if (input.platform)
+    conditions.push(
+      sql`exists (select 1 from ${userRoles} where ${userRoles.userId} = ${users.id} and ${userRoles.platform} = ${input.platform})`,
+    );
   let page: UserRow[];
   let nextCursor: string | null;
   if (sort === 'name') {
@@ -265,12 +285,13 @@ export async function setUserPlots(
 }
 
 /**
+ * `roleIds` replace the user's roles on `platform` (RFC-31 R16).
  * @rfc RFC-50 R5
- * @rfc RFC-31 R14
+ * @rfc RFC-31 R14, R16
  */
 export async function updateUser(
   ctx: AuthContext,
-  input: AdminActor & { id: string; name?: string; roleIds?: string[] },
+  input: AdminActor & { id: string; name?: string; roleIds?: string[]; platform: Platform },
 ): Promise<User> {
   const now = new Date(ctx.now());
   // `recordingRefusal` on the root connection: `setUserRoles` writes a
@@ -296,7 +317,12 @@ export async function updateUser(
       if (input.roleIds !== undefined) {
         await setUserRoles(
           { ...ctx, db: tx },
-          { userId: current.id, roleIds: input.roleIds, actorUserId: input.actorUserId },
+          {
+            userId: current.id,
+            platform: input.platform,
+            roleIds: input.roleIds,
+            actorUserId: input.actorUserId,
+          },
         );
       }
       const row = await findUserById(tx, current.id);
@@ -389,10 +415,15 @@ export async function reactivateUser(
   });
 }
 
-/** Re-runs the invitation flow for an invited user; may throw InvitationMailError. @rfc RFC-50 R8 */
+/**
+ * Re-runs the invitation flow for an invited user, which keeps the platform
+ * of their latest invitation (RFC-20 R7); may throw InvitationMailError.
+ * @rfc RFC-50 R8
+ * @rfc RFC-20 R7
+ */
 export async function resendInvite(
   ctx: AuthContext,
-  input: AdminActor & { id: string },
+  input: AdminActor & { id: string; platform: Platform },
 ): Promise<User> {
   const current = await findUserById(ctx.db, input.id);
   if (!current) throw notFound();
@@ -401,6 +432,7 @@ export async function resendInvite(
     email: current.email,
     name: current.name,
     actorUserId: input.actorUserId,
+    platform: input.platform,
   });
   return withRoles(ctx.db, user);
 }

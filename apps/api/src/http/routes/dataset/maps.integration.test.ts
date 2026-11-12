@@ -8,7 +8,7 @@ import {
 } from '@treerepro/contracts';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, useTestApp } from '../../../../test/helpers/app.ts';
+import { call, TEST_PLANT_ORIGIN, useTestApp } from '../../../../test/helpers/app.ts';
 import { assignPlots, createPlot, createTrait } from '../../../../test/helpers/dataset.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
@@ -44,15 +44,17 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
     const blue = levels.find((l) => l.key === 'blue')?.id as string;
     const [a, b] = [`A${s}`, `B${s}`];
     const $ = t.db.$client;
+    // TreeRepro's rows only (RFC-78 R7: `platform` is the last column).
     await $`insert into region_completeness values
-      (${cat.id}, ${a}, 2, 40, 8), (${cat.id}, ${b}, 1, 10, 0),
-      (${num.id}, ${a}, 3, 40, 8), (${num.id}, ${b}, 2, 10, 4)`;
+      (${cat.id}, ${a}, 2, 40, 8, 'treerepro'), (${cat.id}, ${b}, 1, 10, 0, 'treerepro'),
+      (${num.id}, ${a}, 3, 40, 8, 'treerepro'), (${num.id}, ${b}, 2, 10, 4, 'treerepro')`;
     await $`insert into region_categorical values
-      (${cat.id}, ${red}, ${a}, 3, 4), (${cat.id}, ${blue}, ${a}, 1, 2)`;
+      (${cat.id}, ${red}, ${a}, 3, 4, 'treerepro'), (${cat.id}, ${blue}, ${a}, 1, 2, 'treerepro')`;
     await $`insert into region_continuous values
-      (${num.id}, ${a}, 3, 5, 1, 4, 1, 400, 20), (${num.id}, ${b}, 2, 7, 2, 7, 5, 9, 28)`;
-    await $`insert into region_snapshot (id, computed_at) values (true, '2026-10-23T03:00:00Z')
-      on conflict (id) do update set computed_at = excluded.computed_at`;
+      (${num.id}, ${a}, 3, 5, 1, 4, 1, 400, 20, 'treerepro'),
+      (${num.id}, ${b}, 2, 7, 2, 7, 5, 9, 28, 'treerepro')`;
+    await $`insert into region_snapshot (platform, computed_at) values ('treerepro', '2026-10-23T03:00:00Z')
+      on conflict (id, platform) do update set computed_at = excluded.computed_at`;
     return { cat, num, red, blue, a, b };
   }
 
@@ -187,5 +189,79 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
     expect(await status(`traitId=${f.num.id}`)).toBe(404);
     expect(await status(`traitId=${(await createTrait(t.db, {})).id}`)).toBe(404);
     expect(await status('')).toBe(400);
+  });
+
+  it('R1, R3, R5 each platform reads its own rows; PlantRepro divides completeness by every WCVP species', async () => {
+    const f = await fixture();
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id], platform: 'plantrepro' });
+    const cookie = (await loginAs(t, user, { platform: 'plantrepro' })).cookie;
+    const onPlant = (path: string) =>
+      call(t.app, 'GET', `http://plantrepro.localhost${path}`, {
+        cookie,
+        origin: TEST_PLANT_ORIGIN,
+      });
+    const listPlant = async () =>
+      dataEnvelopeSchema(mapsResponseSchema)
+        .parse(await (await onPlant('/api/maps')).json())
+        .data.filter((m) => m.traitId === f.cat.id || m.traitId === f.num.id);
+
+    // TreeRepro's rows never reach PlantRepro: no snapshot of its own yet, no maps.
+    expect(await listPlant()).toEqual([]);
+    expect((await onPlant(`/api/maps/trait-values?traitId=${f.cat.id}`)).status).toBe(404);
+
+    const $ = t.db.$client;
+    await $`insert into region_completeness (platform, trait_id, area_code_l3, species_with_data, wcvp_species, wcvp_tree_species)
+      values ('plantrepro', ${f.cat.id}, ${f.a}, 4, 40, 8), ('plantrepro', ${f.cat.id}, ${f.b}, 1, 10, 0)`;
+    await $`insert into region_categorical (platform, trait_id, level_id, area_code_l3, n_species_with_level, n_species_with_trait)
+      values ('plantrepro', ${f.cat.id}, ${f.red}, ${f.a}, 1, 4)`;
+    await $`insert into region_continuous (platform, trait_id, area_code_l3, n_species, mean, sd, median, min, max, cv)
+      values ('plantrepro', ${f.num.id}, ${f.a}, 4, 5, 1, 4, 1, 600, 20)`;
+    await $`insert into region_snapshot (platform, computed_at) values ('plantrepro', '2026-11-01T03:00:00Z')
+      on conflict (id, platform) do update set computed_at = excluded.computed_at`;
+
+    expect(
+      (await listPlant()).map((m) => [m.traitId, m.kind, m.levelId, m.regions, m.computedAt]),
+    ).toEqual([
+      // b has no tree species but 10 species: a value on PlantRepro
+      [f.cat.id, 'completeness', null, 2, '2026-11-01T03:00:00.000Z'],
+      [f.cat.id, 'prevalence', f.red, 1, '2026-11-01T03:00:00.000Z'],
+      ...['mean', 'median', 'sd', 'cv', 'min', 'max'].map((kind) => [
+        f.num.id,
+        kind,
+        null,
+        1,
+        '2026-11-01T03:00:00.000Z',
+      ]),
+    ]);
+    const values = async (query: string) =>
+      dataEnvelopeSchema(mapValuesSchema)
+        .parse(await (await onPlant(`/api/maps/values?${query}`)).json())
+        .data.regions.map((r) => [r.code, r.value, r.nSpecies]);
+    expect(await values(`traitId=${f.cat.id}&kind=completeness`)).toEqual([
+      [f.a, 10, 4],
+      [f.b, 10, 1],
+    ]);
+    expect(await values(`traitId=${f.cat.id}&kind=prevalence&levelId=${f.red}`)).toEqual([
+      [f.a, 25, 4],
+    ]);
+    expect(await values(`traitId=${f.num.id}&kind=max`)).toEqual([[f.a, 600, 4]]);
+
+    // TreeRepro still reads its own rows and its trees denominator.
+    const { cookie: treeCookie } = await viewer();
+    const tree = await call(
+      t.app,
+      'GET',
+      `/api/maps/values?traitId=${f.cat.id}&kind=completeness`,
+      {
+        cookie: treeCookie,
+      },
+    );
+    const treeData = dataEnvelopeSchema(mapValuesSchema).parse(await tree.json()).data;
+    expect(treeData.regions.map((r) => [r.code, r.value, r.nSpecies])).toEqual([
+      [f.a, 25, 2],
+      [f.b, null, 1],
+    ]);
+    expect(treeData.computedAt).toBe('2026-10-23T03:00:00.000Z');
   });
 });

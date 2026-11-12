@@ -1,16 +1,26 @@
 import {
+  type ConfirmPlantTypeResult,
   type Genus,
+  HIDDEN_SPECIES_NAME_MESSAGE,
   isValidIsbn,
   type NameSource,
   type NameType,
+  type PlantType,
+  type PlantTypeStatus,
+  type Platform,
   type ReferenceDetail,
   type Species,
   type TaxonRef,
   type Trait,
   type TraitValueType,
 } from '@treerepro/contracts';
-import { and, eq, sql } from 'drizzle-orm';
-import { UNRESTRICTED } from '../access/visibility.ts';
+import { and, eq, or, sql } from 'drizzle-orm';
+import {
+  platformScope,
+  speciesVisible,
+  UNRESTRICTED,
+  type Visibility,
+} from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation, violatedConstraint } from '../db/errors.ts';
@@ -41,7 +51,11 @@ async function requireGenusRow(db: DbExecutor, id: string) {
   return row;
 }
 
-async function requireSpeciesRow(db: DbExecutor, id: string) {
+/**
+ * The species a catalog write names, in the platform's scope (RFC-33 R5): a
+ * species the platform does not show answers 404 like an unknown one.
+ */
+async function requireSpeciesRow(db: DbExecutor, id: string, platform: Platform) {
   const [row] = await db
     .select({
       id: species.id,
@@ -51,10 +65,42 @@ async function requireSpeciesRow(db: DbExecutor, id: string) {
       active: species.active,
     })
     .from(species)
-    .where(eq(species.id, id))
+    .where(and(eq(species.id, id), platformScope(platform)))
     .limit(1);
   if (!row) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
   return row;
+}
+
+/**
+ * RFC-60 R13: a name held, as canonical or alternative name, by a species the
+ * platform's scope hides — and only that scope: `viewer` sees it with the
+ * platform dropped — cannot be registered there again. The answer names no
+ * species. `exceptId` leaves out the species the name is being added to.
+ * Platform-generic: on a platform whose scope hides nothing it never fires.
+ * @rfc RFC-60 R13
+ * @rfc RFC-33 R2
+ */
+export async function refuseHiddenName(
+  db: DbExecutor,
+  viewer: Visibility,
+  name: string,
+  exceptId?: string,
+): Promise<void> {
+  const [row] = await db
+    .select({ id: species.id })
+    .from(species)
+    .where(
+      and(
+        sql`(lower(${species.canonicalName}) = lower(${name}) or exists (
+          select 1 from ${speciesNames} sn
+          where sn.species_id = ${species.id} and lower(sn.name) = lower(${name})))`,
+        speciesVisible({ ...viewer, platform: 'plantrepro' }),
+        sql`not ${platformScope(viewer.platform)}`,
+        exceptId ? sql`${species.id} <> ${exceptId}` : undefined,
+      ),
+    )
+    .limit(1);
+  if (row) throw new AppError('SPECIES_NAME_TAKEN', HIDDEN_SPECIES_NAME_MESSAGE);
 }
 
 async function taxaAudit(
@@ -63,7 +109,13 @@ async function taxaAudit(
   action: 'taxa.created' | 'taxa.updated',
   targetType: string,
   targetId: string,
-  metadata: { kind: TaxonKind; fields?: string[]; speciesId?: string },
+  metadata: {
+    kind: TaxonKind;
+    fields?: string[];
+    speciesId?: string;
+    from?: { plantType: PlantType; plantTypeStatus: PlantTypeStatus };
+    to?: { plantType: PlantType; plantTypeStatus: PlantTypeStatus };
+  },
 ): Promise<void> {
   await recordAudit(db, { actorUserId: actorId, action, targetType, targetId, metadata });
 }
@@ -181,14 +233,54 @@ export async function updateGenus(
   });
 }
 
-/** @rfc RFC-60 R9, R10 */
+/**
+ * The plant type a registration on `platform` gets: TreeRepro registers only
+ * trees, so an omitted type is `tree` and any other one is refused; PlantRepro
+ * requires it.
+ * @rfc RFC-65 R18
+ * @rfc RFC-14 R9
+ */
+export function plantTypeFor(
+  platform: Platform,
+  requested: PlantType | null | undefined,
+): PlantType {
+  if (platform === 'treerepro') {
+    if (requested && requested !== 'tree')
+      throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+        { path: 'plantType', message: 'TreeRepro registers only trees' },
+      ]);
+    return 'tree';
+  }
+  if (!requested)
+    throw new AppError('VALIDATION_FAILED', 'Request validation failed', [
+      { path: 'plantType', message: 'Required' },
+    ]);
+  return requested;
+}
+
+/**
+ * `plantTypeStatus` is `reviewed` when the creator holds `records.review` on
+ * the request's platform (RFC-65 R18); the caller decides it.
+ * @rfc RFC-60 R1, R9, R10
+ * @rfc RFC-65 R18
+ */
 export async function createSpecies(
   db: DbExecutor,
-  input: { canonicalName: string; nameSource: NameSource; genusId?: string; actorId: string },
+  input: {
+    canonicalName: string;
+    nameSource: NameSource;
+    genusId?: string;
+    plantType: PlantType;
+    plantTypeStatus: PlantTypeStatus;
+    /** The request's platform, whose hidden names are refused (RFC-60 R13). */
+    platform: Platform;
+    actorId: string;
+  },
 ): Promise<Species> {
   const canonicalName = normaliseName(input.canonicalName);
   return db.transaction(async (tx) => {
     if (input.genusId !== undefined) await requireGenusRow(tx, input.genusId);
+    await refuseHiddenName(tx, { ...UNRESTRICTED, platform: input.platform }, canonicalName);
     let row: { id: string } | undefined;
     try {
       [row] = await tx
@@ -197,6 +289,8 @@ export async function createSpecies(
           canonicalName,
           nameSource: input.nameSource,
           genusId: input.genusId ?? null,
+          plantType: input.plantType,
+          plantTypeStatus: input.plantTypeStatus,
           createdBy: input.actorId,
         })
         .returning({ id: species.id });
@@ -225,13 +319,15 @@ export async function updateSpecies(
     nameSource?: NameSource;
     genusId?: string | null;
     active?: boolean;
+    /** The request's platform: a species it does not show answers 404 (RFC-33 R5). */
+    platform: Platform;
     actorId: string;
   },
 ): Promise<Species> {
   const canonicalName =
     input.canonicalName === undefined ? undefined : normaliseName(input.canonicalName);
   return db.transaction(async (tx) => {
-    const current = await requireSpeciesRow(tx, input.id);
+    const current = await requireSpeciesRow(tx, input.id, input.platform);
     const fields: string[] = [];
     const set: {
       canonicalName?: string;
@@ -279,6 +375,94 @@ export async function updateSpecies(
 }
 
 /**
+ * Sets a visible species' plant type and marks it `reviewed`, auditing the old
+ * and new values when either changes. Not forced to `tree` on TreeRepro: a
+ * manager there may reclassify a tree.
+ * @rfc RFC-65 R19
+ * @rfc RFC-60 R10
+ */
+export async function changePlantType(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: { id: string; plantType: PlantType; actorId: string },
+): Promise<Species> {
+  return db.transaction(async (tx) => {
+    if (!(await getSpecies(tx, visibility, input.id)))
+      throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
+    const [current] = await tx
+      .select({ plantType: species.plantType, plantTypeStatus: species.plantTypeStatus })
+      .from(species)
+      .where(eq(species.id, input.id))
+      .for('update');
+    if (!current) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
+    const to = { plantType: input.plantType, plantTypeStatus: 'reviewed' as const };
+    if (current.plantType !== to.plantType || current.plantTypeStatus !== to.plantTypeStatus) {
+      await tx.update(species).set(to).where(eq(species.id, input.id));
+      await taxaAudit(tx, input.actorId, 'taxa.updated', 'species', input.id, {
+        kind: 'species',
+        fields: ['plantType'],
+        from: current,
+        to,
+      });
+    }
+    // A tree reclassified on TreeRepro has just left it (RFC-65 R19): answer
+    // the detail as PlantRepro shows it.
+    const updated = await getSpecies(tx, { ...visibility, platform: 'plantrepro' }, input.id);
+    if (!updated) throw new Error('changePlantType: species vanished');
+    return updated;
+  });
+}
+
+/**
+ * The plant-type queue's Confirm, and Change type and confirm (RFC-65 R20).
+ * A `proposed` species is reached without the platform's condition (the
+ * queue's exception, RFC-33 R11); a reviewed one with the viewer's full
+ * visibility, so it only sets the type as R19 would. Answers the type and its
+ * status, never the detail, which a confirmed not-tree lacks on TreeRepro.
+ * @rfc RFC-65 R20
+ * @rfc RFC-33 R11
+ */
+export async function confirmPlantType(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: { id: string; plantType?: PlantType; actorId: string },
+): Promise<ConfirmPlantTypeResult> {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select({ plantType: species.plantType, plantTypeStatus: species.plantTypeStatus })
+      .from(species)
+      .where(
+        and(
+          eq(species.id, input.id),
+          or(
+            and(
+              eq(species.plantTypeStatus, 'proposed'),
+              speciesVisible({ ...visibility, platform: 'plantrepro' }),
+            ),
+            speciesVisible(visibility),
+          ),
+        ),
+      )
+      .for('update');
+    if (!current) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
+    const to = {
+      plantType: input.plantType ?? current.plantType,
+      plantTypeStatus: 'reviewed' as const,
+    };
+    if (current.plantType !== to.plantType || current.plantTypeStatus !== to.plantTypeStatus) {
+      await tx.update(species).set(to).where(eq(species.id, input.id));
+      await taxaAudit(tx, input.actorId, 'taxa.updated', 'species', input.id, {
+        kind: 'species',
+        fields: ['plantType'],
+        from: current,
+        to,
+      });
+    }
+    return { id: input.id, ...to };
+  });
+}
+
+/**
  * `source` defaults to `'manual'` when the body omits it, while the column
  * defaults to `'gbif'` for the rows the import writes (RFC-60 R1, R9): the two
  * defaults differ on purpose.
@@ -293,12 +477,37 @@ export async function addSpeciesName(
     language?: string;
     source?: string;
     gbifUsageKey?: string;
+    /** The request's platform: a species it does not show answers 404 (RFC-33 R5). */
+    platform: Platform;
     actorId: string;
   },
 ): Promise<Species> {
+  return db.transaction(async (tx) => {
+    await requireSpeciesRow(tx, input.speciesId, input.platform);
+    return insertSpeciesName(tx, input);
+  });
+}
+
+/**
+ * `addSpeciesName` without the platform check, for the species an approval
+ * has just created (RFC-75 R4), which may start `proposed` and so be hidden
+ * on TreeRepro; a name a hidden species holds is still refused (RFC-60 R13).
+ * @rfc RFC-60 R4, R13
+ * @rfc RFC-75 R4
+ */
+export async function insertSpeciesName(
+  db: DbExecutor,
+  input: Parameters<typeof addSpeciesName>[1],
+): Promise<Species> {
   const name = normaliseName(input.name);
   return db.transaction(async (tx) => {
-    const current = await requireSpeciesRow(tx, input.speciesId);
+    const current = await requireSpeciesRow(tx, input.speciesId, 'plantrepro');
+    await refuseHiddenName(
+      tx,
+      { ...UNRESTRICTED, platform: input.platform },
+      name,
+      input.speciesId,
+    );
     if (current.canonicalName === name)
       throw new AppError('SPECIES_NAME_TAKEN', 'This is already the canonical name of the species');
     let row: { id: string } | undefined;
@@ -319,13 +528,13 @@ export async function addSpeciesName(
         throw new AppError('SPECIES_NAME_TAKEN', 'The species already carries this name');
       throw err;
     }
-    if (!row) throw new Error('addSpeciesName: insert returned no row');
+    if (!row) throw new Error('insertSpeciesName: insert returned no row');
     await taxaAudit(tx, input.actorId, 'taxa.created', 'species_names', row.id, {
       kind: 'species_name',
       speciesId: input.speciesId,
     });
     const updated = await getSpecies(tx, UNRESTRICTED, input.speciesId);
-    if (!updated) throw new Error('addSpeciesName: species vanished');
+    if (!updated) throw new Error('insertSpeciesName: species vanished');
     return updated;
   });
 }

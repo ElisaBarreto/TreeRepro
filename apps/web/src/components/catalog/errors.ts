@@ -1,3 +1,4 @@
+import { HIDDEN_SPECIES_NAME_MESSAGE } from '@treerepro/contracts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, GENERIC_MESSAGE, pageErrorMessage } from '../../lib/errors.ts';
 
@@ -75,12 +76,23 @@ export function familyCreateErrorMessage(error: unknown): string {
   return taxonErrorMessage(error);
 }
 
+/**
+ * The API's own sentence for a name a species hidden on this platform holds
+ * (RFC-60 R13), which says why the name is taken; null for any other error.
+ * @rfc RFC-60 R13
+ */
+export function hiddenNameMessage(error: unknown): string | null {
+  return error instanceof ApiError && error.message === HIDDEN_SPECIES_NAME_MESSAGE
+    ? error.message
+    : null;
+}
+
 /** @rfc RFC-13 R6 */
 export function speciesErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'SPECIES_NAME_TAKEN':
-        return 'A species with this name already exists.';
+        return hiddenNameMessage(error) ?? 'A species with this name already exists.';
       case 'GENUS_NOT_FOUND':
       case 'FAMILY_NOT_FOUND':
         return 'The chosen taxon no longer exists. Reload the page.';

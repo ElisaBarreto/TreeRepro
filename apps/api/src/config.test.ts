@@ -11,6 +11,7 @@ import {
   ConfigError,
   loadConfig,
   loadMigratorConfig,
+  originOf,
   readSecret,
   Secret,
 } from './config.ts';
@@ -101,6 +102,48 @@ describe('RFC-02 R3 APP_ORIGIN normalization', () => {
     expect(() => loadConfig(env({ APP_ORIGIN: 'mailto:a@b.example' }))).toThrow(
       new ConfigError('invalid environment: APP_ORIGIN'),
     );
+  });
+});
+
+describe('RFC-14 R3, R4 PLANT_DOMAIN and originOf', () => {
+  it('reads PLANT_DOMAIN lowercased; unset or empty is null', () => {
+    expect(loadConfig(env()).plantDomain).toBeNull();
+    expect(loadConfig(env({ PLANT_DOMAIN: '' })).plantDomain).toBeNull();
+    expect(loadConfig(env({ PLANT_DOMAIN: ' PlantRepro.localhost ' })).plantDomain).toBe(
+      'plantrepro.localhost',
+    );
+  });
+
+  it('rejects a PLANT_DOMAIN that is not a bare host', () => {
+    for (const bad of ['https://plantrepro.example', 'plantrepro.example:8080', 'a b'])
+      expect(() => loadConfig(env({ PLANT_DOMAIN: bad }))).toThrow(
+        new ConfigError('invalid environment: PLANT_DOMAIN'),
+      );
+  });
+
+  it('rejects a PLANT_DOMAIN equal to the host of APP_ORIGIN, ignoring case', () => {
+    expect(() =>
+      loadConfig(env({ APP_ORIGIN: 'http://localhost:8080', PLANT_DOMAIN: 'LocalHost' })),
+    ).toThrow(new ConfigError('invalid environment: PLANT_DOMAIN'));
+  });
+
+  it('gives each platform its origin: PlantRepro keeps the scheme and port of APP_ORIGIN', () => {
+    const dev = { appOrigin: 'http://localhost', plantDomain: 'plantrepro.localhost' };
+    expect(originOf(dev, 'treerepro')).toBe('http://localhost');
+    expect(originOf(dev, 'plantrepro')).toBe('http://plantrepro.localhost');
+    const e2e = { appOrigin: 'http://localhost:8080', plantDomain: 'plantrepro.localhost' };
+    expect(originOf(e2e, 'plantrepro')).toBe('http://plantrepro.localhost:8080');
+    const prod = {
+      appOrigin: 'https://treerepro.elisabarreto.com.br',
+      plantDomain: 'plantrepro.elisabarreto.com.br',
+    };
+    expect(originOf(prod, 'plantrepro')).toBe('https://plantrepro.elisabarreto.com.br');
+  });
+
+  it('has no PlantRepro origin when PLANT_DOMAIN is unset', () => {
+    expect(() =>
+      originOf({ appOrigin: 'http://localhost', plantDomain: null }, 'plantrepro'),
+    ).toThrow(/PLANT_DOMAIN/);
   });
 });
 

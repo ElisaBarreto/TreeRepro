@@ -11,6 +11,8 @@ describe('RFC-82 R17 buildOpenApi', () => {
   it('is OpenAPI 3.1 with one operation per catalogued route, paths sorted', () => {
     const d = doc();
     expect(d.openapi).toBe('3.1.0');
+    // One document for both hosts (RFC-82 R17, RFC-14).
+    expect(d.info.title).toBe('TreeRepro / PlantRepro API');
     const ops = Object.entries(d.paths).flatMap(([p, item]) =>
       Object.keys(item as object).map((m) => `${m.toUpperCase()} ${p}`),
     );

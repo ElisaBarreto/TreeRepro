@@ -3,6 +3,8 @@ import {
   type CreateUserBody,
   createUserBodySchema,
   PERMISSION_KEYS,
+  PLATFORM_NAMES,
+  PLATFORMS,
   type Role,
   type User,
 } from '@treerepro/contracts';
@@ -10,6 +12,7 @@ import { type FormEvent, useId, useState } from 'react';
 import { adminKeys, inviteUser, listRoles } from '../../api/admin.ts';
 import { ApiError } from '../../api/client.ts';
 import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
+import { currentPlatform } from '../../lib/platform.ts';
 import { useMe } from '../../lib/session.ts';
 import { Alert, Button, Dialog, Field, Input, Select } from '../ui/index.ts';
 
@@ -54,14 +57,17 @@ export function assignableRoles(roles: Role[], permissions: readonly string[]): 
 }
 
 /**
- * Email, name and role; `POST /api/admin/users`. Only the roles within the
+ * Email, name, platform (this one by default, RFC-50 R3; offered to an admin
+ * only, RFC-50 R14) and role;
+ * `POST /api/admin/users`. Only the roles within the
  * actor's delegation ceiling are offered (RFC-31 R14). A `MAIL_SEND_FAILED` answer still
  * created the user (RFC-50 R3), so the dialog closes and the page says how
  * to resend; `USER_EMAIL_TAKEN` stays under the email field. Mounted only
  * while open.
  * @rfc RFC-50 R3
  * @rfc RFC-13 R6
- * @rfc RFC-31 R14
+ * @rfc RFC-31 R14, R16
+ * @rfc RFC-50 R14
  */
 export function InviteUserDialog({
   onClose,
@@ -71,9 +77,11 @@ export function InviteUserDialog({
   onInvited: (user: User | null, mailFailed: boolean) => void;
 }) {
   const me = useMe();
-  const ids = { email: useId(), name: useId(), role: useId() };
+  const ids = { email: useId(), name: useId(), platform: useId(), role: useId() };
   const roles = useQuery({ queryKey: adminKeys.roles, queryFn: listRoles });
   const offered = assignableRoles(roles.data ?? [], me.permissions);
+  // RFC-50 R14: a non-admin's ceiling on the other platform is unknown here.
+  const actorIsAdmin = PERMISSION_KEYS.every((key) => me.permissions.includes(key));
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
   const invite = useMutation({
     mutationFn: (body: CreateUserBody) => inviteUser(body),
@@ -91,6 +99,10 @@ export function InviteUserDialog({
       : undefined);
   const nameError = localErrors.name ?? serverErrors.name;
   const roleError = localErrors.roles ?? serverErrors.roles;
+  // RFC-50 R3: a platform with no host (PlantRepro before it opens) is refused.
+  const platformError = serverErrors.platform
+    ? 'This platform is not open yet; invite to it once it has its address.'
+    : undefined;
   const formError =
     invite.isError &&
     !isValidationError(invite.error) &&
@@ -104,6 +116,7 @@ export function InviteUserDialog({
     const parsed = createUserBodySchema.safeParse({
       email: String(form.get('email') ?? ''),
       name: String(form.get('name') ?? ''),
+      platform: String(form.get('platform') ?? ''),
       roles: form.get('role') ? [String(form.get('role'))] : [],
     });
     if (!parsed.success) {
@@ -142,6 +155,24 @@ export function InviteUserDialog({
             invalid={Boolean(nameError)}
           />
         </Field>
+        {actorIsAdmin ? (
+          <Field id={ids.platform} label="Platform" error={platformError}>
+            <Select
+              id={ids.platform}
+              name="platform"
+              defaultValue={currentPlatform()}
+              invalid={Boolean(platformError)}
+            >
+              {PLATFORMS.map((p) => (
+                <option key={p} value={p}>
+                  {PLATFORM_NAMES[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : (
+          <input type="hidden" name="platform" value={currentPlatform()} />
+        )}
         <Field id={ids.role} label="Role" error={roleError}>
           <Select
             id={ids.role}

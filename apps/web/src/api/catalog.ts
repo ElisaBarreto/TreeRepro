@@ -1,15 +1,20 @@
 import type { QueryClient } from '@tanstack/react-query';
 import {
+  type ConfirmPlantTypeResult,
   type CreateGenusBody,
   type CreateLevelBody,
   type CreateReferenceBody,
   type CreateSpeciesBody,
   type CreateTraitBody,
+  confirmPlantTypeResultSchema,
   type DataEnvelope,
   dataEnvelopeSchema,
   type FamilyBody,
   type Genus,
   genusSchema,
+  listEnvelopeSchema,
+  type PlantType,
+  plantTypeQueueItemSchema,
   type ReferenceDetail,
   referenceDetailSchema,
   type Species,
@@ -27,6 +32,7 @@ import {
 } from '@treerepro/contracts';
 import type { z } from 'zod';
 import { apiFetch } from './client.ts';
+import { withQuery } from './query.ts';
 
 async function post<T>(path: string, json: unknown, schema: z.ZodType<T>): Promise<T> {
   const envelope: DataEnvelope<T> = await apiFetch(path, dataEnvelopeSchema(schema), {
@@ -66,6 +72,34 @@ export function createSpecies(body: CreateSpeciesBody): Promise<Species> {
 /** @rfc RFC-60 R9 */
 export function updateSpecies(id: string, body: UpdateSpeciesBody): Promise<Species> {
   return patch(`/species/${id}`, body, speciesSchema);
+}
+/** @rfc RFC-65 R19 */
+export function changePlantType(id: string, plantType: PlantType): Promise<Species> {
+  return post(`/species/${id}/plant-type`, { plantType }, speciesSchema);
+}
+/**
+ * The plant-type review queue's key, under `species` so a catalog write on
+ * taxa (`invalidateAfterCatalogWrite`) refreshes it too.
+ * @rfc RFC-65 R20
+ */
+export const plantTypeQueueKey = ['species', 'plant-types'] as const;
+/** @rfc RFC-65 R20 */
+export function fetchPlantTypeQueue(params: { cursor?: string; limit?: number }) {
+  return apiFetch(
+    withQuery('/curation/plant-types', params),
+    listEnvelopeSchema(plantTypeQueueItemSchema),
+  );
+}
+/** Confirm, or Change type and confirm when `plantType` is given. @rfc RFC-65 R20 */
+export function confirmPlantType(
+  id: string,
+  plantType: PlantType | undefined,
+): Promise<ConfirmPlantTypeResult> {
+  return post(
+    `/species/${id}/plant-type/confirm`,
+    plantType ? { plantType } : {},
+    confirmPlantTypeResultSchema,
+  );
 }
 /** @rfc RFC-60 R9 */
 export function addSpeciesName(id: string, body: SpeciesNameBody): Promise<Species> {

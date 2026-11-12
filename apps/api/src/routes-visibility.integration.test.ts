@@ -99,10 +99,11 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
     // RFC-76 R6: a map exists only in the region snapshot, so give the active
     // trait one region of completeness.
     await t.db
-      .$client`insert into region_completeness values (${fx.activeTrait.id}, 'MTA', 1, 10, 5)
+      .$client`insert into region_completeness values (${fx.activeTrait.id}, 'MTA', 1, 10, 5, 'treerepro')
       on conflict do nothing`;
-    await t.db.$client`insert into region_snapshot (id, computed_at) values (true, now())
-      on conflict (id) do nothing`;
+    await t.db
+      .$client`insert into region_snapshot (platform, computed_at) values ('treerepro', now())
+      on conflict (id, platform) do nothing`;
     // Query strings and bodies the route's schema requires.
     const inputs: Record<string, { query?: string; body?: unknown }> = {
       'GET /api/records': { query: `speciesId=${fx.shownSpecies.id}&traitId=${fx.activeTrait.id}` },
@@ -117,6 +118,7 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
           value: { levelIds: [level] },
         },
       },
+      'POST /api/species/:id/plant-type': { body: { plantType: 'tree' } },
       'GET /api/me/contributions': { query: 'kind=records' },
       'GET /api/maps/values': { query: `traitId=${fx.activeTrait.id}&kind=completeness` },
       'GET /api/maps/trait-values': { query: `traitId=${fx.activeTrait.id}` },

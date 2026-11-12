@@ -1,5 +1,5 @@
 import type { Lookup } from '@treerepro/contracts';
-import { PROPOSAL_STATUSES } from '@treerepro/contracts';
+import { PLANT_TYPES, PROPOSAL_STATUSES } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -46,6 +46,8 @@ export const speciesProposals = pgTable(
     decidedBy: uuid('decided_by').references(() => users.id),
     decidedAt: ts('decided_at'),
     decisionNote: text('decision_note'),
+    /** RFC-75 R1: the stated plant type; null only on rows made before migration 0058. */
+    plantType: text('plant_type', { enum: PLANT_TYPES }),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
@@ -54,6 +56,7 @@ export const speciesProposals = pgTable(
       .where(sql`${t.status} = 'open'`),
     index('species_proposals_status_idx').on(t.status, t.id.desc()),
     index('species_proposals_proposer_idx').on(t.proposerId, t.id.desc()),
+    check('species_proposals_plant_type_check', sql`${t.plantType} in ('tree', 'not_tree')`),
     check('species_proposals_status_check', sql`${t.status} in ('open', 'approved', 'rejected')`),
     check('species_proposals_open_check', sql`(${t.status} = 'open') = (${t.decidedAt} is null)`),
     check(

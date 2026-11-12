@@ -1,5 +1,7 @@
 import type {
   ApproveProposalBody,
+  PlantType,
+  Platform,
   Proposal,
   ProposalSort,
   ProposalStatus,
@@ -17,7 +19,14 @@ import { users } from '../db/schema/users.ts';
 import { pageOf, type SortKey, sortedKeyset } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import type { TaxonomyClient, TaxonomyLookup } from '../integrations/taxonomy.ts';
-import { addSpeciesName, createFamily, createGenus, createSpecies } from './catalog.ts';
+import {
+  createFamily,
+  createGenus,
+  createSpecies,
+  insertSpeciesName,
+  plantTypeFor,
+  refuseHiddenName,
+} from './catalog.ts';
 import { normaliseName } from './names.ts';
 
 const proposer = alias(users, 'proposal_proposer');
@@ -33,6 +42,7 @@ interface ProposalRow {
   createdAt: Date;
   decidedAt: Date | null;
   decisionNote: string | null;
+  plantType: PlantType | null;
   proposerId: string;
   proposerName: string;
   decidedById: string | null;
@@ -62,6 +72,7 @@ function proposalQuery(db: DbExecutor, sortKey: SQL<string> = sql<string>`''`) {
       createdAt: speciesProposals.createdAt,
       decidedAt: speciesProposals.decidedAt,
       decisionNote: speciesProposals.decisionNote,
+      plantType: speciesProposals.plantType,
       proposerId: proposer.id,
       proposerName: proposer.name,
       decidedById: decider.id,
@@ -94,6 +105,7 @@ function toProposal(row: ProposalRow): Proposal {
         : null,
     decidedAt: row.decidedAt?.toISOString() ?? null,
     decisionNote: row.decisionNote,
+    plantType: row.plantType,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -161,7 +173,7 @@ async function proposalOrThrow(db: DbExecutor, id: string, where: string): Promi
 export async function createProposal(
   ctx: { db: DbExecutor; taxonomy: TaxonomyClient },
   visibility: Visibility,
-  input: { name: string; note?: string; proposerId: string },
+  input: { name: string; note?: string; plantType: PlantType; proposerId: string },
 ): Promise<Proposal> {
   const name = normaliseName(input.name);
 
@@ -171,6 +183,7 @@ export async function createProposal(
       { path: 'name', message: takenBy },
     ]);
   }
+  await refuseHiddenName(ctx.db, visibility, name);
   const alreadyOpen = await openProposalNamed(ctx.db, name);
   if (alreadyOpen) {
     throw new AppError('PROPOSAL_EXISTS', 'This species has already been proposed', [
@@ -189,6 +202,7 @@ export async function createProposal(
         .values({
           proposedName: name,
           note: input.note ?? null,
+          plantType: input.plantType,
           proposerId: input.proposerId,
           lookup,
           lookupAt: lookup ? new Date() : null,
@@ -295,9 +309,12 @@ export async function listMyProposals(
 }
 
 /** The open proposal, locked for the decision about to be written. @rfc RFC-75 R4 */
-async function lockOpenProposal(tx: DbExecutor, id: string): Promise<void> {
+async function lockOpenProposal(
+  tx: DbExecutor,
+  id: string,
+): Promise<{ plantType: PlantType | null }> {
   const [row] = await tx
-    .select({ status: speciesProposals.status })
+    .select({ status: speciesProposals.status, plantType: speciesProposals.plantType })
     .from(speciesProposals)
     .where(eq(speciesProposals.id, id))
     .limit(1)
@@ -305,6 +322,7 @@ async function lockOpenProposal(tx: DbExecutor, id: string): Promise<void> {
   if (!row) throw new AppError('PROPOSAL_NOT_FOUND', 'Proposal not found');
   if (row.status !== 'open')
     throw new AppError('PROPOSAL_DECIDED', 'This proposal has already been decided');
+  return { plantType: row.plantType };
 }
 
 /** The family of that name, created when it is missing. @rfc RFC-60 R9 */
@@ -359,31 +377,45 @@ async function genusIdFor(
  * row are written last. A canonical name already taken by *any* species —
  * including one the proposer could not see — surfaces as `createSpecies`'s
  * own 409 `SPECIES_NAME_TAKEN` and rolls the whole approval back, leaving
- * the proposal open.
+ * the proposal open. The species' plant type is the approver's, else the
+ * proposal's stated one, resolved for the request's platform; its status
+ * follows the approver's `records.review` (`review`).
  * @rfc RFC-75 R4
  * @rfc RFC-60 R9, R10
+ * @rfc RFC-65 R18
  */
 export async function approveProposal(
   db: DbExecutor,
-  input: { id: string; body: ApproveProposalBody; actorId: string },
+  input: {
+    id: string;
+    body: ApproveProposalBody;
+    platform: Platform;
+    review: boolean;
+    actorId: string;
+  },
 ): Promise<Proposal> {
   return db.transaction(async (tx) => {
-    await lockOpenProposal(tx, input.id);
+    const stated = await lockOpenProposal(tx, input.id);
+    const plantType = plantTypeFor(input.platform, input.body.plantType ?? stated.plantType);
     const genusId = await genusIdFor(tx, input.body, input.actorId);
     const created = await createSpecies(tx, {
       canonicalName: input.body.canonicalName,
       nameSource: input.body.nameSource,
       genusId,
+      plantType,
+      plantTypeStatus: input.review ? 'reviewed' : 'proposed',
+      platform: input.platform,
       actorId: input.actorId,
     });
     for (const alternative of input.body.alternativeNames ?? []) {
-      await addSpeciesName(tx, {
+      await insertSpeciesName(tx, {
         speciesId: created.id,
         name: alternative.name,
         nameType: alternative.nameType,
         language: alternative.language,
         source: alternative.source,
         gbifUsageKey: alternative.gbifUsageKey,
+        platform: input.platform,
         actorId: input.actorId,
       });
     }

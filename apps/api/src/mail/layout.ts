@@ -1,3 +1,5 @@
+import { PLATFORM_NAMES, type Platform } from '@treerepro/contracts';
+
 /**
  * The HTML frame every e-mail shares: a dark canopy page, the emblem and the
  * wordmark, a white card, and a footer saying why the mail arrived.
@@ -111,11 +113,14 @@ export function emailLayout(input: {
   hero?: string;
   /** Markup between the wordmark row and the card (the digest's resend line). */
   beforeCard?: string;
+  /** Whose name the wordmark shows; TreeRepro when absent. */
+  platform?: Platform;
 }): string {
+  const brand = PLATFORM_NAMES[input.platform ?? 'treerepro'];
   const emblem = mailAsset(input.appOrigin, 'emblem.png');
   const font = (family: string, file: string) =>
     `@font-face { font-family: '${family}'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('${escapeHtml(mailAsset(input.appOrigin, file))}') format('woff2'); }`;
-  const wordmark = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:0 8px 24px;" valign="middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle" style="padding-right:12px;"><img src="${escapeHtml(emblem)}" width="40" height="40" alt="TreeRepro" style="display:block;border:0;width:40px;height:40px;"></td><td valign="middle" style="font-family:${DISPLAY_FONT};font-size:20px;font-weight:600;color:${MAIL_COLORS.mist50};">TreeRepro</td></tr></table></td>${input.headerNote === undefined ? '' : `<td align="right" valign="middle" style="padding:0 8px 24px;font-family:${BODY_FONT};font-size:13px;color:${MAIL_COLORS.mist400};">${escapeHtml(input.headerNote)}</td>`}</tr></table>`;
+  const wordmark = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:0 8px 24px;" valign="middle"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle" style="padding-right:12px;"><img src="${escapeHtml(emblem)}" width="40" height="40" alt="${brand}" style="display:block;border:0;width:40px;height:40px;"></td><td valign="middle" style="font-family:${DISPLAY_FONT};font-size:20px;font-weight:600;color:${MAIL_COLORS.mist50};">${brand}</td></tr></table></td>${input.headerNote === undefined ? '' : `<td align="right" valign="middle" style="padding:0 8px 24px;font-family:${BODY_FONT};font-size:13px;color:${MAIL_COLORS.mist400};">${escapeHtml(input.headerNote)}</td>`}</tr></table>`;
   const top =
     input.hero ??
     `<tr><td style="height:6px;line-height:6px;font-size:0;background-color:${input.accent ?? MAIL_COLORS.pollen500};">&nbsp;</td></tr>`;

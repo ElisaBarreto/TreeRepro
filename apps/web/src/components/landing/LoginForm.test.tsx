@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
-import { LoginForm } from './LoginForm.tsx';
+import { LoginForm, loginErrorMessage } from './LoginForm.tsx';
 
 const auth = vi.hoisted(() => ({ login: vi.fn(), loginTotp: vi.fn() }));
 vi.mock('../../api/auth.ts', () => auth);
@@ -153,5 +153,17 @@ describe('RFC-23 R6 second step', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('not valid');
     expect(screen.getByLabelText('Verification code')).toBeInTheDocument();
+  });
+});
+
+describe('RFC-22 R13 loginErrorMessage', () => {
+  it('names the refused platform and the one the account holds', () => {
+    const error = new ApiError(403, 'PLATFORM_ACCESS_DENIED', 'x', [
+      { path: 'platforms', message: 'plantrepro' },
+    ]);
+    // jsdom serves `localhost`: TreeRepro.
+    expect(loginErrorMessage(error)).toBe(
+      'You have no access to TreeRepro. Your account has access to PlantRepro.',
+    );
   });
 });

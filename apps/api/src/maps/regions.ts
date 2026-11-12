@@ -4,6 +4,7 @@ import {
   type MapKind,
   type MapValues,
   type MapValuesQuery,
+  type Platform,
   type TraitMaps,
   type TraitMapsQuery,
 } from '@treerepro/contracts';
@@ -19,28 +20,38 @@ export const MIN_SPECIES = 3;
 const CONTINUOUS_KINDS = ['mean', 'median', 'sd', 'cv', 'min', 'max'] as const;
 type ContinuousKind = (typeof CONTINUOUS_KINDS)[number];
 
-/** The snapshot's time, or null before the first snapshot. */
-async function snapshotTime(db: DbExecutor): Promise<string | null> {
+/** The platform's snapshot time, or null before its first snapshot (RFC-78 R7). */
+async function snapshotTime(db: DbExecutor, platform: Platform): Promise<string | null> {
   const [row] = (await db.execute(
-    sql`select computed_at as "computedAt" from region_snapshot where id`,
+    sql`select computed_at as "computedAt" from region_snapshot where id and platform = ${platform}`,
   )) as unknown as { computedAt: Date | string }[];
   return row ? new Date(row.computedAt).toISOString() : null;
 }
 
 /**
- * The maps a viewer may see (RFC-76 R5): one entry per map with at least one
+ * R3's completeness denominator: TreeRepro counts the region's tree species,
+ * PlantRepro every species (RFC-78 R9).
+ */
+function denominator(platform: Platform) {
+  return platform === 'plantrepro' ? sql.raw('wcvp_species') : sql.raw('wcvp_tree_species');
+}
+
+/**
+ * The maps a viewer may see (RFC-76 R5), from the snapshot of the viewer's
+ * platform (R1): one entry per map with at least one
  * region with a value, on a visible trait whose value type fits the kind and,
  * for prevalence, a visible state; by trait key, kind and state. No plot filter.
  * @rfc RFC-76 R1, R3, R5
  */
 export async function listMaps(db: DbExecutor, visibility: Visibility): Promise<MapEntry[]> {
-  const computedAt = await snapshotTime(db);
+  const { platform } = visibility;
+  const computedAt = await snapshotTime(db, platform);
   if (computedAt === null) return [];
   const rows = (await db.execute(sql`
     select t.id as "traitId", t.key, 'completeness' as kind, null::uuid as "levelId", 0 as sort,
-      count(*) filter (where c.wcvp_tree_species > 0)::int as regions
+      count(*) filter (where c.${denominator(platform)} > 0)::int as regions
     from region_completeness c join traits t on t.id = c.trait_id
-    where ${traitVisible(visibility, sql`t.active`)}
+    where c.platform = ${platform} and ${traitVisible(visibility, sql`t.active`)}
     group by t.id, t.key
     union all
     select t.id, t.key, k.kind, null, 0,
@@ -48,13 +59,15 @@ export async function listMaps(db: DbExecutor, visibility: Visibility): Promise<
         when 'sd' then n.sd is not null when 'cv' then n.cv is not null else true end)::int
     from region_continuous n join traits t on t.id = n.trait_id
     cross join (values ('mean'), ('median'), ('sd'), ('cv'), ('min'), ('max')) as k(kind)
-    where t.value_type = 'quantitative' and ${traitVisible(visibility, sql`t.active`)}
+    where n.platform = ${platform} and t.value_type = 'quantitative'
+      and ${traitVisible(visibility, sql`t.active`)}
     group by t.id, t.key, k.kind
     union all
     select t.id, t.key, 'prevalence', l.id, l.sort_order,
       count(*) filter (where g.n_species_with_trait >= ${MIN_SPECIES})::int
     from region_categorical g join traits t on t.id = g.trait_id join trait_levels l on l.id = g.level_id
-    where t.value_type = 'categorical' and ${traitVisible(visibility, sql`t.active`)}
+    where g.platform = ${platform} and t.value_type = 'categorical'
+      and ${traitVisible(visibility, sql`t.active`)}
       and ${levelVisible(visibility, sql`l.active`)}
     group by t.id, t.key, l.id, l.sort_order`)) as unknown as {
     traitId: string;
@@ -89,15 +102,20 @@ interface RegionRow {
   nSpecies: number;
 }
 
-/** R3's value and species count of every region with a row, for one map. */
-async function regionRows(db: DbExecutor, query: MapValuesQuery): Promise<RegionRow[]> {
+/** R3's value and species count of every region with a row of the platform, for one map. */
+async function regionRows(
+  db: DbExecutor,
+  platform: Platform,
+  query: MapValuesQuery,
+): Promise<RegionRow[]> {
   const name = sql`coalesce((select w.name from wcvp_regions w where w.area_code_l3 = x.area_code_l3), x.area_code_l3)`;
   if (query.kind === 'completeness') {
     return (await db.execute(sql`
       select x.area_code_l3 as code, ${name} as name, x.species_with_data as "nSpecies",
-        case when x.wcvp_tree_species > 0
-             then 100.0 * x.species_with_data / x.wcvp_tree_species end::float8 as value
-      from region_completeness x where x.trait_id = ${query.traitId}::uuid
+        case when x.${denominator(platform)} > 0
+             then 100.0 * x.species_with_data / x.${denominator(platform)} end::float8 as value
+      from region_completeness x
+      where x.platform = ${platform} and x.trait_id = ${query.traitId}::uuid
       order by x.area_code_l3`)) as unknown as RegionRow[];
   }
   if (query.kind === 'prevalence') {
@@ -106,14 +124,15 @@ async function regionRows(db: DbExecutor, query: MapValuesQuery): Promise<Region
         case when x.n_species_with_trait >= ${MIN_SPECIES}
              then 100.0 * x.n_species_with_level / x.n_species_with_trait end::float8 as value
       from region_categorical x
-      where x.trait_id = ${query.traitId}::uuid and x.level_id = ${query.levelId ?? null}::uuid
+      where x.platform = ${platform} and x.trait_id = ${query.traitId}::uuid and x.level_id = ${query.levelId ?? null}::uuid
       order by x.area_code_l3`)) as unknown as RegionRow[];
   }
   const column = sql.raw(query.kind satisfies ContinuousKind);
   return (await db.execute(sql`
     select x.area_code_l3 as code, ${name} as name, x.n_species as "nSpecies",
       case when x.n_species >= ${MIN_SPECIES} then x.${column} end::float8 as value
-    from region_continuous x where x.trait_id = ${query.traitId}::uuid
+    from region_continuous x
+    where x.platform = ${platform} and x.trait_id = ${query.traitId}::uuid
     order by x.area_code_l3`)) as unknown as RegionRow[];
 }
 
@@ -128,10 +147,11 @@ async function traitUnit(db: DbExecutor, traitId: string): Promise<string | null
 /** R6's regions and legend of one map already known to be listed. */
 async function regionsAndLegend(
   db: DbExecutor,
+  platform: Platform,
   query: MapValuesQuery,
   unit: string | null,
 ): Promise<Omit<MapValues, 'computedAt'>> {
-  const rows = await regionRows(db, query);
+  const rows = await regionRows(db, platform, query);
   const values = rows.flatMap((r) => (r.value === null ? [] : [r.value]));
   const scale = colourScale(query.kind, values);
   const style = KIND_STYLE[query.kind];
@@ -167,7 +187,10 @@ export async function mapValues(
   );
   if (!entry) throw new AppError('MAP_NOT_FOUND', 'Map not found');
   const unit = await traitUnit(db, query.traitId);
-  return { ...(await regionsAndLegend(db, query, unit)), computedAt: entry.computedAt };
+  return {
+    ...(await regionsAndLegend(db, visibility.platform, query, unit)),
+    computedAt: entry.computedAt,
+  };
 }
 
 /**
@@ -189,7 +212,7 @@ export async function traitMapValues(
   const maps: TraitMaps['maps'] = [];
   for (const { kind, levelId } of entries) {
     const q = { traitId, kind, levelId: levelId ?? undefined };
-    maps.push({ kind, levelId, ...(await regionsAndLegend(db, q, unit)) });
+    maps.push({ kind, levelId, ...(await regionsAndLegend(db, visibility.platform, q, unit)) });
   }
   return { maps, computedAt: first.computedAt };
 }

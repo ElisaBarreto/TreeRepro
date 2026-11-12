@@ -1,4 +1,4 @@
-import type { PlotRef } from '@treerepro/contracts';
+import type { Platform, PlotRef } from '@treerepro/contracts';
 import type { SQL } from 'drizzle-orm';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
@@ -14,28 +14,50 @@ import type { AccessContext } from './context.ts';
 /**
  * What one viewer may see (RFC-33 R1). `review`: the viewer holds
  * `records.review`, so non-harmonised records and the unresolved-taxon flag
- * are theirs to see (RFC-33 R2, RFC-60 R6); absent means false.
+ * are theirs to see (RFC-33 R2, RFC-60 R6); absent means false. `platform`:
+ * the request's, whose plant-type scope applies (RFC-33 R2).
  * @rfc RFC-33 R1
  */
 export interface Visibility {
   inactive: boolean;
   plotIds: string[] | null;
   review?: boolean;
+  platform: Platform;
 }
 
-/** A viewer who sees everything: CLI commands, migrations, admin-only services. @rfc RFC-33 R1 */
-export const UNRESTRICTED: Visibility = { inactive: true, plotIds: null, review: true };
+/**
+ * A viewer who sees everything, of both platforms: CLI commands, migrations,
+ * and the detail a catalog write echoes once its own check passed (RFC-33 R11).
+ * @rfc RFC-33 R1, R11
+ */
+export const UNRESTRICTED: Visibility = {
+  inactive: true,
+  plotIds: null,
+  review: true,
+  platform: 'plantrepro',
+};
 
 /** @rfc RFC-33 R1 */
 export function visibilityFor(
   permissions: ReadonlySet<string>,
+  platform: Platform,
   plotSettings?: { restricted: boolean; plotIds: string[] },
 ): Visibility {
   return {
     inactive: permissions.has('dataset.read_inactive'),
     plotIds: plotSettings?.restricted ? plotSettings.plotIds : null,
     review: permissions.has('records.review'),
+    platform,
   };
+}
+
+/**
+ * The cache segment of a viewer class: the platform and the active/inactive
+ * dimension, `<platform>:<u|r>` (RFC-33 R2, RFC-62 R5, R7, RFC-69 R5, R6).
+ * @rfc RFC-33 R2
+ */
+export function viewerClass(v: Visibility): string {
+  return `${v.platform}:${v.inactive ? 'u' : 'r'}`;
 }
 
 /**
@@ -109,7 +131,7 @@ export async function visibilityOf(ctx: AccessContext, c: Context<AppEnv>): Prom
       plotIds = scope.plots.map((p) => p.id);
     }
   }
-  const v = visibilityFor(currentPermissions(c), {
+  const v = visibilityFor(currentPermissions(c), c.get('platform'), {
     restricted: plotIds !== null,
     plotIds: plotIds ?? [],
   });
@@ -118,23 +140,38 @@ export async function visibilityOf(ctx: AccessContext, c: Context<AppEnv>): Prom
 }
 
 /**
- * `species` row predicate; `activeCol` and `idCol` allow joined aliases to be used.
+ * The platform's plant-type scope over a `species` row (RFC-33 R2): TreeRepro
+ * shows reviewed trees, PlantRepro every species. `alias` names a joined alias
+ * (`s`, `vl_s`…); without it the `species` table itself.
+ * @rfc RFC-33 R2
+ */
+export function platformScope(platform: Platform, alias?: string): SQL {
+  if (platform === 'plantrepro') return sql`true`;
+  const type = alias ? sql`${sql.identifier(alias)}.plant_type` : sql`${species.plantType}`;
+  const status = alias
+    ? sql`${sql.identifier(alias)}.plant_type_status`
+    : sql`${species.plantTypeStatus}`;
+  return sql`(${type} = 'tree' and ${status} = 'reviewed')`;
+}
+
+/**
+ * `species` row predicate; `alias` names a joined alias (`s`, `vl_s`…),
+ * without it the `species` table itself.
  * @rfc RFC-33 R2
  * @rfc RFC-67 R6
  */
-export function speciesVisible(
-  v: Visibility,
-  activeCol: SQL | typeof species.active = species.active,
-  idCol: SQL | typeof species.id = species.id,
-): SQL {
-  const activePred = v.inactive ? sql`true` : sql`${activeCol}`;
+export function speciesVisible(v: Visibility, alias?: string): SQL {
+  const col = (name: 'active' | 'id') =>
+    alias ? sql`${sql.identifier(alias)}.${sql.identifier(name)}` : sql`${species[name]}`;
+  const scope = platformScope(v.platform, alias);
+  const activePred = v.inactive ? scope : sql`${col('active')} and ${scope}`;
   if (v.plotIds === null) {
     return activePred;
   }
   if (v.plotIds.length === 0) {
     return sql`false`;
   }
-  const plotPred = sql`exists (select 1 from ${plotSpecies} ps where ps.species_id = ${idCol} and ps.plot_id = any(${sql.param(v.plotIds)}::uuid[]))`;
+  const plotPred = sql`exists (select 1 from ${plotSpecies} ps where ps.species_id = ${col('id')} and ps.plot_id = any(${sql.param(v.plotIds)}::uuid[]))`;
   return sql`(${activePred}) and (${plotPred})`;
 }
 
@@ -144,17 +181,19 @@ export function speciesVisible(
  * trait dictionary's `speciesCount` (RFC-62 R5), the trait page's
  * `speciesWithData`, `speciesMissing`, `validatedCount` and `distribution`
  * (RFC-62 R7), and RFC-60 R6's `species.trait_count`. Such a number varies
- * only along the active/inactive dimension: a plot-bound viewer reads the
- * restricted class and still counts species outside their plots. Scoping it
- * to `plotIds` too would give every plot-bound viewer a private cache entry
- * and a full scan each — exactly what those caches exist to avoid. The
- * species *lists* are the other half of the contract and stay plot-scoped
- * (RFC-62 R8, RFC-33 R6), so they keep `speciesVisible`.
+ * only along the platform and the active/inactive dimension (`viewerClass`):
+ * a plot-bound viewer reads the restricted class and still counts species
+ * outside their plots. Scoping it to `plotIds` too would give every
+ * plot-bound viewer a private cache entry and a full scan each — exactly what
+ * those caches exist to avoid. The species *lists* are the other half of the
+ * contract and stay plot-scoped (RFC-62 R8, RFC-33 R6), so they keep
+ * `speciesVisible`. The platform's scope is kept: it is not a viewer's slice
+ * but which species the platform has (RFC-33 R2).
  * @rfc RFC-33 R2
  * @rfc RFC-62 R5, R7
  */
-export function globalSpeciesVisible(v: Visibility, activeCol: SQL, idCol: SQL): SQL {
-  return speciesVisible({ inactive: v.inactive, plotIds: null }, activeCol, idCol);
+export function globalSpeciesVisible(v: Visibility, alias: string): SQL {
+  return speciesVisible({ inactive: v.inactive, plotIds: null, platform: v.platform }, alias);
 }
 
 /** @rfc RFC-33 R2 */

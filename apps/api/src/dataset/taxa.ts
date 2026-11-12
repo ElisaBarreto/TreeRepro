@@ -1,6 +1,8 @@
 import type {
   Genus,
   NameType,
+  PlantType,
+  PlantTypeStatus,
   PlotRef,
   SortOrder,
   Species,
@@ -13,6 +15,7 @@ import type {
   TraitSpeciesSort,
   TreeFlag,
   TreeFlagCount,
+  WcvpRegion,
 } from '@treerepro/contracts';
 import { TREE_FLAG_LABELS, TREE_FLAGS } from '@treerepro/contracts';
 import {
@@ -126,13 +129,15 @@ function keyedSort(filters: SpeciesListFilters): KeyedSort | null {
       ? sql`coalesce(${families.name}, '')`
       : sort === 'treeBasis'
         ? treeBasisKey
-        : sort === 'genus'
-          ? sql`coalesce(${genera.name}, '')`
-          : sort === 'traits'
-            ? sql`${species.traitCount}`
-            : sort === 'records'
-              ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
-              : sql`${species.canonicalName}`;
+        : sort === 'plantType'
+          ? sql`${species.plantType}`
+          : sort === 'genus'
+            ? sql`coalesce(${genera.name}, '')`
+            : sort === 'traits'
+              ? sql`${species.traitCount}`
+              : sort === 'records'
+                ? sql`coalesce((select c.record_count from ${speciesTraitCoverage} c where c.species_id = ${species.id} and c.trait_id = ${filters.traitId}::uuid), 0)`
+                : sql`${species.canonicalName}`;
   return {
     tag: `${sort}:${order}`,
     key,
@@ -229,6 +234,8 @@ interface SpeciesJoinedRow {
   traitCount: number;
   traitRecordCount?: number | null;
   treeFlag: TreeFlag | null;
+  plantType: PlantType;
+  plantTypeStatus: PlantTypeStatus;
 }
 
 /**
@@ -251,6 +258,8 @@ function toListItem(r: SpeciesJoinedRow, review: boolean): SpeciesListItem {
     traitCount: r.traitCount,
     traitRecordCount: r.traitRecordCount ?? null,
     treeFlag: r.treeFlag,
+    plantType: r.plantType,
+    plantTypeStatus: r.plantTypeStatus,
   };
 }
 
@@ -264,6 +273,8 @@ const speciesColumns = {
   familyId: families.id,
   familyName: families.name,
   treeFlag: species.treeFlag,
+  plantType: species.plantType,
+  plantTypeStatus: species.plantTypeStatus,
 };
 
 /**
@@ -292,6 +303,14 @@ export interface SpeciesListFilters {
   traitData?: TraitDataMode;
   /** RFC-60 R6: keep species whose tree basis is any of these; empty or absent keeps all. */
   treeFlags?: TreeFlag[];
+  /** RFC-60 R6: keep species of this plant type, whatever its status. */
+  plantType?: PlantType;
+  /** RFC-60 R6: WCVP level-1, level-2 and level-3 codes; the most specific choice in each branch is a place. */
+  continents?: string[];
+  regions?: string[];
+  areas?: string[];
+  /** With a geographic code: count introduced occurrences too. */
+  introduced?: boolean;
   /** With `traitId`: a harmonised, live record of this level (RFC-62 R8). The caller validates the level. */
   traitLevelId?: string;
   /** `records` needs `traitId` (RFC-60 R6, RFC-62 R8). */
@@ -325,12 +344,15 @@ export interface SpeciesListFilters {
  * visible record whose `harmonisation` is `unknown_level`; like `unresolved`,
  * it applies only for a `records.review` holder and is ignored otherwise.
  * `outliers`, open to every viewer, keeps species with a visible record on a
- * visible trait whose `outlier_flag` is set (RFC-63 R1).
+ * visible trait whose `outlier_flag` is set (RFC-63 R1). `continents`,
+ * `regions` and `areas` keep species occurring in any chosen place, natively
+ * unless `introduced` (RFC-60 R6, RFC-78 R4).
  * @rfc RFC-60 R3, R4, R6
  * @rfc RFC-33 R2, R3, R6
  * @rfc RFC-62 R8
  * @rfc RFC-63 R14
  * @rfc RFC-69 R4
+ * @rfc RFC-78 R4, R6
  */
 export async function speciesListConditions(
   db: DbExecutor,
@@ -388,6 +410,29 @@ export async function speciesListConditions(
   if (filters.familyId) conditions.push(eq(genera.familyId, filters.familyId));
   if (filters.genusId) conditions.push(eq(species.genusId, filters.genusId));
   if (filters.treeFlags?.length) conditions.push(inArray(species.treeFlag, filters.treeFlags));
+  if (filters.plantType) conditions.push(eq(species.plantType, filters.plantType));
+  // RFC-60 R6: where the species' WCVP match (RFC-78 R6) occurs, in any
+  // chosen place; a region narrowed by one of its chosen botanical countries,
+  // or a continent narrowed by one of its chosen regions or botanical
+  // countries, is not a place itself. An unmatched species is kept by none.
+  const continents = filters.continents ?? [];
+  const regions = filters.regions ?? [];
+  const areas = filters.areas ?? [];
+  if (continents.length + regions.length + areas.length > 0) {
+    const list = (codes: string[]) => sql`${sql.param(codes)}::text[]`;
+    const places = sql`gr.area_code_l3 = any(${list(areas)})
+      or (gr.region_code_l2 = any(${list(regions)}) and not exists (select 1 from wcvp_regions nx
+        where nx.region_code_l2 = gr.region_code_l2 and nx.area_code_l3 = any(${list(areas)})))
+      or (gr.continent_code_l1 = any(${list(continents)}) and not exists (select 1 from wcvp_regions nx
+        where nx.continent_code_l1 = gr.continent_code_l1
+          and (nx.area_code_l3 = any(${list(areas)}) or nx.region_code_l2 = any(${list(regions)}))))`;
+    conditions.push(
+      sql`${species.id} in (select gm.species_id from wcvp_species_match gm
+        join wcvp_distribution gd using (plant_name_id)
+        join wcvp_regions gr using (area_code_l3)
+        where (${places})${filters.introduced ? sql`` : sql` and not gd.introduced`})`,
+    );
+  }
   if (filters.unresolved && visibility.review) {
     conditions.push(
       sql`(${species.nameSource} <> 'wcvp' or ${species.genusId} is null or ${genera.familyId} is null)`,
@@ -700,6 +745,18 @@ export async function treeFlagCounts(
 }
 
 /**
+ * RFC-33 R3: a family or genus is listed when it holds a visible species
+ * (`visible`). A viewer with `dataset.read_inactive` and no plot restriction
+ * also sees one holding no species at all (`any` false), so a catalog editor
+ * can fill one just created; on PlantRepro that viewer sees every one.
+ */
+function taxonScope(visibility: Visibility, visible: SQL, any: SQL): SQL | null {
+  if (!visibility.inactive || visibility.plotIds !== null) return visible;
+  if (visibility.platform === 'plantrepro') return null;
+  return sql`(not ${any} or ${visible})`;
+}
+
+/**
  * @rfc RFC-60 R8
  * @rfc RFC-33 R3
  */
@@ -710,13 +767,10 @@ export async function listFamilies(
 ): Promise<{ data: TaxonRef[]; nextCursor: string | null }> {
   const conditions: SQL[] = [];
   if (input.cursor) conditions.push(afterNameCursor(input.cursor, families.name, families.id));
-  // For an unrestricted viewer `speciesVisible` is `true`, so this `exists` would become
-  // "has any species" — a family without species would vanish for admins too.
-  if (!visibility.inactive || visibility.plotIds !== null) {
-    conditions.push(
-      sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
-    );
-  }
+  const visible = sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id} and ${speciesVisible(visibility, 's')})`;
+  const any = sql`exists (select 1 from ${species} s join ${genera} g on g.id = s.genus_id where g.family_id = ${families.id})`;
+  const scope = taxonScope(visibility, visible, any);
+  if (scope) conditions.push(scope);
   const rows = await db
     .select({ id: families.id, name: families.name })
     .from(families)
@@ -762,12 +816,12 @@ export async function listGenera(
     cursor: input.cursor,
   });
   if (keyset.where) conditions.push(keyset.where);
-  // Same guard as listFamilies: only push for a restricted viewer.
-  if (!visibility.inactive || visibility.plotIds !== null) {
-    conditions.push(
-      sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`,
-    );
-  }
+  const scope = taxonScope(
+    visibility,
+    sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id} and ${speciesVisible(visibility, 's')})`,
+    sql`exists (select 1 from ${species} s where s.genus_id = ${genera.id})`,
+  );
+  if (scope) conditions.push(scope);
   const rows = await db
     .select({
       id: genera.id,
@@ -818,4 +872,18 @@ export async function getGenus(db: DbExecutor, id: string): Promise<Genus | null
     name: row.name,
     family: row.familyId && row.familyName ? { id: row.familyId, name: row.familyName } : null,
   };
+}
+
+/**
+ * Every WCVP level-3 region with its region and continent, ordered by
+ * continent code, region code (numerically, a null last), then name.
+ * @rfc RFC-60 R14
+ */
+export async function listWcvpRegions(db: DbExecutor): Promise<WcvpRegion[]> {
+  return (await db.execute(sql`
+    select area_code_l3 as code, name, region_code_l2 as "regionCode", region,
+      continent_code_l1 as "continentCode", continent
+    from wcvp_regions
+    order by length(continent_code_l1) nulls last, continent_code_l1,
+      length(region_code_l2) nulls last, region_code_l2, name`)) as unknown as WcvpRegion[];
 }

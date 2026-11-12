@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { User } from '@treerepro/contracts';
+import { PERMISSION_KEYS, PLATFORMS, type User } from '@treerepro/contracts';
 import { useState } from 'react';
 import {
   adminKeys,
@@ -24,6 +24,7 @@ import {
 } from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
 import { isoDate } from '../../lib/format.ts';
+import { currentPlatform } from '../../lib/platform.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
 type Pending = 'suspend' | 'reactivate' | null;
@@ -38,7 +39,7 @@ type Pending = 'suspend' | 'reactivate' | null;
  * @rfc RFC-13 R2, R3, R4
  * @rfc RFC-50 R4, R6, R7, R8
  * @rfc RFC-71 R5
- * @rfc RFC-31 R13
+ * @rfc RFC-31 R13, R16
  */
 export function UserPage({ id }: { id: string }) {
   const me = useMe();
@@ -78,6 +79,11 @@ export function UserPage({ id }: { id: string }) {
   const canInvite = hasPermission(me, 'users.invite');
   const canUpdate = hasPermission(me, 'users.update');
   const canReadContributions = hasPermission(me, 'contributions.read');
+  // RFC-50 R14: the other platform's roles are editable only by an admin,
+  // who holds both; "holds the whole catalog" stands for "holds admin", as in
+  // the invite dialog's `assignableRoles`.
+  const actorIsAdmin = PERMISSION_KEYS.every((key) => me.permissions.includes(key));
+  const here = currentPlatform();
 
   return (
     <>
@@ -121,7 +127,14 @@ export function UserPage({ id }: { id: string }) {
       {resend.isError ? <Alert tone="error">{userErrorMessage(resend.error)}</Alert> : null}
       {canUpdate ? <UserNameSection user={u} /> : null}
       {/* Nobody changes their own roles (RFC-31 R13): the API refuses it, so the page does not offer it. */}
-      <UserRolesSection user={u} canEdit={canUpdate && u.id !== me.user.id} />
+      {PLATFORMS.map((platform) => (
+        <UserRolesSection
+          key={platform}
+          user={u}
+          platform={platform}
+          canEdit={canUpdate && u.id !== me.user.id && (platform === here || actorIsAdmin)}
+        />
+      ))}
       <UserPlotsSection user={u} canEdit={canUpdate} />
       {hasPermission(me, 'sessions.read') ? (
         <UserSessionsSection userId={u.id} canRevoke={hasPermission(me, 'sessions.revoke')} />

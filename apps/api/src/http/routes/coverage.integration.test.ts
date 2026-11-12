@@ -49,7 +49,7 @@ describe('RFC-69 R5, R6 GET /api/coverage', () => {
     const f = await fixture(user.id);
     // The viewer has no `dataset.read_inactive`, so their class is `r`; the
     // family is this test's own, so the entry is this test's own too.
-    const key = `coverage:r:${f.family.id}:-:-`;
+    const key = `coverage:treerepro:r:${f.family.id}:-:-`;
     try {
       const res = await call(t.app, 'GET', `/api/coverage?familyId=${f.family.id}`, { cookie });
       expect(res.status).toBe(200);
@@ -131,7 +131,7 @@ describe('RFC-69 R7 GET /api/coverage/top', () => {
     // shares with `GET /api/coverage` (RFC-69 R6, R7) is the `r` one. It is
     // the run's one no-filter key, so only its presence is asserted, never its
     // contents, and it is dropped afterwards rather than left to a sibling.
-    const key = 'coverage:r:-:-:-';
+    const key = 'coverage:treerepro:r:-:-:-';
     try {
       const res = await call(t.app, 'GET', '/api/coverage/top?mode=missing&limit=3', { cookie });
       expect(res.status).toBe(200);

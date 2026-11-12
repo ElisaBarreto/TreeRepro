@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { captureLogger } from '../../test/helpers/logger.ts';
@@ -6,11 +7,18 @@ import { createErrorHandler } from './errors.ts';
 import { originCheck } from './origin-check.ts';
 
 const ORIGIN = 'https://treerepro.example.org';
+const PLANT_ORIGIN = 'https://plantrepro.example.org';
+const originOf = (platform: Platform) => (platform === 'plantrepro' ? PLANT_ORIGIN : ORIGIN);
 
-function app() {
+function app(platform?: Platform) {
   const a = new Hono<AppEnv>();
   a.onError(createErrorHandler(captureLogger().logger));
-  a.use(originCheck(ORIGIN));
+  if (platform)
+    a.use(async (c, next) => {
+      c.set('platform', platform);
+      await next();
+    });
+  a.use(originCheck(originOf));
   for (const method of ['post', 'put', 'patch', 'delete'] as const)
     a[method]('/m', (c) => c.text('ok'));
   a.get('/g', (c) => c.text('ok'));
@@ -61,5 +69,23 @@ describe('RFC-02 R3 origin check', () => {
       headers: { authorization: 'Bearer tr_live_x', cookie: 'a=b' },
     });
     expect(withCookie.status).toBe(403);
+  });
+
+  it("RFC-14 R4 expects the origin of the request's platform", async () => {
+    const plant = await app('plantrepro').request('/m', {
+      method: 'POST',
+      headers: { origin: PLANT_ORIGIN },
+    });
+    expect(plant.status).toBe(200);
+    const crossed = await app('plantrepro').request('/m', {
+      method: 'POST',
+      headers: { origin: ORIGIN },
+    });
+    expect(crossed.status).toBe(403);
+    const tree = await app('treerepro').request('/m', {
+      method: 'POST',
+      headers: { origin: PLANT_ORIGIN },
+    });
+    expect(tree.status).toBe(403);
   });
 });

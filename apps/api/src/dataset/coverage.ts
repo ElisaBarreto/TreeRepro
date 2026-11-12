@@ -7,7 +7,12 @@ import type {
   TraitValueType,
 } from '@treerepro/contracts';
 import { eq, type SQL, sql } from 'drizzle-orm';
-import { globalSpeciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
+import {
+  globalSpeciesVisible,
+  traitVisible,
+  type Visibility,
+  viewerClass,
+} from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories } from '../db/schema/dictionary.ts';
 import { plots } from '../db/schema/plots.ts';
@@ -94,7 +99,7 @@ export async function computeCoverageTotals(
   db: DbExecutor,
   visibility: Visibility,
 ): Promise<CoverageTotals> {
-  const speciesSeen = globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`);
+  const speciesSeen = globalSpeciesVisible(visibility, 's');
   const traitSeen = traitVisible(visibility, sql`t.active`);
   const [row] = (await db.execute(sql`
     select
@@ -124,14 +129,14 @@ export async function computeCoverageTotals(
 
 /**
  * `computeCoverageTotals` behind the ten-minute cache the dashboard reads
- * (RFC-72 R1), keyed by viewer class alone — `coverage:totals:<u|r>`.
+ * (RFC-72 R1), keyed by viewer class alone — `coverage:totals:<platform>:<u|r>`.
  * @rfc RFC-69 R5
  */
 export async function coverageTotals(
   ctx: { db: DbExecutor; redis: Redis },
   visibility: Visibility,
 ): Promise<CoverageTotals> {
-  const key = `coverage:totals:${visibility.inactive ? 'u' : 'r'}`;
+  const key = `coverage:totals:${viewerClass(visibility)}`;
   const { value } = await cachedJson(ctx.redis, key, 600, () =>
     computeCoverageTotals(ctx.db, visibility),
   );
@@ -184,7 +189,7 @@ async function coverageSelection(
   visibility: Visibility,
   filters: CoverageQuery,
 ): Promise<CoverageSelection> {
-  const speciesParts = [globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)];
+  const speciesParts = [globalSpeciesVisible(visibility, 's')];
   if (filters.familyId) {
     const [family] = await db
       .select({ id: families.id })
@@ -374,7 +379,7 @@ function keySegment(value: string | undefined): string {
 /**
  * `GET /api/coverage`: {@link computeCoverageMetrics} behind the ten-minute
  * entry of RFC-69 R6, keyed by the viewer class and the explicit filters —
- * `coverage:<u|r>:<familyId>:<categoryKey>:<plotId>`, an absent filter being
+ * `coverage:<platform>:<u|r>:<familyId>:<categoryKey>:<plotId>`, an absent filter being
  * `-`. The key is honest per viewer because the base selection never carries
  * the plot dimension (see {@link coverageSelection}).
  *
@@ -403,7 +408,7 @@ export async function coverageMetrics(
   const selection = await coverageSelection(ctx.db, visibility, filters);
   const key = [
     'coverage',
-    visibility.inactive ? 'u' : 'r',
+    viewerClass(visibility),
     keySegment(filters.familyId),
     keySegment(filters.categoryKey),
     keySegment(filters.plotId),
@@ -438,7 +443,7 @@ export function rankCoverageTraits(
  * never {@link coverageMetrics}'s filters — ranked and cut.
  *
  * That grid is {@link coverageMetrics} with no filters, so this reads R6's
- * no-filter entry (`coverage:<u|r>:-:-:-`) rather than computing a grid of its
+ * no-filter entry (`coverage:<platform>:<u|r>:-:-:-`) rather than computing a grid of its
  * own: the scope of this answer *is* the no-filter scope, and the coverage
  * page asks for both within one load. A ranking computed beside a sibling
  * request that is a cache hit would put a scan of the validated pairs

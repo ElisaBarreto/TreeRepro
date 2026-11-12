@@ -14,6 +14,12 @@ import { createFakeMailer, type FakeMailer } from './mail.ts';
 import { fakeTaxonomyClient } from './taxonomy.ts';
 
 export const TEST_ORIGIN = 'http://localhost';
+/** PlantRepro's host in tests, as in development (RFC-14 R7). */
+export const TEST_PLANT_DOMAIN = 'plantrepro.localhost';
+/** PlantRepro's origin in tests (RFC-14 R4). */
+export const TEST_PLANT_ORIGIN = 'http://plantrepro.localhost';
+/** The platform hosts of the test app, for bare apps that mount `resolvePlatform`. */
+export const TEST_DOMAINS = { tree: 'localhost', plant: TEST_PLANT_DOMAIN };
 export const TEST_SESSION_SECRET = Buffer.alloc(32, 3);
 
 export interface TestApp {
@@ -59,7 +65,7 @@ export function useTestApp(): TestApp {
     // bleeds into another app built over the same pool.
     const taxonomy = fakeTaxonomyClient();
     const deps: AppDeps = {
-      config: { appOrigin: TEST_ORIGIN },
+      config: { appOrigin: TEST_ORIGIN, plantDomain: TEST_PLANT_DOMAIN },
       logger,
       health: { database: async () => true, redis: async () => true },
       db,
@@ -176,7 +182,7 @@ export function ctxOf(t: TestApp): AuthContext {
     logger: t.deps.logger,
     doi: t.doi,
     taxonomy: t.taxonomy,
-    appOrigin: TEST_ORIGIN,
+    originOf: (platform) => (platform === 'plantrepro' ? TEST_PLANT_ORIGIN : TEST_ORIGIN),
     now: () => t.clock.now,
   };
 }

@@ -1,4 +1,12 @@
-import type { FieldMeans, NameSource, NameType, TraitValueType } from '@treerepro/contracts';
+import {
+  type FieldMeans,
+  type NameSource,
+  type NameType,
+  PLANT_TYPE_LABELS,
+  type PlantType,
+  type PlantTypeStatus,
+  type TraitValueType,
+} from '@treerepro/contracts';
 
 /** How each species name source reads (RFC-60 R3); the wire code stays the value. @rfc RFC-13 R9 */
 export const NAME_SOURCE_LABELS: Record<NameSource, string> = {
@@ -122,4 +130,14 @@ export function articleKind(key: string): ArticleKind | null {
   if (/^[\d,;\s]+$/.test(key)) return 'numeric index';
   if (key.length > 80) return 'full citation';
   return null;
+}
+
+/**
+ * A species' plant type as shown: its label, `(proposed)` until reviewed.
+ * @rfc RFC-60 R6
+ */
+export function plantTypeText(plantType: PlantType, status: PlantTypeStatus): string {
+  return status === 'proposed'
+    ? `${PLANT_TYPE_LABELS[plantType]} (proposed)`
+    : PLANT_TYPE_LABELS[plantType];
 }

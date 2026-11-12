@@ -1,5 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
+  PLANT_TYPE_LABELS,
+  PLANT_TYPES,
+  type PlantType,
   type SortOrder,
   type SpeciesSort,
   type SpeciesStatus,
@@ -7,9 +10,15 @@ import {
   TREE_FLAGS,
   type TraitDataMode,
   type TreeFlag,
+  type WcvpRegion,
 } from '@treerepro/contracts';
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import { datasetKeys, fetchDictionary, fetchTreeFlagCounts } from '../../api/dataset.ts';
+import { Fragment, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import {
+  datasetKeys,
+  fetchDictionary,
+  fetchTreeFlagCounts,
+  fetchWcvpRegions,
+} from '../../api/dataset.ts';
 import { listPlots, plotKeys } from '../../api/plots.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
@@ -33,6 +42,14 @@ export interface SpeciesSearchValue {
   traitData?: TraitDataMode;
   /** RFC-60 R6: the checked tree bases; absent when none is checked. */
   treeFlags?: TreeFlag[];
+  /** RFC-60 R6: one plant type; absent shows every type. */
+  plantType?: PlantType;
+  /** RFC-60 R6: the checked WCVP level-1, level-2 and level-3 codes; absent when none is. */
+  continents?: string[];
+  regions?: string[];
+  areas?: string[];
+  /** Count introduced occurrences too. */
+  introduced?: boolean;
   sort?: SpeciesSort;
   /** The table headers' direction (RFC-60 R6, RFC-13 R13). */
   order?: SortOrder;
@@ -57,6 +74,9 @@ export interface SpeciesSearchValue {
  * both of its companions. The radio shows "Has data" while nothing is
  * chosen because that is the API's default mode; the value only carries
  * `traitData` once the contributor picks a side.
+ *
+ * **Geography** ({@link GeographyFilters}) — continent, region and
+ * botanical country, with introduced occurrences on request.
  *
  * **Scope** — the plot select, the outside-plots toggle and, with
  * `dataset.read_inactive`, the Status select (RFC-33 R6, R7, RFC-67 R8),
@@ -86,6 +106,7 @@ export function SpeciesSearchForm({
   const me = useMe();
   const ids = {
     status: useId(),
+    plantType: useId(),
     plot: useId(),
     category: useId(),
     trait: useId(),
@@ -239,6 +260,8 @@ export function SpeciesSearchForm({
         </fieldset>
       </FilterGroup>
 
+      <GeographyFilters value={value} onChange={(next) => onChange({ ...value, ...next })} />
+
       <FilterGroup title="Scope" columns="md:grid-cols-[1fr_1fr_auto]">
         {showScopeGroup ? (
           <Field id={ids.plot} label="Plot">
@@ -313,6 +336,25 @@ export function SpeciesSearchForm({
             Has unknown levels
           </label>
         ) : null}
+        <Field id={ids.plantType} label="Plant type">
+          <Select
+            id={ids.plantType}
+            value={value.plantType ?? ''}
+            onChange={(event) =>
+              onChange({
+                ...value,
+                plantType: (event.target.value || undefined) as PlantType | undefined,
+              })
+            }
+          >
+            <option value="">All</option>
+            {PLANT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {PLANT_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <TreeBasisFilter
           filters={treeFlagFilters}
           value={value.treeFlags ?? []}
@@ -353,14 +395,143 @@ export function SpeciesSearchForm({
   );
 }
 
+type Geography = Pick<SpeciesSearchValue, 'continents' | 'regions' | 'areas' | 'introduced'>;
+
+/** WCVP writes continents in capitals: `SOUTHERN AMERICA` reads `Southern America`. */
+function titleCase(name: string): string {
+  return name.toLowerCase().replace(/(^|[\s-])\p{L}/gu, (m) => m.toUpperCase());
+}
+
+/** The distinct `[code, name, continent]` of `rows`, in their order, dropping null codes. */
+function distinct(rows: WcvpRegion[], code: 'continentCode' | 'regionCode') {
+  const name = code === 'continentCode' ? 'continent' : 'region';
+  const seen = new Map<string, [string, string | null]>();
+  for (const r of rows) {
+    const c = r[code];
+    if (c !== null && !seen.has(c)) seen.set(c, [r[name] ?? c, r.continent]);
+  }
+  return [...seen].map(([c, [n, continent]]) => ({ code: c, name: n, continent }));
+}
+
+/** `undefined` for an empty list, so a cleared level leaves the URL. */
+const orNone = (codes: string[]) => (codes.length > 0 ? codes : undefined);
+
 /**
- * The tree basis filter (RFC-60 R6): a closed control dressed like the
- * Family select that opens onto one checkbox per flag, in the dictionary's
- * order, each with the number of species it holds among those the search's
- * other filters keep (RFC-60 R11). None
- * checked — the default — keeps every species; checked ones keep the species
- * whose flag is any of them. Up and down arrows move between the boxes,
- * wrapping; a click outside the list or Escape closes it, as a select does.
+ * The geography filters (RFC-60 R6): Continent, Region and Botanical country
+ * checkbox lists over the WCVP regions (R14). Region lists the regions of
+ * the checked continents, else every one; Botanical country the botanical
+ * countries of those continents, narrowed in each continent to its checked
+ * regions when it has any; each is grouped under its continent. After any change a narrower choice no longer
+ * listed is dropped. **Include introduced occurrences** is off by default,
+ * disabled until a place is checked, and dropped with the last one.
+ * @rfc RFC-60 R6, R14
+ */
+function GeographyFilters({
+  value,
+  onChange,
+}: {
+  value: Geography;
+  onChange: (next: Geography) => void;
+}) {
+  const regions = useQuery({
+    queryKey: datasetKeys.regions,
+    queryFn: fetchWcvpRegions,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const rows = regions.data ?? [];
+  const listed = (g: Geography) => {
+    const c = g.continents ?? [];
+    const r = g.regions ?? [];
+    const inContinents =
+      c.length > 0 ? rows.filter((x) => c.includes(x.continentCode ?? '')) : rows;
+    // A checked region narrows its own continent only (RFC-60 R6).
+    const narrowed = new Set(
+      rows.filter((x) => r.includes(x.regionCode ?? '')).map((x) => x.continentCode),
+    );
+    const inRegions = inContinents.filter(
+      (x) => !narrowed.has(x.continentCode) || r.includes(x.regionCode ?? ''),
+    );
+    return { inContinents, inRegions };
+  };
+  const { inContinents, inRegions } = listed(value);
+  const set = (next: Geography) => {
+    // Drop what the narrower lists no longer show, level by level — once the
+    // regions are known, so a change made before they load keeps every choice.
+    if (!regions.data) {
+      const placed = Boolean(next.continents ?? next.regions ?? next.areas);
+      onChange({ ...next, introduced: placed && next.introduced ? true : undefined });
+      return;
+    }
+    const regionCodes = new Set(
+      listed({ continents: next.continents }).inContinents.map((x) => x.regionCode),
+    );
+    const kept = {
+      ...next,
+      regions: orNone((next.regions ?? []).filter((r) => regionCodes.has(r))),
+    };
+    const areaCodes = new Set(listed(kept).inRegions.map((x) => x.code));
+    kept.areas = orNone((kept.areas ?? []).filter((a) => areaCodes.has(a)));
+    const placed = Boolean(kept.continents ?? kept.regions ?? kept.areas);
+    onChange({ ...kept, introduced: placed && kept.introduced ? true : undefined });
+  };
+  const placed = Boolean(value.continents ?? value.regions ?? value.areas);
+  return (
+    <FilterGroup title="Geography" columns="md:grid-cols-[1fr_1fr_1fr_auto]">
+      <CheckboxList
+        legend="Continent"
+        none="All continents"
+        some={(n) => `${n} ${n === 1 ? 'continent' : 'continents'}`}
+        error={regions.isError ? 'Could not load the WCVP regions.' : undefined}
+        options={distinct(rows, 'continentCode').map((x) => ({
+          value: x.code,
+          label: titleCase(x.name),
+        }))}
+        value={value.continents ?? []}
+        onChange={(continents) => set({ ...value, continents: orNone(continents) })}
+      />
+      <CheckboxList
+        legend="Region"
+        none="All regions"
+        some={(n) => `${n} ${n === 1 ? 'region' : 'regions'}`}
+        options={distinct(inContinents, 'regionCode').map((x) => ({
+          value: x.code,
+          label: x.name,
+          group: x.continent ? titleCase(x.continent) : undefined,
+        }))}
+        value={value.regions ?? []}
+        onChange={(next) => set({ ...value, regions: orNone(next) })}
+      />
+      <CheckboxList
+        legend="Botanical country"
+        none="All botanical countries"
+        some={(n) => `${n} botanical ${n === 1 ? 'country' : 'countries'}`}
+        options={inRegions.map((x) => ({
+          value: x.code,
+          label: x.name,
+          group: x.continent ? titleCase(x.continent) : undefined,
+        }))}
+        value={value.areas ?? []}
+        onChange={(areas) => set({ ...value, areas: orNone(areas) })}
+      />
+      <label className={FILTER_CHECK}>
+        <input
+          type="checkbox"
+          className="size-5 accent-canopy-700"
+          disabled={!placed}
+          checked={value.introduced === true}
+          onChange={(event) => set({ ...value, introduced: event.target.checked })}
+        />
+        Include introduced occurrences
+      </label>
+    </FilterGroup>
+  );
+}
+
+/**
+ * The tree basis filter (RFC-60 R6): one checkbox per flag, in the
+ * dictionary's order, each with the number of species it holds among those
+ * the search's other filters keep (RFC-60 R11). None checked — the default —
+ * keeps every species; checked ones keep the species whose flag is any of them.
  * @rfc RFC-60 R6, R11
  */
 function TreeBasisFilter({
@@ -379,6 +550,54 @@ function TreeBasisFilter({
     placeholderData: keepPreviousData,
   });
   const countOf = new Map(counts.data?.map((c) => [c.treeFlag, c.speciesCount]));
+  return (
+    <CheckboxList
+      legend="Tree basis"
+      none="All tree bases"
+      some={(n) => `${n} tree ${n === 1 ? 'basis' : 'bases'}`}
+      align="right-0"
+      options={TREE_FLAGS.map((flag) => ({
+        value: flag,
+        label: countOf.has(flag)
+          ? `${TREE_FLAG_LABELS[flag]} (n = ${formatNumber(countOf.get(flag) ?? 0)})`
+          : TREE_FLAG_LABELS[flag],
+      }))}
+      value={value}
+      onChange={(next) => onChange(next as TreeFlag[])}
+    />
+  );
+}
+
+/**
+ * A closed control dressed like a select that opens onto one checkbox per
+ * option, under a heading per `group` when given; the checked values are
+ * reported in the options' order. Up and down arrows move between the boxes,
+ * wrapping; a click outside the list or Escape closes it, as a select does.
+ * A long list scrolls.
+ * @rfc RFC-60 R6
+ */
+function CheckboxList({
+  legend,
+  none,
+  some,
+  options,
+  value,
+  onChange,
+  error,
+  align = 'left-0',
+}: {
+  legend: string;
+  /** The closed control's text while nothing is checked. */
+  none: string;
+  /** Its text for `n` checked boxes. */
+  some: (n: number) => string;
+  options: { value: string; label: string; group?: string }[];
+  value: string[];
+  onChange: (next: string[]) => void;
+  error?: string;
+  /** The edge the open list hangs from. */
+  align?: 'left-0' | 'right-0';
+}) {
   const details = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -404,8 +623,8 @@ function TreeBasisFilter({
     boxes[(at + step + boxes.length) % boxes.length]?.focus();
   }
   return (
-    <fieldset className="flex flex-col gap-2" onKeyDown={moveFocus}>
-      <legend className={FILTER_LEGEND}>Tree basis</legend>
+    <fieldset className="flex min-w-0 flex-col gap-2" onKeyDown={moveFocus}>
+      <legend className={FILTER_LEGEND}>{legend}</legend>
       <details
         ref={details}
         className="relative"
@@ -413,34 +632,38 @@ function TreeBasisFilter({
         onToggle={(event) => setOpen(event.currentTarget.open)}
       >
         <summary className="flex h-11 cursor-pointer list-none items-center rounded-[10px] border border-canopy-700/25 bg-white px-3.5 text-body text-canopy-950">
-          {value.length === 0
-            ? 'All tree bases'
-            : `${value.length} tree ${value.length === 1 ? 'basis' : 'bases'}`}
+          {value.length === 0 ? none : some(value.length)}
         </summary>
-        <div className="absolute right-0 z-10 mt-1 flex w-max max-w-[calc(100vw-2rem)] flex-col rounded-[10px] border border-canopy-700/15 bg-white px-3.5 py-1 shadow-sm">
-          {TREE_FLAGS.map((flag) => (
-            <label
-              key={flag}
-              className="flex min-h-11 items-center gap-2.5 py-1 text-body text-canopy-900"
-            >
-              <input
-                type="checkbox"
-                className="size-5 shrink-0 accent-canopy-700"
-                checked={value.includes(flag)}
-                onChange={(event) =>
-                  onChange(
-                    event.target.checked
-                      ? TREE_FLAGS.filter((f) => f === flag || value.includes(f))
-                      : value.filter((f) => f !== flag),
-                  )
-                }
-              />
-              {TREE_FLAG_LABELS[flag]}
-              {countOf.has(flag) ? ` (n = ${formatNumber(countOf.get(flag) ?? 0)})` : null}
-            </label>
+        <div
+          className={`absolute ${align} z-10 mt-1 flex max-h-80 w-max max-w-[calc(100vw-2rem)] flex-col overflow-y-auto rounded-[10px] border border-canopy-700/15 bg-white px-3.5 py-1 shadow-sm`}
+        >
+          {options.map((option, i) => (
+            <Fragment key={option.value}>
+              {option.group && option.group !== options[i - 1]?.group ? (
+                <p className={`${FILTER_LEGEND} px-0 pt-2`}>{option.group}</p>
+              ) : null}
+              <label className="flex min-h-11 items-center gap-2.5 py-1 text-body text-canopy-900">
+                <input
+                  type="checkbox"
+                  className="size-5 shrink-0 accent-canopy-700"
+                  checked={value.includes(option.value)}
+                  onChange={(event) =>
+                    onChange(
+                      options
+                        .map((o) => o.value)
+                        .filter((v) =>
+                          v === option.value ? event.target.checked : value.includes(v),
+                        ),
+                    )
+                  }
+                />
+                {option.label}
+              </label>
+            </Fragment>
           ))}
         </div>
       </details>
+      {error ? <p className="text-meta text-red-700">{error}</p> : null}
     </fieldset>
   );
 }

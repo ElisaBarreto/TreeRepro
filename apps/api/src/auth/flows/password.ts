@@ -1,3 +1,4 @@
+import type { Platform } from '@treerepro/contracts';
 import { recordAudit } from '../../audit/audit.ts';
 import type { UserRow } from '../../db/schema/users.ts';
 import { AppError } from '../../http/errors.ts';
@@ -14,10 +15,14 @@ import type { SessionRecord } from '../sessions.ts';
 import { consumeToken, consumeUserTokens, issueToken } from '../tokens.ts';
 import { activateUser, findUserByEmail, findUserById, updatePasswordHash } from '../users.ts';
 
-/** Always resolves; the caller answers the same body either way. @rfc RFC-21 R5 */
+/**
+ * Always resolves; the caller answers the same body either way.
+ * @rfc RFC-21 R5
+ * @rfc RFC-14 R4
+ */
 export async function forgotPassword(
   ctx: AuthContext,
-  input: { email: string } & RequestMeta,
+  input: { email: string; platform: Platform } & RequestMeta,
 ): Promise<void> {
   const user = await findUserByEmail(ctx.db, input.email);
   if (user?.status !== 'active' && user?.status !== 'invited') return;
@@ -34,11 +39,18 @@ export async function forgotPassword(
     });
     return issued;
   });
-  const link = `${ctx.appOrigin}/reset-password/${raw}`;
+  const origin = ctx.originOf(input.platform);
+  const link = `${origin}/reset-password/${raw}`;
   try {
     await ctx.mailer.send({
       to: user.email,
-      ...passwordResetEmail({ name: user.name, link, expiresAt, appOrigin: ctx.appOrigin }),
+      ...passwordResetEmail({
+        name: user.name,
+        link,
+        expiresAt,
+        appOrigin: origin,
+        platform: input.platform,
+      }),
     });
   } catch (err) {
     ctx.logger.error(

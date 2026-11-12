@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { ctxOf, useTestApp } from '../../test/helpers/app.ts';
 import { lastAudit } from '../../test/helpers/audit.ts';
-import { adminRoleId, systemRoleId } from '../../test/helpers/roles.ts';
+import { adminRoleId, grantRoles, systemRoleId } from '../../test/helpers/roles.ts';
 import { loginAs } from '../../test/helpers/session.ts';
 import { createUser, DEFAULT_PASSWORD } from '../../test/helpers/users.ts';
 import { revokeAllUserSessions } from '../admin/sessions.ts';
@@ -238,7 +238,7 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
     // back already refuses the key.
     await t.db.delete(userRoles).where(eq(userRoles.userId, user.id));
     expect(await findUsableKey(deps, ok.secret)).toBeNull();
-    await t.db.insert(userRoles).values({ userId: user.id, roleId: await adminRoleId(t.db) });
+    await grantRoles(t.db, user.id, [await adminRoleId(t.db)]);
 
     await t.db.update(users).set({ status: 'suspended' }).where(eq(users.id, user.id));
     expect(await findUsableKey(deps, ok.secret)).toBeNull();
@@ -247,8 +247,14 @@ describe('RFC-82 R1-R3, R7, R8 API key service', () => {
 
     // A demotion through the service revokes the key, so a new grant revives nothing.
     const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
-    await updateUser(ctxOf(t), { actorUserId: actor.id, id: user.id, roleIds: [], ...META });
-    await t.db.insert(userRoles).values({ userId: user.id, roleId: await adminRoleId(t.db) });
+    await updateUser(ctxOf(t), {
+      platform: 'treerepro',
+      actorUserId: actor.id,
+      id: user.id,
+      roleIds: [],
+      ...META,
+    });
+    await grantRoles(t.db, user.id, [await adminRoleId(t.db)]);
     expect(await findUsableKey(deps, ok.secret)).toBeNull();
   });
 
@@ -432,7 +438,13 @@ describe('RFC-82 R3 account-recovery actions revoke every active key', () => {
     const { user, keys } = await adminWithKeys();
     const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
     const manager = await systemRoleId(t.db, 'manager');
-    await updateUser(ctxOf(t), { actorUserId: actor.id, id: user.id, roleIds: [manager], ...META });
+    await updateUser(ctxOf(t), {
+      platform: 'treerepro',
+      actorUserId: actor.id,
+      id: user.id,
+      roleIds: [manager],
+      ...META,
+    });
     await expectRevoked(keys, actor.id, 'admin_role_removed');
   });
 
@@ -440,7 +452,13 @@ describe('RFC-82 R3 account-recovery actions revoke every active key', () => {
     const { user, keys } = await adminWithKeys();
     const { user: actor } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
     const roleIds = [await adminRoleId(t.db), await systemRoleId(t.db, 'manager')];
-    await updateUser(ctxOf(t), { actorUserId: actor.id, id: user.id, roleIds, ...META });
+    await updateUser(ctxOf(t), {
+      platform: 'treerepro',
+      actorUserId: actor.id,
+      id: user.id,
+      roleIds,
+      ...META,
+    });
     for (const key of keys) {
       const [row] = await t.db.select().from(apiKeys).where(eq(apiKeys.id, key.id));
       expect(row?.revokedAt).toBeNull();

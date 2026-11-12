@@ -302,7 +302,12 @@ describe('RFC-60 R1, R6 tree basis (issue #372)', () => {
 
 describe('RFC-60 R6 contested, unknownLevels and unresolved filters (spec R-15)', () => {
   const t = useTestDb();
-  const REVIEWER: Visibility = { inactive: false, plotIds: null, review: true };
+  const REVIEWER: Visibility = {
+    inactive: false,
+    plotIds: null,
+    review: true,
+    platform: 'treerepro',
+  };
 
   it('contested for everyone; unknownLevels and unresolved only for a reviewer', async () => {
     const k = tag();

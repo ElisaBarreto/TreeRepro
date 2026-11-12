@@ -17,6 +17,10 @@ export const WCVP_NAMES_COLUMNS = [
 /** Columns `import:wcvp` needs from `wcvp_distribution.csv`. @rfc RFC-78 R2 */
 export const WCVP_DISTRIBUTION_COLUMNS = [
   'plant_name_id',
+  'continent_code_l1',
+  'continent',
+  'region_code_l2',
+  'region',
   'area_code_l3',
   'area',
   'introduced',
@@ -81,7 +85,8 @@ async function stage(
 
 /**
  * `import:wcvp`: replaces the WCVP tables with the accepted species, regions
- * and native distribution of Kew's two files, in one transaction.
+ * (with their level-2 region and level-1 continent) and extant distribution,
+ * native or introduced, of Kew's two files, in one transaction.
  * @rfc RFC-78 R2-R5
  */
 export async function importWcvp(
@@ -117,21 +122,31 @@ export async function importWcvp(
       from wcvp_names_staging
       where ${n.taxon_status} = 'Accepted' and ${n.taxon_rank} = 'Species'
         and trim(${n.plant_name_id}) <> '' and trim(${n.taxon_name}) <> ''`);
+    // R5: each column is the first non-blank value given for the code in file order.
+    const first = (column: string | undefined) =>
+      `(array_agg(nullif(trim(${column}), '') order by row_no)
+          filter (where nullif(trim(${column}), '') is not null))[1]`;
     await tx.unsafe(`
-      insert into wcvp_regions (area_code_l3, name)
-      select distinct on (${code}) ${code}, coalesce(nullif(trim(${d.area}), ''), ${code})
-      from wcvp_distribution_staging
-      where trim(${d.area_code_l3}) <> ''
-      order by ${code}, nullif(trim(${d.area}), '') is null, row_no`);
+      insert into wcvp_regions (area_code_l3, name, region_code_l2, region, continent_code_l1, continent)
+      select code, coalesce(name, code), region_code, coalesce(region, region_code),
+        continent_code, coalesce(continent, continent_code)
+      from (
+        select ${code} as code, ${first(d.area)} as name,
+          ${first(d.region_code_l2)} as region_code, ${first(d.region)} as region,
+          ${first(d.continent_code_l1)} as continent_code, ${first(d.continent)} as continent
+        from wcvp_distribution_staging
+        where trim(${d.area_code_l3}) <> ''
+        group by ${code}) g`);
+    // R4: a pair is introduced only when every kept row of it is.
     await tx.unsafe(`
-      insert into wcvp_distribution (plant_name_id, area_code_l3)
-      select distinct w.plant_name_id, ${code}
+      insert into wcvp_distribution (plant_name_id, area_code_l3, introduced)
+      select w.plant_name_id, ${code}, bool_and(coalesce(trim(${d.introduced}), '') = '1')
       from wcvp_distribution_staging
       join wcvp_species w on w.plant_name_id = trim(${d.plant_name_id})
       where trim(${d.area_code_l3}) <> ''
-        and coalesce(trim(${d.introduced}), '') <> '1'
         and coalesce(trim(${d.extinct}), '') <> '1'
-        and coalesce(trim(${d.location_doubtful}), '') <> '1'`);
+        and coalesce(trim(${d.location_doubtful}), '') <> '1'
+      group by w.plant_name_id, ${code}`);
     const [counts] = (await tx`
       select
         (select count(*)::int from wcvp_species) as "acceptedSpecies",

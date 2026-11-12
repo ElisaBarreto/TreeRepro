@@ -28,6 +28,7 @@ import type { AuthContext } from '../../../auth/context.ts';
 import { InvitationMailError, inviteUser } from '../../../auth/flows/invitation.ts';
 import { UserEmailTakenError } from '../../../auth/users.ts';
 import { contributionSummary, listContributions } from '../../../dataset/contributions.ts';
+import { dashboardKeys } from '../../../workspace/dashboard.ts';
 import { clientIp, userAgent } from '../../client-ip.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
@@ -94,9 +95,16 @@ export function adminUserRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'users.invite'),
       validate('json', createUserBodySchema),
       async (c) => {
-        const { email, name, roles } = c.req.valid('json');
+        const { email, name, roles, platform } = c.req.valid('json');
         const { user } = await inviting(() =>
-          inviteUser(ctx, { email, name, roleIds: roles, actorUserId: currentUser(c).id }),
+          inviteUser(ctx, {
+            email,
+            name,
+            roleIds: roles,
+            actorUserId: currentUser(c).id,
+            // RFC-50 R3: the invitation's platform, the request's by default.
+            platform: platform ?? c.get('platform'),
+          }),
         );
         return c.json({ data: await getUser(ctx.db, user.id) }, 201);
       },
@@ -117,12 +125,13 @@ export function adminUserRoutes(ctx: AuthContext) {
       validate('param', userIdParamSchema),
       validate('json', updateUserBodySchema),
       async (c) => {
-        const { name, roles } = c.req.valid('json');
+        const { name, roles, platform } = c.req.valid('json');
         const data = await updateUser(ctx, {
           ...actor(c),
           id: c.req.valid('param').id,
           name,
           roleIds: roles,
+          platform: platform ?? c.get('platform'),
         });
         return c.json({ data });
       },
@@ -146,7 +155,7 @@ export function adminUserRoutes(ctx: AuthContext) {
         // not the ones cached from before (RFC-72 R1). The target's key,
         // not the acting admin's — it is the target's `scope` that changed.
         // Best-effort, since the mutation already committed.
-        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${id}`, {
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(id), {
           targetUserId: id,
           actorUserId: currentUser(c).id,
         });
@@ -174,7 +183,11 @@ export function adminUserRoutes(ctx: AuthContext) {
       async (c) =>
         c.json({
           data: await inviting(() =>
-            resendInvite(ctx, { ...actor(c), id: c.req.valid('param').id }),
+            resendInvite(ctx, {
+              ...actor(c),
+              id: c.req.valid('param').id,
+              platform: c.get('platform'),
+            }),
           ),
         }),
     )

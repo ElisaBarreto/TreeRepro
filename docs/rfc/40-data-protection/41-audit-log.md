@@ -34,6 +34,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `auth.session.revoked` | One of the user's own sessions revoked by the user. |
 | `auth.invite.created` | Invitation issued (or re-issued) for a user. |
 | `auth.invite.accepted` | Invitation accepted; password set. |
+| `auth.platform_denied` | Credentials verified but the user may not use the request's platform; no session created (RFC-22 R13). |
 | `auth.password.reset_requested` | Password reset token issued. |
 | `auth.password.reset` | Password replaced through a reset token. |
 | `auth.password.changed` | Password replaced by the authenticated user. |
@@ -53,7 +54,7 @@ Security-relevant events must be recorded immutably: accountability under the GD
 | `sessions.revoked` | A session revoked by an admin. |
 | `admin.accessed` | Admin area opened. |
 | `taxa.created` | Family, genus, species or alternative name created (RFC-60 R10). |
-| `taxa.updated` | Family, genus or species changed (RFC-60 R10). |
+| `taxa.updated` | Family, genus or species changed (RFC-60 R10), its plant type included (RFC-65 R19). |
 | `references.created` | Bibliographic reference created (RFC-61 R6). |
 | `references.updated` | Bibliographic reference changed (RFC-61 R6). |
 | `traits.created` | Trait created (RFC-62 R6). |
@@ -95,3 +96,5 @@ None.
 - 2026-09-26 — help.created, help.updated, help.deleted (RFC-73 R6, issue #172).
 - 2026-09-26 — auth.api_key.created, auth.api_key.revoked (RFC-82 R8, plan 14a).
 - 2026-09-26 — auth.api_key.revoked: may be written by an administrator, carries `metadata.reason` (RFC-82 R3).
+- 2026-11-11 — auth.platform_denied (RFC-22 R13, plan 15c).
+- 2026-11-11 — `taxa.updated` covers a plant type change (RFC-65 R19, plan 15d, issue #398).

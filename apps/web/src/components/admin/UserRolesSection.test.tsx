@@ -1,5 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADMIN_USER, ROLE_ADMIN, ROLE_READERS, SUSPENDED_USER } from '../../test/admin-fixtures.ts';
 import { ADMIN_ME } from '../../test/fixtures.ts';
@@ -31,12 +32,15 @@ vi.mock('../../api/admin.ts', async (importOriginal) => ({
 
 beforeEach(() => {
   admin.listRoles.mockReset();
+  admin.updateUser.mockReset();
 });
 
 describe('RFC-50 R5 UserRolesSection', () => {
   it('RFC-82 R3 says that removing the admin role revokes the API keys', async () => {
     admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_READERS]);
-    renderWithProviders(<UserRolesSection user={ADMIN_USER} canEdit />, { me: ADMIN_ME });
+    renderWithProviders(<UserRolesSection user={ADMIN_USER} platform="treerepro" canEdit />, {
+      me: ADMIN_ME,
+    });
     expect(
       await screen.findByText(
         'Removing the admin role also revokes every API key this user holds.',
@@ -46,8 +50,13 @@ describe('RFC-50 R5 UserRolesSection', () => {
 
   it('RFC-82 R3 does not mention API keys for a user who is not an admin', async () => {
     admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_READERS]);
-    const reader = { ...ADMIN_USER, roles: [{ id: ROLE_READERS.id, name: ROLE_READERS.name }] };
-    renderWithProviders(<UserRolesSection user={reader} canEdit />, { me: ADMIN_ME });
+    const reader = {
+      ...ADMIN_USER,
+      roles: [{ id: ROLE_READERS.id, name: ROLE_READERS.name, platform: 'treerepro' as const }],
+    };
+    renderWithProviders(<UserRolesSection user={reader} platform="treerepro" canEdit />, {
+      me: ADMIN_ME,
+    });
     expect(await screen.findByText('Readers')).toBeInTheDocument();
     expect(
       screen.queryByText('Removing the admin role also revokes every API key this user holds.'),
@@ -56,9 +65,12 @@ describe('RFC-50 R5 UserRolesSection', () => {
 
   it('re-seeds the checked set when a new user prop arrives with different roles', async () => {
     admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_READERS]);
-    const utils = renderWithProviders(<UserRolesSection user={ADMIN_USER} canEdit />, {
-      me: ADMIN_ME,
-    });
+    const utils = renderWithProviders(
+      <UserRolesSection user={ADMIN_USER} platform="treerepro" canEdit />,
+      {
+        me: ADMIN_ME,
+      },
+    );
     expect(await screen.findByRole('checkbox', { name: /^admin\b/ })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /^Readers\b/ })).not.toBeChecked();
 
@@ -66,10 +78,59 @@ describe('RFC-50 R5 UserRolesSection', () => {
     // with a different set of roles: the checked set must follow it.
     utils.rerender(
       <QueryClientProvider client={utils.queryClient}>
-        <UserRolesSection user={SUSPENDED_USER} canEdit />
+        <UserRolesSection user={SUSPENDED_USER} platform="treerepro" canEdit />
       </QueryClientProvider>,
     );
     expect(await screen.findByRole('checkbox', { name: /^Readers\b/ })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /^admin\b/ })).not.toBeChecked();
+  });
+});
+
+describe('RFC-50 R14, RFC-31 R16 one section per platform', () => {
+  const MIXED = {
+    ...SUSPENDED_USER,
+    roles: [
+      { id: ROLE_READERS.id, name: ROLE_READERS.name, platform: 'treerepro' as const },
+      { id: ROLE_ADMIN.id, name: ROLE_ADMIN.name, platform: 'plantrepro' as const },
+    ],
+  };
+
+  it('shows and saves only the roles of its platform', async () => {
+    admin.listRoles.mockResolvedValue([ROLE_ADMIN, ROLE_READERS]);
+    admin.updateUser.mockResolvedValue(MIXED);
+    renderWithProviders(<UserRolesSection user={MIXED} platform="plantrepro" canEdit />, {
+      me: ADMIN_ME,
+    });
+    const region = screen.getByRole('region', { name: 'PlantRepro roles' });
+    expect(await within(region).findByRole('checkbox', { name: /^admin\b/ })).toBeChecked();
+    expect(within(region).getByRole('checkbox', { name: /^Readers\b/ })).not.toBeChecked();
+    await userEvent.click(within(region).getByRole('checkbox', { name: /^Readers\b/ }));
+    await userEvent.click(within(region).getByRole('button', { name: 'Save roles' }));
+    await waitFor(() =>
+      expect(admin.updateUser).toHaveBeenCalledWith(MIXED.id, {
+        roles: [ROLE_ADMIN.id, ROLE_READERS.id],
+        platform: 'plantrepro',
+      }),
+    );
+  });
+
+  it('read-only, lists the platform’s roles or says there are none', () => {
+    const { unmount } = renderWithProviders(
+      <UserRolesSection user={MIXED} platform="treerepro" canEdit={false} />,
+      { me: ADMIN_ME },
+    );
+    const tree = screen.getByRole('region', { name: 'TreeRepro roles' });
+    expect(within(tree).getByText('Readers')).toBeInTheDocument();
+    expect(within(tree).queryByText('admin')).not.toBeInTheDocument();
+    unmount();
+    renderWithProviders(
+      <UserRolesSection user={{ ...MIXED, roles: [] }} platform="plantrepro" canEdit={false} />,
+      { me: ADMIN_ME },
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'PlantRepro roles' })).getByText(
+        'No roles on PlantRepro.',
+      ),
+    ).toBeInTheDocument();
   });
 });

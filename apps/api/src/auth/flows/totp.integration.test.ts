@@ -1,9 +1,9 @@
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, cookieFrom, useTestApp } from '../../../test/helpers/app.ts';
+import { call, cookieFrom, TEST_PLANT_ORIGIN, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
-import { createUser, DEFAULT_PASSWORD } from '../../../test/helpers/users.ts';
+import { createMember, DEFAULT_PASSWORD } from '../../../test/helpers/users.ts';
 import { totpRecoveryCodes } from '../../db/schema/totp-recovery-codes.ts';
 import { generateTotpCode } from '../totp.ts';
 import { findUserById } from '../users.ts';
@@ -12,7 +12,7 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
   const t = useTestApp();
 
   async function enrolled() {
-    const { user, email } = await createUser(t.db);
+    const { user, email } = await createMember(t.db);
     const { cookie } = await loginAs(t, user);
     const setup = await call(t.app, 'POST', '/api/auth/totp/setup', {
       cookie,
@@ -28,7 +28,7 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
   }
 
   it('setup returns a secret and URI, stores the provisional secret encrypted, and refuses when enabled', async () => {
-    const { user, email } = await createUser(t.db);
+    const { user, email } = await createMember(t.db);
     const { cookie } = await loginAs(t, user);
     const res = await call(t.app, 'POST', '/api/auth/totp/setup', {
       cookie,
@@ -43,8 +43,22 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
     expect((await findUserById(t.db, user.id))?.totpEnabledAt).toBeNull();
   });
 
+  it('RFC-23 R1 setup on PlantRepro names PlantRepro as the issuer', async () => {
+    const { user, email } = await createMember(t.db, { platform: 'plantrepro' });
+    const { cookie } = await loginAs(t, user, { platform: 'plantrepro' });
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/totp/setup', {
+      cookie,
+      origin: TEST_PLANT_ORIGIN,
+      body: { password: DEFAULT_PASSWORD },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.otpauthUri).toContain(
+      `otpauth://totp/PlantRepro:${encodeURIComponent(email)}?`,
+    );
+  });
+
   it('setup needs the current password: a wrong one is 401 and stores nothing', async () => {
-    const { user } = await createUser(t.db);
+    const { user } = await createMember(t.db);
     const { cookie } = await loginAs(t, user);
     const wrong = await call(t.app, 'POST', '/api/auth/totp/setup', {
       cookie,
@@ -58,7 +72,7 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
   });
 
   it('confirm enables TOTP, returns ten recovery codes once and audits; wrong code or no setup is 401', async () => {
-    const { user } = await createUser(t.db);
+    const { user } = await createMember(t.db);
     const session = await loginAs(t, user);
     const noSetup = await call(t.app, 'POST', '/api/auth/totp/confirm', {
       cookie: session.cookie,

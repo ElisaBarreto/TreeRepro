@@ -9,6 +9,7 @@ import {
   fetchSpeciesTraits,
 } from '../../api/dataset.ts';
 import { AddNameDialog } from '../../components/catalog/AddNameDialog.tsx';
+import { ChangePlantTypeDialog } from '../../components/catalog/ChangePlantTypeDialog.tsx';
 import { SpeciesDialog } from '../../components/catalog/SpeciesDialog.tsx';
 import { AddEntriesDialog, type RespondTo } from '../../components/curation/AddEntriesDialog.tsx';
 import { ValidateDialog } from '../../components/curation/ValidateDialog.tsx';
@@ -27,7 +28,7 @@ import {
   PageHeader,
 } from '../../components/ui/index.ts';
 import { detailErrorMessage } from '../../lib/errors.ts';
-import { formatNumber } from '../../lib/format.ts';
+import { formatNumber, plantTypeText } from '../../lib/format.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
 function errorMessage(error: unknown): string {
@@ -96,6 +97,9 @@ function SpeciesHeader({
       description={
         <>
           <span className="block">{taxonomyLine(species)}</span>
+          <span className="block">
+            Plant type: {plantTypeText(species.plantType, species.plantTypeStatus)}
+          </span>
           {species.plots && species.plots.length > 0 ? (
             <span className="block">
               In your plots: {species.plots.map((p) => p.name).join(', ')}
@@ -205,7 +209,7 @@ function SpeciesHeader({
  * @rfc RFC-60 R4, R7, R9
  * @rfc RFC-33 R7
  * @rfc RFC-63 R10
- * @rfc RFC-65 R1
+ * @rfc RFC-65 R1, R19
  * @rfc RFC-70 R1, R3, R7
  * @rfc RFC-70 R4, R9, R10
  * @rfc RFC-13 R11
@@ -231,6 +235,7 @@ export function SpeciesPage({
   const canAdd = hasPermission(me, 'records.create');
   const canAnnotate = hasPermission(me, 'records.annotate');
   const canManageTaxa = hasPermission(me, 'taxa.manage');
+  const canReview = hasPermission(me, 'records.review');
   const species = useQuery({
     queryKey: datasetKeys.speciesDetail(id),
     queryFn: () => fetchSpecies(id),
@@ -263,6 +268,7 @@ export function SpeciesPage({
   } | null>(null);
   const [editing, setEditing] = useState(false);
   const [addingName, setAddingName] = useState(false);
+  const [changingType, setChangingType] = useState(false);
   const error = species.error ?? traits.error;
 
   return (
@@ -273,7 +279,7 @@ export function SpeciesPage({
           missing={missing}
           onMissingChange={onMissingChange}
           actions={
-            canAdd || canManageTaxa ? (
+            canAdd || canManageTaxa || canReview ? (
               <>
                 {canAdd ? (
                   <Button onClick={() => setAdding({ trait: null })}>
@@ -289,6 +295,11 @@ export function SpeciesPage({
                       Add name
                     </Button>
                   </>
+                ) : null}
+                {canReview ? (
+                  <Button variant="secondary" onClick={() => setChangingType(true)}>
+                    Change plant type
+                  </Button>
                 ) : null}
               </>
             ) : undefined
@@ -428,6 +439,13 @@ export function SpeciesPage({
           species={species.data}
           onClose={() => setAddingName(false)}
           onSaved={() => setAddingName(false)}
+        />
+      ) : null}
+      {changingType && species.data ? (
+        <ChangePlantTypeDialog
+          species={species.data}
+          onClose={() => setChangingType(false)}
+          onSaved={() => setChangingType(false)}
         />
       ) : null}
     </>

@@ -3,6 +3,7 @@ import {
   apiKeyListSchema,
   auditLogEntrySchema,
   batchResponseSchema,
+  confirmPlantTypeResultSchema,
   contestedQueueItemSchema,
   contributionAnnotationSchema,
   contributionRecordSchema,
@@ -34,6 +35,7 @@ import {
   pendingGroupSchema,
   pendingTraitSchema,
   permissionEntrySchema,
+  plantTypeQueueItemSchema,
   platformHealthSchema,
   plotDetailSchema,
   plotSchema,
@@ -62,6 +64,7 @@ import {
   treeFlagCountSchema,
   userSchema,
   validateLevelResultSchema,
+  wcvpRegionSchema,
   withdrawLevelResultSchema,
 } from '@treerepro/contracts';
 import { z } from 'zod';
@@ -243,11 +246,17 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
     summary: 'List the permission catalog',
     response: dataEnvelopeSchema(z.array(permissionEntrySchema)),
   },
-  'GET /api/admin/users': { summary: 'List users', response: listEnvelopeSchema(userSchema) },
-  'POST /api/admin/users': { summary: 'Invite a user', response: dataEnvelopeSchema(userSchema) },
+  'GET /api/admin/users': {
+    summary: 'List users, optionally those holding a role on a platform',
+    response: listEnvelopeSchema(userSchema),
+  },
+  'POST /api/admin/users': {
+    summary: 'Invite a user to a platform',
+    response: dataEnvelopeSchema(userSchema),
+  },
   'GET /api/admin/users/:id': { summary: 'Get a user', response: dataEnvelopeSchema(userSchema) },
   'PATCH /api/admin/users/:id': {
-    summary: "Update a user's name or roles",
+    summary: "Update a user's name or their roles on a platform",
     response: dataEnvelopeSchema(userSchema),
   },
   'PUT /api/admin/users/:id/plots': {
@@ -311,7 +320,7 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
 
   // species
   'GET /api/species': {
-    summary: 'Search species with taxonomy, trait and scope filters',
+    summary: 'Search species with taxonomy, trait, geography and scope filters',
     response: listEnvelopeSchema(speciesListItemSchema),
   },
   'GET /api/species/count': {
@@ -321,6 +330,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/species/tree-flags': {
     summary: 'Count the visible species of every tree basis',
     response: dataEnvelopeSchema(z.array(treeFlagCountSchema)),
+  },
+  'GET /api/species/regions': {
+    summary: 'List the WCVP botanical countries with their region and continent',
+    response: dataEnvelopeSchema(z.array(wcvpRegionSchema)),
   },
   'POST /api/species': { summary: 'Create a species', response: dataEnvelopeSchema(speciesSchema) },
   'POST /api/species/proposals': {
@@ -358,6 +371,14 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/species/:id/traits': {
     summary: "Get a species' trait summaries by category",
     response: dataEnvelopeSchema(speciesTraitsSchema),
+  },
+  'POST /api/species/:id/plant-type': {
+    summary: 'Set a species plant type and mark it reviewed',
+    response: dataEnvelopeSchema(speciesSchema),
+  },
+  'POST /api/species/:id/plant-type/confirm': {
+    summary: 'Confirm a proposed plant type, optionally changing it',
+    response: dataEnvelopeSchema(confirmPlantTypeResultSchema),
   },
   'POST /api/species/:id/names': {
     summary: 'Add an alternative name to a species',
@@ -451,6 +472,10 @@ export const ROUTE_CATALOG: Readonly<Record<string, CatalogEntry>> = {
   'GET /api/records/disputed': {
     summary: 'List the standing contests',
     response: listEnvelopeSchema(contestedQueueItemSchema),
+  },
+  'GET /api/curation/plant-types': {
+    summary: 'List the species awaiting a plant-type review',
+    response: listEnvelopeSchema(plantTypeQueueItemSchema),
   },
   'POST /api/records/:id/annotations': {
     summary: 'Confirm or withdraw a record',

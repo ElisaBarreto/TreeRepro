@@ -46,6 +46,8 @@ const ADENANTHERA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d03',
   canonicalName: 'Adenanthera pavonina',
   treeFlag: null,
+  plantType: 'tree',
+  plantTypeStatus: 'reviewed',
   nameSource: 'wcvp',
   active: true,
   genus: { id: GENUS.id, name: GENUS.name },
@@ -60,6 +62,8 @@ const ADANSONIA: SpeciesListItem = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04',
   canonicalName: 'Adansonia digitata',
   treeFlag: null,
+  plantType: 'tree',
+  plantTypeStatus: 'reviewed',
   nameSource: 'gbif',
   active: true,
   genus: null,
@@ -115,6 +119,7 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
       contested: false,
       unknownLevels: false,
       outliers: false,
+      introduced: false,
       cursor: undefined,
       limit: 50,
     });
@@ -444,6 +449,26 @@ describe('RFC-13 R2, RFC-60 R6 SpeciesSearchPage', () => {
     );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create species' }));
     await waitFor(() => expect(router.state.location.pathname).toBe(`/app/species/${SPECIES.id}`));
+  });
+
+  it('RFC-65 R18, RFC-33 R2 on TreeRepro a created species awaiting its plant-type review stays on the list with a notice', async () => {
+    dataset.searchSpecies.mockResolvedValue(page([]));
+    auth.fetchMe.mockResolvedValue({ ...ME, permissions: ['dataset.read', 'taxa.manage'] });
+    catalog.createSpecies.mockResolvedValue({ ...SPECIES, plantTypeStatus: 'proposed' });
+    const { router } = renderAt('/app/species');
+    await userEvent.click(await screen.findByRole('button', { name: 'New species' }));
+    const dialog = screen.getByRole('dialog', { name: 'New species' });
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: /canonical name/i }),
+      'Adenanthera pavonina',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create species' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `${SPECIES.canonicalName} was created. Its plant type awaits review`,
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/app/species');
+    expect(dataset.fetchSpecies).not.toHaveBeenCalled();
   });
 
   it('RFC-60 R9 hides "New species" from a reader', async () => {

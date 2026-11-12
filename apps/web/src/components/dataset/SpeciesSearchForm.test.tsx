@@ -13,6 +13,7 @@ const dataset = vi.hoisted(() => ({
   fetchGenera: vi.fn(),
   fetchDictionary: vi.fn(),
   fetchTreeFlagCounts: vi.fn(),
+  fetchWcvpRegions: vi.fn(),
 }));
 vi.mock('../../api/dataset.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/dataset.ts')>()),
@@ -20,6 +21,21 @@ vi.mock('../../api/dataset.ts', async (importOriginal) => ({
 }));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
+
+const region = (code: string, name: string, l2: string, r: string, l1: string, c: string) => ({
+  code,
+  name,
+  regionCode: l2,
+  region: r,
+  continentCode: l1,
+  continent: c,
+});
+const REGIONS = [
+  region('NEP', 'Nepal', '40', 'Indian Subcontinent', '4', 'ASIA-TROPICAL'),
+  region('COS', 'Costa Rica', '80', 'Central America', '8', 'SOUTHERN AMERICA'),
+  region('BZN', 'Brazil North', '84', 'Brazil', '8', 'SOUTHERN AMERICA'),
+  region('BZS', 'Brazil South', '84', 'Brazil', '8', 'SOUTHERN AMERICA'),
+];
 
 beforeEach(() => {
   dataset.fetchFamilies.mockReset();
@@ -30,6 +46,8 @@ beforeEach(() => {
   dataset.fetchDictionary.mockResolvedValue(DICTIONARY);
   dataset.fetchTreeFlagCounts.mockReset();
   dataset.fetchTreeFlagCounts.mockResolvedValue([]);
+  dataset.fetchWcvpRegions.mockReset();
+  dataset.fetchWcvpRegions.mockResolvedValue(REGIONS);
 });
 
 // The form is fully controlled; this wrapper stands in for the page that
@@ -217,6 +235,7 @@ describe('RFC-60 R6 SpeciesSearchForm groups', () => {
     expect(await screen.findByRole('group', { name: 'Taxonomy' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Traits' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Scope' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Geography' })).toBeInTheDocument();
   });
 
   it('keeps the name, family and genus controls inside Taxonomy', async () => {
@@ -705,5 +724,115 @@ describe('RFC-60 R6 SpeciesSearchForm tree basis (issue #372)', () => {
     expect(boxes[1]).toHaveFocus();
     await userEvent.keyboard('{ArrowUp}{ArrowUp}');
     expect(boxes[7]).toHaveFocus();
+  });
+});
+
+describe('RFC-60 R6 SpeciesSearchForm plant type filter', () => {
+  it('offers All, Tree and Not a tree to every viewer, and clears back to all', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(
+      <Controlled
+        initial={{ q: '', unresolved: false, contested: false, unknownLevels: false }}
+        onChange={onChange}
+      />,
+      { me: READER },
+    );
+    const select = screen.getByLabelText('Plant type');
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['All', 'Tree', 'Not a tree']);
+    await userEvent.selectOptions(select, 'not_tree');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ plantType: 'not_tree' }));
+    await userEvent.selectOptions(select, '');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ plantType: undefined }));
+  });
+});
+
+describe('RFC-60 R6, R14 SpeciesSearchForm geography', () => {
+  const EMPTY: SpeciesSearchValue = {
+    q: '',
+    unresolved: false,
+    contested: false,
+    unknownLevels: false,
+  };
+  const list = (legend: string) => screen.getByRole('group', { name: legend });
+  const boxes = (legend: string) =>
+    within(list(legend))
+      .getAllByRole('checkbox')
+      .map((b) => b.closest('label')?.textContent);
+  const check = (legend: string, name: string) =>
+    userEvent.click(within(list(legend)).getByRole('checkbox', { name }));
+
+  it('lists continents, then narrows regions and botanical countries to the checked places', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(<Controlled initial={EMPTY} onChange={onChange} />, { me: READER });
+    await waitFor(() => expect(boxes('Continent')).toEqual(['Asia-Tropical', 'Southern America']));
+    expect(boxes('Region')).toHaveLength(3);
+    expect(boxes('Botanical country')).toHaveLength(4);
+    expect(within(list('Region')).getByText('Asia-Tropical')).toBeInTheDocument();
+
+    await check('Continent', 'Southern America');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ continents: ['8'] }));
+    expect(boxes('Region')).toEqual(['Central America', 'Brazil']);
+    expect(boxes('Botanical country')).toEqual(['Costa Rica', 'Brazil North', 'Brazil South']);
+
+    await check('Region', 'Brazil');
+    expect(boxes('Botanical country')).toEqual(['Brazil North', 'Brazil South']);
+    await check('Botanical country', 'Brazil South');
+    await check('Botanical country', 'Brazil North');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ continents: ['8'], regions: ['84'], areas: ['BZN', 'BZS'] }),
+    );
+    expect(
+      within(list('Botanical country')).getByText('2 botanical countries'),
+    ).toBeInTheDocument();
+
+    // A second continent adds places and keeps the narrower choices.
+    await check('Continent', 'Asia-Tropical');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ continents: ['4', '8'], regions: ['84'], areas: ['BZN', 'BZS'] }),
+    );
+    // Brazil narrows Southern America only: Asia-Tropical's countries stay listed.
+    expect(boxes('Botanical country')).toEqual(['Nepal', 'Brazil North', 'Brazil South']);
+    await check('Botanical country', 'Nepal');
+    // Unchecking a continent drops what it held.
+    await check('Continent', 'Southern America');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ continents: ['4'], regions: undefined, areas: ['NEP'] }),
+    );
+  });
+
+  it('keeps every choice when a change comes before the regions load', async () => {
+    const onChange = vi.fn();
+    dataset.fetchWcvpRegions.mockReturnValue(new Promise(() => {}));
+    renderWithProviders(
+      <Controlled initial={{ ...EMPTY, regions: ['84'], areas: ['BZN'] }} onChange={onChange} />,
+      { me: READER },
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Include introduced occurrences' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ regions: ['84'], areas: ['BZN'], introduced: true }),
+    );
+  });
+
+  it('offers introduced occurrences only once a place is checked, and drops it with the last one', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(<Controlled initial={EMPTY} onChange={onChange} />, { me: READER });
+    const box = await screen.findByRole('checkbox', { name: 'Include introduced occurrences' });
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked();
+    await waitFor(() => expect(boxes('Continent')).toHaveLength(2));
+    await check('Botanical country', 'Nepal');
+    expect(box).toBeEnabled();
+    await userEvent.click(box);
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ areas: ['NEP'], introduced: true }),
+    );
+    await check('Botanical country', 'Nepal');
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ areas: undefined, introduced: undefined }),
+    );
   });
 });

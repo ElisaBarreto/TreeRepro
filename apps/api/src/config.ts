@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
+import type { Platform } from '@treerepro/contracts';
 import { z } from 'zod';
 import { keyringFromHex, type PiiKeyring } from './security/pii.ts';
 
@@ -23,62 +24,81 @@ const dbHostSchema = {
   SECRETS_DIR: z.string().min(1).default('/run/secrets'),
 };
 
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  // 0 is valid here (not for DB_PORT/REDIS_PORT): it asks the OS for an
-  // ephemeral port, used by the boot smoke test (Task 13).
-  PORT: z.coerce.number().int().min(0).max(65535).default(3000),
-  LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
-  APP_ORIGIN: originSchema,
-  ...dbHostSchema,
-  DB_USER: z.string().min(1),
-  REDIS_HOST: z.string().min(1),
-  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
-  PII_CURRENT_KEY_VERSION: z
-    .string()
-    .regex(/^v\d+$/)
-    .default('v1'),
-  // RFC-74 R6: the daily digest is off unless set to `true` (issue #272).
-  DIGEST_ENABLED: z.stringbool().default(false),
-  SMTP_HOST: z.string().min(1),
-  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
-  SMTP_SECURE: z.stringbool().default(false),
-  SMTP_FROM: z.string().min(3),
-  SMTP_USER: z
-    .string()
-    .optional()
-    .transform((v) => {
-      const user = v?.trim();
-      return user || undefined;
-    }),
-  // RFC-10 R5: the Reply-To of every e-mail; unset sends none.
-  SMTP_REPLY_TO: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || undefined)
-    .pipe(z.string().email().optional()),
-  DOI_CONTACT_EMAIL: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || undefined)
-    .pipe(z.string().email().optional()),
-  // RFC-20 R4: named in the invitation as who to ask for a new one; unset
-  // names an administrator. Configuration, not code: the repository is public.
-  INVITE_CONTACT_EMAIL: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || undefined)
-    .pipe(z.string().email().optional()),
-  // RFC-81 R1: unset skips the WCVP call and the verdict comes from the
-  // GBIF backbone alone; the start-up check disables it too on any failure.
-  WCVP_GBIF_DATASET_KEY: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || undefined),
-  // RFC-76 R1: the trait maps directory, private and mounted read-only
-  // (`/maps` in the container); default is the repository directory used in
-  // development and tests, which never carries the image files themselves.
-});
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    // 0 is valid here (not for DB_PORT/REDIS_PORT): it asks the OS for an
+    // ephemeral port, used by the boot smoke test (Task 13).
+    PORT: z.coerce.number().int().min(0).max(65535).default(3000),
+    LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
+    APP_ORIGIN: originSchema,
+    // RFC-14 R3: the PlantRepro host, bare (no scheme, no port); empty or unset
+    // means PlantRepro has no host and every request for it is refused.
+    PLANT_DOMAIN: z
+      .string()
+      .optional()
+      .transform((v) => v?.trim().toLowerCase() || null)
+      .pipe(
+        z
+          .string()
+          .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/)
+          .nullable(),
+      ),
+    ...dbHostSchema,
+    DB_USER: z.string().min(1),
+    REDIS_HOST: z.string().min(1),
+    REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
+    PII_CURRENT_KEY_VERSION: z
+      .string()
+      .regex(/^v\d+$/)
+      .default('v1'),
+    // RFC-74 R6: the daily digest is off unless set to `true` (issue #272).
+    DIGEST_ENABLED: z.stringbool().default(false),
+    SMTP_HOST: z.string().min(1),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+    SMTP_SECURE: z.stringbool().default(false),
+    SMTP_FROM: z.string().min(3),
+    SMTP_USER: z
+      .string()
+      .optional()
+      .transform((v) => {
+        const user = v?.trim();
+        return user || undefined;
+      }),
+    // RFC-10 R5: the Reply-To of every e-mail; unset sends none.
+    SMTP_REPLY_TO: z
+      .string()
+      .optional()
+      .transform((v) => v?.trim() || undefined)
+      .pipe(z.string().email().optional()),
+    DOI_CONTACT_EMAIL: z
+      .string()
+      .optional()
+      .transform((v) => v?.trim() || undefined)
+      .pipe(z.string().email().optional()),
+    // RFC-20 R4: named in the invitation as who to ask for a new one; unset
+    // names an administrator. Configuration, not code: the repository is public.
+    INVITE_CONTACT_EMAIL: z
+      .string()
+      .optional()
+      .transform((v) => v?.trim() || undefined)
+      .pipe(z.string().email().optional()),
+    // RFC-81 R1: unset skips the WCVP call and the verdict comes from the
+    // GBIF backbone alone; the start-up check disables it too on any failure.
+    WCVP_GBIF_DATASET_KEY: z
+      .string()
+      .optional()
+      .transform((v) => v?.trim() || undefined),
+    // RFC-76 R1: the trait maps directory, private and mounted read-only
+    // (`/maps` in the container); default is the repository directory used in
+    // development and tests, which never carries the image files themselves.
+  })
+  // Zod runs this even when APP_ORIGIN itself failed, hence the canParse guard.
+  .refine((e) => !URL.canParse(e.APP_ORIGIN) || e.PLANT_DOMAIN !== new URL(e.APP_ORIGIN).hostname, {
+    // RFC-10 R5: that host always resolves to TreeRepro, so PlantRepro would be
+    // unreachable with nothing reporting it.
+    path: ['PLANT_DOMAIN'],
+  });
 
 const migratorEnvSchema = z.object({
   ...dbHostSchema,
@@ -132,7 +152,10 @@ export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
   logLevel: LogLevel;
+  /** TreeRepro's origin; `originOf` gives each platform's. */
   appOrigin: string;
+  /** `PLANT_DOMAIN`; null when unset. @rfc RFC-14 R3 */
+  plantDomain: string | null;
   db: { url: Secret<string> };
   redis: { url: Secret<string> };
   pii: { keyring: Secret<PiiKeyring>; hmacKey: Secret<Buffer> };
@@ -149,6 +172,23 @@ export interface AppConfig {
 
 export interface MigratorConfig {
   db: { url: Secret<string> };
+}
+
+/**
+ * The origin of a platform: TreeRepro's is `APP_ORIGIN`; PlantRepro's keeps
+ * its scheme and port with `PLANT_DOMAIN` as host. Throws when PlantRepro has
+ * no host, which a request can never reach (RFC-14 R3).
+ * @rfc RFC-14 R4
+ */
+export function originOf(
+  config: Pick<AppConfig, 'appOrigin' | 'plantDomain'>,
+  platform: Platform,
+): string {
+  if (platform === 'treerepro') return config.appOrigin;
+  if (!config.plantDomain) throw new ConfigError('PlantRepro has no origin: PLANT_DOMAIN is unset');
+  const url = new URL(config.appOrigin);
+  url.hostname = config.plantDomain;
+  return url.origin;
 }
 
 /** @rfc RFC-10 R5 */
@@ -244,6 +284,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: e.PORT,
     logLevel: e.LOG_LEVEL,
     appOrigin: e.APP_ORIGIN,
+    plantDomain: e.PLANT_DOMAIN,
     db: {
       url: new Secret(
         buildDbUrl({

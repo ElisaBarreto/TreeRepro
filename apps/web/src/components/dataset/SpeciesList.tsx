@@ -6,7 +6,7 @@ import {
   type SpeciesSort,
   TREE_FLAG_LABELS,
 } from '@treerepro/contracts';
-import { formatNumber } from '../../lib/format.ts';
+import { formatNumber, plantTypeText } from '../../lib/format.ts';
 import { Badge, Chip, SortTh, Table, Tbody, Td, Th, Thead, Tr } from '../ui/index.ts';
 
 const DASH = <span className="text-mist-500">—</span>;
@@ -36,7 +36,8 @@ const MATCH_TYPE_LABELS: Record<NameType, string> = {
  * first" orders by. **Records** is the record count for the one filtered
  * trait, so it only makes sense while a trait filter is set —
  * `showTraitRecords` adds the column, and a row whose `traitRecordCount` is
- * null (no trait filter reached the API) reads as a dash. **Tree basis**,
+ * null (no trait filter reached the API) reads as a dash. **Plant type** is
+ * the species' type, `(proposed)` until reviewed (RFC-60 R6). **Tree basis**,
  * last, is what the species' tree flag means (RFC-60 R1), and sorts by it.
  * @rfc RFC-13 R2
  * @rfc RFC-60 R1, R4, R6
@@ -70,6 +71,7 @@ export function SpeciesList({
           {head('genus', 'Genus')}
           {head('traits', 'Traits')}
           {showTraitRecords ? head('records', 'Records') : null}
+          {head('plantType', 'Plant type')}
           <Th>Match</Th>
           {head('treeBasis', 'Tree basis')}
         </Tr>
@@ -98,6 +100,7 @@ export function SpeciesList({
                 {species.traitRecordCount === null ? DASH : formatNumber(species.traitRecordCount)}
               </Td>
             ) : null}
+            <Td>{plantTypeText(species.plantType, species.plantTypeStatus)}</Td>
             <Td className="text-mist-500">
               {species.matchedName ? (
                 <span className="flex flex-wrap items-center gap-2">

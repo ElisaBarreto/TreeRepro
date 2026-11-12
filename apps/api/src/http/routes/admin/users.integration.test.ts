@@ -7,7 +7,7 @@ import {
 } from '@treerepro/contracts';
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, useTestApp } from '../../../../test/helpers/app.ts';
+import { call, TEST_PLANT_ORIGIN, useTestApp } from '../../../../test/helpers/app.ts';
 import { lastAudit } from '../../../../test/helpers/audit.ts';
 import {
   createAnnotation,
@@ -75,6 +75,30 @@ describe('RFC-50 R2 GET /api/admin/users', () => {
 describe('RFC-50 R3, R8 invitations over HTTP', () => {
   const t = useTestApp();
 
+  it('RFC-14 R5 an invitation and its resend sent from PlantRepro link to PlantRepro', async () => {
+    const { user } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const { cookie } = await loginAs(t, user, { platform: 'plantrepro' });
+    const role = await createRole(t.db, { permissions: ['users.read'] });
+    const link = /^http:\/\/plantrepro\.localhost\/invite\/[A-Za-z0-9_-]{43}$/m;
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/admin/users', {
+      cookie,
+      origin: TEST_PLANT_ORIGIN,
+      body: { email: randomEmail(), name: 'Grace', roles: [role.id] },
+    });
+    expect(res.status).toBe(201);
+    expect(t.mail.sent.at(-1)?.text).toMatch(link);
+    expect(t.mail.sent.at(-1)?.subject).toBe('You have been invited to PlantRepro');
+    const { data } = await res.json();
+    const resend = await call(
+      t.app,
+      'POST',
+      `http://plantrepro.localhost/api/admin/users/${data.id}/resend-invite`,
+      { cookie, origin: TEST_PLANT_ORIGIN },
+    );
+    expect(resend.status).toBe(200);
+    expect(t.mail.sent.at(-1)?.text).toMatch(link);
+  });
+
   it('invites with 201, audits with the admin as actor, and refuses a taken email', async () => {
     const { admin, cookie } = await adminCookie(t);
     const role = await createRole(t.db, { permissions: ['users.read'] });
@@ -123,7 +147,9 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
     const user = await findUserByEmail(t.db, email);
     expect(user?.status).toBe('invited');
     const kept = await call(t.app, 'GET', `/api/admin/users/${user?.id}`, { cookie });
-    expect((await kept.json()).data.roles).toEqual([{ id: role.id, name: role.name }]);
+    expect((await kept.json()).data.roles).toEqual([
+      { id: role.id, name: role.name, platform: 'treerepro' },
+    ]);
     const sent = t.mail.sent.length;
     const resend = await call(t.app, 'POST', `/api/admin/users/${user?.id}/resend-invite`, {
       cookie,
@@ -216,7 +242,9 @@ describe('RFC-50 R3, RFC-31 R12, R14 roles of an invitation', () => {
       body: { email: randomEmail(), name: 'Grace', roles: [within.id] },
     });
     expect(ok.status).toBe(201);
-    expect((await ok.json()).data.roles).toEqual([{ id: within.id, name: within.name }]);
+    expect((await ok.json()).data.roles).toEqual([
+      { id: within.id, name: within.name, platform: 'treerepro' },
+    ]);
     const email = randomEmail();
     const refused = await call(t.app, 'POST', '/api/admin/users', {
       cookie,
@@ -464,7 +492,7 @@ describe('RFC-50 R13, RFC-67 R6 PUT /api/admin/users/:id/plots', () => {
     });
     const targetCookie = (await loginAs(t, user)).cookie;
     const p1 = await createPlot(t.db);
-    const key = `dashboard:${user.id}`;
+    const key = `dashboard:treerepro:${user.id}`;
 
     try {
       // Warm the target's own cache entry while they still have no plots.
@@ -597,5 +625,79 @@ describe('RFC-71 R5 GET /api/admin/users/:id/contributions', () => {
       expect(res.status, path).toBe(403);
       expect((await res.json()).error.code, path).toBe('PERMISSION_DENIED');
     }
+  });
+});
+
+describe('RFC-32 R9, RFC-50 R2, R3, R5 people management across platforms', () => {
+  const t = useTestApp();
+
+  it('an admin on PlantRepro lists and filters users whatever their platforms', async () => {
+    const { user: admin } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    const { cookie } = await loginAs(t, admin, { platform: 'plantrepro' });
+    const role = await createRole(t.db);
+    const { user: treeOnly } = await createUser(t.db, { roles: [role.id] });
+    const list = async (query: string) => {
+      const res = await call(t.app, 'GET', `http://plantrepro.localhost/api/admin/users${query}`, {
+        cookie,
+      });
+      expect(res.status, query).toBe(200);
+      return ((await res.json()).data as { id: string }[]).map((u) => u.id);
+    };
+    expect(await list('?limit=200')).toContain(treeOnly.id);
+    expect(await list('?limit=200&platform=treerepro')).toContain(treeOnly.id);
+    expect(await list('?limit=200&platform=plantrepro')).not.toContain(treeOnly.id);
+    expect(await list('?limit=200&platform=plantrepro')).toContain(admin.id);
+    const read = await call(
+      t.app,
+      'GET',
+      `http://plantrepro.localhost/api/admin/users/${treeOnly.id}`,
+      {
+        cookie,
+      },
+    );
+    expect((await read.json()).data.roles).toEqual([
+      { id: role.id, name: role.name, platform: 'treerepro' },
+    ]);
+  });
+
+  it('PATCH replaces the roles of the platform it names; admin shows on both', async () => {
+    const { cookie } = await adminCookie(t);
+    const tree = await createRole(t.db, { name: 'a-tree' });
+    const plant = await createRole(t.db, { name: 'b-plant' });
+    const { user } = await createUser(t.db, { roles: [tree.id] });
+    const res = await call(t.app, 'PATCH', `/api/admin/users/${user.id}`, {
+      cookie,
+      body: { roles: [plant.id], platform: 'plantrepro' },
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(userSchema.parse(data).roles).toEqual([
+      { id: tree.id, name: tree.name, platform: 'treerepro' },
+      { id: plant.id, name: plant.name, platform: 'plantrepro' },
+    ]);
+    const admin = await adminRoleId(t.db);
+    const promoted = await call(t.app, 'PATCH', `/api/admin/users/${user.id}`, {
+      cookie,
+      body: { roles: [tree.id, admin] },
+    });
+    expect(
+      ((await promoted.json()).data.roles as { id: string; platform: string }[])
+        .filter((r) => r.id === admin)
+        .map((r) => r.platform),
+    ).toEqual(['treerepro', 'plantrepro']);
+  });
+
+  it('an invitation sent from TreeRepro for PlantRepro links to PlantRepro and assigns there', async () => {
+    const { cookie } = await adminCookie(t);
+    const role = await createRole(t.db);
+    const res = await call(t.app, 'POST', '/api/admin/users', {
+      cookie,
+      body: { email: randomEmail(), name: 'Grace', platform: 'plantrepro', roles: [role.id] },
+    });
+    expect(res.status).toBe(201);
+    expect(t.mail.sent.at(-1)?.text).toMatch(/http:\/\/plantrepro\.localhost\/invite\//);
+    expect((await res.json()).data.roles).toEqual([
+      { id: role.id, name: role.name, platform: 'plantrepro' },
+    ]);
   });
 });

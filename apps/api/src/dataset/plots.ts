@@ -1,5 +1,6 @@
 import type {
   CreatePlotBody,
+  Platform,
   Plot,
   PlotDetail,
   PlotSort,
@@ -10,7 +11,7 @@ import type {
   UpdatePlotBody,
 } from '@treerepro/contracts';
 import { and, eq, ilike, or, type SQL, sql } from 'drizzle-orm';
-import type { Visibility } from '../access/visibility.ts';
+import { platformScope, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
@@ -350,7 +351,7 @@ export async function updatePlot(
 }
 
 /**
- * Adds a species to a field plot.
+ * Adds a species to a field plot; one outside the platform's scope is not found (RFC-33 R5).
  * @rfc RFC-67 R5
  */
 export async function addPlotSpeciesMember(
@@ -358,6 +359,7 @@ export async function addPlotSpeciesMember(
   plotId: string,
   speciesId: string,
   actorId: string,
+  platform: Platform,
 ): Promise<void> {
   return db.transaction(async (tx) => {
     const [plot] = await tx
@@ -370,7 +372,8 @@ export async function addPlotSpeciesMember(
     const [sp] = await tx
       .select({ id: species.id })
       .from(species)
-      .where(eq(species.id, speciesId))
+      // RFC-33 R5: a species outside the platform's scope is not found.
+      .where(and(eq(species.id, speciesId), platformScope(platform)))
       .limit(1);
     if (!sp) throw new AppError('SPECIES_NOT_FOUND', 'Species not found');
 
@@ -394,7 +397,7 @@ export async function addPlotSpeciesMember(
 }
 
 /**
- * Removes a species from a field plot.
+ * Removes a species from a field plot; one outside the platform's scope is not found (RFC-33 R5).
  * @rfc RFC-67 R5
  */
 export async function removePlotSpeciesMember(
@@ -402,6 +405,7 @@ export async function removePlotSpeciesMember(
   plotId: string,
   speciesId: string,
   actorId: string,
+  platform: Platform,
 ): Promise<void> {
   return db.transaction(async (tx) => {
     const [plot] = await tx
@@ -413,7 +417,14 @@ export async function removePlotSpeciesMember(
 
     const deleted = await tx
       .delete(plotSpecies)
-      .where(and(eq(plotSpecies.plotId, plotId), eq(plotSpecies.speciesId, speciesId)))
+      .where(
+        and(
+          eq(plotSpecies.plotId, plotId),
+          eq(plotSpecies.speciesId, speciesId),
+          // RFC-33 R5: a species outside the platform's scope is not found.
+          sql`exists (select 1 from ${species} where ${species.id} = ${speciesId} and ${platformScope(platform)})`,
+        ),
+      )
       .returning({ speciesId: plotSpecies.speciesId });
 
     if (deleted.length === 0) {

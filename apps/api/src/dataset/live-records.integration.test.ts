@@ -19,7 +19,12 @@ import { getReference } from './references.ts';
 import { speciesTraitSummary } from './summary.ts';
 import { getSpecies, searchSpecies } from './taxa.ts';
 
-const REVIEWER: Visibility = { inactive: false, plotIds: null, review: true };
+const REVIEWER: Visibility = {
+  inactive: false,
+  plotIds: null,
+  review: true,
+  platform: 'treerepro',
+};
 
 async function fixture(db: Parameters<typeof createUser>[0]) {
   const { user } = await createUser(db);

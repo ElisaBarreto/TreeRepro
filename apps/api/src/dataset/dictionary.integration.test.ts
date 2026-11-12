@@ -284,11 +284,11 @@ describe('RFC-62 R5 dictionary speciesCount is read from the cache', () => {
     // (this test's or a sibling's) is guaranteed to see it — unlike the
     // forget-then-assert-an-exact-value pattern this replaces elsewhere,
     // nothing here depends on winning a race for a *specific* computedAt.
-    await forgetCached(redis, 'dictionary:species-counts:u');
+    await forgetCached(redis, 'dictionary:species-counts:plantrepro:u');
 
     await withSeededCount(
       UNRESTRICTED,
-      'dictionary:species-counts:u',
+      'dictionary:species-counts:plantrepro:u',
       trait.id,
       uSentinel,
       async () => {
@@ -303,7 +303,7 @@ describe('RFC-62 R5 dictionary speciesCount is read from the cache', () => {
 
     await withSeededCount(
       RESTRICTED,
-      'dictionary:species-counts:r',
+      'dictionary:species-counts:treerepro:r',
       trait.id,
       rSentinel,
       async () => {
@@ -393,7 +393,7 @@ describe('RFC-62 R5 getTrait speciesCount', () => {
       });
     }
 
-    const plotBound = { inactive: false, plotIds: [plot.id] };
+    const plotBound = { inactive: false, plotIds: [plot.id], platform: 'treerepro' as const };
     // A viewer bound to `plot` (which contains only `insidePlot`) still
     // counts `outsidePlot`, and gets the same number as a restricted viewer
     // with no plot restriction at all: speciesCount is a global summary

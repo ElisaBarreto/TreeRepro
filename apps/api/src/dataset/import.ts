@@ -731,8 +731,10 @@ async function runImport(
           tree_flag text, is_tree_species text
         ) on commit drop`;
       const parquet = isParquet(input.filePath);
+      // R5: the plant type of a created species reads is_tree_species whenever the file has it.
+      const hasTreeColumn = fileColumns.includes(TREE_COLUMN);
       const copied: readonly string[] = parquet
-        ? input.treesOnly
+        ? hasTreeColumn
           ? [...IMPORT_COLUMNS, TREE_COLUMN]
           : IMPORT_COLUMNS
         : fileColumns;
@@ -929,8 +931,13 @@ async function runImport(
         order by s.genus_name, f.id nulls last
         on conflict (name) do nothing`;
       await tx`
-        insert into species (canonical_name, name_source, genus_id)
-        select distinct on (s.species_name) s.species_name, s.name_source, g.id
+        insert into species (canonical_name, name_source, genus_id, plant_type, plant_type_status)
+        select distinct on (s.species_name) s.species_name, s.name_source, g.id,
+          -- R5: R4's predicate gives the type; a file without the column gives trees.
+          case when ${hasTreeColumn}
+                and lower(btrim(coalesce(s.is_tree_species, ''))) <> 'true'
+               then 'not_tree' else 'tree' end,
+          'reviewed'
         from import_staging s left join genera g on g.name = s.genus_name
         where s.species_name is not null
         order by s.species_name, (s.name_source = 'wcvp') desc, g.id nulls last

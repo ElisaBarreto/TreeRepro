@@ -78,7 +78,7 @@ const dashboard = {
       percentWithData: 60,
       percentValidated: 40,
     },
-    queues: { pendingGroups: 2, contested: 0, proposals: 0 },
+    queues: { pendingGroups: 2, contested: 0, proposals: 0, plantTypes: 1 },
   },
 };
 

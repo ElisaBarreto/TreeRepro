@@ -15,6 +15,7 @@ export const AUDIT_ACTIONS = [
   'auth.session.revoked',
   'auth.invite.created',
   'auth.invite.accepted',
+  'auth.platform_denied',
   'auth.password.reset_requested',
   'auth.password.reset',
   'auth.password.changed',

@@ -33,6 +33,40 @@ describe('RFC-20 R4, RFC-21 R5 email templates', () => {
   });
 });
 
+describe('RFC-10 R16 the account e-mails name their platform', () => {
+  const input = {
+    name: 'Ada',
+    link: 'http://plantrepro.localhost/x',
+    expiresAt,
+    appOrigin: ORIGIN,
+  };
+
+  it('an invitation sent for PlantRepro names PlantRepro and plants, never TreeRepro', () => {
+    const mail = inviteEmail({ ...input, platform: 'plantrepro' });
+    expect(mail.subject).toBe('You have been invited to PlantRepro');
+    expect(mail.platform).toBe('plantrepro');
+    expect(mail.text).toContain('You have been invited to PlantRepro.');
+    expect(mail.html).toContain('Welcome to PlantRepro, Ada');
+    expect(mail.html).toContain('plant reproductive traits');
+    expect(`${mail.text}${mail.html}`).not.toMatch(/TreeRepro|tree reproductive/);
+  });
+
+  it('a password reset sent for PlantRepro names PlantRepro, never TreeRepro', () => {
+    const mail = passwordResetEmail({ ...input, platform: 'plantrepro' });
+    expect(mail.subject).toBe('Reset your PlantRepro password');
+    expect(mail.platform).toBe('plantrepro');
+    expect(`${mail.text}${mail.html}`).not.toContain('TreeRepro');
+  });
+
+  it('TreeRepro is the default and reads as before', () => {
+    expect(inviteEmail({ ...input, platform: 'treerepro' })).toEqual({
+      ...inviteEmail(input),
+      platform: 'treerepro',
+    });
+    expect(passwordResetEmail(input).platform).toBe('treerepro');
+  });
+});
+
 describe('RFC-10 R16 HTML parts of the account e-mails', () => {
   it('the invitation welcomes by name and links the button and the fallback to the invite', () => {
     const mail = inviteEmail({
@@ -124,6 +158,7 @@ const digest = (over: Partial<Digest> = {}): Digest => ({
     proposals: 0,
     pendingGroups: 4,
     contestedNow: 2,
+    plantTypes: 3,
   },
   contests: [
     item(),
@@ -158,6 +193,7 @@ describe('RFC-74 R5 digestEmail', () => {
     expect(mail.text).toContain('Species proposals: 0');
     expect(mail.text).toContain('Pending groups: 4');
     expect(mail.text).toContain('Open contests: 2');
+    expect(mail.text).toContain('Plant types: 3');
     expect(mail.text).not.toContain('Disputes');
     expect(mail.text).not.toContain('Disputed');
     expect(mail.text).toContain('2026-09-16 06:00 UTC');
@@ -218,6 +254,7 @@ describe('RFC-74 R5 digestEmail', () => {
       'Species proposals',
       'Pending groups',
       'Open contests',
+      'Plant types',
     ])
       expect(mail.html).toContain(label);
     expect(mail.html).not.toContain('Disputes');

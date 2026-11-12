@@ -9,7 +9,9 @@
 	}
 }
 
-{$DOMAIN} {
+# Both platforms (RFC-14 R7). compose.prod.yml sets PLANT_DOMAIN to DOMAIN
+# while it is unset (an empty address does not parse); Caddy folds the repeat.
+{$DOMAIN}, {$PLANT_DOMAIN} {
 	encode zstd gzip
 
 	# Access log for incident investigation (RFC-02 R7): JSON with the resolved

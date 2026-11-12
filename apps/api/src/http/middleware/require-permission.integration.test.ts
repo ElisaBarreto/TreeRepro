@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { call, useTestApp } from '../../../test/helpers/app.ts';
-import { adminRoleId, createRole } from '../../../test/helpers/roles.ts';
+import { call, TEST_DOMAINS, useTestApp } from '../../../test/helpers/app.ts';
+import { adminRoleId, createRole, systemRoleId } from '../../../test/helpers/roles.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createUser } from '../../../test/helpers/users.ts';
 import type { AppEnv } from '../env.ts';
 import { createErrorHandler } from '../errors.ts';
 import { guardKind } from '../guards.ts';
+import { resolvePlatform } from '../platform.ts';
 import { currentPermissions, requirePermission } from './require-permission.ts';
 import { resolveSession } from './session.ts';
 
@@ -21,7 +22,9 @@ describe('RFC-32 R4 requirePermission', () => {
 
   function app() {
     const a = new Hono<AppEnv>();
-    a.use(resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }));
+    a.use(resolvePlatform(TEST_DOMAINS)).use(
+      resolveSession({ sessions: t.sessions, db: t.db, limiter: t.limiter }),
+    );
     a.get('/read', requirePermission(ctx(), 'users.read'), (c) =>
       c.json({ permissions: [...currentPermissions(c)] }),
     );
@@ -82,5 +85,32 @@ describe('RFC-32 R4 requirePermission', () => {
 
   it('is registered as a permission guard', () => {
     expect(guardKind(requirePermission(ctx(), 'users.read'))).toBe('permission');
+  });
+});
+
+describe("RFC-32 R1 permissions are resolved on the request's platform", () => {
+  const t = useTestApp();
+
+  it('a TreeRepro-only contributor is refused on PlantRepro; an admin passes on both', async () => {
+    const contributor = await systemRoleId(t.db, 'contributor');
+    const { user } = await createUser(t.db, { roles: [contributor] });
+    const tree = await loginAs(t, user);
+    const plant = await loginAs(t, user, { platform: 'plantrepro' });
+    expect((await call(t.app, 'GET', '/api/me/dashboard', { cookie: tree.cookie })).status).toBe(
+      200,
+    );
+    const refused = await call(t.app, 'GET', 'http://plantrepro.localhost/api/me/dashboard', {
+      cookie: plant.cookie,
+    });
+    expect(refused.status).toBe(403);
+    expect((await refused.json()).error.code).toBe('PERMISSION_DENIED');
+    const { user: admin } = await createUser(t.db, { roles: [await adminRoleId(t.db)] });
+    for (const platform of ['treerepro', 'plantrepro'] as const) {
+      const { cookie } = await loginAs(t, admin, { platform });
+      const host = platform === 'treerepro' ? 'localhost' : 'plantrepro.localhost';
+      expect((await call(t.app, 'GET', `http://${host}/api/me/dashboard`, { cookie })).status).toBe(
+        200,
+      );
+    }
   });
 });

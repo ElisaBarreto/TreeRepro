@@ -685,6 +685,25 @@ describe('RFC-70 R7 species page missing toggle', () => {
   });
 });
 
+describe('RFC-60 R7, RFC-65 R19 SpeciesPage plant type', () => {
+  it('shows the plant type, and Change plant type only with records.review', async () => {
+    dataset.fetchSpecies.mockResolvedValue({ ...SPECIES, plantTypeStatus: 'proposed' });
+    renderAt(`/app/species/${SPECIES.id}`);
+    expect(await screen.findByText('Plant type: Tree (proposed)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change plant type' })).not.toBeInTheDocument();
+  });
+
+  it('opens the change dialog for a records.review holder', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...CURATOR_TAXA,
+      permissions: ['dataset.read', 'records.review'],
+    });
+    renderAt(`/app/species/${SPECIES.id}`);
+    await userEvent.click(await screen.findByRole('button', { name: 'Change plant type' }));
+    expect(screen.getByRole('dialog', { name: 'Change plant type' })).toBeInTheDocument();
+  });
+});
+
 describe('RFC-60 R9 SpeciesPage taxa editing', () => {
   it('hides "Edit species" and "Add name" from a reader', async () => {
     renderAt(`/app/species/${SPECIES.id}`);

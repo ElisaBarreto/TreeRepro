@@ -40,6 +40,8 @@ export const SPECIES: Species = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d03',
   canonicalName: 'Adenanthera pavonina',
   treeFlag: null,
+  plantType: 'tree',
+  plantTypeStatus: 'reviewed',
   nameSource: 'wcvp',
   active: true,
   genus: GENUS,
@@ -66,6 +68,8 @@ export const UNRESOLVED_SPECIES: Species = {
   id: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8d04',
   canonicalName: 'Adansonia digitata',
   treeFlag: null,
+  plantType: 'tree',
+  plantTypeStatus: 'reviewed',
   nameSource: 'gbif',
   active: true,
   genus: null,
@@ -648,6 +652,8 @@ export const TRAIT_SPECIES_WITH_DATA: TraitSpeciesItem = {
   id: SPECIES.id,
   canonicalName: SPECIES.canonicalName,
   treeFlag: null,
+  plantType: 'tree',
+  plantTypeStatus: 'reviewed',
   nameSource: 'wcvp',
   active: true,
   genus: GENUS,
@@ -1126,7 +1132,7 @@ export const DASHBOARD_CURATION: NonNullable<Dashboard['curation']> = {
   // float quotient rounded in the browser answers 57 and 28. The fixture is
   // chosen so an assertion can tell the two apart.
   coverage: { cells: 200, withData: 115, validated: 57, percentWithData: 58, percentValidated: 29 },
-  queues: { pendingGroups: 3, contested: 1, proposals: 0 },
+  queues: { pendingGroups: 3, contested: 1, proposals: 0, plantTypes: 0 },
 };
 
 /** The whole dashboard answer for a contributor with plots and no review permission. @rfc RFC-72 R1 */
@@ -1377,6 +1383,7 @@ export const PROPOSAL: Proposal = {
   decidedBy: null,
   decidedAt: null,
   decisionNote: null,
+  plantType: 'tree',
   createdAt: '2026-09-19T09:00:00.000Z',
 };
 
@@ -1414,4 +1421,5 @@ export const REJECTED_PROPOSAL: Proposal = {
   decidedBy: { id: USER.id, name: 'Grace' },
   decidedAt: '2026-09-19T10:00:00.000Z',
   decisionNote: 'No such taxon; check the spelling.',
+  plantType: 'tree',
 };

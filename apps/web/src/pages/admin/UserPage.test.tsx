@@ -91,7 +91,7 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     expect(
-      within(screen.getByRole('region', { name: 'Roles' })).getByText('Readers'),
+      within(screen.getByRole('region', { name: 'TreeRepro roles' })).getByText('Readers'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Sessions' })).not.toBeInTheDocument();
     expect(admin.listUserSessions).not.toHaveBeenCalled();
@@ -148,7 +148,7 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
   it('RFC-31 R13 the roles on the viewer’s own page are read-only, whatever they may do to others', async () => {
     auth.fetchMe.mockResolvedValue(ADMIN_ME);
     await openUser(ADMIN_USER);
-    const region = screen.getByRole('region', { name: 'Roles' });
+    const region = screen.getByRole('region', { name: 'TreeRepro roles' });
     expect(within(region).queryByRole('checkbox')).not.toBeInTheDocument();
     expect(within(region).queryByRole('button', { name: 'Save roles' })).not.toBeInTheDocument();
     expect(within(region).getByText('admin')).toBeInTheDocument();
@@ -167,22 +167,26 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     const BOTH_ROLES: User = {
       ...OTHER_ADMIN,
       roles: [
-        { id: ROLE_ADMIN.id, name: 'admin' },
-        { id: ROLE_READERS.id, name: 'Readers' },
+        { id: ROLE_ADMIN.id, name: 'admin', platform: 'treerepro' },
+        { id: ROLE_ADMIN.id, name: 'admin', platform: 'plantrepro' },
+        { id: ROLE_READERS.id, name: 'Readers', platform: 'treerepro' },
       ],
     };
     admin.updateUser
       .mockRejectedValueOnce(new ApiError(409, 'ROLE_LAST_ADMIN', 'x'))
       .mockResolvedValueOnce(BOTH_ROLES);
     await openUser(OTHER_ADMIN);
-    const region = screen.getByRole('region', { name: 'Roles' });
+    const region = screen.getByRole('region', { name: 'TreeRepro roles' });
     // The accessible name is the whole label (name, badge, description): match its start.
     const adminBox = await within(region).findByRole('checkbox', { name: /^admin\b/ });
     expect(adminBox).toBeChecked();
     await userEvent.click(adminBox);
     await userEvent.click(within(region).getByRole('button', { name: 'Save roles' }));
     await waitFor(() =>
-      expect(admin.updateUser).toHaveBeenCalledWith(OTHER_ADMIN.id, { roles: [] }),
+      expect(admin.updateUser).toHaveBeenCalledWith(OTHER_ADMIN.id, {
+        roles: [],
+        platform: 'treerepro',
+      }),
     );
     expect(await within(region).findByRole('alert')).toHaveTextContent(
       'This is the last active administrator.',
@@ -196,9 +200,30 @@ describe('RFC-13 R2, RFC-50 R4 UserPage', () => {
     await waitFor(() =>
       expect(admin.updateUser).toHaveBeenLastCalledWith(OTHER_ADMIN.id, {
         roles: [ROLE_ADMIN.id, ROLE_READERS.id],
+        platform: 'treerepro',
       }),
     );
     expect(await within(region).findByRole('status')).toHaveTextContent('Roles saved.');
+  });
+
+  it('RFC-50 R14 one role section per platform; the other platform is editable only by an admin', async () => {
+    auth.fetchMe.mockResolvedValue({
+      ...VIEWER,
+      permissions: [...VIEWER.permissions, 'users.update'],
+    });
+    const { unmount } = await openUser(SUSPENDED_USER);
+    const tree = screen.getByRole('region', { name: 'TreeRepro roles' });
+    expect(await within(tree).findByRole('checkbox', { name: /^Readers\b/ })).toBeChecked();
+    const plant = screen.getByRole('region', { name: 'PlantRepro roles' });
+    expect(within(plant).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(plant).getByText('No roles on PlantRepro.')).toBeInTheDocument();
+    unmount();
+    auth.fetchMe.mockResolvedValue(ADMIN_ME);
+    await openUser(SUSPENDED_USER);
+    const plantForAdmin = screen.getByRole('region', { name: 'PlantRepro roles' });
+    expect(
+      await within(plantForAdmin).findByRole('checkbox', { name: /^Readers\b/ }),
+    ).not.toBeChecked();
   });
 
   it('RFC-50 R6-R7 suspends after confirming (refreshing sessions), then offers Reactivate; ROLE_LAST_ADMIN keeps the dialog open', async () => {

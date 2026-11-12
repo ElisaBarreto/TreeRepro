@@ -1,10 +1,10 @@
-import type { PermissionKey } from '@treerepro/contracts';
+import type { PermissionKey, Platform } from '@treerepro/contracts';
 import { and, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
-import { UNRESTRICTED } from '../access/visibility.ts';
+import { platformScope, UNRESTRICTED } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import { contestWithdrawnSql } from '../dataset/contests.ts';
 import { countProposalsCreated } from '../dataset/proposals.ts';
-import { countContested, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups, countPlantTypeQueue } from '../dataset/queues.ts';
 import { liveSql } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { rolePermissions } from '../db/schema/role-permissions.ts';
@@ -80,8 +80,9 @@ export interface DigestWindow {
 }
 
 /**
- * The first six are counted over the window; `pendingGroups` and
- * `contestedNow` are the queues as they stand now (RFC-65 R8, R10), which is
+ * The first six are counted over the window; `pendingGroups`,
+ * `contestedNow` and `plantTypes` are the queues as they stand now (RFC-65
+ * R8, R10, R20), which is
  * why `hasActivity` leaves them out. `contests` counts contests (RFC-63 R14),
  * one per contest whether or not it created a record.
  * @rfc RFC-74 R3
@@ -95,6 +96,7 @@ export interface DigestCounts {
   proposals: number;
   pendingGroups: number;
   contestedNow: number;
+  plantTypes: number;
 }
 
 /**
@@ -299,18 +301,26 @@ interface ItemRow {
  *
  * RFC-33 plays no part here (R3: "unrestricted"): the digest describes the
  * dataset, not one viewer's slice of it, and every recipient holds
- * `dataset.read`. The counts therefore need no visibility join, and the two
+ * `dataset.read`. The counts therefore need no visibility join, and the
  * queue sizes come from the same functions the dashboard reads (RFC-72 R1) so
- * that the e-mail and the queue page can never disagree.
+ * that the e-mail and the queue page can never disagree. The platform's scope
+ * is the one exception (RFC-33 R11): the queue sizes and the contest list,
+ * which names species, are the digest platform's.
  *
  * The item rows carry actor *ids*; the names come from a Drizzle select over
  * `users`, whose column type decrypts them on read (RFC-40 R8). Raw SQL would
  * hand back ciphertext, which is why this is two queries and not a join.
  * @rfc RFC-74 R3
- * @rfc RFC-65 R8, R10
+ * @rfc RFC-65 R8, R10, R20
+ * @rfc RFC-33 R11
  * @rfc RFC-40 R8
  */
-export async function computeDigest(db: DbExecutor, window: DigestWindow): Promise<Digest> {
+export async function computeDigest(
+  db: DbExecutor,
+  window: DigestWindow,
+  platform: Platform,
+): Promise<Digest> {
+  const everything = { ...UNRESTRICTED, platform };
   const start = window.start.toISOString();
   const end = window.end.toISOString();
   const within = (column: SQL): SQL =>
@@ -318,14 +328,21 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
 
   // A withdrawn contest (RFC-63 R14) or record (RFC-63 R13) has left the
   // dataset, so neither is counted nor listed; its withdrawal still counts.
-  const [recordCounts, annotationCounts, contestRows, pendingGroups, contestedNow, proposals] =
-    await Promise.all([
-      // R3 reads `records` as "manual records created", which a contest's
-      // record and a complement both are: `complements` is a subset of
-      // `records`, not an addition to it. R4's activity sum is a "was
-      // anything done at all" test, so counting one twice there changes
-      // nothing. `contests` counts contest rows, record-less ones included.
-      db.execute(sql`
+  const [
+    recordCounts,
+    annotationCounts,
+    contestRows,
+    pendingGroups,
+    contestedNow,
+    proposals,
+    plantTypes,
+  ] = await Promise.all([
+    // R3 reads `records` as "manual records created", which a contest's
+    // record and a complement both are: `complements` is a subset of
+    // `records`, not an addition to it. R4's activity sum is a "was
+    // anything done at all" test, so counting one twice there changes
+    // nothing. `contests` counts contest rows, record-less ones included.
+    db.execute(sql`
         select
           (select count(*)::int from trait_records r
             where r.origin = 'manual' and ${within(sql`r.created_at`)}
@@ -335,17 +352,17 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
               and ${liveSql(sql`r.id`)}) as complements,
           (select count(*)::int from contests k
             where ${within(sql`k.created_at`)} and not ${contestWithdrawnSql('k')}) as contests`) as unknown as Promise<
-        [RecordCountRow | undefined]
-      >,
-      db.execute(sql`
+      [RecordCountRow | undefined]
+    >,
+    db.execute(sql`
         select
           count(*) filter (where a.kind = 'confirm')::int as validations,
           count(*) filter (where a.kind = 'withdraw')::int as withdrawals
         from record_annotations a
         where ${within(sql`a.created_at`)}`) as unknown as Promise<
-        [AnnotationCountRow | undefined]
-      >,
-      db.execute(sql`
+      [AnnotationCountRow | undefined]
+    >,
+    db.execute(sql`
         select k.id as contest_id, k.species_id, sp.canonical_name as species_name,
           t.key as trait_key, k.created_by as actor_id, k.created_at,
           coalesce(
@@ -363,14 +380,17 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
         join species sp on sp.id = k.species_id
         join traits t on t.id = k.trait_id
         where ${within(sql`k.created_at`)} and not ${contestWithdrawnSql('k')}
+          and ${platformScope(platform, 'sp')}
         order by k.created_at desc, k.id desc
         limit ${DIGEST_LIST_LIMIT}`) as unknown as Promise<ItemRow[]>,
-      countPendingGroups(db, UNRESTRICTED),
-      countContested(db, UNRESTRICTED),
-      // RFC-75 R7: proposals created inside the window, whatever became of
-      // them since — the count describes the window, not the queue.
-      countProposalsCreated(db, window),
-    ]);
+    countPendingGroups(db, everything),
+    countContested(db, everything),
+    // RFC-75 R7: proposals created inside the window, whatever became of
+    // them since — the count describes the window, not the queue.
+    countProposalsCreated(db, window),
+    // RFC-65 R20: the same queue on both platforms (RFC-33 R11).
+    countPlantTypeQueue(db, everything),
+  ]);
 
   const actorIds = [...new Set(contestRows.map((row) => row.actor_id))];
   const actors =
@@ -403,6 +423,7 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
       proposals,
       pendingGroups,
       contestedNow,
+      plantTypes,
     },
     contests: contestRows.map(toItem),
   };
@@ -418,10 +439,14 @@ export async function computeDigest(db: DbExecutor, window: DigestWindow): Promi
  * One query over `user_roles` and `role_permissions`; a user qualifying twice
  * is deduplicated here rather than with `distinct`, which would compare the
  * encrypted name and address columns (RFC-40 R11).
+ * Only the roles held on `platform` count (RFC-31 R16).
  * @rfc RFC-74 R4
- * @rfc RFC-31 R2
+ * @rfc RFC-31 R2, R16
  */
-export async function digestRecipients(db: DbExecutor): Promise<DigestRecipient[]> {
+export async function digestRecipients(
+  db: DbExecutor,
+  platform: Platform,
+): Promise<DigestRecipient[]> {
   const rows = await db
     .select({ id: users.id, email: users.email, name: users.name })
     .from(users)
@@ -437,6 +462,7 @@ export async function digestRecipients(db: DbExecutor): Promise<DigestRecipient[
     .where(
       and(
         eq(users.status, 'active'),
+        eq(userRoles.platform, platform),
         or(
           isNotNull(rolePermissions.permissionKey),
           and(eq(roles.isSystem, true), eq(roles.name, ADMIN_ROLE_NAME)),
@@ -466,7 +492,10 @@ export interface DigestRunResult {
 export interface RunDigestInput {
   db: DbExecutor;
   mailer: Mailer;
+  /** The origin of `platform`, for the links. */
   appOrigin: string;
+  /** The platform this digest is for; no request host exists (RFC-14 R4). */
+  platform: Platform;
   logger: Logger;
   /**
    * `DIGEST_ENABLED` (R6). REQUIRED, not optional: an omitted flag would
@@ -536,7 +565,7 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
 
   const runId = await startRun(db, 'digest');
   try {
-    const digest = await computeDigest(db, window);
+    const digest = await computeDigest(db, window, input.platform);
     if (!hasActivity(digest.counts)) {
       // R4: nothing happened, so nothing is sent. The window is recorded all
       // the same, so the next run starts where this one stopped instead of
@@ -548,7 +577,7 @@ export async function runDigest(input: RunDigestInput): Promise<DigestRunResult>
       return { runId, status: 'skipped', recipients: 0, failed: 0 };
     }
 
-    const recipients = await digestRecipients(db);
+    const recipients = await digestRecipients(db, input.platform);
     if (recipients.length === 0) {
       // R4 says nothing else: the run still completes and audits normally.
       // But activity happened and nobody was told — every `records.review`

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AuthContext } from '../../../auth/context.ts';
 import type { AppEnv } from '../../env.ts';
 import { contestRoutes } from './contests.ts';
+import { curationRoutes } from './curation.ts';
 import { exportRoutes } from './export.ts';
 import { importRoutes } from './imports.ts';
 import { mapRoutes } from './maps.ts';
@@ -20,7 +21,7 @@ import { traitRoutes } from './traits.ts';
  * @rfc RFC-62 R5
  * @rfc RFC-63 R9, R10
  * @rfc RFC-64 R11
- * @rfc RFC-65 R16
+ * @rfc RFC-65 R16, R20
  * @rfc RFC-66 R1
  * @rfc RFC-67 R3-R5
  * @rfc RFC-76 R4, R5
@@ -35,6 +36,7 @@ export function datasetRoutes(ctx: AuthContext) {
     .route('/references', referenceRoutes(ctx))
     .route('/records', recordRoutes(ctx))
     .route('/contests', contestRoutes(ctx))
+    .route('/curation', curationRoutes(ctx))
     .route('/traits', traitRoutes(ctx))
     .route('/maps', mapRoutes(ctx))
     .route('/imports', importRoutes(ctx))
