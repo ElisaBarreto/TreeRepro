@@ -231,7 +231,7 @@ describe('RFC-78 import:wcvp', () => {
 // The geographic filters read the WCVP tables, which `import:wcvp` truncates:
 // they live in this file, the only one that loads them, so no parallel file
 // can replace the load under them.
-describe('RFC-60 R6, R12, R14 geographic species filters over the WCVP load', () => {
+describe('RFC-60 R6, R12, R14 geographic species filters (issue #419: several places) over the WCVP load', () => {
   const t = useTestApp();
   const tag = randomUUID().slice(0, 8);
   const native = `Geoa ${tag}`;
@@ -276,9 +276,18 @@ describe('RFC-60 R6, R12, R14 geographic species filters over the WCVP load', ()
     expect(await found('region=84')).toEqual([ids.native]);
     expect(await found('area=bzn')).toEqual([ids.native]);
     expect(await found('area=COS')).toEqual([]);
-    expect(await found('continent=4&area=BZN')).toEqual([]);
     expect(await found('area=ZZZ')).toEqual([]);
     expect(await found('')).toEqual([ids.native, ids.spread, ids.unmatched]);
+  });
+
+  it('R6 takes several codes per level; the most specific choice in each branch is the place', async () => {
+    expect(await found('area=BZN,NEP')).toEqual([ids.native, ids.spread]);
+    expect(await found('continent=4&area=BZN')).toEqual([ids.native, ids.spread]);
+    expect(await found('region=84,40')).toEqual([ids.native, ids.spread]);
+    // Brazil narrows Southern America: Costa Rica's introduced occurrence no longer counts.
+    expect(await found('continent=8&introduced=true')).toEqual([ids.native, ids.spread]);
+    expect(await found('continent=8&region=84&introduced=true')).toEqual([ids.native]);
+    expect(await found('continent=8,4&region=84')).toEqual([ids.native, ids.spread]);
   });
 
   it('R6 introduced=true counts introduced occurrences too', async () => {
@@ -292,6 +301,9 @@ describe('RFC-60 R6, R12, R14 geographic species filters over the WCVP load', ()
       ['area=BZ1', 'area'],
       ['region=north', 'region'],
       ['continent=123', 'continent'],
+      ['area=BZN,BZN', 'area'],
+      ['area=BZN,', 'area'],
+      ['region=84,8x', 'region'],
     ]) {
       const res = await call(t.app, 'GET', `/api/species?${query}`, { cookie });
       expect(res.status).toBe(400);

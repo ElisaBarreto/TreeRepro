@@ -59,6 +59,7 @@ export interface SpeciesSearch {
   /** Comma-separated tree flags, as the API takes them (RFC-60 R6). */
   treeFlag?: string;
   plantType?: PlantType;
+  /** Comma-separated WCVP codes, as the API takes them (RFC-60 R6). */
   continent?: string;
   region?: string;
   area?: string;
@@ -84,9 +85,9 @@ function toValue(search: SpeciesSearch): SpeciesSearchValue {
     traitData: search.traitData,
     treeFlags: search.treeFlag ? (search.treeFlag.split(',') as TreeFlag[]) : undefined,
     plantType: search.plantType,
-    continent: search.continent,
-    region: search.region,
-    area: search.area,
+    continents: search.continent?.split(','),
+    regions: search.region?.split(','),
+    areas: search.area?.split(','),
     introduced: search.introduced === true,
     sort: search.sort,
     order: search.order,
@@ -113,9 +114,9 @@ function toSearch(value: SpeciesSearchValue): SpeciesSearch {
     traitData: value.traitData,
     treeFlag: value.treeFlags?.join(','),
     plantType: value.plantType,
-    continent: value.continent,
-    region: value.region,
-    area: value.area,
+    continent: value.continents?.join(','),
+    region: value.regions?.join(','),
+    area: value.areas?.join(','),
     introduced: value.introduced ? true : undefined,
     sort: value.sort,
     order: value.order,
@@ -146,9 +147,9 @@ function searchKey(value: SpeciesSearchValue): string {
     value.traitData ?? null,
     value.treeFlags?.join(',') ?? null,
     value.plantType ?? null,
-    value.continent ?? null,
-    value.region ?? null,
-    value.area ?? null,
+    value.continents?.join(',') ?? null,
+    value.regions?.join(',') ?? null,
+    value.areas?.join(',') ?? null,
     value.introduced === true,
     value.sort ?? null,
     value.order ?? null,
@@ -248,9 +249,9 @@ export function SpeciesSearchPage({ search }: { search: SpeciesSearch }) {
     traitData: form.traitData,
     treeFlag: form.treeFlags?.join(','),
     plantType: form.plantType,
-    continent: form.continent,
-    region: form.region,
-    area: form.area,
+    continent: form.continents?.join(','),
+    region: form.regions?.join(','),
+    area: form.areas?.join(','),
     introduced: form.introduced === true,
     // The Records column needs a trait: with the trait filter cleared, the
     // list falls back to its default order instead of a refused request.

@@ -71,9 +71,9 @@ function filtersOf(
     traitData: q.traitData,
     treeFlags: q.treeFlag,
     plantType: q.plantType,
-    continent: q.continent,
-    region: q.region,
-    area: q.area,
+    continents: q.continent,
+    regions: q.region,
+    areas: q.area,
     introduced: q.introduced === 'true',
   };
 }

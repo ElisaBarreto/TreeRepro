@@ -115,7 +115,7 @@ export function searchSpecies(params: {
   /** Comma-separated tree flags (RFC-60 R6). */
   treeFlag?: string;
   plantType?: PlantType;
-  /** WCVP level-1, level-2 and level-3 codes (RFC-60 R6). */
+  /** Comma-separated WCVP level-1, level-2 and level-3 codes (RFC-60 R6). */
   continent?: string;
   region?: string;
   area?: string;
