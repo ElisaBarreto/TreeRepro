@@ -1,5 +1,5 @@
 import { contestedQueueItemSchema, type PermissionKey } from '@treerepro/contracts';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import type { TestApp } from '../../../../test/helpers/app.ts';
 import { call, useTestApp } from '../../../../test/helpers/app.ts';
@@ -19,6 +19,7 @@ import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
 import { traitLevels } from '../../../db/schema/dictionary.ts';
 import { traitRecords } from '../../../db/schema/records.ts';
+import { bibliographicReferences } from '../../../db/schema/references.ts';
 
 describe('RFC-63 R9, R10 record and summary routes', () => {
   const t = useTestApp();
@@ -912,6 +913,17 @@ describe('RFC-65 R3, R4 POST /api/records/:id/annotations', () => {
       .from(traitRecords)
       .where(eq(traitRecords.createdBy, reviewer.user.id));
     expect(copies).toEqual([]);
+    // Nor a personal observation it would never cite.
+    const observations = await t.db
+      .select({ id: bibliographicReferences.id })
+      .from(bibliographicReferences)
+      .where(
+        and(
+          eq(bibliographicReferences.kind, 'personal_observation'),
+          eq(bibliographicReferences.observerUserId, reviewer.user.id),
+        ),
+      );
+    expect(observations).toEqual([]);
   });
 
   it('R4 the author withdraws a manual record; nothing more can be annotated afterwards', async () => {
