@@ -4,6 +4,8 @@
 
 TreeRepro is a collective data assembly of reproductive trait data for trees, covering every reproductive stage: flowers, fruits and seeds. Its core data comes from open-access papers and data repositories. The dataset is shared with a community of specialist scientists who fill the gaps and validate the records already there.
 
+The same application also runs as **PlantRepro**, its sister site for every plant, not only trees. Both sites share one database and one classification: TreeRepro shows the reviewed tree species, PlantRepro shows them all. Each site has its own address and look, and access is granted per site.
+
 ## What it does
 
 - **One curated dataset.** Every record belongs to a species, a trait and a bibliographic reference. Species names follow the World Checklist of Vascular Plants, and traits come from a versioned dictionary.
@@ -14,7 +16,7 @@ TreeRepro is a collective data assembly of reproductive trait data for trees, co
 
 ## Who it is for
 
-TreeRepro is invitation only. It serves the researchers taking part in the project, organised by role: contributors, managers and administrators. If you would like to take part, contact the project coordinator at elisabpereira@gmail.com.
+TreeRepro is invitation only. It serves the researchers taking part in the project, organised by role: contributors, managers and administrators. A role is held on one site, so taking part in TreeRepro does not by itself open PlantRepro. If you would like to take part, contact the project coordinator at elisabpereira@gmail.com.
 
 ## Under the hood
 
