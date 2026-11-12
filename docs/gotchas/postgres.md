@@ -107,6 +107,6 @@ The migration is `references_enriched`; it is `0027` today and may carry a diffe
 
 ## A new column has no planner statistics until something analyzes it
 **Symptom:** After a migration, a query that filters on the new column takes minutes instead of seconds. `EXPLAIN` shows nested loops and a row estimate far below the real count. After migration 0058 (`species.plant_type`), the snapshot's TreeRepro summary took 39 min; the same query on PlantRepro, which has no filter on the column, took 17 s (issue #420).
-**Cause:** `ALTER TABLE … ADD COLUMN … DEFAULT` modifies no row, so `n_mod_since_analyze` stays at 0 and autovacuum never analyzes the table. Until then, the planner uses default selectivities for the column (here it expected 143 of 66,728 species).
-**Fix:** `scripts/deploy.sh` runs `vacuumdb --analyze-only --missing-stats-only` (PostgreSQL 18) after every `up`, which analyzes only the columns and tables with no statistics, in seconds. By hand: `analyze <table>;`. Check with `select attname from pg_stats where tablename = '<table>'`.
+**Cause:** `ALTER TABLE … ADD COLUMN … DEFAULT` modifies no row, so `n_mod_since_analyze` stays at 0 and autovacuum does not analyze the table until enough other rows change (about 6,700 for `species`). Until then, the planner uses default selectivities for the column (here it expected 143 of 66,728 species).
+**Fix:** `scripts/deploy.sh` runs `vacuumdb --analyze-only --missing-stats-only` (PostgreSQL 18) after every `up`, which analyzes only the tables with a column that has no statistics. ANALYZE samples, so it takes seconds; a failure only warns. By hand: `analyze <table>;`. Check with `select attname from pg_stats where tablename = '<table>'`.
 
