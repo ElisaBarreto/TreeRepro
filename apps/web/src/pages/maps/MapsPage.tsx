@@ -14,6 +14,7 @@ import { MapViewer, type MapViewerItem } from '../../components/maps/MapViewer.t
 import { Alert, Badge, ButtonLink, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey, TRAIT_VALUE_TYPE_LABELS } from '../../lib/format.ts';
+import { platformCopy } from '../../lib/platform.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
 /** The page's search params (RFC-76 R6): a category key and a trait key. @rfc RFC-76 R6 */
@@ -35,10 +36,11 @@ const EYEBROW = 'text-label font-bold uppercase tracking-[0.08em] text-canopy-80
 const SECTION_HEADING = 'font-display text-body font-semibold text-canopy-950';
 const NOTE = 'text-meta text-mist-500';
 
-const COMPLETENESS_LEGEND =
-  'Share of tree species with data for this trait in each TDWG level-3 region.';
-const PREVALENCE_LEGEND =
-  "Share of the region's tree species with data for this trait that hold each level; a species with several levels counts under each.";
+// RFC-13 R14: the subject is the platform's (trees, plants).
+const completenessLegend = () =>
+  `Share of ${platformCopy().subject} species with data for this trait in each TDWG level-3 region.`;
+const prevalenceLegend = () =>
+  `Share of the region's ${platformCopy().subject} species with data for this trait that hold each level; a species with several levels counts under each.`;
 const SUMMARY_KINDS = [
   { kind: 'mean', note: 'Mean of the species medians in the region.' },
   { kind: 'median', note: 'Median of the species medians in the region.' },
@@ -308,7 +310,7 @@ function TraitMaps({
         <section className="flex flex-col gap-3">
           <div>
             <h4 className={SECTION_HEADING}>Data completeness</h4>
-            <p className={NOTE}>{COMPLETENESS_LEGEND}</p>
+            <p className={NOTE}>{completenessLegend()}</p>
           </div>
           <MapFigure
             entry={completeness.entry}
@@ -324,7 +326,7 @@ function TraitMaps({
             <h4 className={SECTION_HEADING}>
               {categorical ? 'Prevalence by level' : 'Summary statistics'}
             </h4>
-            {categorical ? <p className={NOTE}>{PREVALENCE_LEGEND}</p> : null}
+            {categorical ? <p className={NOTE}>{prevalenceLegend()}</p> : null}
           </div>
           <div
             className={`grid gap-x-6 gap-y-8 ${categorical ? 'sm:grid-cols-2 xl:grid-cols-3' : 'sm:grid-cols-2'}`}

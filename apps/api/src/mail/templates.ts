@@ -1,4 +1,4 @@
-import { PLATFORM_NAMES, type Platform } from '@treerepro/contracts';
+import { PLATFORM_NAMES, PLATFORM_SUBJECTS, type Platform } from '@treerepro/contracts';
 import { DIGEST_LIST_LIMIT, type Digest, type DigestItem } from '../jobs/digest.ts';
 import {
   BODY_FONT,
@@ -19,6 +19,8 @@ export interface MailContent {
   text: string;
   /** The same facts as `text`, in the shared frame (RFC-10 R16). */
   html: string;
+  /** The platform it is sent for: its name and its sender (RFC-10 R16). */
+  platform: Platform;
 }
 
 const h1 = (text: string, color: string = C.canopy900, size = 28) =>
@@ -67,17 +69,18 @@ function inviteHtml(input: {
   expiredLine: string;
   platform: Platform;
 }): string {
+  const name = PLATFORM_NAMES[input.platform];
   const bg = escapeHtml(mailAsset(input.appOrigin, 'hero-bg.jpg'));
   // The pollen and the glow are baked into two images: mail clients drop
   // positioned elements, SVG and most shadows, but show a background image
   // (Outlook for Windows keeps the solid colour underneath).
   const hero = `<tr><td class="tr-hero-pad" align="center" background="${bg}" bgcolor="${C.canopy900}" style="padding:40px 40px 44px;background-color:${C.canopy900};background-image:url('${bg}');background-size:cover;background-position:center top;">
-<img src="${escapeHtml(mailAsset(input.appOrigin, 'rings.png'))}" width="300" height="190" alt="${escapeHtml(PLATFORM_NAMES[input.platform])}" style="display:block;border:0;width:300px;height:190px;margin:-24px auto -20px;">
+<img src="${escapeHtml(mailAsset(input.appOrigin, 'rings.png'))}" width="300" height="190" alt="${name}" style="display:block;border:0;width:300px;height:190px;margin:-24px auto -20px;">
 ${spacer(12)}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:4px 14px;border:1px solid ${C.pollen600};border-radius:999px;background-color:#1f3a26;font-family:${BODY_FONT};font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${C.pollen300};">${mailIcon(input.appOrigin, 'mail.png', 14)}&nbsp;&nbsp;You are invited</td></tr></table>
 ${spacer(22)}
-<h1 style="margin:0 0 16px;font-family:${DISPLAY_FONT};font-size:34px;line-height:1.18;font-weight:700;letter-spacing:-0.02em;color:${C.mist50};">${escapeHtml(`Welcome to ${PLATFORM_NAMES[input.platform]}, ${input.name}`)}</h1>
-<p style="margin:0 0 28px;font-family:${BODY_FONT};font-size:17px;line-height:26px;color:${C.mist100};">Collaborate with us in assembling the largest repository of tree reproductive traits across all stages — flowers, fruits and seeds.</p>
+<h1 style="margin:0 0 16px;font-family:${DISPLAY_FONT};font-size:34px;line-height:1.18;font-weight:700;letter-spacing:-0.02em;color:${C.mist50};">${escapeHtml(`Welcome to ${name}, ${input.name}`)}</h1>
+<p style="margin:0 0 28px;font-family:${BODY_FONT};font-size:17px;line-height:26px;color:${C.mist100};">Collaborate with us in assembling the largest repository of ${PLATFORM_SUBJECTS[input.platform]} reproductive traits across all stages — flowers, fruits and seeds.</p>
 ${mailButton(input.appOrigin, input.link, 'Join')}
 ${spacer(20)}
 <p style="margin:0;font-family:${BODY_FONT};font-size:14px;color:${C.mist300};">${mailIcon(input.appOrigin, 'clock.png', 16)}&nbsp;&nbsp;Valid until <strong style="color:${C.mist50};">${escapeHtml(input.expires)}</strong></p>
@@ -98,15 +101,17 @@ ${spacer(10)}
 ${mailFallbackLink(input.link, input.expiredLine)}`;
   return emailLayout({
     appOrigin: input.appOrigin,
-    title: `You have been invited to ${PLATFORM_NAMES[input.platform]}`,
-    preheader: `Welcome, ${input.name}: set your password to join ${PLATFORM_NAMES[input.platform]}.`,
+    platform: input.platform,
+    title: `You have been invited to ${name}`,
+    preheader: `Welcome, ${input.name}: set your password to join ${name}.`,
     hero,
     body,
-    footer: `You receive this email because an administrator invited this address to ${PLATFORM_NAMES[input.platform]}. If you were not expecting it, you can ignore it.`,
+    footer: `You receive this email because an administrator invited this address to ${name}. If you were not expecting it, you can ignore it.`,
   });
 }
 
 /**
+ * Named for `platform`, TreeRepro when absent.
  * @rfc RFC-20 R4
  * @rfc RFC-10 R16
  */
@@ -117,29 +122,32 @@ export function inviteEmail(input: {
   appOrigin: string;
   /** `INVITE_CONTACT_EMAIL`: who to ask for a new invitation; unset names an administrator. */
   contactEmail?: string | undefined;
-  /** Names the platform the invitation is for (RFC-14 R4). */
-  platform: Platform;
+  platform?: Platform;
 }): MailContent {
+  const platform = input.platform ?? 'treerepro';
+  const name = PLATFORM_NAMES[platform];
   const expires = formatUtc(input.expiresAt);
   const expiredLine = `If the link has expired, request a password reset for this address at ${input.appOrigin}/forgot-password, or ask ${input.contactEmail ?? 'an administrator'} for a new invitation.`;
   return {
-    subject: `You have been invited to ${PLATFORM_NAMES[input.platform]}`,
+    subject: `You have been invited to ${name}`,
     text: [
       `Hello ${input.name},`,
       '',
-      `You have been invited to ${PLATFORM_NAMES[input.platform]}. Open the link below to set your password:`,
+      `You have been invited to ${name}. Open the link below to set your password:`,
       '',
       input.link,
       '',
       `The link expires on ${expires}. ${expiredLine}`,
       '',
-      PLATFORM_NAMES[input.platform],
+      name,
     ].join('\n'),
-    html: inviteHtml({ ...input, expires, expiredLine }),
+    html: inviteHtml({ ...input, expires, expiredLine, platform }),
+    platform,
   };
 }
 
 /**
+ * Named for `platform`, TreeRepro when absent.
  * @rfc RFC-21 R5
  * @rfc RFC-10 R16
  */
@@ -148,36 +156,39 @@ export function passwordResetEmail(input: {
   link: string;
   expiresAt: Date;
   appOrigin: string;
-  /** Names the platform the reset was asked on (RFC-14 R4). */
-  platform: Platform;
+  platform?: Platform;
 }): MailContent {
+  const platform = input.platform ?? 'treerepro';
+  const name = PLATFORM_NAMES[platform];
   const expires = formatUtc(input.expiresAt);
   return {
-    subject: `Reset your ${PLATFORM_NAMES[input.platform]} password`,
+    platform,
+    subject: `Reset your ${name} password`,
     text: [
       `Hello ${input.name},`,
       '',
-      `Someone asked to reset the password of your ${PLATFORM_NAMES[input.platform]} account. Open the link below to choose a new one:`,
+      `Someone asked to reset the password of your ${name} account. Open the link below to choose a new one:`,
       '',
       input.link,
       '',
       `The link expires on ${expires}. If you did not ask for this, ignore this email; your password stays unchanged.`,
       '',
-      PLATFORM_NAMES[input.platform],
+      name,
     ].join('\n'),
     html: emailLayout({
       appOrigin: input.appOrigin,
-      title: `Reset your ${PLATFORM_NAMES[input.platform]} password`,
-      preheader: `Choose a new password for your ${PLATFORM_NAMES[input.platform]} account.`,
+      platform,
+      title: `Reset your ${name} password`,
+      preheader: `Choose a new password for your ${name} account.`,
       accent: C.canopy600,
-      body: `${eyebrow('Account security', C.canopy700, mailIcon(input.appOrigin, 'lock.png', 16))}${h1(`Reset your ${PLATFORM_NAMES[input.platform]} password`)}
+      body: `${eyebrow('Account security', C.canopy700, mailIcon(input.appOrigin, 'lock.png', 16))}${h1(`Reset your ${name} password`)}
 ${mailParagraph(`Hello ${input.name},`)}
-${mailParagraph(`Someone asked to reset the password of your ${PLATFORM_NAMES[input.platform]} account. Choose a new one with the button below.`)}
+${mailParagraph(`Someone asked to reset the password of your ${name} account. Choose a new one with the button below.`)}
 ${spacer(8)}${mailButton(input.appOrigin, input.link, 'Choose a new password')}${spacer(24)}
 ${mailNote(`The link expires on <strong>${escapeHtml(expires)}</strong>.`, 'mist', mailIcon(input.appOrigin, 'clock-dark.png', 18))}
 ${mailNote('Did not ask for this? Ignore this email. Your password stays unchanged.', 'amber', mailIcon(input.appOrigin, 'alert.png', 18))}
 ${mailFallbackLink(input.link)}`,
-      footer: `You receive this email because a password reset was requested for this address on ${PLATFORM_NAMES[input.platform]}.`,
+      footer: `You receive this email because a password reset was requested for this address on ${name}.`,
     }),
   };
 }
@@ -328,6 +339,8 @@ export function digestEmail(input: {
 }): MailContent {
   const { counts, window, contests } = input.digest;
   return {
+    // The digest takes no platform yet (RFC-14 R4; plan 15c threads it).
+    platform: 'treerepro',
     subject: `TreeRepro digest — ${input.date}`,
     text: [
       ...(input.resent === true ? [DIGEST_RESENT_LINE, ''] : []),

@@ -176,7 +176,12 @@ export function authRoutes(ctx: AuthContext) {
     )
     .post('/totp/setup', requireSession, validate('json', totpSetupBodySchema), async (c) =>
       c.json({
-        data: await startTotpSetup(ctx, currentUser(c), c.req.valid('json').password),
+        data: await startTotpSetup(
+          ctx,
+          currentUser(c),
+          c.req.valid('json').password,
+          c.var.platform,
+        ),
       }),
     )
     .post('/totp/confirm', requireSession, validate('json', totpConfirmBodySchema), async (c) =>

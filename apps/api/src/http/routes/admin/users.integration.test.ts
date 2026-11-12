@@ -87,6 +87,7 @@ describe('RFC-50 R3, R8 invitations over HTTP', () => {
     });
     expect(res.status).toBe(201);
     expect(t.mail.sent.at(-1)?.text).toMatch(link);
+    expect(t.mail.sent.at(-1)?.subject).toBe('You have been invited to PlantRepro');
     const { data } = await res.json();
     const resend = await call(
       t.app,

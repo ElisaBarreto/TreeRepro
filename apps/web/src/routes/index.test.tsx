@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client.ts';
-import { PROJECT_HEADLINE } from '../content/project.ts';
+import { projectHeadline } from '../content/project.ts';
 import { DASHBOARD } from '../test/dataset-fixtures.ts';
 import { ME, USER } from '../test/fixtures.ts';
 import { renderAt } from '../test/router.tsx';
@@ -69,7 +69,7 @@ describe('RFC-13 R7 the / route after sign-in', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/app'), { timeout: 4000 });
     expect(startViewTransition).toHaveBeenCalledTimes(1);
     expect(
-      await screen.findByRole('heading', { level: 1, name: PROJECT_HEADLINE }),
+      await screen.findByRole('heading', { level: 1, name: projectHeadline() }),
     ).toBeInTheDocument();
   });
 

@@ -27,3 +27,13 @@ export const PLANT_TYPE_STATUSES = ['proposed', 'reviewed'] as const;
 
 /** @rfc RFC-60 R1 */
 export type PlantTypeStatus = (typeof PLANT_TYPE_STATUSES)[number];
+
+/**
+ * What each platform covers, singular (`tree species`); the copy adds the
+ * plural `s` (`how trees reproduce`).
+ * @rfc RFC-13 R14
+ */
+export const PLATFORM_SUBJECTS: Record<Platform, 'tree' | 'plant'> = {
+  treerepro: 'tree',
+  plantrepro: 'plant',
+};

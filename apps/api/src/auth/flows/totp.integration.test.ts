@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { call, cookieFrom, useTestApp } from '../../../test/helpers/app.ts';
+import { call, cookieFrom, TEST_PLANT_ORIGIN, useTestApp } from '../../../test/helpers/app.ts';
 import { lastAudit } from '../../../test/helpers/audit.ts';
 import { loginAs } from '../../../test/helpers/session.ts';
 import { createMember, DEFAULT_PASSWORD } from '../../../test/helpers/users.ts';
@@ -41,6 +41,20 @@ describe('RFC-23 R2, R3 TOTP enrolment', () => {
     expect(await t.redis.get(`totp_setup:${user.id}`)).not.toBe(secret);
     expect(await t.mfa.getSetupSecret(user.id)).toBe(secret);
     expect((await findUserById(t.db, user.id))?.totpEnabledAt).toBeNull();
+  });
+
+  it('RFC-23 R1 setup on PlantRepro names PlantRepro as the issuer', async () => {
+    const { user, email } = await createMember(t.db, { platform: 'plantrepro' });
+    const { cookie } = await loginAs(t, user, { platform: 'plantrepro' });
+    const res = await call(t.app, 'POST', 'http://plantrepro.localhost/api/auth/totp/setup', {
+      cookie,
+      origin: TEST_PLANT_ORIGIN,
+      body: { password: DEFAULT_PASSWORD },
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.otpauthUri).toContain(
+      `otpauth://totp/PlantRepro:${encodeURIComponent(email)}?`,
+    );
   });
 
   it('setup needs the current password: a wrong one is 401 and stores nothing', async () => {
