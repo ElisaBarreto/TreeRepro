@@ -13,7 +13,6 @@ describe('RFC-20 R4, RFC-21 R5 email templates', () => {
       link: 'http://localhost/invite/abc',
       expiresAt,
       appOrigin: ORIGIN,
-      platform: 'treerepro',
     });
     expect(mail.subject).toBe('You have been invited to TreeRepro');
     expect(mail.text).toContain('Ada');
@@ -27,7 +26,6 @@ describe('RFC-20 R4, RFC-21 R5 email templates', () => {
       link: 'http://localhost/reset-password/abc',
       expiresAt,
       appOrigin: ORIGIN,
-      platform: 'treerepro',
     });
     expect(mail.subject).toBe('Reset your TreeRepro password');
     expect(mail.text).toContain('http://localhost/reset-password/abc');
@@ -35,23 +33,37 @@ describe('RFC-20 R4, RFC-21 R5 email templates', () => {
   });
 });
 
-describe('RFC-14 R4 the account e-mails name their platform', () => {
-  it('a PlantRepro invitation and reset say PlantRepro, never TreeRepro', () => {
-    const input = {
-      name: 'Ada',
-      link: 'http://plantrepro.localhost/x',
-      expiresAt,
-      appOrigin: 'http://plantrepro.localhost',
-      platform: 'plantrepro' as const,
-    };
-    const invite = inviteEmail(input);
-    const reset = passwordResetEmail(input);
-    expect(invite.subject).toBe('You have been invited to PlantRepro');
-    expect(reset.subject).toBe('Reset your PlantRepro password');
-    for (const mail of [invite, reset]) {
-      expect(mail.text).not.toContain('TreeRepro');
-      expect(mail.text).toContain('PlantRepro');
-    }
+describe('RFC-10 R16 the account e-mails name their platform', () => {
+  const input = {
+    name: 'Ada',
+    link: 'http://plantrepro.localhost/x',
+    expiresAt,
+    appOrigin: ORIGIN,
+  };
+
+  it('an invitation sent for PlantRepro names PlantRepro and plants, never TreeRepro', () => {
+    const mail = inviteEmail({ ...input, platform: 'plantrepro' });
+    expect(mail.subject).toBe('You have been invited to PlantRepro');
+    expect(mail.platform).toBe('plantrepro');
+    expect(mail.text).toContain('You have been invited to PlantRepro.');
+    expect(mail.html).toContain('Welcome to PlantRepro, Ada');
+    expect(mail.html).toContain('plant reproductive traits');
+    expect(`${mail.text}${mail.html}`).not.toMatch(/TreeRepro|tree reproductive/);
+  });
+
+  it('a password reset sent for PlantRepro names PlantRepro, never TreeRepro', () => {
+    const mail = passwordResetEmail({ ...input, platform: 'plantrepro' });
+    expect(mail.subject).toBe('Reset your PlantRepro password');
+    expect(mail.platform).toBe('plantrepro');
+    expect(`${mail.text}${mail.html}`).not.toContain('TreeRepro');
+  });
+
+  it('TreeRepro is the default and reads as before', () => {
+    expect(inviteEmail({ ...input, platform: 'treerepro' })).toEqual({
+      ...inviteEmail(input),
+      platform: 'treerepro',
+    });
+    expect(passwordResetEmail(input).platform).toBe('treerepro');
   });
 });
 
@@ -62,7 +74,6 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
       link: 'http://localhost/invite/abc',
       expiresAt,
       appOrigin: ORIGIN,
-      platform: 'treerepro',
     });
     expect(mail.html).toContain('Welcome to TreeRepro, Ada');
     expect(mail.html.match(/href="http:\/\/localhost\/invite\/abc"/g)).toHaveLength(2);
@@ -87,13 +98,7 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
   });
 
   it('RFC-20 R4 an expired invitation points to the configured contact, else to an administrator', () => {
-    const base = {
-      name: 'Ada',
-      link: 'http://localhost/invite/abc',
-      expiresAt,
-      appOrigin: ORIGIN,
-      platform: 'treerepro' as const,
-    };
+    const base = { name: 'Ada', link: 'http://localhost/invite/abc', expiresAt, appOrigin: ORIGIN };
     const withContact = inviteEmail({ ...base, contactEmail: 'help@treerepro.test' });
     expect(withContact.text).toContain('ask help@treerepro.test for a new invitation');
     expect(withContact.html).toContain('ask help@treerepro.test for a new invitation');
@@ -111,7 +116,6 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
       link: 'http://localhost/reset-password/abc',
       expiresAt,
       appOrigin: ORIGIN,
-      platform: 'treerepro',
     });
     expect(mail.html).toContain('href="http://localhost/reset-password/abc"');
     expect(mail.html).toContain('2026-09-15 10:00 UTC');
@@ -121,8 +125,8 @@ describe('RFC-10 R16 HTML parts of the account e-mails', () => {
   it('escapes a name and a link that carry markup', () => {
     const hostile = { name: '<img src=x onerror=alert(1)>', link: 'http://localhost/x?a="><b>' };
     for (const mail of [
-      inviteEmail({ ...hostile, expiresAt, appOrigin: ORIGIN, platform: 'treerepro' }),
-      passwordResetEmail({ ...hostile, expiresAt, appOrigin: ORIGIN, platform: 'treerepro' }),
+      inviteEmail({ ...hostile, expiresAt, appOrigin: ORIGIN }),
+      passwordResetEmail({ ...hostile, expiresAt, appOrigin: ORIGIN }),
     ]) {
       expect(mail.html).not.toContain('<img src=x');
       expect(mail.html).not.toContain('"><b>');

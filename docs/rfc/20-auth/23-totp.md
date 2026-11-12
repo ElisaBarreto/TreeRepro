@@ -12,7 +12,7 @@ Users may add a time-based one-time password (RFC 6238) as a second factor. Enro
 
 ## Rules
 
-- **R1** Secret: 20 random bytes, base32. Algorithm SHA-1, 6 digits, 30-second period. Provisioning URI `otpauth://totp/TreeRepro:<email>?secret=<base32>&issuer=TreeRepro&algorithm=SHA1&digits=6&period=30`.
+- **R1** Secret: 20 random bytes, base32. Algorithm SHA-1, 6 digits, 30-second period. Provisioning URI `otpauth://totp/<issuer>:<email>?secret=<base32>&issuer=<issuer>&algorithm=SHA1&digits=6&period=30`, the issuer being the name of the platform the user enrols on (`TreeRepro` or `PlantRepro`, RFC-14). The secret is one per account, so the code works on both platforms whichever name the authenticator shows.
 - **R2** `POST /api/auth/totp/setup { password }` (session): 409 `AUTH_TOTP_ALREADY_ENABLED` when `totp_enabled_at` is set; the password must verify (401 `AUTH_INVALID_CREDENTIALS`), so a hijacked or unattended session cannot enrol another authenticator and lock the owner out. Otherwise a new secret is stored encrypted (AAD `totp_setup.secret`) at Redis `totp_setup:<userId>` for 10 minutes and the response is `{ data: { secret, otpauthUri } }`. Calling setup again replaces the provisional secret.
 - **R3** `POST /api/auth/totp/confirm { code }` (session): the code must verify (R4) against the provisional secret; on success the secret is stored in `users.totp_secret`, `totp_enabled_at` is set, the provisional secret deleted, the recovery codes replaced (R5) and returned once as `{ data: { recoveryCodes } }`; audit `auth.totp.enabled`. A wrong code or no setup in progress answers 401 `AUTH_TOTP_INVALID`.
 - **R4** Verification accepts the current step and one step on each side (±30 s). Replay guard: the counter of the last accepted code is kept at Redis `totp_last:<userId>` for 90 seconds; a code whose counter is not greater than the stored one is rejected.
@@ -32,3 +32,4 @@ None.
 - 2026-09-12 — created.
 - 2026-09-12 — accepted.
 - 2026-09-26 — R7: disabling TOTP also revokes every active API key of the user (RFC-82 R3).
+- 2026-11-11 — R1: the issuer is the name of the platform the user enrols on (plan 15g, issue #401).

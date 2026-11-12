@@ -262,6 +262,13 @@ async function addValidationRecord(
   actorId: string,
   referenceId: string | undefined,
 ): Promise<void> {
+  // Checked first, so a pending record does not create the personal
+  // observation it would never cite.
+  const [validated] = await tx
+    .select({ harmonisation: traitRecords.harmonisation })
+    .from(traitRecords)
+    .where(eq(traitRecords.id, validatedRecordId));
+  if (validated?.harmonisation !== 'harmonised') return;
   const primary = referenceId ?? (await ensurePersonalObservation(tx, actorId)).id;
   await tx.execute(sql`
     insert into trait_records (species_id, trait_id, value_text, level_id, numeric_value,
@@ -273,7 +280,7 @@ async function addValidationRecord(
       r.unit_status, r.outlier_flag, 'harmonised', ${primary}::uuid, 'manual', ${actorId}::uuid,
       'complement', r.id
     from trait_records r left join trait_levels l on l.id = r.level_id
-    where r.id = ${validatedRecordId}::uuid and r.harmonisation = 'harmonised'
+    where r.id = ${validatedRecordId}::uuid
     on conflict on constraint trait_records_claim_key do nothing`);
 }
 
@@ -281,6 +288,7 @@ interface CodeRow {
   id: string;
   record_code: string;
   created_by: string | null;
+  primary_reference_id: string | null;
 }
 
 /**
@@ -295,7 +303,7 @@ async function matchingRecords(
   levelId: string,
 ): Promise<CodeRow[]> {
   return (await tx.execute(sql`
-    select r.id, r.record_code, r.created_by from trait_records r
+    select r.id, r.record_code, r.created_by, r.primary_reference_id from trait_records r
     where r.species_id = ${input.speciesId}::uuid and r.trait_id = ${input.traitId}::uuid
       and r.level_id = ${levelId}::uuid
       and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}
@@ -333,16 +341,17 @@ async function levelsWithVisibleRecords(
  *   path `intent`) or a `contestedLevelIds` other than E \ S (400 path
  *   `contestedLevelIds`) before writing anything;
  * - each level that matches visible records validates every one the actor
- *   did not create and reports the actor's own as duplicates (RFC-65 R13);
- *   a quantitative entry is never matched;
- * - the rest are inserted under one code number (RFC-63 R12); a claim-key
- *   collision creates nothing and is a duplicate only when the colliding
- *   record is visible (RFC-33 R4);
+ *   did not create (RFC-65 R13); a quantitative entry is never matched;
+ * - every level, matched or not, is inserted under one code number (RFC-63
+ *   R12, RFC-65 R17) — bar one the actor's own record already states under
+ *   the same primary reference, a duplicate; a claim-key collision creates nothing and is a
+ *   duplicate only when the colliding record is visible (RFC-33 R4) and not
+ *   one the entry just validated;
  * - a contest is stored with the levels it contests and the records it
  *   created, even none (RFC-63 R14) — except a quantitative contest whose
  *   value collided, which contests nothing.
  * @rfc RFC-70 R1, R2, R3
- * @rfc RFC-65 R1
+ * @rfc RFC-65 R1, R17
  * @rfc RFC-63 R3, R12, R14, R16
  * @rfc RFC-33 R2, R4, R5
  */
@@ -484,18 +493,17 @@ export async function createRecords(
     for (const value of values) {
       const matches =
         value.levelId === null ? [] : await matchingRecords(tx, visibility, input, value.levelId);
-      if (matches.length === 0) {
-        toCreate.push(value);
-        continue;
-      }
+      // Every level is created, a matched one too (RFC-70 R3, RFC-65 R17),
+      // unless the actor already states it under the same primary reference.
+      const own = matches.find(
+        (m) => m.created_by === input.actorId && m.primary_reference_id === primaryReferenceId,
+      );
+      if (own) duplicates.push({ recordId: own.id, recordCode: own.record_code });
+      else toCreate.push(value);
       for (const match of matches) {
-        const ref = { recordId: match.id, recordCode: match.record_code };
-        if (match.created_by === input.actorId) {
-          duplicates.push(ref);
-        } else {
-          await confirmOnce(tx, match.id, input.actorId, supporting);
-          validated.push(ref);
-        }
+        if (match.created_by === input.actorId) continue;
+        await confirmOnce(tx, match.id, input.actorId, supporting);
+        validated.push({ recordId: match.id, recordCode: match.record_code });
       }
     }
 
@@ -551,7 +559,10 @@ export async function createRecords(
           and r.primary_reference_id = ${primaryReferenceId}::uuid
           and r.secondary_reference_id is not distinct from ${input.secondaryReferenceId ?? null}::uuid
           and ${recordVisible(visibility, sql`r.id`, sql`r.harmonisation`)}`)) as unknown as CodeRow[];
-      if (colliding) duplicates.push({ recordId: colliding.id, recordCode: colliding.record_code });
+      // A record the level just validated is named once, in `validated`.
+      if (colliding && !validated.some((v) => v.recordId === colliding.id)) {
+        duplicates.push({ recordId: colliding.id, recordCode: colliding.record_code });
+      }
     }
 
     // A quantitative contest that collided contests nothing.

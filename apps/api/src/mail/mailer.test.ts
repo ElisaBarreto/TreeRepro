@@ -22,6 +22,27 @@ describe('RFC-10 R5 SMTP mailer', () => {
     });
   });
 
+  it('RFC-10 R16 sends a PlantRepro mail from the same address as PlantRepro', async () => {
+    const sendMail = vi.fn().mockResolvedValue({});
+    const msg = { to: 'ada@example.test', subject: 'Hi', text: 'Hello', html: '<p>Hello</p>' };
+    await createMailer({ sendMail }, 'TreeRepro <no-reply@localhost>').send({
+      ...msg,
+      platform: 'plantrepro',
+    });
+    await createMailer({ sendMail }, 'no-reply@localhost').send({ ...msg, platform: 'plantrepro' });
+    await createMailer({ sendMail }, 'TreeRepro <no-reply@localhost>').send({
+      ...msg,
+      platform: 'treerepro',
+    });
+    const from = sendMail.mock.calls.map(([m]) => m.from);
+    expect(from).toEqual([
+      { name: 'PlantRepro', address: 'no-reply@localhost' },
+      { name: 'PlantRepro', address: 'no-reply@localhost' },
+      'TreeRepro <no-reply@localhost>',
+    ]);
+    expect(sendMail.mock.calls[0]?.[0]).not.toHaveProperty('platform');
+  });
+
   it('serializes a real message with nodemailer (stream transport)', async () => {
     const transport = nodemailer.createTransport({
       streamTransport: true,

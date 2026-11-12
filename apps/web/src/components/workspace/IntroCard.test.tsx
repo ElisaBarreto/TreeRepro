@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { PROJECT_HEADLINE } from '../../content/project.ts';
+import { projectHeadline } from '../../content/project.ts';
 import { DASHBOARD } from '../../test/dataset-fixtures.ts';
 import { withRouter } from '../../test/router.tsx';
 import { IntroCard } from './IntroCard.tsx';
@@ -14,8 +14,8 @@ describe('RFC-72 R3 IntroCard', () => {
   it('greets the viewer by first name and heads the card with the headline as the page h1', async () => {
     await renderCard();
     expect(screen.getByText('Welcome back, Ada')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(PROJECT_HEADLINE);
-    expect(PROJECT_HEADLINE).toBe('Help complete what we know about how trees reproduce.');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(projectHeadline());
+    expect(projectHeadline()).toBe('Help complete what we know about how trees reproduce.');
   });
 
   it('greets by the whole name when it is one word', async () => {
