@@ -1,5 +1,6 @@
 import { ApiError } from '../../api/client.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
+import { hiddenNameMessage } from '../catalog/errors.ts';
 
 /**
  * The species id `POST /api/species/proposals` puts in `details[0].message`
@@ -27,7 +28,7 @@ export function proposeErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'SPECIES_NAME_TAKEN':
-        return 'This species is already in the catalog.';
+        return hiddenNameMessage(error) ?? 'This species is already in the catalog.';
       case 'PROPOSAL_EXISTS':
         return 'Already proposed. It is in the queue, waiting for a decision.';
       case 'VALIDATION_FAILED':
@@ -53,7 +54,10 @@ export function decideErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'SPECIES_NAME_TAKEN':
-        return 'A species with this name is already in the catalog, outside what the proposer can see. Nothing was created and the proposal is still open: search the catalog for the name, then reject the proposal with a note pointing at it.';
+        return (
+          hiddenNameMessage(error) ??
+          'A species with this name is already in the catalog, outside what the proposer can see. Nothing was created and the proposal is still open: search the catalog for the name, then reject the proposal with a note pointing at it.'
+        );
       case 'PROPOSAL_DECIDED':
         return 'This proposal has already been decided. Reload the page.';
       case 'PROPOSAL_NOT_FOUND':

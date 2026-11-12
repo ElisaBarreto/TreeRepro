@@ -102,6 +102,28 @@ describe('RFC-72 R3 CurationCards', () => {
     expect(proposals).toHaveTextContent('3');
   });
 
+  it('RFC-65 R20 shows the plant types tile only when species await a type review', async () => {
+    const first = renderInRouter(
+      <CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />,
+    );
+    await screen.findByRole('link', { name: /^Pending/ });
+    expect(screen.queryByText(/^Plant types/)).not.toBeInTheDocument();
+    first.unmount();
+
+    renderInRouter(
+      <CurationCards
+        curation={{
+          ...DASHBOARD_CURATION,
+          queues: { ...DASHBOARD_CURATION.queues, plantTypes: 2 },
+        }}
+        canReadCoverage={false}
+      />,
+    );
+    const tile = await screen.findByRole('link', { name: /^Plant types/ });
+    expect(tile).toHaveAttribute('href', '/app/curation/plant-types');
+    expect(tile).toHaveTextContent('2');
+  });
+
   it('shows the coverage link only when the viewer holds coverage.read', async () => {
     const first = renderInRouter(
       <CurationCards curation={DASHBOARD_CURATION} canReadCoverage={false} />,

@@ -28,7 +28,7 @@ import {
 const tag = () => randomBytes(4).toString('hex');
 
 /** A viewer who cannot see inactive traits (RFC-33 R2). */
-const restricted: Visibility = { inactive: false, plotIds: null };
+const restricted: Visibility = { inactive: false, plotIds: null, platform: 'treerepro' };
 
 describe('RFC-61 R4 references', () => {
   const t = useTestDb();

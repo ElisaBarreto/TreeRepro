@@ -28,6 +28,7 @@ import type { AuthContext } from '../../../auth/context.ts';
 import { InvitationMailError, inviteUser } from '../../../auth/flows/invitation.ts';
 import { UserEmailTakenError } from '../../../auth/users.ts';
 import { contributionSummary, listContributions } from '../../../dataset/contributions.ts';
+import { dashboardKeys } from '../../../workspace/dashboard.ts';
 import { clientIp, userAgent } from '../../client-ip.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
@@ -154,7 +155,7 @@ export function adminUserRoutes(ctx: AuthContext) {
         // not the ones cached from before (RFC-72 R1). The target's key,
         // not the acting admin's — it is the target's `scope` that changed.
         // Best-effort, since the mutation already committed.
-        await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${id}`, {
+        await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(id), {
           targetUserId: id,
           actorUserId: currentUser(c).id,
         });

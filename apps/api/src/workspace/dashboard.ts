@@ -1,11 +1,22 @@
-import type { Dashboard, PermissionKey, PlotRef } from '@treerepro/contracts';
+import {
+  type Dashboard,
+  type PermissionKey,
+  PLATFORMS,
+  type Platform,
+  type PlotRef,
+} from '@treerepro/contracts';
 import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
+import {
+  platformScope,
+  speciesVisible,
+  traitVisible,
+  type Visibility,
+} from '../access/visibility.ts';
 import { contributionSummary } from '../dataset/contributions.ts';
 import { coverageTotals } from '../dataset/coverage.ts';
 import { speciesCountsByTrait } from '../dataset/dictionary.ts';
 import { countOpenProposals } from '../dataset/proposals.ts';
-import { countContested, countPendingGroups } from '../dataset/queues.ts';
+import { countContested, countPendingGroups, countPlantTypeQueue } from '../dataset/queues.ts';
 import { itemQuery, recordVisible, toItem } from '../dataset/records.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
@@ -70,18 +81,25 @@ interface StatsRow {
  * `computeCoverageTotals` is: `stats:dataset` is one fixed key shared by every
  * caller in a test run, so a test reading the numbers through the cache would
  * assert on whichever caller happened to compute the entry. Callers in the
- * application read the cached form.
+ * application read the cached form. The species and records counted are the
+ * platform's (RFC-33 R2); the reference counts are the shared catalog's
+ * (RFC-33 R11).
  * @rfc RFC-72 R1
+ * @rfc RFC-33 R2, R11
  */
-export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats> {
+export async function computeDatasetStats(
+  db: DbExecutor,
+  platform: Platform,
+): Promise<DatasetStats> {
+  const scope = platformScope(platform, 's');
   const [row] = (await db.execute(sql`
     select
-      (select count(*)::int from species s where s.active) as species_count,
+      (select count(*)::int from species s where s.active and ${scope}) as species_count,
       (select count(*)::int from bibliographic_references) as reference_count,
       roles.primary_reference_count,
       roles.secondary_reference_count,
-      (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c)
-        as record_count
+      (select coalesce(sum(c.record_count), 0)::int from species_trait_coverage c
+        join species s on s.id = c.species_id where ${scope}) as record_count
     from (
       select (count(*) filter (where r.primary_count > 0))::int as primary_reference_count,
              (count(*) filter (where r.secondary_count > 0))::int as secondary_reference_count
@@ -98,16 +116,28 @@ export async function computeDatasetStats(db: DbExecutor): Promise<DatasetStats>
 
 /**
  * `computeDatasetStats` behind the one-hour entry RFC-72 R1 names,
- * `stats:dataset`. The key carries no viewer class: these are the counts of
- * the dataset as a whole, the numbers the project description quotes to
+ * `stats:dataset:<platform>`. The key carries no viewer class beyond the
+ * platform: these are the counts of the platform's dataset as a whole, the numbers the project description quotes to
  * every viewer (RFC-72 R3), and `computedAt` is the entry's own.
  * @rfc RFC-72 R1
  */
-export async function datasetStats(ctx: DashboardContext): Promise<Dashboard['dataset']> {
-  const { value, computedAt } = await cachedJson(ctx.redis, 'stats:dataset', 3600, () =>
-    computeDatasetStats(ctx.db),
+export async function datasetStats(
+  ctx: DashboardContext,
+  platform: Platform,
+): Promise<Dashboard['dataset']> {
+  const { value, computedAt } = await cachedJson(ctx.redis, `stats:dataset:${platform}`, 3600, () =>
+    computeDatasetStats(ctx.db, platform),
   );
   return { ...value, computedAt };
+}
+
+/**
+ * Every platform's entry of a viewer's dashboard: the data is shared, so a
+ * write on one site may change the other's numbers (RFC-72 R1).
+ * @rfc RFC-72 R1
+ */
+export function dashboardKeys(userId: string): string[] {
+  return PLATFORMS.map((platform) => `dashboard:${platform}:${userId}`);
 }
 
 /** The viewer's plots with the visible species each holds, or null when they have none. */
@@ -119,7 +149,7 @@ async function scopeSection(
   if (scope.plots.length === 0) return null;
   const plotIds = scope.plots.map((p) => p.id);
   const ids = sql`ps.plot_id = any(${sql.param(plotIds)}::uuid[])`;
-  const seen = speciesVisible(visibility, sql`s.active`, sql`s.id`);
+  const seen = speciesVisible(visibility, 's');
   const [perPlot, [total]] = await Promise.all([
     db.execute(sql`
       select ps.plot_id as plot_id, count(*)::int as species_count
@@ -148,7 +178,7 @@ function plotSpeciesCte(visibility: Visibility, plotIds: string[]): SQL {
     from plot_species ps
     join species s on s.id = ps.species_id
     where ps.plot_id = any(${sql.param(plotIds)}::uuid[])
-      and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)})`;
+      and ${speciesVisible(visibility, 's')})`;
 }
 
 /**
@@ -370,7 +400,7 @@ async function curationSection(
   viewer: DashboardViewer,
 ): Promise<Dashboard['curation']> {
   if (!viewer.permissions.has('records.review')) return null;
-  const [coverage, pendingGroups, contested, proposals] = await Promise.all([
+  const [coverage, pendingGroups, contested, proposals, plantTypes] = await Promise.all([
     coverageTotals(ctx, visibility),
     countPendingGroups(ctx.db, visibility),
     countContested(ctx.db, visibility),
@@ -381,15 +411,18 @@ async function curationSection(
     // `records.review` the record queues beside it are gated on: a number
     // for a queue whose API would answer 403 is worse than no number.
     viewer.permissions.has('taxa.manage') ? countOpenProposals(ctx.db) : 0,
+    // RFC-65 R20: the plant-type queue is the same on both platforms (RFC-33 R11).
+    countPlantTypeQueue(ctx.db, visibility),
   ]);
-  return { coverage, queues: { pendingGroups, contested, proposals } };
+  return { coverage, queues: { pendingGroups, contested, proposals, plantTypes } };
 }
 
 /**
  * `GET /api/me/dashboard`: the four sections of RFC-72 R1, each degrading on
  * its own. The sections are independent, so they run together; the viewer's
- * own one is served through `dashboard:<viewer id>` for five minutes and is
- * dropped by the routes that let a viewer change what it counts. The record
+ * own one is served through `dashboard:<platform>:<viewer id>` for five
+ * minutes and is dropped, on both platforms (`dashboardKeys`), by the routes
+ * that let a viewer change what it counts. The record
  * items it lists are re-hydrated outside that entry, which holds only their
  * ids (RFC-40 R1).
  *
@@ -413,9 +446,9 @@ export async function getDashboard(
 ): Promise<Dashboard> {
   const plotIds = viewer.scope.plots.map((p) => p.id);
   const [dataset, scope, contributor, curation] = await Promise.all([
-    datasetStats(ctx),
+    datasetStats(ctx, visibility.platform),
     scopeSection(ctx.db, visibility, viewer.scope),
-    cachedJson(ctx.redis, `dashboard:${viewer.id}`, 300, () =>
+    cachedJson(ctx.redis, `dashboard:${visibility.platform}:${viewer.id}`, 300, () =>
       contributorSection(ctx, visibility, viewer, plotIds),
     ).then(async (entry) => ({
       ...entry.value,

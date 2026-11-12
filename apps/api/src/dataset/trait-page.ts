@@ -8,7 +8,12 @@ import type {
   TraitSpeciesSort,
 } from '@treerepro/contracts';
 import { eq, sql } from 'drizzle-orm';
-import { globalSpeciesVisible, levelVisible, type Visibility } from '../access/visibility.ts';
+import {
+  globalSpeciesVisible,
+  levelVisible,
+  type Visibility,
+  viewerClass,
+} from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
 import { AppError } from '../http/errors.ts';
@@ -27,9 +32,9 @@ const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
 /** How long a trait's distribution stays cached (RFC-62 R7). */
 const DISTRIBUTION_TTL_SECONDS = 600;
 
-/** One cache entry per trait and viewer class (RFC-62 R7). */
+/** One cache entry per trait and viewer class, `<platform>:<u|r>` (RFC-62 R7). */
 const distributionKey = (traitId: string, visibility: Visibility) =>
-  `trait:${traitId}:distribution:v4:${visibility.inactive ? 'u' : 'r'}`;
+  `trait:${traitId}:distribution:v4:${viewerClass(visibility)}`;
 
 type Distribution = TraitDetail['distribution'];
 
@@ -92,7 +97,7 @@ async function computeDistribution(
           and ${unitChecked}
           and ${liveSql(sql`r.id`)}`)}
         join species s on s.id = r.species_id
-        where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+        where ${globalSpeciesVisible(visibility, 's')}
         group by r.species_id, r.summary_unit
       )
       select unit, avg(single)::float8 as single, avg(mean)::float8 as mean,
@@ -124,7 +129,7 @@ async function computeDistribution(
     where r.trait_id = ${traitId}::uuid
       and r.harmonisation = 'harmonised'
       and ${liveSql(sql`r.id`)}
-      and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+      and ${globalSpeciesVisible(visibility, 's')}
       and ${levelVisible(visibility, sql`l.active`)}
     group by l.id, l.key
     order by species_count desc, record_count desc, l.key
@@ -178,7 +183,7 @@ export async function getTraitDetail(
         -- than out of both sides of a header a reader adds up.
         (select count(*)::int
            from species s
-          where ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+          where ${globalSpeciesVisible(visibility, 's')}
             and not exists (select 1 from species_trait_coverage c
                              where c.species_id = s.id and c.trait_id = ${id}::uuid)
         ) as species_missing,
@@ -186,7 +191,7 @@ export async function getTraitDetail(
            from (${validatedPairsSql()}) v
            join species s on s.id = v.species_id
           where v.trait_id = ${id}::uuid
-            and ${globalSpeciesVisible(visibility, sql`s.active`, sql`s.id`)}
+            and ${globalSpeciesVisible(visibility, 's')}
         ) as validated_count
     `) as unknown as Promise<{ species_missing: number; validated_count: number }[]>,
     cachedJson(

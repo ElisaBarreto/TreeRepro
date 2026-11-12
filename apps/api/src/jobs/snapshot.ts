@@ -20,7 +20,12 @@ const SNAPSHOT_FIRST_TICK_MS = 60 * 1000;
  * The records every signed-in viewer reads (R8): no inactive species, trait
  * or level, harmonised only, and no plot restriction (maps are global).
  */
-const EVERY_VIEWER: Visibility = { inactive: false, plotIds: null, review: false };
+const EVERY_VIEWER: Visibility = {
+  inactive: false,
+  plotIds: null,
+  review: false,
+  platform: 'treerepro',
+};
 
 /** Due with no completed snapshot, or when the last one finished 7 days ago or more. @rfc RFC-78 R12 */
 export function isSnapshotDue(lastCompletedAt: Date | null, now: Date): boolean {

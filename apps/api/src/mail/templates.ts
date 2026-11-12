@@ -285,8 +285,9 @@ ${tiles(
   [
     ['Pending groups', counts.pendingGroups],
     ['Open contests', counts.contestedNow],
+    ['Plant types', counts.plantTypes],
   ],
-  2,
+  3,
   true,
 )}
 ${spacer(14)}${mailButton(input.appOrigin, `${input.appOrigin}/app/curation/pending`, 'Open the review queue')}${spacer(30)}
@@ -360,6 +361,7 @@ export function digestEmail(input: {
       '',
       `Pending groups: ${counts.pendingGroups}`,
       `Open contests: ${counts.contestedNow}`,
+      `Plant types: ${counts.plantTypes}`,
       '',
       ...digestSection('Contests', contests, input.appOrigin),
       'TreeRepro',

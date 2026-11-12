@@ -34,7 +34,7 @@ const tag = () => randomBytes(6).toString('hex');
 const aName = () => `Testus propositus ${tag()}`;
 
 /** A viewer who cannot see inactive species (RFC-33 R1). */
-const ACTIVE_ONLY: Visibility = { inactive: false, plotIds: null };
+const ACTIVE_ONLY: Visibility = { inactive: false, plotIds: null, platform: 'treerepro' };
 
 const failedLookup: Lookup = { backbone: null, wcvp: null, verdict: 'failed' };
 

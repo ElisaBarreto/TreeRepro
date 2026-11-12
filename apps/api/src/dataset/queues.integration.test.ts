@@ -34,7 +34,7 @@ import {
 async function ownPlot(db: Db, speciesIds: string[]): Promise<Visibility> {
   const plot = await createPlot(db);
   await addPlotSpecies(db, plot.id, speciesIds);
-  return { inactive: false, plotIds: [plot.id] };
+  return { inactive: false, plotIds: [plot.id], platform: 'treerepro' };
 }
 
 describe('RFC-72 R1 queue counts', () => {

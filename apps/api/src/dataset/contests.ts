@@ -32,7 +32,7 @@ function visibleRecordOfLevel(v: Visibility, speciesId: SQL, traitId: SQL, level
     join species vl_s on vl_s.id = vl_r.species_id
     join traits vl_t on vl_t.id = vl_r.trait_id
     where vl_r.species_id = ${speciesId} and vl_r.trait_id = ${traitId} and vl_r.level_id = ${levelId}
-      and ${speciesVisible(v, sql`vl_s.active`, sql`vl_s.id`)}
+      and ${speciesVisible(v, 'vl_s')}
       and ${traitVisible(v, sql`vl_t.active`)}
       and ${recordVisible(v, sql`vl_r.id`, sql`vl_r.harmonisation`)})`;
 }
@@ -46,7 +46,7 @@ export function recordFullyVisible(v: Visibility, recordId: SQL): SQL {
     join species fv_s on fv_s.id = fv_r.species_id
     join traits fv_t on fv_t.id = fv_r.trait_id
     where fv_r.id = ${recordId}
-      and ${speciesVisible(v, sql`fv_s.active`, sql`fv_s.id`)}
+      and ${speciesVisible(v, 'fv_s')}
       and ${traitVisible(v, sql`fv_t.active`)}
       and ${recordVisible(v, sql`fv_r.id`, sql`fv_r.harmonisation`)})`;
 }
@@ -159,7 +159,7 @@ export function contestVisibleSql(v: Visibility, contestIdCol: SQL | typeof cont
       join species cv_s on cv_s.id = cv_k.species_id
       join traits cv_t on cv_t.id = cv_k.trait_id
       where cv_k.id = ${contestIdCol}
-        and ${speciesVisible(v, sql`cv_s.active`, sql`cv_s.id`)}
+        and ${speciesVisible(v, 'cv_s')}
         and ${traitVisible(v, sql`cv_t.active`)})
     and not exists (select 1 from contest_levels cv_l
       join trait_levels cv_lvl on cv_lvl.id = cv_l.level_id

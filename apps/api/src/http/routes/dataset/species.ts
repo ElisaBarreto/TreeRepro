@@ -1,5 +1,6 @@
 import {
   changePlantTypeBodySchema,
+  confirmPlantTypeBodySchema,
   countSpeciesQuerySchema,
   createSpeciesBodySchema,
   idParamSchema,
@@ -19,6 +20,7 @@ import type { AuthContext } from '../../../auth/context.ts';
 import {
   addSpeciesName,
   changePlantType,
+  confirmPlantType,
   createSpecies,
   plantTypeFor,
   updateSpecies,
@@ -33,6 +35,7 @@ import {
   searchSpecies,
   treeFlagCounts,
 } from '../../../dataset/taxa.ts';
+import { dashboardKeys } from '../../../workspace/dashboard.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
 import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
@@ -76,7 +79,7 @@ function filtersOf(
  * Hono can never read "proposals" as a species id.
  * @rfc RFC-60 R6, R7, R9, R10, R11, R12
  * @rfc RFC-63 R10
- * @rfc RFC-65 R13, R14, R18, R19
+ * @rfc RFC-65 R13, R14, R18, R19, R20
  * @rfc RFC-75 R2, R3
  */
 export function speciesRoutes(ctx: AuthContext) {
@@ -113,6 +116,7 @@ export function speciesRoutes(ctx: AuthContext) {
             // RFC-65 R18: the platform fixes or requires the type; the creator's review decides the status.
             plantType: plantTypeFor(c.get('platform'), plantType),
             plantTypeStatus: currentPermissions(c).has('records.review') ? 'reviewed' : 'proposed',
+            platform: c.get('platform'),
             actorId: currentUser(c).id,
           });
           return c.json({ data }, 201);
@@ -180,6 +184,7 @@ export function speciesRoutes(ctx: AuthContext) {
             data: await updateSpecies(ctx.db, {
               id: c.req.valid('param').id,
               ...c.req.valid('json'),
+              platform: c.get('platform'),
               actorId: currentUser(c).id,
             }),
           }),
@@ -214,6 +219,21 @@ export function speciesRoutes(ctx: AuthContext) {
             }),
           }),
       )
+      // RFC-65 R20: the plant-type queue's Confirm (RFC-33 R11).
+      .post(
+        '/:id/plant-type/confirm',
+        requirePermission(ctx, 'records.review'),
+        validate('param', idParamSchema),
+        validate('json', confirmPlantTypeBodySchema),
+        async (c) =>
+          c.json({
+            data: await confirmPlantType(ctx.db, await visibilityOf(ctx, c), {
+              id: c.req.valid('param').id,
+              plantType: c.req.valid('json').plantType,
+              actorId: currentUser(c).id,
+            }),
+          }),
+      )
       .post(
         '/:id/names',
         requirePermission(ctx, 'taxa.manage'),
@@ -225,6 +245,7 @@ export function speciesRoutes(ctx: AuthContext) {
               data: await addSpeciesName(ctx.db, {
                 speciesId: c.req.valid('param').id,
                 ...c.req.valid('json'),
+                platform: c.get('platform'),
                 actorId: currentUser(c).id,
               }),
             },
@@ -256,7 +277,7 @@ export function speciesRoutes(ctx: AuthContext) {
             actorId: actor.id,
             referenceId,
           });
-          await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
             actorId: actor.id,
           });
           return c.json({ data }, 201);
@@ -279,7 +300,7 @@ export function speciesRoutes(ctx: AuthContext) {
             canWithdrawAny: permissions.has('records.withdraw'),
             canWithdrawImported: permissions.has('records.withdraw_imported'),
           });
-          await forgetCachedBestEffort(c.get('logger'), ctx.redis, `dashboard:${actor.id}`, {
+          await forgetCachedBestEffort(c.get('logger'), ctx.redis, dashboardKeys(actor.id), {
             actorId: actor.id,
           });
           return c.json({ data }, 201);

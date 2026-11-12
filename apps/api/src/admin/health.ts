@@ -42,7 +42,7 @@ const IMPORT_LIMIT = 5;
  * whose totals therefore differ from these. The queue counters below stay
  * unrestricted — those are queues to work through, not a grid to fill.
  */
-const ACTIVE_CATALOG: Visibility = { inactive: false, plotIds: null };
+const ACTIVE_CATALOG: Visibility = { inactive: false, plotIds: null, platform: 'plantrepro' };
 
 /** The activity window of RFC-52 R1, and the span `byDay` covers, in days. */
 const ACTIVITY_WINDOW_DAYS = 7;

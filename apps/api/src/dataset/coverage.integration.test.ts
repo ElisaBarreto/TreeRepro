@@ -63,13 +63,16 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
       const before = await computeCoverageTotals(tx, RESTRICTED);
       const beforeInactive = await computeCoverageTotals(tx, UNRESTRICTED);
       const [grid] = (await tx.execute(sql`
-        select (select count(*)::int from species s where s.active) as active_species,
+        select (select count(*)::int from species s where s.active
+                  and s.plant_type = 'tree' and s.plant_type_status = 'reviewed') as active_species,
                (select count(*)::int from traits t where t.active) as active_traits,
                (select count(*)::int from species) as all_species,
                (select count(*)::int from traits) as all_traits`)) as unknown as [
         { active_species: number; active_traits: number; all_species: number; all_traits: number },
       ];
       if (!grid) throw new Error('the grid oracle returned no row');
+      // RESTRICTED is a TreeRepro viewer (reviewed trees), UNRESTRICTED sees
+      // both platforms (RFC-33 R2, R11).
       expect(before.cells).toBe(grid.active_species * grid.active_traits);
       expect(beforeInactive.cells).toBe(grid.all_species * grid.all_traits);
 
@@ -188,8 +191,8 @@ describe('RFC-69 R5 coverageTotals is cached for ten minutes', () => {
     // either, so no window is opened for anyone else.
     const fields = ['cells', 'percentValidated', 'percentWithData', 'validated', 'withData'];
     for (const [visibility, key] of [
-      [RESTRICTED, 'coverage:totals:r'],
-      [UNRESTRICTED, 'coverage:totals:u'],
+      [RESTRICTED, 'coverage:totals:treerepro:r'],
+      [UNRESTRICTED, 'coverage:totals:plantrepro:u'],
     ] as const) {
       const totals = await coverageTotals({ db: t.db, redis }, visibility);
       // The wrapper answers `cachedJson`'s `value`, not the entry around it.
@@ -486,7 +489,11 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       // A plot-bound viewer reads their own plot and is refused another's
       // (RFC-33 R6); the unknown plot is still a 404 for them, existence
       // first.
-      const bound: Visibility = { inactive: false, plotIds: [f.plotThree.id] };
+      const bound: Visibility = {
+        inactive: false,
+        plotIds: [f.plotThree.id],
+        platform: 'treerepro',
+      };
       await expect(
         computeCoverageMetrics(tx, bound, { plotId: f.plotAll.id }),
       ).rejects.toMatchObject({ code: 'PERMISSION_DENIED', status: 403 });
@@ -512,7 +519,11 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
       // `plotThree`, which holds S3 alone: a plot-scoped no-filter answer for
       // `bound` would drop S1 and diverge from `restricted`, so this fixture
       // is not vacuous under a plot-scoped implementation.
-      const bound: Visibility = { inactive: false, plotIds: [f.plotThree.id] };
+      const bound: Visibility = {
+        inactive: false,
+        plotIds: [f.plotThree.id],
+        platform: 'treerepro',
+      };
       const boundNoFilter = await computeCoverageMetrics(tx, bound, {});
       const restrictedNoFilter = await computeCoverageMetrics(tx, RESTRICTED, {});
       expect(boundNoFilter).toEqual(restrictedNoFilter);
@@ -532,7 +543,7 @@ describe('RFC-69 R5 coverageMetrics over the visible grid', () => {
 const TOP_REDIS_DB = 9;
 
 /** The no-filter key of RFC-69 R6 for the unrestricted viewer class. */
-const NO_FILTER_KEY_UNRESTRICTED = 'coverage:u:-:-:-';
+const NO_FILTER_KEY_UNRESTRICTED = 'coverage:plantrepro:u:-:-:-';
 
 describe('RFC-69 R7 coverageTop ranks the traits of the unfiltered grid', () => {
   const t = useTestDb();
@@ -647,7 +658,7 @@ describe('RFC-69 R6 coverageMetrics is cached for ten minutes per viewer class a
   it('answers the second call with the same filters from the entry the first one stored', async () => {
     await withRollback(t.db, async (tx) => {
       const f = await coverageFixture(tx);
-      const key = `coverage:u:${f.familyF.id}:-:-`;
+      const key = `coverage:plantrepro:u:${f.familyF.id}:-:-`;
       try {
         const first = await coverageMetrics({ db: tx, redis }, UNRESTRICTED, {
           familyId: f.familyF.id,
@@ -671,16 +682,16 @@ describe('RFC-69 R6 coverageMetrics is cached for ten minutes per viewer class a
           familyId: f.familyG.id,
         });
         expect(other.species).toBe(1);
-        expect(await redis.get(`coverage:u:${f.familyG.id}:-:-`)).not.toBeNull();
+        expect(await redis.get(`coverage:plantrepro:u:${f.familyG.id}:-:-`)).not.toBeNull();
         // And so is the same filter read by the other viewer class.
         await coverageMetrics({ db: tx, redis }, RESTRICTED, { familyId: f.familyF.id });
-        expect(await redis.get(`coverage:r:${f.familyF.id}:-:-`)).not.toBeNull();
+        expect(await redis.get(`coverage:treerepro:r:${f.familyF.id}:-:-`)).not.toBeNull();
       } finally {
         await forgetCached(
           redis,
           key,
-          `coverage:u:${f.familyG.id}:-:-`,
-          `coverage:r:${f.familyF.id}:-:-`,
+          `coverage:plantrepro:u:${f.familyG.id}:-:-`,
+          `coverage:treerepro:r:${f.familyF.id}:-:-`,
         );
       }
     });
@@ -697,11 +708,11 @@ describe('RFC-69 R6 coverageMetrics is cached for ten minutes per viewer class a
       // unfiltered key, the entry every viewer of this class reads.
       const separator = await createTraitCategory(tx, { key: `x:${f.plotAll.id}` });
       const sentinel = await createTraitCategory(tx, { key: '-' });
-      const separatorCollision = `coverage:u:-:x:${f.plotAll.id}:-`;
-      const separatorKey = `coverage:u:-:${encodeURIComponent(separator.key)}:-`;
-      // `coverage:u:-:-:-`, the unfiltered key, is what an unescaped `-`
+      const separatorCollision = `coverage:plantrepro:u:-:x:${f.plotAll.id}:-`;
+      const separatorKey = `coverage:plantrepro:u:-:${encodeURIComponent(separator.key)}:-`;
+      // `coverage:plantrepro:u:-:-:-`, the unfiltered key, is what an unescaped `-`
       // would land on; the escaped one is a key of its own.
-      const sentinelKey = 'coverage:u:-:%2D:-';
+      const sentinelKey = 'coverage:plantrepro:u:-:%2D:-';
       try {
         const bySeparator = await coverageMetrics({ db: tx, redis }, UNRESTRICTED, {
           categoryKey: separator.key,

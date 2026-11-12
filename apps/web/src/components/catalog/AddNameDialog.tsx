@@ -12,13 +12,14 @@ import { ApiError } from '../../api/client.ts';
 import { fieldErrors, isValidationError, pageErrorMessage } from '../../lib/errors.ts';
 import { NAME_TYPE_LABELS } from '../../lib/format.ts';
 import { Alert, Button, Dialog, Field, Input, Select } from '../ui/index.ts';
+import { hiddenNameMessage } from './errors.ts';
 
 /** @rfc RFC-13 R6 */
 export function addNameErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'SPECIES_NAME_TAKEN':
-        return 'This species already has that name.';
+        return hiddenNameMessage(error) ?? 'This species already has that name.';
       case 'SPECIES_NOT_FOUND':
         return 'This species no longer exists. Reload the page.';
       case 'VALIDATION_FAILED':

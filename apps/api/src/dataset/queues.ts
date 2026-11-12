@@ -6,19 +6,23 @@ import type {
   PendingGroup,
   PendingSort,
   PendingTrait,
+  PlantTypeQueueItem,
   SortOrder,
 } from '@treerepro/contracts';
-import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, type SQL, sql } from 'drizzle-orm';
 import { speciesVisible, traitVisible, type Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { contestLevels, contestRecords, contests } from '../db/schema/contests.ts';
 import { traitLevels, traits } from '../db/schema/dictionary.ts';
+import { speciesProposals } from '../db/schema/proposals.ts';
 import { traitRecords } from '../db/schema/records.ts';
-import { species } from '../db/schema/taxa.ts';
+import { families, genera, species } from '../db/schema/taxa.ts';
 import { users } from '../db/schema/users.ts';
 import {
   decodeCompositeCursor,
+  decodeCursor,
   encodeCompositeCursor,
+  encodeCursor,
   isDigits,
   isUuid,
   pageOf,
@@ -54,7 +58,7 @@ function pendingWhere(visibility: Visibility, traitId?: string): SQL {
   const scope = traitId === undefined ? sql`true` : sql`r.trait_id = ${traitId}::uuid`;
   return sql`${PENDING}
     and ${scope}
-    and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}
+    and ${speciesVisible(visibility, 's')}
     and ${traitVisible(visibility, sql`t.active`)}`;
 }
 
@@ -310,7 +314,7 @@ export async function mapPending(
           coalesce(r.raw_value, r.value_text) as raw_value
         from trait_records r
         join species s on s.id = r.species_id
-        where ${group} and ${speciesVisible(visibility, sql`s.active`, sql`s.id`)}),
+        where ${group} and ${speciesVisible(visibility, 's')}),
       chosen as (${chosen}),
       ins as (
         insert into trait_records (species_id, trait_id, level_id, numeric_value, value_text, harmonisation,
@@ -475,4 +479,89 @@ export async function listContested(
     };
   });
   return { data, nextCursor };
+}
+
+/**
+ * The plant-type queue's scope (RFC-65 R20, RFC-33 R11): a `proposed`
+ * species the viewer sees with the platform's condition dropped — active and
+ * plot visibility still apply — so a manager of either platform reviews it.
+ * @rfc RFC-65 R20
+ * @rfc RFC-33 R11
+ */
+export function plantTypeQueueWhere(visibility: Visibility): SQL {
+  return and(
+    eq(species.plantTypeStatus, 'proposed'),
+    speciesVisible({ ...visibility, platform: 'plantrepro' }),
+  ) as SQL;
+}
+
+/**
+ * `GET /api/curation/plant-types`: the species awaiting a plant-type review,
+ * oldest first (uuidv7 ids are time-ordered). `createdBy` is the proposer of
+ * the approved proposal that created the species, else its creator; `note` is
+ * that proposal's note.
+ * @rfc RFC-65 R20
+ * @rfc RFC-33 R11
+ */
+export async function listPlantTypeQueue(
+  db: DbExecutor,
+  visibility: Visibility,
+  input: { cursor?: string; limit: number },
+): Promise<{ data: PlantTypeQueueItem[]; nextCursor: string | null }> {
+  const after = input.cursor ? decodeCursor(input.cursor) : undefined;
+  const rows = await db
+    .select({
+      id: species.id,
+      canonicalName: species.canonicalName,
+      genusId: genera.id,
+      genusName: genera.name,
+      familyId: families.id,
+      familyName: families.name,
+      plantType: species.plantType,
+      creatorId: users.id,
+      creatorName: users.name,
+      createdAt: species.createdAt,
+      note: speciesProposals.note,
+    })
+    .from(species)
+    .leftJoin(genera, eq(genera.id, species.genusId))
+    .leftJoin(families, eq(families.id, genera.familyId))
+    // Only an approval sets `species_id`, and it creates the species: one row at most.
+    .leftJoin(speciesProposals, eq(speciesProposals.speciesId, species.id))
+    .leftJoin(
+      users,
+      eq(users.id, sql`coalesce(${speciesProposals.proposerId}, ${species.createdBy})`),
+    )
+    .where(and(plantTypeQueueWhere(visibility), after ? gt(species.id, after) : undefined))
+    .orderBy(asc(species.id))
+    .limit(input.limit + 1);
+  const { page, nextCursor } = pageOf(rows, input.limit, (r) => encodeCursor(r.id));
+  return {
+    data: page.map((r) => ({
+      id: r.id,
+      canonicalName: r.canonicalName,
+      genus: r.genusId && r.genusName ? { id: r.genusId, name: r.genusName } : null,
+      family: r.familyId && r.familyName ? { id: r.familyId, name: r.familyName } : null,
+      plantType: r.plantType,
+      createdBy: r.creatorId && r.creatorName ? { id: r.creatorId, name: r.creatorName } : null,
+      createdAt: r.createdAt.toISOString(),
+      note: r.note ?? null,
+    })),
+    nextCursor,
+  };
+}
+
+/**
+ * How many species the plant-type queue holds, as it lists them, for the
+ * dashboard (RFC-72 R1) and the digest (RFC-74 R3).
+ * @rfc RFC-65 R20
+ * @rfc RFC-72 R1
+ * @rfc RFC-74 R3
+ */
+export async function countPlantTypeQueue(db: DbExecutor, visibility: Visibility): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(species)
+    .where(plantTypeQueueWhere(visibility));
+  return row?.count ?? 0;
 }

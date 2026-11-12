@@ -158,6 +158,7 @@ const digest = (over: Partial<Digest> = {}): Digest => ({
     proposals: 0,
     pendingGroups: 4,
     contestedNow: 2,
+    plantTypes: 3,
   },
   contests: [
     item(),
@@ -192,6 +193,7 @@ describe('RFC-74 R5 digestEmail', () => {
     expect(mail.text).toContain('Species proposals: 0');
     expect(mail.text).toContain('Pending groups: 4');
     expect(mail.text).toContain('Open contests: 2');
+    expect(mail.text).toContain('Plant types: 3');
     expect(mail.text).not.toContain('Disputes');
     expect(mail.text).not.toContain('Disputed');
     expect(mail.text).toContain('2026-09-16 06:00 UTC');
@@ -252,6 +254,7 @@ describe('RFC-74 R5 digestEmail', () => {
       'Species proposals',
       'Pending groups',
       'Open contests',
+      'Plant types',
     ])
       expect(mail.html).toContain(label);
     expect(mail.html).not.toContain('Disputes');

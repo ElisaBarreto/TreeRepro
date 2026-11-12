@@ -205,42 +205,64 @@ describe('RFC-67 R3, R5 plots service', () => {
     const plot = await helperCreatePlot(t.db);
     const sp = await createSpecies(t.db);
 
-    await addPlotSpeciesMember(t.db, plot.id, sp.id, actor.id);
+    await addPlotSpeciesMember(t.db, plot.id, sp.id, actor.id, 'treerepro');
 
     const addedAudit = await lastAudit(t.db, 'plots.species_added', { targetId: plot.id });
     expect(addedAudit).toBeDefined();
     expect(addedAudit?.metadata).toMatchObject({ speciesId: sp.id });
 
     // Adding again throws PLOT_SPECIES_EXISTS
-    await expect(addPlotSpeciesMember(t.db, plot.id, sp.id, actor.id)).rejects.toMatchObject({
+    await expect(
+      addPlotSpeciesMember(t.db, plot.id, sp.id, actor.id, 'treerepro'),
+    ).rejects.toMatchObject({
       code: 'PLOT_SPECIES_EXISTS',
       status: 409,
     });
 
     // Unknown plot or species throws 404
     await expect(
-      addPlotSpeciesMember(t.db, '00000000-0000-0000-0000-000000000000', sp.id, actor.id),
+      addPlotSpeciesMember(
+        t.db,
+        '00000000-0000-0000-0000-000000000000',
+        sp.id,
+        actor.id,
+        'treerepro',
+      ),
     ).rejects.toMatchObject({ code: 'PLOT_NOT_FOUND', status: 404 });
     await expect(
-      addPlotSpeciesMember(t.db, plot.id, '00000000-0000-0000-0000-000000000000', actor.id),
+      addPlotSpeciesMember(
+        t.db,
+        plot.id,
+        '00000000-0000-0000-0000-000000000000',
+        actor.id,
+        'treerepro',
+      ),
     ).rejects.toMatchObject({ code: 'SPECIES_NOT_FOUND', status: 404 });
 
     // Remove species
-    await removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id);
+    await removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id, 'treerepro');
 
     const removedAudit = await lastAudit(t.db, 'plots.species_removed', { targetId: plot.id });
     expect(removedAudit).toBeDefined();
     expect(removedAudit?.metadata).toMatchObject({ speciesId: sp.id });
 
     // Removing when not a member throws 404
-    await expect(removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id)).rejects.toMatchObject({
+    await expect(
+      removePlotSpeciesMember(t.db, plot.id, sp.id, actor.id, 'treerepro'),
+    ).rejects.toMatchObject({
       code: 'SPECIES_NOT_FOUND',
       status: 404,
     });
 
     // Unknown plot on removal throws 404 PLOT_NOT_FOUND
     await expect(
-      removePlotSpeciesMember(t.db, '00000000-0000-0000-0000-000000000000', sp.id, actor.id),
+      removePlotSpeciesMember(
+        t.db,
+        '00000000-0000-0000-0000-000000000000',
+        sp.id,
+        actor.id,
+        'treerepro',
+      ),
     ).rejects.toMatchObject({ code: 'PLOT_NOT_FOUND', status: 404 });
   });
 

@@ -285,7 +285,7 @@ describe('RFC-74 R3 computeDigest', () => {
         createdAt: at,
       });
 
-      const digest = await computeDigest(tx, windowAround(at));
+      const digest = await computeDigest(tx, windowAround(at), 'treerepro');
 
       expect(digest.counts).toMatchObject({
         records: 3,
@@ -354,7 +354,7 @@ describe('RFC-74 R3 computeDigest', () => {
         byIndex[index] = contest.id;
       }
 
-      const digest = await computeDigest(tx, windowAround(at));
+      const digest = await computeDigest(tx, windowAround(at), 'treerepro');
 
       expect(digest.contests.map((c) => c.contestId)).toEqual(byIndex.slice(0, DIGEST_LIST_LIMIT));
       // The cap is on the list alone: R3's counts describe the whole window.
@@ -422,7 +422,7 @@ describe('RFC-74 R3 computeDigest', () => {
         createdAt: at,
       });
 
-      const digest = await computeDigest(tx, windowAround(at));
+      const digest = await computeDigest(tx, windowAround(at), 'treerepro');
       const byId = new Map(digest.contests.map((c) => [c.contestId, c]));
 
       expect(byId.get(partlyWithdrawn.id)?.recordId).toBe(second.id);
@@ -478,9 +478,9 @@ describe('RFC-74 R3 computeDigest', () => {
         });
       }
 
-      const lateDigest = await computeDigest(tx, windowAround(late));
+      const lateDigest = await computeDigest(tx, windowAround(late), 'treerepro');
       expect(lateDigest.counts).toMatchObject({ records: 1, validations: 1 });
-      const earlyDigest = await computeDigest(tx, windowAround(early));
+      const earlyDigest = await computeDigest(tx, windowAround(early), 'treerepro');
       expect(earlyDigest.counts).toMatchObject({ records: 2, validations: 2 });
     });
   });
@@ -497,7 +497,7 @@ describe('RFC-74 R3 computeDigest', () => {
       const s = await scene(tx);
       const { user } = await createUser(tx, { password: null });
 
-      const baseline = await computeDigest(tx, windowAround(at));
+      const baseline = await computeDigest(tx, windowAround(at), 'treerepro');
 
       // One unharmonisable import value that nothing supersedes: one pending
       // group (RFC-65 R8).
@@ -528,13 +528,54 @@ describe('RFC-74 R3 computeDigest', () => {
         createdAt: before,
       });
 
-      const after = await computeDigest(tx, windowAround(at));
+      const after = await computeDigest(tx, windowAround(at), 'treerepro');
       expect(after.counts.pendingGroups).toBe(baseline.counts.pendingGroups + 1);
       expect(after.counts.contestedNow).toBe(baseline.counts.contestedNow + 1);
       // Nothing of this landed in the window, and R4's activity sum is the
       // window's alone.
       expect(after.counts).toMatchObject({ records: 0, contests: 0, validations: 0 });
       expect(after.contests).toEqual([]);
+
+      // RFC-65 R20: a proposed species waits in the plant-type queue on both
+      // platforms; RFC-33 R11: a contest on a not-tree counts on PlantRepro only.
+      const plantBaseline = await computeDigest(tx, windowAround(at), 'plantrepro');
+      const herb = await createSpecies(tx, { plantType: 'not_tree', plantTypeStatus: 'proposed' });
+      await createRecord(tx, {
+        speciesId: herb.id,
+        traitId: s.trait.id,
+        valueText: 'alpha',
+        levelId: s.level('alpha'),
+        primaryReferenceId: s.reference.id,
+        origin: 'manual',
+        createdBy: user.id,
+        createdAt: before,
+      });
+      await createContest(tx, {
+        speciesId: herb.id,
+        traitId: s.trait.id,
+        createdBy: user.id,
+        levelIds: [s.level('alpha')],
+        createdAt: before,
+      });
+      const tree = await computeDigest(tx, windowAround(at), 'treerepro');
+      const plant = await computeDigest(tx, windowAround(at), 'plantrepro');
+      expect(tree.counts.plantTypes).toBe(after.counts.plantTypes + 1);
+      expect(plant.counts.plantTypes).toBe(plantBaseline.counts.plantTypes + 1);
+      expect(tree.counts.contestedNow).toBe(after.counts.contestedNow);
+      expect(plant.counts.contestedNow).toBe(plantBaseline.counts.contestedNow + 1);
+
+      // A contest inside the window on the not-tree is listed on PlantRepro only.
+      await createContest(tx, {
+        speciesId: herb.id,
+        traitId: s.trait.id,
+        createdBy: user.id,
+        levelIds: [s.level('alpha')],
+        createdAt: at,
+      });
+      const treeListed = await computeDigest(tx, windowAround(at), 'treerepro');
+      const plantListed = await computeDigest(tx, windowAround(at), 'plantrepro');
+      expect(treeListed.contests.map((c) => c.speciesId)).not.toContain(herb.id);
+      expect(plantListed.contests.map((c) => c.speciesId)).toContain(herb.id);
     });
   });
 });
@@ -898,6 +939,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
           // isolate them, so only their presence is asserted here.
           pendingGroups: expect.any(Number),
           contestedNow: expect.any(Number),
+          plantTypes: expect.any(Number),
         },
       });
 
@@ -969,6 +1011,7 @@ describe('RFC-74 R2, R5 runDigest', () => {
           // isolate them, so only their presence is asserted here.
           pendingGroups: expect.any(Number),
           contestedNow: expect.any(Number),
+          plantTypes: expect.any(Number),
         },
       });
       // A SELECT with no ORDER BY: compared as a set, never an array, so an

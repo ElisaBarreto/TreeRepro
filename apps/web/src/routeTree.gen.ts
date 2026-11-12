@@ -26,6 +26,7 @@ import { Route as AppAdminRolesRouteImport } from './routes/app/admin/roles'
 import { Route as AppCurationCoverageRouteImport } from './routes/app/curation/coverage'
 import { Route as AppCurationDisputedRouteImport } from './routes/app/curation/disputed'
 import { Route as AppCurationPendingRouteImport } from './routes/app/curation/pending'
+import { Route as AppCurationPlantTypesRouteImport } from './routes/app/curation/plant-types'
 import { Route as AppCurationProposalsRouteImport } from './routes/app/curation/proposals'
 import { Route as AppHelpIndexRouteImport } from './routes/app/help/index'
 import { Route as AppHelpTopicRouteImport } from './routes/app/help/$topic'
@@ -128,6 +129,11 @@ const AppCurationPendingRoute = AppCurationPendingRouteImport.update({
   path: '/curation/pending',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCurationPlantTypesRoute = AppCurationPlantTypesRouteImport.update({
+  id: '/curation/plant-types',
+  path: '/curation/plant-types',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCurationProposalsRoute = AppCurationProposalsRouteImport.update({
   id: '/curation/proposals',
   path: '/curation/proposals',
@@ -227,6 +233,7 @@ export interface FileRoutesByFullPath {
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
+  '/app/curation/plant-types': typeof AppCurationPlantTypesRoute
   '/app/curation/proposals': typeof AppCurationProposalsRoute
   '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -260,6 +267,7 @@ export interface FileRoutesByTo {
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
+  '/app/curation/plant-types': typeof AppCurationPlantTypesRoute
   '/app/curation/proposals': typeof AppCurationProposalsRoute
   '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -296,6 +304,7 @@ export interface FileRoutesById {
   '/app/curation/coverage': typeof AppCurationCoverageRoute
   '/app/curation/disputed': typeof AppCurationDisputedRoute
   '/app/curation/pending': typeof AppCurationPendingRoute
+  '/app/curation/plant-types': typeof AppCurationPlantTypesRoute
   '/app/curation/proposals': typeof AppCurationProposalsRoute
   '/app/help/$topic': typeof AppHelpTopicRoute
   '/app/imports/$id': typeof AppImportsIdRoute
@@ -333,6 +342,7 @@ export interface FileRouteTypes {
     | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
+    | '/app/curation/plant-types'
     | '/app/curation/proposals'
     | '/app/help/$topic'
     | '/app/imports/$id'
@@ -366,6 +376,7 @@ export interface FileRouteTypes {
     | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
+    | '/app/curation/plant-types'
     | '/app/curation/proposals'
     | '/app/help/$topic'
     | '/app/imports/$id'
@@ -401,6 +412,7 @@ export interface FileRouteTypes {
     | '/app/curation/coverage'
     | '/app/curation/disputed'
     | '/app/curation/pending'
+    | '/app/curation/plant-types'
     | '/app/curation/proposals'
     | '/app/help/$topic'
     | '/app/imports/$id'
@@ -546,6 +558,13 @@ declare module '@tanstack/react-router' {
       path: '/curation/pending'
       fullPath: '/app/curation/pending'
       preLoaderRoute: typeof AppCurationPendingRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/curation/plant-types': {
+      id: '/app/curation/plant-types'
+      path: '/curation/plant-types'
+      fullPath: '/app/curation/plant-types'
+      preLoaderRoute: typeof AppCurationPlantTypesRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/curation/proposals': {
@@ -711,6 +730,7 @@ interface AppRouteChildren {
   AppCurationCoverageRoute: typeof AppCurationCoverageRoute
   AppCurationDisputedRoute: typeof AppCurationDisputedRoute
   AppCurationPendingRoute: typeof AppCurationPendingRoute
+  AppCurationPlantTypesRoute: typeof AppCurationPlantTypesRoute
   AppCurationProposalsRoute: typeof AppCurationProposalsRoute
   AppHelpTopicRoute: typeof AppHelpTopicRoute
   AppReferencesIdRoute: typeof AppReferencesIdRoute
@@ -733,6 +753,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCurationCoverageRoute: AppCurationCoverageRoute,
   AppCurationDisputedRoute: AppCurationDisputedRoute,
   AppCurationPendingRoute: AppCurationPendingRoute,
+  AppCurationPlantTypesRoute: AppCurationPlantTypesRoute,
   AppCurationProposalsRoute: AppCurationProposalsRoute,
   AppHelpTopicRoute: AppHelpTopicRoute,
   AppReferencesIdRoute: AppReferencesIdRoute,

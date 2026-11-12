@@ -192,8 +192,12 @@ describe('RFC-60 R6-R8 species, families and genera routes', () => {
 describe('RFC-60 R9, R10 species writes', () => {
   const t = useTestApp();
 
+  // `records.review` makes a created species a reviewed tree, which TreeRepro
+  // shows (RFC-65 R18, RFC-33 R2); without it the species starts proposed.
   async function taxonomist() {
-    const role = await createRole(t.db, { permissions: ['taxa.manage', 'dataset.read'] });
+    const role = await createRole(t.db, {
+      permissions: ['taxa.manage', 'dataset.read', 'records.review'],
+    });
     const { user } = await createUser(t.db, { roles: [role.id] });
     return { user, cookie: (await loginAs(t, user)).cookie };
   }
