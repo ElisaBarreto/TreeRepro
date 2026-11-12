@@ -493,6 +493,7 @@ function GeographyFilters({
         legend="Region"
         none="All regions"
         some={(n) => `${n} ${n === 1 ? 'region' : 'regions'}`}
+        find="Find a region"
         options={distinct(inContinents, 'regionCode').map((x) => ({
           value: x.code,
           label: x.name,
@@ -505,6 +506,7 @@ function GeographyFilters({
         legend="Botanical country"
         none="All botanical countries"
         some={(n) => `${n} botanical ${n === 1 ? 'country' : 'countries'}`}
+        find="Find a botanical country"
         options={inRegions.map((x) => ({
           value: x.code,
           label: x.name,
@@ -568,12 +570,17 @@ function TreeBasisFilter({
   );
 }
 
+/** Lower case without diacritics, so `Nepál` finds `Nepal`. */
+const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
 /**
  * A closed control dressed like a select that opens onto one checkbox per
  * option, under a heading per `group` when given; the checked values are
  * reported in the options' order. Up and down arrows move between the boxes,
  * wrapping; a click outside the list or Escape closes it, as a select does.
- * A long list scrolls.
+ * A long list scrolls. With `find`, the list opens with a box that narrows it
+ * to the options whose label or value holds the text, ignoring case and
+ * accents; the text clears when the list closes.
  * @rfc RFC-60 R6
  */
 function CheckboxList({
@@ -585,6 +592,7 @@ function CheckboxList({
   onChange,
   error,
   align = 'left-0',
+  find,
 }: {
   legend: string;
   /** The closed control's text while nothing is checked. */
@@ -597,9 +605,21 @@ function CheckboxList({
   error?: string;
   /** The edge the open list hangs from. */
   align?: 'left-0' | 'right-0';
+  /** The accessible name of the box that narrows the list; no box without it. */
+  find?: string;
 }) {
   const details = useRef<HTMLDetailsElement>(null);
+  const findBox = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const needle = fold(text.trim());
+  const shown = needle
+    ? options.filter((o) => fold(o.label).includes(needle) || fold(o.value).includes(needle))
+    : options;
+  useEffect(() => {
+    if (open) findBox.current?.focus();
+    else setText('');
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
@@ -637,9 +657,22 @@ function CheckboxList({
         <div
           className={`absolute ${align} z-10 mt-1 flex max-h-80 w-max max-w-[calc(100vw-2rem)] flex-col overflow-y-auto rounded-[10px] border border-canopy-700/15 bg-white px-3.5 py-1 shadow-sm`}
         >
-          {options.map((option, i) => (
+          {find ? (
+            <input
+              ref={findBox}
+              type="search"
+              aria-label={find}
+              placeholder="Type to find"
+              className="sticky top-0 z-10 my-1.5 h-10 rounded-[8px] border border-canopy-700/25 bg-white px-3 text-body text-canopy-950"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              // Enter only filters; it never submits the search form.
+              onKeyDown={(event) => event.key === 'Enter' && event.preventDefault()}
+            />
+          ) : null}
+          {shown.map((option, i) => (
             <Fragment key={option.value}>
-              {option.group && option.group !== options[i - 1]?.group ? (
+              {option.group && option.group !== shown[i - 1]?.group ? (
                 <p className={`${FILTER_LEGEND} px-0 pt-2`}>{option.group}</p>
               ) : null}
               <label className="flex min-h-11 items-center gap-2.5 py-1 text-body text-canopy-900">
