@@ -27,7 +27,7 @@
     "prepare:imports": "node --conditions=development src/cli/prepare-imports.ts"
   },
   "dependencies": {
-    "@hono/node-server": "2.1.5",
+    "@hono/node-server": "2.1.6",
     "@hono/zod-validator": "0.9.1",
     "@node-rs/argon2": "2.2.2",
     "@treerepro/contracts": "workspace:*",
