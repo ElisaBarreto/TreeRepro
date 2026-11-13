@@ -17,6 +17,17 @@ export function platformCopy(platform: Platform = currentPlatform()) {
 }
 
 /**
+ * Help text for the reader's platform: `{platform}`, `{subject}` and
+ * `{subjects}` become its name, subject and plural subject.
+ * @rfc RFC-73 R9
+ */
+export function forPlatform(text: string, platform: Platform = currentPlatform()): string {
+  const { name, subject } = platformCopy(platform);
+  const words: Record<string, string> = { platform: name, subject, subjects: `${subject}s` };
+  return text.replace(/\{(platform|subjects?)\}/g, (_, key: string) => words[key] ?? '');
+}
+
+/**
  * The sentence for a 403 `PLATFORM_ACCESS_DENIED` on `platform`, naming the
  * platforms the account does hold a role on; null for any other error.
  * @rfc RFC-22 R13

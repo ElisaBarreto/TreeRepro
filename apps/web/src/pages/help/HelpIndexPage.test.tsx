@@ -49,6 +49,18 @@ describe('RFC-73 R1, R2, R7 HelpIndexPage', () => {
     expect(screen.queryByRole('button', { name: 'New topic' })).not.toBeInTheDocument();
   });
 
+  it('R9 shows the platform for the placeholders in titles and summaries', async () => {
+    help.fetchHelpTopics.mockResolvedValue([
+      { ...TOPICS[0], title: 'Using {platform}', summary: 'Data for {subjects}.' },
+    ]);
+    renderAt('/app/help');
+    const list = await screen.findByRole('list', { name: 'Help topics' });
+    await waitFor(() =>
+      expect(within(list).getByRole('link', { name: 'Using TreeRepro' })).toBeInTheDocument(),
+    );
+    expect(within(list).getByText('Data for trees.')).toBeInTheDocument();
+  });
+
   it('is reachable from the sidebar by a session holding no permission at all', async () => {
     renderAt('/app/help');
     const account = await screen.findByRole('navigation', { name: 'Account' });

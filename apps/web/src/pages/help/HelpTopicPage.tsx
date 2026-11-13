@@ -17,6 +17,7 @@ import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import { Alert, Button, ConfirmDialog, PageHeader, Prose } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { realignHashWhileSettling } from '../../lib/hashAnchor.ts';
+import { forPlatform } from '../../lib/platform.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 import { HelpIndexPage } from './HelpIndexPage.tsx';
 
@@ -28,14 +29,14 @@ type Pending = { kind: 'topic' } | { kind: 'section'; section: HelpSection } | n
  * An unknown slug renders the index. A `help.edit` holder also gets the
  * edit controls of RFC-73 R7.
  * @rfc RFC-13 R2, R3
- * @rfc RFC-73 R1, R2, R7
+ * @rfc RFC-73 R1, R2, R7, R9
  */
 export function HelpTopicPage({ slug }: { slug: string }) {
   const me = useMe();
   const canEdit = hasPermission(me, 'help.edit');
   const query = useQuery({ queryKey: helpKeys.topic(slug), queryFn: () => fetchHelpTopic(slug) });
   const topic = query.data;
-  useBreadcrumb(topic ? [{ label: topic.title }] : []);
+  useBreadcrumb(topic ? [{ label: forPlatform(topic.title) }] : []);
   // Armed once the sections are in the DOM, so there is a heading to find.
   const loaded = Boolean(topic);
   useEffect(() => (loaded ? realignHashWhileSettling() : undefined), [loaded]);
@@ -79,8 +80,8 @@ function TopicView({ topic, canEdit }: { topic: HelpTopic; canEdit: boolean }) {
   return (
     <>
       <PageHeader
-        title={topic.title}
-        description={topic.summary}
+        title={forPlatform(topic.title)}
+        description={forPlatform(topic.summary)}
         actions={
           canEdit ? (
             <>
@@ -106,10 +107,12 @@ function TopicView({ topic, canEdit }: { topic: HelpTopic; canEdit: boolean }) {
             />
           ) : (
             <section key={section.id}>
-              {section.title ? <h2 id={section.anchor ?? undefined}>{section.title}</h2> : null}
+              {section.title ? (
+                <h2 id={section.anchor ?? undefined}>{forPlatform(section.title)}</h2>
+              ) : null}
               {canEdit ? (
                 <fieldset
-                  aria-label={`Section: ${section.title || 'untitled'}`}
+                  aria-label={`Section: ${forPlatform(section.title) || 'untitled'}`}
                   className="m-0 mb-2 flex flex-wrap gap-1.5 border-0 p-0"
                 >
                   <Button size="sm" variant="secondary" onClick={() => setEditing(section.id)}>

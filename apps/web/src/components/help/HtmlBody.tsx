@@ -1,11 +1,13 @@
 import { useNavigate } from '@tanstack/react-router';
 import type { MouseEvent } from 'react';
+import { forPlatform } from '../../lib/platform.ts';
 
 /**
  * A help section's stored HTML, sanitised by the API before it was saved
  * (RFC-73 R8). A plain click on a link to a same-origin path navigates inside
  * the app instead of reloading it; a modified click (new tab) is left alone.
- * @rfc RFC-73 R8
+ * Placeholders name the reader's platform (R9).
+ * @rfc RFC-73 R8, R9
  */
 export function HtmlBody({ html }: { html: string }) {
   const navigate = useNavigate();
@@ -24,7 +26,7 @@ export function HtmlBody({ html }: { html: string }) {
     <div
       onClick={onClick}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: the API sanitises every body before storing it (RFC-73 R8).
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: forPlatform(html) }}
     />
   );
 }

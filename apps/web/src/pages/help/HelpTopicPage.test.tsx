@@ -68,6 +68,31 @@ describe('RFC-73 R1, R2 HelpTopicPage', () => {
     expect(within(trail).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/app/help');
   });
 
+  it('R9 shows the platform for the placeholders, in titles and bodies', async () => {
+    help.fetchHelpTopic.mockResolvedValue({
+      ...WORKFLOW,
+      title: 'Using {platform}',
+      summary: 'How {platform} works.',
+      sections: [
+        {
+          id: id(2),
+          anchor: 'what',
+          title: 'What {platform} is',
+          bodyHtml: '<p>Data for {subjects}.</p>',
+        },
+      ],
+    });
+    renderAt('/app/help/workflow');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Using TreeRepro' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('How TreeRepro works.')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'What TreeRepro is' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Data for trees.')).toBeInTheDocument();
+  });
+
   it('renders the index for an unknown topic (RFC-73 R1)', async () => {
     renderAt('/app/help/no-such-topic');
     expect(await screen.findByRole('heading', { level: 1, name: 'Help' })).toBeInTheDocument();
