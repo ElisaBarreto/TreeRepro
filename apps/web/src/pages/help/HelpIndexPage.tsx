@@ -6,6 +6,7 @@ import { TopicDialog } from '../../components/help/TopicDialog.tsx';
 import { Alert, Button, PageHeader } from '../../components/ui/index.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
+import { forPlatform } from '../../lib/platform.ts';
 import { hasPermission, useMe } from '../../lib/session.ts';
 
 /**
@@ -14,7 +15,7 @@ import { hasPermission, useMe } from '../../lib/session.ts';
  * **New topic** (RFC-73 R7). The title links, not the whole card, so each
  * link's accessible name is the topic's own title.
  * @rfc RFC-13 R2
- * @rfc RFC-73 R1, R2, R7
+ * @rfc RFC-73 R1, R2, R7, R9
  */
 export function HelpIndexPage() {
   const me = useMe();
@@ -41,9 +42,11 @@ export function HelpIndexPage() {
               to={helpHref(topic.slug)}
               className="font-display text-card font-semibold text-canopy-950 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
             >
-              {topic.title}
+              {forPlatform(topic.title)}
             </Link>
-            {topic.summary ? <p className="mt-1 text-body text-mist-500">{topic.summary}</p> : null}
+            {topic.summary ? (
+              <p className="mt-1 text-body text-mist-500">{forPlatform(topic.summary)}</p>
+            ) : null}
           </li>
         ))}
       </ul>

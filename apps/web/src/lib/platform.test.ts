@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import source from '../../public/platform.js?raw';
 import { ApiError } from '../api/client.ts';
-import { currentPlatform, platformDeniedMessage } from './platform.ts';
+import { currentPlatform, forPlatform, platformDeniedMessage } from './platform.ts';
 
 const TABLE = [
   ['localhost', 'treerepro'],
@@ -74,5 +74,24 @@ describe('RFC-22 R13 platformDeniedMessage', () => {
       platformDeniedMessage(new ApiError(401, 'AUTH_INVALID_CREDENTIALS', 'x'), 'treerepro'),
     ).toBeNull();
     expect(platformDeniedMessage(new Error('x'), 'treerepro')).toBeNull();
+  });
+});
+
+describe('RFC-73 R9 help placeholders', () => {
+  const text = 'What {platform} is: data for {subjects}, one {subject} at a time. {platform}!';
+  it('names TreeRepro and trees on TreeRepro', () => {
+    expect(forPlatform(text, 'treerepro')).toBe(
+      'What TreeRepro is: data for trees, one tree at a time. TreeRepro!',
+    );
+  });
+  it('names PlantRepro and plants on PlantRepro', () => {
+    expect(forPlatform(text, 'plantrepro')).toBe(
+      'What PlantRepro is: data for plants, one plant at a time. PlantRepro!',
+    );
+  });
+  it('leaves other braces alone', () => {
+    expect(forPlatform('{platforms} {Platform} {}', 'plantrepro')).toBe(
+      '{platforms} {Platform} {}',
+    );
   });
 });
