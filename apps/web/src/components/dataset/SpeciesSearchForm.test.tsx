@@ -804,6 +804,47 @@ describe('RFC-60 R6, R14 SpeciesSearchForm geography', () => {
     );
   });
 
+  it('filters Region and Botanical country by what is typed, name or code, ignoring case and accents', async () => {
+    const onChange = vi.fn();
+    renderWithProviders(<Controlled initial={EMPTY} onChange={onChange} />, { me: READER });
+    await waitFor(() => expect(boxes('Botanical country')).toHaveLength(4));
+    expect(within(list('Continent')).queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(
+      within(list('Region')).getByRole('searchbox', { name: 'Find a region' }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(within(list('Botanical country')).getByText('All botanical countries'));
+    const find = within(list('Botanical country')).getByRole('searchbox', {
+      name: 'Find a botanical country',
+    });
+    expect(find).toHaveFocus();
+    await userEvent.type(find, 'BRAZ');
+    expect(boxes('Botanical country')).toEqual(['Brazil North', 'Brazil South']);
+    expect(within(list('Botanical country')).queryByText('Asia-Tropical')).not.toBeInTheDocument();
+    // Down leaves the box for the first place left.
+    await userEvent.keyboard('{ArrowDown}');
+    expect(
+      within(list('Botanical country')).getByRole('checkbox', { name: 'Brazil North' }),
+    ).toHaveFocus();
+    await userEvent.keyboard(' ');
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ areas: ['BZN'] }));
+
+    // Accents and the code match too; a checked place the text hides stays checked.
+    await userEvent.clear(find);
+    await userEvent.type(find, 'nepál{Enter}');
+    expect(boxes('Botanical country')).toEqual(['Nepal']);
+    await userEvent.clear(find);
+    await userEvent.type(find, 'bzs');
+    expect(boxes('Botanical country')).toEqual(['Brazil South']);
+    expect(within(list('Botanical country')).getByText('1 botanical country')).toBeInTheDocument();
+
+    // Closing clears the text.
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(list('Botanical country')).getByText('1 botanical country'));
+    expect(find).toHaveValue('');
+    expect(boxes('Botanical country')).toHaveLength(4);
+  });
+
   it('keeps every choice when a change comes before the regions load', async () => {
     const onChange = vi.fn();
     dataset.fetchWcvpRegions.mockReturnValue(new Promise(() => {}));
