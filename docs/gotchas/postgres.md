@@ -110,3 +110,8 @@ The migration is `references_enriched`; it is `0027` today and may carry a diffe
 **Cause:** `ALTER TABLE … ADD COLUMN … DEFAULT` modifies no row, so `n_mod_since_analyze` stays at 0 and autovacuum does not analyze the table until enough other rows change (about 6,700 for `species`). Until then, the planner uses default selectivities for the column (here it expected 143 of 66,728 species).
 **Fix:** `scripts/deploy.sh` runs `vacuumdb --analyze-only --missing-stats-only` (PostgreSQL 18) after every `up`, which analyzes only the tables with a column that has no statistics. ANALYZE samples, so it takes seconds; a failure only warns. By hand: `analyze <table>;`. Check with `select attname from pg_stats where tablename = '<table>'`.
 
+
+## Parallel queries need more than Docker's 64 MB `/dev/shm`
+**Symptom:** `build-snapshot` fails with `Failed query: create temporary table snap_states …`. The Postgres log shows `could not resize shared memory segment "/PostgreSQL.…" to 16777216 bytes: No space left on device`. This happened in production on 2026-11-12, after the all-species reload (6.4 M records; issue #435).
+**Cause:** Parallel workers exchange their hash tables through dynamic shared memory in `/dev/shm`. A Docker container gets 64 MB there unless told otherwise.
+**Fix:** `compose.yml` gives `postgres` `shm_size: 512m`. Like the flags above, it applies when the container is recreated, which the first deploy after the change does by itself. Workaround on a running stack: `alter database treerepro set max_parallel_workers_per_gather = 0`, rerun the snapshot, then `alter database treerepro reset max_parallel_workers_per_gather`. Check with `docker compose exec postgres df -h /dev/shm`.
