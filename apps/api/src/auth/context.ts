@@ -30,6 +30,8 @@ export interface AuthContext {
   /** Who the invitation names for a new one (RFC-20 R4). */
   inviteContactEmail?: string | undefined;
   now: () => number;
+  /** The private phylogeny figures directory (RFC-79 R1). */
+  phylogeniesDir: string;
 }
 
 export interface RequestMeta {

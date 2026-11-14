@@ -180,6 +180,8 @@ describe('RFC-02 R12, RFC-32 R5 every route is in exactly one guard class', () =
         'GET /api/maps',
         'GET /api/maps/values',
         'GET /api/maps/trait-values',
+        'GET /api/phylogenies',
+        'GET /api/phylogenies/files/:key',
         'GET /api/plots',
         'POST /api/plots',
         'GET /api/plots/:id',

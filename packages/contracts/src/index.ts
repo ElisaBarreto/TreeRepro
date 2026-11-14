@@ -15,6 +15,7 @@ export * from './health.ts';
 export * from './help.ts';
 export * from './isbn.ts';
 export * from './maps.ts';
+export * from './phylogenies.ts';
 export * from './pagination.ts';
 export * from './permissions.ts';
 export * from './platform.ts';

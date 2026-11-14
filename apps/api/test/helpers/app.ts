@@ -3,6 +3,7 @@ import { afterAll, beforeAll, inject } from 'vitest';
 import { createPermissionCache, type PermissionCache } from '../../src/access/permissions.ts';
 import { type App, type AppDeps, createApp } from '../../src/app.ts';
 import type { AuthContext } from '../../src/auth/context.ts';
+import { defaultPhylogeniesDir } from '../../src/phylogenies/figures.ts';
 import { createMfaStore, type MfaStore } from '../../src/auth/mfa.ts';
 import { createRateLimiter, type RateLimiter } from '../../src/auth/rate-limit.ts';
 import { createSessionStore, type SessionStore } from '../../src/auth/sessions.ts';
@@ -178,6 +179,7 @@ export function ctxOf(t: TestApp): AuthContext {
     limiter: t.limiter,
     mailer: t.mail.mailer,
     breachChecker: t.deps.breachChecker,
+    phylogeniesDir: t.deps.phylogeniesDir ?? defaultPhylogeniesDir(),
     permissionCache: t.permissionCache,
     logger: t.deps.logger,
     doi: t.doi,

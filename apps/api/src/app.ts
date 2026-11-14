@@ -34,6 +34,7 @@ import type { DoiClient } from './integrations/doi.ts';
 import type { TaxonomyClient } from './integrations/taxonomy.ts';
 import type { Logger } from './logger.ts';
 import type { Mailer } from './mail/mailer.ts';
+import { defaultPhylogeniesDir } from './phylogenies/figures.ts';
 import type { Redis } from './redis/client.ts';
 
 export interface AppDeps {
@@ -54,6 +55,8 @@ export interface AppDeps {
   guidePath?: string;
   /** Epoch ms; tests inject a controllable clock. */
   now?: () => number;
+  /** Default `apps/api/phylogenies`; `PHYLOGENIES_DIR` in production (RFC-79 R1). */
+  phylogeniesDir?: string;
 }
 
 /** @rfc RFC-02 R4 */
@@ -66,6 +69,7 @@ export const BODY_LIMIT_BYTES = 1024 * 1024;
  * @rfc RFC-22 R7
  * @rfc RFC-24 R4
  * @rfc RFC-76 R1
+ * @rfc RFC-79 R1
  * @rfc RFC-82 R11, R20
  * @rfc RFC-14 R3, R4
  */
@@ -85,6 +89,7 @@ export function createApp(deps: AppDeps) {
     originOf: (platform) => originOf(deps.config, platform),
     inviteContactEmail: deps.config.inviteContactEmail,
     now: deps.now ?? Date.now,
+    phylogeniesDir: deps.phylogeniesDir ?? defaultPhylogeniesDir(),
   };
   // Request id, security headers, 404 and error handling sit on the root so
   // that a request outside /api (only the development port exposes any; Caddy

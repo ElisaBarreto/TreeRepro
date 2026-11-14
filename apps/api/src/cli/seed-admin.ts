@@ -13,6 +13,7 @@ import { createPermissionCache } from '../access/permissions.ts';
 import { setUserRoles } from '../access/roles.ts';
 import { createHibpChecker } from '../auth/breach-check.ts';
 import type { AuthContext } from '../auth/context.ts';
+import { defaultPhylogeniesDir } from '../phylogenies/figures.ts';
 import { InvitationMailError, inviteUser } from '../auth/flows/invitation.ts';
 import { createMfaStore } from '../auth/mfa.ts';
 import { createRateLimiter } from '../auth/rate-limit.ts';
@@ -67,6 +68,7 @@ const ctx: AuthContext = {
   mailer: createMailer(createSmtpTransport(config.smtp), config.smtp.from, config.smtp.replyTo),
   breachChecker: createHibpChecker({ logger }),
   permissionCache: createPermissionCache(redis),
+  phylogeniesDir: defaultPhylogeniesDir(),
   logger,
   doi: createDoiClient({ contactEmail: config.doiContactEmail, version: APP_VERSION }),
   // This CLI never proposes a species; the WCVP source is left disabled

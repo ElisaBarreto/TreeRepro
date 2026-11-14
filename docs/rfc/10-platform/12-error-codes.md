@@ -12,7 +12,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 
 ## Rules
 
-- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, `MAP_`, `PLATFORM_`, or a generic word for cross-cutting codes).
+- **R1** Codes are `SCREAMING_SNAKE_CASE` and start with a domain prefix (`VALIDATION_`, `SECURITY_`, `AUTH_`, `PERMISSION_`, `USER_`, `ROLE_`, `MAIL_`, `SPECIES_`, `TRAIT_`, `REFERENCE_`, `RECORD_`, `IMPORT_`, `PROPOSAL_`, `TAXONOMY_`, `MAP_`, `PHYLOGENY_`, `PLATFORM_`, or a generic word for cross-cutting codes).
 - **R2** A code is never renamed, reused with a different meaning, or given a different status once published. Retiring a code keeps its row with "(retired)".
 - **R3** The catalog below is mirrored exactly by `ERROR_CODES` in `packages/contracts/src/error-codes.ts`; a test parses this table and fails on any difference.
 - **R4** Each code maps to exactly one HTTP status (RFC-11 R4).
@@ -85,6 +85,7 @@ Clients branch on stable codes, never on messages. This catalog is the single li
 | `HELP_SLUG_TAKEN` | 409 | Another help topic has the slug generated from this title (RFC-73 R6). |
 | `HELP_ANCHOR_TAKEN` | 409 | The topic already has a section with the anchor generated from this title (RFC-73 R6). |
 | `MAP_NOT_FOUND` | 404 | No map this viewer may see has that file name (RFC-76 R5). |
+| `PHYLOGENY_NOT_FOUND` | 404 | No phylogeny figure this viewer may see has that key (RFC-79 R3). |
 
 ## Open questions
 
@@ -113,3 +114,4 @@ None.
 - 2026-11-11 — UNKNOWN_HOST (RFC-14 R3, plan 15b).
 - 2026-11-11 — PLATFORM_ACCESS_DENIED, and `PLATFORM_` admitted to R1's prefix list (RFC-22 R13, plan 15c).
 - 2026-11-11 — `SPECIES_NAME_TAKEN` also answers a name a species hidden on the platform holds (RFC-60 R13, plan 15e, issue #399).
+- 2026-11-14 — PHYLOGENY_NOT_FOUND, and `PHYLOGENY_` admitted to R1's prefix list (RFC-79 R3, issue #439).

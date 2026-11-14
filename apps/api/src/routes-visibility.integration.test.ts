@@ -10,6 +10,7 @@ import {
   createVisibilityFixture,
 } from '../test/helpers/dataset.ts';
 import { adminRoleId } from '../test/helpers/roles.ts';
+import { figure, figuresDir } from '../test/helpers/phylogenies.ts';
 import { loginAs } from '../test/helpers/session.ts';
 import { createUser } from '../test/helpers/users.ts';
 import type { Visibility } from './access/visibility.ts';
@@ -77,7 +78,8 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
       await next();
       resolved = c.get('visibility');
     });
-    observed.route('/', t.app);
+    // RFC-79 R3: a figure exists only on disk, so give the app a coverage figure.
+    observed.route('/', t.build({ phylogeniesDir: figuresDir(figure('coverage')) }).app);
 
     // `:id` means a different row per prefix; longest prefix wins.
     const ids: [string, string][] = [
@@ -94,6 +96,7 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
       return path
         .replace(':traitId', fx.activeTrait.id)
         .replace(':levelId', sweptLevel?.id ?? '')
+        .replace(':key', 'coverage')
         .replace(':id', id ?? '0'.repeat(32));
     };
     // RFC-76 R6: a map exists only in the region snapshot, so give the active
@@ -122,6 +125,7 @@ describe('RFC-33 R10 every route behind a dataset-reading permission resolves th
       'GET /api/me/contributions': { query: 'kind=records' },
       'GET /api/maps/values': { query: `traitId=${fx.activeTrait.id}&kind=completeness` },
       'GET /api/maps/trait-values': { query: `traitId=${fx.activeTrait.id}` },
+      'GET /api/phylogenies/files/:key': { query: 'size=full' },
       'GET /api/admin/users/:id/contributions': { query: 'kind=records' },
     };
 

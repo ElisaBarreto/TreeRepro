@@ -52,3 +52,7 @@ data/
 
 # The pre-v1 private trait map images (RFC-76 before release v1): never commit them.
 /apps/api/maps/
+
+# Phylogeny figures: private research output, never committed (RFC-79 R1).
+/apps/api/phylogenies/*
+!/apps/api/phylogenies/README.md

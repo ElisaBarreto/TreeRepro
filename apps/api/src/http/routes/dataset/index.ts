@@ -6,6 +6,7 @@ import { curationRoutes } from './curation.ts';
 import { exportRoutes } from './export.ts';
 import { importRoutes } from './imports.ts';
 import { mapRoutes } from './maps.ts';
+import { phylogenyRoutes } from './phylogenies.ts';
 import { plotRoutes } from './plots.ts';
 import { recordRoutes } from './records.ts';
 import { referenceRoutes } from './references.ts';
@@ -25,6 +26,7 @@ import { traitRoutes } from './traits.ts';
  * @rfc RFC-66 R1
  * @rfc RFC-67 R3-R5
  * @rfc RFC-76 R4, R5
+ * @rfc RFC-79 R2, R3
  * @rfc RFC-81 R4
  */
 export function datasetRoutes(ctx: AuthContext) {
@@ -39,6 +41,7 @@ export function datasetRoutes(ctx: AuthContext) {
     .route('/curation', curationRoutes(ctx))
     .route('/traits', traitRoutes(ctx))
     .route('/maps', mapRoutes(ctx))
+    .route('/phylogenies', phylogenyRoutes(ctx))
     .route('/imports', importRoutes(ctx))
     .route('/export', exportRoutes(ctx))
     .route('/taxonomy', taxonomyRoutes(ctx));
