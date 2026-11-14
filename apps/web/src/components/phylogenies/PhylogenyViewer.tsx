@@ -14,6 +14,8 @@ const CONTROL =
 const MAX_SCALE = 4;
 const STEP = 1.5;
 const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(1, s));
+// Wheel events closer than this in one direction are one gesture: one step.
+const GESTURE_GAP_MS = 200;
 
 /**
  * The full-size phylogeny viewer, a native `<dialog>` open while `index` names
@@ -42,6 +44,11 @@ export function PhylogenyViewer({
   const [full, setFull] = useState<'loading' | 'loaded' | 'failed'>('loading');
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<number | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  // The latest scale, for the native wheel listener and pinch moves that
+  // arrive between renders.
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
 
   const key = item?.figure.key;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new figure starts at 1×, unloaded.
@@ -61,8 +68,29 @@ export function PhylogenyViewer({
     if (!item && dialog.open) dialog.close();
   }, [item]);
 
+  // A native, non-passive listener: React's `onWheel` is passive, so it could
+  // not stop the page scrolling or a trackpad pinch zooming the browser. One
+  // gesture (a trackpad sends dozens of events) is one ×1.5 step.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-attached for each figure's <img>.
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img) return;
+    let last = { at: Number.NEGATIVE_INFINITY, dir: 0 };
+    function onWheel(event: WheelEvent) {
+      event.preventDefault();
+      const dir = Math.sign(event.deltaY);
+      if (dir === 0) return;
+      const sameGesture = dir === last.dir && event.timeStamp - last.at < GESTURE_GAP_MS;
+      last = { at: event.timeStamp, dir };
+      if (!sameGesture) zoomTo(dir < 0 ? scaleRef.current * STEP : scaleRef.current / STEP);
+    }
+    img.addEventListener('wheel', onWheel, { passive: false });
+    return () => img.removeEventListener('wheel', onWheel);
+  }, [key]);
+
   function zoomTo(next: number) {
     const s = clampScale(next);
+    scaleRef.current = s;
     setScale(s);
     if (s === 1) setOffset({ x: 0, y: 0 });
   }
@@ -87,7 +115,7 @@ export function PhylogenyViewer({
         { x: number; y: number },
       ];
       const distance = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinch.current) zoomTo(scale * (distance / pinch.current));
+      if (pinch.current) zoomTo(scaleRef.current * (distance / pinch.current));
       pinch.current = distance;
       return;
     }
@@ -181,7 +209,7 @@ export function PhylogenyViewer({
               src={figureUrl(item.figure, full === 'loaded' ? 'full' : 'display')}
               alt={`Phylogeny: ${item.heading}`}
               draggable={false}
-              onWheel={(event) => zoomTo(event.deltaY < 0 ? scale * STEP : scale / STEP)}
+              ref={imageRef}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}

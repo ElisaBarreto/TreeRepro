@@ -75,6 +75,24 @@ describe('RFC-79 R6 PhylogenyViewer', () => {
     expect(figure.style.transform).toContain('translate(0px, 0px)');
   });
 
+  it('one wheel gesture is one ×1.5 step, however many events it sends', () => {
+    const { figure } = open();
+    for (let i = 0; i < 10; i++) fireEvent.wheel(figure, { deltaY: -4 });
+    expect(scaleOf(figure)).toBe('1.5');
+  });
+
+  it('the wheel never scrolls or zooms the page behind the viewer', () => {
+    const { figure } = open();
+    const event = new WheelEvent('wheel', {
+      deltaY: -100,
+      ctrlKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    figure.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   it('does not pan at 1×', () => {
     const { figure } = open();
     fireEvent.pointerDown(figure, { pointerId: 1, clientX: 10, clientY: 10 });

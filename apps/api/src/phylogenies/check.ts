@@ -4,6 +4,8 @@ import type { DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { COVERAGE } from './figures.ts';
 
+const VALID_KEY = /^[a-z0-9_]+$/;
+
 /** @rfc RFC-79 R5 */
 export interface FiguresReport {
   ok: boolean;
@@ -14,8 +16,13 @@ export interface FiguresReport {
   coverageClash: boolean;
 }
 
+// Every `trait_*.<ext>` file's key, valid or not: publish.sh copies them all,
+// so a key the list would never match (`Seed_mass`, `seed-mass`) must surface
+// as unknown here rather than pass silently.
 const keysOf = (names: string[], ext: string) =>
-  names.flatMap((n) => new RegExp(`^trait_([a-z0-9_]+)\\.${ext}$`).exec(n)?.[1] ?? []);
+  names.flatMap((n) =>
+    n.startsWith('trait_') && n.endsWith(`.${ext}`) ? [n.slice(6, -(ext.length + 1))] : [],
+  );
 
 /**
  * Checks one platform's figures directory against the trait dictionary before
@@ -33,7 +40,7 @@ export async function checkFigures(db: DbExecutor, dir: string): Promise<Figures
   const known = new Set(rows.map((r) => r.key));
   const report = {
     missingDir: names === null,
-    unknown: pngs.filter((k) => k !== COVERAGE && !known.has(k)).sort(),
+    unknown: pngs.filter((k) => k !== COVERAGE && !(VALID_KEY.test(k) && known.has(k))).sort(),
     missingDisplay: pngs.filter((k) => !display.has(k)).sort(),
     withoutFigure: rows
       .filter((r) => r.active && !pngs.includes(r.key))

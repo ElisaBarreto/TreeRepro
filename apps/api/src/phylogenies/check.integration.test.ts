@@ -30,6 +30,17 @@ describe('RFC-79 R5 checkFigures', () => {
     expect(await checkFigures(t.db, dir)).toMatchObject({ ok: false, unknown: ['not_a_trait_zz'] });
   });
 
+  it('refuses a name that is not a valid key, which the list would never show', async () => {
+    const dir = join(
+      figuresDir(['treerepro/trait_Seed_mass.png', 'treerepro/trait_seed-mass.png']),
+      'treerepro',
+    );
+    expect(await checkFigures(t.db, dir)).toMatchObject({
+      ok: false,
+      unknown: ['Seed_mass', 'seed-mass'],
+    });
+  });
+
   it('refuses a PNG without display copy', async () => {
     const a = await createTrait(t.db, { key: `chk_nod_${Date.now()}` });
     const dir = join(figuresDir([`treerepro/trait_${a.key}.png`]), 'treerepro');
