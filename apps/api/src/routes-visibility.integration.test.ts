@@ -9,8 +9,8 @@ import {
   createTrait,
   createVisibilityFixture,
 } from '../test/helpers/dataset.ts';
-import { adminRoleId } from '../test/helpers/roles.ts';
 import { figure, figuresDir } from '../test/helpers/phylogenies.ts';
+import { adminRoleId } from '../test/helpers/roles.ts';
 import { loginAs } from '../test/helpers/session.ts';
 import { createUser } from '../test/helpers/users.ts';
 import type { Visibility } from './access/visibility.ts';
