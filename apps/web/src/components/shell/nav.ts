@@ -60,6 +60,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { to: '/app/traits', label: 'Traits', icon: 'list', permission: 'dataset.read', section: 'data' },
   { to: '/app/maps', label: 'Maps', icon: 'map', permission: 'dataset.read', section: 'data' },
   {
+    to: '/app/phylogenies',
+    label: 'Phylogenies',
+    icon: 'tree',
+    permission: 'dataset.read',
+    section: 'data',
+  },
+  {
     to: '/app/references',
     label: 'References',
     icon: 'book',
