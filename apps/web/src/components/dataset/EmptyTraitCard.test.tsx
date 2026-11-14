@@ -22,10 +22,17 @@ vi.mock('../../api/maps.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/maps.ts')>()),
   ...maps,
 }));
+// RFC-79 R7: the Phylogeny link reads `useHasPhylogeny`, mocked the same way.
+const phylo = vi.hoisted(() => ({ useHasPhylogeny: vi.fn() }));
+vi.mock('../../api/phylogenies.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/phylogenies.ts')>()),
+  ...phylo,
+}));
 
 beforeEach(() => {
   maps.useHasMaps.mockReset();
   maps.useHasMaps.mockReturnValue(false);
+  phylo.useHasPhylogeny.mockReset().mockReturnValue(false);
 });
 
 describe('RFC-70 R7 EmptyTraitCard', () => {
@@ -81,6 +88,22 @@ describe('RFC-70 R7 EmptyTraitCard', () => {
     rerender(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} onAdd={onAdd} />);
     await userEvent.click(screen.getByRole('button', { name: 'Add the first entry' }));
     expect(onAdd).toHaveBeenCalledTimes(1);
+  });
+
+  describe('RFC-79 R7 phylogeny link in the HelpTip', () => {
+    it('adds a Phylogeny link when the trait has a figure', async () => {
+      phylo.useHasPhylogeny.mockReturnValue(true);
+      render(withRouter(<EmptyTraitCard summary={SELF_COMPATIBILITY_MISSING_SUMMARY} />));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'What does self compatibility mean?' }),
+      );
+      expect(
+        within(screen.getByRole('tooltip')).getByRole('link', { name: 'Phylogeny' }),
+      ).toHaveAttribute(
+        'href',
+        `/app/phylogenies?trait=${SELF_COMPATIBILITY_MISSING_SUMMARY.trait.key}`,
+      );
+    });
   });
 
   describe('RFC-76 R8 maps link in the HelpTip', () => {

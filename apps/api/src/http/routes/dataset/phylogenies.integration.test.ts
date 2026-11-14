@@ -1,11 +1,15 @@
-import { dataEnvelopeSchema, type PermissionKey, phylogeniesResponseSchema } from '@treerepro/contracts';
+import {
+  dataEnvelopeSchema,
+  type PermissionKey,
+  phylogeniesResponseSchema,
+} from '@treerepro/contracts';
 import { describe, expect, it } from 'vitest';
 import { call, TEST_PLANT_ORIGIN, useTestApp } from '../../../../test/helpers/app.ts';
 import { assignPlots, createPlot, createTrait } from '../../../../test/helpers/dataset.ts';
+import { figure, figuresDir } from '../../../../test/helpers/phylogenies.ts';
 import { createRole } from '../../../../test/helpers/roles.ts';
 import { loginAs } from '../../../../test/helpers/session.ts';
 import { createUser } from '../../../../test/helpers/users.ts';
-import { figure, figuresDir } from '../../../../test/helpers/phylogenies.ts';
 
 describe('RFC-79 R2, R3, R4 phylogeny routes', () => {
   const t = useTestApp();

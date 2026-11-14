@@ -10,6 +10,7 @@ import type {
 import { Fragment, type ReactNode, useEffect, useId, useState } from 'react';
 import { datasetKeys, fetchTrait, fetchTraitSpecies } from '../../api/dataset.ts';
 import { mapAlt, mapsByTrait, useMaps } from '../../api/maps.ts';
+import { figureUrl, phylogenyByTrait, usePhylogenies } from '../../api/phylogenies.ts';
 import { Pagination } from '../../components/dataset/Pagination.tsx';
 import { RecordDrawer } from '../../components/dataset/RecordDrawer.tsx';
 import {
@@ -19,6 +20,8 @@ import {
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
 import { TraitSpeciesTable } from '../../components/dataset/TraitSpeciesTable.tsx';
 import { MapFigure } from '../../components/maps/MapFigure.tsx';
+import { notAvailableYet } from '../../components/phylogenies/not-available.ts';
+import { PhylogenyViewer } from '../../components/phylogenies/PhylogenyViewer.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
 import {
   Alert,
@@ -219,34 +222,79 @@ function Distribution({ trait, search }: { trait: TraitDetail; search: TraitSpec
 }
 
 /**
- * The trait's own maps (RFC-76 R8), when it has any: the completeness map as
- * a thumbnail (left out when the manifest has none for this trait) and a
- * link to its maps on `/app/maps?trait=<key>`. A trait with no maps visible to this
- * viewer renders nothing at all — not even the heading — and a failed
- * `useMaps` query reads the same as no maps.
+ * The trait's maps and phylogeny (RFC-76 R8, RFC-79 R7): the completeness map
+ * as a thumbnail with a link to its maps, and its phylogeny figure beside it
+ * (stacked on a narrow screen) opening the full-size viewer, with a link to
+ * the Phylogenies page. Titled after what it holds; nothing at all for a
+ * trait with neither. On a platform with no figures at all, the "not
+ * available yet" sentence stands beside the map instead. A failed query
+ * reads as none.
  * @rfc RFC-76 R8
+ * @rfc RFC-79 R7
  */
 function TraitMaps({ trait }: { trait: TraitDetail }) {
   const maps = useMaps();
+  const figures = usePhylogenies();
+  const [open, setOpen] = useState(false);
   const entries = mapsByTrait(maps.data ?? []).get(trait.id) ?? [];
-  if (entries.length === 0) return null;
+  const figure = phylogenyByTrait(figures.data ?? []).get(trait.id);
+  const noFigures = figures.isSuccess && figures.data.length === 0;
+  const hasMaps = entries.length > 0;
+  if (!hasMaps && !figure) return null;
   const completeness = entries.find((entry) => entry.kind === 'completeness');
   const name = humaniseKey(trait.key);
+  const title = hasMaps && figure ? 'Maps and phylogeny' : hasMaps ? 'Maps' : 'Phylogeny';
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-display text-section font-semibold text-canopy-950">Maps</h2>
-      {completeness ? (
-        <div className="max-w-sm">
-          <MapFigure entry={completeness} alt={mapAlt('completeness', name)} />
-        </div>
-      ) : null}
-      <Link
-        to="/app/maps"
-        search={{ trait: trait.key }}
-        className="font-medium text-canopy-900 underline-offset-2 hover:underline"
-      >
-        See all maps for this trait →
-      </Link>
+      <h2 className="font-display text-section font-semibold text-canopy-950">{title}</h2>
+      <div className="grid gap-6 md:grid-cols-2">
+        {hasMaps ? (
+          <div className="flex flex-col gap-3">
+            {completeness ? (
+              <MapFigure entry={completeness} alt={mapAlt('completeness', name)} />
+            ) : null}
+            <Link
+              to="/app/maps"
+              search={{ trait: trait.key }}
+              className="font-medium text-canopy-900 underline-offset-2 hover:underline"
+            >
+              See all maps for this trait →
+            </Link>
+          </div>
+        ) : null}
+        {figure ? (
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              aria-label={`Open the ${name} phylogeny at full size`}
+              onClick={() => setOpen(true)}
+              className="cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+            >
+              <img
+                src={figureUrl(figure, 'display')}
+                alt={`Phylogeny: ${name}`}
+                loading="lazy"
+                className="h-auto w-full"
+              />
+            </button>
+            <Link
+              to="/app/phylogenies"
+              search={{ trait: trait.key }}
+              className="font-medium text-canopy-900 underline-offset-2 hover:underline"
+            >
+              See on Phylogenies →
+            </Link>
+            <PhylogenyViewer
+              items={[{ figure, heading: name }]}
+              index={open ? 0 : null}
+              onIndexChange={() => {}}
+              onClose={() => setOpen(false)}
+            />
+          </div>
+        ) : noFigures ? (
+          <p className="self-center text-body text-mist-500">{notAvailableYet()}</p>
+        ) : null}
+      </div>
     </section>
   );
 }

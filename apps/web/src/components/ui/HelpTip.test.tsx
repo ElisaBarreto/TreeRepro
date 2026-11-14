@@ -140,13 +140,16 @@ describe('RFC-13 R11 HelpTip', () => {
     expect(screen.queryByRole('link', { name: 'Learn more' })).not.toBeInTheDocument();
   });
 
-  // RFC-76 R8: a trait card's tip carries a second link to its maps, beside
-  // "Learn more", only when the trait has any.
-  it('renders extraLink beside "Learn more" when given, and neither without it', async () => {
+  // RFC-76 R8, RFC-79 R7: a trait card's tip carries links to its maps and
+  // phylogeny, beside "Learn more", only when the trait has them.
+  it('renders extraLinks beside "Learn more" when given, and none without them', async () => {
     const withLink = renderInRouter(
       <HelpTip
         learnMore="/"
-        extraLink={{ to: '/app/maps', search: { trait: 't1' }, label: 'Maps' }}
+        extraLinks={[
+          { to: '/app/maps', search: { trait: 't1' }, label: 'Maps' },
+          { to: '/app/phylogenies', search: { trait: 't1' }, label: 'Phylogeny' },
+        ]}
       >
         Explains things.
       </HelpTip>,
@@ -156,6 +159,10 @@ describe('RFC-13 R11 HelpTip', () => {
     expect(screen.getByRole('link', { name: 'Maps' })).toHaveAttribute(
       'href',
       '/app/maps?trait=t1',
+    );
+    expect(screen.getByRole('link', { name: 'Phylogeny' })).toHaveAttribute(
+      'href',
+      '/app/phylogenies?trait=t1',
     );
     withLink.unmount();
 

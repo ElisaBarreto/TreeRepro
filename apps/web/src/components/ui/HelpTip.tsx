@@ -8,8 +8,8 @@ export interface HelpTipProps {
   children: ReactNode;
   /** Route to a fuller explanation, rendered as a "Learn more" link (plan 12a). */
   learnMore?: string;
-  /** A second link beside "Learn more" — the trait's maps, when it has any. @rfc RFC-76 R8 */
-  extraLink?: { to: string; search?: Record<string, string>; label: string };
+  /** Links beside "Learn more" — the trait's maps and phylogeny, when it has them. @rfc RFC-76 R8 @rfc RFC-79 R7 */
+  extraLinks?: readonly { to: string; search?: Record<string, string>; label: string }[];
 }
 
 /**
@@ -27,7 +27,7 @@ export interface HelpTipProps {
  * children, never HTML from the API.
  * @rfc RFC-13 R11
  */
-export function HelpTip({ label, children, learnMore, extraLink }: HelpTipProps) {
+export function HelpTip({ label, children, learnMore, extraLinks = [] }: HelpTipProps) {
   const [open, setOpen] = useState(false);
   const tooltipId = useId();
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -92,15 +92,16 @@ export function HelpTip({ label, children, learnMore, extraLink }: HelpTipProps)
               Learn more
             </Link>
           ) : null}
-          {extraLink ? (
+          {extraLinks.map((link) => (
             <Link
-              to={extraLink.to}
-              search={extraLink.search}
+              key={link.label}
+              to={link.to}
+              search={link.search}
               className="mt-2 ml-3 inline-block font-medium text-canopy-900 underline-offset-2 hover:underline"
             >
-              {extraLink.label}
+              {link.label}
             </Link>
-          ) : null}
+          ))}
         </div>
       ) : null}
     </span>

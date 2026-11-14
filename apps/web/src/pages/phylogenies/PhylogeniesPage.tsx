@@ -3,11 +3,11 @@ import type { PhylogenyFigure, Trait } from '@treerepro/contracts';
 import { type KeyboardEvent, type ReactNode, useState } from 'react';
 import { datasetKeys, fetchDictionary } from '../../api/dataset.ts';
 import { figureUrl, phylogenyByTrait, usePhylogenies } from '../../api/phylogenies.ts';
+import { notAvailableYet } from '../../components/phylogenies/not-available.ts';
 import { PhylogenyViewer } from '../../components/phylogenies/PhylogenyViewer.tsx';
 import { Alert, ButtonLink, EmptyState, PageHeader } from '../../components/ui/index.ts';
 import { pageErrorMessage } from '../../lib/errors.ts';
 import { humaniseKey } from '../../lib/format.ts';
-import { platformCopy } from '../../lib/platform.ts';
 
 /** The page's search params: a category key and a trait key. @rfc RFC-79 R6 */
 export interface PhylogeniesSearch {
@@ -26,9 +26,6 @@ const TOGGLE_BUTTON =
 const ALL = '';
 const tabId = (key: string) => `phylo-tab-${key || 'all'}`;
 const traitButtonId = (key: string) => `phylo-trait-${key}`;
-
-/** RFC-79 R6: the sentence for a platform with no figures. @rfc RFC-79 R6, R7 */
-export const notAvailableYet = () => `Phylogenies are not available on ${platformCopy().name} yet.`;
 
 /** Left/Right (and Up/Down for buttons) move, wrapping; Home/End on tabs. */
 function moveIndex(key: string, index: number, count: number, vertical: boolean) {

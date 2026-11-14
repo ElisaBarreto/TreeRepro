@@ -5,12 +5,13 @@ import type {
   TraitSummary,
 } from '@treerepro/contracts';
 import { useHasMaps } from '../../api/maps.ts';
+import { useHasPhylogeny } from '../../api/phylogenies.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { formatNumber, humaniseKey } from '../../lib/format.ts';
 import { Badge, Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
 import { OUTLIER_LABELS } from './RecordTable.tsx';
-import { traitTip } from './trait-tip.ts';
+import { traitTip, traitTipLinks } from './trait-tip.ts';
 import { VoteButton } from './VoteButton.tsx';
 
 // One class per tenth, spelled out so Tailwind finds them at build time; a
@@ -122,7 +123,11 @@ export function TraitCard({
     : plural(recordCount, 'record', 'records');
   const name = humaniseKey(trait.key);
   const tip = traitTip(dictionary, trait);
-  const hasMaps = useHasMaps(trait.id);
+  const { links, fallback } = traitTipLinks(
+    trait.key,
+    useHasMaps(trait.id),
+    useHasPhylogeny(trait.id),
+  );
 
   return (
     <CardFrame onOpen={onOpen}>
@@ -224,15 +229,13 @@ export function TraitCard({
         ) : null}
       </div>
       <span className="flex shrink-0 items-center gap-1">
-        {tip || hasMaps ? (
+        {tip || fallback ? (
           <HelpTip
             label={`What does ${name} mean?`}
             learnMore={tip ? helpHref('vocabulary', 'descriptions') : undefined}
-            extraLink={
-              hasMaps ? { to: '/app/maps', search: { trait: trait.key }, label: 'Maps' } : undefined
-            }
+            extraLinks={links}
           >
-            {tip ?? 'Global maps are available for this trait.'}
+            {tip ?? fallback}
           </HelpTip>
         ) : null}
         {onAdd ? (

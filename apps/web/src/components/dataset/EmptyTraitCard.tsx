@@ -1,10 +1,11 @@
 import type { Dictionary, TraitSummary } from '@treerepro/contracts';
 import { useHasMaps } from '../../api/maps.ts';
+import { useHasPhylogeny } from '../../api/phylogenies.ts';
 import { helpHref } from '../../content/help/href.ts';
 import { humaniseKey } from '../../lib/format.ts';
 import { Button, HelpTip } from '../ui/index.ts';
 import { CardFrame } from './CardFrame.tsx';
-import { traitTip } from './trait-tip.ts';
+import { traitTip, traitTipLinks } from './trait-tip.ts';
 
 /**
  * A trait `missingOnly` listed: it has no record at all, so there is
@@ -32,7 +33,11 @@ export function EmptyTraitCard({
   const { trait } = summary;
   const name = humaniseKey(trait.key);
   const tip = traitTip(dictionary, trait);
-  const hasMaps = useHasMaps(trait.id);
+  const { links, fallback } = traitTipLinks(
+    trait.key,
+    useHasMaps(trait.id),
+    useHasPhylogeny(trait.id),
+  );
 
   return (
     <CardFrame>
@@ -41,17 +46,13 @@ export function EmptyTraitCard({
           <span className="font-display text-card font-semibold text-canopy-950">
             {trait.unit ? `${name} (${trait.unit})` : name}
           </span>
-          {tip || hasMaps ? (
+          {tip || fallback ? (
             <HelpTip
               label={`What does ${name} mean?`}
               learnMore={tip ? helpHref('vocabulary', 'descriptions') : undefined}
-              extraLink={
-                hasMaps
-                  ? { to: '/app/maps', search: { trait: trait.key }, label: 'Maps' }
-                  : undefined
-              }
+              extraLinks={links}
             >
-              {tip ?? 'Global maps are available for this trait.'}
+              {tip ?? fallback}
             </HelpTip>
           ) : null}
         </span>

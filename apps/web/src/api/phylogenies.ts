@@ -36,3 +36,12 @@ export function phylogenyByTrait(
 ): Map<string, PhylogenyFigure> {
   return new Map(figures.flatMap((f) => (f.traitId ? [[f.traitId, f] as const] : [])));
 }
+
+/**
+ * Whether a trait has a phylogeny figure — the trait cards' help popover
+ * check, like `useHasMaps`. A failed query reads as none.
+ * @rfc RFC-79 R7
+ */
+export function useHasPhylogeny(traitId: string): boolean {
+  return phylogenyByTrait(usePhylogenies().data ?? []).has(traitId);
+}
