@@ -42,10 +42,14 @@ ssh "$HOST" "mkdir -p /srv/phylogenies-staging/$PLATFORM /srv/phylogenies/$PLATF
 rsync -a --delete "$WORK/" "$HOST:/srv/phylogenies-staging/$PLATFORM/"
 
 echo "== checking against the production trait dictionary"
-ssh "$HOST" "cd $REMOTE_DIR && docker compose run --rm --no-deps -T \
+ssh "$HOST" "cd '$REMOTE_DIR' && COMPOSE_FILE=compose.yml:compose.prod.yml docker compose run --rm --no-deps -T \
   -v /srv/phylogenies-staging:/staging:ro api node dist/cli/check-phylogenies.js \
   --dir /staging/$PLATFORM"
 
+# A full copy beside the live directory, then two renames: readers see the old
+# set or the new one, never a half-copied mix.
 echo "== publishing"
-ssh "$HOST" "rsync -a --delete /srv/phylogenies-staging/$PLATFORM/ /srv/phylogenies/$PLATFORM/"
+ssh "$HOST" "set -e; cd /srv/phylogenies; rm -rf '$PLATFORM.new' '$PLATFORM.old'; \
+  cp -a '/srv/phylogenies-staging/$PLATFORM' '$PLATFORM.new'; \
+  mv '$PLATFORM' '$PLATFORM.old'; mv '$PLATFORM.new' '$PLATFORM'; rm -rf '$PLATFORM.old'"
 echo "== done: $count figures live on $PLATFORM"

@@ -55,6 +55,8 @@ export function PhylogenyViewer({
   useEffect(() => {
     setScale(1);
     setOffset({ x: 0, y: 0 });
+    pointers.current.clear();
+    pinch.current = null;
     setFull('loading');
   }, [key]);
 
@@ -100,12 +102,12 @@ export function PhylogenyViewer({
     onIndexChange((index + delta + items.length) % items.length);
   }
 
-  function onPointerDown(event: PointerEvent<HTMLImageElement>) {
+  function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
 
-  function onPointerMove(event: PointerEvent<HTMLImageElement>) {
+  function onPointerMove(event: PointerEvent<HTMLDivElement>) {
     const previous = pointers.current.get(event.pointerId);
     if (!previous) return;
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -126,7 +128,7 @@ export function PhylogenyViewer({
     }));
   }
 
-  function onPointerUp(event: PointerEvent<HTMLImageElement>) {
+  function onPointerUp(event: PointerEvent<HTMLDivElement>) {
     pointers.current.delete(event.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
   }
@@ -204,16 +206,18 @@ export function PhylogenyViewer({
               </button>
             </div>
           </div>
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-mist-50">
+          <div
+            className="relative min-h-0 flex-1 touch-none overflow-hidden rounded-lg bg-mist-50"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          >
             <img
               src={figureUrl(item.figure, full === 'loaded' ? 'full' : 'display')}
               alt={`Phylogeny: ${item.heading}`}
               draggable={false}
               ref={imageRef}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
               style={{
                 transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
               }}

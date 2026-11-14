@@ -93,6 +93,16 @@ describe('RFC-79 R6 PhylogenyViewer', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it('drags from the frame, so an image panned far away can be brought back', () => {
+    const { figure } = open();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: '+' });
+    const frame = figure.parentElement as HTMLElement;
+    fireEvent.pointerDown(frame, { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(frame, { pointerId: 1, clientX: 50, clientY: 0 });
+    fireEvent.pointerUp(frame, { pointerId: 1 });
+    expect(figure.style.transform).toContain('translate(50px, 0px)');
+  });
+
   it('does not pan at 1×', () => {
     const { figure } = open();
     fireEvent.pointerDown(figure, { pointerId: 1, clientX: 10, clientY: 10 });

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { phylogenyFileParamSchema, phylogenyFileQuerySchema } from '@treerepro/contracts';
 import { Hono } from 'hono';
+import { etag } from 'hono/etag';
 import { visibilityOf } from '../../../access/visibility.ts';
 import type { AuthContext } from '../../../auth/context.ts';
 import { figurePath, listFigures } from '../../../phylogenies/figures.ts';
@@ -25,6 +26,7 @@ export function phylogenyRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'dataset.read'),
       validate('param', phylogenyFileParamSchema),
       validate('query', phylogenyFileQuerySchema),
+      etag(),
       async (c) => {
         const visibility = await visibilityOf(ctx, c);
         const { key } = c.req.valid('param');
@@ -34,7 +36,9 @@ export function phylogenyRoutes(ctx: AuthContext) {
         if (!figure) throw new AppError('PHYLOGENY_NOT_FOUND', 'Phylogeny not found');
         const path = figurePath(ctx.phylogeniesDir, visibility.platform, figure.key, size);
         c.header('Content-Type', size === 'full' ? 'image/png' : 'image/jpeg');
-        c.header('Cache-Control', 'private, max-age=31536000, immutable');
+        // Revalidated on every use (an unchanged figure is a 304), so the
+        // browser never shows one from its cache once the session is gone.
+        c.header('Cache-Control', 'private, no-cache');
         return c.body(await readFile(path));
       },
     );

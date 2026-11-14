@@ -59,7 +59,7 @@ describe('RFC-79 R2, R3, R4 phylogeny routes', () => {
     expect(await res.json()).toEqual({ data: [] });
   });
 
-  it('size=display answers image/jpeg with an immutable private cache; size=full image/png', async () => {
+  it('size=display answers image/jpeg, revalidated on each use; size=full image/png', async () => {
     const { app, on } = await fixture();
     const { cookie } = await viewer();
     const display = await call(app, 'GET', `/api/phylogenies/files/${on.key}?size=display&v=1`, {
@@ -67,7 +67,16 @@ describe('RFC-79 R2, R3, R4 phylogeny routes', () => {
     });
     expect(display.status).toBe(200);
     expect(display.headers.get('content-type')).toBe('image/jpeg');
-    expect(display.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+    // Revalidated on every use, so a figure is never shown from the cache
+    // to someone no longer signed in; an unchanged one costs a 304.
+    expect(display.headers.get('cache-control')).toBe('private, no-cache');
+    const etag = display.headers.get('etag') as string;
+    expect(etag).toBeTruthy();
+    const again = await call(app, 'GET', `/api/phylogenies/files/${on.key}?size=display&v=1`, {
+      cookie,
+      headers: { 'if-none-match': etag },
+    });
+    expect(again.status).toBe(304);
     expect(await display.text()).toBe(`treerepro/display/trait_${on.key}.jpg`);
     const full = await call(app, 'GET', '/api/phylogenies/files/coverage?size=full', { cookie });
     expect(full.headers.get('content-type')).toBe('image/png');
