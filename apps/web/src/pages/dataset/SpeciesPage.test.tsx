@@ -86,6 +86,12 @@ vi.mock('../../api/maps.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/maps.ts')>()),
   ...maps,
 }));
+// RFC-79 R7: the Phylogeny link reads `useHasPhylogeny`, mocked the same way.
+const phylo = vi.hoisted(() => ({ useHasPhylogeny: vi.fn() }));
+vi.mock('../../api/phylogenies.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/phylogenies.ts')>()),
+  ...phylo,
+}));
 
 const READER: MeResponse = { ...ME, permissions: ['dataset.read'] };
 const CURATOR_TAXA: MeResponse = { ...ME, permissions: ['dataset.read', 'taxa.manage'] };
@@ -131,6 +137,7 @@ beforeEach(() => {
   catalog.addSpeciesName.mockReset();
   maps.useHasMaps.mockReset();
   maps.useHasMaps.mockReturnValue(false);
+  phylo.useHasPhylogeny.mockReset().mockReturnValue(false);
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchSpecies.mockResolvedValue(SPECIES);
   dataset.fetchSpeciesTraits.mockResolvedValue(SPECIES_TRAITS);

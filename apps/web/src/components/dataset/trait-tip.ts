@@ -19,3 +19,28 @@ export function traitTip(
   if (description === undefined) return undefined;
   return trait.unit ? `${description} Measured in ${trait.unit}.` : description;
 }
+
+/**
+ * The links a trait card's `?` adds beside "Learn more" — its maps and its
+ * phylogeny, each only when the trait has them — and what the tip says when
+ * the trait has no description but has either.
+ * @rfc RFC-76 R8
+ * @rfc RFC-79 R7
+ */
+export function traitTipLinks(key: string, hasMaps: boolean, hasPhylogeny: boolean) {
+  const links = [
+    ...(hasMaps ? [{ to: '/app/maps', search: { trait: key }, label: 'Maps' }] : []),
+    ...(hasPhylogeny
+      ? [{ to: '/app/phylogenies', search: { trait: key }, label: 'Phylogeny' }]
+      : []),
+  ];
+  const fallback =
+    hasMaps && hasPhylogeny
+      ? 'Global maps and a phylogeny are available for this trait.'
+      : hasMaps
+        ? 'Global maps are available for this trait.'
+        : hasPhylogeny
+          ? 'A phylogeny is available for this trait.'
+          : undefined;
+  return { links, fallback };
+}

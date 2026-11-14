@@ -1,4 +1,4 @@
-openapi-sha256: f0ca7a7311bcfcfa34173d4bded6f5dc8aca40a414f1278033f01691ee8e589d
+openapi-sha256: f33790d6de89e2538dff08f7b0bc1f2e33b7d95e8b7a0d81397dcfca00145eef
 
 # TreeRepro API guide
 
@@ -434,6 +434,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-14 — Phylogeny figures (RFC-79; issue #439): new `GET /api/phylogenies` answers `[{ key, traitId, version }]`, the figures of the platform of the host the request is sent to — `coverage` first (`traitId` null), then each visible trait by key; an empty list where the platform has none. `GET /api/phylogenies/files/:key?size=display|full` answers the figure's display copy (`image/jpeg`) or full PNG (`image/png`), with an `ETag` (`Cache-Control: private, no-cache`); 404 `PHYLOGENY_NOT_FOUND` for a key the list does not give you. Both need `dataset.read`. (openapi f33790d6de89)
 - 2026-11-12 — Record codes per platform (RFC-63 R12; issue #425): a record created on PlantRepro — an entry, a contest or complement, a validator's record, a harmonisation, a `POST /api/batch` operation — is coded `PR_<n>`; on TreeRepro it stays `TR_<n>`, imported records `EB_<n>`. Both prefixes share one sequence, so a number is never used twice; existing codes never change. No shape changes. (openapi f0ca7a7311bc)
 - 2026-11-12 — `continent`, `region` and `area` on `GET /api/species`, `/count` and `/tree-flags` take comma-separated lists (up to 100 distinct codes each); a species occurring in any chosen place is kept, the most specific choice in each branch being the place, so a continent and an area outside it no longer exclude each other (RFC-60 R6; issue #419). (openapi f0ca7a7311bc)
 - 2026-11-12 — `GET /api/species`, `GET /api/species/count` and `GET /api/species/tree-flags` take `continent`, `region` and `area`, WCVP's level-1, level-2 and level-3 codes, and `introduced=true` to count introduced occurrences besides native ones. New `GET /api/species/regions` (`dataset.read`): every level-3 botanical country with its region and continent (RFC-60 R6, R12, R14; issue #77). (openapi b2e2bc46efe0)

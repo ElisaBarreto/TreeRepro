@@ -33,6 +33,7 @@ import { Route as AppHelpTopicRouteImport } from './routes/app/help/$topic'
 import { Route as AppImportsIndexRouteImport } from './routes/app/imports/index'
 import { Route as AppImportsIdRouteImport } from './routes/app/imports/$id'
 import { Route as AppMapsIndexRouteImport } from './routes/app/maps/index'
+import { Route as AppPhylogeniesIndexRouteImport } from './routes/app/phylogenies/index'
 import { Route as AppReferencesIndexRouteImport } from './routes/app/references/index'
 import { Route as AppReferencesIdRouteImport } from './routes/app/references/$id'
 import { Route as AppSpeciesIndexRouteImport } from './routes/app/species/index'
@@ -164,6 +165,11 @@ const AppMapsIndexRoute = AppMapsIndexRouteImport.update({
   path: '/maps/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPhylogeniesIndexRoute = AppPhylogeniesIndexRouteImport.update({
+  id: '/phylogenies/',
+  path: '/phylogenies/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReferencesIndexRoute = AppReferencesIndexRouteImport.update({
   id: '/references/',
   path: '/references/',
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/app/help/': typeof AppHelpIndexRoute
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/maps/': typeof AppMapsIndexRoute
+  '/app/phylogenies/': typeof AppPhylogeniesIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
   '/app/traits/': typeof AppTraitsIndexRoute
@@ -277,6 +284,7 @@ export interface FileRoutesByTo {
   '/app/help': typeof AppHelpIndexRoute
   '/app/imports': typeof AppImportsIndexRoute
   '/app/maps': typeof AppMapsIndexRoute
+  '/app/phylogenies': typeof AppPhylogeniesIndexRoute
   '/app/references': typeof AppReferencesIndexRoute
   '/app/species': typeof AppSpeciesIndexRoute
   '/app/traits': typeof AppTraitsIndexRoute
@@ -314,6 +322,7 @@ export interface FileRoutesById {
   '/app/help/': typeof AppHelpIndexRoute
   '/app/imports/': typeof AppImportsIndexRoute
   '/app/maps/': typeof AppMapsIndexRoute
+  '/app/phylogenies/': typeof AppPhylogeniesIndexRoute
   '/app/references/': typeof AppReferencesIndexRoute
   '/app/species/': typeof AppSpeciesIndexRoute
   '/app/traits/': typeof AppTraitsIndexRoute
@@ -352,6 +361,7 @@ export interface FileRouteTypes {
     | '/app/help/'
     | '/app/imports/'
     | '/app/maps/'
+    | '/app/phylogenies/'
     | '/app/references/'
     | '/app/species/'
     | '/app/traits/'
@@ -386,6 +396,7 @@ export interface FileRouteTypes {
     | '/app/help'
     | '/app/imports'
     | '/app/maps'
+    | '/app/phylogenies'
     | '/app/references'
     | '/app/species'
     | '/app/traits'
@@ -422,6 +433,7 @@ export interface FileRouteTypes {
     | '/app/help/'
     | '/app/imports/'
     | '/app/maps/'
+    | '/app/phylogenies/'
     | '/app/references/'
     | '/app/species/'
     | '/app/traits/'
@@ -609,6 +621,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMapsIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/phylogenies/': {
+      id: '/app/phylogenies/'
+      path: '/phylogenies'
+      fullPath: '/app/phylogenies/'
+      preLoaderRoute: typeof AppPhylogeniesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/references/': {
       id: '/app/references/'
       path: '/references'
@@ -738,6 +757,7 @@ interface AppRouteChildren {
   AppTraitsIdRoute: typeof AppTraitsIdRoute
   AppHelpIndexRoute: typeof AppHelpIndexRoute
   AppMapsIndexRoute: typeof AppMapsIndexRoute
+  AppPhylogeniesIndexRoute: typeof AppPhylogeniesIndexRoute
   AppReferencesIndexRoute: typeof AppReferencesIndexRoute
   AppSpeciesIndexRoute: typeof AppSpeciesIndexRoute
   AppTraitsIndexRoute: typeof AppTraitsIndexRoute
@@ -761,6 +781,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppTraitsIdRoute: AppTraitsIdRoute,
   AppHelpIndexRoute: AppHelpIndexRoute,
   AppMapsIndexRoute: AppMapsIndexRoute,
+  AppPhylogeniesIndexRoute: AppPhylogeniesIndexRoute,
   AppReferencesIndexRoute: AppReferencesIndexRoute,
   AppSpeciesIndexRoute: AppSpeciesIndexRoute,
   AppTraitsIndexRoute: AppTraitsIndexRoute,

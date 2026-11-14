@@ -7,6 +7,7 @@ import { createMfaStore, type MfaStore } from '../../src/auth/mfa.ts';
 import { createRateLimiter, type RateLimiter } from '../../src/auth/rate-limit.ts';
 import { createSessionStore, type SessionStore } from '../../src/auth/sessions.ts';
 import { createDb, type Db } from '../../src/db/client.ts';
+import { defaultPhylogeniesDir } from '../../src/phylogenies/figures.ts';
 import { createRedis, type Redis } from '../../src/redis/client.ts';
 import { fakeDoiClient } from './doi.ts';
 import { captureLogger } from './logger.ts';
@@ -178,6 +179,7 @@ export function ctxOf(t: TestApp): AuthContext {
     limiter: t.limiter,
     mailer: t.mail.mailer,
     breachChecker: t.deps.breachChecker,
+    phylogeniesDir: t.deps.phylogeniesDir ?? defaultPhylogeniesDir(),
     permissionCache: t.permissionCache,
     logger: t.deps.logger,
     doi: t.doi,

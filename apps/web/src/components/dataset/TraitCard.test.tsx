@@ -26,10 +26,17 @@ vi.mock('../../api/maps.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/maps.ts')>()),
   ...maps,
 }));
+// RFC-79 R7: the Phylogeny link reads `useHasPhylogeny`, mocked the same way.
+const phylo = vi.hoisted(() => ({ useHasPhylogeny: vi.fn() }));
+vi.mock('../../api/phylogenies.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/phylogenies.ts')>()),
+  ...phylo,
+}));
 
 beforeEach(() => {
   maps.useHasMaps.mockReset();
   maps.useHasMaps.mockReturnValue(false);
+  phylo.useHasPhylogeny.mockReset().mockReturnValue(false);
 });
 
 // Three levels, the top one validated twice and contested.
@@ -294,6 +301,45 @@ describe('RFC-63 R10 TraitCard', () => {
   it('renders no HelpTip when the dictionary has no description for the trait', () => {
     render(<TraitCard summary={LEVELLED} onOpen={() => {}} />);
     expect(screen.queryByRole('button', { name: /What does .* mean\?/ })).not.toBeInTheDocument();
+  });
+
+  describe('RFC-79 R7 phylogeny link in the HelpTip', () => {
+    it('adds a Phylogeny link beside Maps when the trait has a figure', async () => {
+      maps.useHasMaps.mockReturnValue(true);
+      phylo.useHasPhylogeny.mockReturnValue(true);
+      render(withRouter(<TraitCard summary={LEVELLED} onOpen={() => {}} />));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'What does sexual system mean?' }),
+      );
+      const tip = screen.getByRole('tooltip');
+      expect(within(tip).getByRole('link', { name: 'Maps' })).toBeInTheDocument();
+      expect(within(tip).getByRole('link', { name: 'Phylogeny' })).toHaveAttribute(
+        'href',
+        `/app/phylogenies?trait=${LEVELLED.trait.key}`,
+      );
+    });
+
+    it('shows the popover for a trait with only a figure', async () => {
+      phylo.useHasPhylogeny.mockReturnValue(true);
+      render(withRouter(<TraitCard summary={LEVELLED} onOpen={() => {}} />));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'What does sexual system mean?' }),
+      );
+      const tip = screen.getByRole('tooltip');
+      expect(within(tip).getByRole('link', { name: 'Phylogeny' })).toBeInTheDocument();
+      expect(within(tip).queryByRole('link', { name: 'Maps' })).not.toBeInTheDocument();
+    });
+
+    it('offers no Phylogeny link when the trait has no figure', async () => {
+      maps.useHasMaps.mockReturnValue(true);
+      render(withRouter(<TraitCard summary={LEVELLED} onOpen={() => {}} />));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'What does sexual system mean?' }),
+      );
+      expect(
+        within(screen.getByRole('tooltip')).queryByRole('link', { name: 'Phylogeny' }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('RFC-76 R8 maps link in the HelpTip', () => {

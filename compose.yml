@@ -112,7 +112,9 @@ services:
   api:
     image: treerepro-api
     restart: unless-stopped
-    environment: *api-env
+    # Phylogeny figures are private (RFC-79 R1): mounted read-only, never in the image.
+    environment: { <<: *api-env, PHYLOGENIES_DIR: /phylogenies }
+    volumes: ["${PHYLOGENIES_HOST_DIR:-./apps/api/phylogenies}:/phylogenies:ro"]
     secrets: [db_app_password, redis_password, pii_encryption_key_v1, pii_hmac_key, session_secret, smtp_password]
     depends_on:
       migrate:

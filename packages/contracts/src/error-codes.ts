@@ -69,6 +69,7 @@ export const ERROR_CODES = {
   HELP_SLUG_TAKEN: 409,
   HELP_ANCHOR_TAKEN: 409,
   MAP_NOT_FOUND: 404,
+  PHYLOGENY_NOT_FOUND: 404,
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

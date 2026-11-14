@@ -68,6 +68,17 @@ Drill: run steps 2–6 on a laptop against the dev stack (the same compose files
 **Cause:** Since release v1 the platform draws the maps itself from the weekly region snapshot (RFC-76, RFC-78 R12); nothing reads `/srv/maps` and compose no longer mounts it. A fresh database has no snapshot until WCVP is loaded and the first snapshot runs.
 **Fix:** Load WCVP once (`import:wcvp`, handbook), then `docker compose run --rm --no-deps api node dist/cli/build-snapshot.js` (or wait for the API's weekly timer). `/srv/maps` may be deleted by hand once the v1 maps show.
 
+## Phylogeny figures (private)
+**Symptom:** The owner hands over new phylogeny figures (`trait_<key>.png`, `trait_coverage.png`), or the Phylogenies page says "not available yet" on a platform that should have them.
+**Cause:** The figures are private research output (RFC-79). They are never committed or baked into an image. The API reads them from `/srv/phylogenies/<platform>/`, mounted read-only at `/phylogenies` (`compose.prod.yml`). Each PNG needs a display copy `display/trait_<key>.jpg`, and every name must match a trait key in the production dictionary.
+**Fix:** From this Mac, run `TREEREPRO_HOST=root@<server> SSH_AUTH_SOCK=<agent> scripts/phylogenies/publish.sh <folder> treerepro` (or `plantrepro`). It does four things:
+1. Makes the display copies with `sips` (JPEG q80, longest side 1600 px).
+2. Fixes the permissions, since OneDrive files arrive as 700.
+3. Copies the figures to `/srv/phylogenies-staging/<platform>/` and runs `check:phylogenies` there against the production database.
+4. Only if the check passes, replaces `/srv/phylogenies/<platform>/`.
+
+A failed check leaves the live figures untouched. It names unknown file names (rename them to the trait key) and PNGs without a display copy. "Active traits without a figure" is a report only. The directories `/srv/phylogenies/{treerepro,plantrepro}` must exist before the first deploy that mounts them, otherwise Docker creates the bind source as an empty root-owned directory, which also reads as no figures. Nothing needs restarting, because the list is read from disk on each request and each figure's URL carries its file time.
+
 ## Is the server keeping up?
 **Symptom:** Users report slowness, or before a launch nobody knows how much headroom the VPS (1 vCPU, 4 GB) has left.
 **Cause:** Nothing records host load over time, and the access log holds every request's duration but no summary.

@@ -54,6 +54,9 @@ const envSchema = z
       .default('v1'),
     // RFC-74 R6: the daily digest is off unless set to `true` (issue #272).
     DIGEST_ENABLED: z.stringbool().default(false),
+    // RFC-79 R1: the private phylogeny figures, mounted read-only at
+    // `/phylogenies`; unset uses the repository directory.
+    PHYLOGENIES_DIR: z.string().min(1).optional(),
     SMTP_HOST: z.string().min(1),
     SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
     SMTP_SECURE: z.stringbool().default(false),
@@ -163,6 +166,8 @@ export interface AppConfig {
   smtp: SmtpSettings;
   /** `DIGEST_ENABLED`; off unless set to `true`. @rfc RFC-74 R6 */
   digestEnabled: boolean;
+  /** `PHYLOGENIES_DIR`; private, mounted read-only in production. @rfc RFC-79 R1 */
+  phylogeniesDir: string | undefined;
   doiContactEmail?: string;
   /** `INVITE_CONTACT_EMAIL`. @rfc RFC-20 R4 */
   inviteContactEmail?: string;
@@ -305,6 +310,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionSecret: new Secret(sessionSecret),
     smtp,
     digestEnabled: e.DIGEST_ENABLED,
+    phylogeniesDir: e.PHYLOGENIES_DIR,
     doiContactEmail: e.DOI_CONTACT_EMAIL,
     inviteContactEmail: e.INVITE_CONTACT_EMAIL,
     wcvpGbifDatasetKey: e.WCVP_GBIF_DATASET_KEY,

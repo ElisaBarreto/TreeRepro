@@ -11,3 +11,7 @@ infra/secrets
 .env.*
 
 # trait map images: private research output, never enter the build context (RFC-76 R1)
+
+# Phylogeny figures: private research output, never enter the build context (RFC-79 R1).
+apps/api/phylogenies/*
+!apps/api/phylogenies/README.md

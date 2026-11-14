@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { MapEntry, MeResponse, TraitDetail, TraitSpeciesItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
+import { humaniseKey } from '../../lib/format.ts';
 import {
   FAMILIES,
   FAMILY,
@@ -51,6 +52,17 @@ vi.mock('../../api/maps.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/maps.ts')>()),
   ...maps,
 }));
+// RFC-79 R7: the phylogeny beside the map, mocked the same way.
+const phylo = vi.hoisted(() => ({ usePhylogenies: vi.fn() }));
+vi.mock('../../api/phylogenies.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/phylogenies.ts')>()),
+  ...phylo,
+}));
+const phyloResult = (data: { key: string; traitId: string | null; version: string }[]) => ({
+  data,
+  isPending: false,
+  isSuccess: true,
+});
 
 function mapsResult(data: MapEntry[]) {
   return { data, isPending: false, isSuccess: true, isError: false, error: null };
@@ -89,6 +101,7 @@ beforeEach(() => {
   });
   dataset.fetchRecord.mockReset().mockReturnValue(new Promise(() => {}));
   maps.useMaps.mockReset();
+  phylo.usePhylogenies.mockReset().mockReturnValue(phyloResult([]));
   maps.useMapValues.mockReturnValue({ isPending: false, isError: false, data: MAP_VALUES });
   auth.fetchMe.mockResolvedValue(READER);
   dataset.fetchTrait.mockResolvedValue(SEXUAL_SYSTEM_DETAIL);
@@ -585,6 +598,73 @@ describe('RFC-76 R8 TraitPage maps section', () => {
   it('shows no "Maps" heading at all when the trait has no maps', async () => {
     await openPage();
     expect(screen.queryByRole('heading', { name: 'Maps' })).not.toBeInTheDocument();
+  });
+});
+
+describe('RFC-79 R7 TraitPage phylogeny', () => {
+  const COMPLETENESS = {
+    traitId: SEXUAL_SYSTEM_DETAIL.id,
+    kind: 'completeness' as const,
+    levelId: null,
+    regions: 3,
+    computedAt: '2026-10-23T03:00:00.000Z',
+  };
+  const OWN = { key: SEXUAL_SYSTEM_DETAIL.key, traitId: SEXUAL_SYSTEM_DETAIL.id, version: '5' };
+  const OTHER = { key: 'seed_mass', traitId: '018f6a5e-7c3d-7a2b-9c1e-4f5a6b7c8fff', version: '5' };
+
+  it('with maps and a figure: "Maps and phylogeny", both side by side, and a link to Phylogenies', async () => {
+    maps.useMaps.mockReturnValue(mapsResult([COMPLETENESS]));
+    phylo.usePhylogenies.mockReturnValue(phyloResult([OWN]));
+    await openPage();
+    const section = screen
+      .getByRole('heading', { name: 'Maps and phylogeny' })
+      .closest('section') as HTMLElement;
+    expect(within(section).getByRole('img', { name: /Data completeness map/ })).toBeInTheDocument();
+    expect(within(section).getByRole('img', { name: /^Phylogeny/ })).toHaveAttribute(
+      'src',
+      `/api/phylogenies/files/${OWN.key}?size=display&v=5`,
+    );
+    expect(within(section).getByRole('link', { name: 'See on Phylogenies →' })).toHaveAttribute(
+      'href',
+      `/app/phylogenies?trait=${OWN.key}`,
+    );
+  });
+
+  it('with only a figure: "Phylogeny"', async () => {
+    phylo.usePhylogenies.mockReturnValue(phyloResult([OWN]));
+    await openPage();
+    expect(screen.getByRole('heading', { name: 'Phylogeny' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'See all maps for this trait →' })).toBeNull();
+  });
+
+  it('with only maps, on a platform that has figures: "Maps", no note', async () => {
+    maps.useMaps.mockReturnValue(mapsResult([COMPLETENESS]));
+    phylo.usePhylogenies.mockReturnValue(phyloResult([OTHER]));
+    await openPage();
+    expect(screen.getByRole('heading', { name: 'Maps' })).toBeInTheDocument();
+    expect(screen.queryByText(/Phylogenies are not available/)).toBeNull();
+  });
+
+  it('with maps, on a platform with no figures: the note beside the map', async () => {
+    maps.useMaps.mockReturnValue(mapsResult([COMPLETENESS]));
+    await openPage();
+    const section = screen.getByRole('heading', { name: 'Maps' }).closest('section') as HTMLElement;
+    expect(
+      within(section).getByText('Phylogenies are not available on TreeRepro yet.'),
+    ).toBeInTheDocument();
+  });
+
+  it('with neither: no section', async () => {
+    phylo.usePhylogenies.mockReturnValue(phyloResult([OTHER]));
+    await openPage();
+    expect(screen.queryByRole('heading', { name: /^(Maps|Phylogeny)/ })).toBeNull();
+  });
+
+  it('clicking the phylogeny opens the viewer', async () => {
+    phylo.usePhylogenies.mockReturnValue(phyloResult([OWN]));
+    await openPage();
+    await userEvent.click(screen.getByRole('button', { name: /open .*full size/i }));
+    expect(screen.getByRole('dialog', { name: humaniseKey(OWN.key) })).toBeInTheDocument();
   });
 });
 
