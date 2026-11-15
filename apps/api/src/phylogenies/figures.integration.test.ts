@@ -23,6 +23,14 @@ describe('RFC-79 R1, R2, R4 listFigures', () => {
     ]);
   });
 
+  it('lists a trait whose key carries capitals', async () => {
+    const a = await createTrait(t.db, { key: `phy_RGB_${Date.now()}` });
+    const dir = figuresDir(figure(a.key));
+    expect(await listFigures(t.db, VIEWER, dir)).toEqual([
+      { key: a.key, traitId: a.id, version: '1700000000000' },
+    ]);
+  });
+
   it('omits a PNG without its display copy', async () => {
     const a = await createTrait(t.db, { key: `phy_nodisplay_${Date.now()}` });
     const dir = figuresDir([`treerepro/trait_${a.key}.png`]);

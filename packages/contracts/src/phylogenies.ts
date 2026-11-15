@@ -17,7 +17,9 @@ export type PhylogenyFigure = z.infer<typeof phylogenyFigureSchema>;
 export const phylogeniesResponseSchema = z.array(phylogenyFigureSchema);
 
 /** `GET /api/phylogenies/files/:key`: a key, never a path. @rfc RFC-79 R3 */
-export const phylogenyFileParamSchema = z.strictObject({ key: z.string().regex(/^[a-z0-9_]+$/) });
+export const phylogenyFileParamSchema = z.strictObject({
+  key: z.string().regex(/^[A-Za-z0-9_]+$/),
+});
 
 /** @rfc RFC-79 R3 */
 export const phylogenyFileQuerySchema = z.strictObject({

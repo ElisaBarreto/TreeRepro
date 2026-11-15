@@ -21,7 +21,8 @@ describe('RFC-79 R2, R3, R4 phylogeny routes', () => {
   }
 
   async function fixture() {
-    const on = await createTrait(t.db, { key: `phy_on_${Date.now()}` });
+    // Capitals, as in the dictionary's `fruit_color_RGB` (issue #441).
+    const on = await createTrait(t.db, { key: `phy_on_RGB_${Date.now()}` });
     const off = await createTrait(t.db, { key: `phy_off_${Date.now()}`, active: false });
     const dir = figuresDir([...figure('coverage'), ...figure(on.key), ...figure(off.key)]);
     const { app } = t.build({ phylogeniesDir: dir });

@@ -4,7 +4,7 @@ import type { DbExecutor } from '../db/client.ts';
 import { traits } from '../db/schema/dictionary.ts';
 import { COVERAGE } from './figures.ts';
 
-const VALID_KEY = /^[a-z0-9_]+$/;
+const VALID_KEY = /^[A-Za-z0-9_]+$/;
 
 /** @rfc RFC-79 R5 */
 export interface FiguresReport {
@@ -17,7 +17,7 @@ export interface FiguresReport {
 }
 
 // Every `trait_*.<ext>` file's key, valid or not: publish.sh copies them all,
-// so a key the list would never match (`Seed_mass`, `seed-mass`) must surface
+// so a key the list would never match (`seed-mass`, or a typo) must surface
 // as unknown here rather than pass silently.
 const keysOf = (names: string[], ext: string) =>
   names.flatMap((n) =>
