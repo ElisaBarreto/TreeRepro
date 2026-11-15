@@ -25,12 +25,18 @@ describe('RFC-79 R5 checkFigures', () => {
     expect(report.withoutFigure).not.toContain(a.key);
   });
 
+  it('accepts a trait whose key carries capitals', async () => {
+    const a = await createTrait(t.db, { key: `chk_RGB_${Date.now()}` });
+    const dir = join(figuresDir(figure(a.key)), 'treerepro');
+    expect(await checkFigures(t.db, dir)).toMatchObject({ ok: true, unknown: [] });
+  });
+
   it('refuses an unknown name', async () => {
     const dir = join(figuresDir(figure('not_a_trait_zz')), 'treerepro');
     expect(await checkFigures(t.db, dir)).toMatchObject({ ok: false, unknown: ['not_a_trait_zz'] });
   });
 
-  it('refuses a name that is not a valid key, which the list would never show', async () => {
+  it('refuses a name that is not a trait key, valid or not', async () => {
     const dir = join(
       figuresDir(['treerepro/trait_Seed_mass.png', 'treerepro/trait_seed-mass.png']),
       'treerepro',

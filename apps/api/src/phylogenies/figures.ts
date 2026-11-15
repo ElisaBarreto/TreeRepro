@@ -34,7 +34,7 @@ export function figurePath(
 /** The keys of `trait_<key>.<ext>` files in `dir`; none when it is missing. */
 async function keysIn(dir: string, ext: string): Promise<Set<string>> {
   const names = await readdir(dir).catch(() => [] as string[]);
-  const pattern = new RegExp(`^trait_([a-z0-9_]+)\\.${ext}$`);
+  const pattern = new RegExp(`^trait_([A-Za-z0-9_]+)\\.${ext}$`);
   return new Set(names.flatMap((n) => pattern.exec(n)?.[1] ?? []));
 }
 

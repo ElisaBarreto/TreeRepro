@@ -1,4 +1,4 @@
-openapi-sha256: f33790d6de89e2538dff08f7b0bc1f2e33b7d95e8b7a0d81397dcfca00145eef
+openapi-sha256: c2c4acd445f7b45c7e9405eee6778c68f0556a791e9c6f2371eb82b6e5aa6da3
 
 # TreeRepro API guide
 
@@ -434,6 +434,7 @@ for start in range(0, len(ops), 100):
 
 ## Changelog
 
+- 2026-11-15 — `GET /api/phylogenies/files/:key` takes a key with capitals, as trait keys may have (`fruit_color_RGB`); such a trait's figure is now listed by `GET /api/phylogenies` (RFC-79 R3; issue #441). (openapi c2c4acd445f7)
 - 2026-11-14 — Phylogeny figures (RFC-79; issue #439): new `GET /api/phylogenies` answers `[{ key, traitId, version }]`, the figures of the platform of the host the request is sent to — `coverage` first (`traitId` null), then each visible trait by key; an empty list where the platform has none. `GET /api/phylogenies/files/:key?size=display|full` answers the figure's display copy (`image/jpeg`) or full PNG (`image/png`), with an `ETag` (`Cache-Control: private, no-cache`); 404 `PHYLOGENY_NOT_FOUND` for a key the list does not give you. Both need `dataset.read`. (openapi f33790d6de89)
 - 2026-11-12 — Record codes per platform (RFC-63 R12; issue #425): a record created on PlantRepro — an entry, a contest or complement, a validator's record, a harmonisation, a `POST /api/batch` operation — is coded `PR_<n>`; on TreeRepro it stays `TR_<n>`, imported records `EB_<n>`. Both prefixes share one sequence, so a number is never used twice; existing codes never change. No shape changes. (openapi f0ca7a7311bc)
 - 2026-11-12 — `continent`, `region` and `area` on `GET /api/species`, `/count` and `/tree-flags` take comma-separated lists (up to 100 distinct codes each); a species occurring in any chosen place is kept, the most specific choice in each branch being the place, so a continent and an area outside it no longer exclude each other (RFC-60 R6; issue #419). (openapi f0ca7a7311bc)
