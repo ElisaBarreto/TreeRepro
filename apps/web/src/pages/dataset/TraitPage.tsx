@@ -19,7 +19,7 @@ import {
 } from '../../components/dataset/TaxonomyFilters.tsx';
 import { TraitPanel } from '../../components/dataset/TraitPanel.tsx';
 import { TraitSpeciesTable } from '../../components/dataset/TraitSpeciesTable.tsx';
-import { MapFigure } from '../../components/maps/MapFigure.tsx';
+import { MAP_FRAME, MapFigure } from '../../components/maps/MapFigure.tsx';
 import { notAvailableYet } from '../../components/phylogenies/not-available.ts';
 import { PhylogenyViewer } from '../../components/phylogenies/PhylogenyViewer.tsx';
 import { useBreadcrumb } from '../../components/shell/Breadcrumb.tsx';
@@ -224,7 +224,8 @@ function Distribution({ trait, search }: { trait: TraitDetail; search: TraitSpec
 /**
  * The trait's maps and phylogeny (RFC-76 R8, RFC-79 R7): the completeness map
  * as a thumbnail with a link to its maps, and its phylogeny figure beside it
- * (stacked on a narrow screen) opening the full-size viewer, with a link to
+ * (stacked on a narrow screen), drawn whole in the map thumbnail's frame so
+ * the two stand the same size, opening the full-size viewer, with a link to
  * the Phylogenies page. Titled after what it holds; nothing at all for a
  * trait with neither. On a platform with no figures at all, the "not
  * available yet" sentence stands beside the map instead. A failed query
@@ -268,13 +269,13 @@ function TraitMaps({ trait }: { trait: TraitDetail }) {
               type="button"
               aria-label={`Open the ${name} phylogeny at full size`}
               onClick={() => setOpen(true)}
-              className="cursor-zoom-in rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500"
+              className={`${MAP_FRAME} w-full cursor-zoom-in focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pollen-500`}
             >
               <img
                 src={figureUrl(figure, 'display')}
                 alt={`Phylogeny: ${name}`}
                 loading="lazy"
-                className="h-auto w-full"
+                className="h-full w-full object-contain"
               />
             </button>
             <Link

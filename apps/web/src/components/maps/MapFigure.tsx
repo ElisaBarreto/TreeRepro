@@ -3,6 +3,15 @@ import type { ReactNode } from 'react';
 import { RegionMap } from './RegionMap.tsx';
 
 /**
+ * The frame of a map thumbnail; the trait page draws its phylogeny figure in
+ * the same one so the two stand the same size.
+ * @rfc RFC-76 R7
+ * @rfc RFC-79 R7
+ */
+export const MAP_FRAME =
+  'flex aspect-[2/1] items-center justify-center overflow-hidden rounded-lg bg-mist-50';
+
+/**
  * One map inside a fixed-ratio frame (RFC-76 R7), drawn by `RegionMap`. With
  * `onOpen` the map is a button that asks the page to show it full size — the
  * page owns the one viewer (`MapViewer`) so it can step through all of a
@@ -20,8 +29,7 @@ export function MapFigure({
   caption?: ReactNode;
   onOpen?: () => void;
 }) {
-  const frame =
-    'flex aspect-[2/1] items-center justify-center overflow-hidden rounded-lg bg-mist-50';
+  const frame = MAP_FRAME;
   const image = <RegionMap entry={entry} alt={alt} />;
 
   return (
