@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { MapEntry, MeResponse, TraitDetail, TraitSpeciesItem } from '@treerepro/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client.ts';
+import { MAP_FRAME } from '../../components/maps/MapFigure.tsx';
 import { humaniseKey } from '../../lib/format.ts';
 import {
   FAMILIES,
@@ -628,6 +629,15 @@ describe('RFC-79 R7 TraitPage phylogeny', () => {
       'href',
       `/app/phylogenies?trait=${OWN.key}`,
     );
+  });
+
+  it('draws the figure whole in the map thumbnail frame, so both stand the same size', async () => {
+    maps.useMaps.mockReturnValue(mapsResult([COMPLETENESS]));
+    phylo.usePhylogenies.mockReturnValue(phyloResult([OWN]));
+    await openPage();
+    const figure = screen.getByRole('img', { name: /^Phylogeny/ });
+    expect(figure.parentElement).toHaveClass(...MAP_FRAME.split(' '));
+    expect(figure).toHaveClass('object-contain', 'h-full', 'w-full');
   });
 
   it('with only a figure: "Phylogeny"', async () => {
