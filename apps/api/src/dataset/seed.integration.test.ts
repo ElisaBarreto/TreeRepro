@@ -173,8 +173,8 @@ describe('RFC-62 R2 seedDictionary', () => {
   it('RFC-64 R9 a malformed row fails within the idle timeout instead of hanging', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dict-'));
     const file = join(dir, 'broken.csv');
-    // Seven fields where COPY expects six: the same driver hang the importer
-    // guards against (docs/gotchas/import.md); the seed must not hang either.
+    // Seven fields where COPY expects six: the row behind the driver hang the
+    // importer guards against (docs/gotchas/import.md); the seed must not hang either.
     await writeFile(
       file,
       'standard_trait,broad_category,value_type,standard_unit,description,harmonised_levels\nzz_broken,zz_cat,categorical,,desc,a;b,EXTRA\n',
