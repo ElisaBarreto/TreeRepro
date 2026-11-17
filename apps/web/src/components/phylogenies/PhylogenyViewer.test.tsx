@@ -17,6 +17,11 @@ function open(index = 0, onIndexChange = vi.fn()) {
 }
 
 const scaleOf = (el: HTMLElement) => /scale\(([\d.]+)\)/.exec(el.style.transform)?.[1];
+// A zero y is dropped when the transform is serialised (`translate(50px)`), as browsers do.
+const offsetOf = (el: HTMLElement) => {
+  const m = /translate\((-?[\d.]+)px(?:, (-?[\d.]+)px)?\)/.exec(el.style.transform);
+  return m ? [Number(m[1]), Number(m[2] ?? 0)] : undefined;
+};
 
 describe('RFC-79 R6 PhylogenyViewer', () => {
   it('is closed while no index is given', () => {
@@ -69,10 +74,10 @@ describe('RFC-79 R6 PhylogenyViewer', () => {
     fireEvent.pointerDown(figure, { pointerId: 1, clientX: 10, clientY: 10 });
     fireEvent.pointerMove(figure, { pointerId: 1, clientX: 40, clientY: 30 });
     fireEvent.pointerUp(figure, { pointerId: 1 });
-    expect(figure.style.transform).toContain('translate(30px, 20px)');
+    expect(offsetOf(figure)).toEqual([30, 20]);
     fireEvent.wheel(figure, { deltaY: 100 });
     expect(scaleOf(figure)).toBe('1');
-    expect(figure.style.transform).toContain('translate(0px, 0px)');
+    expect(offsetOf(figure)).toEqual([0, 0]);
   });
 
   it('one wheel gesture is one ×1.5 step, however many events it sends', () => {
@@ -100,14 +105,14 @@ describe('RFC-79 R6 PhylogenyViewer', () => {
     fireEvent.pointerDown(frame, { pointerId: 1, clientX: 0, clientY: 0 });
     fireEvent.pointerMove(frame, { pointerId: 1, clientX: 50, clientY: 0 });
     fireEvent.pointerUp(frame, { pointerId: 1 });
-    expect(figure.style.transform).toContain('translate(50px, 0px)');
+    expect(offsetOf(figure)).toEqual([50, 0]);
   });
 
   it('does not pan at 1×', () => {
     const { figure } = open();
     fireEvent.pointerDown(figure, { pointerId: 1, clientX: 10, clientY: 10 });
     fireEvent.pointerMove(figure, { pointerId: 1, clientX: 40, clientY: 30 });
-    expect(figure.style.transform).toContain('translate(0px, 0px)');
+    expect(offsetOf(figure)).toEqual([0, 0]);
   });
 
   it('ArrowLeft and ArrowRight move between items, wrapping', () => {

@@ -10,8 +10,10 @@ export const DEFAULT_COPY_IDLE_TIMEOUT_MS = 60_000;
  * has taken too long, since a real dataset file is millions of rows and the
  * COPY itself can legitimately run for minutes.
  *
- * This guards against a real hang in postgres.js 3.4.9's `.writable()` COPY
- * stream (verified directly against the driver, outside Drizzle): `.writable()`
+ * This was written against a real hang in postgres.js 3.4.9's `.writable()`
+ * COPY stream (verified directly against the driver, outside Drizzle; 4.1.0
+ * no longer hangs there and rejects with the server's error, but the guard
+ * stays for any destination that stalls): `.writable()`
  * runs COPY over the simple query protocol. On a row that violates the COPY
  * format, the server answers `ErrorResponse` + `ReadyForQuery`, but the
  * client only resolves the write from its `CommandComplete` handler, which

@@ -410,10 +410,10 @@ describe('RFC-64 importRecords', () => {
     const dir = await mkdtemp(join(tmpdir(), 'import-'));
     const file = join(dir, 'broken.csv');
     const header = IMPORT_COLUMNS.join(',');
-    // 43 fields on the data row: COPY refuses the file. postgres.js 3.4.9 can
+    // 43 fields on the data row: COPY refuses the file. postgres.js 3.4.9 could
     // leave the write hanging on this (see the JSDoc on `pipelineWithIdleGuard`
-    // in import.ts); either the driver recovers on its own with the real
-    // PostgresError, or the idle guard aborts it — both are acceptable here,
+    // in db/copy.ts); either the driver rejects with the real PostgresError
+    // (4.x), or the idle guard aborts it — both are acceptable here,
     // but it must not take anywhere near the default 60s idle timeout.
     await writeFile(
       file,
