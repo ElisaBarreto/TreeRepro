@@ -21,11 +21,11 @@
     "import:records": "pnpm --filter @treerepro/api import:records"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.8",
     "@types/node": "26.6.6",
-    "jsdom": "31.0.0",
+    "jsdom": "31.0.1",
     "typescript": "7.0.2",
-    "vite": "8.3.6",
+    "vite": "8.3.8",
     "vitest": "5.1.0"
   }
 }
