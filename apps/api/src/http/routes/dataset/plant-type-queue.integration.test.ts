@@ -100,8 +100,12 @@ describe('RFC-65 R20 plant-type review queue', () => {
     expect((await manager.send('GET', `/api/species/${tree.id}`)).status).toBe(404);
 
     // Confirm, unchanged type: a reviewed tree, now on TreeRepro.
+    const epochBefore = Number((await t.redis.get('cache:epoch')) ?? 0);
     const confirmed = await manager.send('POST', `/api/species/${tree.id}/plant-type/confirm`, {});
     expect(confirmed.status).toBe(200);
+    // RFC-33 R12: the write raises the cache epoch (the counter only rises,
+    // so a sibling's bump cannot falsify this).
+    expect(Number((await t.redis.get('cache:epoch')) ?? 0)).toBeGreaterThan(epochBefore);
     expect((await confirmed.json()).data).toEqual({
       id: tree.id,
       plantType: 'tree',

@@ -16,6 +16,12 @@ interface CachedEntry<T> {
  */
 const inFlight = new WeakMap<Redis, Map<string, Promise<CachedEntry<unknown>>>>();
 
+/**
+ * The epoch each `staleWhileRevalidate` fill in flight was started under, so
+ * a call that arrives after a bump does not join a fill from before it.
+ */
+const fillEpochs = new WeakMap<Promise<unknown>, string>();
+
 function fillsOf(redis: Redis): Map<string, Promise<CachedEntry<unknown>>> {
   let fills = inFlight.get(redis);
   if (!fills) {
@@ -58,6 +64,24 @@ export function cacheGeneration(redis: Redis, key: string): number {
 export const STALE_RETENTION_SECONDS = 30 * 24 * 60 * 60;
 
 /**
+ * The Redis counter every `staleWhileRevalidate` entry is stamped with: an
+ * entry computed under another value of it is never answered.
+ * @rfc RFC-10 R15
+ */
+export const CACHE_EPOCH_KEY = 'cache:epoch';
+
+/**
+ * Raises the cache epoch, so every `staleWhileRevalidate` entry stored so far
+ * is computed again inside the next request that reads it instead of being
+ * answered. For the writes that change what a viewer class may see.
+ * @rfc RFC-10 R15
+ * @rfc RFC-33 R12
+ */
+export async function bumpCacheEpoch(redis: Redis): Promise<void> {
+  await redis.incr(CACHE_EPOCH_KEY);
+}
+
+/**
  * Caches `compute`'s result as `{ value, computedAt }` JSON under `key` for
  * `ttlSeconds`; a hit answers the stored entry without calling `compute`.
  * Concurrent misses on one key share one fill (single-flight, in-process):
@@ -69,8 +93,12 @@ export const STALE_RETENTION_SECONDS = 30 * 24 * 60 * 60;
  * and Redis keeps it `STALE_RETENTION_SECONDS` longer: a call that finds an
  * entry older than the window answers it at once and starts one background
  * fill, whose failure is swallowed (the next call starts another); only a key
- * with nothing stored is computed inside the call.
+ * with nothing stored is computed inside the call. The entry is stored with
+ * the cache epoch (`CACHE_EPOCH_KEY`) its caller read, and one of another
+ * epoch counts as not stored (RFC-33 R12). Only for keys of bounded number:
+ * never one built from request input.
  * @rfc RFC-10 R15
+ * @rfc RFC-33 R12
  */
 export async function cachedJson<T>(
   redis: Redis,
@@ -98,50 +126,67 @@ export async function cachedJson<T>(
   const swr = options?.staleWhileRevalidate === true;
   const active = fills.get(key) as Promise<CachedEntry<T>> | undefined;
   if (active && !swr) return active;
-  const run = async (): Promise<CachedEntry<T>> => {
+  // `epoch` is the one this call read with the entry, before `compute` starts
+  // (undefined without the option, which stores none).
+  const run = async (epoch: string | undefined): Promise<CachedEntry<T>> => {
     const entry: CachedEntry<T> = { value: await compute(), computedAt: new Date().toISOString() };
     // A `forgetCached` while computing: the result predates the write that
     // caused the forget, so it must not be stored (issue #417).
     if (cacheGeneration(redis, key) === since)
       await redis.set(
         key,
-        JSON.stringify(entry),
+        JSON.stringify(swr ? { ...entry, epoch } : entry),
         'EX',
         ttlSeconds + (swr ? STALE_RETENTION_SECONDS : 0),
       );
     return entry;
   };
-  const startFill = (): Promise<CachedEntry<T>> => {
+  // ponytail: a fill superseded after a bump may still SET its old-epoch
+  // result over the newer entry; it is never answered (wrong epoch), it only
+  // costs the next read a compute. Track superseded fills if that ever shows.
+  const startFill = (epoch: string | undefined): Promise<CachedEntry<T>> => {
     // `fill` is read only after the first `await`, once it is assigned.
-    const fill = run().finally(() => {
+    const fill = run(epoch).finally(() => {
       if (fills.get(key) === fill) fills.delete(key);
     });
     fills.set(key, fill);
+    if (epoch !== undefined) fillEpochs.set(fill, epoch);
     return fill;
   };
-  const cached = await redis.get(key);
-  if (cached !== null) {
-    const entry = JSON.parse(cached) as CachedEntry<T>;
+  if (!swr) {
+    const cached = await redis.get(key);
+    if (cached !== null) return JSON.parse(cached) as CachedEntry<T>;
+    // Again after the GET: a forget during it must not let this call register
+    // a fill that a caller with fresh inputs would then join.
+    if (since !== cacheGeneration(redis, key)) return uncached();
+    return (fills.get(key) as Promise<CachedEntry<T>> | undefined) ?? startFill(undefined);
+  }
+  const [cached, counter] = await redis.mget(key, CACHE_EPOCH_KEY);
+  const epoch = counter ?? '0';
+  const stored =
+    cached == null ? null : (JSON.parse(cached) as CachedEntry<T> & { epoch?: string });
+  // An entry of another epoch (or of none) predates a change of what its
+  // viewer class may see: it counts as not stored (RFC-33 R12).
+  if (stored && stored.epoch === epoch) {
     // Past its window: answer it now and refresh it behind the reader's back,
-    // unless a refresh is already running or a forget happened during the GET
+    // unless a refresh is already running or a forget happened during the read
     // (the same two checks a miss makes below). Nobody awaits this fill, so
     // its rejection is swallowed here; the key is released and the next read
     // starts another.
     if (
-      swr &&
-      Date.now() - Date.parse(entry.computedAt) > ttlSeconds * 1000 &&
+      Date.now() - Date.parse(stored.computedAt) > ttlSeconds * 1000 &&
       since === cacheGeneration(redis, key) &&
       !fills.has(key)
     )
-      startFill().catch(() => undefined);
-    return entry;
+      startFill(epoch).catch(() => undefined);
+    return { value: stored.value, computedAt: stored.computedAt };
   }
-  // Again after the GET: a forget during it must not let this call register a
-  // fill that a caller with fresh inputs would then join.
   if (since !== cacheGeneration(redis, key)) return uncached();
-  const pending = active ?? fills.get(key);
-  if (pending) return pending as Promise<CachedEntry<T>>;
-  return startFill();
+  // Join the fill seen on entry or one registered since, but only one started
+  // under this epoch: a fill from before a bump computes what this call must
+  // not answer.
+  const pending = [active, fills.get(key)].find((f) => f && fillEpochs.get(f) === epoch);
+  return (pending as Promise<CachedEntry<T>> | undefined) ?? startFill(epoch);
 }
 
 /**

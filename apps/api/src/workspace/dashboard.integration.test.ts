@@ -553,7 +553,9 @@ describe('RFC-72 R1 the dataset counts', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
-    redis = createRedis(inject('redisUrl'));
+    // A Redis database of this suite's own: its epoch (RFC-10 R15) is not the
+    // one the route tests of other files raise while this one runs.
+    redis = createRedis(`${inject('redisUrl')}/6`);
     await redis.connect();
   });
   afterAll(async () => {

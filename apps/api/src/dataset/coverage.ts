@@ -384,8 +384,8 @@ function keySegment(value: string | undefined): string {
 
 /**
  * `GET /api/coverage`: {@link computeCoverageMetrics} behind the entry of
- * RFC-69 R6 (fresh for ten minutes, then answered as stored while it is
- * recomputed in the background), keyed by the viewer class and the explicit filters —
+ * RFC-69 R6 (fresh for ten minutes; the unfiltered entry is then answered as
+ * stored while it is recomputed in the background, a filtered one expires), keyed by the viewer class and the explicit filters —
  * `coverage:<platform>:<u|r>:<familyId>:<categoryKey>:<plotId>`, an absent filter being
  * `-`. The key is honest per viewer because the base selection never carries
  * the plot dimension (see {@link coverageSelection}).
@@ -425,7 +425,15 @@ export async function coverageMetrics(
     key,
     COVERAGE_TTL_SECONDS,
     () => coverageGrid(ctx.db, selection),
-    { staleWhileRevalidate: true },
+    // Only the unfiltered entry is kept past its window: a filtered key is the
+    // caller's own, and keeping every combination 30 days would let a caller
+    // grow Redis without bound (RFC-69 R6).
+    {
+      staleWhileRevalidate:
+        filters.familyId === undefined &&
+        filters.categoryKey === undefined &&
+        filters.plotId === undefined,
+    },
   );
   return { ...value, computedAt };
 }

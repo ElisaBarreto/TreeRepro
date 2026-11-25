@@ -16,6 +16,7 @@ import { getDictionary } from '../../../dataset/dictionary.ts';
 import { getTraitDetail, listTraitSpecies } from '../../../dataset/trait-page.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
+import { bumpCacheEpochBestEffort } from '../../invalidate-cache.ts';
 import { requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
@@ -102,14 +103,18 @@ export function traitRoutes(ctx: AuthContext) {
       requirePermission(ctx, 'traits.manage'),
       validate('param', idParamSchema),
       validate('json', updateTraitBodySchema),
-      async (c) =>
-        c.json({
-          data: await updateTrait(ctx.db, {
-            id: c.req.valid('param').id,
-            ...c.req.valid('json'),
-            actorId: currentUser(c).id,
-          }),
-        }),
+      async (c) => {
+        const body = c.req.valid('json');
+        const data = await updateTrait(ctx.db, {
+          id: c.req.valid('param').id,
+          ...body,
+          actorId: currentUser(c).id,
+        });
+        // RFC-33 R12: a trait entering or leaving a viewer class's sight.
+        if (body.active !== undefined)
+          await bumpCacheEpochBestEffort(c.get('logger'), ctx.redis, { traitId: data.id });
+        return c.json({ data });
+      },
     )
     .post(
       '/:id/levels',
@@ -135,14 +140,17 @@ export function traitRoutes(ctx: AuthContext) {
       validate('json', updateLevelBodySchema),
       async (c) => {
         const { id, levelId } = c.req.valid('param');
-        return c.json({
-          data: await updateLevel(ctx.db, {
-            traitId: id,
-            levelId,
-            ...c.req.valid('json'),
-            actorId: currentUser(c).id,
-          }),
+        const body = c.req.valid('json');
+        const data = await updateLevel(ctx.db, {
+          traitId: id,
+          levelId,
+          ...body,
+          actorId: currentUser(c).id,
         });
+        // RFC-33 R12: a level entering or leaving a viewer class's sight.
+        if (body.active !== undefined)
+          await bumpCacheEpochBestEffort(c.get('logger'), ctx.redis, { traitId: id, levelId });
+        return c.json({ data });
       },
     );
 }
