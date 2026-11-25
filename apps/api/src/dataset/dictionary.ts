@@ -127,9 +127,11 @@ export async function dictionaryCategories(
 
 /**
  * The visible species count per trait, keyed by trait id: a scan of
- * `species_trait_coverage` joined to visible species, cached 10 minutes per
- * viewer class under `dictionary:species-counts:<platform>:<u|r>` (RFC-62 R5) — the
- * table is millions of rows, so this is not recomputed per request.
+ * `species_trait_coverage` joined to visible species, cached per viewer class
+ * under `dictionary:species-counts:<platform>:<u|r>` (RFC-62 R5) — the table
+ * is millions of rows, so this is not recomputed per request: fresh for 10
+ * minutes, then answered as stored while it is recomputed in the background
+ * (RFC-10 R15).
  *
  * Exported for the workspace dashboard (RFC-72 R1), whose `topTraitsWithData`
  * ranks the traits by these same counts: one producer writes this key,
@@ -143,16 +145,22 @@ export async function speciesCountsByTrait(
   visibility: Visibility,
 ): Promise<Map<string, number>> {
   const key = `dictionary:species-counts:${viewerClass(visibility)}`;
-  const { value } = await cachedJson(ctx.redis, key, 600, async () => {
-    const rows = (await ctx.db.execute(sql`
+  const { value } = await cachedJson(
+    ctx.redis,
+    key,
+    600,
+    async () => {
+      const rows = (await ctx.db.execute(sql`
       select c.trait_id as trait_id, count(*)::int as species_count
       from species_trait_coverage c
       join species s on s.id = c.species_id
       where ${globalSpeciesVisible(visibility, 's')}
       group by c.trait_id
     `)) as unknown as { trait_id: string; species_count: number }[];
-    return rows.map((r) => [r.trait_id, r.species_count] as [string, number]);
-  });
+      return rows.map((r) => [r.trait_id, r.species_count] as [string, number]);
+    },
+    { staleWhileRevalidate: true },
+  );
   return new Map(value);
 }
 

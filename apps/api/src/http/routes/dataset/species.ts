@@ -39,7 +39,7 @@ import {
 import { dashboardKeys } from '../../../workspace/dashboard.ts';
 import type { AppEnv } from '../../env.ts';
 import { AppError } from '../../errors.ts';
-import { forgetCachedBestEffort } from '../../invalidate-cache.ts';
+import { bumpCacheEpochBestEffort, forgetCachedBestEffort } from '../../invalidate-cache.ts';
 import { currentPermissions, requirePermission } from '../../middleware/require-permission.ts';
 import { currentUser } from '../../middleware/session.ts';
 import { validate } from '../../validate.ts';
@@ -188,15 +188,20 @@ export function speciesRoutes(ctx: AuthContext) {
         requirePermission(ctx, 'taxa.manage'),
         validate('param', idParamSchema),
         validate('json', updateSpeciesBodySchema),
-        async (c) =>
-          c.json({
-            data: await updateSpecies(ctx.db, {
-              id: c.req.valid('param').id,
-              ...c.req.valid('json'),
-              platform: c.get('platform'),
-              actorId: currentUser(c).id,
-            }),
-          }),
+        async (c) => {
+          const { id } = c.req.valid('param');
+          const body = c.req.valid('json');
+          const data = await updateSpecies(ctx.db, {
+            id,
+            ...body,
+            platform: c.get('platform'),
+            actorId: currentUser(c).id,
+          });
+          // RFC-33 R12: a species entering or leaving a viewer class's sight.
+          if (body.active !== undefined)
+            await bumpCacheEpochBestEffort(c.get('logger'), ctx.redis, { speciesId: id });
+          return c.json({ data });
+        },
       )
       .get(
         '/:id/traits',
@@ -219,14 +224,17 @@ export function speciesRoutes(ctx: AuthContext) {
         requirePermission(ctx, 'records.review'),
         validate('param', idParamSchema),
         validate('json', changePlantTypeBodySchema),
-        async (c) =>
-          c.json({
-            data: await changePlantType(ctx.db, await visibilityOf(ctx, c), {
-              id: c.req.valid('param').id,
-              plantType: c.req.valid('json').plantType,
-              actorId: currentUser(c).id,
-            }),
-          }),
+        async (c) => {
+          const { id } = c.req.valid('param');
+          const data = await changePlantType(ctx.db, await visibilityOf(ctx, c), {
+            id,
+            plantType: c.req.valid('json').plantType,
+            actorId: currentUser(c).id,
+          });
+          // RFC-33 R12: the species enters or leaves TreeRepro's scope.
+          await bumpCacheEpochBestEffort(c.get('logger'), ctx.redis, { speciesId: id });
+          return c.json({ data });
+        },
       )
       // RFC-65 R20: the plant-type queue's Confirm (RFC-33 R11).
       .post(
@@ -234,14 +242,17 @@ export function speciesRoutes(ctx: AuthContext) {
         requirePermission(ctx, 'records.review'),
         validate('param', idParamSchema),
         validate('json', confirmPlantTypeBodySchema),
-        async (c) =>
-          c.json({
-            data: await confirmPlantType(ctx.db, await visibilityOf(ctx, c), {
-              id: c.req.valid('param').id,
-              plantType: c.req.valid('json').plantType,
-              actorId: currentUser(c).id,
-            }),
-          }),
+        async (c) => {
+          const { id } = c.req.valid('param');
+          const data = await confirmPlantType(ctx.db, await visibilityOf(ctx, c), {
+            id,
+            plantType: c.req.valid('json').plantType,
+            actorId: currentUser(c).id,
+          });
+          // RFC-33 R12: the species enters or leaves TreeRepro's scope.
+          await bumpCacheEpochBestEffort(c.get('logger'), ctx.redis, { speciesId: id });
+          return c.json({ data });
+        },
       )
       .post(
         '/:id/names',

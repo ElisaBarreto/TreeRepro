@@ -121,8 +121,9 @@ export async function computeDatasetStats(
 }
 
 /**
- * `computeDatasetStats` behind the one-hour entry RFC-72 R1 names,
- * `stats:dataset:<platform>`. The key carries no viewer class beyond the
+ * `computeDatasetStats` behind the entry RFC-72 R1 names,
+ * `stats:dataset:<platform>`, fresh for one hour and then answered as stored
+ * while it is recomputed in the background (RFC-10 R15). The key carries no viewer class beyond the
  * platform: these are the counts of the platform's dataset as a whole, the numbers the project description quotes to
  * every viewer (RFC-72 R3), and `computedAt` is the entry's own.
  * @rfc RFC-72 R1
@@ -131,8 +132,12 @@ export async function datasetStats(
   ctx: DashboardContext,
   platform: Platform,
 ): Promise<Dashboard['dataset']> {
-  const { value, computedAt } = await cachedJson(ctx.redis, `stats:dataset:${platform}`, 3600, () =>
-    computeDatasetStats(ctx.db, platform),
+  const { value, computedAt } = await cachedJson(
+    ctx.redis,
+    `stats:dataset:${platform}`,
+    3600,
+    () => computeDatasetStats(ctx.db, platform),
+    { staleWhileRevalidate: true },
   );
   return { ...value, computedAt };
 }

@@ -9,9 +9,11 @@ import {
   type TraitMapsQuery,
 } from '@treerepro/contracts';
 import { sql } from 'drizzle-orm';
-import { levelVisible, traitVisible, type Visibility } from '../access/visibility.ts';
+import { levelVisible, traitVisible, type Visibility, viewerClass } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
+import { cachedJson } from '../redis/cache.ts';
+import type { Redis } from '../redis/client.ts';
 import { colourScale, fillColour, KIND_STYLE, RAMPS } from './colour.ts';
 
 /** A region's value rests on at least this many species, except completeness (RFC-76 R3). @rfc RFC-76 R3 */
@@ -37,21 +39,25 @@ function denominator(platform: Platform) {
 }
 
 /**
- * The maps a viewer may see (RFC-76 R5), from the snapshot of the viewer's
- * platform (R1): one entry per map with at least one
- * region with a value, on a visible trait whose value type fits the kind and,
- * for prevalence, a visible state; by trait key, kind and state. No plot filter.
- * @rfc RFC-76 R1, R3, R5
+ * R5's entries from the snapshot stamped `computedAt`: every map, or only
+ * those of `traitId` — then the three group-bys read that trait's rows alone
+ * (the primary keys start with `platform, trait_id`), and the answer is the
+ * trait's slice of the whole list.
  */
-export async function listMaps(db: DbExecutor, visibility: Visibility): Promise<MapEntry[]> {
+async function mapEntries(
+  db: DbExecutor,
+  visibility: Visibility,
+  computedAt: string,
+  traitId?: string,
+): Promise<MapEntry[]> {
   const { platform } = visibility;
-  const computedAt = await snapshotTime(db, platform);
-  if (computedAt === null) return [];
+  const ofTrait = (alias: string) =>
+    traitId ? sql`and ${sql.raw(alias)}.trait_id = ${traitId}::uuid` : sql``;
   const rows = (await db.execute(sql`
     select t.id as "traitId", t.key, 'completeness' as kind, null::uuid as "levelId", 0 as sort,
       count(*) filter (where c.${denominator(platform)} > 0)::int as regions
     from region_completeness c join traits t on t.id = c.trait_id
-    where c.platform = ${platform} and ${traitVisible(visibility, sql`t.active`)}
+    where c.platform = ${platform} ${ofTrait('c')} and ${traitVisible(visibility, sql`t.active`)}
     group by t.id, t.key
     union all
     select t.id, t.key, k.kind, null, 0,
@@ -59,14 +65,14 @@ export async function listMaps(db: DbExecutor, visibility: Visibility): Promise<
         when 'sd' then n.sd is not null when 'cv' then n.cv is not null else true end)::int
     from region_continuous n join traits t on t.id = n.trait_id
     cross join (values ('mean'), ('median'), ('sd'), ('cv'), ('min'), ('max')) as k(kind)
-    where n.platform = ${platform} and t.value_type = 'quantitative'
+    where n.platform = ${platform} ${ofTrait('n')} and t.value_type = 'quantitative'
       and ${traitVisible(visibility, sql`t.active`)}
     group by t.id, t.key, k.kind
     union all
     select t.id, t.key, 'prevalence', l.id, l.sort_order,
       count(*) filter (where g.n_species_with_trait >= ${MIN_SPECIES})::int
     from region_categorical g join traits t on t.id = g.trait_id join trait_levels l on l.id = g.level_id
-    where g.platform = ${platform} and t.value_type = 'categorical'
+    where g.platform = ${platform} ${ofTrait('g')} and t.value_type = 'categorical'
       and ${traitVisible(visibility, sql`t.active`)}
       and ${levelVisible(visibility, sql`l.active`)}
     group by t.id, t.key, l.id, l.sort_order`)) as unknown as {
@@ -93,6 +99,36 @@ export async function listMaps(db: DbExecutor, visibility: Visibility): Promise<
       regions: r.regions,
       computedAt,
     }));
+}
+
+/**
+ * The maps a viewer may see (RFC-76 R5), from the snapshot of the viewer's
+ * platform (R1): one entry per map with at least one
+ * region with a value, on a visible trait whose value type fits the kind and,
+ * for prevalence, a visible state; by trait key, kind and state. No plot filter.
+ * Cached 10 minutes per viewer class and snapshot time: a new snapshot is a
+ * new key.
+ * @rfc RFC-76 R1, R3, R5
+ */
+export async function listMaps(
+  ctx: { db: DbExecutor; redis: Redis },
+  visibility: Visibility,
+): Promise<MapEntry[]> {
+  const computedAt = await snapshotTime(ctx.db, visibility.platform);
+  if (computedAt === null) return [];
+  const key = `maps:list:${viewerClass(visibility)}:${computedAt}`;
+  return (await cachedJson(ctx.redis, key, 600, () => mapEntries(ctx.db, visibility, computedAt)))
+    .value;
+}
+
+/** One trait's R5 entries, uncached, from its own rows of the snapshot (RFC-76 R6, R9). */
+async function traitEntries(
+  db: DbExecutor,
+  visibility: Visibility,
+  traitId: string,
+): Promise<MapEntry[]> {
+  const computedAt = await snapshotTime(db, visibility.platform);
+  return computedAt === null ? [] : mapEntries(db, visibility, computedAt, traitId);
 }
 
 interface RegionRow {
@@ -171,7 +207,8 @@ async function regionsAndLegend(
 /**
  * One map's regions and legend (RFC-76 R6): every region with a row, its
  * value (null below the species minimum), species count and fill. A map
- * `listMaps` would not give this viewer answers 404 `MAP_NOT_FOUND`.
+ * `listMaps` would not give this viewer answers 404 `MAP_NOT_FOUND`, judged
+ * from the trait's own rows, not from the cached list.
  * @rfc RFC-76 R3, R4, R6
  */
 export async function mapValues(
@@ -179,11 +216,8 @@ export async function mapValues(
   visibility: Visibility,
   query: MapValuesQuery,
 ): Promise<MapValues> {
-  const entry = (await listMaps(db, visibility)).find(
-    (m) =>
-      m.traitId === query.traitId.toLowerCase() &&
-      m.kind === query.kind &&
-      m.levelId === (query.levelId?.toLowerCase() ?? null),
+  const entry = (await traitEntries(db, visibility, query.traitId.toLowerCase())).find(
+    (m) => m.kind === query.kind && m.levelId === (query.levelId?.toLowerCase() ?? null),
   );
   if (!entry) throw new AppError('MAP_NOT_FOUND', 'Map not found');
   const unit = await traitUnit(db, query.traitId);
@@ -195,8 +229,8 @@ export async function mapValues(
 
 /**
  * Every map of one trait `listMaps` gives this viewer, in its order, each
- * with R6's regions and legend — `listMaps` read once for all of them
- * (RFC-76 R9). A trait with none answers 404 `MAP_NOT_FOUND`.
+ * with R6's regions and legend — the trait's entries worked out once for all
+ * of them, from its own rows (RFC-76 R9). A trait with none answers 404 `MAP_NOT_FOUND`.
  * @rfc RFC-76 R9
  */
 export async function traitMapValues(
@@ -205,7 +239,7 @@ export async function traitMapValues(
   query: TraitMapsQuery,
 ): Promise<TraitMaps> {
   const traitId = query.traitId.toLowerCase();
-  const entries = (await listMaps(db, visibility)).filter((m) => m.traitId === traitId);
+  const entries = await traitEntries(db, visibility, traitId);
   const [first] = entries;
   if (!first) throw new AppError('MAP_NOT_FOUND', 'Map not found');
   const unit = await traitUnit(db, traitId);

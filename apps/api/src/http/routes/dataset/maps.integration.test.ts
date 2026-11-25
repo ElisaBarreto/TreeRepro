@@ -53,9 +53,32 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
     await $`insert into region_continuous values
       (${num.id}, ${a}, 3, 5, 1, 4, 1, 400, 20, 'treerepro'),
       (${num.id}, ${b}, 2, 7, 2, 7, 5, 9, 28, 'treerepro')`;
-    await $`insert into region_snapshot (platform, computed_at) values ('treerepro', '2026-10-23T03:00:00Z')
-      on conflict (id, platform) do update set computed_at = excluded.computed_at`;
+    await snapshot('treerepro', '2026-10-23T03:00:00Z');
     return { cat, num, red, blue, a, b };
+  }
+
+  /**
+   * Stamps the platform's snapshot. A real rebuild always takes a new time and
+   * so a new list key (R5); the tests reuse one, so the cached lists go too.
+   */
+  async function snapshot(platform: 'treerepro' | 'plantrepro', at: string) {
+    await t.db
+      .$client`insert into region_snapshot (platform, computed_at) values (${platform}, ${at})
+      on conflict (id, platform) do update set computed_at = excluded.computed_at`;
+    const keys = await t.redis.keys('maps:list:*');
+    if (keys.length > 0) await t.redis.del(...keys);
+  }
+
+  /** PlantRepro's rows for the fixture's traits, and its snapshot. */
+  async function plantRows(f: Awaited<ReturnType<typeof fixture>>) {
+    const $ = t.db.$client;
+    await $`insert into region_completeness (platform, trait_id, area_code_l3, species_with_data, wcvp_species, wcvp_tree_species)
+      values ('plantrepro', ${f.cat.id}, ${f.a}, 4, 40, 8), ('plantrepro', ${f.cat.id}, ${f.b}, 1, 10, 0)`;
+    await $`insert into region_categorical (platform, trait_id, level_id, area_code_l3, n_species_with_level, n_species_with_trait)
+      values ('plantrepro', ${f.cat.id}, ${f.red}, ${f.a}, 1, 4)`;
+    await $`insert into region_continuous (platform, trait_id, area_code_l3, n_species, mean, sd, median, min, max, cv)
+      values ('plantrepro', ${f.num.id}, ${f.a}, 4, 5, 1, 4, 1, 600, 20)`;
+    await snapshot('plantrepro', '2026-11-01T03:00:00Z');
   }
 
   async function list(cookie: string) {
@@ -191,6 +214,70 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
     expect(await status('')).toBe(400);
   });
 
+  it('R5 the list is cached per platform, viewer class and snapshot; R6 and R9 judge the trait as it is now', async () => {
+    const f = await fixture();
+    const { cookie } = await viewer();
+    const listed = async () => (await list(cookie)).some((m) => m.traitId === f.num.id);
+    expect(await listed()).toBe(true);
+    expect(await t.redis.exists('maps:list:treerepro:r:2026-10-23T03:00:00.000Z')).toBe(1);
+    expect(await t.redis.exists('maps:list:treerepro:u:2026-10-23T03:00:00.000Z')).toBe(0);
+    await t.db.update(traits).set({ active: false }).where(eq(traits.id, f.num.id));
+    // Up to 10 minutes stale on the list; the per-trait routes read no cache.
+    expect(await listed()).toBe(true);
+    const status = async (path: string) => (await call(t.app, 'GET', path, { cookie })).status;
+    expect(await status(`/api/maps/trait-values?traitId=${f.num.id}`)).toBe(404);
+    expect(await status(`/api/maps/values?traitId=${f.num.id}&kind=mean`)).toBe(404);
+  });
+
+  it("R6, R9 one trait's maps are that trait's slice of the R5 list, on both platforms", async () => {
+    const f = await fixture();
+    await plantRows(f);
+    const role = await createRole(t.db, { permissions: ['dataset.read'] });
+    const { user } = await createUser(t.db, { roles: [role.id], platform: 'plantrepro' });
+    const plant = (await loginAs(t, user, { platform: 'plantrepro' })).cookie;
+    const tree = (await viewer()).cookie;
+    const readers = [
+      (path: string) => call(t.app, 'GET', path, { cookie: tree }),
+      (path: string) =>
+        call(t.app, 'GET', `http://plantrepro.localhost${path}`, {
+          cookie: plant,
+          origin: TEST_PLANT_ORIGIN,
+        }),
+    ];
+    for (const get of readers) {
+      const all = dataEnvelopeSchema(mapsResponseSchema).parse(
+        await (await get('/api/maps')).json(),
+      ).data;
+      for (const traitId of [f.cat.id, f.num.id]) {
+        const slice = all.filter((m) => m.traitId === traitId);
+        // completeness, plus prevalence of red or the six continuous kinds
+        expect(slice.length).toBeGreaterThan(1);
+        const res = await get(`/api/maps/trait-values?traitId=${traitId}`);
+        const { data } = dataEnvelopeSchema(traitMapsSchema).parse(await res.json());
+        expect(data.computedAt).toBe(slice[0]?.computedAt);
+        expect(data.maps.map((m) => [m.kind, m.levelId])).toEqual(
+          slice.map((m) => [m.kind, m.levelId]),
+        );
+        for (const [i, m] of slice.entries()) {
+          const level = m.levelId ? `&levelId=${m.levelId}` : '';
+          const one = await get(`/api/maps/values?traitId=${traitId}&kind=${m.kind}${level}`);
+          expect(one.status).toBe(200);
+          const values = dataEnvelopeSchema(mapValuesSchema).parse(await one.json()).data;
+          expect(values.computedAt).toBe(m.computedAt);
+          expect(values.regions).toEqual(data.maps[i]?.regions);
+          // R5's `regions` is the number of regions with a value
+          expect(values.regions.filter((r) => r.value !== null)).toHaveLength(m.regions);
+        }
+      }
+      // What the list leaves out, the per-trait check leaves out too.
+      expect(
+        (await get(`/api/maps/values?traitId=${f.cat.id}&kind=prevalence&levelId=${f.blue}`))
+          .status,
+      ).toBe(404);
+      expect((await get(`/api/maps/values?traitId=${f.cat.id}&kind=mean`)).status).toBe(404);
+    }
+  });
+
   it('R1, R3, R5 each platform reads its own rows; PlantRepro divides completeness by every WCVP species', async () => {
     const f = await fixture();
     const role = await createRole(t.db, { permissions: ['dataset.read'] });
@@ -210,15 +297,7 @@ describe('RFC-76 R5, R6 trait maps from the region snapshot', () => {
     expect(await listPlant()).toEqual([]);
     expect((await onPlant(`/api/maps/trait-values?traitId=${f.cat.id}`)).status).toBe(404);
 
-    const $ = t.db.$client;
-    await $`insert into region_completeness (platform, trait_id, area_code_l3, species_with_data, wcvp_species, wcvp_tree_species)
-      values ('plantrepro', ${f.cat.id}, ${f.a}, 4, 40, 8), ('plantrepro', ${f.cat.id}, ${f.b}, 1, 10, 0)`;
-    await $`insert into region_categorical (platform, trait_id, level_id, area_code_l3, n_species_with_level, n_species_with_trait)
-      values ('plantrepro', ${f.cat.id}, ${f.red}, ${f.a}, 1, 4)`;
-    await $`insert into region_continuous (platform, trait_id, area_code_l3, n_species, mean, sd, median, min, max, cv)
-      values ('plantrepro', ${f.num.id}, ${f.a}, 4, 5, 1, 4, 1, 600, 20)`;
-    await $`insert into region_snapshot (platform, computed_at) values ('plantrepro', '2026-11-01T03:00:00Z')
-      on conflict (id, platform) do update set computed_at = excluded.computed_at`;
+    await plantRows(f);
 
     expect(
       (await listPlant()).map((m) => [m.traitId, m.kind, m.levelId, m.regions, m.computedAt]),

@@ -361,11 +361,15 @@ describe('RFC-33 R4, RFC-60 R6 species routes by viewer', () => {
       loginAs(t, admin.user),
     ]);
 
+    const epochBefore = Number((await t.redis.get('cache:epoch')) ?? 0);
     const off = await call(t.app, 'PATCH', `/api/species/${sp.id}`, {
       cookie: a.cookie,
       body: { active: false },
     });
     expect(off.status).toBe(200);
+    // RFC-33 R12: the write raises the cache epoch (the counter only rises,
+    // so a sibling's bump cannot falsify this).
+    expect(Number((await t.redis.get('cache:epoch')) ?? 0)).toBeGreaterThan(epochBefore);
     expect((await off.json()).data.active).toBe(false);
     const firstAudit = await lastAudit(t.db, 'taxa.updated', { targetId: sp.id });
     expect(firstAudit?.metadata).toEqual({ kind: 'species', fields: ['active'] });

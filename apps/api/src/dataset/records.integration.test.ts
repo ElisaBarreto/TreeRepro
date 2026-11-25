@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  createAnnotation,
   createImportBatch,
   createRecord,
   createReference,
@@ -999,5 +1000,158 @@ describe('RFC-63 R8 unit status, unit, median, se and import provenance (issues 
       order: 'asc',
     });
     expect(list.data.map((r) => r.id)).toEqual([median1.id, mean2.id, median3.id]);
+  });
+});
+
+describe('RFC-63 R9 a reference page by page (issue #456)', () => {
+  const t = useTestDb();
+
+  it('pages a reference named as primary, secondary, both and through record_references, with and without traitId and q', async () => {
+    const { user } = await createUser(t.db);
+    const k = randomBytes(4).toString('hex');
+    const ref = await createReference(t.db);
+    const other = await createReference(t.db);
+    const oak = await createSpecies(t.db, { canonicalName: `Quercus pager${k}` });
+    const ash = await createSpecies(t.db, { canonicalName: `Fraxinus pager${k}` });
+    const herb = await createSpecies(t.db, {
+      canonicalName: `Quercus herbacea pager${k}`,
+      plantType: 'not_tree',
+    });
+    const traitA = await createTrait(t.db, { levels: ['a'] });
+    const traitB = await createTrait(t.db, { levels: ['a'] });
+    const retired = await createTrait(t.db, { levels: ['a'], active: false });
+    const batch = await createImportBatch(t.db);
+
+    type Role = 'primary' | 'secondary' | 'both' | 'extra' | 'none';
+    interface Made {
+      id: string;
+      speciesId: string;
+      traitId: string;
+      listed: boolean;
+      /** Not harmonised: listed for a reviewer only (RFC-33 R2). */
+      pending: boolean;
+    }
+    const made: Made[] = [];
+    let n = 0;
+    const make = async (
+      role: Role,
+      species: { id: string },
+      trait: { id: string; levels: { id: string }[] },
+      options: { copy?: boolean; withdrawn?: boolean; pending?: boolean } = {},
+    ) => {
+      const rec = await createRecord(t.db, {
+        speciesId: species.id,
+        traitId: trait.id,
+        valueText: 'a',
+        levelId: options.pending ? undefined : trait.levels[0]?.id,
+        rawValue: `raw-${++n}`,
+        primaryReferenceId: role === 'primary' || role === 'both' ? ref.id : other.id,
+        secondaryReferenceId: role === 'secondary' || role === 'both' ? ref.id : undefined,
+        importBatchId: batch.id,
+        countsAsEvidence: !options.copy,
+      });
+      if (role === 'extra') {
+        await t.db.insert(recordReferences).values({ recordId: rec.id, referenceId: ref.id });
+      }
+      if (options.withdrawn) {
+        await createAnnotation(t.db, { recordId: rec.id, actorId: user.id, kind: 'withdraw' });
+      }
+      made.push({
+        id: rec.id,
+        speciesId: species.id,
+        traitId: trait.id,
+        listed: role !== 'none' && !options.copy && !options.withdrawn,
+        pending: options.pending === true,
+      });
+    };
+    // The roles interleaved by id, so no page is one role's alone.
+    const roles: Role[] = ['primary', 'secondary', 'both', 'extra'];
+    for (let round = 0; round < 3; round++) {
+      for (const [i, role] of roles.entries()) {
+        await make(
+          role,
+          (round + i) % 2 === 0 ? oak : ash,
+          (round + i) % 3 === 0 ? traitB : traitA,
+        );
+      }
+      await make('none', oak, traitA);
+    }
+    await make('secondary', oak, retired);
+    // The newest ids are the ones a page must skip, in every role.
+    await make('primary', oak, traitA, { withdrawn: true });
+    await make('secondary', ash, traitA, { copy: true });
+    await make('both', oak, traitB, { withdrawn: true });
+    await make('extra', ash, traitA, { withdrawn: true });
+    await make('primary', ash, traitA, { pending: true });
+    await make('secondary', herb, traitA);
+    await make('extra', herb, traitB);
+    await make('none', oak, traitA);
+
+    const filters = [
+      {},
+      { traitId: traitA.id },
+      { traitId: traitB.id },
+      { q: 'QUERCUS' },
+      { q: `pager${k}` },
+      { traitId: traitA.id, q: 'fraxinus' },
+    ];
+    // Every species and record (PlantRepro, reviewer), reviewed trees and
+    // harmonised records only (TreeRepro, contributor), and no plot at all.
+    const noPlot = { ...RESTRICTED, plotIds: [] };
+    for (const visibility of [UNRESTRICTED, RESTRICTED, noPlot]) {
+      for (const filter of filters) {
+        const expected = made
+          .filter(
+            (m) =>
+              m.listed &&
+              visibility.plotIds === null &&
+              (visibility.inactive || m.traitId !== retired.id) &&
+              (visibility.review === true || !m.pending) &&
+              (visibility.platform === 'plantrepro' || m.speciesId !== herb.id) &&
+              (filter.traitId === undefined || m.traitId === filter.traitId) &&
+              (filter.q === undefined ||
+                filter.q.startsWith('pager') ||
+                (filter.q === 'fraxinus' ? m.speciesId === ash.id : m.speciesId !== ash.id)),
+          )
+          .map((m) => m.id)
+          .sort();
+        for (const order of ['asc', undefined] as const) {
+          const want = order === 'asc' ? expected : [...expected].reverse();
+          for (const limit of [2, 50]) {
+            const got: string[] = [];
+            let cursor: string | undefined;
+            do {
+              const page = await listRecords(t.db, visibility, {
+                referenceId: ref.id,
+                ...filter,
+                order,
+                limit,
+                cursor,
+              });
+              expect(page.data.length).toBeLessThanOrEqual(limit);
+              got.push(...page.data.map((r) => r.id));
+              cursor = page.nextCursor ?? undefined;
+            } while (cursor);
+            expect(got, JSON.stringify({ filter, order, limit })).toEqual(want);
+          }
+        }
+      }
+    }
+    // A sort the per-role indexes cannot serve still lists the same records.
+    const byOrigin = await listRecords(t.db, UNRESTRICTED, {
+      referenceId: ref.id,
+      sort: 'origin',
+      limit: 50,
+    });
+    expect(byOrigin.data.map((r) => r.id).sort()).toEqual(
+      made
+        .filter((m) => m.listed)
+        .map((m) => m.id)
+        .sort(),
+    );
+    // A tampered cursor is still refused.
+    await expect(
+      listRecords(t.db, UNRESTRICTED, { referenceId: ref.id, limit: 2, cursor: 'nope' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 });

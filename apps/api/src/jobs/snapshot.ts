@@ -10,8 +10,17 @@ import { finishRun, latestRun, startRun } from './runs.ts';
 /** R12's session advisory lock; fixed, so the timer and the command exclude each other. @rfc RFC-78 R12 */
 export const SNAPSHOT_LOCK_KEY = 4665;
 
-/** A completed snapshot younger than this makes the timer wait. @rfc RFC-78 R12 */
-export const SNAPSHOT_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * A completed snapshot younger than this makes the timer wait: half a day
+ * under a week, so the weekly run finds its own night window again instead of
+ * slipping a day later every week.
+ * @rfc RFC-78 R12
+ */
+export const SNAPSHOT_INTERVAL_MS = 6.5 * 24 * 60 * 60 * 1000;
+
+/** The night window the timer may start a run in, UTC hours, end excluded. @rfc RFC-78 R12 */
+const SNAPSHOT_WINDOW_START_HOUR = 2;
+const SNAPSHOT_WINDOW_END_HOUR = 5;
 
 /** How often the timer wakes up, and its first delay after start-up. @rfc RFC-78 R12 */
 const SNAPSHOT_TICK_MS = 60 * 60 * 1000;
@@ -33,10 +42,18 @@ export interface SnapshotCounts {
   categorical: number;
 }
 
-/** Due with no completed snapshot, or when the last one finished 7 days ago or more. @rfc RFC-78 R12 */
+/**
+ * Due at any hour with no completed snapshot; otherwise only from 02:00 to
+ * 05:00 UTC, when the last one finished 6 days 12 hours ago or more.
+ * @rfc RFC-78 R12
+ */
 export function isSnapshotDue(lastCompletedAt: Date | null, now: Date): boolean {
+  if (lastCompletedAt === null) return true;
+  const hour = now.getUTCHours();
   return (
-    lastCompletedAt === null || now.getTime() - lastCompletedAt.getTime() >= SNAPSHOT_INTERVAL_MS
+    hour >= SNAPSHOT_WINDOW_START_HOUR &&
+    hour < SNAPSHOT_WINDOW_END_HOUR &&
+    now.getTime() - lastCompletedAt.getTime() >= SNAPSHOT_INTERVAL_MS
   );
 }
 
@@ -50,8 +67,8 @@ export interface SnapshotResult {
 /**
  * Computes the region tables of R9–R11 for every platform and replaces them, with
  * `region_snapshot`, in one transaction. `onlyIfDue` (the timer) returns
- * `not_due`, recording nothing, while a completed snapshot is younger than 7
- * days; the command runs regardless. A run that finds R12's lock held is
+ * `not_due`, recording nothing, outside the night window or while a completed
+ * snapshot is younger than 6 days 12 hours; the command runs regardless. A run that finds R12's lock held is
  * recorded `skipped`.
  * @rfc RFC-78 R8, R9, R10, R11, R12
  */
@@ -196,7 +213,7 @@ async function writeSnapshot(db: Db, now: Date): Promise<Record<Platform, Snapsh
 
 /**
  * Ticks hourly, the first time a minute after start-up, and runs the snapshot
- * when it is due (R12). A failure is logged, never thrown; both handles are
+ * when it is due (R12: inside the night window, unless none ever completed). A failure is logged, never thrown; both handles are
  * unref'd and `stop()` clears them, as `startDigestTimer` does (RFC-74 R2).
  * @rfc RFC-78 R12
  */

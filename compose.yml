@@ -51,6 +51,23 @@ services:
       - log_lock_waits=on
       - -c
       - track_io_timing=on
+      # Sized for the production host, 1 vCPU / 4 GB (docs/gotchas/postgres.md
+      # "Settings assume the production host", issue #455). One CPU: parallel
+      # workers and JIT compilation only compete with the query they serve.
+      # shared_buffers survives the nightly pg_dump and the snapshot, whose
+      # sequential scans evict the OS page cache but not this one.
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - jit=off
+      - -c
+      - max_parallel_workers_per_gather=0
     secrets: [db_superuser_password, db_app_password, db_migrator_password, db_backup_password]
     volumes:
       - postgres-data:/var/lib/postgresql

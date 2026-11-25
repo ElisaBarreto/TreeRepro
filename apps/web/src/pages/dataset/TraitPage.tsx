@@ -213,8 +213,8 @@ function Distribution({ trait, search }: { trait: TraitDetail; search: TraitSpec
       )}
       {counted ? (
         <p className="text-meta text-mist-500">
-          Counted at {formatDateTime(trait.computedAt)} UTC; the summary lags a few minutes behind
-          the records.
+          Counted at {formatDateTime(trait.computedAt)} UTC; records added since then are not in
+          this summary yet.
         </p>
       ) : null}
     </section>

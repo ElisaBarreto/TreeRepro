@@ -231,10 +231,14 @@ describe('RFC-65 R18, R19 / RFC-75 R2, R4 / RFC-60 R6 plant type', () => {
     });
     expect(denied.status).toBe(403);
 
+    const epochBefore = Number((await t.redis.get('cache:epoch')) ?? 0);
     const confirmed = await reviewer.send('POST', `/api/species/${sp.id}/plant-type`, {
       plantType: 'tree',
     });
     expect(confirmed.status).toBe(200);
+    // RFC-33 R12: the write raises the cache epoch (the counter only rises,
+    // so a sibling's bump cannot falsify this).
+    expect(Number((await t.redis.get('cache:epoch')) ?? 0)).toBeGreaterThan(epochBefore);
     expect((await confirmed.json()).data).toMatchObject({
       id: sp.id,
       plantType: 'tree',

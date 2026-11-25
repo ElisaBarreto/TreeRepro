@@ -5,13 +5,12 @@ import type {
   ReferenceSort,
   SortOrder,
 } from '@treerepro/contracts';
-import { and, asc, count, desc, eq, ilike, ne, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, ne, or, type SQL, sql } from 'drizzle-orm';
 import { traitVisible, UNRESTRICTED, type Visibility } from '../access/visibility.ts';
 import { recordAudit } from '../audit/audit.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { traitCategories, traits } from '../db/schema/dictionary.ts';
-import { recordReferences, traitRecords } from '../db/schema/records.ts';
 import { referenceTraits } from '../db/schema/reference-traits.ts';
 import { bibliographicReferences, type ReferenceRow } from '../db/schema/references.ts';
 import { users } from '../db/schema/users.ts';
@@ -19,7 +18,6 @@ import { pageOf, type SortKey, sortedKeyset } from '../http/cursor.ts';
 import { AppError } from '../http/errors.ts';
 import { type DoiMetadata, shortCitationFrom } from '../integrations/doi.ts';
 import { requireTrait } from './dictionary.ts';
-import { liveSql } from './records.ts';
 import { likePattern } from './taxa.ts';
 
 /** @rfc RFC-61 R1, R4 */
@@ -181,7 +179,9 @@ export async function searchReferences(
  * `secondaryCount` on the same row, and counters are the same for every
  * viewer (RFC-33 R3; the choice RFC-60 R7 makes for a species), so for a
  * restricted viewer the visible `traits` need not add up to it. `recordCount`
- * includes the records naming the reference in `record_references` (spec R-4).
+ * is the sum of the reference's `reference_traits` counters (RFC-61 R9),
+ * invisible traits included: the records naming it in any role or in
+ * `record_references` (spec R-4), never read from `trait_records` here.
  * @rfc RFC-61 R4, R9
  * @rfc RFC-33 R2, R3
  */
@@ -200,20 +200,13 @@ export async function getReference(
     .where(eq(bibliographicReferences.id, id))
     .limit(1);
   if (!row) return null;
-  const [counts, extraCounts, traitRows] = await Promise.all([
+  const [counts, traitRows] = await Promise.all([
+    // RFC-61 R9's counters, every trait's: a scan of the reference's records
+    // costs seconds on a compiled dataset (issue #456).
     db
-      .select({ recordCount: count() })
-      .from(traitRecords)
-      .where(
-        and(
-          or(eq(traitRecords.primaryReferenceId, id), eq(traitRecords.secondaryReferenceId, id)),
-          liveSql(traitRecords.id),
-        ),
-      ),
-    db
-      .select({ recordCount: count() })
-      .from(recordReferences)
-      .where(and(eq(recordReferences.referenceId, id), liveSql(sql`${recordReferences.recordId}`))),
+      .select({ recordCount: sql<number>`coalesce(sum(${referenceTraits.recordCount}), 0)::int` })
+      .from(referenceTraits)
+      .where(eq(referenceTraits.referenceId, id)),
     db
       .select({
         id: traits.id,
@@ -229,7 +222,7 @@ export async function getReference(
   ]);
   return {
     ...toReference(row.ref, row.observer?.id ? row.observer : null),
-    recordCount: (counts[0]?.recordCount ?? 0) + (extraCounts[0]?.recordCount ?? 0),
+    recordCount: counts[0]?.recordCount ?? 0,
     traits: traitRows.map((t) => ({
       trait: { id: t.id, key: t.key, valueType: t.valueType, unit: t.unit },
       recordCount: t.recordCount,

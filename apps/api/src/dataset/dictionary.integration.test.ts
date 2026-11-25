@@ -201,7 +201,9 @@ describe('RFC-62 R5 dictionary speciesCount is read from the cache', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
-    redis = createRedis(inject('redisUrl'));
+    // A Redis database of this suite's own: its epoch (RFC-10 R15) is not the
+    // one the route tests of other files raise while this one runs.
+    redis = createRedis(`${inject('redisUrl')}/4`);
     await redis.connect();
   });
   afterAll(async () => {
@@ -245,12 +247,7 @@ describe('RFC-62 R5 dictionary speciesCount is read from the cache', () => {
       : { value: [] as [string, number][], computedAt: new Date().toISOString() };
     const map = new Map(entry.value);
     map.set(traitId, sentinel);
-    await redis.set(
-      key,
-      JSON.stringify({ value: [...map], computedAt: entry.computedAt }),
-      'EX',
-      600,
-    );
+    await redis.set(key, JSON.stringify({ ...entry, value: [...map] }), 'EX', 600);
     try {
       await fn();
     } finally {

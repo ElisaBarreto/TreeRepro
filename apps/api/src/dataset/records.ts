@@ -473,6 +473,64 @@ function sortCursorCondition(
 }
 
 /**
+ * The ids one `added` page of a reference can hold (issue #456): the first
+ * `limit + 1` ids past the cursor of each way a record names the reference —
+ * primary, secondary, `record_references` — every one under the list's own
+ * filters, so the page is among at most three pages of ids and never the
+ * whole reference. The two roles each walk their `(reference, id desc nulls
+ * last)` index and stop at the limit, which is why the order spells the
+ * nulls out: a plain `desc` does not match the index. A record naming the
+ * reference twice comes twice; `= any` on the caller's side reads it once.
+ * The filters are {@link listRecords}'s, on the aliases here; the caller
+ * applies them again.
+ */
+function referencePageIds(
+  v: Visibility,
+  input: {
+    referenceId: string;
+    traitId?: string;
+    q?: string;
+    cursor?: string;
+    limit: number;
+    order?: SortOrder;
+  },
+): SQL {
+  const ascending = input.order === 'asc';
+  const speciesFilters = [speciesVisible(v, 's')];
+  if (input.q) {
+    speciesFilters.push(sql`s.canonical_name ilike ${likePattern(input.q, 'substring')}`);
+  }
+  // Each filter is a per-row probe the planner cannot turn into a join: with
+  // joins to choose from it reorders them and sorts the whole reference
+  // instead of walking the index in order (seen with EXPLAIN, issue #456).
+  const filters: SQL[] = [
+    sql`(select ${sql.join(speciesFilters, sql` and `)} from ${species} s where s.id = r.species_id)`,
+    sql`(select ${traitVisible(v, sql`t.active`)} from ${traits} t where t.id = r.trait_id)`,
+    sql`(${recordVisible(v, sql`r.id`, sql`r.harmonisation`)}) is true`,
+  ];
+  if (input.traitId) filters.push(sql`r.trait_id = ${input.traitId}`);
+  if (input.cursor) {
+    const after = decodeCursor(input.cursor);
+    filters.push(ascending ? sql`r.id > ${after}` : sql`r.id < ${after}`);
+  }
+  const page = (source: SQL, names: SQL) => sql`(select r.id from ${source}
+    where ${names} = ${input.referenceId} and ${sql.join(filters, sql` and `)}
+    order by r.id ${ascending ? sql`asc nulls first` : sql`desc nulls last`}
+    limit ${input.limit + 1})`;
+  // ponytail: a `q` few of the reference's species match walks most of its
+  // index before the page fills (one species probe per record); join species
+  // on a trigram index if that search ever matters. And record_references has
+  // no (reference_id, record_id) index, so its branch sorts that reference's
+  // rows; add the index if a reference ever gathers many of them.
+  return sql`${page(sql`${traitRecords} r`, sql`r.primary_reference_id`)}
+    union all ${page(sql`${traitRecords} r`, sql`r.secondary_reference_id`)}
+    union all ${page(
+      sql`${recordReferences} rr join ${traitRecords} r on r.id = rr.record_id`,
+      sql`rr.reference_id`,
+    )}`;
+}
+
+/**
  * Either `speciesId` and `traitId` together, or `referenceId` — optionally
  * narrowed by `traitId` and a species-name `q` — (primary,
  * secondary or `record_references`); with the first, `levelId`,
@@ -526,22 +584,20 @@ export async function listRecords(
           : eq(traitRecords.secondaryReferenceId, input.secondaryReferenceId),
       );
   } else if (input.referenceId) {
-    const referenceIds = sql`
+    const referenceIds =
+      (input.sort ?? 'added') === 'added'
+        ? referencePageIds(visibility, { ...input, referenceId: input.referenceId })
+        : // Any other sort must order the whole set: every id of the reference,
+          // one lookup per (reference, id) index — an `or` across the two
+          // columns reads the whole table (issue #351).
+          sql`
       select r.id from ${traitRecords} r where r.primary_reference_id = ${input.referenceId}
       union
       select r.id from ${traitRecords} r where r.secondary_reference_id = ${input.referenceId}
       union
       select rr.record_id from ${recordReferences} rr where rr.reference_id = ${input.referenceId}`;
-    conditions.push(
-      // Three lookups, each on its own (reference, id) index: an `or` across
-      // the two columns reads the whole table (issue #351). Newest first walks
-      // the primary key and stops at the page, so `in` suits it; any other
-      // sort must order the whole set, which `any(array(…))` fetches by id
-      // before the joins rather than after them.
-      (input.sort ?? 'added') === 'added'
-        ? sql`${traitRecords.id} in (${referenceIds})`
-        : sql`${traitRecords.id} = any(array(${referenceIds}))`,
-    );
+    // `any(array(…))` fetches the records by id before the joins rather than after them.
+    conditions.push(sql`${traitRecords.id} = any(array(${referenceIds}))`);
     if (input.traitId) conditions.push(eq(traitRecords.traitId, input.traitId));
     if (input.q) conditions.push(ilike(species.canonicalName, likePattern(input.q, 'substring')));
   } else {

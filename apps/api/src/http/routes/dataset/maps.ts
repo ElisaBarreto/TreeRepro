@@ -16,7 +16,7 @@ export function mapRoutes(ctx: AuthContext) {
   return new Hono<AppEnv>()
     .get('/', requirePermission(ctx, 'dataset.read'), async (c) => {
       const visibility = await visibilityOf(ctx, c);
-      return c.json({ data: await listMaps(ctx.db, visibility) });
+      return c.json({ data: await listMaps(ctx, visibility) });
     })
     .get(
       '/values',

@@ -21,7 +21,7 @@ import { countContested, countPendingGroups, countPlantTypeQueue } from '../data
 import type { DbTransaction } from '../db/client.ts';
 import { speciesProposals } from '../db/schema/proposals.ts';
 import { species } from '../db/schema/taxa.ts';
-import { cachedJson, forgetCached } from '../redis/cache.ts';
+import { cachedJson, forgetCached, STALE_RETENTION_SECONDS } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
 import {
   computeDatasetStats,
@@ -553,7 +553,9 @@ describe('RFC-72 R1 the dataset counts', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
-    redis = createRedis(inject('redisUrl'));
+    // A Redis database of this suite's own: its epoch (RFC-10 R15) is not the
+    // one the route tests of other files raise while this one runs.
+    redis = createRedis(`${inject('redisUrl')}/6`);
     await redis.connect();
   });
   afterAll(async () => {
@@ -641,8 +643,9 @@ describe('RFC-72 R1 the dataset counts', () => {
       expect(second.dataset.computedAt).toBe(first.dataset.computedAt);
       expect(second.dataset).toEqual(first.dataset);
       const ttl = await redis.ttl('stats:dataset:treerepro');
-      expect(ttl).toBeGreaterThan(0);
-      expect(ttl).toBeLessThanOrEqual(3600);
+      // Fresh for one hour, kept for the retention beyond it (RFC-10 R15).
+      expect(ttl).toBeGreaterThan(STALE_RETENTION_SECONDS);
+      expect(ttl).toBeLessThanOrEqual(3600 + STALE_RETENTION_SECONDS);
     } finally {
       await forgetCached(redis, `dashboard:treerepro:${user.id}`);
     }

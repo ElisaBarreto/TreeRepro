@@ -79,10 +79,14 @@ describe('RFC-62 R5, R6 dictionary reads and writes', () => {
     });
     expect(badCategory.status).toBe(400);
     expect((await badCategory.json()).error.details[0].path).toBe('categoryKey');
+    const epochBefore = Number((await t.redis.get('cache:epoch')) ?? 0);
     const edited = await call(t.app, 'PATCH', `/api/traits/${trait.id}`, {
       cookie,
       body: { description: 'Edited', active: false },
     });
+    // RFC-33 R12: the write raises the cache epoch (the counter only rises,
+    // so a sibling's bump cannot falsify this).
+    expect(Number((await t.redis.get('cache:epoch')) ?? 0)).toBeGreaterThan(epochBefore);
     expect((await edited.json()).data).toMatchObject({
       description: 'Edited',
       active: false,
@@ -276,6 +280,58 @@ describe('RFC-62 R7, R8 GET /api/traits/:id and /api/traits/:id/species', () => 
       const retired = await createTrait(t.db, { active: false });
       const invisible = await call(t.app, 'GET', `/api/traits/${retired.id}`, { cookie });
       expect(invisible.status).toBe(404);
+    } finally {
+      await t.redis.del(
+        `trait:${own.id}:distribution:v4:treerepro:u`,
+        `trait:${own.id}:distribution:v4:treerepro:r`,
+      );
+    }
+  });
+
+  it("RFC-33 R12 deactivating a level takes it out of a restricted reader's cached distribution at once", async () => {
+    const { user, cookie } = await reader();
+    const role = await createRole(t.db, { permissions: ['traits.manage', 'dataset.read'] });
+    const manager = await createUser(t.db, { roles: [role.id] });
+    const managerCookie = (await loginAs(t, manager.user)).cookie;
+    const reference = await createReference(t.db);
+    const own = await createTrait(t.db, { levels: ['alpha', 'beta'] });
+    const [alpha, beta] = own.levels;
+    const subject = await createSpecies(t.db);
+    for (const level of [alpha, beta]) {
+      await createRecord(t.db, {
+        speciesId: subject.id,
+        traitId: own.id,
+        valueText: level?.key ?? '',
+        levelId: level?.id,
+        primaryReferenceId: reference.id,
+        origin: 'manual',
+        createdBy: user.id,
+      });
+    }
+    const levelKeys = async () => {
+      const res = await call(t.app, 'GET', `/api/traits/${own.id}`, { cookie });
+      expect(res.status).toBe(200);
+      const { data } = await res.json();
+      return {
+        keys: data.distribution.levels.map((l: { level: { key: string } }) => l.level.key).sort(),
+        computedAt: data.computedAt as string,
+      };
+    };
+    try {
+      const before = await levelKeys();
+      expect(before.keys).toEqual(['alpha', 'beta']);
+
+      const retired = await call(t.app, 'PATCH', `/api/traits/${own.id}/levels/${beta?.id}`, {
+        cookie: managerCookie,
+        body: { active: false },
+      });
+      expect(retired.status).toBe(200);
+
+      // The entry is seconds old, well inside its ten minutes: without the
+      // epoch the reader would still be answered `beta`.
+      const after = await levelKeys();
+      expect(after.keys).toEqual(['alpha']);
+      expect(after.computedAt).not.toBe(before.computedAt);
     } finally {
       await t.redis.del(
         `trait:${own.id}:distribution:v4:treerepro:u`,

@@ -216,7 +216,7 @@ describe('RFC-62 R7 TraitPage distribution', () => {
         'Each species is averaged first, so every species weighs the same. Across 3 species with harmonised records.',
       ),
     ).toBeInTheDocument();
-    // RFC-62 R7 caches the summary for ten minutes, so the page says when it
+    // RFC-62 R7 caches the summary (it may be older than its ten-minute window), so the page says when it
     // was counted — wherever there is something counted.
     expect(screen.getByText(/^Counted at 2026-09-18 08:00 UTC/)).toBeInTheDocument();
   });

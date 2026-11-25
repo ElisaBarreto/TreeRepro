@@ -151,7 +151,9 @@ describe('RFC-62 R7 getTraitDetail', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
-    redis = createRedis(inject('redisUrl'));
+    // A Redis database of this suite's own: its epoch (RFC-10 R15) is not the
+    // one the route tests of other files raise while this one runs.
+    redis = createRedis(`${inject('redisUrl')}/5`);
     await redis.connect();
   });
   afterAll(async () => {
@@ -732,7 +734,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
-  it('serves the distribution from the cache for ten minutes: the same computedAt until the key is forgotten', async () => {
+  it('serves the distribution from the cache: the same computedAt until the key is forgotten', async () => {
     const trait = await createTrait(t.db, { levels: ['alpha'] });
     try {
       const first = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);
