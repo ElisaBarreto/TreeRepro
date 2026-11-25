@@ -117,6 +117,7 @@
    ```sh
    docker compose run --rm --no-deps api node dist/cli/build-snapshot.js
    ```
+6c. **Invalidate the cached aggregates** (RFC-33 R12), since the import CLIs do not: `docker compose exec -T redis sh -c 'REDISCLI_AUTH="$(cat /run/secrets/redis_password)" redis-cli --no-auth-warning incr cache:epoch'` (see "An import that changes visibility does not invalidate the cached aggregates").
 7. **Verify:**
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -At -F ' ' -c \
@@ -217,7 +218,7 @@ After this test phase, reimports use `--replace-imported` (plan 13k) instead of 
    ```sh
    docker compose exec -T postgres psql -U postgres -d treerepro -c 'vacuum (analyze) trait_records, record_annotations'
    ```
-9. **Start the API:** run `docker compose up -d api`, then `docker compose ps` shows it healthy.
+9. **Start the API:** run `docker compose up -d api`, then `docker compose ps` shows it healthy. Then invalidate the cached aggregates (RFC-33 R12): `docker compose exec -T redis sh -c 'REDISCLI_AUTH="$(cat /run/secrets/redis_password)" redis-cli --no-auth-warning incr cache:epoch'`.
 10. **The sheet.** Hand it to the owner. The `orphan` rows are the work whose record the new file dropped:
     - validations and withdrawals: removed;
     - contests: now independent records;

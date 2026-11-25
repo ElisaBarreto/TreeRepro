@@ -8,6 +8,7 @@ import { createRateLimiter } from './auth/rate-limit.ts';
 import { createSessionStore } from './auth/sessions.ts';
 import { loadConfig, originOf } from './config.ts';
 import { createDb } from './db/client.ts';
+import { sanitizeError } from './http/errors.ts';
 import { createHealthChecks } from './http/health-checks.ts';
 import { createDoiClient } from './integrations/doi.ts';
 import { createTaxonomyClient, verifyWcvpDataset } from './integrations/taxonomy.ts';
@@ -15,6 +16,7 @@ import { runDigest, startDigestTimer } from './jobs/digest.ts';
 import { startSnapshotTimer } from './jobs/snapshot.ts';
 import { createLogger } from './logger.ts';
 import { createMailer, createSmtpTransport } from './mail/mailer.ts';
+import { setCacheRefreshErrorHandler } from './redis/cache.ts';
 import { createRedis } from './redis/client.ts';
 import { configurePii } from './security/pii.ts';
 import { APP_VERSION } from './version.ts';
@@ -28,6 +30,12 @@ const redis = createRedis(config.redis.url.expose());
 // Without a listener ioredis prints "[ioredis] Unhandled error event" to
 // stderr, bypassing pino and its redaction (RFC-02 R7).
 redis.on('error', (err) => logger.error({ err }, 'redis error'));
+setCacheRefreshErrorHandler((key, err) =>
+  logger.warn(
+    { key, err: sanitizeError(err instanceof Error ? err : new Error(String(err))) },
+    'background cache refresh failed; stale entry kept',
+  ),
+);
 await redis.connect();
 
 const sessionSecret = config.sessionSecret.expose();

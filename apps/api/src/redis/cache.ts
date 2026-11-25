@@ -1,5 +1,17 @@
 import type { Redis } from './client.ts';
 
+let onRefreshError: (key: string, err: unknown) => void = () => undefined;
+
+/**
+ * Registers what a failed background refresh is reported to (the server logs
+ * it at warning). Nobody awaits such a fill, so without this a `compute` that
+ * keeps failing would hide behind the stale entry it leaves in place.
+ * @rfc RFC-10 R15
+ */
+export function setCacheRefreshErrorHandler(handler: (key: string, err: unknown) => void): void {
+  onRefreshError = handler;
+}
+
 /** What `cachedJson` stores under a key and answers on a hit. */
 interface CachedEntry<T> {
   value: T;
@@ -171,14 +183,15 @@ export async function cachedJson<T>(
     // Past its window: answer it now and refresh it behind the reader's back,
     // unless a refresh is already running or a forget happened during the read
     // (the same two checks a miss makes below). Nobody awaits this fill, so
-    // its rejection is swallowed here; the key is released and the next read
-    // starts another.
+    // its rejection is reported and goes no further; the key is released and
+    // the next read starts another.
+    // ponytail: no backoff, a failing compute is retried on every stale read; add a cooldown if traffic grows.
     if (
       Date.now() - Date.parse(stored.computedAt) > ttlSeconds * 1000 &&
       since === cacheGeneration(redis, key) &&
       !fills.has(key)
     )
-      startFill(epoch).catch(() => undefined);
+      startFill(epoch).catch((err) => onRefreshError(key, err));
     return { value: stored.value, computedAt: stored.computedAt };
   }
   if (since !== cacheGeneration(redis, key)) return uncached();

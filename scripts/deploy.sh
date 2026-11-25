@@ -44,7 +44,7 @@ main() {
   docker compose exec -T redis sh -c '
     set -eu -o pipefail
     export REDISCLI_AUTH="$(cat /run/secrets/redis_password)"
-    for p in "stats:*" "dashboard:*" "coverage:*" "dictionary:*" "trait:*" "health"; do
+    for p in "stats:*" "dashboard:*" "coverage:*" "dictionary:*" "trait:*" "maps:*" "health"; do
       redis-cli --no-auth-warning --scan --pattern "$p" | xargs -r redis-cli --no-auth-warning del >/dev/null
     done'
   docker image prune -f >/dev/null

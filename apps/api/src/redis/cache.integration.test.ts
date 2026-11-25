@@ -7,6 +7,7 @@ import {
   cacheGeneration,
   forgetCached,
   STALE_RETENTION_SECONDS,
+  setCacheRefreshErrorHandler,
 } from './cache.ts';
 import { createRedis, type Redis } from './client.ts';
 
@@ -304,6 +305,8 @@ describe('RFC-10 R15 cachedJson', () => {
       const unhandled: unknown[] = [];
       const onUnhandled = (reason: unknown) => unhandled.push(reason);
       process.on('unhandledRejection', onUnhandled);
+      const reported: string[] = [];
+      setCacheRefreshErrorHandler((failedKey) => reported.push(failedKey));
       let calls = 0;
       const compute = async () => {
         calls += 1;
@@ -315,6 +318,7 @@ describe('RFC-10 R15 cachedJson', () => {
         await settle();
         expect(calls).toBe(1);
         expect(unhandled).toEqual([]);
+        expect(reported).toEqual([key]);
         expect(await stored(key)).toMatchObject(old);
 
         // The failure released the key: this read still answers the stale
