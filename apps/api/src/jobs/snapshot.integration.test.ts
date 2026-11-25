@@ -261,23 +261,47 @@ describe('RFC-78 R7-R12 weekly snapshot', () => {
     }
   });
 
-  it('R12 onlyIfDue: not due within 7 days of the last completed run, due after', async () => {
+  it('R12 onlyIfDue: not due soon after the last completed run or outside the night window, due inside it', async () => {
     const early = await runSnapshot({ db, now: new Date('2026-10-26T03:00:00Z'), onlyIfDue: true });
     expect(early).toMatchObject({ status: 'not_due', runId: null });
-    const late = await runSnapshot({
+    // The last run finished on the wall clock (`finishRun`), so "later" is counted from today.
+    const later = new Date(Date.now() + 8 * 86_400_000);
+    const midday = await runSnapshot({
       db,
-      now: new Date(Date.now() + 8 * 86_400_000),
+      now: new Date(later.setUTCHours(12, 0, 0, 0)),
       onlyIfDue: true,
     });
-    expect(late.status).toBe('completed');
+    expect(midday).toMatchObject({ status: 'not_due', runId: null });
+    const night = await runSnapshot({
+      db,
+      now: new Date(later.setUTCHours(3, 0, 0, 0)),
+      onlyIfDue: true,
+    });
+    expect(night.status).toBe('completed');
   });
 });
 
 describe('RFC-78 R12 isSnapshotDue', () => {
-  it('is due with no completed run, or when the last one finished 7 days ago or more', () => {
-    const now = new Date('2026-10-23T12:00:00Z');
-    expect(isSnapshotDue(null, now)).toBe(true);
-    expect(isSnapshotDue(new Date('2026-10-17T12:00:00Z'), now)).toBe(false);
-    expect(isSnapshotDue(new Date('2026-10-16T12:00:00Z'), now)).toBe(true);
+  it('is due at any hour with no completed run', () => {
+    expect(isSnapshotDue(null, new Date('2026-10-23T12:00:00Z'))).toBe(true);
+  });
+
+  it('is due only from 02:00 to 05:00 UTC once a completed run exists', () => {
+    const last = new Date('2026-10-01T03:00:00Z');
+    expect(isSnapshotDue(last, new Date('2026-10-23T01:59:59Z'))).toBe(false);
+    expect(isSnapshotDue(last, new Date('2026-10-23T02:00:00Z'))).toBe(true);
+    expect(isSnapshotDue(last, new Date('2026-10-23T04:59:59Z'))).toBe(true);
+    expect(isSnapshotDue(last, new Date('2026-10-23T05:00:00Z'))).toBe(false);
+    expect(isSnapshotDue(last, new Date('2026-10-23T12:00:00Z'))).toBe(false);
+  });
+
+  it('is due when the last run finished 6 days 12 hours ago or more, so it stays on its weekday', () => {
+    const now = new Date('2026-10-23T03:00:00Z');
+    expect(isSnapshotDue(new Date('2026-10-16T15:00:00.001Z'), now)).toBe(false);
+    expect(isSnapshotDue(new Date('2026-10-16T15:00:00Z'), now)).toBe(true);
+    // Last week's run started at 02:00 and ended ten minutes later: due again at 02:00.
+    const lastWeek = new Date('2026-10-16T02:10:00Z');
+    expect(isSnapshotDue(lastWeek, new Date('2026-10-23T02:00:00Z'))).toBe(true);
+    expect(isSnapshotDue(lastWeek, new Date('2026-10-22T04:00:00Z'))).toBe(false);
   });
 });
