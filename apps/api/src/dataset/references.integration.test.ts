@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+  createAnnotation,
   createImportBatch,
   createRecord,
   createReference,
@@ -559,6 +560,85 @@ describe('RFC-61 R4 references', () => {
       recordCount: 1,
       primaryCount: 1,
       traits: [{ trait: { id: trait.id }, recordCount: 1 }],
+    });
+  });
+
+  it('recordCount (issue #456) is the stored counters: withdrawn records and copies never count, both roles count once, record_references count', async () => {
+    const { user } = await createUser(t.db);
+    const ref = await createReference(t.db);
+    const other = await createReference(t.db);
+    const sp = await createSpecies(t.db);
+    const colour = await traitByKey(t.db, 'flower_color');
+    const second = await createTrait(t.db, { levels: ['a'] });
+    const batch = await createImportBatch(t.db);
+    const imported = { speciesId: sp.id, traitId: colour.id, importBatchId: batch.id };
+    const manual = {
+      speciesId: sp.id,
+      traitId: colour.id,
+      origin: 'manual' as const,
+      createdBy: user.id,
+    };
+    // Counted: primary, secondary, both roles (once), another trait.
+    await createRecord(t.db, { ...imported, valueText: 'p', primaryReferenceId: ref.id });
+    await createRecord(t.db, {
+      ...imported,
+      valueText: 's',
+      primaryReferenceId: other.id,
+      secondaryReferenceId: ref.id,
+    });
+    await createRecord(t.db, {
+      ...imported,
+      valueText: 'ps',
+      primaryReferenceId: ref.id,
+      secondaryReferenceId: ref.id,
+    });
+    await createRecord(t.db, {
+      ...imported,
+      traitId: second.id,
+      valueText: 'a',
+      levelId: second.levels[0]?.id,
+      primaryReferenceId: other.id,
+      secondaryReferenceId: ref.id,
+    });
+    // Counted: named only through record_references.
+    const extra = await createRecord(t.db, {
+      ...manual,
+      valueText: 'x',
+      primaryReferenceId: other.id,
+    });
+    await t.db.insert(recordReferences).values({ recordId: extra.id, referenceId: ref.id });
+    // Never counted: a copy of evidence (RFC-63 R17).
+    await createRecord(t.db, {
+      ...imported,
+      valueText: 'copy',
+      primaryReferenceId: ref.id,
+      secondaryReferenceId: ref.id,
+      countsAsEvidence: false,
+    });
+    // No longer counted: withdrawn (RFC-63 R13), in a role and through record_references.
+    const gone = await createRecord(t.db, {
+      ...manual,
+      valueText: 'w',
+      primaryReferenceId: ref.id,
+    });
+    const goneExtra = await createRecord(t.db, {
+      ...manual,
+      valueText: 'wx',
+      primaryReferenceId: other.id,
+    });
+    await t.db.insert(recordReferences).values({ recordId: goneExtra.id, referenceId: ref.id });
+    expect(await getReference(t.db, ref.id)).toMatchObject({ recordCount: 7 });
+    await createAnnotation(t.db, { recordId: gone.id, actorId: user.id, kind: 'withdraw' });
+    await createAnnotation(t.db, { recordId: goneExtra.id, actorId: user.id, kind: 'withdraw' });
+
+    // The same number for every viewer (RFC-33 R3), the second trait's row included.
+    expect(await getReference(t.db, ref.id)).toMatchObject({ recordCount: 5 });
+    expect(await getReference(t.db, ref.id, restricted)).toMatchObject({ recordCount: 5 });
+    expect(await getReference(t.db, other.id)).toMatchObject({ recordCount: 3 });
+    // A reference no record names.
+    expect(await getReference(t.db, (await createReference(t.db)).id)).toMatchObject({
+      recordCount: 0,
+      traits: [],
     });
   });
 });
