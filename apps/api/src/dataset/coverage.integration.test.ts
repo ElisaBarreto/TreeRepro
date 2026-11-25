@@ -19,7 +19,7 @@ import { RESTRICTED, UNRESTRICTED } from '../../test/helpers/visibility.ts';
 import type { Visibility } from '../access/visibility.ts';
 import type { DbExecutor } from '../db/client.ts';
 import { species } from '../db/schema/taxa.ts';
-import { cachedJson, forgetCached } from '../redis/cache.ts';
+import { cachedJson, forgetCached, STALE_RETENTION_SECONDS } from '../redis/cache.ts';
 import { createRedis, type Redis } from '../redis/client.ts';
 import {
   computeCoverageMetrics,
@@ -138,7 +138,7 @@ describe('RFC-69 R5 coverageTotals over the visible grid', () => {
   });
 });
 
-describe('RFC-69 R5 coverageTotals is cached for ten minutes', () => {
+describe('RFC-69 R5 coverageTotals is cached, fresh for ten minutes', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
@@ -201,8 +201,9 @@ describe('RFC-69 R5 coverageTotals is cached for ten minutes', () => {
       expect(Object.keys(entry?.value ?? {}).sort()).toEqual(fields);
       expect(typeof entry?.computedAt).toBe('string');
       const ttl = await redis.ttl(key);
-      expect(ttl).toBeGreaterThan(0);
-      expect(ttl).toBeLessThanOrEqual(600);
+      // Fresh for ten minutes, kept for the retention beyond them (RFC-10 R15).
+      expect(ttl).toBeGreaterThan(STALE_RETENTION_SECONDS);
+      expect(ttl).toBeLessThanOrEqual(600 + STALE_RETENTION_SECONDS);
     }
   });
 });
@@ -638,7 +639,7 @@ describe('RFC-69 R7 coverageTop ranks the traits of the unfiltered grid', () => 
   });
 });
 
-describe('RFC-69 R6 coverageMetrics is cached for ten minutes per viewer class and filter', () => {
+describe('RFC-69 R6 coverageMetrics is cached per viewer class and filter, fresh for ten minutes', () => {
   const t = useTestDb();
   let redis: Redis;
   beforeAll(async () => {
@@ -674,8 +675,9 @@ describe('RFC-69 R6 coverageMetrics is cached for ten minutes per viewer class a
         const { computedAt, ...value } = first;
         expect(JSON.parse(entry ?? 'null')).toEqual({ value, computedAt });
         const ttl = await redis.ttl(key);
-        expect(ttl).toBeGreaterThan(0);
-        expect(ttl).toBeLessThanOrEqual(600);
+        // Fresh for ten minutes, kept for the retention beyond them (RFC-10 R15).
+        expect(ttl).toBeGreaterThan(STALE_RETENTION_SECONDS);
+        expect(ttl).toBeLessThanOrEqual(600 + STALE_RETENTION_SECONDS);
 
         // Another filter is another key, computed on its own.
         const other = await coverageMetrics({ db: tx, redis }, UNRESTRICTED, {

@@ -481,8 +481,8 @@ export const traitLevelSchema = z.strictObject({
  * `speciesCount`: visible species with a coverage row for the trait — a
  * global summary, plot-blind like RFC-62 R7's distribution and RFC-60 R6's
  * `traitCount` (a plot-bound viewer's number still counts species outside
- * their plots). On `GET /api/traits` it is cached 10 minutes per viewer
- * class; on the `POST`/`PATCH /api/traits` responses (and any other route
+ * their plots). On `GET /api/traits` it is cached per viewer class, fresh for
+ * 10 minutes and then answered as stored while it is recomputed (RFC-10 R15); on the `POST`/`PATCH /api/traits` responses (and any other route
  * that reads a single trait) it is a live, uncached read of the same
  * number (RFC-62 R5).
  * @rfc RFC-62 R5

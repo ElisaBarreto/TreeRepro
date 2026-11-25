@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { useTestApp } from '../../test/helpers/app.ts';
-import { cachedJson, cacheGeneration, forgetCached } from './cache.ts';
+import { cachedJson, cacheGeneration, forgetCached, STALE_RETENTION_SECONDS } from './cache.ts';
 
 /**
  * One-shot signal. As `started`, a `compute` opens it on entry so the test
@@ -206,5 +206,159 @@ describe('RFC-10 R15 cachedJson', () => {
     expect((await stale).value).toBe('stale inputs');
     expect((await fresh).value).toBe('fresh inputs');
     expect(JSON.parse((await t.redis.get(key)) ?? 'null')?.value).toBe('fresh inputs');
+  });
+
+  describe('staleWhileRevalidate', () => {
+    const swr = { staleWhileRevalidate: true };
+    /** Writes an entry computed `ageSeconds` ago, as an earlier fill would have left it. */
+    const seed = async (key: string, value: unknown, ageSeconds: number) => {
+      const entry = { value, computedAt: new Date(Date.now() - ageSeconds * 1000).toISOString() };
+      await t.redis.set(key, JSON.stringify(entry), 'EX', 3600);
+      return entry;
+    };
+    /** Lets every continuation of a settled fill run; a SET it sent is ahead of the next command. */
+    const settle = async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+      await t.redis.ping();
+    };
+
+    it('keeps the entry for the window plus the retention, and answers a fresh one without computing', async () => {
+      const key = `${prefix()}:swr-fresh`;
+      let calls = 0;
+      const compute = async () => {
+        calls += 1;
+        return { n: calls };
+      };
+      const first = await cachedJson(t.redis, key, 60, compute, swr);
+      const second = await cachedJson(t.redis, key, 60, compute, swr);
+      expect(second).toEqual(first);
+      expect(calls).toBe(1);
+      const ttl = await t.redis.ttl(key);
+      expect(ttl).toBeGreaterThan(STALE_RETENTION_SECONDS);
+      expect(ttl).toBeLessThanOrEqual(60 + STALE_RETENTION_SECONDS);
+    });
+
+    it('answers a stale entry without awaiting the one fill it starts, then the refreshed entry', async () => {
+      const key = `${prefix()}:swr-stale`;
+      const old = await seed(key, { n: 0 }, 120);
+      const started = gate();
+      const fill = gate();
+      let calls = 0;
+      const compute = async () => {
+        calls += 1;
+        started.open();
+        await fill.wait;
+        return { n: calls };
+      };
+
+      // Ten stale reads at once: each answers the stored entry while the fill
+      // is still held, and together they start one compute.
+      const stale = await Promise.all(
+        Array.from({ length: 10 }, () => cachedJson(t.redis, key, 60, compute, swr)),
+      );
+      for (const entry of stale) expect(entry).toEqual(old);
+      await started.wait;
+      // A read that arrives while the fill is in flight does not wait for it either.
+      expect(await cachedJson(t.redis, key, 60, compute, swr)).toEqual(old);
+      expect(calls).toBe(1);
+
+      fill.open();
+      await vi.waitFor(async () => {
+        expect((await cachedJson(t.redis, key, 60, compute, swr)).value).toEqual({ n: 1 });
+      });
+      expect(calls).toBe(1);
+      const ttl = await t.redis.ttl(key);
+      expect(ttl).toBeGreaterThan(STALE_RETENTION_SECONDS);
+    });
+
+    it('a failing background fill keeps the stale entry, raises nothing, and the next read tries again', async () => {
+      const key = `${prefix()}:swr-failing`;
+      const old = await seed(key, 'old', 120);
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandled);
+      let calls = 0;
+      const compute = async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('refresh failed');
+        return 'new';
+      };
+      try {
+        expect(await cachedJson(t.redis, key, 60, compute, swr)).toEqual(old);
+        await settle();
+        expect(calls).toBe(1);
+        expect(unhandled).toEqual([]);
+        expect(JSON.parse((await t.redis.get(key)) ?? 'null')).toEqual(old);
+
+        // The failure released the key: this read still answers the stale
+        // entry and starts the second fill, which succeeds.
+        expect(await cachedJson(t.redis, key, 60, compute, swr)).toEqual(old);
+        await vi.waitFor(async () => {
+          expect((await cachedJson(t.redis, key, 60, compute, swr)).value).toBe('new');
+        });
+        expect(calls).toBe(2);
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
+    });
+
+    it('a forget during a background fill discards it: nothing is stored', async () => {
+      const key = `${prefix()}:swr-forgotten`;
+      const old = await seed(key, 'before the write', 120);
+      const started = gate();
+      const fill = gate();
+      const compute = async () => {
+        started.open();
+        await fill.wait;
+        return 'computed before the write';
+      };
+      expect(await cachedJson(t.redis, key, 60, compute, swr)).toEqual(old);
+      await started.wait;
+      await forgetCached(t.redis, key);
+      // The forget deleted the stale entry too.
+      expect(await t.redis.get(key)).toBeNull();
+      fill.open();
+      await settle();
+      expect(await t.redis.get(key)).toBeNull();
+    });
+
+    it('a true miss computes inside the call, and a call during that fill joins it', async () => {
+      const key = `${prefix()}:swr-miss`;
+      const started = gate();
+      const fill = gate();
+      let calls = 0;
+      const compute = async () => {
+        calls += 1;
+        started.open();
+        await fill.wait;
+        return { n: calls };
+      };
+      const first = cachedJson(t.redis, key, 60, compute, swr);
+      await started.wait;
+      const late = cachedJson(t.redis, key, 60, compute, swr);
+      await t.redis.ping();
+      fill.open();
+      expect(await late).toEqual(await first);
+      expect(calls).toBe(1);
+    });
+
+    it('without the option an entry is answered whatever its age and nothing is refreshed', async () => {
+      const key = `${prefix()}:no-swr`;
+      const old = await seed(key, 'old', 120);
+      let calls = 0;
+      const compute = async () => {
+        calls += 1;
+        return 'new';
+      };
+      expect(await cachedJson(t.redis, key, 60, compute)).toEqual(old);
+      await settle();
+      expect(calls).toBe(0);
+      expect(JSON.parse((await t.redis.get(key)) ?? 'null')).toEqual(old);
+      // Once Redis has expired it, the call computes and stores for the ttl alone.
+      await t.redis.del(key);
+      expect((await cachedJson(t.redis, key, 60, compute)).value).toBe('new');
+      expect(await t.redis.ttl(key)).toBeLessThanOrEqual(60);
+    });
   });
 });

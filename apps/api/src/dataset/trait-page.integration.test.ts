@@ -732,7 +732,7 @@ describe('RFC-62 R7 getTraitDetail', () => {
     }
   });
 
-  it('serves the distribution from the cache for ten minutes: the same computedAt until the key is forgotten', async () => {
+  it('serves the distribution from the cache: the same computedAt until the key is forgotten', async () => {
     const trait = await createTrait(t.db, { levels: ['alpha'] });
     try {
       const first = await getTraitDetail({ db: t.db, redis }, UNRESTRICTED, trait.id);

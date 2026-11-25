@@ -128,8 +128,10 @@ export async function computeCoverageTotals(
 }
 
 /**
- * `computeCoverageTotals` behind the ten-minute cache the dashboard reads
- * (RFC-72 R1), keyed by viewer class alone — `coverage:totals:<platform>:<u|r>`.
+ * `computeCoverageTotals` behind the cache the dashboard reads (RFC-72 R1),
+ * keyed by viewer class alone — `coverage:totals:<platform>:<u|r>`: fresh for
+ * ten minutes, then answered as stored while it is recomputed in the
+ * background (RFC-10 R15).
  * @rfc RFC-69 R5
  */
 export async function coverageTotals(
@@ -137,8 +139,12 @@ export async function coverageTotals(
   visibility: Visibility,
 ): Promise<CoverageTotals> {
   const key = `coverage:totals:${viewerClass(visibility)}`;
-  const { value } = await cachedJson(ctx.redis, key, 600, () =>
-    computeCoverageTotals(ctx.db, visibility),
+  const { value } = await cachedJson(
+    ctx.redis,
+    key,
+    600,
+    () => computeCoverageTotals(ctx.db, visibility),
+    { staleWhileRevalidate: true },
   );
   return value;
 }
@@ -149,7 +155,7 @@ export type CoverageTopMode = NonNullable<CoverageTopQuery['mode']>;
 /** What `coverageTop` answers when the caller names no `limit`, as RFC-72 R1's own top list does. */
 const TOP_LIMIT_DEFAULT = 10;
 
-/** The ten minutes of RFC-69 R6, in seconds. */
+/** The ten minutes an entry is fresh for (RFC-69 R6), in seconds. */
 const COVERAGE_TTL_SECONDS = 600;
 
 /**
@@ -377,8 +383,9 @@ function keySegment(value: string | undefined): string {
 }
 
 /**
- * `GET /api/coverage`: {@link computeCoverageMetrics} behind the ten-minute
- * entry of RFC-69 R6, keyed by the viewer class and the explicit filters —
+ * `GET /api/coverage`: {@link computeCoverageMetrics} behind the entry of
+ * RFC-69 R6 (fresh for ten minutes, then answered as stored while it is
+ * recomputed in the background), keyed by the viewer class and the explicit filters —
  * `coverage:<platform>:<u|r>:<familyId>:<categoryKey>:<plotId>`, an absent filter being
  * `-`. The key is honest per viewer because the base selection never carries
  * the plot dimension (see {@link coverageSelection}).
@@ -413,8 +420,12 @@ export async function coverageMetrics(
     keySegment(filters.categoryKey),
     keySegment(filters.plotId),
   ].join(':');
-  const { value, computedAt } = await cachedJson(ctx.redis, key, COVERAGE_TTL_SECONDS, () =>
-    coverageGrid(ctx.db, selection),
+  const { value, computedAt } = await cachedJson(
+    ctx.redis,
+    key,
+    COVERAGE_TTL_SECONDS,
+    () => coverageGrid(ctx.db, selection),
+    { staleWhileRevalidate: true },
   );
   return { ...value, computedAt };
 }

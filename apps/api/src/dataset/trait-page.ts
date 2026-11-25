@@ -29,7 +29,7 @@ import { searchSpecies } from './taxa.ts';
 /** A record whose unit needs checking stays out of every numeric summary (RFC-62 R7, R8). */
 const unitChecked = sql`r.unit_status is distinct from 'needs_unit_check'`;
 
-/** How long a trait's distribution stays cached (RFC-62 R7). */
+/** How long a trait's cached distribution is fresh, in seconds (RFC-62 R7). */
 const DISTRIBUTION_TTL_SECONDS = 600;
 
 /** One cache entry per trait and viewer class, `<platform>:<u|r>` (RFC-62 R7). */
@@ -154,7 +154,8 @@ async function computeDistribution(
  * active/inactive class and never with their plots, so a plot-bound viewer
  * reads a header counting the whole dataset while the species lists below it
  * stay inside their plots ({@link listTraitSpecies}, RFC-62 R8). Only the
- * distribution is cached — ten minutes per trait and viewer class, since it
+ * distribution is cached — per trait and viewer class, fresh for ten minutes
+ * and then answered as stored while it is recomputed (RFC-10 R15), since it
  * scans one trait's records — and its `computedAt` is the age the page shows;
  * the counts are read fresh, which is what makes "add a record, see
  * `speciesMissing` fall" true on the next request.
@@ -199,6 +200,7 @@ export async function getTraitDetail(
       distributionKey(id, visibility),
       DISTRIBUTION_TTL_SECONDS,
       async () => await computeDistribution(ctx.db, visibility, id, trait.valueType),
+      { staleWhileRevalidate: true },
     ),
   ]);
   const [row] = category;

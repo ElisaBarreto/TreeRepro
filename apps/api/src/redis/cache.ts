@@ -8,10 +8,11 @@ interface CachedEntry<T> {
 
 /**
  * Fills in flight, per Redis client: a miss that arrives while `key` is being
- * computed awaits that fill instead of starting its own. An entry lives only
- * as long as its fill (removed when it settles, success or failure), so this
- * holds nothing between misses. Keyed by client because the cache scope is
- * the client's Redis, not the process.
+ * computed awaits that fill instead of starting its own. A background refresh
+ * of a stale entry (`staleWhileRevalidate`) is registered here too, so stale
+ * reads start one. An entry lives only as long as its fill (removed when it
+ * settles, success or failure), so this holds nothing between misses. Keyed
+ * by client because the cache scope is the client's Redis, not the process.
  */
 const inFlight = new WeakMap<Redis, Map<string, Promise<CachedEntry<unknown>>>>();
 
@@ -50,12 +51,25 @@ export function cacheGeneration(redis: Redis, key: string): number {
 }
 
 /**
+ * How long a `staleWhileRevalidate` entry stays in Redis past its freshness
+ * window: 30 days.
+ * @rfc RFC-10 R15
+ */
+export const STALE_RETENTION_SECONDS = 30 * 24 * 60 * 60;
+
+/**
  * Caches `compute`'s result as `{ value, computedAt }` JSON under `key` for
  * `ttlSeconds`; a hit answers the stored entry without calling `compute`.
  * Concurrent misses on one key share one fill (single-flight, in-process):
  * the first runs `compute`, the rest await the same promise and answer the
  * same entry; a rejected fill rejects every waiter, stores nothing, and
  * releases the key so the next call computes again.
+ *
+ * With `staleWhileRevalidate`, `ttlSeconds` is the entry's freshness window
+ * and Redis keeps it `STALE_RETENTION_SECONDS` longer: a call that finds an
+ * entry older than the window answers it at once and starts one background
+ * fill, whose failure is swallowed (the next call starts another); only a key
+ * with nothing stored is computed inside the call.
  * @rfc RFC-10 R15
  */
 export async function cachedJson<T>(
@@ -63,7 +77,7 @@ export async function cachedJson<T>(
   key: string,
   ttlSeconds: number,
   compute: () => Promise<T>,
-  options?: { generation?: number },
+  options?: { generation?: number; staleWhileRevalidate?: boolean },
 ): Promise<CachedEntry<T>> {
   const fills = fillsOf(redis);
   const since = options?.generation ?? cacheGeneration(redis, key);
@@ -78,29 +92,56 @@ export async function cachedJson<T>(
   // being filled joins that fill outright. Reading Redis first would let a
   // fill that fails while the GET is pending release the key, so the GET's
   // miss would start a second compute for a request that arrived in time.
-  const active = fills.get(key);
-  if (active) return active as Promise<CachedEntry<T>>;
-  const cached = await redis.get(key);
-  if (cached !== null) return JSON.parse(cached) as CachedEntry<T>;
-  // Again after the GET: a forget during it must not let this call register a
-  // fill that a caller with fresh inputs would then join.
-  if (since !== cacheGeneration(redis, key)) return uncached();
-  const pending = fills.get(key);
-  if (pending) return pending as Promise<CachedEntry<T>>;
-  // `fill` is read only after the first `await`, once it is assigned.
+  // With `staleWhileRevalidate` the fill may be a background refresh, which a
+  // reader must not wait for: it reads Redis anyway and joins this fill (the
+  // one it saw on entry, even if it has failed since) only if nothing is stored.
+  const swr = options?.staleWhileRevalidate === true;
+  const active = fills.get(key) as Promise<CachedEntry<T>> | undefined;
+  if (active && !swr) return active;
   const run = async (): Promise<CachedEntry<T>> => {
     const entry: CachedEntry<T> = { value: await compute(), computedAt: new Date().toISOString() };
     // A `forgetCached` while computing: the result predates the write that
     // caused the forget, so it must not be stored (issue #417).
     if (cacheGeneration(redis, key) === since)
-      await redis.set(key, JSON.stringify(entry), 'EX', ttlSeconds);
+      await redis.set(
+        key,
+        JSON.stringify(entry),
+        'EX',
+        ttlSeconds + (swr ? STALE_RETENTION_SECONDS : 0),
+      );
     return entry;
   };
-  const fill = run().finally(() => {
-    if (fills.get(key) === fill) fills.delete(key);
-  });
-  fills.set(key, fill);
-  return fill;
+  const startFill = (): Promise<CachedEntry<T>> => {
+    // `fill` is read only after the first `await`, once it is assigned.
+    const fill = run().finally(() => {
+      if (fills.get(key) === fill) fills.delete(key);
+    });
+    fills.set(key, fill);
+    return fill;
+  };
+  const cached = await redis.get(key);
+  if (cached !== null) {
+    const entry = JSON.parse(cached) as CachedEntry<T>;
+    // Past its window: answer it now and refresh it behind the reader's back,
+    // unless a refresh is already running or a forget happened during the GET
+    // (the same two checks a miss makes below). Nobody awaits this fill, so
+    // its rejection is swallowed here; the key is released and the next read
+    // starts another.
+    if (
+      swr &&
+      Date.now() - Date.parse(entry.computedAt) > ttlSeconds * 1000 &&
+      since === cacheGeneration(redis, key) &&
+      !fills.has(key)
+    )
+      startFill().catch(() => undefined);
+    return entry;
+  }
+  // Again after the GET: a forget during it must not let this call register a
+  // fill that a caller with fresh inputs would then join.
+  if (since !== cacheGeneration(redis, key)) return uncached();
+  const pending = active ?? fills.get(key);
+  if (pending) return pending as Promise<CachedEntry<T>>;
+  return startFill();
 }
 
 /**
