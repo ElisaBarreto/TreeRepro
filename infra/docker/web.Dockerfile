@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS build
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS build
 # pnpm, pinned by version and by the sha512 of its native build
 # (docs/gotchas/docker.md "Bumping pnpm").
 COPY infra/docker/install-pnpm.sh /tmp/install-pnpm.sh
@@ -18,7 +18,7 @@ COPY packages/contracts packages/contracts
 COPY apps/web apps/web
 RUN pnpm --filter @treerepro/contracts build && pnpm --filter @treerepro/web build
 
-FROM caddy:2.11.8-alpine@sha256:f6228111e5fafa1a5238258d0858e103f10599b8d1659a146e7726681a002bb9
+FROM caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
 # Pull Alpine security fixes the caddy image has not rebuilt with yet.
 RUN apk upgrade --no-cache
 # Run Caddy as a dedicated user (RFC-02 R10). The upstream image already ships
